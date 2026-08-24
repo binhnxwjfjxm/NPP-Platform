@@ -1,6 +1,16 @@
 import Link from 'next/link';
 import { AdminIconTabs } from '../admin-icon-tabs';
 import { AdminShell } from '../admin-shell';
+import {
+  AdminFilterChip,
+  AdminKpiCard,
+  AdminKpiGrid,
+  AdminStatePanel,
+  AdminStatusBadge,
+  AdminToolbar,
+  type AdminStatusTone,
+} from '../admin-ui-primitives';
+import { reportPeriods } from '../reports/report-data';
 import { loadAlertCenter, type AlertDomain, type AlertSeverity, type AlertStatus } from './alert-data';
 
 const severityLabels: Record<AlertSeverity, string> = { critical: 'Nghiêm trọng', high: 'Cao', attention: 'Cần chú ý' };
@@ -12,6 +22,27 @@ function dateTime(value: string | null) {
   if (!value) return 'Chưa có thời gian';
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Asia/Ho_Chi_Minh' }).format(date);
+}
+
+function alertHref(tab: string, period: string): string {
+  const params = new URLSearchParams();
+  if (tab !== 'all') params.set('tab', tab);
+  if (period !== 'Tháng này') params.set('period', period);
+  const query = params.toString();
+  return query ? `/alerts?${query}` : '/alerts';
+}
+
+function severityTone(severity: AlertSeverity): AdminStatusTone {
+  if (severity === 'critical') return 'danger';
+  if (severity === 'high') return 'attention';
+  return 'info';
+}
+
+function statusTone(status: AlertStatus): AdminStatusTone {
+  if (status === 'resolved') return 'success';
+  if (status === 'new') return 'danger';
+  if (status === 'handling') return 'attention';
+  return 'info';
 }
 
 export default async function AlertsPage({ searchParams }: { searchParams: Promise<{ tab?: string; period?: string }> }) {
@@ -28,28 +59,101 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
   const openCount = activeAlerts ? String(activeAlerts.length) : undefined;
   const domainBadge = (domain: AlertDomain) => activeAlerts ? String(activeAlerts.filter((item) => item.domain === domain).length) : undefined;
   const tabs = [
-    { href:`/alerts?period=${encodeURIComponent(data.period)}`, label:'Tổng hợp', icon:'exception' as const, active:activeTab==='all', badge:openCount },
-    { href:`/alerts?tab=sales&period=${encodeURIComponent(data.period)}`, label:'Kinh doanh', icon:'overview' as const, active:activeTab==='sales', badge:domainBadge('sales') },
-    { href:`/alerts?tab=debt&period=${encodeURIComponent(data.period)}`, label:'Công nợ', icon:'coin' as const, active:activeTab==='debt', badge:domainBadge('debt') },
-    { href:`/alerts?tab=inventory&period=${encodeURIComponent(data.period)}`, label:'Kho', icon:'warehouse' as const, active:activeTab==='inventory', badge:domainBadge('inventory') },
-    { href:`/alerts?tab=delivery&period=${encodeURIComponent(data.period)}`, label:'Giao vận', icon:'truck' as const, active:activeTab==='delivery', badge:domainBadge('delivery') },
-    { href:`/alerts?tab=mcp&period=${encodeURIComponent(data.period)}`, label:'MCP', icon:'mobile' as const, active:activeTab==='mcp', badge:domainBadge('mcp') },
-    { href:`/alerts?tab=rules&period=${encodeURIComponent(data.period)}`, label:'Quy tắc', icon:'clipboard' as const, active:activeTab==='rules' },
-    { href:`/alerts?tab=history&period=${encodeURIComponent(data.period)}`, label:'Lịch sử', icon:'document' as const, active:activeTab==='history' },
+    { href: alertHref('all', data.period), label: 'Tổng hợp', icon: 'exception' as const, active: activeTab === 'all', badge: openCount },
+    { href: alertHref('sales', data.period), label: 'Kinh doanh', icon: 'overview' as const, active: activeTab === 'sales', badge: domainBadge('sales') },
+    { href: alertHref('debt', data.period), label: 'Công nợ', icon: 'coin' as const, active: activeTab === 'debt', badge: domainBadge('debt') },
+    { href: alertHref('inventory', data.period), label: 'Kho', icon: 'warehouse' as const, active: activeTab === 'inventory', badge: domainBadge('inventory') },
+    { href: alertHref('delivery', data.period), label: 'Giao vận', icon: 'truck' as const, active: activeTab === 'delivery', badge: domainBadge('delivery') },
+    { href: alertHref('mcp', data.period), label: 'MCP', icon: 'mobile' as const, active: activeTab === 'mcp', badge: domainBadge('mcp') },
+    { href: alertHref('rules', data.period), label: 'Quy tắc', icon: 'clipboard' as const, active: activeTab === 'rules' },
+    { href: alertHref('history', data.period), label: 'Lịch sử', icon: 'document' as const, active: activeTab === 'history' },
   ];
   const history = sourceReady
-    ? data.alerts.flatMap((alert) => alert.history.map((event) => ({ alert, event }))).sort((a,b) => Date.parse(b.event.occurredAt) - Date.parse(a.event.occurredAt))
+    ? data.alerts.flatMap((alert) => alert.history.map((event) => ({ alert, event }))).sort((a, b) => Date.parse(b.event.occurredAt) - Date.parse(a.event.occurredAt))
     : [];
   const highCount = activeAlerts ? activeAlerts.filter((alert) => alert.severity === 'critical' || alert.severity === 'high').length : null;
 
   return <AdminShell activeSection="alerts" title="Trung tâm cảnh báo" subtitle="Theo dõi tín hiệu bất thường từ dữ liệu quản trị thật.">
     <AdminIconTabs label="Nhóm cảnh báo" tabs={tabs} />
-    <div className="alertSummaryStrip" aria-label="Tóm tắt cảnh báo"><div><span>Đang hoạt động</span><strong>{activeAlerts ? activeAlerts.length : '—'}</strong></div><div><span>Mức cao</span><strong>{highCount ?? '—'}</strong></div><div><span>Quy tắc đang áp dụng</span><strong>{sourceReady ? data.rules.length : '—'}</strong></div></div>
-    {data.message ? <p className="warning compactWarning" role="alert">{data.message}</p> : null}
-    {!sourceReady ? <div className="card alertEmpty" role="alert"><strong>Chưa thể hiển thị cảnh báo.</strong><span>Dữ liệu hiện không sẵn sàng hoặc tài khoản chưa có quyền xem.</span></div>
-    : selectedDomain && selectedAccess && !selectedAccess.available ? <div className="card alertEmpty" role="status"><strong>Chưa thể mở nhóm cảnh báo này.</strong><span>{selectedAccess.message ?? 'Nguồn dữ liệu hiện chưa sẵn sàng.'}</span></div>
-    : activeTab === 'rules' ? <section className="alertRuleList" aria-label="Quy tắc cảnh báo">{data.rules.length ? data.rules.map(rule=><article className="card alertRuleCard" key={rule.code}><div><span className={`alertSeverity is-${rule.severity}`}>{severityLabels[rule.severity]}</span><span className="alertStatus">{rule.domainLabel}</span></div><h2>{rule.name}</h2><p>{rule.metric} · {rule.threshold}</p><small>Quy tắc dùng dữ liệu chính thức; màn hình này chỉ hiển thị.</small></article>) : <div className="card alertEmpty"><strong>Chưa có quy tắc cảnh báo.</strong><span>Quy tắc chỉ xuất hiện khi nguồn chính thức đã được mở.</span></div>}</section>
-    : activeTab === 'history' ? <section className="alertList" aria-label="Lịch sử cảnh báo">{history.length ? history.map(({alert,event},index)=><Link className="card alertListItem" href={`/alerts/${encodeURIComponent(alert.id)}?period=${encodeURIComponent(data.period)}`} key={`${alert.id}-${event.occurredAt}-${index}`}><div className="alertListTopline"><span className={`alertSeverity is-${alert.severity}`}>{severityLabels[alert.severity]}</span><span className="alertStatus">{statusLabels[event.status]}</span></div><h2>{alert.title}</h2><p className="alertEntity">{alert.domainLabel} · {alert.entity}</p><div className="alertListFooter"><span>{dateTime(event.occurredAt)} · {event.actorLabel}</span><strong>Xem chi tiết →</strong></div></Link>) : <div className="card alertEmpty"><strong>Chưa có lịch sử xử lý</strong><span>Lịch sử sẽ xuất hiện khi cảnh báo được cập nhật trạng thái.</span></div>}</section>
-    : <section className="alertList" aria-label="Danh sách cảnh báo">{visible.length ? visible.map(alert=><Link className="card alertListItem" href={`/alerts/${encodeURIComponent(alert.id)}?period=${encodeURIComponent(data.period)}`} key={alert.id}><div className="alertListTopline"><span className={`alertSeverity is-${alert.severity}`}>{severityLabels[alert.severity]}</span><span className="alertStatus">{statusLabels[alert.status]}</span></div><h2>{alert.title}</h2><p className="alertEntity">{alert.domainLabel} · {alert.entity}{alert.context ? ` · ${alert.context}` : ''}</p><div className="alertMetricGrid"><span><small>Quy tắc</small><strong>{alert.ruleName}</strong></span><span><small>Điều kiện</small><strong>{alert.threshold}</strong></span><span><small>Dữ liệu ghi nhận</small><strong>{alert.actual}</strong></span><span><small>Nguồn</small><strong>{alert.source}</strong></span></div><div className="alertListFooter"><span>{dateTime(alert.detectedAt)}</span><strong>Xem chi tiết →</strong></div></Link>) : <div className="card alertEmpty"><strong>Không có cảnh báo đang mở</strong><span>Không phát hiện tín hiệu cần rà soát trong nhóm đang xem.</span></div>}</section>}
+
+    <AdminToolbar label="Kỳ cảnh báo">
+      {reportPeriods.map((candidate) => (
+        <AdminFilterChip
+          key={candidate}
+          href={alertHref(activeTab, candidate)}
+          label={candidate}
+          active={data.period === candidate}
+        />
+      ))}
+    </AdminToolbar>
+
+    <AdminKpiGrid label="Tóm tắt cảnh báo">
+      <AdminKpiCard label="Đang hoạt động" value={activeAlerts ? activeAlerts.length : '—'} note="Chưa giải quyết" icon="exception" />
+      <AdminKpiCard label="Mức cao" value={highCount ?? '—'} note="Nghiêm trọng hoặc cao" icon="info" tone={highCount && highCount > 0 ? 'attention' : 'neutral'} />
+      <AdminKpiCard label="Quy tắc đang áp dụng" value={sourceReady ? data.rules.length : '—'} note="Nguồn dữ liệu chính thức" icon="clipboard" />
+      <AdminKpiCard label="Kỳ đang xem" value={data.period} note="Phạm vi cảnh báo" icon="document" />
+    </AdminKpiGrid>
+
+    {!sourceReady ? (
+      <AdminStatePanel
+        title="Chưa thể hiển thị cảnh báo"
+        message={data.message ?? 'Dữ liệu hiện không sẵn sàng.'}
+        tone={data.message?.includes('không có quyền') ? 'forbidden' : 'error'}
+      />
+    ) : selectedDomain && selectedAccess && !selectedAccess.available ? (
+      <AdminStatePanel
+        title="Chưa thể mở nhóm cảnh báo này"
+        message={selectedAccess.message ?? 'Nguồn dữ liệu hiện chưa sẵn sàng.'}
+        tone="partial"
+      />
+    ) : activeTab === 'rules' ? (
+      <section className="alertRuleList" aria-label="Quy tắc cảnh báo">
+        {data.rules.length ? data.rules.map((rule) => (
+          <article className="card alertRuleCard" key={rule.code}>
+            <div>
+              <AdminStatusBadge tone={severityTone(rule.severity)}>{severityLabels[rule.severity]}</AdminStatusBadge>
+              <AdminStatusBadge>{rule.domainLabel}</AdminStatusBadge>
+            </div>
+            <h2>{rule.name}</h2>
+            <p>{rule.metric} · {rule.threshold}</p>
+            <small>Quy tắc dùng dữ liệu chính thức; màn hình này chỉ hiển thị.</small>
+          </article>
+        )) : <AdminStatePanel title="Chưa có quy tắc cảnh báo" message="Quy tắc chỉ xuất hiện khi nguồn chính thức đã được mở." tone="empty" />}
+      </section>
+    ) : activeTab === 'history' ? (
+      <section className="alertList" aria-label="Lịch sử cảnh báo">
+        {history.length ? history.map(({ alert, event }, index) => (
+          <Link className="card alertListItem" href={`/alerts/${encodeURIComponent(alert.id)}?period=${encodeURIComponent(data.period)}`} key={`${alert.id}-${event.occurredAt}-${index}`}>
+            <div className="alertListTopline">
+              <AdminStatusBadge tone={severityTone(alert.severity)}>{severityLabels[alert.severity]}</AdminStatusBadge>
+              <AdminStatusBadge tone={statusTone(event.status)}>{statusLabels[event.status]}</AdminStatusBadge>
+            </div>
+            <h2>{alert.title}</h2>
+            <p className="alertEntity">{alert.domainLabel} · {alert.entity}</p>
+            <div className="alertListFooter"><span>{dateTime(event.occurredAt)} · {event.actorLabel}</span><strong>Xem chi tiết →</strong></div>
+          </Link>
+        )) : <AdminStatePanel title="Chưa có lịch sử xử lý" message="Lịch sử sẽ xuất hiện khi cảnh báo được cập nhật trạng thái." tone="empty" />}
+      </section>
+    ) : (
+      <section className="alertList" aria-label="Danh sách cảnh báo">
+        {visible.length ? visible.map((alert) => (
+          <Link className="card alertListItem" href={`/alerts/${encodeURIComponent(alert.id)}?period=${encodeURIComponent(data.period)}`} key={alert.id}>
+            <div className="alertListTopline">
+              <AdminStatusBadge tone={severityTone(alert.severity)}>{severityLabels[alert.severity]}</AdminStatusBadge>
+              <AdminStatusBadge tone={statusTone(alert.status)}>{statusLabels[alert.status]}</AdminStatusBadge>
+            </div>
+            <h2>{alert.title}</h2>
+            <p className="alertEntity">{alert.domainLabel} · {alert.entity}{alert.context ? ` · ${alert.context}` : ''}</p>
+            <div className="alertMetricGrid">
+              <span><small>Quy tắc</small><strong>{alert.ruleName}</strong></span>
+              <span><small>Điều kiện</small><strong>{alert.threshold}</strong></span>
+              <span><small>Dữ liệu ghi nhận</small><strong>{alert.actual}</strong></span>
+              <span><small>Nguồn</small><strong>{alert.source}</strong></span>
+            </div>
+            <div className="alertListFooter"><span>{dateTime(alert.detectedAt)}</span><strong>Xem chi tiết →</strong></div>
+          </Link>
+        )) : <AdminStatePanel title="Không có cảnh báo đang mở" message="Không phát hiện tín hiệu cần rà soát trong nhóm đang xem." tone="ok" />}
+      </section>
+    )}
   </AdminShell>;
 }

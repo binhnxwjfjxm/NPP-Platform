@@ -34,13 +34,9 @@
     touch-action: pan-x;
   }
 
-  /* Remaining pre-Lô-3 period/warehouse subtab rails use local CSS modules.
-     Constrain those semantic rails at the shared interaction layer until they migrate. */
-  .adminAppMain :where(
-    nav[aria-label="Kỳ tổng quan"],
-    div[aria-label="Kỳ báo cáo"],
-    section[aria-label="Lọc theo kho"] > div
-  ) {
+  /* Tổng quan chưa migrate ở Lô 3 nên kỳ xem của màn này vẫn là rail local.
+     Báo cáo và Cảnh báo đã chuyển sang AdminToolbar, không cần selector vá riêng. */
+  .adminAppMain nav[aria-label="Kỳ tổng quan"] {
     box-sizing: border-box;
     width: 100%;
     min-width: 0;

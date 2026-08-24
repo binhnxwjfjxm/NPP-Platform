@@ -2,10 +2,20 @@ import Link from 'next/link';
 import { AdminIconTabs } from '../admin-icon-tabs';
 import { AdminShell } from '../admin-shell';
 import {
+  AdminFilterChip,
+  AdminKpiCard,
+  AdminKpiGrid,
+  AdminStatePanel,
+  AdminStatusBadge,
+  AdminToolbar,
+  type AdminStateTone,
+} from '../admin-ui-primitives';
+import {
   normalizeReportPeriod,
   reportPeriods,
   resolveReportRange,
   type ReportDomain,
+  type ReportState,
 } from './report-data';
 import { loadLotCPresentation } from './report-lot-c-data';
 import styles from './report-center.module.css';
@@ -30,6 +40,14 @@ function reportHref(tab: ReportDomain, period: string, warehouseId?: string | nu
   if (warehouseId && warehouseFilterDomains.has(tab)) params.set('warehouseId', warehouseId);
   const query = params.toString();
   return query ? `/reports?${query}` : '/reports';
+}
+
+function stateTone(state: ReportState): AdminStateTone {
+  if (state === 'ready') return 'ok';
+  if (state === 'partial') return 'partial';
+  if (state === 'forbidden') return 'forbidden';
+  if (state === 'error') return 'error';
+  return 'empty';
 }
 
 export default async function ReportsPage({
@@ -71,49 +89,49 @@ export default async function ReportsPage({
     >
       <AdminIconTabs label="Nhóm báo cáo quản trị" tabs={tabItems} />
 
-      {selected === 'debt' ? (
-        <div className={styles.detailNote} aria-label="Phạm vi thời gian công nợ">Số dư hiện tại</div>
-      ) : (
-        <div className={styles.periodTabs} aria-label="Kỳ báo cáo">
-          {reportPeriods.map((candidate) => (
-            <Link
+      <AdminToolbar
+        label="Kỳ và phạm vi báo cáo"
+        actions={<a className={styles.toolbarAction} href={exportHref}>Xuất Excel</a>}
+      >
+        <span className={styles.toolbarLabel}>Kỳ xem</span>
+        {selected === 'debt' ? (
+          <AdminStatusBadge tone="info">Số dư hiện tại</AdminStatusBadge>
+        ) : (
+          reportPeriods.map((candidate) => (
+            <AdminFilterChip
               key={candidate}
-              className={`${styles.periodTab} ${period === candidate ? styles.periodActive : ''}`}
               href={reportHref(selected, candidate, warehouseId)}
-            >
-              {candidate}
-            </Link>
-          ))}
-        </div>
-      )}
-
-      {item.warehouseFilter && item.warehouseFilter.options.length > 0 ? (
-        <section className={`card ${styles.detailSection}`} aria-label="Lọc theo kho">
-          <span>Kho</span>
-          <div className={styles.periodTabs}>
-            <Link
-              className={`${styles.periodTab} ${!item.warehouseFilter.selectedId ? styles.periodActive : ''}`}
+              label={candidate}
+              active={period === candidate}
+            />
+          ))
+        )}
+        {item.warehouseFilter && item.warehouseFilter.options.length > 0 ? (
+          <>
+            <span className={styles.toolbarLabel}>Kho</span>
+            <AdminFilterChip
               href={reportHref(selected, period, null)}
-            >
-              Tất cả kho
-            </Link>
+              label="Tất cả kho"
+              active={!item.warehouseFilter.selectedId}
+            />
             {item.warehouseFilter.options.map((option) => (
-              <Link
+              <AdminFilterChip
                 key={option.value}
-                className={`${styles.periodTab} ${item.warehouseFilter?.selectedId === option.value ? styles.periodActive : ''}`}
                 href={reportHref(selected, period, option.value)}
-              >
-                {option.label}
-              </Link>
+                label={option.label}
+                active={item.warehouseFilter?.selectedId === option.value}
+              />
             ))}
-          </div>
-        </section>
-      ) : null}
+          </>
+        ) : null}
+      </AdminToolbar>
 
-      <div className={styles.detailNote} role="status">
-        <strong>{item.stateLabel}</strong>
-        <span>{item.stateMessage}</span>
-      </div>
+      <AdminStatePanel
+        className={styles.reportState}
+        title={item.stateLabel}
+        message={item.stateMessage}
+        tone={stateTone(item.state)}
+      />
 
       <section className={`card ${styles.hero}`}>
         <div className={styles.heroCopy}>
@@ -131,15 +149,11 @@ export default async function ReportsPage({
       </section>
 
       {item.metrics.length > 0 ? (
-        <section className={styles.kpiGrid} aria-label="Chỉ số quản trị">
+        <AdminKpiGrid label="Chỉ số quản trị" className={styles.reportKpis}>
           {item.metrics.map((metric) => (
-            <div className={`card ${styles.kpi}`} key={metric.label}>
-              <span>{metric.label}</span>
-              <strong>{metric.value}</strong>
-              <small>{metric.note}</small>
-            </div>
+            <AdminKpiCard key={metric.label} label={metric.label} value={metric.value} note={metric.note} />
           ))}
-        </section>
+        </AdminKpiGrid>
       ) : null}
 
       <section className={`card ${styles.trend}`}>
@@ -167,9 +181,6 @@ export default async function ReportsPage({
         ))}
       </section>
 
-      <a className={`card ${styles.detailLink}`} href={exportHref}>
-        <span>Xuất báo cáo Excel</span><strong>↓</strong>
-      </a>
       <Link className={`card ${styles.detailLink}`} href={`/reports/${item.id}${detailQuery ? `?${detailQuery}` : ''}`}>
         <span>Xem báo cáo chi tiết</span><strong>→</strong>
       </Link>
