@@ -69,12 +69,20 @@ export default async function ReportsPage({
   const period = normalizeReportPeriod(searchParams?.period);
   const warehouseId = warehouseFilterDomains.has(selected) ? searchParams?.warehouseId ?? null : null;
   const item = await loadLotCPresentation(selected, period, warehouseId);
-  const tabItems = tabs.map((tab) => ({
-    href: reportHref(tab.key as ReportDomain, period, warehouseId),
-    label: tab.label,
-    icon: tab.icon,
-    active: selected === tab.key,
-  }));
+  const tabItems = [
+    ...tabs.map((tab) => ({
+      href: reportHref(tab.key as ReportDomain, period, warehouseId),
+      label: tab.label,
+      icon: tab.icon,
+      active: selected === tab.key,
+    })),
+    {
+      href: '/reports/ai-usage',
+      label: 'AI / tín dụng',
+      icon: 'coin' as const,
+      active: false,
+    },
+  ];
   const trendMax = item.trend.reduce((max, point) => Math.max(max, point.value), 0);
   const detailParams = new URLSearchParams();
   if (selected !== 'debt') detailParams.set('period', period);

@@ -1,0 +1,390 @@
+.backRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: -0.15rem 0 0.85rem;
+  color: var(--hp-muted, #70685f);
+  font-size: 0.78rem;
+}
+
+.backRow a {
+  color: var(--hp-bronze-strong, #754706);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  align-items: end;
+  margin: 0.85rem 0 1rem;
+  padding: 0.9rem;
+  border: 1px solid rgba(121, 86, 47, 0.14);
+  border-radius: 16px;
+  background: #fffdf9;
+}
+
+.filters label {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.filters label > span {
+  color: var(--hp-muted, #70685f);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.filters select {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 0.7rem;
+  border: 1px solid rgba(121, 86, 47, 0.2);
+  border-radius: 11px;
+  background: #fff;
+  color: #38271c;
+  font: inherit;
+  font-size: 0.8rem;
+}
+
+.filterActions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 42px;
+}
+
+.filterActions button,
+.filterActions a {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.85rem;
+  border-radius: 11px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.filterActions button {
+  border: 1px solid #a96309;
+  background: #a96309;
+  color: #fffdf8;
+  cursor: pointer;
+}
+
+.filterActions a {
+  border: 1px solid rgba(121, 86, 47, 0.18);
+  color: #754706;
+  background: #fff;
+}
+
+.selectedCustomer {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-bottom: 0.85rem;
+  color: var(--hp-muted, #70685f);
+  font-size: 0.78rem;
+}
+
+.selectedCustomer strong {
+  color: #38271c;
+}
+
+.kpiGrid {
+  margin-bottom: 1rem;
+}
+
+.splitGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.breakdownCard {
+  padding: 1rem;
+}
+
+.breakdownCard header {
+  display: grid;
+  gap: 0.15rem;
+  margin-bottom: 0.75rem;
+}
+
+.breakdownCard header span {
+  color: var(--hp-bronze, #98600f);
+  font-size: 0.7rem;
+  font-weight: 850;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.breakdownCard header h2 {
+  margin: 0;
+  color: #38271c;
+  font-size: 1rem;
+}
+
+.breakdownList {
+  display: grid;
+}
+
+.breakdownList > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  min-height: 58px;
+  padding: 0.55rem 0;
+  border-top: 1px solid rgba(121, 86, 47, 0.1);
+}
+
+.breakdownList > div > span {
+  display: grid;
+  min-width: 0;
+  gap: 0.12rem;
+}
+
+.breakdownList strong,
+.breakdownList b {
+  color: #38271c;
+  font-size: 0.84rem;
+}
+
+.breakdownList small,
+.breakdownList p {
+  color: var(--hp-muted, #70685f);
+  font-size: 0.72rem;
+}
+
+.customerList {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.customerCard {
+  padding: 0.9rem 1rem;
+}
+
+.customerHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.customerHead > span {
+  display: grid;
+  min-width: 0;
+  gap: 0.12rem;
+}
+
+.customerHead small {
+  color: var(--hp-bronze, #98600f);
+  font-size: 0.68rem;
+  font-weight: 850;
+}
+
+.customerHead strong {
+  overflow: hidden;
+  color: #38271c;
+  font-size: 0.92rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.creditLine {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin: 0.8rem 0 0.65rem;
+}
+
+.creditLine span {
+  display: grid;
+  gap: 0.12rem;
+}
+
+.creditLine small {
+  color: var(--hp-muted, #70685f);
+  font-size: 0.68rem;
+}
+
+.creditLine strong {
+  color: #38271c;
+  font-size: 0.83rem;
+}
+
+.creditTrack {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #eee5d8;
+}
+
+.creditTrack > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #b77b22, #d7a34e);
+}
+
+.customerFoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+  margin-top: 0.5rem;
+}
+
+.customerFoot small {
+  color: var(--hp-muted, #70685f);
+  font-size: 0.7rem;
+}
+
+.customerFoot a {
+  color: var(--hp-bronze-strong, #754706);
+  font-size: 0.74rem;
+  font-weight: 850;
+  text-decoration: none;
+}
+
+.historyCard {
+  overflow: hidden;
+}
+
+.historyHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  padding: 0.9rem 1rem;
+  border-bottom: 1px solid rgba(121, 86, 47, 0.12);
+}
+
+.historyHeader > span {
+  display: grid;
+  gap: 0.12rem;
+}
+
+.historyHeader strong,
+.historyHeader b {
+  color: #38271c;
+  font-size: 0.88rem;
+}
+
+.historyHeader small {
+  color: var(--hp-muted, #70685f);
+  font-size: 0.72rem;
+}
+
+.tableWrap {
+  width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.tableWrap table {
+  width: 100%;
+  min-width: 920px;
+  border-collapse: collapse;
+}
+
+.tableWrap th,
+.tableWrap td {
+  padding: 0.68rem 0.75rem;
+  border-bottom: 1px solid rgba(121, 86, 47, 0.08);
+  text-align: left;
+  vertical-align: top;
+  font-size: 0.74rem;
+}
+
+.tableWrap th {
+  color: var(--hp-muted, #70685f);
+  font-size: 0.68rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.tableWrap td {
+  color: #4b3c31;
+}
+
+.tableWrap td > strong,
+.tableWrap td > small {
+  display: block;
+}
+
+.tableWrap td > small {
+  margin-top: 0.12rem;
+  color: var(--hp-muted, #70685f);
+}
+
+.pagination {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 0.7rem;
+  min-height: 50px;
+  padding: 0.55rem 0.8rem;
+}
+
+.pagination a {
+  color: var(--hp-bronze-strong, #754706);
+  font-size: 0.74rem;
+  font-weight: 850;
+  text-decoration: none;
+}
+
+.pagination a:last-child {
+  justify-self: end;
+}
+
+.pagination small {
+  color: var(--hp-muted, #70685f);
+  font-size: 0.7rem;
+}
+
+@media (max-width: 900px) {
+  .filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .filterActions {
+    align-self: stretch;
+  }
+}
+
+@media (max-width: 760px) {
+  .backRow {
+    margin-top: 0;
+  }
+
+  .filters,
+  .splitGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .filterActions {
+    justify-content: flex-start;
+  }
+
+  .creditLine {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .customerHead {
+    align-items: flex-start;
+  }
+
+  .historyHeader {
+    align-items: flex-start;
+  }
+}

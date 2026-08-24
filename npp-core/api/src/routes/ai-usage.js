@@ -43,12 +43,16 @@ function tokenCount(value, name) {
 function normalizeIso(value, fallback) {
   const candidate = value == null || value === '' ? fallback : value;
   const timestamp = Date.parse(String(candidate));
-  if (!Number.isFinite(timestamp)) throw apiError('AI_USAGE_PAYLOAD_INVALID', 'Thời điểm sử dụng AI không hợp lệ', {}, false, 400);
+  if (!Number.isFinite(timestamp)) {
+    throw apiError('AI_USAGE_PAYLOAD_INVALID', 'Thời điểm sử dụng AI không hợp lệ', {}, false, 400);
+  }
   return new Date(timestamp).toISOString();
 }
 
 export function normalizeAiUsagePayload(payload, receivedAt = new Date().toISOString()) {
-  if (!plainObject(payload)) throw apiError('AI_USAGE_PAYLOAD_INVALID', 'Dữ liệu mức sử dụng AI không hợp lệ', {}, false, 400);
+  if (!plainObject(payload)) {
+    throw apiError('AI_USAGE_PAYLOAD_INVALID', 'Dữ liệu mức sử dụng AI không hợp lệ', {}, false, 400);
+  }
   const source = String(payload.source ?? '').trim().toLowerCase();
   const feature = String(payload.feature ?? '').trim().toLowerCase();
   const provider = String(payload.provider ?? '').trim().toLowerCase();
@@ -79,7 +83,9 @@ export function normalizeAiUsagePayload(payload, receivedAt = new Date().toISOSt
   }
 
   const metadata = plainObject(payload.usageMetadata) ? payload.usageMetadata : null;
-  if (!metadata) throw apiError('AI_USAGE_METADATA_REQUIRED', 'Thiếu số liệu sử dụng do nhà cung cấp AI trả về', {}, false, 400);
+  if (!metadata) {
+    throw apiError('AI_USAGE_METADATA_REQUIRED', 'Thiếu số liệu sử dụng do nhà cung cấp AI trả về', {}, false, 400);
+  }
   const promptTokens = tokenCount(metadata.promptTokenCount, 'Token đầu vào');
   const cachedTokens = tokenCount(metadata.cachedContentTokenCount, 'Token bộ nhớ đệm');
   const outputTokens = tokenCount(metadata.candidatesTokenCount, 'Token đầu ra');
@@ -328,86 +334,236 @@ function parseListQuery(url) {
   const to = String(url.searchParams.get('to') ?? '').trim();
   const limitRaw = Number(url.searchParams.get('limit') ?? 100);
   const offsetRaw = Number(url.searchParams.get('offset') ?? 0);
-  if (source && !SOURCES.has(source)) throw apiError('AI_USAGE_FILTER_INVALID', 'Nguồn AI cần xem không hợp lệ', {}, false, 400);
-  if (model && !SAFE_MODEL.test(model)) throw apiError('AI_USAGE_FILTER_INVALID', 'Model AI cần xem không hợp lệ', {}, false, 400);
-  if (customerId && !UUID_PATTERN.test(customerId)) throw apiError('AI_USAGE_FILTER_INVALID', 'Mã khách hàng cần xem không hợp lệ', {}, false, 400);
-  if (from && !Number.isFinite(Date.parse(from))) throw apiError('AI_USAGE_FILTER_INVALID', 'Mốc thời gian bắt đầu không hợp lệ', {}, false, 400);
-  if (to && !Number.isFinite(Date.parse(to))) throw apiError('AI_USAGE_FILTER_INVALID', 'Mốc thời gian kết thúc không hợp lệ', {}, false, 400);
+  if (source && !SOURCES.has(source)) {
+    throw apiError('AI_USAGE_FILTER_INVALID', 'Nguồn AI cần xem không hợp lệ', {}, false, 400);
+  }
+  if (model && !SAFE_MODEL.test(model)) {
+    throw apiError('AI_USAGE_FILTER_INVALID', 'Model AI cần xem không hợp lệ', {}, false, 400);
+  }
+  if (customerId && !UUID_PATTERN.test(customerId)) {
+    throw apiError('AI_USAGE_FILTER_INVALID', 'Mã khách hàng cần xem không hợp lệ', {}, false, 400);
+  }
+  if (from && !Number.isFinite(Date.parse(from))) {
+    throw apiError('AI_USAGE_FILTER_INVALID', 'Mốc thời gian bắt đầu không hợp lệ', {}, false, 400);
+  }
+  if (to && !Number.isFinite(Date.parse(to))) {
+    throw apiError('AI_USAGE_FILTER_INVALID', 'Mốc thời gian kết thúc không hợp lệ', {}, false, 400);
+  }
   if (!Number.isInteger(limitRaw) || limitRaw < 1 || limitRaw > 500 || !Number.isInteger(offsetRaw) || offsetRaw < 0) {
     throw apiError('AI_USAGE_FILTER_INVALID', 'Phân trang mức sử dụng AI không hợp lệ', {}, false, 400);
   }
+  if (from && to && Date.parse(from) >= Date.parse(to)) {
+    throw apiError('AI_USAGE_FILTER_INVALID', 'Khoảng thời gian cần xem không hợp lệ', {}, false, 400);
+  }
   return { source, model, customerId, from, to, limit: limitRaw, offset: offsetRaw };
 }
+
+function filterParams(context, filter) {
+  return [
+    context.installationId,
+    filter.source,
+    filter.model,
+    filter.customerId,
+    filter.from,
+    filter.to,
+  ];
+}
+
+const FILTER_WHERE = `installation_id = $1
+  AND ($2::text = '' OR source = $2)
+  AND ($3::text = '' OR model = $3)
+  AND ($4::text = '' OR customer_id = NULLIF($4::text, '')::uuid)
+  AND ($5::text = '' OR occurred_at >= NULLIF($5::text, '')::timestamptz)
+  AND ($6::text = '' OR occurred_at < NULLIF($6::text, '')::timestamptz)`;
 
 async function listUsage(adapter, context, url) {
   const filter = parseListQuery(url);
   const result = await adapter.query(
     `SELECT * FROM shared.ai_usage_events
-      WHERE installation_id = $1
-        AND ($2::text = '' OR source = $2)
-        AND ($3::text = '' OR model = $3)
-        AND ($4::text = '' OR customer_id = NULLIF($4::text, '')::uuid)
-        AND ($5::text = '' OR occurred_at >= NULLIF($5::text, '')::timestamptz)
-        AND ($6::text = '' OR occurred_at < NULLIF($6::text, '')::timestamptz)
+      WHERE ${FILTER_WHERE}
       ORDER BY occurred_at DESC, id DESC
       LIMIT $7 OFFSET $8`,
-    [context.installationId, filter.source, filter.model, filter.customerId, filter.from, filter.to, filter.limit, filter.offset],
+    [...filterParams(context, filter), filter.limit, filter.offset],
   );
-  return Object.freeze({ events: Object.freeze((result.rows ?? []).map(publicEvent)), limit: filter.limit, offset: filter.offset });
+  return Object.freeze({
+    events: Object.freeze((result.rows ?? []).map(publicEvent)),
+    limit: filter.limit,
+    offset: filter.offset,
+  });
 }
 
-async function usageSummary(adapter, context, url) {
+function tokenTotals(row = {}) {
+  return Object.freeze({
+    promptTokens: Number(row.prompt_tokens ?? 0),
+    cachedTokens: Number(row.cached_tokens ?? 0),
+    outputTokens: Number(row.output_tokens ?? 0),
+    thinkingTokens: Number(row.thinking_tokens ?? 0),
+    toolUsePromptTokens: Number(row.tool_use_prompt_tokens ?? 0),
+    totalTokens: Number(row.total_tokens ?? 0),
+  });
+}
+
+function usageBreakdownRow(row, key) {
+  return Object.freeze({
+    [key]: String(row[key]),
+    eventCount: Number(row.event_count ?? 0),
+    ...tokenTotals(row),
+    usageUsd: String(row.usage_usd ?? '0'),
+  });
+}
+
+function customerUsageRow(row) {
+  return Object.freeze({
+    customerId: String(row.customer_id),
+    customerCode: String(row.customer_code),
+    customerName: String(row.customer_name),
+    eventCount: Number(row.event_count ?? 0),
+    ...tokenTotals(row),
+    periodUsageUsd: String(row.period_usage_usd ?? '0'),
+    limitUsd: String(row.credit_limit_usd ?? '1000.00'),
+    usedUsd: String(row.used_usd ?? '0'),
+    remainingUsd: String(row.remaining_usd ?? '0'),
+    usagePercent: String(row.usage_percent ?? '0'),
+  });
+}
+
+export async function buildAiUsageSummary(adapter, context, url) {
   const filter = parseListQuery(url);
-  const totalResult = await adapter.query(
-    `SELECT COUNT(*)::bigint AS event_count,
-            COALESCE(SUM(total_tokens), 0)::bigint AS total_tokens,
-            COALESCE(SUM(usage_usd), 0)::numeric(18,9) AS usage_usd
-       FROM shared.ai_usage_events
-      WHERE installation_id = $1
-        AND ($2::text = '' OR source = $2)
-        AND ($3::text = '' OR model = $3)
-        AND ($4::text = '' OR customer_id = NULLIF($4::text, '')::uuid)
-        AND ($5::text = '' OR occurred_at >= NULLIF($5::text, '')::timestamptz)
-        AND ($6::text = '' OR occurred_at < NULLIF($6::text, '')::timestamptz)`,
-    [context.installationId, filter.source, filter.model, filter.customerId, filter.from, filter.to],
-  );
-  const breakdown = await adapter.query(
-    `SELECT source, model, COUNT(*)::bigint AS event_count,
-            COALESCE(SUM(total_tokens), 0)::bigint AS total_tokens,
-            COALESCE(SUM(usage_usd), 0)::numeric(18,9) AS usage_usd
-       FROM shared.ai_usage_events
-      WHERE installation_id = $1
-        AND ($2::text = '' OR source = $2)
-        AND ($3::text = '' OR model = $3)
-        AND ($4::text = '' OR customer_id = NULLIF($4::text, '')::uuid)
-        AND ($5::text = '' OR occurred_at >= NULLIF($5::text, '')::timestamptz)
-        AND ($6::text = '' OR occurred_at < NULLIF($6::text, '')::timestamptz)
-      GROUP BY source, model
-      ORDER BY usage_usd DESC, source, model`,
-    [context.installationId, filter.source, filter.model, filter.customerId, filter.from, filter.to],
-  );
+  const params = filterParams(context, filter);
+  const totalsSql = `SELECT COUNT(*)::bigint AS event_count,
+      COALESCE(SUM(prompt_tokens), 0)::bigint AS prompt_tokens,
+      COALESCE(SUM(cached_tokens), 0)::bigint AS cached_tokens,
+      COALESCE(SUM(output_tokens), 0)::bigint AS output_tokens,
+      COALESCE(SUM(thinking_tokens), 0)::bigint AS thinking_tokens,
+      COALESCE(SUM(tool_use_prompt_tokens), 0)::bigint AS tool_use_prompt_tokens,
+      COALESCE(SUM(total_tokens), 0)::bigint AS total_tokens,
+      COALESCE(SUM(usage_usd), 0)::numeric(18,9) AS usage_usd
+    FROM shared.ai_usage_events
+    WHERE ${FILTER_WHERE}`;
+  const sourceSql = `SELECT source,
+      COUNT(*)::bigint AS event_count,
+      COALESCE(SUM(prompt_tokens), 0)::bigint AS prompt_tokens,
+      COALESCE(SUM(cached_tokens), 0)::bigint AS cached_tokens,
+      COALESCE(SUM(output_tokens), 0)::bigint AS output_tokens,
+      COALESCE(SUM(thinking_tokens), 0)::bigint AS thinking_tokens,
+      COALESCE(SUM(tool_use_prompt_tokens), 0)::bigint AS tool_use_prompt_tokens,
+      COALESCE(SUM(total_tokens), 0)::bigint AS total_tokens,
+      COALESCE(SUM(usage_usd), 0)::numeric(18,9) AS usage_usd
+    FROM shared.ai_usage_events
+    WHERE ${FILTER_WHERE}
+    GROUP BY source
+    ORDER BY usage_usd DESC, source`;
+  const modelSql = `SELECT model,
+      COUNT(*)::bigint AS event_count,
+      COALESCE(SUM(prompt_tokens), 0)::bigint AS prompt_tokens,
+      COALESCE(SUM(cached_tokens), 0)::bigint AS cached_tokens,
+      COALESCE(SUM(output_tokens), 0)::bigint AS output_tokens,
+      COALESCE(SUM(thinking_tokens), 0)::bigint AS thinking_tokens,
+      COALESCE(SUM(tool_use_prompt_tokens), 0)::bigint AS tool_use_prompt_tokens,
+      COALESCE(SUM(total_tokens), 0)::bigint AS total_tokens,
+      COALESCE(SUM(usage_usd), 0)::numeric(18,9) AS usage_usd
+    FROM shared.ai_usage_events
+    WHERE ${FILTER_WHERE}
+    GROUP BY model
+    ORDER BY usage_usd DESC, model`;
+  const pairSql = `SELECT source, model,
+      COUNT(*)::bigint AS event_count,
+      COALESCE(SUM(prompt_tokens), 0)::bigint AS prompt_tokens,
+      COALESCE(SUM(cached_tokens), 0)::bigint AS cached_tokens,
+      COALESCE(SUM(output_tokens), 0)::bigint AS output_tokens,
+      COALESCE(SUM(thinking_tokens), 0)::bigint AS thinking_tokens,
+      COALESCE(SUM(tool_use_prompt_tokens), 0)::bigint AS tool_use_prompt_tokens,
+      COALESCE(SUM(total_tokens), 0)::bigint AS total_tokens,
+      COALESCE(SUM(usage_usd), 0)::numeric(18,9) AS usage_usd
+    FROM shared.ai_usage_events
+    WHERE ${FILTER_WHERE}
+    GROUP BY source, model
+    ORDER BY usage_usd DESC, source, model`;
+  const customerSql = `WITH filtered AS (
+      SELECT customer_id,
+        COUNT(*)::bigint AS event_count,
+        COALESCE(SUM(prompt_tokens), 0)::bigint AS prompt_tokens,
+        COALESCE(SUM(cached_tokens), 0)::bigint AS cached_tokens,
+        COALESCE(SUM(output_tokens), 0)::bigint AS output_tokens,
+        COALESCE(SUM(thinking_tokens), 0)::bigint AS thinking_tokens,
+        COALESCE(SUM(tool_use_prompt_tokens), 0)::bigint AS tool_use_prompt_tokens,
+        COALESCE(SUM(total_tokens), 0)::bigint AS total_tokens,
+        COALESCE(SUM(usage_usd), 0)::numeric(18,9) AS period_usage_usd
+      FROM shared.ai_usage_events
+      WHERE ${FILTER_WHERE}
+        AND customer_id IS NOT NULL
+      GROUP BY customer_id
+    ), lifetime AS (
+      SELECT customer_id, COALESCE(SUM(usage_usd), 0)::numeric(18,9) AS used_usd
+      FROM shared.ai_usage_events
+      WHERE installation_id = $1 AND customer_id IS NOT NULL
+      GROUP BY customer_id
+    )
+    SELECT customer.id AS customer_id,
+      customer.code AS customer_code,
+      customer.name AS customer_name,
+      COALESCE(filtered.event_count, 0)::bigint AS event_count,
+      COALESCE(filtered.prompt_tokens, 0)::bigint AS prompt_tokens,
+      COALESCE(filtered.cached_tokens, 0)::bigint AS cached_tokens,
+      COALESCE(filtered.output_tokens, 0)::bigint AS output_tokens,
+      COALESCE(filtered.thinking_tokens, 0)::bigint AS thinking_tokens,
+      COALESCE(filtered.tool_use_prompt_tokens, 0)::bigint AS tool_use_prompt_tokens,
+      COALESCE(filtered.total_tokens, 0)::bigint AS total_tokens,
+      COALESCE(filtered.period_usage_usd, 0)::numeric(18,9) AS period_usage_usd,
+      COALESCE(account.credit_limit_usd, 1000.00)::numeric(18,2) AS credit_limit_usd,
+      COALESCE(lifetime.used_usd, 0)::numeric(18,9) AS used_usd,
+      GREATEST(COALESCE(account.credit_limit_usd, 1000.00) - COALESCE(lifetime.used_usd, 0), 0)::numeric(18,9) AS remaining_usd,
+      CASE WHEN COALESCE(account.credit_limit_usd, 1000.00) > 0
+        THEN ROUND((COALESCE(lifetime.used_usd, 0) / COALESCE(account.credit_limit_usd, 1000.00)) * 100, 4)
+        ELSE 100::numeric
+      END AS usage_percent
+    FROM shared.customers customer
+    LEFT JOIN filtered ON filtered.customer_id = customer.id
+    LEFT JOIN lifetime ON lifetime.customer_id = customer.id
+    LEFT JOIN shared.ai_credit_accounts account
+      ON account.installation_id = customer.installation_id
+     AND account.customer_id = customer.id
+    WHERE customer.installation_id = $1
+      AND (customer.is_active = true OR lifetime.customer_id IS NOT NULL)
+      AND ($4::text = '' OR customer.id = NULLIF($4::text, '')::uuid)
+    ORDER BY COALESCE(filtered.period_usage_usd, 0) DESC, customer.name, customer.code`;
+
+  const [totalResult, sourceResult, modelResult, pairResult, customerResult] = await Promise.all([
+    adapter.query(totalsSql, params),
+    adapter.query(sourceSql, params),
+    adapter.query(modelSql, params),
+    adapter.query(pairSql, params),
+    adapter.query(customerSql, params),
+  ]);
+
   let credit = null;
   if (filter.customerId) {
     const exists = await adapter.query(
       `SELECT id FROM shared.customers WHERE installation_id = $1 AND id = $2::uuid LIMIT 1`,
       [context.installationId, filter.customerId],
     );
-    if (exists.rows?.length !== 1) throw apiError('AI_USAGE_CUSTOMER_NOT_FOUND', 'Khách hàng không tồn tại', {}, false, 404);
+    if (exists.rows?.length !== 1) {
+      throw apiError('AI_USAGE_CUSTOMER_NOT_FOUND', 'Khách hàng không tồn tại', {}, false, 404);
+    }
     credit = await customerCredit(adapter, context.installationId, filter.customerId);
   }
+
   const total = totalResult.rows?.[0] ?? {};
   return Object.freeze({
     eventCount: Number(total.event_count ?? 0),
-    totalTokens: Number(total.total_tokens ?? 0),
+    ...tokenTotals(total),
     usageUsd: String(total.usage_usd ?? '0'),
     credit,
-    breakdown: Object.freeze((breakdown.rows ?? []).map((row) => Object.freeze({
+    breakdown: Object.freeze((pairResult.rows ?? []).map((row) => Object.freeze({
       source: String(row.source),
       model: String(row.model),
-      eventCount: Number(row.event_count),
-      totalTokens: Number(row.total_tokens),
-      usageUsd: String(row.usage_usd),
+      eventCount: Number(row.event_count ?? 0),
+      ...tokenTotals(row),
+      usageUsd: String(row.usage_usd ?? '0'),
     }))),
+    sourceBreakdown: Object.freeze((sourceResult.rows ?? []).map((row) => usageBreakdownRow(row, 'source'))),
+    modelBreakdown: Object.freeze((modelResult.rows ?? []).map((row) => usageBreakdownRow(row, 'model'))),
+    customerBreakdown: Object.freeze((customerResult.rows ?? []).map(customerUsageRow)),
   });
 }
 
@@ -428,7 +584,13 @@ async function authenticate(req, res, options) {
 
 function sendPublicError(res, error, options, fallbackCode, fallbackMessage) {
   if (error?.publicMessage && error?.statusCode) {
-    sendError(res, apiError(error.code ?? fallbackCode, error.publicMessage, error.details ?? {}, Boolean(error.retryable), error.statusCode), options.requestId, options.receivedAt);
+    sendError(res, apiError(
+      error.code ?? fallbackCode,
+      error.publicMessage,
+      error.details ?? {},
+      Boolean(error.retryable),
+      error.statusCode,
+    ), options.requestId, options.receivedAt);
     return;
   }
   sendError(res, apiError(fallbackCode, fallbackMessage, {}, true, 503), options.requestId, options.receivedAt);
@@ -450,7 +612,7 @@ export async function handleAiUsageRoutes(req, res, options) {
     try {
       const data = url.pathname === EVENTS_ROOT
         ? await listUsage(adapter, context, url)
-        : await usageSummary(adapter, context, url);
+        : await buildAiUsageSummary(adapter, context, url);
       res.setHeader('Cache-Control', 'no-store');
       sendSuccess(res, data, options.requestId, options.receivedAt);
     } catch (error) {
@@ -509,7 +671,13 @@ export async function handleAiUsageRoutes(req, res, options) {
       }),
     });
     res.setHeader('Cache-Control', 'no-store');
-    sendJson(res, execution.response.statusCode, execution.response.body, execution.response.requestId ?? options.requestId, execution.response.contentType);
+    sendJson(
+      res,
+      execution.response.statusCode,
+      execution.response.body,
+      execution.response.requestId ?? options.requestId,
+      execution.response.contentType,
+    );
   } catch (error) {
     sendPublicError(res, error, options, 'AI_USAGE_WRITE_FAILED', 'Không ghi được mức sử dụng AI');
   }
