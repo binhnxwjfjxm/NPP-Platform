@@ -4,8 +4,11 @@ import { readFileSync } from 'node:fs';
 import {
   buildAiUsageSummary,
   calculateUsageUsd,
+  canWriteAiUsage,
   normalizeAiUsagePayload,
 } from '../src/routes/ai-usage.js';
+import { loadConfig } from '../src/config.js';
+import { authenticateRequest } from '../src/request-context-base.js';
 
 const customerId = '11111111-1111-4111-8111-111111111111';
 
@@ -38,14 +41,12 @@ test('normalizes provider usage metadata without double counting cached tokens',
   assert.equal(usage.promptTokens, 1000);
   assert.equal(usage.cachedTokens, 100);
   assert.equal(usage.totalTokens, 1270);
-
   const amount = calculateUsageUsd(usage, {
     input_usd_per_million: '0.300000000',
     cached_input_usd_per_million: '0.030000000',
     output_usd_per_million: '2.500000000',
     long_context_threshold_tokens: null,
   });
-  // (900 + 20) * $0.30/M + 100 * $0.03/M + (200 + 50) * $2.50/M
   assert.equal(amount.usageUsd, '0.000904000');
   assert.equal(amount.longContextApplied, false);
 });
@@ -77,9 +78,7 @@ test('applies the long-context Pro rate only above the configured threshold', ()
 
 test('rejects inconsistent provider total token metadata', () => {
   assert.throws(
-    () => normalizeAiUsagePayload(payload({
-      usageMetadata: { ...payload().usageMetadata, totalTokenCount: 999 },
-    })),
+    () => normalizeAiUsagePayload(payload({ usageMetadata: { ...payload().usageMetadata, totalTokenCount: 999 } })),
     (error) => error.code === 'AI_USAGE_METADATA_INCONSISTENT' && error.statusCode === 400,
   );
 });
@@ -92,7 +91,9 @@ test('rejects overlong provider request IDs instead of dropping duplicate protec
   assert.equal(normalizeAiUsagePayload(payload({ providerRequestId: null })).providerRequestId, null);
 });
 
-test('requires customer attribution for website and ordering, but forbids it for admin', () => {
+test('Website may be anonymous, Ordering requires a customer, and Admin forbids customer attribution', () => {
+  assert.equal(normalizeAiUsagePayload(payload({ source: 'website', customerId: null })).customerId, null);
+  assert.equal(normalizeAiUsagePayload(payload({ source: 'website' })).customerId, customerId);
   assert.throws(
     () => normalizeAiUsagePayload(payload({ customerId: null })),
     (error) => error.code === 'AI_USAGE_CUSTOMER_REQUIRED',
@@ -102,6 +103,49 @@ test('requires customer attribution for website and ordering, but forbids it for
     (error) => error.code === 'AI_USAGE_CUSTOMER_INVALID',
   );
   assert.equal(normalizeAiUsagePayload(payload({ source: 'admin', customerId: null })).customerId, null);
+});
+
+test('Website AI service is write-only for source=website', () => {
+  const context = { roles: ['website-ai-service'] };
+  assert.equal(canWriteAiUsage(context, { source: 'website' }), true);
+  assert.equal(canWriteAiUsage(context, { source: 'ordering' }), false);
+  assert.equal(canWriteAiUsage(context, { source: 'admin' }), false);
+  assert.equal(canWriteAiUsage({ roles: ['bootstrap'] }, { source: 'ordering' }), true);
+});
+
+test('Website AI token resolves to a dedicated principal and cannot reuse a backend token', () => {
+  const websiteToken = 'w'.repeat(32);
+  const config = loadConfig({
+    NODE_ENV: 'test',
+    INSTALLATION_ID: 'test-installation',
+    DATABASE_URL: 'postgresql://user:password@127.0.0.1:5432/test',
+    DATABASE_SSL_MODE: 'disable',
+    BACKEND_API_TOKEN: 'b'.repeat(32),
+    CORE_BOOTSTRAP_ACTOR_ID: 'bootstrap:core-api',
+    WEBSITE_AI_API_TOKEN: websiteToken,
+    WEBSITE_AI_ACTOR_ID: 'service:website-ai',
+    CORS_ORIGINS: 'http://127.0.0.1:3003',
+  });
+  const auth = authenticateRequest({ headers: { authorization: `Bearer ${websiteToken}` } }, config);
+  assert.equal(auth.ok, true);
+  assert.equal(auth.principal.actorId, 'service:website-ai');
+  assert.deepEqual(auth.principal.roles, ['website-ai-service']);
+  assert.deepEqual(auth.principal.permissions, []);
+  assert.equal(auth.principal.sourceApp, 'website');
+
+  assert.throws(
+    () => loadConfig({
+      NODE_ENV: 'test',
+      INSTALLATION_ID: 'test-installation',
+      DATABASE_URL: 'postgresql://user:password@127.0.0.1:5432/test',
+      DATABASE_SSL_MODE: 'disable',
+      BACKEND_API_TOKEN: 'b'.repeat(32),
+      CORE_BOOTSTRAP_ACTOR_ID: 'bootstrap:core-api',
+      WEBSITE_AI_API_TOKEN: 'b'.repeat(32),
+      CORS_ORIGINS: 'http://127.0.0.1:3003',
+    }),
+    (error) => error.code === 'website_ai_token_reuse_forbidden',
+  );
 });
 
 test('Lot A fails closed for input modalities without an explicit rate card', () => {
@@ -115,74 +159,10 @@ test('Lot B summary keeps filtered usage separate from lifetime 1000 USD custome
   const adapter = {
     async query(sql) {
       if (sql.includes('WITH filtered AS')) {
-        return {
-          rows: [{
-            customer_id: customerId,
-            customer_code: 'KH001',
-            customer_name: 'Khách A',
-            event_count: '2',
-            prompt_tokens: '1200',
-            cached_tokens: '100',
-            output_tokens: '300',
-            thinking_tokens: '50',
-            tool_use_prompt_tokens: '20',
-            total_tokens: '1570',
-            period_usage_usd: '12.500000000',
-            credit_limit_usd: '1000.00',
-            used_usd: '250.000000000',
-            remaining_usd: '750.000000000',
-            usage_percent: '25.0000',
-          }],
-        };
-      }
-      if (sql.includes('GROUP BY source, model')) {
-        return {
-          rows: [{
-            source: 'ordering',
-            model: 'gemini-2.5-flash',
-            event_count: '2',
-            prompt_tokens: '1200',
-            cached_tokens: '100',
-            output_tokens: '300',
-            thinking_tokens: '50',
-            tool_use_prompt_tokens: '20',
-            total_tokens: '1570',
-            usage_usd: '12.500000000',
-          }],
-        };
-      }
-      if (sql.includes('GROUP BY source')) {
-        return {
-          rows: [{
-            source: 'ordering',
-            event_count: '2',
-            prompt_tokens: '1200',
-            cached_tokens: '100',
-            output_tokens: '300',
-            thinking_tokens: '50',
-            tool_use_prompt_tokens: '20',
-            total_tokens: '1570',
-            usage_usd: '12.500000000',
-          }],
-        };
-      }
-      if (sql.includes('GROUP BY model')) {
-        return {
-          rows: [{
-            model: 'gemini-2.5-flash',
-            event_count: '2',
-            prompt_tokens: '1200',
-            cached_tokens: '100',
-            output_tokens: '300',
-            thinking_tokens: '50',
-            tool_use_prompt_tokens: '20',
-            total_tokens: '1570',
-            usage_usd: '12.500000000',
-          }],
-        };
-      }
-      return {
-        rows: [{
+        return { rows: [{
+          customer_id: customerId,
+          customer_code: 'KH001',
+          customer_name: 'Khách A',
           event_count: '2',
           prompt_tokens: '1200',
           cached_tokens: '100',
@@ -190,18 +170,30 @@ test('Lot B summary keeps filtered usage separate from lifetime 1000 USD custome
           thinking_tokens: '50',
           tool_use_prompt_tokens: '20',
           total_tokens: '1570',
-          usage_usd: '12.500000000',
-        }],
-      };
+          period_usage_usd: '12.500000000',
+          credit_limit_usd: '1000.00',
+          used_usd: '250.000000000',
+          remaining_usd: '750.000000000',
+          usage_percent: '25.0000',
+        }] };
+      }
+      if (sql.includes('GROUP BY source, model')) {
+        return { rows: [{ source: 'ordering', model: 'gemini-2.5-flash', event_count: '2', prompt_tokens: '1200', cached_tokens: '100', output_tokens: '300', thinking_tokens: '50', tool_use_prompt_tokens: '20', total_tokens: '1570', usage_usd: '12.500000000' }] };
+      }
+      if (sql.includes('GROUP BY source')) {
+        return { rows: [{ source: 'ordering', event_count: '2', prompt_tokens: '1200', cached_tokens: '100', output_tokens: '300', thinking_tokens: '50', tool_use_prompt_tokens: '20', total_tokens: '1570', usage_usd: '12.500000000' }] };
+      }
+      if (sql.includes('GROUP BY model')) {
+        return { rows: [{ model: 'gemini-2.5-flash', event_count: '2', prompt_tokens: '1200', cached_tokens: '100', output_tokens: '300', thinking_tokens: '50', tool_use_prompt_tokens: '20', total_tokens: '1570', usage_usd: '12.500000000' }] };
+      }
+      return { rows: [{ event_count: '2', prompt_tokens: '1200', cached_tokens: '100', output_tokens: '300', thinking_tokens: '50', tool_use_prompt_tokens: '20', total_tokens: '1570', usage_usd: '12.500000000' }] };
     },
   };
-
   const summary = await buildAiUsageSummary(
     adapter,
     { installationId: 'default' },
     new URL('http://127.0.0.1/api/ai/usage-summary?source=ordering'),
   );
-
   assert.equal(summary.usageUsd, '12.500000000');
   assert.equal(summary.promptTokens, 1200);
   assert.equal(summary.outputTokens, 300);
@@ -250,9 +242,19 @@ test('migration locks the 1000 USD limit, immutable ledger and versioned rates w
   assert.doesNotMatch(sql, /profit|margin|revenue/i);
 });
 
-test('migration registry includes 111 after current main migration 110', () => {
+test('migration 112 allows anonymous Website usage without weakening Ordering attribution', () => {
+  const sql = readFileSync(new URL('../../../database/migrations/shared/112_ai_website_anonymous_usage.sql', import.meta.url), 'utf8');
+  assert.match(sql, /OR source = 'website'/);
+  assert.match(sql, /source = 'ordering' AND customer_id IS NOT NULL/);
+  assert.match(sql, /source = 'admin' AND customer_id IS NULL/);
+});
+
+test('migration registry includes 111 and 112 in order', () => {
   const source = readFileSync(new URL('../src/migrations/index.js', import.meta.url), 'utf8');
-  assert.match(source, /111_ai_usage_metering/);
+  const index111 = source.indexOf('111_ai_usage_metering');
+  const index112 = source.indexOf('112_ai_website_anonymous_usage');
+  assert.ok(index111 >= 0);
+  assert.ok(index112 > index111);
 });
 
 test('route requires canonical Idempotency-Key before writing usage', () => {
@@ -260,6 +262,7 @@ test('route requires canonical Idempotency-Key before writing usage', () => {
   assert.match(source, /normalizeIdempotencyKey/);
   assert.match(source, /IDEMPOTENCY_KEY_REQUIRED/);
   assert.match(source, /executeRequestWithIdempotency/);
+  assert.match(source, /website-ai-service/);
   assert.doesNotMatch(source, /usageUsd\s*=\s*payload/);
 });
 
