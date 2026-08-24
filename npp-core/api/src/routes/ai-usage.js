@@ -22,10 +22,14 @@ function plainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
-function optionalText(value, max) {
+function optionalText(value, max, label) {
   if (value === undefined || value === null || value === '') return null;
   const normalized = String(value).trim();
-  return normalized && normalized.length <= max ? normalized : null;
+  if (!normalized) return null;
+  if (normalized.length > max) {
+    throw apiError('AI_USAGE_PAYLOAD_INVALID', `${label} vượt quá độ dài cho phép`, {}, false, 400);
+  }
+  return normalized;
 }
 
 function tokenCount(value, name) {
@@ -51,9 +55,9 @@ export function normalizeAiUsagePayload(payload, receivedAt = new Date().toISOSt
   const model = String(payload.model ?? '').trim();
   const serviceTier = String(payload.serviceTier ?? 'standard').trim().toLowerCase();
   const inputModality = String(payload.inputModality ?? 'text').trim().toLowerCase();
-  const customerId = optionalText(payload.customerId, 64);
-  const providerRequestId = optionalText(payload.providerRequestId, 240);
-  const conversationId = optionalText(payload.conversationId, 240);
+  const customerId = optionalText(payload.customerId, 64, 'Mã khách hàng');
+  const providerRequestId = optionalText(payload.providerRequestId, 240, 'Mã yêu cầu từ nhà cung cấp AI');
+  const conversationId = optionalText(payload.conversationId, 240, 'Mã cuộc hội thoại AI');
 
   if (!SOURCES.has(source) || !SAFE_SLUG.test(feature)) {
     throw apiError('AI_USAGE_PAYLOAD_INVALID', 'Nguồn hoặc tính năng AI không hợp lệ', {}, false, 400);
