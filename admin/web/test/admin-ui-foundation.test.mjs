@@ -84,8 +84,8 @@ test('Admin mobile rails cannot expand the page viewport and page zoom is disabl
 
   assert.match(interaction, /\.adminToolbarControls,[\s\S]*\.adminToolbarActions\s*\{[\s\S]*max-width:\s*100%/);
   assert.match(interaction, /aria-label="Kỳ tổng quan"/);
-  assert.match(interaction, /aria-label="Kỳ báo cáo"/);
-  assert.match(interaction, /aria-label="Lọc theo kho"/);
+  assert.doesNotMatch(interaction, /aria-label="Kỳ báo cáo"/);
+  assert.doesNotMatch(interaction, /aria-label="Lọc theo kho"/);
   assert.match(interaction, /touch-action:\s*pan-x pan-y/);
   assert.doesNotMatch(interaction, /pinch-zoom/);
   assert.match(layout, /maximumScale:\s*1/);
