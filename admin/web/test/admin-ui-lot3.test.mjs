@@ -14,7 +14,7 @@ test('Lô 3 migrates the report center to shared toolbar, KPI and state primitiv
   for (const name of ['AdminToolbar', 'AdminFilterChip', 'AdminKpiGrid', 'AdminKpiCard', 'AdminStatePanel']) {
     assert.match(page, new RegExp(`<${name}`));
   }
-  assert.match(page, /actions=\{<a className=\{styles\.toolbarAction\} href=\{exportHref\}>Xuất Excel<\/a>\}/);
+  assert.match(page, /actions=\{<a className=\{styles\.toolbarAction\} href=\{exportHref\}>Xuất báo cáo Excel<\/a>\}/);
   assert.doesNotMatch(page, /styles\.periodTabs|styles\.periodTab|styles\.periodActive|styles\.kpiGrid|styles\.kpi/);
   assert.match(css, /\.reportState\{max-width:1120px/);
   assert.match(css, /@media\(min-width:761px\)[\s\S]*max-width:1120px/);

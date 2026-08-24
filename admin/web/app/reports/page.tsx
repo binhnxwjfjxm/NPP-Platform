@@ -91,7 +91,7 @@ export default async function ReportsPage({
 
       <AdminToolbar
         label="Kỳ và phạm vi báo cáo"
-        actions={<a className={styles.toolbarAction} href={exportHref}>Xuất Excel</a>}
+        actions={<a className={styles.toolbarAction} href={exportHref}>Xuất báo cáo Excel</a>}
       >
         <span className={styles.toolbarLabel}>Kỳ xem</span>
         {selected === 'debt' ? (
