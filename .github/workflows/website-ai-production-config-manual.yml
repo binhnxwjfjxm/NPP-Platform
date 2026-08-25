@@ -234,7 +234,7 @@ jobs:
             const response = await fetch(url, { headers: { authorization: `Bearer ${accessToken}` } });
             const body = await response.json().catch(() => null);
             if (!response.ok) throw new Error(`dialogflow_agent_probe_failed:${response.status}`);
-            if (body?.displayName?.trim() !== DIALOGFLOW_CX_AGENT_DISPLAY_NAME) {
+            if (body?.displayName !== DIALOGFLOW_CX_AGENT_DISPLAY_NAME) {
               throw new Error('dialogflow_agent_probe_name_mismatch');
             }
             const expectedName = `projects/${DIALOGFLOW_CX_PROJECT_ID}/locations/${DIALOGFLOW_CX_LOCATION}/agents/${DIALOGFLOW_CX_AGENT_ID}`;
@@ -264,11 +264,12 @@ jobs:
             'DIALOGFLOW_SERVICE_ACCOUNT_JSON',
             'GOOGLE_SERVICE_ACCOUNT_JSON',
           ];
-          const selectedCredentialKey = credentialKeys.find((key) => envEntries(vercelEnv, key).length > 0) || '';
-          if (!selectedCredentialKey) {
+          const presentCredentialKeys = credentialKeys.filter((key) => envEntries(vercelEnv, key).length > 0);
+          if (presentCredentialKeys.length === 0) {
             throw new Error('dialogflow_service_account_missing_in_vercel_production');
           }
-          assertSecretMetadata(vercelEnv, selectedCredentialKey);
+          for (const key of presentCredentialKeys) assertSecretMetadata(vercelEnv, key);
+          const selectedCredentialKey = presentCredentialKeys[0];
           const selectedCredentialEntry = envEntries(vercelEnv, selectedCredentialKey)[0];
           const selectedCredentialType = String(selectedCredentialEntry?.type || '');
           const selectedCredentialRaw = envValue(vercelEnv, selectedCredentialKey);
@@ -366,10 +367,12 @@ jobs:
           if (finalHerokuConfig?.WEBSITE_AI_ACTOR_ID !== WEBSITE_AI_ACTOR_ID) throw new Error('heroku_website_ai_actor_readback_failed');
 
           vercelEnv = await fetchVercelProductionEnv();
-          if (envEntries(vercelEnv, selectedCredentialKey).length === 0) {
-            throw new Error('vercel_selected_dialogflow_credential_missing_after_sync');
+          const finalCredentialKeys = credentialKeys.filter((key) => envEntries(vercelEnv, key).length > 0);
+          if (finalCredentialKeys.length === 0) throw new Error('vercel_dialogflow_credential_contract_missing');
+          for (const key of finalCredentialKeys) assertSecretMetadata(vercelEnv, key);
+          if (finalCredentialKeys[0] !== selectedCredentialKey) {
+            throw new Error('vercel_dialogflow_credential_priority_changed_after_sync');
           }
-          assertSecretMetadata(vercelEnv, selectedCredentialKey);
           assertSecretMetadata(vercelEnv, 'COMPANY_WEBSITE_AI_API_TOKEN');
           if (envValue(vercelEnv, 'COMPANY_API_URL').replace(/\/$/, '') !== COMPANY_API_URL) {
             throw new Error('vercel_company_api_url_readback_failed');
