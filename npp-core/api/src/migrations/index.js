@@ -99,6 +99,7 @@ const MANAGEMENT_PROPOSAL_SOURCE_ROUNDTRIP_SQL = readFileSync(new URL('../../../
 const MANAGEMENT_PROPOSAL_OPTIONAL_DETAILS_SQL = readFileSync(new URL('../../../../database/migrations/shared/110_management_proposal_optional_details.sql', import.meta.url), 'utf8');
 const AI_USAGE_METERING_SQL = readFileSync(new URL('../../../../database/migrations/shared/111_ai_usage_metering.sql', import.meta.url), 'utf8');
 const AI_WEBSITE_ANONYMOUS_USAGE_SQL = readFileSync(new URL('../../../../database/migrations/shared/112_ai_website_anonymous_usage.sql', import.meta.url), 'utf8');
+const AI_DIALOGFLOW_CX_REQUEST_BILLING_SQL = readFileSync(new URL('../../../../database/migrations/shared/113_ai_dialogflow_cx_request_billing.sql', import.meta.url), 'utf8');
 
 export const CORE_API_MIGRATIONS = Object.freeze([
   ...CORE_API_MIGRATIONS_THROUGH_045,
@@ -168,6 +169,7 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({ id: '110_management_proposal_optional_details', sql: MANAGEMENT_PROPOSAL_OPTIONAL_DETAILS_SQL }),
   Object.freeze({ id: '111_ai_usage_metering', sql: AI_USAGE_METERING_SQL }),
   Object.freeze({ id: '112_ai_website_anonymous_usage', sql: AI_WEBSITE_ANONYMOUS_USAGE_SQL }),
+  Object.freeze({ id: '113_ai_dialogflow_cx_request_billing', sql: AI_DIALOGFLOW_CX_REQUEST_BILLING_SQL }),
 ]);
 
 export { runMigrations };
