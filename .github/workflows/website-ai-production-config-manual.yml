@@ -32,6 +32,9 @@ jobs:
       VERCEL_PROJECT_NAME: nguyenlieuhungphat
       COMPANY_API_URL: https://hung-phat-945da1547594.herokuapp.com
       WEBSITE_AI_ACTOR_ID: service:website-ai
+      DIALOGFLOW_CX_LOCATION: global
+      DIALOGFLOW_CX_AGENT_DISPLAY_NAME: Hưng Phát - Dialog CX
+      DIALOGFLOW_CX_LANGUAGE_CODE: vi
     steps:
       - name: Validate exact issue command
         if: github.event_name == 'issue_comment'
@@ -65,7 +68,7 @@ jobs:
         with:
           node-version: 24
 
-      - name: Audit and synchronize Website AI production configuration
+      - name: Audit and synchronize Website Dialogflow CX production configuration
         id: config
         shell: bash
         env:
@@ -87,6 +90,9 @@ jobs:
             VERCEL_PROJECT_NAME,
             COMPANY_API_URL,
             WEBSITE_AI_ACTOR_ID,
+            DIALOGFLOW_CX_LOCATION,
+            DIALOGFLOW_CX_AGENT_DISPLAY_NAME,
+            DIALOGFLOW_CX_LANGUAGE_CODE,
           } = process.env;
 
           function required(value, name) {
@@ -101,6 +107,9 @@ jobs:
           }
           if (VERCEL_PROJECT_NAME !== 'nguyenlieuhungphat') throw new Error('unexpected_vercel_project_name');
           if (!/^https:\/\/[^/]+$/.test(COMPANY_API_URL)) throw new Error('invalid_company_api_url');
+          if (DIALOGFLOW_CX_LOCATION !== 'global') throw new Error('unexpected_dialogflow_location');
+          if (DIALOGFLOW_CX_AGENT_DISPLAY_NAME !== 'Hưng Phát - Dialog CX') throw new Error('unexpected_dialogflow_agent');
+          if (DIALOGFLOW_CX_LANGUAGE_CODE !== 'vi') throw new Error('unexpected_dialogflow_language');
 
           const herokuHeaders = {
             Accept: 'application/vnd.heroku+json; version=3',
@@ -190,7 +199,7 @@ jobs:
             const now = Math.floor(Date.now() / 1000);
             const unsigned = `${b64({ alg: 'RS256', typ: 'JWT' })}.${b64({
               iss: serviceAccount.client_email,
-              scope: 'https://www.googleapis.com/auth/cloud-platform',
+              scope: 'https://www.googleapis.com/auth/dialogflow',
               aud: 'https://oauth2.googleapis.com/token',
               iat: now - 30,
               exp: now + 3300,
@@ -213,6 +222,23 @@ jobs:
             }
           }
 
+          async function upsertVercelEnv(key, value, type) {
+            const endpoint = new URL(`https://api.vercel.com/v10/projects/${encodeURIComponent(VERCEL_PROJECT_ID)}/env`);
+            endpoint.searchParams.set('teamId', VERCEL_ORG_ID);
+            endpoint.searchParams.set('upsert', 'true');
+            await jsonRequest(endpoint, {
+              method: 'POST',
+              headers: vercelHeaders,
+              body: JSON.stringify([{
+                key,
+                value,
+                type,
+                target: ['production'],
+                comment: 'Website Dialogflow CX production contract',
+              }]),
+            });
+          }
+
           let vercelEnv = await fetchVercelProductionEnv();
           const credentialKeys = [
             'GOOGLE_SERVICE_ACCOUNT_JSON',
@@ -221,7 +247,7 @@ jobs:
           ];
           const presentCredentialKeys = credentialKeys.filter((key) => envEntries(vercelEnv, key).length > 0);
           if (presentCredentialKeys.length === 0) {
-            throw new Error('google_service_account_missing_in_vercel_production');
+            throw new Error('dialogflow_service_account_missing_in_vercel_production');
           }
           for (const key of presentCredentialKeys) assertSecretMetadata(vercelEnv, key);
 
@@ -240,13 +266,9 @@ jobs:
             credentialMode = 'oauth';
           }
 
-          const configuredProject = envValue(vercelEnv, 'GOOGLE_CLOUD_PROJECT');
-          const configuredLocation = envValue(vercelEnv, 'GOOGLE_CLOUD_LOCATION');
-          const configuredModel = envValue(vercelEnv, 'GEMINI_WEBSITE_MODEL');
           const existingCompanyApiUrl = envValue(vercelEnv, 'COMPANY_API_URL').replace(/\/$/, '');
           const herokuToken = String(originalHerokuConfig?.WEBSITE_AI_API_TOKEN || '');
           const existingActor = String(originalHerokuConfig?.WEBSITE_AI_ACTOR_ID || '');
-
           const reservedTokens = [
             originalHerokuConfig?.BACKEND_API_TOKEN,
             originalHerokuConfig?.MCP_ONBOARDING_API_TOKEN,
@@ -255,42 +277,24 @@ jobs:
           ].filter(Boolean);
 
           let sharedToken = herokuToken || randomBytes(48).toString('base64url');
-          if (reservedTokens.includes(sharedToken)) {
-            sharedToken = randomBytes(48).toString('base64url');
-          }
+          if (reservedTokens.includes(sharedToken)) sharedToken = randomBytes(48).toString('base64url');
           console.log(`::add-mask::${sharedToken}`);
-
-          async function upsertVercelEnv(key, value, type) {
-            const endpoint = new URL(`https://api.vercel.com/v10/projects/${encodeURIComponent(VERCEL_PROJECT_ID)}/env`);
-            endpoint.searchParams.set('teamId', VERCEL_ORG_ID);
-            endpoint.searchParams.set('upsert', 'true');
-            await jsonRequest(endpoint, {
-              method: 'POST',
-              headers: vercelHeaders,
-              body: JSON.stringify([{
-                key,
-                value,
-                type,
-                target: ['production'],
-                comment: 'Website AI production contract',
-              }]),
-            });
-          }
 
           if (existingCompanyApiUrl !== COMPANY_API_URL) {
             await upsertVercelEnv('COMPANY_API_URL', COMPANY_API_URL, 'plain');
           }
-          // Vercel does not reliably expose encrypted values through management readback.
-          // Heroku is the canonical token source; write that same token to Vercel on every gate run.
           await upsertVercelEnv('COMPANY_WEBSITE_AI_API_TOKEN', sharedToken, 'encrypted');
-          if (serviceAccount && configuredProject !== serviceAccount.project_id) {
-            await upsertVercelEnv('GOOGLE_CLOUD_PROJECT', serviceAccount.project_id, 'plain');
+          if (serviceAccount && envValue(vercelEnv, 'DIALOGFLOW_CX_PROJECT_ID') !== serviceAccount.project_id) {
+            await upsertVercelEnv('DIALOGFLOW_CX_PROJECT_ID', serviceAccount.project_id, 'plain');
           }
-          if (configuredLocation !== 'global') {
-            await upsertVercelEnv('GOOGLE_CLOUD_LOCATION', 'global', 'plain');
+          if (envValue(vercelEnv, 'DIALOGFLOW_CX_LOCATION') !== DIALOGFLOW_CX_LOCATION) {
+            await upsertVercelEnv('DIALOGFLOW_CX_LOCATION', DIALOGFLOW_CX_LOCATION, 'plain');
           }
-          if (configuredModel !== 'gemini-2.5-flash') {
-            await upsertVercelEnv('GEMINI_WEBSITE_MODEL', 'gemini-2.5-flash', 'plain');
+          if (envValue(vercelEnv, 'DIALOGFLOW_CX_AGENT_DISPLAY_NAME') !== DIALOGFLOW_CX_AGENT_DISPLAY_NAME) {
+            await upsertVercelEnv('DIALOGFLOW_CX_AGENT_DISPLAY_NAME', DIALOGFLOW_CX_AGENT_DISPLAY_NAME, 'plain');
+          }
+          if (envValue(vercelEnv, 'DIALOGFLOW_CX_LANGUAGE_CODE') !== DIALOGFLOW_CX_LANGUAGE_CODE) {
+            await upsertVercelEnv('DIALOGFLOW_CX_LANGUAGE_CODE', DIALOGFLOW_CX_LANGUAGE_CODE, 'plain');
           }
 
           const herokuPatch = {};
@@ -336,29 +340,28 @@ jobs:
           }
 
           const finalHerokuConfig = await jsonRequest(herokuConfigUrl, { headers: herokuHeaders });
-          if (finalHerokuConfig?.WEBSITE_AI_API_TOKEN !== sharedToken) {
-            throw new Error('heroku_website_ai_token_readback_failed');
-          }
-          if (finalHerokuConfig?.WEBSITE_AI_ACTOR_ID !== WEBSITE_AI_ACTOR_ID) {
-            throw new Error('heroku_website_ai_actor_readback_failed');
-          }
+          if (finalHerokuConfig?.WEBSITE_AI_API_TOKEN !== sharedToken) throw new Error('heroku_website_ai_token_readback_failed');
+          if (finalHerokuConfig?.WEBSITE_AI_ACTOR_ID !== WEBSITE_AI_ACTOR_ID) throw new Error('heroku_website_ai_actor_readback_failed');
 
           vercelEnv = await fetchVercelProductionEnv();
           const finalCredentialKeys = credentialKeys.filter((key) => envEntries(vercelEnv, key).length > 0);
-          if (finalCredentialKeys.length === 0) throw new Error('vercel_google_credential_contract_missing');
+          if (finalCredentialKeys.length === 0) throw new Error('vercel_dialogflow_credential_contract_missing');
           for (const key of finalCredentialKeys) assertSecretMetadata(vercelEnv, key);
           assertSecretMetadata(vercelEnv, 'COMPANY_WEBSITE_AI_API_TOKEN');
           if (envValue(vercelEnv, 'COMPANY_API_URL').replace(/\/$/, '') !== COMPANY_API_URL) {
             throw new Error('vercel_company_api_url_readback_failed');
           }
-          if (serviceAccount && envValue(vercelEnv, 'GOOGLE_CLOUD_PROJECT') !== serviceAccount.project_id) {
-            throw new Error('vercel_google_cloud_project_readback_failed');
+          if (serviceAccount && envValue(vercelEnv, 'DIALOGFLOW_CX_PROJECT_ID') !== serviceAccount.project_id) {
+            throw new Error('vercel_dialogflow_project_readback_failed');
           }
-          if (envValue(vercelEnv, 'GOOGLE_CLOUD_LOCATION') !== 'global') {
-            throw new Error('vercel_google_cloud_location_readback_failed');
+          if (envValue(vercelEnv, 'DIALOGFLOW_CX_LOCATION') !== DIALOGFLOW_CX_LOCATION) {
+            throw new Error('vercel_dialogflow_location_readback_failed');
           }
-          if (envValue(vercelEnv, 'GEMINI_WEBSITE_MODEL') !== 'gemini-2.5-flash') {
-            throw new Error('vercel_gemini_model_readback_failed');
+          if (envValue(vercelEnv, 'DIALOGFLOW_CX_AGENT_DISPLAY_NAME') !== DIALOGFLOW_CX_AGENT_DISPLAY_NAME) {
+            throw new Error('vercel_dialogflow_agent_readback_failed');
+          }
+          if (envValue(vercelEnv, 'DIALOGFLOW_CX_LANGUAGE_CODE') !== DIALOGFLOW_CX_LANGUAGE_CODE) {
+            throw new Error('vercel_dialogflow_language_readback_failed');
           }
 
           const probe = await fetch(`${COMPANY_API_URL}/api/ai/usage-events`, {
@@ -382,6 +385,7 @@ jobs:
           appendFileSync(process.env.GITHUB_OUTPUT, `credential_mode=${credentialMode}\n`);
           console.log('WEBSITE_AI_PRODUCTION_CONFIG=success');
           console.log(`GOOGLE_CREDENTIAL_MODE=${credentialMode}`);
+          console.log('DIALOGFLOW_CX_CONFIG=success');
           console.log('COMPANY_WEBSITE_AI_SECRET_METADATA=success');
           console.log('COMPANY_WEBSITE_AI_AUTH_PROBE=success');
           console.log('COMPANY_HEALTH=success');
@@ -396,10 +400,11 @@ jobs:
         run: |
           set -euo pipefail
           body="$(cat <<EOF
-          ## Website AI production config gate — success
+          ## Website Dialogflow CX production config gate — success
 
           WEBSITE_AI_PRODUCTION_CONFIG=success
           GOOGLE_CREDENTIAL_MODE=$CREDENTIAL_MODE
+          DIALOGFLOW_CX_CONFIG=success
           COMPANY_WEBSITE_AI_SECRET_METADATA=success
           COMPANY_WEBSITE_AI_AUTH_PROBE=success
           COMPANY_HEALTH=success
