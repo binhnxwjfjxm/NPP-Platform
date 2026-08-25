@@ -32,7 +32,7 @@ jobs:
       VERCEL_PROJECT_NAME: nguyenlieuhungphat
       COMPANY_API_URL: https://hung-phat-945da1547594.herokuapp.com
       WEBSITE_AI_ACTOR_ID: service:website-ai
-      DIALOGFLOW_CX_PROJECT_ID: hck-agent-chat-prod-498413
+      DIALOGFLOW_CX_PROJECT_ID: hck-agent-chat-prod
       DIALOGFLOW_CX_LOCATION: global
       DIALOGFLOW_CX_AGENT_ID: e326abbf-77f7-4b16-996c-64408c4dd136
       DIALOGFLOW_CX_AGENT_DISPLAY_NAME: Hưng Phát
@@ -111,7 +111,7 @@ jobs:
           }
           if (VERCEL_PROJECT_NAME !== 'nguyenlieuhungphat') throw new Error('unexpected_vercel_project_name');
           if (!/^https:\/\/[^/]+$/.test(COMPANY_API_URL)) throw new Error('invalid_company_api_url');
-          if (DIALOGFLOW_CX_PROJECT_ID !== 'hck-agent-chat-prod-498413') throw new Error('unexpected_dialogflow_project');
+          if (DIALOGFLOW_CX_PROJECT_ID !== 'hck-agent-chat-prod') throw new Error('unexpected_dialogflow_project');
           if (DIALOGFLOW_CX_LOCATION !== 'global') throw new Error('unexpected_dialogflow_location');
           if (DIALOGFLOW_CX_AGENT_ID !== 'e326abbf-77f7-4b16-996c-64408c4dd136') throw new Error('unexpected_dialogflow_agent_id');
           if (DIALOGFLOW_CX_AGENT_DISPLAY_NAME !== 'Hưng Phát') throw new Error('unexpected_dialogflow_agent_name');
