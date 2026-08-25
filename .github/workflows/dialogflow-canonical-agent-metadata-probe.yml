@@ -1,0 +1,163 @@
+name: Dialogflow canonical agent metadata probe
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/dialogflow-canonical-agent-metadata-probe.yml
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    if: github.head_ref == 'agent/issue-764-dialogflow-canonical-metadata-probe'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      VERCEL_ORG_ID: team_hBA8rX68UHC8ogvREkOyQlJ2
+      VERCEL_PROJECT_ID: prj_rXqH83GFDHuEGUcQrrv82JBPWnjU
+      EXPECTED_AGENT_ID: e326abbf-77f7-4b16-996c-64408c4dd136
+      EXPECTED_AGENT_DISPLAY_NAME: Hưng Phát
+      EXPECTED_LOCATION: global
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Read canonical Dialogflow agent metadata
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { createSign } from 'node:crypto';
+
+          const {
+            VERCEL_TOKEN,
+            VERCEL_ORG_ID,
+            VERCEL_PROJECT_ID,
+            EXPECTED_AGENT_ID,
+            EXPECTED_AGENT_DISPLAY_NAME,
+            EXPECTED_LOCATION,
+          } = process.env;
+
+          if (!VERCEL_TOKEN) throw new Error('vercel_token_missing');
+
+          async function json(url, options = {}) {
+            const response = await fetch(url, options);
+            const body = await response.json().catch(() => null);
+            return { response, body };
+          }
+
+          const envUrl = new URL(`https://api.vercel.com/v9/projects/${encodeURIComponent(VERCEL_PROJECT_ID)}/env`);
+          envUrl.searchParams.set('teamId', VERCEL_ORG_ID);
+          envUrl.searchParams.set('decrypt', 'true');
+          envUrl.searchParams.set('source', 'vercel-cli:pull');
+          const envResult = await json(envUrl, {
+            headers: { authorization: `Bearer ${VERCEL_TOKEN}` },
+          });
+          if (!envResult.response.ok) throw new Error(`vercel_env_read_failed_${envResult.response.status}`);
+
+          const allEntries = Array.isArray(envResult.body)
+            ? envResult.body
+            : Array.isArray(envResult.body?.envs)
+              ? envResult.body.envs
+              : [];
+          const productionEntries = allEntries.filter((entry) => {
+            const targets = Array.isArray(entry?.target) ? entry.target : [entry?.target].filter(Boolean);
+            return targets.includes('production') && !entry?.gitBranch;
+          });
+          const credentialEntries = productionEntries.filter((entry) => entry?.key === 'DIALOGFLOW_SERVICE_ACCOUNT_JSON');
+          if (credentialEntries.length !== 1) {
+            throw new Error(`dialogflow_runtime_credential_count_${credentialEntries.length}`);
+          }
+          const credentialEntry = credentialEntries[0];
+          if (credentialEntry?.decrypted !== true || typeof credentialEntry?.value !== 'string') {
+            throw new Error('dialogflow_runtime_credential_not_decrypted');
+          }
+
+          let serviceAccount;
+          try {
+            serviceAccount = JSON.parse(credentialEntry.value);
+          } catch {
+            throw new Error('dialogflow_runtime_credential_invalid_json');
+          }
+          if (!serviceAccount?.client_email || !serviceAccount?.private_key) {
+            throw new Error('dialogflow_runtime_credential_invalid_shape');
+          }
+
+          function b64(value) {
+            return Buffer.from(JSON.stringify(value)).toString('base64url');
+          }
+
+          const now = Math.floor(Date.now() / 1000);
+          const unsigned = `${b64({ alg: 'RS256', typ: 'JWT' })}.${b64({
+            iss: serviceAccount.client_email,
+            scope: 'https://www.googleapis.com/auth/dialogflow',
+            aud: 'https://oauth2.googleapis.com/token',
+            iat: now - 30,
+            exp: now + 3300,
+          })}`;
+          const signer = createSign('RSA-SHA256');
+          signer.update(unsigned);
+          signer.end();
+          const assertion = `${unsigned}.${signer.sign(serviceAccount.private_key).toString('base64url')}`;
+
+          const tokenResult = await json('https://oauth2.googleapis.com/token', {
+            method: 'POST',
+            headers: { 'content-type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+              grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+              assertion,
+            }),
+          });
+          if (!tokenResult.response.ok || !tokenResult.body?.access_token) {
+            throw new Error(`google_oauth_failed_${tokenResult.response.status}`);
+          }
+          const accessToken = tokenResult.body.access_token;
+
+          const candidates = ['hck-agent-chat-prod-498413', 'hck-agent-chat-prod'];
+          const canonicalNames = new Set();
+
+          async function probeGet(projectId) {
+            const url = `https://dialogflow.googleapis.com/v3/projects/${encodeURIComponent(projectId)}/locations/${encodeURIComponent(EXPECTED_LOCATION)}/agents/${encodeURIComponent(EXPECTED_AGENT_ID)}`;
+            const result = await json(url, {
+              headers: { authorization: `Bearer ${accessToken}` },
+            });
+            console.log(`AGENT_GET project=${projectId} status=${result.response.status}`);
+            if (result.response.ok && typeof result.body?.name === 'string') {
+              console.log(`AGENT_GET_NAME project=${projectId} name=${result.body.name}`);
+              console.log(`AGENT_GET_DISPLAY project=${projectId} displayName=${String(result.body?.displayName || '')}`);
+              if (result.body?.displayName === EXPECTED_AGENT_DISPLAY_NAME) canonicalNames.add(result.body.name);
+            }
+          }
+
+          async function probeList(projectId) {
+            const url = new URL(`https://dialogflow.googleapis.com/v3/projects/${encodeURIComponent(projectId)}/locations/${encodeURIComponent(EXPECTED_LOCATION)}/agents`);
+            url.searchParams.set('pageSize', '100');
+            const result = await json(url, {
+              headers: { authorization: `Bearer ${accessToken}` },
+            });
+            console.log(`AGENT_LIST project=${projectId} status=${result.response.status}`);
+            if (!result.response.ok) return;
+            const agents = Array.isArray(result.body?.agents) ? result.body.agents : [];
+            const matches = agents.filter((agent) => agent?.displayName === EXPECTED_AGENT_DISPLAY_NAME && typeof agent?.name === 'string');
+            console.log(`AGENT_LIST_MATCHES project=${projectId} count=${matches.length}`);
+            for (const agent of matches) {
+              console.log(`AGENT_LIST_NAME project=${projectId} name=${agent.name}`);
+              canonicalNames.add(agent.name);
+            }
+          }
+
+          for (const projectId of candidates) {
+            await probeGet(projectId);
+            await probeList(projectId);
+          }
+
+          if (canonicalNames.size !== 1) {
+            throw new Error(`canonical_agent_name_unresolved_count_${canonicalNames.size}`);
+          }
+          const [canonicalName] = canonicalNames;
+          console.log(`CANONICAL_AGENT_NAME=${canonicalName}`);
+          NODE
