@@ -165,6 +165,15 @@ jobs:
             return values[0];
           }
 
+          function assertSecretMetadata(entries, key) {
+            const matches = envEntries(entries, key);
+            if (matches.length !== 1) throw new Error(`vercel_secret_metadata_count_invalid:${key}:${matches.length}`);
+            const type = String(matches[0]?.type || '');
+            if (!['encrypted', 'sensitive'].includes(type)) {
+              throw new Error(`vercel_secret_metadata_type_invalid:${key}:${type || 'missing'}`);
+            }
+          }
+
           function parseServiceAccount(raw) {
             if (!raw) return null;
             try {
@@ -194,7 +203,7 @@ jobs:
               method: 'POST',
               headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
               body: new URLSearchParams({
-                grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+                grant_type: 'urn:ietf:params:oauth-grant-type:jwt-bearer',
                 assertion,
               }),
             });
@@ -214,6 +223,7 @@ jobs:
           if (presentCredentialKeys.length === 0) {
             throw new Error('google_service_account_missing_in_vercel_production');
           }
+          for (const key of presentCredentialKeys) assertSecretMetadata(vercelEnv, key);
 
           let serviceAccount = null;
           for (const key of credentialKeys) {
@@ -233,16 +243,9 @@ jobs:
           const configuredProject = envValue(vercelEnv, 'GOOGLE_CLOUD_PROJECT');
           const configuredLocation = envValue(vercelEnv, 'GOOGLE_CLOUD_LOCATION');
           const configuredModel = envValue(vercelEnv, 'GEMINI_WEBSITE_MODEL');
+          const existingCompanyApiUrl = envValue(vercelEnv, 'COMPANY_API_URL').replace(/\/$/, '');
           const herokuToken = String(originalHerokuConfig?.WEBSITE_AI_API_TOKEN || '');
-          const vercelCompanyToken = envValue(vercelEnv, 'COMPANY_WEBSITE_AI_API_TOKEN');
-
-          let sharedToken = '';
-          if (herokuToken && vercelCompanyToken && herokuToken !== vercelCompanyToken) {
-            sharedToken = randomBytes(48).toString('base64url');
-          } else {
-            sharedToken = herokuToken || vercelCompanyToken || randomBytes(48).toString('base64url');
-          }
-          console.log(`::add-mask::${sharedToken}`);
+          const existingActor = String(originalHerokuConfig?.WEBSITE_AI_ACTOR_ID || '');
 
           const reservedTokens = [
             originalHerokuConfig?.BACKEND_API_TOKEN,
@@ -250,13 +253,12 @@ jobs:
             originalHerokuConfig?.MCP_SALES_API_TOKEN,
             originalHerokuConfig?.DELIVERY_FRONTEND_API_TOKEN,
           ].filter(Boolean);
+
+          let sharedToken = herokuToken || randomBytes(48).toString('base64url');
           if (reservedTokens.includes(sharedToken)) {
             sharedToken = randomBytes(48).toString('base64url');
-            console.log(`::add-mask::${sharedToken}`);
           }
-
-          const existingActor = String(originalHerokuConfig?.WEBSITE_AI_ACTOR_ID || '');
-          const existingCompanyApiUrl = envValue(vercelEnv, 'COMPANY_API_URL').replace(/\/$/, '');
+          console.log(`::add-mask::${sharedToken}`);
 
           async function upsertVercelEnv(key, value, type) {
             const endpoint = new URL(`https://api.vercel.com/v10/projects/${encodeURIComponent(VERCEL_PROJECT_ID)}/env`);
@@ -278,9 +280,9 @@ jobs:
           if (existingCompanyApiUrl !== COMPANY_API_URL) {
             await upsertVercelEnv('COMPANY_API_URL', COMPANY_API_URL, 'plain');
           }
-          if (vercelCompanyToken !== sharedToken) {
-            await upsertVercelEnv('COMPANY_WEBSITE_AI_API_TOKEN', sharedToken, 'encrypted');
-          }
+          // Vercel intentionally does not expose encrypted secret values reliably through readback.
+          // Heroku is the canonical token source; write the same token to Vercel on every gate run.
+          await upsertVercelEnv('COMPANY_WEBSITE_AI_API_TOKEN', sharedToken, 'encrypted');
           if (serviceAccount && configuredProject !== serviceAccount.project_id) {
             await upsertVercelEnv('GOOGLE_CLOUD_PROJECT', serviceAccount.project_id, 'plain');
           }
@@ -294,7 +296,6 @@ jobs:
           const herokuPatch = {};
           if (herokuToken !== sharedToken) herokuPatch.WEBSITE_AI_API_TOKEN = sharedToken;
           if (existingActor !== WEBSITE_AI_ACTOR_ID) herokuPatch.WEBSITE_AI_ACTOR_ID = WEBSITE_AI_ACTOR_ID;
-
           if (Object.keys(herokuPatch).length > 0) {
             await jsonRequest(herokuConfigUrl, {
               method: 'PATCH',
@@ -343,14 +344,12 @@ jobs:
           }
 
           vercelEnv = await fetchVercelProductionEnv();
-          if (!credentialKeys.some((key) => envEntries(vercelEnv, key).length > 0)) {
-            throw new Error('vercel_google_credential_contract_missing');
-          }
+          const finalCredentialKeys = credentialKeys.filter((key) => envEntries(vercelEnv, key).length > 0);
+          if (finalCredentialKeys.length === 0) throw new Error('vercel_google_credential_contract_missing');
+          for (const key of finalCredentialKeys) assertSecretMetadata(vercelEnv, key);
+          assertSecretMetadata(vercelEnv, 'COMPANY_WEBSITE_AI_API_TOKEN');
           if (envValue(vercelEnv, 'COMPANY_API_URL').replace(/\/$/, '') !== COMPANY_API_URL) {
             throw new Error('vercel_company_api_url_readback_failed');
-          }
-          if (envValue(vercelEnv, 'COMPANY_WEBSITE_AI_API_TOKEN') !== sharedToken) {
-            throw new Error('vercel_website_ai_token_readback_failed');
           }
           if (serviceAccount && envValue(vercelEnv, 'GOOGLE_CLOUD_PROJECT') !== serviceAccount.project_id) {
             throw new Error('vercel_google_cloud_project_readback_failed');
@@ -383,6 +382,7 @@ jobs:
           appendFileSync(process.env.GITHUB_OUTPUT, `credential_mode=${credentialMode}\n`);
           console.log('WEBSITE_AI_PRODUCTION_CONFIG=success');
           console.log(`GOOGLE_CREDENTIAL_MODE=${credentialMode}`);
+          console.log('COMPANY_WEBSITE_AI_SECRET_METADATA=success');
           console.log('COMPANY_WEBSITE_AI_AUTH_PROBE=success');
           console.log('COMPANY_HEALTH=success');
           NODE
@@ -400,6 +400,7 @@ jobs:
 
           WEBSITE_AI_PRODUCTION_CONFIG=success
           GOOGLE_CREDENTIAL_MODE=$CREDENTIAL_MODE
+          COMPANY_WEBSITE_AI_SECRET_METADATA=success
           COMPANY_WEBSITE_AI_AUTH_PROBE=success
           COMPANY_HEALTH=success
           SOURCE_SHA=$TARGET_SHA
