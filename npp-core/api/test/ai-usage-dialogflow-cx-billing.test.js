@@ -55,7 +55,7 @@ test('Dialogflow CX migration prices Flow and Playbook requests without rewritin
 });
 
 test('Website production config gate pins exact CX identity and never falls through credential priority', () => {
-  assert.match(configWorkflow, /DIALOGFLOW_CX_PROJECT_ID: hck-agent-chat-prod/);
+  assert.match(configWorkflow, /DIALOGFLOW_CX_PROJECT_ID: hck-agent-chat-prod-498413/);
   assert.match(configWorkflow, /DIALOGFLOW_CX_LOCATION: global/);
   assert.match(configWorkflow, /DIALOGFLOW_CX_AGENT_ID: e326abbf-77f7-4b16-996c-64408c4dd136/);
   assert.match(configWorkflow, /DIALOGFLOW_CX_AGENT_DISPLAY_NAME: Hưng Phát/);
