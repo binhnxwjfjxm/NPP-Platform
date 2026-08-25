@@ -270,8 +270,6 @@ jobs:
           }
           for (const key of presentCredentialKeys) assertSecretMetadata(vercelEnv, key);
           const selectedCredentialKey = presentCredentialKeys[0];
-          const selectedCredentialEntry = envEntries(vercelEnv, selectedCredentialKey)[0];
-          const selectedCredentialType = String(selectedCredentialEntry?.type || '');
           const selectedCredentialRaw = envValue(vercelEnv, selectedCredentialKey);
           const serviceAccount = parseServiceAccount(selectedCredentialRaw);
 
@@ -282,8 +280,6 @@ jobs:
             await probeDialogflowAgent(accessToken);
             credentialMode = 'oauth';
             dialogflowIdentity = 'success';
-          } else if (selectedCredentialType !== 'sensitive') {
-            throw new Error(`dialogflow_selected_service_account_unreadable:${selectedCredentialKey}`);
           }
 
           const existingCompanyApiUrl = envValue(vercelEnv, 'COMPANY_API_URL').replace(/\/$/, '');

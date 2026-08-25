@@ -63,6 +63,7 @@ test('Website production config gate pins exact CX identity and never falls thro
   assert.match(configWorkflow, /probeDialogflowAgent/);
   assert.match(configWorkflow, /if \(body\?\.displayName !== DIALOGFLOW_CX_AGENT_DISPLAY_NAME\)/);
   assert.doesNotMatch(configWorkflow, /body\?\.displayName\?\.trim\(\)/);
+  assert.match(configWorkflow, /let credentialMode = 'runtime'/);
   assert.match(configWorkflow, /let dialogflowIdentity = 'runtime_unverified'/);
   assert.match(configWorkflow, /dialogflowIdentity = 'success'/);
   assert.match(configWorkflow, /dialogflow_identity=\$\{dialogflowIdentity\}/);
@@ -80,6 +81,8 @@ test('Website production config gate pins exact CX identity and never falls thro
   assert.match(configWorkflow, /const finalCredentialKeys = credentialKeys\.filter/);
   assert.match(configWorkflow, /for \(const key of finalCredentialKeys\) assertSecretMetadata\(vercelEnv, key\)/);
   assert.match(configWorkflow, /finalCredentialKeys\[0\] !== selectedCredentialKey/);
+  assert.doesNotMatch(configWorkflow, /selectedCredentialType/);
+  assert.doesNotMatch(configWorkflow, /dialogflow_selected_service_account_unreadable/);
   assert.doesNotMatch(configWorkflow, /for \(const key of credentialKeys\)[\s\S]*parseServiceAccount\(envValue\(vercelEnv, key\)\)/);
   assert.doesNotMatch(configWorkflow, /Hưng Phát - Dialog CX/);
 });
