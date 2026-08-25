@@ -7,6 +7,10 @@ const migration = readFileSync(
   new URL('../../../database/migrations/shared/113_ai_dialogflow_cx_request_billing.sql', import.meta.url),
   'utf8',
 );
+const configWorkflow = readFileSync(
+  new URL('../../../.github/workflows/website-ai-production-config-manual.yml', import.meta.url),
+  'utf8',
+);
 
 test('Dialogflow CX request metadata stays request-based with zero invented tokens', () => {
   const usage = normalizeAiUsagePayload({
@@ -48,4 +52,23 @@ test('Dialogflow CX migration prices Flow and Playbook requests without rewritin
   assert.match(migration, /Request-priced AI usage must not invent token counts/);
   assert.match(migration, /BEFORE INSERT ON shared\.ai_usage_events/);
   assert.doesNotMatch(migration, /UPDATE\s+shared\.ai_rate_cards/i);
+});
+
+test('Website production config gate pins exact CX identity and reports runtime-only proof truthfully', () => {
+  assert.match(configWorkflow, /DIALOGFLOW_CX_PROJECT_ID: hck-agent-chat-prod/);
+  assert.match(configWorkflow, /DIALOGFLOW_CX_LOCATION: global/);
+  assert.match(configWorkflow, /DIALOGFLOW_CX_AGENT_ID: e326abbf-77f7-4b16-996c-64408c4dd136/);
+  assert.match(configWorkflow, /DIALOGFLOW_CX_AGENT_DISPLAY_NAME: Hưng Phát/);
+  assert.match(configWorkflow, /DIALOGFLOW_CX_LANGUAGE_CODE: vi/);
+  assert.match(configWorkflow, /probeDialogflowAgent/);
+  assert.match(configWorkflow, /let dialogflowIdentity = 'runtime_unverified'/);
+  assert.match(configWorkflow, /dialogflowIdentity = 'success'/);
+  assert.match(configWorkflow, /dialogflow_identity=\$\{dialogflowIdentity\}/);
+  assert.match(configWorkflow, /DIALOGFLOW_CX_IDENTITY=\$DIALOGFLOW_IDENTITY/);
+  assert.doesNotMatch(configWorkflow, /console\.log\('DIALOGFLOW_CX_IDENTITY=success'\)/);
+  const cxCredential = configWorkflow.indexOf("'DIALOGFLOW_CX_SERVICE_ACCOUNT_JSON'");
+  const dialogflowCredential = configWorkflow.indexOf("'DIALOGFLOW_SERVICE_ACCOUNT_JSON'");
+  const genericCredential = configWorkflow.indexOf("'GOOGLE_SERVICE_ACCOUNT_JSON'");
+  assert.ok(cxCredential >= 0 && dialogflowCredential > cxCredential && genericCredential > dialogflowCredential);
+  assert.doesNotMatch(configWorkflow, /Hưng Phát - Dialog CX/);
 });

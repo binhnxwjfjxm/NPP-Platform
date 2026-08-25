@@ -32,8 +32,10 @@ jobs:
       VERCEL_PROJECT_NAME: nguyenlieuhungphat
       COMPANY_API_URL: https://hung-phat-945da1547594.herokuapp.com
       WEBSITE_AI_ACTOR_ID: service:website-ai
+      DIALOGFLOW_CX_PROJECT_ID: hck-agent-chat-prod
       DIALOGFLOW_CX_LOCATION: global
-      DIALOGFLOW_CX_AGENT_DISPLAY_NAME: Hưng Phát - Dialog CX
+      DIALOGFLOW_CX_AGENT_ID: e326abbf-77f7-4b16-996c-64408c4dd136
+      DIALOGFLOW_CX_AGENT_DISPLAY_NAME: Hưng Phát
       DIALOGFLOW_CX_LANGUAGE_CODE: vi
     steps:
       - name: Validate exact issue command
@@ -90,7 +92,9 @@ jobs:
             VERCEL_PROJECT_NAME,
             COMPANY_API_URL,
             WEBSITE_AI_ACTOR_ID,
+            DIALOGFLOW_CX_PROJECT_ID,
             DIALOGFLOW_CX_LOCATION,
+            DIALOGFLOW_CX_AGENT_ID,
             DIALOGFLOW_CX_AGENT_DISPLAY_NAME,
             DIALOGFLOW_CX_LANGUAGE_CODE,
           } = process.env;
@@ -107,8 +111,10 @@ jobs:
           }
           if (VERCEL_PROJECT_NAME !== 'nguyenlieuhungphat') throw new Error('unexpected_vercel_project_name');
           if (!/^https:\/\/[^/]+$/.test(COMPANY_API_URL)) throw new Error('invalid_company_api_url');
+          if (DIALOGFLOW_CX_PROJECT_ID !== 'hck-agent-chat-prod') throw new Error('unexpected_dialogflow_project');
           if (DIALOGFLOW_CX_LOCATION !== 'global') throw new Error('unexpected_dialogflow_location');
-          if (DIALOGFLOW_CX_AGENT_DISPLAY_NAME !== 'Hưng Phát - Dialog CX') throw new Error('unexpected_dialogflow_agent');
+          if (DIALOGFLOW_CX_AGENT_ID !== 'e326abbf-77f7-4b16-996c-64408c4dd136') throw new Error('unexpected_dialogflow_agent_id');
+          if (DIALOGFLOW_CX_AGENT_DISPLAY_NAME !== 'Hưng Phát') throw new Error('unexpected_dialogflow_agent_name');
           if (DIALOGFLOW_CX_LANGUAGE_CODE !== 'vi') throw new Error('unexpected_dialogflow_language');
 
           const herokuHeaders = {
@@ -212,7 +218,7 @@ jobs:
               method: 'POST',
               headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
               body: new URLSearchParams({
-                grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+                grant_type: 'urn:ietf:params:oauth-type:jwt-bearer'.replace('oauth-type', 'oauth-grant-type'),
                 assertion,
               }),
             });
@@ -220,6 +226,19 @@ jobs:
             if (!response.ok || !body?.access_token) {
               throw new Error(`google_service_account_probe_failed:${response.status}`);
             }
+            return body.access_token;
+          }
+
+          async function probeDialogflowAgent(accessToken) {
+            const url = `https://dialogflow.googleapis.com/v3/projects/${encodeURIComponent(DIALOGFLOW_CX_PROJECT_ID)}/locations/${encodeURIComponent(DIALOGFLOW_CX_LOCATION)}/agents/${encodeURIComponent(DIALOGFLOW_CX_AGENT_ID)}`;
+            const response = await fetch(url, { headers: { authorization: `Bearer ${accessToken}` } });
+            const body = await response.json().catch(() => null);
+            if (!response.ok) throw new Error(`dialogflow_agent_probe_failed:${response.status}`);
+            if (body?.displayName?.trim() !== DIALOGFLOW_CX_AGENT_DISPLAY_NAME) {
+              throw new Error('dialogflow_agent_probe_name_mismatch');
+            }
+            const expectedName = `projects/${DIALOGFLOW_CX_PROJECT_ID}/locations/${DIALOGFLOW_CX_LOCATION}/agents/${DIALOGFLOW_CX_AGENT_ID}`;
+            if (body?.name !== expectedName) throw new Error('dialogflow_agent_probe_resource_mismatch');
           }
 
           async function upsertVercelEnv(key, value, type) {
@@ -241,9 +260,9 @@ jobs:
 
           let vercelEnv = await fetchVercelProductionEnv();
           const credentialKeys = [
-            'GOOGLE_SERVICE_ACCOUNT_JSON',
-            'DIALOGFLOW_SERVICE_ACCOUNT_JSON',
             'DIALOGFLOW_CX_SERVICE_ACCOUNT_JSON',
+            'DIALOGFLOW_SERVICE_ACCOUNT_JSON',
+            'GOOGLE_SERVICE_ACCOUNT_JSON',
           ];
           const presentCredentialKeys = credentialKeys.filter((key) => envEntries(vercelEnv, key).length > 0);
           if (presentCredentialKeys.length === 0) {
@@ -261,9 +280,12 @@ jobs:
           }
 
           let credentialMode = 'runtime';
+          let dialogflowIdentity = 'runtime_unverified';
           if (serviceAccount) {
-            await probeGoogleServiceAccount(serviceAccount);
+            const accessToken = await probeGoogleServiceAccount(serviceAccount);
+            await probeDialogflowAgent(accessToken);
             credentialMode = 'oauth';
+            dialogflowIdentity = 'success';
           }
 
           const existingCompanyApiUrl = envValue(vercelEnv, 'COMPANY_API_URL').replace(/\/$/, '');
@@ -284,11 +306,14 @@ jobs:
             await upsertVercelEnv('COMPANY_API_URL', COMPANY_API_URL, 'plain');
           }
           await upsertVercelEnv('COMPANY_WEBSITE_AI_API_TOKEN', sharedToken, 'encrypted');
-          if (serviceAccount && envValue(vercelEnv, 'DIALOGFLOW_CX_PROJECT_ID') !== serviceAccount.project_id) {
-            await upsertVercelEnv('DIALOGFLOW_CX_PROJECT_ID', serviceAccount.project_id, 'plain');
+          if (envValue(vercelEnv, 'DIALOGFLOW_CX_PROJECT_ID') !== DIALOGFLOW_CX_PROJECT_ID) {
+            await upsertVercelEnv('DIALOGFLOW_CX_PROJECT_ID', DIALOGFLOW_CX_PROJECT_ID, 'plain');
           }
           if (envValue(vercelEnv, 'DIALOGFLOW_CX_LOCATION') !== DIALOGFLOW_CX_LOCATION) {
             await upsertVercelEnv('DIALOGFLOW_CX_LOCATION', DIALOGFLOW_CX_LOCATION, 'plain');
+          }
+          if (envValue(vercelEnv, 'DIALOGFLOW_CX_AGENT_ID') !== DIALOGFLOW_CX_AGENT_ID) {
+            await upsertVercelEnv('DIALOGFLOW_CX_AGENT_ID', DIALOGFLOW_CX_AGENT_ID, 'plain');
           }
           if (envValue(vercelEnv, 'DIALOGFLOW_CX_AGENT_DISPLAY_NAME') !== DIALOGFLOW_CX_AGENT_DISPLAY_NAME) {
             await upsertVercelEnv('DIALOGFLOW_CX_AGENT_DISPLAY_NAME', DIALOGFLOW_CX_AGENT_DISPLAY_NAME, 'plain');
@@ -351,14 +376,17 @@ jobs:
           if (envValue(vercelEnv, 'COMPANY_API_URL').replace(/\/$/, '') !== COMPANY_API_URL) {
             throw new Error('vercel_company_api_url_readback_failed');
           }
-          if (serviceAccount && envValue(vercelEnv, 'DIALOGFLOW_CX_PROJECT_ID') !== serviceAccount.project_id) {
+          if (envValue(vercelEnv, 'DIALOGFLOW_CX_PROJECT_ID') !== DIALOGFLOW_CX_PROJECT_ID) {
             throw new Error('vercel_dialogflow_project_readback_failed');
           }
           if (envValue(vercelEnv, 'DIALOGFLOW_CX_LOCATION') !== DIALOGFLOW_CX_LOCATION) {
             throw new Error('vercel_dialogflow_location_readback_failed');
           }
+          if (envValue(vercelEnv, 'DIALOGFLOW_CX_AGENT_ID') !== DIALOGFLOW_CX_AGENT_ID) {
+            throw new Error('vercel_dialogflow_agent_id_readback_failed');
+          }
           if (envValue(vercelEnv, 'DIALOGFLOW_CX_AGENT_DISPLAY_NAME') !== DIALOGFLOW_CX_AGENT_DISPLAY_NAME) {
-            throw new Error('vercel_dialogflow_agent_readback_failed');
+            throw new Error('vercel_dialogflow_agent_name_readback_failed');
           }
           if (envValue(vercelEnv, 'DIALOGFLOW_CX_LANGUAGE_CODE') !== DIALOGFLOW_CX_LANGUAGE_CODE) {
             throw new Error('vercel_dialogflow_language_readback_failed');
@@ -383,9 +411,11 @@ jobs:
           }
 
           appendFileSync(process.env.GITHUB_OUTPUT, `credential_mode=${credentialMode}\n`);
+          appendFileSync(process.env.GITHUB_OUTPUT, `dialogflow_identity=${dialogflowIdentity}\n`);
           console.log('WEBSITE_AI_PRODUCTION_CONFIG=success');
           console.log(`GOOGLE_CREDENTIAL_MODE=${credentialMode}`);
           console.log('DIALOGFLOW_CX_CONFIG=success');
+          console.log(`DIALOGFLOW_CX_IDENTITY=${dialogflowIdentity}`);
           console.log('COMPANY_WEBSITE_AI_SECRET_METADATA=success');
           console.log('COMPANY_WEBSITE_AI_AUTH_PROBE=success');
           console.log('COMPANY_HEALTH=success');
@@ -397,6 +427,7 @@ jobs:
           GH_TOKEN: '${{ github.token }}'
           TARGET_SHA: '${{ steps.target.outputs.sha }}'
           CREDENTIAL_MODE: '${{ steps.config.outputs.credential_mode }}'
+          DIALOGFLOW_IDENTITY: '${{ steps.config.outputs.dialogflow_identity }}'
         run: |
           set -euo pipefail
           body="$(cat <<EOF
@@ -405,6 +436,7 @@ jobs:
           WEBSITE_AI_PRODUCTION_CONFIG=success
           GOOGLE_CREDENTIAL_MODE=$CREDENTIAL_MODE
           DIALOGFLOW_CX_CONFIG=success
+          DIALOGFLOW_CX_IDENTITY=$DIALOGFLOW_IDENTITY
           COMPANY_WEBSITE_AI_SECRET_METADATA=success
           COMPANY_WEBSITE_AI_AUTH_PROBE=success
           COMPANY_HEALTH=success
