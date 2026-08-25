@@ -76,10 +76,13 @@ test('Website production config gate pins exact CX identity and never falls thro
   assert.match(configWorkflow, /const presentCredentialKeys = credentialKeys\.filter/);
   assert.match(configWorkflow, /for \(const key of presentCredentialKeys\) assertSecretMetadata\(vercelEnv, key\)/);
   assert.match(configWorkflow, /const selectedCredentialKey = presentCredentialKeys\[0\]/);
+  assert.match(configWorkflow, /const selectedCredentialEntry = envEntries\(vercelEnv, selectedCredentialKey\)\[0\]/);
+  assert.match(configWorkflow, /const selectedCredentialDecrypted = selectedCredentialEntry\?\.decrypted === true/);
   assert.match(configWorkflow, /const selectedCredentialRaw = envValue\(vercelEnv, selectedCredentialKey\)/);
-  assert.match(configWorkflow, /const serviceAccount = parseServiceAccount\(selectedCredentialRaw\)/);
-  assert.match(configWorkflow, /if \(selectedCredentialRaw && !serviceAccount\)/);
+  assert.match(configWorkflow, /const serviceAccount = selectedCredentialDecrypted\s*\? parseServiceAccount\(selectedCredentialRaw\)\s*: null/);
+  assert.match(configWorkflow, /if \(selectedCredentialDecrypted && !serviceAccount\)/);
   assert.match(configWorkflow, /dialogflow_selected_service_account_invalid:\$\{selectedCredentialKey\}/);
+  assert.doesNotMatch(configWorkflow, /if \(selectedCredentialRaw && !serviceAccount\)/);
   assert.match(configWorkflow, /const finalCredentialKeys = credentialKeys\.filter/);
   assert.match(configWorkflow, /for \(const key of finalCredentialKeys\) assertSecretMetadata\(vercelEnv, key\)/);
   assert.match(configWorkflow, /finalCredentialKeys\[0\] !== selectedCredentialKey/);

@@ -270,9 +270,13 @@ jobs:
           }
           for (const key of presentCredentialKeys) assertSecretMetadata(vercelEnv, key);
           const selectedCredentialKey = presentCredentialKeys[0];
+          const selectedCredentialEntry = envEntries(vercelEnv, selectedCredentialKey)[0];
+          const selectedCredentialDecrypted = selectedCredentialEntry?.decrypted === true;
           const selectedCredentialRaw = envValue(vercelEnv, selectedCredentialKey);
-          const serviceAccount = parseServiceAccount(selectedCredentialRaw);
-          if (selectedCredentialRaw && !serviceAccount) {
+          const serviceAccount = selectedCredentialDecrypted
+            ? parseServiceAccount(selectedCredentialRaw)
+            : null;
+          if (selectedCredentialDecrypted && !serviceAccount) {
             throw new Error(`dialogflow_selected_service_account_invalid:${selectedCredentialKey}`);
           }
 
