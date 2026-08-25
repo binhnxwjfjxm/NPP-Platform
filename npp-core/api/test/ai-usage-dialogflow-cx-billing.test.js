@@ -78,6 +78,8 @@ test('Website production config gate pins exact CX identity and never falls thro
   assert.match(configWorkflow, /const selectedCredentialKey = presentCredentialKeys\[0\]/);
   assert.match(configWorkflow, /const selectedCredentialRaw = envValue\(vercelEnv, selectedCredentialKey\)/);
   assert.match(configWorkflow, /const serviceAccount = parseServiceAccount\(selectedCredentialRaw\)/);
+  assert.match(configWorkflow, /if \(selectedCredentialRaw && !serviceAccount\)/);
+  assert.match(configWorkflow, /dialogflow_selected_service_account_invalid:\$\{selectedCredentialKey\}/);
   assert.match(configWorkflow, /const finalCredentialKeys = credentialKeys\.filter/);
   assert.match(configWorkflow, /for \(const key of finalCredentialKeys\) assertSecretMetadata\(vercelEnv, key\)/);
   assert.match(configWorkflow, /finalCredentialKeys\[0\] !== selectedCredentialKey/);
