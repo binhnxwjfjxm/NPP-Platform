@@ -417,7 +417,6 @@ async function prepareLines(client, { requestContext, header, payload }) {
   if (!Array.isArray(payload?.lines) || payload.lines.length < 1 || payload.lines.length > 1000) {
     return failure('INVALID_LINES', 'Sales order must contain between 1 and 1000 lines');
   }
-  const seen = new Set();
   const lines = [];
   let subtotal = 0n;
   let discountTotal = 0n;
@@ -428,8 +427,6 @@ async function prepareLines(client, { requestContext, header, payload }) {
   for (let index = 0; index < payload.lines.length; index += 1) {
     const input = payload.lines[index] ?? {};
     if (!isUuid(input.variantId)) return failure('INVALID_VARIANT_ID', 'Every line requires a valid variant ID', false, { line: index + 1 });
-    if (seen.has(input.variantId)) return failure('DUPLICATE_VARIANT', 'A SKU may only appear once in a Sales Order version', false, { line: index + 1 });
-    seen.add(input.variantId);
     const variant = await repository.getSalesVariant(client, { installationId: requestContext.installationId, id: input.variantId });
     if (!variant) return failure('SKU_NOT_FOUND', 'SKU not found', false, { line: index + 1 });
     if (!variant.product_is_active || !variant.product_is_orderable || !variant.is_active || !variant.is_sellable) {
