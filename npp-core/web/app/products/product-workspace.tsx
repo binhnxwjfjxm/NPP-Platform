@@ -54,8 +54,13 @@ const VARIANT_KIND_LABELS: Record<ProductVariant['variant_kind'], string> = {
   OTHER: 'Quy cách khác',
 };
 
-function normalizeSearch(value: string) {
-  return value.trim().toLowerCase();
+function normalizeSearch(value: string | null | undefined) {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/đ/g, 'd')
+    .trim();
 }
 
 function managementScreenLabel(path?: string): string {
@@ -187,7 +192,7 @@ export default function ProductWorkspace({
     if (orderableFilter === 'no' && product.is_orderable) return false;
     if (!normalizedSearch) return true;
     return [product.code, product.name, product.catalog_name, product.category_name, product.brand_name]
-      .some((value) => value?.toLowerCase().includes(normalizedSearch));
+      .some((value) => normalizeSearch(value).includes(normalizedSearch));
   }), [products, normalizedSearch, statusFilter, catalogFilter, orderableFilter]);
 
   const activeSellableVariantExists = variants.some((variant) => variant.is_active && variant.is_sellable);
