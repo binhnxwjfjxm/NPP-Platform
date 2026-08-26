@@ -45,7 +45,7 @@ jobs:
           path = Path('/tmp/lot-c-apply.py')
           text = path.read_text()
           old = "replace_once(form, old_price_ui, new_price_ui)"
-          new = "regex_once(form, r\"                <div className=\\{styles\\.priceCell\\}><span>Giá nền</span>.*?                \\)\\}\\n(?=                <div\\n                  id=\\{`sales-order-line-details-)\", new_price_ui, flags=re.S)"
+          new = "p = Path(form); source = p.read_text(); updated, count = re.subn(r\"                <div className=\\{styles\\.priceCell\\}><span>Giá nền</span>.*?                \\)\\}\\n(?=                <div\\n                  id=\\{`sales-order-line-details-)\", lambda _match: new_price_ui, source, count=1, flags=re.S); count == 1 or (_ for _ in ()).throw(SystemExit(f'{form}: expected one price UI block, got {count}')); p.write_text(updated)"
           if text.count(old) != 1:
               raise SystemExit(f'expected one price replacement call, got {text.count(old)}')
           path.write_text(text.replace(old, new, 1))
