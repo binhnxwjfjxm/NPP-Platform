@@ -38,6 +38,7 @@ const SCALE = 1_000_000n;
 const HUNDRED = 100n * SCALE;
 
 type LineDraft = {
+  clientLineId: string;
   variantId: string;
   sku: string;
   name: string;
@@ -141,6 +142,7 @@ function resolutionFingerprint(steps: SalesPriceStep[]): string {
 
 function versionLines(version?: SalesOrderVersion | null): LineDraft[] {
   return (version?.lines ?? []).map((line) => ({
+    clientLineId: line.id,
     variantId: line.variantId,
     sku: line.sku,
     name: line.itemName,
@@ -270,6 +272,26 @@ function pricingLabel(step: SalesPriceStep): string {
   return `${pricingPolicyLabel(step.priceListCode, step.priceListType)} · ${adjustment}`;
 }
 
+function searchPriceText(option: SalesOrderSkuSearchOption): string {
+  if (option.pricePreview.status === 'RESOLVED' && option.pricePreview.unitPriceMinor !== null) {
+    return vnd(option.pricePreview.unitPriceMinor);
+  }
+  return option.pricePreview.status === 'MISSING' ? 'Chưa có giá' : 'Chưa tính được giá';
+}
+
+function searchInventoryPrimary(option: SalesOrderSkuSearchOption): string {
+  if (option.inventoryPreview.status === 'NOT_MANAGED') return 'Không quản lý tồn';
+  if (option.inventoryPreview.status !== 'TRACKED') return 'Chưa có số liệu tồn';
+  const unit = option.inventoryPreview.unitCode ? ` ${option.inventoryPreview.unitCode}` : '';
+  return `Tồn ${compactQuantity(option.inventoryPreview.onHandQuantity)}${unit}`;
+}
+
+function searchInventorySecondary(option: SalesOrderSkuSearchOption): string | null {
+  if (option.inventoryPreview.status !== 'TRACKED') return null;
+  const unit = option.inventoryPreview.unitCode ? ` ${option.inventoryPreview.unitCode}` : '';
+  return `Khả dụng ${compactQuantity(option.inventoryPreview.availableQuantity)}${unit}`;
+}
+
 function pricingSummary(line: LineDraft): string {
   if (!line.pricingFingerprint) return 'Chưa có giá Công Ty';
   const applied = line.priceSteps.filter((step) => step.kind === 'RULE');
@@ -328,6 +350,7 @@ export default function SalesOrderCommercialForm(props: Props) {
   const [busy, setBusy] = useState(false);
   const [dirty, setDirty] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
+  const quantityRefs = useRef(new Map<string, HTMLInputElement>());
   const pricingContextRef = useRef('');
   const quantitySignatureRef = useRef('');
   const pricingRunRef = useRef(0);
@@ -463,6 +486,7 @@ export default function SalesOrderCommercialForm(props: Props) {
       .then((settings) => {
         setEntrySettings(settings);
         setSalesChannelId((current) => current || settings.defaultSalesChannelId || '');
+        setWarehouseId((current) => current || settings.defaultWarehouseId || '');
         if (linesRef.current.length === 0) setTaxReady(true);
       })
       .catch((error) => onError(error instanceof Error ? error.message : 'Không tải được cấu hình lập đơn'));
@@ -513,7 +537,7 @@ export default function SalesOrderCommercialForm(props: Props) {
   useEffect(() => {
     const term = skuTerm.trim();
     setActiveSkuIndex(0);
-    if (term.length < MIN_PRODUCT_SEARCH_LENGTH) {
+    if (term.length < MIN_PRODUCT_SEARCH_LENGTH || !warehouseId || !salesChannelId) {
       setSkuResults([]);
       return;
     }
@@ -521,7 +545,15 @@ export default function SalesOrderCommercialForm(props: Props) {
     const timer = window.setTimeout(async () => {
       setSkuLoading(true);
       try {
-        const query = new URLSearchParams({ search: term, limit: String(SEARCH_PAGE_SIZE), offset: '0' });
+        const query = new URLSearchParams({
+          search: term,
+          warehouseId,
+          salesChannelId,
+          pricingAt,
+          limit: String(SEARCH_PAGE_SIZE),
+          offset: '0',
+        });
+        if (customerMode === 'EXISTING' && customerId) query.set('customerId', customerId);
         const rows = await apiRequest<SalesOrderSkuSearchOption[]>(`/api/sales-orders/sku-search?${query}`, { signal: controller.signal });
         if (!controller.signal.aborted) setSkuResults(rows);
       } catch (error) {
@@ -534,7 +566,7 @@ export default function SalesOrderCommercialForm(props: Props) {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [onError, skuTerm]);
+  }, [customerId, customerMode, onError, pricingAt, salesChannelId, skuTerm, warehouseId]);
 
   useEffect(() => {
     if (!entrySettings || !salesChannelId) return;
@@ -546,7 +578,7 @@ export default function SalesOrderCommercialForm(props: Props) {
     void repriceAll(effectiveAt, customerMode, customerId, salesChannelId);
   }, [customerId, customerMode, entrySettings, repriceAll, salesChannelId]);
 
-  const quantitySignature = lines.map((line) => `${line.variantId}:${line.quantity}`).join('|');
+  const quantitySignature = lines.map((line) => `${line.clientLineId}:${line.quantity}`).join('|');
   useEffect(() => {
     if (!entrySettings || !salesChannelId) return;
     if (!quantitySignatureRef.current) {
@@ -563,11 +595,20 @@ export default function SalesOrderCommercialForm(props: Props) {
     return () => window.clearTimeout(timer);
   }, [entrySettings, quantitySignature, repriceAll, salesChannelId]);
 
+  function focusLineQuantity(clientLineId: string) {
+    window.setTimeout(() => {
+      const input = quantityRefs.current.get(clientLineId);
+      input?.focus();
+      input?.select();
+    }, 0);
+  }
+
   async function addSku(option: SalesOrderSkuSearchOption) {
     if (!option.eligibility.selectable) return onError(option.eligibility.message);
     if (!salesChannelId) return onError('Hãy chọn kênh bán trước khi thêm hàng');
     if (linesRef.current.some((line) => line.variantId === option.id)) return onError('SKU này đã có trong đơn');
     const pending: LineDraft = {
+      clientLineId: crypto.randomUUID(),
       variantId: option.id,
       sku: option.sku,
       name: option.productName,
@@ -589,6 +630,7 @@ export default function SalesOrderCommercialForm(props: Props) {
     setLines((current) => [...current, pending]);
     setSkuTerm('');
     setSkuResults([]);
+    focusLineQuantity(pending.clientLineId);
     markDirty();
     try {
       const resolution = await priceFor({
@@ -622,8 +664,6 @@ export default function SalesOrderCommercialForm(props: Props) {
       if (details.code === 'BASE_PRICE_NOT_FOUND' && canPriceOverride) {
         setManualEditorLineId(option.id);
       }
-    } finally {
-      window.setTimeout(() => searchRef.current?.focus(), 0);
     }
   }
 
@@ -961,7 +1001,6 @@ export default function SalesOrderCommercialForm(props: Props) {
               </div>
             )}
 
-            <label className={styles.salesChannelField}><span>Kênh bán *</span><select data-testid="sales-channel-select" value={salesChannelId} onChange={(event) => { setSalesChannelId(event.target.value); markDirty(); }}><option value="">Chọn kênh bán</option>{entrySettings?.salesChannels.map((channel) => <option key={channel.id} value={channel.id}>{channel.code} — {channel.name}</option>)}</select></label>
             <label><span>Kho xuất *</span><select value={warehouseId} onChange={(event) => { setWarehouseId(event.target.value); markDirty(); }}><option value="">Chọn kho</option>{props.warehouses.filter((item) => item.is_active).map((item) => <option key={item.id} value={item.id}>{item.code} — {item.name}</option>)}</select></label>
             <label><span>Hình thức giao nhận</span><select value={deliveryChoice} disabled={customerMode === 'WALK_IN'} onChange={(event) => {
               const value = event.target.value;
@@ -994,14 +1033,17 @@ export default function SalesOrderCommercialForm(props: Props) {
 
           <section className={styles.productEntry} aria-label="Nhập hàng hóa">
             <div className={styles.productSearchBox}>
-              <label><span>Tìm hàng nhanh</span><input ref={searchRef} value={skuTerm} onChange={(event) => setSkuTerm(event.target.value)} onKeyDown={handleSkuKeyDown} placeholder="Tên sản phẩm, mã hàng, SKU hoặc barcode" autoComplete="off" /></label>
+              <div className={styles.productSearchControls}>
+                <label className={styles.salesChannelField}><span>Kênh bán / nguồn giá *</span><select data-testid="sales-channel-select" value={salesChannelId} onChange={(event) => { setSalesChannelId(event.target.value); markDirty(); }}><option value="">Chọn kênh bán</option>{entrySettings?.salesChannels.map((channel) => <option key={channel.id} value={channel.id}>{channel.code} — {channel.name}</option>)}</select></label>
+                <label><span>Tìm hàng nhanh</span><input ref={searchRef} value={skuTerm} onChange={(event) => setSkuTerm(event.target.value)} onKeyDown={handleSkuKeyDown} placeholder="Tên sản phẩm, mã hàng, SKU hoặc barcode" autoComplete="off" /></label>
+              </div>
               {skuLoading && <span className={styles.searchStatus}>Đang tìm…</span>}
               {skuResults.length > 0 && (
                 <div className={styles.skuResults} role="listbox">
                   {skuResults.map((option, index) => (
                     <button type="button" key={option.id} className={index === activeSkuIndex ? styles.skuResultActive : styles.skuResult} disabled={!option.eligibility.selectable} onMouseDown={(event) => event.preventDefault()} onClick={() => void addSku(option)}>
-                      <div><strong>{option.productName}</strong><span>{option.productCode} · {option.sku} · {option.variantName}</span></div>
-                      <div><b>{option.unitCode ?? 'Chưa có ĐVT'}</b>{option.barcode && <small>{option.barcode}</small>}<small className={option.eligibility.selectable ? styles.eligible : styles.ineligible}>{option.eligibility.message}</small></div>
+                      <div><span>{option.productName}</span><strong>SKU {option.sku}</strong><small>{option.productCode}{option.variantName ? ` · ${option.variantName}` : ''}</small></div>
+                      <div><b>{searchPriceText(option)}</b><small>{searchInventoryPrimary(option)}</small>{searchInventorySecondary(option) && <small>{searchInventorySecondary(option)}</small>}{option.barcode && <small>Barcode {option.barcode}</small>}<small className={option.eligibility.selectable ? styles.eligible : styles.ineligible}>{option.eligibility.message}</small></div>
                     </button>
                   ))}
                 </div>
@@ -1013,7 +1055,7 @@ export default function SalesOrderCommercialForm(props: Props) {
           <section className={styles.orderLines} aria-label="Hàng hóa trong đơn">
             <header className={styles.lineTableHeader}><span>STT</span><span>Hàng hóa</span><span>ĐVT</span><span>Số lượng</span><span>Giá nền</span><span>Giá hệ thống</span><span>Giá cuối</span><span>Thành tiền</span><span /></header>
             {lines.map((line, index) => (
-              <article className={styles.orderLineCard} key={line.variantId} data-testid={`sales-order-line-${index + 1}`}>
+              <article className={styles.orderLineCard} key={line.clientLineId} data-testid={`sales-order-line-${index + 1}`}>
                 <BusinessSequenceNumber rowIndex={index} className={styles.lineSequence} />
                 <div className={styles.lineIdentity}>
                   <strong>{line.name}</strong>
@@ -1041,6 +1083,10 @@ export default function SalesOrderCommercialForm(props: Props) {
                   <div className={styles.quantityStepper}>
                     <button type="button" className={styles.quantityMinus} aria-label={`Giảm số lượng ${line.sku}`} onClick={() => changeQuantity(index, -1)}>−</button>
                     <input
+                      ref={(node) => {
+                        if (node) quantityRefs.current.set(line.clientLineId, node);
+                        else quantityRefs.current.delete(line.clientLineId);
+                      }}
                       aria-label={`Số lượng ${line.sku}`}
                       inputMode="decimal"
                       value={line.quantity}
@@ -1056,6 +1102,14 @@ export default function SalesOrderCommercialForm(props: Props) {
                           resolvingPrice: true,
                         } : item));
                         markDirty();
+                      }}
+                      onFocus={(event) => event.currentTarget.select()}
+                      onClick={(event) => event.currentTarget.select()}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault();
+                          event.currentTarget.blur();
+                        }
                       }}
                       onBlur={() => compactLineQuantity(index)}
                     />
