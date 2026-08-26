@@ -276,7 +276,7 @@ test.describe('Sales Order commercial controls', () => {
     const firstLine = dialog.getByTestId('sales-order-line-1');
     const directPrice = firstLine.getByLabel('Đơn giá SKU-1');
     await directPrice.fill('8500');
-    await expect(firstLine.getByText('Giá đã sửa', { exact: true })).toBeVisible();
+    await expect(firstLine.getByText('Giá đã sửa', { exact: true })).toBeHidden();
     await firstLine.getByRole('button', { name: /^Dùng lại giá hệ thống/ }).click();
     await expect(directPrice).toHaveValue('9001');
     await directPrice.fill('0');
