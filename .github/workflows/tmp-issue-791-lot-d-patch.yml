@@ -12,163 +12,25 @@ jobs:
   apply:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout temporary patch source
+        uses: actions/checkout@v4
         with:
-          ref: agent/issue-791-lot-d-split-line
+          ref: automation/issue-791-lot-d-patch
           fetch-depth: 0
-      - name: Apply Lot D split-line implementation
-        shell: bash
+      - name: Preserve patch script
+        run: cp .github/scripts/tmp_issue_791_lot_d_patch.py /tmp/issue-791-lot-d.py
+      - name: Checkout feature branch
         run: |
-          python3 <<'PY'
-          from pathlib import Path
-
-          def replace_once(path, old, new):
-              p = Path(path)
-              text = p.read_text()
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f'{path}: expected 1 match, got {count}: {old[:100]!r}')
-              p.write_text(text.replace(old, new, 1))
-
-          # 1) Forward migration: same SKU may have multiple independent lines.
-          migration = Path('database/migrations/sales/115_sales_order_split_lines.sql')
-          migration.write_text("""-- Issue #791 Lot D: allow one SKU to appear on multiple independent Sales Order lines.
--- Line identity remains sales_order_version_lines.id / line_number; variant_id is product identity only.
-
-ALTER TABLE sales.sales_order_version_lines
-  DROP CONSTRAINT IF EXISTS sales_order_version_lines_variant_unique;
-
-CREATE INDEX IF NOT EXISTS sales_order_version_lines_variant_idx
-  ON sales.sales_order_version_lines (
-    installation_id, sales_order_version_id, variant_id, line_number
-  );
-""")
-
-          # 2) Canonical migration registry.
-          replace_once(
-              'npp-core/api/src/migrations/index.js',
-              "const SALES_ORDER_PERMISSION_METADATA_SQL = readFileSync(new URL('../../../../database/migrations/shared/114_sales_order_permission_metadata.sql', import.meta.url), 'utf8');\n",
-              "const SALES_ORDER_PERMISSION_METADATA_SQL = readFileSync(new URL('../../../../database/migrations/shared/114_sales_order_permission_metadata.sql', import.meta.url), 'utf8');\nconst SALES_ORDER_SPLIT_LINES_SQL = readFileSync(new URL('../../../../database/migrations/sales/115_sales_order_split_lines.sql', import.meta.url), 'utf8');\n",
-          )
-          replace_once(
-              'npp-core/api/src/migrations/index.js',
-              "  Object.freeze({ id: '114_sales_order_permission_metadata', sql: SALES_ORDER_PERMISSION_METADATA_SQL }),\n]);",
-              "  Object.freeze({ id: '114_sales_order_permission_metadata', sql: SALES_ORDER_PERMISSION_METADATA_SQL }),\n  Object.freeze({ id: '115_sales_order_split_lines', sql: SALES_ORDER_SPLIT_LINES_SQL }),\n]);",
-          )
-
-          # 3) Backend: variant_id is no longer unique line identity.
-          replace_once('npp-core/api/src/services/sales-order-legacy.js', '  const seen = new Set();\n', '')
-          replace_once(
-              'npp-core/api/src/services/sales-order-legacy.js',
-              "    if (seen.has(input.variantId)) return failure('DUPLICATE_VARIANT', 'A SKU may only appear once in a Sales Order version', false, { line: index + 1 });\n    seen.add(input.variantId);\n",
-              '',
-          )
-
-          # 4) Frontend: keep search Add duplicate guard, but direct users to explicit split action.
-          form = 'npp-core/web/app/sales/sales-orders/SalesOrderCommercialForm.tsx'
-          replace_once(
-              form,
-              '  const quantityRefs = useRef(new Map<string, HTMLInputElement>());\n',
-              '  const quantityRefs = useRef(new Map<string, HTMLInputElement>());\n  const priceRefs = useRef(new Map<string, HTMLInputElement>());\n',
-          )
-          replace_once(
-              form,
-              "  function focusLineQuantity(clientLineId: string) {\n    window.setTimeout(() => {\n      const input = quantityRefs.current.get(clientLineId);\n      input?.focus();\n      input?.select();\n    }, 0);\n  }\n\n  async function addSku(option: SalesOrderSkuSearchOption) {",
-              "  function focusLineQuantity(clientLineId: string) {\n    window.setTimeout(() => {\n      const input = quantityRefs.current.get(clientLineId);\n      input?.focus();\n      input?.select();\n    }, 0);\n  }\n\n  function focusLinePrice(clientLineId: string) {\n    window.setTimeout(() => {\n      const input = priceRefs.current.get(clientLineId);\n      input?.focus();\n      input?.select();\n    }, 0);\n  }\n\n  function splitLine(index: number) {\n    if (!canPriceOverride) {\n      onError('Cần quyền Sửa giá bán trên đơn để tách dòng.');\n      return;\n    }\n    const source = linesRef.current[index];\n    if (!source) return;\n    const clientLineId = crypto.randomUUID();\n    const split: LineDraft = {\n      ...source,\n      clientLineId,\n      quantity: '1',\n      manualUnitPriceMinor: '0',\n      discountMode: 'TOTAL_AMOUNT',\n      discountValue: '0',\n      pricingFingerprint: '',\n      priceSteps: [],\n      resolvingPrice: false,\n      priceError: null,\n      pricingErrorCode: null,\n    };\n    setLines((current) => {\n      const sourceIndex = current.findIndex((line) => line.clientLineId === source.clientLineId);\n      if (sourceIndex < 0) return current;\n      const next = [...current];\n      next.splice(sourceIndex + 1, 0, split);\n      return next;\n    });\n    markDirty();\n    focusLinePrice(clientLineId);\n  }\n\n  async function addSku(option: SalesOrderSkuSearchOption) {",
-          )
-          replace_once(
-              form,
-              "    if (linesRef.current.some((line) => line.variantId === option.id)) return onError('SKU này đã có trong đơn');",
-              "    if (linesRef.current.some((line) => line.variantId === option.id)) return onError('Hàng này đã có trong đơn. Dùng Tách dòng nếu cần thêm dòng riêng.');",
-          )
-          replace_once(
-              form,
-              "                      {expandedLineId === line.clientLineId ? 'Ẩn chi tiết' : 'Chi tiết'}\n                    </button>\n                  </div>",
-              "                      {expandedLineId === line.clientLineId ? 'Ẩn chi tiết' : 'Chi tiết'}\n                    </button>\n                    <button\n                      type=\"button\"\n                      className={styles.splitLineButton}\n                      aria-label={`Tách dòng ${line.sku}`}\n                      title={canPriceOverride ? 'Tách dòng' : 'Cần quyền Sửa giá bán trên đơn'}\n                      disabled={!canPriceOverride}\n                      onClick={() => splitLine(index)}\n                    >\n                      <svg viewBox=\"0 0 20 20\" aria-hidden=\"true\" focusable=\"false\">\n                        <path d=\"M4 4v4c0 2 1.5 3 3.5 3H15M11 7l4 4-4 4M4 4h4\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.8\" strokeLinecap=\"round\" strokeLinejoin=\"round\" />\n                      </svg>\n                    </button>\n                  </div>",
-          )
-          replace_once(
-              form,
-              "          <input\n            className={styles.directPriceInput}\n            aria-label={`Đơn giá ${line.sku}`}",
-              "          <input\n            ref={(node) => {\n              if (node) priceRefs.current.set(line.clientLineId, node);\n              else priceRefs.current.delete(line.clientLineId);\n            }}\n            className={styles.directPriceInput}\n            aria-label={`Đơn giá ${line.sku}`}",
-          )
-
-          # 5) Small split icon beside SKU/Chi tiết; no extra table column.
-          css = Path('npp-core/web/app/sales/sales-orders/sales-orders.module.css')
-          css_text = css.read_text()
-          marker = '/* issue-791-sales-line-split-action */'
-          if marker in css_text:
-              raise SystemExit('split-line CSS marker already exists')
-          css.write_text(css_text + "\n\n/* issue-791-sales-line-split-action */\n.splitLineButton{width:24px;min-width:24px;height:24px;min-height:24px!important;padding:0!important;border:0!important;background:transparent!important;border-radius:6px!important;color:#146d55!important;display:inline-grid!important;place-items:center;font-size:.95rem!important;line-height:1}\n.splitLineButton:hover:not(:disabled){background:#edf8f3!important}.splitLineButton svg{width:14px;height:14px}\n")
-
-          # 6) Real PostgreSQL transaction regression: two independent rows with same variant.
-          transaction = 'npp-core/api/test/sales-order-transaction.test.js'
-          replace_once(
-              transaction,
-              "      permissions: Object.freeze(['core.sales-order.discount.override']),",
-              "      permissions: Object.freeze(['core.sales-order.discount.override', 'core.sales-order.price.override']),",
-          )
-          replace_once(
-              transaction,
-              "            lines: [{\n              variantId: fixture.variantId,\n              quantity: '2',\n              discountMode: 'TOTAL_AMOUNT',\n              discountValue: '500',\n              taxMode: 'EXCLUSIVE',\n              taxRate: '10',\n            }],",
-              "            lines: [{\n              variantId: fixture.variantId,\n              quantity: '2',\n              discountMode: 'TOTAL_AMOUNT',\n              discountValue: '500',\n              taxMode: 'EXCLUSIVE',\n              taxRate: '10',\n            }, {\n              variantId: fixture.variantId,\n              quantity: '1',\n              manualUnitPriceMinor: '0',\n              discountMode: 'TOTAL_AMOUNT',\n              discountValue: '0',\n              taxMode: 'EXCLUSIVE',\n              taxRate: '10',\n            }],",
-          )
-          replace_once(
-              transaction,
-              "    assert.equal(transaction.salesOrder.status, 'draft');\n    assert.match(transaction.eventId, /^[0-9a-f-]{36}$/i);",
-              "    assert.equal(transaction.salesOrder.status, 'draft');\n    const currentVersion = transaction.salesOrder.versions.at(-1);\n    assert.equal(currentVersion.lines.length, 2);\n    assert.equal(currentVersion.lines[0].variantId, currentVersion.lines[1].variantId);\n    assert.notEqual(currentVersion.lines[0].id, currentVersion.lines[1].id);\n    assert.equal(currentVersion.lines[1].unitPrice, '0');\n    assert.match(transaction.eventId, /^[0-9a-f-]{36}$/i);",
-          )
-
-          # 7) Source contract regression for migration/UI/downstream lineage.
-          Path('npp-core/api/test/issue-791-lot-d-split-lines.test.js').write_text("""import test from 'node:test';
-import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
-
-const migrationPath = new URL('../../../database/migrations/sales/115_sales_order_split_lines.sql', import.meta.url);
-const registryPath = new URL('../src/migrations/index.js', import.meta.url);
-const salesOrderPath = new URL('../src/services/sales-order-legacy.js', import.meta.url);
-const fulfillmentPath = new URL('../src/db/repositories/sales-fulfillment.js', import.meta.url);
-const fulfillmentMigrationPath = new URL('../../../database/migrations/sales/042_sales_fulfillment_reservation_demand.sql', import.meta.url);
-const deliveryMigrationPath = new URL('../../../database/migrations/sales/044_sales_delivery_order_handover.sql', import.meta.url);
-
-test('Issue #791 Lot D makes SKU product identity non-unique while preserving line identity', async () => {
-  const [migration, registry, service] = await Promise.all([
-    readFile(migrationPath, 'utf8'),
-    readFile(registryPath, 'utf8'),
-    readFile(salesOrderPath, 'utf8'),
-  ]);
-  assert.match(migration, /DROP CONSTRAINT IF EXISTS sales_order_version_lines_variant_unique/);
-  assert.match(migration, /CREATE INDEX IF NOT EXISTS sales_order_version_lines_variant_idx/);
-  assert.match(registry, /115_sales_order_split_lines/);
-  assert.doesNotMatch(service, /DUPLICATE_VARIANT/);
-  assert.doesNotMatch(service, /A SKU may only appear once in a Sales Order version/);
-});
-
-test('Issue #791 Lot D keeps fulfillment and delivery lineage on sales order line identity', async () => {
-  const [repository, fulfillmentMigration, deliveryMigration] = await Promise.all([
-    readFile(fulfillmentPath, 'utf8'),
-    readFile(fulfillmentMigrationPath, 'utf8'),
-    readFile(deliveryMigrationPath, 'utf8'),
-  ]);
-  assert.match(repository, /line\.id AS sales_order_line_id/);
-  assert.match(repository, /data\.salesOrderLineId/);
-  assert.match(fulfillmentMigration, /sales_order_fulfillment_demands_version_line_unique[\s\S]*sales_order_line_id/);
-  assert.match(deliveryMigration, /delivery_order_lines_sales_line_fk[\s\S]*sales_order_line_id/);
-  assert.match(deliveryMigration, /fulfillment_demand_id uuid NOT NULL/);
-});
-""")
-
-          # 8) UI source regression.
-          web_test = 'npp-core/web/test/issue-791-sales-line-flat-ui.test.mjs'
-          replace_once(
-              web_test,
-              "  assert.match(form, /aria-label={`Chiết khấu \\${line\\.sku}`}/);\n});",
-              "  assert.match(form, /aria-label={`Chiết khấu \\${line\\.sku}`}/);\n  assert.match(form, /function splitLine\\(index: number\\)/);\n  assert.match(form, /manualUnitPriceMinor: '0'/);\n  assert.match(form, /aria-label={`Tách dòng \\${line\\.sku}`}/);\n  assert.match(form, /Dùng Tách dòng nếu cần thêm dòng riêng/);\n  assert.match(css, /issue-791-sales-line-split-action/);\n});",
-          )
-          PY
-
+          git fetch origin agent/issue-791-lot-d-split-line
+          git checkout agent/issue-791-lot-d-split-line
+      - name: Apply and verify Lot D
+        run: |
+          python3 /tmp/issue-791-lot-d.py
           git diff --check
-          node --test npp-core/api/test/issue-791-lot-d-split-lines.test.js npp-core/web/test/issue-791-sales-line-flat-ui.test.mjs
+          node --test npp-core/api/test/issue-791-lot-d-split-lines.test.js npp-core/web/test/issue-791-sales-line-split.test.mjs
           git status --short
+      - name: Commit feature batch
+        run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add database/migrations/sales/115_sales_order_split_lines.sql \
@@ -177,11 +39,9 @@ test('Issue #791 Lot D keeps fulfillment and delivery lineage on sales order lin
                   npp-core/api/test/sales-order-transaction.test.js \
                   npp-core/api/test/issue-791-lot-d-split-lines.test.js \
                   npp-core/web/app/sales/sales-orders/SalesOrderCommercialForm.tsx \
-                  npp-core/web/app/sales/sales-orders/sales-orders.module.css \
-                  npp-core/web/test/issue-791-sales-line-flat-ui.test.mjs
+                  npp-core/web/test/issue-791-sales-line-split.test.mjs
           git commit -m "feat(company): thêm thao tác tách dòng bán hàng #791"
           git push origin HEAD:agent/issue-791-lot-d-split-line
       - name: Remove temporary patch branch
         if: always()
-        shell: bash
         run: git push origin --delete automation/issue-791-lot-d-patch || true
