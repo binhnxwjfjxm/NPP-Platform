@@ -82,6 +82,12 @@ export default async function ReportsPage({
       icon: 'coin' as const,
       active: false,
     },
+    {
+      href: '/reports/company-assistant',
+      label: 'Trợ lý Công Ty',
+      icon: 'overview' as const,
+      active: false,
+    },
   ];
   const trendMax = item.trend.reduce((max, point) => Math.max(max, point.value), 0);
   const detailParams = new URLSearchParams();

@@ -1,0 +1,180 @@
+.workspace {
+  display: grid;
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.intro {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.intro h2 {
+  margin: 5px 0 8px;
+  font-size: clamp(1.15rem, 2vw, 1.45rem);
+}
+
+.intro p {
+  margin: 0;
+  max-width: 720px;
+  line-height: 1.55;
+}
+
+.eyebrow {
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+
+.readOnlyBadge {
+  flex: 0 0 auto;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.conversation {
+  display: grid;
+  gap: 12px;
+  min-height: 250px;
+  max-height: 56vh;
+  overflow: auto;
+  padding: 16px;
+  border: 1px solid var(--border, #d9d9d9);
+  border-radius: 16px;
+  background: var(--surface-subtle, #fafafa);
+}
+
+.emptyState {
+  align-self: center;
+  justify-self: center;
+  display: grid;
+  gap: 6px;
+  max-width: 440px;
+  text-align: center;
+  opacity: 0.75;
+}
+
+.ownerMessage,
+.assistantMessage {
+  display: grid;
+  gap: 5px;
+  width: min(88%, 720px);
+  padding: 12px 14px;
+  border-radius: 14px;
+}
+
+.ownerMessage {
+  justify-self: end;
+  border: 1px solid var(--border, #d9d9d9);
+  background: var(--surface, #fff);
+}
+
+.assistantMessage {
+  justify-self: start;
+  border: 1px solid var(--border, #d9d9d9);
+  background: var(--surface, #fff);
+}
+
+.ownerMessage small,
+.assistantMessage small {
+  font-weight: 800;
+  opacity: 0.65;
+}
+
+.ownerMessage p,
+.assistantMessage p {
+  margin: 0;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.usageNote {
+  font-size: 0.76rem;
+  opacity: 0.68;
+}
+
+.composer {
+  display: grid;
+  gap: 8px;
+}
+
+.composer label {
+  font-weight: 800;
+}
+
+.composer textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 110px;
+  border: 1px solid var(--border, #d9d9d9);
+  border-radius: 14px;
+  padding: 12px 14px;
+  font: inherit;
+  background: var(--surface, #fff);
+  color: inherit;
+}
+
+.composerActions,
+.retryBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.composerActions span,
+.retryBar span {
+  font-size: 0.82rem;
+  opacity: 0.72;
+}
+
+.composerActions button,
+.retryBar button {
+  border: 1px solid currentColor;
+  border-radius: 10px;
+  padding: 9px 14px;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.composerActions button:disabled,
+.retryBar button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.retryBar {
+  border-top: 1px solid var(--border, #d9d9d9);
+  padding-top: 12px;
+}
+
+@media (max-width: 720px) {
+  .intro,
+  .composerActions,
+  .retryBar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .readOnlyBadge {
+    align-self: flex-start;
+  }
+
+  .ownerMessage,
+  .assistantMessage {
+    width: 94%;
+  }
+
+  .composerActions button,
+  .retryBar button {
+    width: 100%;
+  }
+}
