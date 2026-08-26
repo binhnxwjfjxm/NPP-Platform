@@ -380,6 +380,7 @@ export default function SalesOrderCommercialForm(props: Props) {
   const [dirty, setDirty] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const quantityRefs = useRef(new Map<string, HTMLInputElement>());
+  const priceRefs = useRef(new Map<string, HTMLInputElement>());
   const pricingContextRef = useRef('');
   const quantitySignatureRef = useRef('');
   const pricingRunRef = useRef(0);
@@ -495,7 +496,7 @@ export default function SalesOrderCommercialForm(props: Props) {
           effectiveAt,
         });
         return {
-          variantId: line.variantId,
+          clientLineId: line.clientLineId,
           baseUnitPriceMinor: resolution.baseUnitPriceMinor,
           systemUnitPriceMinor: resolution.systemUnitPriceMinor ?? resolution.finalUnitPriceMinor,
           pricingFingerprint: resolution.resolutionFingerprint,
@@ -506,7 +507,7 @@ export default function SalesOrderCommercialForm(props: Props) {
       } catch (error) {
         const details = pricingErrorDetails(error);
         return {
-          variantId: line.variantId,
+          clientLineId: line.clientLineId,
           baseUnitPriceMinor: line.baseUnitPriceMinor,
           systemUnitPriceMinor: line.systemUnitPriceMinor,
           pricingFingerprint: '',
@@ -517,9 +518,9 @@ export default function SalesOrderCommercialForm(props: Props) {
       }
     }));
     if (run !== pricingRunRef.current) return;
-    const byVariant = new Map(results.map((result) => [result.variantId, result]));
+    const byLineId = new Map(results.map((result) => [result.clientLineId, result]));
     setLines((current) => current.map((line) => {
-      const result = byVariant.get(line.variantId);
+      const result = byLineId.get(line.clientLineId);
       return result ? { ...line, ...result, resolvingPrice: false } : line;
     }));
   }, [customerId, customerMode, priceFor, salesChannelId]);
@@ -646,10 +647,20 @@ export default function SalesOrderCommercialForm(props: Props) {
     }, 0);
   }
 
+  function focusLinePrice(clientLineId: string) {
+    window.setTimeout(() => {
+      const input = priceRefs.current.get(clientLineId);
+      input?.focus();
+      input?.select();
+    }, 0);
+  }
+
   async function addSku(option: SalesOrderSkuSearchOption) {
     if (!option.eligibility.selectable) return onError(option.eligibility.message);
     if (!salesChannelId) return onError('Hãy chọn kênh bán trước khi thêm hàng');
-    if (linesRef.current.some((line) => line.variantId === option.id)) return onError('SKU này đã có trong đơn');
+    if (linesRef.current.some((line) => line.variantId === option.id)) {
+      return onError('Hàng này đã có trong đơn. Dùng Tách dòng nếu cần thêm dòng riêng.');
+    }
     const pending: LineDraft = {
       clientLineId: crypto.randomUUID(),
       variantId: option.id,
@@ -685,7 +696,7 @@ export default function SalesOrderCommercialForm(props: Props) {
         channelId: salesChannelId,
         effectiveAt: pricingAt,
       });
-      setLines((current) => current.map((line) => line.variantId === option.id ? {
+      setLines((current) => current.map((line) => line.clientLineId === pending.clientLineId ? {
         ...line,
         baseUnitPriceMinor: resolution.baseUnitPriceMinor,
         systemUnitPriceMinor: resolution.systemUnitPriceMinor ?? resolution.finalUnitPriceMinor,
@@ -697,7 +708,7 @@ export default function SalesOrderCommercialForm(props: Props) {
       } : line));
     } catch (error) {
       const details = pricingErrorDetails(error);
-      setLines((current) => current.map((line) => line.variantId === option.id ? {
+      setLines((current) => current.map((line) => line.clientLineId === pending.clientLineId ? {
         ...line,
         pricingFingerprint: '',
         priceSteps: [],
@@ -706,6 +717,30 @@ export default function SalesOrderCommercialForm(props: Props) {
         pricingErrorCode: details.code,
       } : line));
     }
+  }
+
+  function splitLine(sourceClientLineId: string) {
+    if (!canPriceOverride) return onError('Cần quyền Sửa giá bán trên đơn để tách dòng.');
+    const source = linesRef.current.find((line) => line.clientLineId === sourceClientLineId);
+    if (!source || source.resolvingPrice) return;
+    const split: LineDraft = {
+      ...source,
+      clientLineId: crypto.randomUUID(),
+      quantity: '1',
+      manualUnitPriceMinor: '0',
+      discountMode: 'PERCENT',
+      discountValue: '0',
+      resolvingPrice: false,
+      priceError: null,
+      pricingErrorCode: null,
+    };
+    setLines((current) => {
+      const sourceIndex = current.findIndex((line) => line.clientLineId === sourceClientLineId);
+      if (sourceIndex < 0) return current;
+      return [...current.slice(0, sourceIndex + 1), split, ...current.slice(sourceIndex + 1)];
+    });
+    markDirty();
+    focusLinePrice(split.clientLineId);
   }
 
   function handleSkuKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
@@ -1089,6 +1124,14 @@ export default function SalesOrderCommercialForm(props: Props) {
                     >
                       {expandedLineId === line.clientLineId ? 'Ẩn chi tiết' : 'Chi tiết'}
                     </button>
+                    <button
+                      type="button"
+                      className={styles.linkButton}
+                      aria-label={`Tách dòng ${line.sku}`}
+                      title="Tách dòng riêng cho bù hàng, khuyến mãi hoặc hàng tặng"
+                      disabled={!canPriceOverride || line.resolvingPrice}
+                      onClick={() => splitLine(line.clientLineId)}
+                    >↳ Tách dòng</button>
                   </div>
                   {line.priceError && (
                     <small className={line.pricingErrorCode === 'BASE_PRICE_NOT_FOUND' ? styles.priceNotice : styles.ineligible}>
@@ -1139,6 +1182,10 @@ export default function SalesOrderCommercialForm(props: Props) {
         <span>Đơn giá</span>
         {canPriceOverride ? (
           <input
+            ref={(node) => {
+              if (node) priceRefs.current.set(line.clientLineId, node);
+              else priceRefs.current.delete(line.clientLineId);
+            }}
             className={styles.directPriceInput}
             aria-label={`Đơn giá ${line.sku}`}
             inputMode="numeric"
