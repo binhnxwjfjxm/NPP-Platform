@@ -54,7 +54,7 @@ jobs:
           set -euo pipefail
           git show 8dd25caf6ac882ae2c8b8cef09fbd18951b96ebd:.github/workflows/issue-791-lot-c-apply.yml > /tmp/lot-c-old.yml
           python -c "from pathlib import Path; s=Path('/tmp/lot-c-old.yml').read_text(); a=s.index(\"          python <<'PY'\\n\") + len(\"          python <<'PY'\\n\"); b=s.index(\"          PY\\n\", a); body=''.join((line[10:] if line.startswith('          ') else line) for line in s[a:b].splitlines(True)); Path('/tmp/lot-c-apply.py').write_text(body)"
-      - name: Reconcile price block matcher with exact current source
+      - name: Apply reviewed Lô C patch
         shell: bash
         run: |
           set -euo pipefail
@@ -69,6 +69,26 @@ jobs:
           path.write_text(text.replace(old, new, 1))
           PY
           python /tmp/lot-c-apply.py
+      - name: Reconcile integration fixtures with dedicated CK permission
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          paths = [
+              Path('npp-core/api/test/sales-order-transaction.test.js'),
+              Path('npp-core/api/test/sales-order-idempotency-transaction.test.js'),
+          ]
+          old = "      permissions: Object.freeze([]),\n"
+          new = "      permissions: Object.freeze(['core.sales-order.discount.override']),\n"
+          for path in paths:
+              text = path.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected exactly one empty permission fixture, got {count}')
+              path.write_text(text.replace(old, new, 1))
+          PY
       - name: Install dependencies
         run: npm ci
       - name: Prepare isolated PostgreSQL
