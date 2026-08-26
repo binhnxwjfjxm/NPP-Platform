@@ -30,9 +30,10 @@ test('Issue #791 Lô E keeps price, discount and amount readable in an A4 fixed 
   assert.match(businessPrint, /tableLayout\?: 'auto' \| 'fixed'/);
   assert.match(businessPrint, /<colgroup>/);
   assert.match(businessPrint, /column\.width/);
-  assert.match(businessCss, /\.fixedTable\s*\{\s*table-layout:\s*fixed/);
-  assert.match(businessCss, /\.wrapAnywhere[\s\S]*overflow-wrap:\s*anywhere/);
-  assert.match(businessCss, /\.table th[\s\S]*font-size:\s*9\.5pt/);
+  assert.match(businessCss, /\.fixedTable\s*\{[\s\S]*table-layout:\s*fixed/);
+  assert.match(businessCss, /\.fixedTable th,[\s\S]*\.fixedTable td[\s\S]*overflow-wrap:\s*anywhere/);
+  assert.match(businessCss, /\.fixedTable th\s*\{[\s\S]*font-size:\s*9\.5pt/);
+  assert.match(businessCss, /\.table th\s*\{[\s\S]*font-size:\s*9pt/);
   assert.match(printCss, /size:\s*A4 portrait/);
 });
 

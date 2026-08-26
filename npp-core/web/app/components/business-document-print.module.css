@@ -76,31 +76,39 @@
 
 .table {
   width: 100%;
-  max-width: 100%;
   border-collapse: collapse;
   margin: 7px 0 10px;
   page-break-inside: auto;
 }
 
 .fixedTable {
+  max-width: 100%;
   table-layout: fixed;
 }
 
 .table th,
 .table td {
-  box-sizing: border-box;
-  min-width: 0;
   border: 1px solid #999;
   padding: 5px 6px;
   vertical-align: top;
-  overflow-wrap: anywhere;
 }
 
 .table th {
   background: #f1f1f1 !important;
+  font-size: 9pt;
+  text-align: left;
+}
+
+.fixedTable th,
+.fixedTable td {
+  box-sizing: border-box;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.fixedTable th {
   font-size: 9.5pt;
   line-height: 1.25;
-  text-align: left;
 }
 
 .table tr {
