@@ -14,15 +14,33 @@ concurrency:
 
 jobs:
   apply:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
+    env:
+      TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/npp_lot_c
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/npp_lot_c
+      NODE_ENV: test
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: npp_lot_c
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d npp_lot_c"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 20
           cache: npm
       - name: Verify branch baseline
         shell: bash
@@ -53,6 +71,8 @@ jobs:
           python /tmp/lot-c-apply.py
       - name: Install dependencies
         run: npm ci
+      - name: Prepare isolated PostgreSQL
+        run: npm --workspace npp-core-api run migration:migrate
       - name: Verify Công Ty API sales-order slice
         run: npm --workspace npp-core-api run verify:sales-order
       - name: Verify Công Ty web typecheck and source regressions
