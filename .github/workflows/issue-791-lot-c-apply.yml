@@ -30,12 +30,26 @@ jobs:
           set -euo pipefail
           test "$GITHUB_REF_NAME" = "agent/issue-791-lot-c-direct-price-discount"
           git merge-base --is-ancestor 963c9a3a7f2f9aaf6f91ab4b991d80a17480acaf HEAD
-      - name: Recover and apply reviewed patch script
+      - name: Recover reviewed patch script
         shell: bash
         run: |
           set -euo pipefail
-          git show HEAD^:.github/workflows/issue-791-lot-c-apply.yml > /tmp/lot-c-old.yml
+          git show 8dd25caf6ac882ae2c8b8cef09fbd18951b96ebd:.github/workflows/issue-791-lot-c-apply.yml > /tmp/lot-c-old.yml
           python -c "from pathlib import Path; s=Path('/tmp/lot-c-old.yml').read_text(); a=s.index(\"          python <<'PY'\\n\") + len(\"          python <<'PY'\\n\"); b=s.index(\"          PY\\n\", a); body=''.join((line[10:] if line.startswith('          ') else line) for line in s[a:b].splitlines(True)); Path('/tmp/lot-c-apply.py').write_text(body)"
+      - name: Reconcile price block matcher with exact current source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('/tmp/lot-c-apply.py')
+          text = path.read_text()
+          old = "replace_once(form, old_price_ui, new_price_ui)"
+          new = "regex_once(form, r\"                <div className=\\{styles\\.priceCell\\}><span>Giá nền</span>.*?                \\)\\}\\n(?=                <div\\n                  id=\\{`sales-order-line-details-)\", new_price_ui, flags=re.S)"
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one price replacement call, got {text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
+          PY
           python /tmp/lot-c-apply.py
       - name: Install dependencies
         run: npm ci
