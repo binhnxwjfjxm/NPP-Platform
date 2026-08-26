@@ -71,7 +71,7 @@ jobs:
           @media(max-width:780px){.quantityStepper button{height:34px;min-height:34px!important}.quantityStepper input,.directPriceInput,.discountControls input,.discountControls select{min-height:34px!important}}
           @media(max-width:520px){.discountCell{grid-column:1/-1}.unitCell,.quantityCell,.priceCell,.discountCell{justify-content:flex-start}.discountControls{max-width:250px}}
           '''
-          css_path.write_text(css.rstrip() + block + '\n')
+          css_path.write_text(css.rstrip() + block.rstrip() + '\n')
 
           test_path = Path('npp-core/web/test/issue-791-sales-line-flat-ui.test.mjs')
           test_path.write_text(r'''import test from 'node:test';
