@@ -730,7 +730,9 @@ export default function SalesOrderCommercialForm(props: Props) {
       manualUnitPriceMinor: '0',
       discountMode: 'PERCENT',
       discountValue: '0',
-      resolvingPrice: false,
+      pricingFingerprint: '',
+      priceSteps: [],
+      resolvingPrice: true,
       priceError: null,
       pricingErrorCode: null,
     };

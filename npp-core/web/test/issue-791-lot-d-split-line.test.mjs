@@ -15,6 +15,11 @@ test('Issue #791 Lô D keeps Add unique-only and exposes Tách dòng for an inde
   assert.match(form, /manualUnitPriceMinor: '0'/);
   assert.match(form, /discountMode: 'PERCENT'/);
   assert.match(form, /discountValue: '0'/);
+  const splitBlock = form.match(/const split: LineDraft = \{[\s\S]*?\n    \};/)?.[0] ?? '';
+  assert.match(splitBlock, /pricingFingerprint: ''/);
+  assert.match(splitBlock, /priceSteps: \[\]/);
+  assert.match(splitBlock, /resolvingPrice: true/);
+  assert.doesNotMatch(splitBlock, /resolvingPrice: false/);
   assert.match(form, /\.\.\.current\.slice\(0, sourceIndex \+ 1\), split, \.\.\.current\.slice\(sourceIndex \+ 1\)/);
   assert.match(form, /focusLinePrice\(split\.clientLineId\)/);
   assert.match(form, />↳ Tách dòng<\/button>/);
