@@ -11,6 +11,7 @@ import {
 import * as warehouseRepository from '../db/repositories/warehouse.js';
 import * as service from '../services/sales-order.js';
 import * as entryService from '../services/sales-order-entry.js';
+import * as searchPreviewService from '../services/sales-order-search-preview.js';
 import * as manualStockIssueService from '../services/sales-manual-stock-issue.js';
 import * as pickupStockIssueService from '../services/sales-pickup-stock-issue.js';
 
@@ -363,9 +364,13 @@ export async function handleSalesOrderRoutes(req, res, options) {
     if (!context) return true;
     const url = new URL(`http://localhost${req.url}`);
     try {
-      const result = await entryService.searchSalesOrderSkuOptions(options.getPool(), {
+      const result = await searchPreviewService.searchSalesOrderSkuOptions(options.getPool(), {
         requestContext: context,
         search: url.searchParams.get('search') ?? '',
+        warehouseId: url.searchParams.get('warehouseId'),
+        salesChannelId: url.searchParams.get('salesChannelId'),
+        customerId: url.searchParams.get('customerId'),
+        pricingAt: url.searchParams.get('pricingAt'),
         limit: parseInteger(url.searchParams.get('limit'), 20, 50),
         offset: parseInteger(url.searchParams.get('offset'), 0, 100000),
       });

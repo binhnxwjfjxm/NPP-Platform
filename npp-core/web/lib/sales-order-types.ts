@@ -222,6 +222,19 @@ export type SalesOrderSkuEligibility = {
   message: string;
 };
 
+export type SalesOrderSkuPricePreview = {
+  status: 'RESOLVED' | 'MISSING' | 'UNAVAILABLE';
+  unitPriceMinor: string | null;
+  message: string | null;
+};
+
+export type SalesOrderSkuInventoryPreview = {
+  status: 'TRACKED' | 'NOT_MANAGED' | 'UNAVAILABLE';
+  onHandQuantity: string | null;
+  availableQuantity: string | null;
+  unitCode: string | null;
+};
+
 export type SalesOrderSkuSearchOption = {
   id: string;
   productId: string;
@@ -238,6 +251,8 @@ export type SalesOrderSkuSearchOption = {
   defaultTaxMode: SalesOrderTaxMode;
   defaultTaxRate: string;
   eligibility: SalesOrderSkuEligibility;
+  pricePreview: SalesOrderSkuPricePreview;
+  inventoryPreview: SalesOrderSkuInventoryPreview;
 };
 
 export type SalesPriceResolution = {
@@ -301,6 +316,7 @@ export type SalesOrderEntrySettings = {
   defaultTaxRate: string;
   salesChannels: SalesOrderChannel[];
   defaultSalesChannelId: string | null;
+  defaultWarehouseId: string | null;
   permissions: {
     canPriceOverride: boolean;
     canDiscountOverride: boolean;

@@ -1,6 +1,7 @@
 import * as legacy from './sales-order-entry-legacy.js';
 import * as commercialRepository from '../db/repositories/sales-order-commercial.js';
 import * as systemSalesChannelRepository from '../db/repositories/system-sales-channel.js';
+import { resolveDefaultWarehouseId } from './sales-order-search-preview.js';
 
 export * from './sales-order-entry-legacy.js';
 
@@ -36,7 +37,7 @@ function sourceChannelDefinition(payload, requestContext) {
 }
 
 export async function getSalesOrderEntrySettings(client, { requestContext }) {
-  const [base, channels, defaultSalesChannelId] = await Promise.all([
+  const [base, channels, defaultSalesChannelId, defaultWarehouseId] = await Promise.all([
     legacy.getSalesOrderEntrySettings(client, { requestContext }),
     commercialRepository.listActiveSalesChannels(client, {
       installationId: requestContext.installationId,
@@ -44,6 +45,7 @@ export async function getSalesOrderEntrySettings(client, { requestContext }) {
     commercialRepository.getDefaultSalesChannelId(client, {
       installationId: requestContext.installationId,
     }),
+    resolveDefaultWarehouseId(client, { requestContext }),
   ]);
   if (!base.ok) return base;
   return Object.freeze({
@@ -56,6 +58,7 @@ export async function getSalesOrderEntrySettings(client, { requestContext }) {
         name: channel.name,
       }))),
       defaultSalesChannelId,
+      defaultWarehouseId,
       permissions: Object.freeze({
         canPriceOverride: hasPermission(
           requestContext,

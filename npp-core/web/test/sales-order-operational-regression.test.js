@@ -22,7 +22,10 @@ test('Sales Order document discount preview keeps exact BigInt largest-remainder
 test('Sales Order effects depend on stable callbacks instead of the whole props object', () => {
   assert.match(formSource, /const\s*\{\s*version,\s*onClose,\s*onError\s*\}\s*=\s*props/);
   assert.doesNotMatch(formSource, /\[[^\]]*\bprops\b[^\]]*\]/);
-  assert.match(formSource, /\[onError,\s*skuTerm\]/);
+  assert.match(
+    formSource,
+    /\[customerId,\s*customerMode,\s*onError,\s*pricingAt,\s*salesChannelId,\s*skuTerm,\s*warehouseId\]/,
+  );
 });
 
 test('quick customer and address retries keep stable idempotency keys per attempt', () => {
