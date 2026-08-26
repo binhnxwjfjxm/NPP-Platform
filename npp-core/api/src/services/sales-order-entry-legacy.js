@@ -207,7 +207,7 @@ export function evaluateSalesOrderSkuEligibility(row) {
   if (row.unit_is_active !== true) return Object.freeze({ selectable: false, code: 'SKU_UNIT_INACTIVE', message: 'Đơn vị bán đang ngưng hoạt động.' });
   const conversion = Number(row.conversion_to_base);
   if (!Number.isFinite(conversion) || conversion <= 0) return Object.freeze({ selectable: false, code: 'SKU_CONVERSION_INVALID', message: 'Hệ số quy đổi của SKU chưa hợp lệ.' });
-  return Object.freeze({ selectable: true, code: 'ELIGIBLE', message: 'Có thể chọn để bán.' });
+  return Object.freeze({ selectable: true, code: 'ELIGIBLE', message: '' });
 }
 
 function mapSkuOption(row, defaults, metadata = null) {

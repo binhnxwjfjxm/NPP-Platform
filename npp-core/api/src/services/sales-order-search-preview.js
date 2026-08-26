@@ -23,6 +23,14 @@ function normalizePricingAt(value, fallback) {
   return raw && !Number.isNaN(parsed.getTime()) ? parsed.toISOString() : null;
 }
 
+function compactDecimal(value) {
+  const normalized = String(value ?? '0').trim();
+  if (!/^-?\d+(?:\.\d+)?$/.test(normalized)) return normalized;
+  if (!normalized.includes('.')) return normalized;
+  const compact = normalized.replace(/0+$/, '').replace(/\.$/, '');
+  return compact || '0';
+}
+
 function pricePreview(result) {
   if (!result?.ok) {
     return Object.freeze({
@@ -54,6 +62,7 @@ function inventoryPreview(row) {
       status: 'UNAVAILABLE',
       onHandQuantity: null,
       availableQuantity: null,
+      heldQuantity: null,
       unitCode: null,
     });
   }
@@ -62,6 +71,7 @@ function inventoryPreview(row) {
       status: 'NOT_MANAGED',
       onHandQuantity: null,
       availableQuantity: null,
+      heldQuantity: null,
       unitCode: null,
     });
   }
@@ -70,6 +80,7 @@ function inventoryPreview(row) {
       status: 'UNAVAILABLE',
       onHandQuantity: null,
       availableQuantity: null,
+      heldQuantity: null,
       unitCode: row.base_unit_code ?? null,
     });
   }
@@ -77,8 +88,15 @@ function inventoryPreview(row) {
     status: 'TRACKED',
     onHandQuantity: String(row.on_hand_quantity ?? '0'),
     availableQuantity: String(row.available_quantity ?? '0'),
+    heldQuantity: String(row.held_quantity ?? '0'),
     unitCode: row.base_unit_code ?? null,
   });
+}
+
+function inventoryHeldMessage(preview) {
+  if (preview?.status !== 'TRACKED') return '';
+  const unit = preview.unitCode ? ` ${preview.unitCode}` : '';
+  return `Đang giữ ${compactDecimal(preview.heldQuantity)}${unit}`;
 }
 
 function pickDefaultWarehouseId(warehouses, requestContext) {
@@ -204,16 +222,23 @@ export async function searchSalesOrderSkuOptions(client, {
         allowMissingBasePrice: true,
       },
     });
+    const inventory = inventoryPreview(inventoryByVariantId.get(option.id));
+    const eligibility = option.eligibility.selectable
+      ? Object.freeze({ ...option.eligibility, message: inventoryHeldMessage(inventory) })
+      : option.eligibility;
     return Object.freeze({
       ...option,
+      eligibility,
       pricePreview: pricePreview(pricing),
-      inventoryPreview: inventoryPreview(inventoryByVariantId.get(option.id)),
+      inventoryPreview: inventory,
     });
   }));
   return Object.freeze({ ok: true, skuOptions: Object.freeze(enriched) });
 }
 
 export const salesOrderSearchPreviewInternals = Object.freeze({
+  compactDecimal,
+  inventoryHeldMessage,
   inventoryPreview,
   normalizePricingAt,
   pickDefaultWarehouseId,
