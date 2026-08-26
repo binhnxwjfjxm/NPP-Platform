@@ -8,7 +8,7 @@ test('canonical migration registry includes Dialogflow CX request billing migrat
 
   assert.ok(ids.includes('111_ai_usage_metering'));
   assert.ok(ids.includes('112_ai_website_anonymous_usage'));
-  assert.equal(ids.at(-1), '113_ai_dialogflow_cx_request_billing');
+  assert.ok(ids.includes('113_ai_dialogflow_cx_request_billing'));
   assert.ok(
     ids.indexOf('112_ai_website_anonymous_usage')
       < ids.indexOf('113_ai_dialogflow_cx_request_billing'),

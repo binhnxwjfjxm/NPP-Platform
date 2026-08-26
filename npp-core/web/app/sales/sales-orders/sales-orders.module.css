@@ -16,3 +16,29 @@
 .productSearchControls{display:grid;grid-template-columns:minmax(190px,.38fr) minmax(0,1fr);gap:.55rem;align-items:end}.productSearchControls .salesChannelField select{width:100%;min-height:44px;border:1px solid #d4dad6;border-radius:8px;padding:.4rem .58rem;background:#fff;font:inherit}@media(max-width:760px){.productSearchControls{grid-template-columns:1fr}}
 
 .directPriceInput{font-weight:800;font-variant-numeric:tabular-nums}.discountCell{display:grid;gap:.15rem;min-width:0}.discountCell>span{color:#68717d;font-size:.72rem}.discountControls{display:grid;grid-template-columns:62px minmax(72px,1fr);gap:.25rem}.discountControls select,.discountControls input{min-width:0!important;width:100%!important}.discountControls input{text-align:right;font-variant-numeric:tabular-nums}
+
+/* issue-791-sales-line-flat-controls */
+.orderLineCard{align-items:center}
+.unitCell,.quantityCell,.priceCell,.discountCell{min-height:32px;align-items:center}
+.unitCell{display:flex;gap:.3rem}
+.quantityCell{display:flex;gap:.28rem}
+.priceCell{display:flex;gap:.32rem;flex-wrap:nowrap}
+.discountCell{display:flex;gap:.32rem}
+.quantityStepper{display:grid;grid-template-columns:24px 64px 24px;gap:.15rem;align-items:center;width:max-content}
+.quantityStepper input,.directPriceInput,.discountControls input,.discountControls select{min-height:30px!important;border:0!important;border-bottom:1px solid #b9c5be!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;padding:.22rem .12rem!important;line-height:1.25}
+.quantityStepper input:focus,.directPriceInput:focus,.discountControls input:focus,.discountControls select:focus{outline:none!important;border-bottom-color:#155c46!important;box-shadow:0 1px 0 #155c46!important}
+.quantityStepper button{width:24px;min-width:24px;height:30px;min-height:30px!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;font-size:1rem!important;line-height:1}
+.quantityMinus{color:#a23a32!important;background:transparent!important}
+.quantityPlus{color:#146d55!important;background:transparent!important}
+.quantityStepper input{width:64px!important;min-width:64px!important;text-align:center;font-variant-numeric:tabular-nums}
+.directPriceInput{width:100%;min-width:0!important;text-align:right;font-weight:800;font-variant-numeric:tabular-nums}
+.discountControls{display:grid;grid-template-columns:54px minmax(76px,1fr);gap:.28rem;align-items:center;width:100%}
+.discountControls select,.discountControls input{min-width:0!important;width:100%!important}
+.discountControls input{text-align:right;font-variant-numeric:tabular-nums}
+.manualBadge{display:none}
+.priceCell>.linkButton{flex:0 0 24px;width:24px;height:28px;min-height:28px!important;padding:0!important;border:0!important;background:transparent!important;font-size:0!important;line-height:1}
+.priceCell>.linkButton::after{content:"↺";font-size:1rem;color:#146d55}
+.priceCell strong{white-space:nowrap}
+@media(min-width:1181px){.unitCell>span,.quantityCell>span,.priceCell>span,.discountCell>span{display:none}}
+@media(max-width:780px){.quantityStepper button{height:34px;min-height:34px!important}.quantityStepper input,.directPriceInput,.discountControls input,.discountControls select{min-height:34px!important}}
+@media(max-width:520px){.discountCell{grid-column:1/-1}.unitCell,.quantityCell,.priceCell,.discountCell{justify-content:flex-start}.discountControls{max-width:250px}}

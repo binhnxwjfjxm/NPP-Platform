@@ -431,7 +431,7 @@ export default function SalesOrderCommercialForm(props: Props) {
     };
   }, [documentDiscountMode, documentDiscountValue, lines]);
 
-  const hasLineDiscount = estimate.lineDiscountTotal > 0n;
+  const hasLineDiscount = lines.some((line) => (parseScaled(line.discountValue || '0', true) ?? 0n) > 0n);
 
   const markDirty = useCallback(() => {
     setDirty(true);
