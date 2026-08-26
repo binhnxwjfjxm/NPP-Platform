@@ -1,0 +1,154 @@
+/* Issue #791 follow-up: align Company sales-order entry rows and compact product search results. */
+
+@media (min-width: 901px) {
+  section[aria-label="Hàng hóa trong đơn"] > header,
+  section[aria-label="Hàng hóa trong đơn"] > article[data-testid^="sales-order-line-"] {
+    grid-template-columns:
+      48px
+      minmax(260px, 1.7fr)
+      88px
+      132px
+      minmax(150px, .75fr)
+      minmax(160px, .8fr)
+      minmax(170px, .95fr)
+      64px !important;
+    column-gap: .55rem !important;
+    align-items: center !important;
+    font-variant-numeric: tabular-nums;
+  }
+
+  section[aria-label="Hàng hóa trong đơn"] > header > span:nth-child(1),
+  section[aria-label="Hàng hóa trong đơn"] > header > span:nth-child(3),
+  section[aria-label="Hàng hóa trong đơn"] > header > span:nth-child(4),
+  section[aria-label="Hàng hóa trong đơn"] > header > span:nth-child(6) {
+    text-align: center;
+  }
+
+  section[aria-label="Hàng hóa trong đơn"] > header > span:nth-child(5),
+  section[aria-label="Hàng hóa trong đơn"] > header > span:nth-child(7) {
+    text-align: right;
+  }
+
+  section[aria-label="Hàng hóa trong đơn"] > header > span:nth-child(7),
+  section[aria-label="Hàng hóa trong đơn"] > article[data-testid^="sales-order-line-"] > :nth-child(7) {
+    padding-left: 1.4rem;
+  }
+
+  section[aria-label="Hàng hóa trong đơn"] > article[data-testid^="sales-order-line-"] > :nth-child(1) {
+    justify-self: center;
+  }
+
+  section[aria-label="Hàng hóa trong đơn"] > article[data-testid^="sales-order-line-"] > :nth-child(3),
+  section[aria-label="Hàng hóa trong đơn"] > article[data-testid^="sales-order-line-"] > :nth-child(4) {
+    justify-items: center;
+    justify-content: center;
+    text-align: center;
+  }
+
+  section[aria-label="Hàng hóa trong đơn"] > article[data-testid^="sales-order-line-"] > :nth-child(5) {
+    justify-content: flex-end;
+    align-items: center;
+    text-align: right;
+  }
+
+  section[aria-label="Hàng hóa trong đơn"] > article[data-testid^="sales-order-line-"] > :nth-child(5) input {
+    text-align: right !important;
+    font-variant-numeric: tabular-nums;
+  }
+
+  section[aria-label="Hàng hóa trong đơn"] > article[data-testid^="sales-order-line-"] > :nth-child(6) {
+    justify-items: center;
+    justify-content: center;
+    text-align: center;
+  }
+
+  section[aria-label="Hàng hóa trong đơn"] > article[data-testid^="sales-order-line-"] > :nth-child(6) > div {
+    justify-content: center;
+  }
+
+  section[aria-label="Hàng hóa trong đơn"] > article[data-testid^="sales-order-line-"] > :nth-child(7) {
+    justify-items: end;
+    justify-content: flex-end;
+    text-align: right;
+  }
+
+  section[aria-label="Hàng hóa trong đơn"] > article[data-testid^="sales-order-line-"] > :nth-child(7) strong {
+    color: #252d29;
+    font-size: .94rem;
+    font-weight: 800;
+    letter-spacing: .01em;
+    white-space: nowrap;
+  }
+
+  section[aria-label="Hàng hóa trong đơn"] > article[data-testid^="sales-order-line-"] > :nth-child(8) {
+    justify-self: end;
+  }
+
+  section[aria-label="Hàng hóa trong đơn"] > article[data-testid^="sales-order-line-"] > :nth-child(9) {
+    grid-column: 1 / -1;
+  }
+
+  section[aria-label="Nhập hàng hóa"] [role="listbox"] > button {
+    grid-template-columns: minmax(0, 1fr) minmax(360px, .78fr) !important;
+    align-items: center !important;
+    column-gap: 1.2rem !important;
+  }
+
+  section[aria-label="Nhập hàng hóa"] [role="listbox"] > button > div:last-child {
+    display: flex !important;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: baseline;
+    gap: .1rem 0 !important;
+    max-width: 520px;
+    text-align: right;
+  }
+
+  section[aria-label="Nhập hàng hóa"] [role="listbox"] > button > div:last-child > b {
+    flex: 0 0 100%;
+    color: #157347;
+    font-size: .92rem;
+    font-weight: 800;
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  section[aria-label="Nhập hàng hóa"] [role="listbox"] > button > div:last-child > b::before {
+    content: "Giá ";
+    color: #536159;
+    font-size: .75rem;
+    font-weight: 700;
+  }
+
+  section[aria-label="Nhập hàng hóa"] [role="listbox"] > button > div:last-child > small {
+    display: inline-flex;
+    align-items: center;
+    color: #5f6b65;
+    font-size: .74rem;
+    line-height: 1.35;
+    white-space: nowrap;
+  }
+
+  section[aria-label="Nhập hàng hóa"] [role="listbox"] > button > div:last-child > small + small::before {
+    content: "|";
+    padding: 0 .4rem;
+    color: #a2aba6;
+    font-weight: 500;
+  }
+
+  section[aria-label="Nhập hàng hóa"] [role="listbox"] > button > div:last-child > small:nth-of-type(3):not([class]) {
+    display: none !important;
+  }
+
+  section[aria-label="Nhập hàng hóa"] [role="listbox"] > button > div:last-child > small:empty {
+    display: none !important;
+  }
+
+  section[aria-label="Nhập hàng hóa"] [role="listbox"] > button:disabled > div:last-child > small:last-child {
+    flex: 0 0 100%;
+    justify-content: flex-end;
+    margin-top: .08rem;
+    color: #a23a32 !important;
+    font-weight: 700;
+  }
+}

@@ -37,6 +37,7 @@ test('Lô B search backend nhận đủ context và không đẩy phép tính Kh
   assert.match(repository, /sales\.sales_order_fulfillment_demands/);
   assert.match(repository, /is_inventory_managed/);
   assert.match(repository, /on_hand_quantity/);
+  assert.match(repository, /held_quantity/);
   assert.match(repository, /available_quantity/);
   assert.match(entry, /defaultWarehouseId/);
 });
@@ -47,10 +48,16 @@ test('Lô B giữ tương thích cho caller tìm SKU cũ không gửi preview co
   assert.match(service, /if \(!previewContextRequested\) \{[\s\S]*return legacy\.searchSalesOrderSkuOptions/);
 });
 
-test('Lô B phân biệt không quản lý tồn với hết hàng', () => {
+test('Lô B phân biệt không quản lý tồn với hết hàng và trả đúng số đang giữ', () => {
   assert.deepEqual(
     salesOrderSearchPreviewInternals.inventoryPreview({ is_inventory_managed: false }),
-    { status: 'NOT_MANAGED', onHandQuantity: null, availableQuantity: null, unitCode: null },
+    {
+      status: 'NOT_MANAGED',
+      onHandQuantity: null,
+      availableQuantity: null,
+      heldQuantity: null,
+      unitCode: null,
+    },
   );
   const tracked = salesOrderSearchPreviewInternals.inventoryPreview({
     is_inventory_managed: true,
@@ -59,8 +66,17 @@ test('Lô B phân biệt không quản lý tồn với hết hàng', () => {
     base_unit_code: 'THUNG',
     on_hand_quantity: '12.000000000000',
     available_quantity: '10.000000000000',
+    held_quantity: '2.000000000000',
   });
   assert.equal(tracked.status, 'TRACKED');
   assert.equal(tracked.onHandQuantity, '12.000000000000');
   assert.equal(tracked.availableQuantity, '10.000000000000');
+  assert.equal(tracked.heldQuantity, '2.000000000000');
+  assert.equal(salesOrderSearchPreviewInternals.inventoryHeldMessage(tracked), 'Đang giữ 2 THUNG');
+});
+
+test('Lô B không còn trả thông báo chọn được dư thừa', async () => {
+  const legacy = await read('src/services/sales-order-entry-legacy.js');
+  assert.doesNotMatch(legacy, /Có thể chọn để bán\./);
+  assert.match(legacy, /code: 'ELIGIBLE', message: ''/);
 });

@@ -63,6 +63,10 @@ export async function listSalesOrderSkuInventoryPreviews(client, {
             selected.base_variant_id,
             selected.base_unit_code,
             COALESCE(balance.on_hand_quantity, 0)::numeric(30,12)::text AS on_hand_quantity,
+            (
+              COALESCE(balance.exact_reserved_quantity, 0)
+              + COALESCE(demand.fulfillment_reserved_quantity, 0)
+            )::numeric(30,12)::text AS held_quantity,
             greatest(
               COALESCE(balance.on_hand_quantity, 0)
               - COALESCE(balance.exact_reserved_quantity, 0)
