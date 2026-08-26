@@ -243,15 +243,15 @@ function manualOverride(line, requestContext, lineNumber) {
     return failure('INVALID_MONEY', 'Manual unit price must be a non-negative VND amount', false, { line: lineNumber });
   }
   const reason = String(line.manualReason ?? '').trim();
-  if (!reason || reason.length > 500) {
+  if (reason.length > 500) {
     return failure(
-      'PRICE_OVERRIDE_REASON_REQUIRED',
-      'Price override reason is required and must not exceed 500 characters',
+      'PRICE_OVERRIDE_REASON_INVALID',
+      'Price override reason must not exceed 500 characters',
       false,
       { line: lineNumber },
     );
   }
-  return { ok: true, value, reason };
+  return { ok: true, value, reason: reason || null };
 }
 
 async function resolveChannel(client, { requestContext, payload }) {
@@ -288,7 +288,14 @@ async function prepareCommercialPayload(client, { requestContext, payload }) {
   const normalizedPayload = { ...payload, salesChannelId };
   const documentDiscount = normalizeDocumentDiscount(payload, requestContext);
   if (!documentDiscount.ok) return documentDiscount;
-  if (documentDiscount.positive && payload.lines.some(nonZeroLegacyLineDiscount)) {
+  const hasLineDiscount = payload.lines.some(nonZeroLegacyLineDiscount);
+  if (hasLineDiscount && !hasPermission(requestContext, 'core.sales-order.discount.override')) {
+    return failure(
+      'LINE_DISCOUNT_FORBIDDEN',
+      'Line discount permission is required',
+    );
+  }
+  if (documentDiscount.positive && hasLineDiscount) {
     return failure(
       'MIXED_DISCOUNT_SCOPE',
       'Document discount and non-zero line discount cannot be used together',
@@ -411,6 +418,7 @@ async function prepareCommercialPayload(client, { requestContext, payload }) {
       finalUnitPriceMinor,
       systemTrace,
       fingerprint,
+      manualOverride: manual.value !== null,
       manualReason: manual.reason,
     }));
   }
@@ -427,7 +435,9 @@ async function prepareCommercialPayload(client, { requestContext, payload }) {
   const legacyLines = commercialLines.map((line, index) => ({
     ...line.input,
     manualUnitPriceMinor: line.finalUnitPriceMinor,
-    manualReason: line.manualReason ?? `system-price:${line.fingerprint}`,
+    manualReason: line.manualReason ?? (line.manualOverride
+      ? 'permission-price-override'
+      : `system-price:${line.fingerprint}`),
     ...(documentDiscount.positive
       ? {
           discountMode: 'TOTAL_AMOUNT',

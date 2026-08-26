@@ -15,6 +15,7 @@ import type {
   SalesOrderDocumentDiscountMode,
   SalesOrderDraftPayload,
   SalesOrderEntrySettings,
+  SalesOrderLineDiscountMode,
   SalesOrderSkuSearchOption,
   SalesOrderTaxMode,
   SalesOrderVersion,
@@ -49,7 +50,8 @@ type LineDraft = {
   baseUnitPriceMinor: string;
   systemUnitPriceMinor: string;
   manualUnitPriceMinor: string;
-  manualReason: string;
+  discountMode: SalesOrderLineDiscountMode;
+  discountValue: string;
   pricingFingerprint: string;
   priceSteps: SalesPriceStep[];
   resolvingPrice: boolean;
@@ -141,6 +143,8 @@ function resolutionFingerprint(steps: SalesPriceStep[]): string {
 }
 
 function versionLines(version?: SalesOrderVersion | null): LineDraft[] {
+  const documentDiscountActive = version?.documentDiscountMode !== 'NONE'
+    && (parseScaled(version?.documentDiscountValue ?? '0', true) ?? 0n) > 0n;
   return (version?.lines ?? []).map((line) => ({
     clientLineId: line.id,
     variantId: line.variantId,
@@ -153,7 +157,8 @@ function versionLines(version?: SalesOrderVersion | null): LineDraft[] {
     baseUnitPriceMinor: line.baseUnitPrice ?? line.unitPrice,
     systemUnitPriceMinor: line.systemUnitPrice ?? line.unitPrice,
     manualUnitPriceMinor: line.priceSource === 'MANUAL_OVERRIDE' ? line.unitPrice : '',
-    manualReason: line.manualOverrideReason ?? '',
+    discountMode: documentDiscountActive ? 'TOTAL_AMOUNT' : line.discountMode,
+    discountValue: documentDiscountActive ? '0' : line.discountValue,
     pricingFingerprint: resolutionFingerprint(line.pricingTrace ?? []),
     priceSteps: line.pricingTrace ?? [],
     resolvingPrice: false,
@@ -167,7 +172,7 @@ function finalUnitPrice(line: LineDraft): string {
 }
 
 function hasValidManualPrice(line: LineDraft): boolean {
-  return /^\d+$/.test(line.manualUnitPriceMinor.trim()) && Boolean(line.manualReason.trim());
+  return /^\d+$/.test(line.manualUnitPriceMinor.trim());
 }
 
 function automaticPriceText(line: LineDraft, value: string): string {
@@ -193,6 +198,31 @@ function grossMinor(line: LineDraft): bigint {
   const quantity = parseScaled(line.quantity, false) ?? 0n;
   const price = /^\d+$/.test(finalUnitPrice(line)) ? BigInt(finalUnitPrice(line)) : 0n;
   return halfUp(quantity * price, SCALE);
+}
+
+function lineDiscountMinor(line: LineDraft): bigint | null {
+  const gross = grossMinor(line);
+  const quantity = parseScaled(line.quantity, false);
+  const scaled = parseScaled(line.discountValue || '0', true);
+  if (scaled === null || quantity === null) return null;
+  let discount: bigint;
+  if (line.discountMode === 'PERCENT') {
+    if (scaled > HUNDRED) return null;
+    discount = halfUp(gross * scaled, HUNDRED);
+  } else {
+    if (scaled % SCALE !== 0n) return null;
+    const money = scaled / SCALE;
+    discount = line.discountMode === 'PER_UNIT'
+      ? halfUp(quantity * money, SCALE)
+      : money;
+  }
+  return discount <= gross ? discount : null;
+}
+
+function discountValueText(line: LineDraft): string {
+  const value = line.discountValue || '0';
+  if (line.discountMode === 'PERCENT') return `${value}%`;
+  return line.discountMode === 'PER_UNIT' ? `${vnd(value)} / ĐVT` : vnd(value);
 }
 
 function documentDiscountTarget(
@@ -330,7 +360,6 @@ export default function SalesOrderCommercialForm(props: Props) {
   const [showMore, setShowMore] = useState(Boolean(version?.note));
   const [lines, setLines] = useState<LineDraft[]>(versionLines(version));
   const [expandedLineId, setExpandedLineId] = useState<string | null>(null);
-  const [manualEditorLineId, setManualEditorLineId] = useState<string | null>(null);
   const linesRef = useRef(lines);
   const committedDraftRef = useRef<SalesOrder | null>(null);
   const [addresses, setAddresses] = useState<CustomerAddress[]>([]);
@@ -377,18 +406,32 @@ export default function SalesOrderCommercialForm(props: Props) {
   const estimate = useMemo(() => {
     const gross = lines.map(grossMinor);
     const grossTotal = gross.reduce((sum, value) => sum + value, 0n);
+    const lineDiscounts = lines.map(lineDiscountMinor);
+    const lineDiscountValid = lineDiscounts.every((value) => value !== null);
+    const lineDiscountValues = lineDiscounts.map((value) => value ?? 0n);
+    const lineDiscountTotal = lineDiscountValues.reduce((sum, value) => sum + value, 0n);
     const target = documentDiscountTarget(documentDiscountMode, documentDiscountValue, grossTotal);
-    const allocations = target === null ? null : largestRemainder(gross, target);
-    const details = lines.map((line, index) => estimateLine(line, allocations?.[index] ?? 0n));
+    const documentAllocations = target === null ? null : largestRemainder(gross, target);
+    const documentDiscountTotal = documentAllocations?.reduce((sum, value) => sum + value, 0n) ?? 0n;
+    const mixedScope = lineDiscountTotal > 0n && documentDiscountTotal > 0n;
+    const effectiveDiscounts = documentDiscountTotal > 0n
+      ? (documentAllocations ?? gross.map(() => 0n))
+      : lineDiscountValues;
+    const details = lines.map((line, index) => estimateLine(line, effectiveDiscounts[index] ?? 0n));
     return {
-      valid: target !== null && allocations !== null,
+      valid: target !== null && documentAllocations !== null && lineDiscountValid && !mixedScope,
       gross: grossTotal,
-      discount: allocations?.reduce((sum, value) => sum + value, 0n) ?? 0n,
+      discount: effectiveDiscounts.reduce((sum, value) => sum + value, 0n),
       tax: details.reduce((sum, value) => sum + value.tax, 0n),
       total: details.reduce((sum, value) => sum + value.total, 0n),
-      allocations,
+      lineDiscountTotal,
+      documentDiscountTotal,
+      mixedScope,
+      details,
     };
   }, [documentDiscountMode, documentDiscountValue, lines]);
+
+  const hasLineDiscount = estimate.lineDiscountTotal > 0n;
 
   const markDirty = useCallback(() => {
     setDirty(true);
@@ -619,7 +662,8 @@ export default function SalesOrderCommercialForm(props: Props) {
       baseUnitPriceMinor: '0',
       systemUnitPriceMinor: '0',
       manualUnitPriceMinor: '',
-      manualReason: '',
+      discountMode: 'PERCENT',
+      discountValue: '0',
       pricingFingerprint: '',
       priceSteps: [],
       resolvingPrice: true,
@@ -661,9 +705,6 @@ export default function SalesOrderCommercialForm(props: Props) {
         priceError: details.message,
         pricingErrorCode: details.code,
       } : line));
-      if (details.code === 'BASE_PRICE_NOT_FOUND' && canPriceOverride) {
-        setManualEditorLineId(option.id);
-      }
     }
   }
 
@@ -700,37 +741,11 @@ export default function SalesOrderCommercialForm(props: Props) {
     } : item));
   }
 
-  function enableManualPrice(index: number) {
-    if (!canPriceOverride) return;
-    const target = linesRef.current[index];
-    if (!target) return;
-    setLines((current) => current.map((line, itemIndex) => itemIndex === index ? {
-      ...line,
-      manualUnitPriceMinor: line.manualUnitPriceMinor || (line.pricingFingerprint ? line.systemUnitPriceMinor : ''),
-    } : line));
-    setManualEditorLineId(target.variantId);
-    markDirty();
-  }
-
-  function finishManualPrice(index: number) {
-    const line = linesRef.current[index];
-    if (!line || !/^\d+$/.test(line.manualUnitPriceMinor.trim())) {
-      return onError('Hãy nhập giá bán hợp lệ cho dòng hàng');
-    }
-    if (!line.manualReason.trim()) {
-      return onError('Hãy nhập lý do điều chỉnh giá');
-    }
-    setManualEditorLineId(null);
-    onError('');
-  }
-
   function useSystemPrice(index: number) {
     setLines((current) => current.map((line, itemIndex) => itemIndex === index ? {
       ...line,
       manualUnitPriceMinor: '',
-      manualReason: '',
     } : line));
-    setManualEditorLineId(null);
     markDirty();
   }
 
@@ -830,10 +845,13 @@ export default function SalesOrderCommercialForm(props: Props) {
       return line.pricingErrorCode !== 'BASE_PRICE_NOT_FOUND' || !hasValidManualPrice(line);
     })) return 'Có dòng hàng chưa có giá bán hợp lệ';
     if (lines.some((line) => line.manualUnitPriceMinor && (!canPriceOverride || !hasValidManualPrice(line)))) {
-      return 'Giá điều chỉnh thủ công cần đúng quyền, giá bán cuối hợp lệ và lý do riêng từng dòng';
+      return 'Đơn giá sửa trực tiếp cần đúng quyền và là số tiền VND hợp lệ';
     }
+    if (lines.some((line) => lineDiscountMinor(line) === null)) return 'Chiết khấu từng dòng không hợp lệ hoặc vượt tiền hàng';
+    if (estimate.lineDiscountTotal > 0n && !canDiscountOverride) return 'Cần quyền sửa chiết khấu bán hàng để nhập CK từng dòng';
+    if (estimate.mixedScope) return 'Chỉ dùng CK từng dòng hoặc chiết khấu toàn đơn trong cùng một đơn';
     if (!taxReady) return 'Chưa tải được chính sách thuế mặc định từ Công Ty';
-    if (!estimate.valid) return 'Chiết khấu bổ sung không hợp lệ hoặc vượt tiền hàng';
+    if (!estimate.valid) return 'Chiết khấu không hợp lệ hoặc vượt tiền hàng';
     if (estimate.discount > 0n && (!canDiscountOverride || !documentDiscountReason.trim())) {
       return 'Chiết khấu bổ sung toàn đơn cần đúng quyền và lý do';
     }
@@ -867,13 +885,14 @@ export default function SalesOrderCommercialForm(props: Props) {
         quantity: compactQuantity(line.quantity),
         taxMode: line.taxMode,
         taxRate: line.taxRate,
+        discountMode: line.discountMode,
+        discountValue: line.discountValue || '0',
         ...(line.pricingFingerprint ? {
           expectedSystemUnitPriceMinor: line.systemUnitPriceMinor,
           expectedPricingFingerprint: line.pricingFingerprint,
         } : {}),
         ...(line.manualUnitPriceMinor ? {
           manualUnitPriceMinor: line.manualUnitPriceMinor,
-          manualReason: line.manualReason.trim(),
         } : {}),
       })),
     };
@@ -1053,7 +1072,7 @@ export default function SalesOrderCommercialForm(props: Props) {
           </section>
 
           <section className={styles.orderLines} aria-label="Hàng hóa trong đơn">
-            <header className={styles.lineTableHeader}><span>STT</span><span>Hàng hóa</span><span>ĐVT</span><span>Số lượng</span><span>Giá nền</span><span>Giá hệ thống</span><span>Giá cuối</span><span>Thành tiền</span><span /></header>
+            <header className={styles.lineTableHeader}><span>STT</span><span>Hàng hóa</span><span>ĐVT</span><span>SL</span><span>Đơn giá</span><span>CK</span><span>Thành tiền</span><span /></header>
             {lines.map((line, index) => (
               <article className={styles.orderLineCard} key={line.clientLineId} data-testid={`sales-order-line-${index + 1}`}>
                 <BusinessSequenceNumber rowIndex={index} className={styles.lineSequence} />
@@ -1064,11 +1083,11 @@ export default function SalesOrderCommercialForm(props: Props) {
                     <button
                       type="button"
                       className={styles.linkButton}
-                      aria-expanded={expandedLineId === line.variantId}
+                      aria-expanded={expandedLineId === line.clientLineId}
                       aria-controls={`sales-order-line-details-${index + 1}`}
-                      onClick={() => setExpandedLineId((current) => current === line.variantId ? null : line.variantId)}
+                      onClick={() => setExpandedLineId((current) => current === line.clientLineId ? null : line.clientLineId)}
                     >
-                      {expandedLineId === line.variantId ? 'Ẩn chi tiết' : 'Chi tiết'}
+                      {expandedLineId === line.clientLineId ? 'Ẩn chi tiết' : 'Chi tiết'}
                     </button>
                   </div>
                   {line.priceError && (
@@ -1116,41 +1135,83 @@ export default function SalesOrderCommercialForm(props: Props) {
                     <button type="button" className={styles.quantityPlus} aria-label={`Tăng số lượng ${line.sku}`} onClick={() => changeQuantity(index, 1)}>+</button>
                   </div>
                 </div>
-                <div className={styles.priceCell}><span>Giá nền</span><strong>{automaticPriceText(line, line.baseUnitPriceMinor)}</strong></div>
-                <div className={styles.priceCell}><span>Giá hệ thống</span><strong>{automaticPriceText(line, line.systemUnitPriceMinor)}</strong><small>{pricingSummary(line)}</small></div>
                 <div className={styles.priceCell}>
-                  <span>Giá bán cuối</span>
-                  <div className={styles.inlineActions}>
-                    <strong>{line.manualUnitPriceMinor ? vnd(line.manualUnitPriceMinor) : (line.pricingFingerprint ? automaticPriceText(line, line.systemUnitPriceMinor) : '—')}</strong>
-                    {!line.manualUnitPriceMinor && canPriceOverride && (
-                      <button type="button" className={styles.linkButton} aria-label={`Dùng giá điều chỉnh thủ công cho ${line.sku}`} onClick={() => enableManualPrice(index)}>Nhập giá bán</button>
-                    )}
-                    {line.manualUnitPriceMinor && canPriceOverride && (
-                      <button type="button" className={styles.linkButton} aria-label={`Sửa giá điều chỉnh thủ công cho ${line.sku}`} onClick={() => setManualEditorLineId(line.variantId)}>Sửa giá</button>
-                    )}
-                    {line.manualUnitPriceMinor && line.pricingFingerprint && (
-                      <button type="button" className={styles.linkButton} aria-label={`Dùng lại giá hệ thống cho ${line.sku}`} onClick={() => useSystemPrice(index)}>Giá hệ thống</button>
-                    )}
-                  </div>
-                  {line.manualUnitPriceMinor && <small className={styles.manualBadge}>Giá nhập tay</small>}
-                </div>
-                <div className={styles.priceCell}><span>Tiền hàng dự kiến</span><strong>{vnd(grossMinor(line))}</strong></div>
-                <button type="button" className={styles.removeLineButton} onClick={() => { setLines((current) => current.filter((_, itemIndex) => itemIndex !== index)); if (manualEditorLineId === line.variantId) setManualEditorLineId(null); markDirty(); }}>Xóa</button>
-
-                {manualEditorLineId === line.variantId && (
-                  <div className={styles.manualPriceEditor}>
-                    <label><span>Giá bán cuối *</span><input inputMode="numeric" value={line.manualUnitPriceMinor} onChange={(event) => { const value = event.target.value.replace(/\D/g, ''); setLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, manualUnitPriceMinor: value } : item)); markDirty(); }} /></label>
-                    <label><span>Lý do điều chỉnh giá *</span><input value={line.manualReason} maxLength={500} onChange={(event) => { const value = event.target.value; setLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, manualReason: value } : item)); markDirty(); }} placeholder="Ví dụ: Giá chợ theo ngày" /></label>
-                    <p>{line.pricingFingerprint ? <>Giá hệ thống để đối chiếu: <strong>{vnd(line.systemUnitPriceMinor)}</strong></> : <strong>Chưa có giá Công Ty</strong>}</p>
-                    <button type="button" className={styles.primaryButton} onClick={() => finishManualPrice(index)}>Xong</button>
-                  </div>
-                )}
+        <span>Đơn giá</span>
+        {canPriceOverride ? (
+          <input
+            className={styles.directPriceInput}
+            aria-label={`Đơn giá ${line.sku}`}
+            inputMode="numeric"
+            value={line.manualUnitPriceMinor || (line.pricingFingerprint ? line.systemUnitPriceMinor : '')}
+            placeholder={line.pricingErrorCode === 'BASE_PRICE_NOT_FOUND' ? 'Nhập giá' : undefined}
+            onFocus={(event) => event.currentTarget.select()}
+            onClick={(event) => event.currentTarget.select()}
+            onChange={(event) => {
+              const value = event.target.value.replace(/\D/g, '');
+              setLines((current) => current.map((item, itemIndex) => itemIndex === index ? {
+                ...item,
+                manualUnitPriceMinor: value,
+              } : item));
+              markDirty();
+            }}
+          />
+        ) : (
+          <strong>{line.pricingFingerprint ? automaticPriceText(line, line.systemUnitPriceMinor) : '—'}</strong>
+        )}
+        {line.manualUnitPriceMinor && <small className={styles.manualBadge}>Giá đã sửa</small>}
+        {line.manualUnitPriceMinor && line.pricingFingerprint && canPriceOverride && (
+          <button type="button" className={styles.linkButton} aria-label={`Dùng lại giá hệ thống cho ${line.sku}`} onClick={() => useSystemPrice(index)}>Giá hệ thống</button>
+        )}
+      </div>
+      <div className={styles.discountCell}>
+        <span>CK</span>
+        {canDiscountOverride ? (
+          <div className={styles.discountControls}>
+            <select
+              aria-label={`Cách CK ${line.sku}`}
+              value={line.discountMode}
+              disabled={estimate.documentDiscountTotal > 0n}
+              onChange={(event) => {
+                const mode = event.target.value as SalesOrderLineDiscountMode;
+                setLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, discountMode: mode } : item));
+                markDirty();
+              }}
+            >
+              <option value="PERCENT">%</option>
+              <option value="PER_UNIT">đ/ĐVT</option>
+              <option value="TOTAL_AMOUNT">Tổng đ</option>
+            </select>
+            <input
+              aria-label={`Chiết khấu ${line.sku}`}
+              inputMode="decimal"
+              value={line.discountValue}
+              disabled={estimate.documentDiscountTotal > 0n}
+              onFocus={(event) => event.currentTarget.select()}
+              onClick={(event) => event.currentTarget.select()}
+              onChange={(event) => {
+                const raw = event.target.value;
+                const value = line.discountMode === 'PERCENT'
+                  ? raw.replace(/[^0-9.]/g, '')
+                  : raw.replace(/\D/g, '');
+                setLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, discountValue: value } : item));
+                markDirty();
+              }}
+            />
+          </div>
+        ) : (
+          <strong>{discountValueText(line)}</strong>
+        )}
+      </div>
+      <div className={styles.priceCell}><span>Thành tiền</span><strong>{vnd(estimate.details[index]?.total ?? 0n)}</strong></div>
+      <button type="button" className={styles.removeLineButton} onClick={() => { setLines((current) => current.filter((_, itemIndex) => itemIndex !== index)); markDirty(); }}>Xóa</button>
                 <div
                   id={`sales-order-line-details-${index + 1}`}
                   className={styles.lineDetails}
-                  hidden={expandedLineId !== line.variantId}
+                  hidden={expandedLineId !== line.clientLineId}
                 >
                   <div className={styles.priceTrace}>
+                    <div><span>Giá nền</span><b>{automaticPriceText(line, line.baseUnitPriceMinor)}</b></div>
+                    <div><span>Giá hệ thống</span><b>{automaticPriceText(line, line.systemUnitPriceMinor)}</b></div>
                     {line.priceSteps.length === 0 && <span>{line.pricingErrorCode === 'BASE_PRICE_NOT_FOUND' ? 'Dòng này đang chờ giá nhập tay.' : 'Công Ty sẽ tính lại giá khi lưu.'}</span>}
                     {line.priceSteps.filter((step) => step.kind !== 'RESOLUTION').map((step, stepIndex) => <div key={`${step.kind}-${stepIndex}`}><span>{pricingLabel(step)}</span><b>{step.afterUnitPriceMinor ? vnd(step.afterUnitPriceMinor) : '—'}</b></div>)}
                     <div><span>Ngữ cảnh</span><b>{customerMode === 'WALK_IN' ? 'Khách vãng lai' : 'Khách/nhóm khách'} · {entrySettings?.salesChannels.find((channel) => channel.id === salesChannelId)?.code ?? 'Chưa chọn kênh'}</b></div>
@@ -1169,7 +1230,7 @@ export default function SalesOrderCommercialForm(props: Props) {
             <div><span>Khuyến mãi / bảng giá</span><strong>Đã phản ánh trong giá hệ thống</strong></div>
             {canDiscountOverride ? (
               <>
-                <label><span>Chiết khấu bổ sung toàn đơn</span><select data-testid="document-discount-mode" value={documentDiscountMode} onChange={(event) => { const mode = event.target.value as SalesOrderDocumentDiscountMode; setDocumentDiscountMode(mode); if (mode === 'NONE') { setDocumentDiscountValue('0'); setDocumentDiscountReason(''); } markDirty(); }}><option value="NONE">Không áp dụng</option><option value="PERCENT">Phần trăm</option><option value="TOTAL_AMOUNT">Tổng tiền VND</option></select></label>
+                <label><span>Chiết khấu bổ sung toàn đơn</span><select data-testid="document-discount-mode" value={documentDiscountMode} disabled={hasLineDiscount} onChange={(event) => { const mode = event.target.value as SalesOrderDocumentDiscountMode; setDocumentDiscountMode(mode); if (mode === 'NONE') { setDocumentDiscountValue('0'); setDocumentDiscountReason(''); } markDirty(); }}><option value="NONE">Không áp dụng</option><option value="PERCENT">Phần trăm</option><option value="TOTAL_AMOUNT">Tổng tiền VND</option></select></label>
                 {documentDiscountMode !== 'NONE' && <label><span>{documentDiscountMode === 'PERCENT' ? 'Tỷ lệ %' : 'Số tiền VND'}</span><input inputMode="decimal" value={documentDiscountValue} onChange={(event) => { setDocumentDiscountValue(event.target.value); markDirty(); }} /></label>}
                 {documentDiscountMode !== 'NONE' && <label className={styles.documentDiscountReason}><span>Lý do *</span><input value={documentDiscountReason} maxLength={1000} onChange={(event) => { setDocumentDiscountReason(event.target.value); markDirty(); }} /></label>}
               </>
@@ -1179,7 +1240,7 @@ export default function SalesOrderCommercialForm(props: Props) {
           </section>
           <section className={styles.taxSummary} aria-label="Tổng kết thuế và thanh toán">
             <div><span>Tiền hàng theo giá cuối</span><strong>{vnd(estimate.gross)}</strong></div>
-            <div><span>Chiết khấu bổ sung toàn đơn</span><strong>- {vnd(estimate.discount)}</strong></div>
+            <div><span>Chiết khấu</span><strong>- {vnd(estimate.discount)}</strong></div>
             <div><span>Thuế sau phân bổ</span><strong>{vnd(estimate.tax)}</strong></div>
             <div className={styles.grandTotal}><span>Tổng thanh toán dự kiến</span><strong>{vnd(estimate.total)}</strong></div>
           </section>

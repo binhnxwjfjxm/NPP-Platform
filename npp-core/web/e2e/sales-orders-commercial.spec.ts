@@ -134,8 +134,8 @@ function orderEnvelope(payload: Record<string, unknown>, status: 'draft' | 'conf
           unitPrice: String(line.manualUnitPriceMinor ?? line.expectedSystemUnitPriceMinor ?? '9000'),
           manualOverrideReason: String(line.manualReason ?? '') || null,
           pricingTrace: [],
-          discountMode: 'TOTAL_AMOUNT',
-          discountValue: '0',
+          discountMode: String(line.discountMode ?? 'TOTAL_AMOUNT'),
+          discountValue: String(line.discountValue ?? '0'),
           discountAmount: '0',
           taxMode: String(line.taxMode ?? 'EXCLUSIVE'),
           taxRate: String(line.taxRate ?? '8'),
@@ -274,16 +274,17 @@ test.describe('Sales Order commercial controls', () => {
     }
 
     const firstLine = dialog.getByTestId('sales-order-line-1');
-    await firstLine.getByRole('button', { name: /^Dùng giá điều chỉnh thủ công/ }).click();
-    await firstLine.getByLabel('Giá bán cuối *').fill('8500');
-    await firstLine.getByLabel('Lý do điều chỉnh giá *').fill('Giá đã được quản lý duyệt cho E2E');
-    await expect(firstLine.getByText('Giá nhập tay', { exact: true })).toBeVisible();
+    const directPrice = firstLine.getByLabel('Đơn giá SKU-1');
+    await directPrice.fill('8500');
+    await expect(firstLine.getByText('Giá đã sửa', { exact: true })).toBeVisible();
     await firstLine.getByRole('button', { name: /^Dùng lại giá hệ thống/ }).click();
-    await expect(firstLine.getByRole('button', { name: /^Dùng giá điều chỉnh thủ công/ })).toBeVisible();
+    await expect(directPrice).toHaveValue('9001');
+    await directPrice.fill('0');
+    await expect(directPrice).toHaveValue('0');
 
-    await dialog.getByTestId('document-discount-mode').selectOption('PERCENT');
-    await dialog.getByLabel('Tỷ lệ %').fill('5');
-    await dialog.getByLabel('Lý do *').fill('Chiết khấu toàn đơn đã duyệt');
+    await firstLine.getByLabel('Cách CK SKU-1').selectOption('PERCENT');
+    await firstLine.getByLabel('Chiết khấu SKU-1').fill('5');
+    await expect(dialog.getByTestId('document-discount-mode')).toBeDisabled();
 
     const body = dialog.getByTestId('sales-order-scroll-body');
     const header = dialog.locator('header').first();

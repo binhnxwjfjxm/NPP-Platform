@@ -57,8 +57,8 @@ test('canonical form activates product-first commercial entry with walk-in and q
   assert.match(formSource, /Kênh bán \/ nguồn giá \*/);
   assert.match(formSource, /Giá nền/);
   assert.match(formSource, /Giá hệ thống/);
-  assert.match(formSource, /Giá bán cuối/);
-  assert.match(formSource, /aria-expanded=\{expandedLineId === line\.variantId\}/);
+  assert.match(formSource, /Đơn giá/);
+  assert.match(formSource, /aria-expanded=\{expandedLineId === line\.clientLineId\}/);
   assert.match(formSource, /Giá điều chỉnh thủ công/);
   assert.match(formSource, /Dùng lại giá hệ thống/);
   assert.match(formSource, /Chiết khấu bổ sung toàn đơn/);

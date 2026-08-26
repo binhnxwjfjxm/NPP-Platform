@@ -125,7 +125,7 @@ test('Sales Order idempotency stores and replays the committed audit/outbox resp
       actorId: 'test:sales-idempotency',
       employeeId: null,
       roles: Object.freeze(['test']),
-      permissions: Object.freeze([]),
+      permissions: Object.freeze(['core.sales-order.discount.override']),
       scopes: Object.freeze({
         branchIds: Object.freeze([]),
         warehouseIds: Object.freeze([fixture.warehouseId]),

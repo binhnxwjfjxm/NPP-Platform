@@ -120,7 +120,7 @@ test('Sales Order create, audit and outbox commit atomically', async () => {
       actorId: 'test:sales-transaction',
       employeeId: null,
       roles: Object.freeze(['test']),
-      permissions: Object.freeze([]),
+      permissions: Object.freeze(['core.sales-order.discount.override']),
       scopes: Object.freeze({
         branchIds: Object.freeze([]),
         warehouseIds: Object.freeze([fixture.warehouseId]),

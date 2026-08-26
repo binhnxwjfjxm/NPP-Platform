@@ -68,8 +68,8 @@ test('manual order UI is wired for channel and commercial permissions', () => {
 
 test('Sales Order line keeps optional controls compact until explicitly expanded', () => {
   assert.match(form, /const \[expandedLineId, setExpandedLineId\] = useState<string \| null>\(null\);/);
-  assert.match(form, /aria-expanded=\{expandedLineId === line\.variantId\}/);
-  assert.match(form, /hidden=\{expandedLineId !== line\.variantId\}/);
+  assert.match(form, /aria-expanded=\{expandedLineId === line\.clientLineId\}/);
+  assert.match(form, /hidden=\{expandedLineId !== line\.clientLineId\}/);
   assert.doesNotMatch(form, /className=\{styles\.lineCommercialActions\}/);
   assert.doesNotMatch(form, /<details className=\{styles\.lineDetails\}>/);
 });

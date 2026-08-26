@@ -22,11 +22,12 @@ test('Issue #736 scopes missing-base-price preview state to the explicit sales-o
   assert.match(route, /\]\.includes\(result\.code\)\) return 409/);
 });
 
-test('Issue #736 keeps save-time manual price permission, reason and system-price concurrency guards', async () => {
+test('Issue #736 keeps save-time manual price permission and system-price concurrency guards', async () => {
   const salesOrder = await readFile(salesOrderPath, 'utf8');
 
   assert.match(salesOrder, /core\.sales-order\.price\.override/);
-  assert.match(salesOrder, /PRICE_OVERRIDE_REASON_REQUIRED/);
+  assert.doesNotMatch(salesOrder, /PRICE_OVERRIDE_REASON_REQUIRED/);
+  assert.match(salesOrder, /PRICE_OVERRIDE_REASON_INVALID/);
   assert.match(salesOrder, /resolutionResult\.code !== 'BASE_PRICE_NOT_FOUND' \|\| manual\.value === null/);
   assert.match(salesOrder, /expectedSystemUnitPriceMinor/);
   assert.match(salesOrder, /expectedPricingFingerprint/);

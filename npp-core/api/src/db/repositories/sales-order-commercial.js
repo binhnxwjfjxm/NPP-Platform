@@ -151,7 +151,7 @@ export async function applyCommercialSnapshot(client, {
   if (!addressSnapshotApplied) return false;
 
   for (const line of lines) {
-    const source = line.manualReason ? 'MANUAL_OVERRIDE' : 'PRICE_ENGINE';
+    const source = line.manualOverride ? 'MANUAL_OVERRIDE' : 'PRICE_ENGINE';
     const trace = [
       {
         kind: 'RESOLUTION',
@@ -159,10 +159,10 @@ export async function applyCommercialSnapshot(client, {
         channelId: channel.id,
       },
       ...line.systemTrace,
-      ...(line.manualReason
+      ...(line.manualOverride
         ? [{
             kind: 'MANUAL_OVERRIDE',
-            reason: line.manualReason,
+            reason: line.manualReason ?? null,
             beforeUnitPriceMinor: line.systemUnitPriceMinor,
             afterUnitPriceMinor: line.finalUnitPriceMinor,
           }]
