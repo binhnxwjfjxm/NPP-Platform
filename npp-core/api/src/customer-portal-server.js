@@ -17,6 +17,7 @@ import { handleCustomerPortalRoutes } from './routes/customer-portal.js';
 import { loadInternalWorkforceAuthConfig } from './internal-workforce-config.js';
 import { createInternalWorkforceAuthenticator } from './internal-workforce-auth.js';
 import { handleInternalWorkforceAuthRoutes } from './routes/internal-workforce-auth.js';
+import { handleAdminAiAssistantRoutes } from './routes/admin-ai-assistant.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const RETRYABLE_ERROR_CODES = new Set(['40001', '40P01', '57P01', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE']);
@@ -213,6 +214,22 @@ export function createCustomerPortalAwareServer(options = {}) {
       }
     }
     req.internalWorkforceAuthResult = internalAuthResult;
+
+    if (url.pathname === '/api/ai/admin-assistant') {
+      await handleAdminAiAssistantRoutes(req, res, {
+        config: runtimeConfig,
+        idempotencyStore,
+        executeRequestWithIdempotency,
+        authenticate,
+        createContext,
+        getPool: () => pool,
+        requestId,
+        receivedAt,
+        env,
+        fetchImpl: options.fetchImpl,
+      });
+      return;
+    }
 
     if (url.pathname === '/api/internal-auth' || url.pathname.startsWith('/api/internal-auth/')) {
       await handleInternalWorkforceAuthRoutes(req, res, {

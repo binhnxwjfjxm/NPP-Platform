@@ -14,11 +14,19 @@ test('Lô 4 MCP supervision stays server-side and does not infer misconduct', as
   assert.doesNotMatch(`${detail}\n${supervision}`, /gian lận|vi phạm|giả mạo/i);
 });
 
-test('Lô 4 alert lifecycle uses shared canonical idempotency generator', async () => {
-  const [pkg, detail, action, declaration] = await Promise.all([read('package.json'), read('app/alerts/[alertId]/page.tsx'), read('app/alerts/actions.ts'), read('contracts.d.ts')]);
+test('Lô 4 alert lifecycle uses shared canonical idempotency generator and types', async () => {
+  const [pkg, sharedPkg, detail, action, declaration] = await Promise.all([
+    read('package.json'),
+    read('../../packages/contracts/package.json'),
+    read('app/alerts/[alertId]/page.tsx'),
+    read('app/alerts/actions.ts'),
+    read('../../packages/contracts/index.d.ts'),
+  ]);
   assert.match(pkg, /@npp\/contracts/);
+  assert.match(sharedPkg, /"types"\s*:\s*"\.\/index\.d\.ts"/);
   assert.match(detail, /createIdempotencyKey\('admin-alert-status'\)/);
   assert.match(action, /idempotencyKey/);
   assert.match(declaration, /createIdempotencyKey/);
+  assert.match(declaration, /isValidIdempotencyKey/);
   assert.doesNotMatch(action, /randomUUID|Date\.now|Math\.random/);
 });
