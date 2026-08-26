@@ -147,39 +147,49 @@ test('Issue #791 Lô D stores duplicate SKU as distinct Sales Order lines after 
       receivedAt: new Date().toISOString(),
     });
 
-    const result = await service.createSalesOrder(pool, {
-      requestContext,
-      payload: {
-        sourceType: 'MANUAL',
-        customerId: fixture.customerId,
-        customerAddressId: fixture.addressId,
-        warehouseId: fixture.warehouseId,
-        salesChannelId: fixture.channelId,
-        deliveryMode: 'DELIVERY',
-        collectionPolicy: 'COLLECT_ON_DELIVERY',
-        currency: 'VND',
-        lines: [
-          {
-            variantId: fixture.variantId,
-            quantity: '1',
-            discountMode: 'PERCENT',
-            discountValue: '0',
-            taxMode: 'EXCLUSIVE',
-            taxRate: '0',
-          },
-          {
-            variantId: fixture.variantId,
-            quantity: '1',
-            manualUnitPriceMinor: '0',
-            discountMode: 'PERCENT',
-            discountValue: '0',
-            taxMode: 'EXCLUSIVE',
-            taxRate: '0',
-          },
-        ],
-      },
-    });
-    assert.equal(result.ok, true, JSON.stringify(result));
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const result = await service.createSalesOrder(client, {
+        requestContext,
+        payload: {
+          sourceType: 'MANUAL',
+          customerId: fixture.customerId,
+          customerAddressId: fixture.addressId,
+          warehouseId: fixture.warehouseId,
+          salesChannelId: fixture.channelId,
+          deliveryMode: 'DELIVERY',
+          collectionPolicy: 'COLLECT_ON_DELIVERY',
+          currency: 'VND',
+          lines: [
+            {
+              variantId: fixture.variantId,
+              quantity: '1',
+              discountMode: 'PERCENT',
+              discountValue: '0',
+              taxMode: 'EXCLUSIVE',
+              taxRate: '0',
+            },
+            {
+              variantId: fixture.variantId,
+              quantity: '1',
+              manualUnitPriceMinor: '0',
+              discountMode: 'PERCENT',
+              discountValue: '0',
+              taxMode: 'EXCLUSIVE',
+              taxRate: '0',
+            },
+          ],
+        },
+      });
+      assert.equal(result.ok, true, JSON.stringify(result));
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
 
     const rows = await pool.query(
       `SELECT id, variant_id, line_number, unit_price
