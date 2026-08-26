@@ -10,6 +10,7 @@ import type {
 import { readAdminSessionToken } from './internal-auth-client';
 
 const REQUEST_TIMEOUT_MS = 8_000;
+const REQUEST_TIMEOUT_MAX_MS = 100_000;
 const ONBOARDING_PAGE_SIZE = 100;
 const CUSTOMER_PAGE_SIZE = 200;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -33,6 +34,13 @@ export class CoreApiError extends Error {
 type Envelope<T> = {
   data?: T;
   error?: { code?: string; message?: string; retryable?: boolean; details?: unknown };
+};
+
+type CoreRequestOptions = {
+  method?: 'GET' | 'POST';
+  body?: unknown;
+  idempotencyKey?: string;
+  timeoutMs?: number;
 };
 
 function requiredServerValue(name: 'CORE_API_INTERNAL_URL'): string {
@@ -77,12 +85,18 @@ function employeeSessionToken(): string {
   return token;
 }
 
+function requestTimeoutMs(value: number | undefined): number {
+  if (value === undefined) return REQUEST_TIMEOUT_MS;
+  if (!Number.isFinite(value)) return REQUEST_TIMEOUT_MS;
+  return Math.max(1_000, Math.min(REQUEST_TIMEOUT_MAX_MS, Math.trunc(value)));
+}
+
 export async function requestCore<T>(
   path: string,
-  options: { method?: 'GET' | 'POST'; body?: unknown; idempotencyKey?: string } = {},
+  options: CoreRequestOptions = {},
 ): Promise<T> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), requestTimeoutMs(options.timeoutMs));
   try {
     const response = await fetch(`${baseUrl()}${safePath(path)}`, {
       method: options.method ?? 'GET',

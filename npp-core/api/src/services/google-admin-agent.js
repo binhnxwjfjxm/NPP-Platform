@@ -215,6 +215,36 @@ function safeProviderError(payload) {
   });
 }
 
+async function ensureProviderSession({ config, fetchImpl, token, userId, sessionId }) {
+  const endpoint = `https://${config.resource.location}-aiplatform.googleapis.com/v1/${config.resource.resourceName}:query`;
+  const response = await fetchImpl(endpoint, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${token}`,
+      'content-type': 'application/json; charset=utf-8',
+      'x-goog-user-project': config.consumerProjectId,
+    },
+    body: JSON.stringify({
+      class_method: 'async_create_session',
+      input: {
+        user_id: userId,
+        session_id: sessionId,
+      },
+    }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (response.ok) return;
+  const payload = await response.json().catch(() => null);
+  const provider = safeProviderError(payload);
+  if (response.status === 409 || provider.status === 'ALREADY_EXISTS') return;
+  console.error(JSON.stringify({
+    event: 'admin_ai_agent_session_error',
+    httpStatus: response.status,
+    provider,
+  }));
+  throw runtimeError('ADMIN_AI_AGENT_SESSION_UNAVAILABLE', 'Phiên Trợ lý Công Ty tạm thời chưa sẵn sàng', 503, true);
+}
+
 export async function queryGoogleAdminAgent({
   env = process.env,
   fetchImpl = fetch,
@@ -225,6 +255,14 @@ export async function queryGoogleAdminAgent({
 }) {
   const config = readAdminAgentRuntimeConfig(env);
   const token = await accessToken(config, fetchImpl, now().getTime());
+  const userId = providerUserId(actorId);
+  await ensureProviderSession({
+    config,
+    fetchImpl,
+    token,
+    userId,
+    sessionId: conversationId,
+  });
   const endpoint = `https://${config.resource.location}-aiplatform.googleapis.com/v1/${config.resource.resourceName}:streamQuery?alt=sse`;
   const response = await fetchImpl(endpoint, {
     method: 'POST',
@@ -237,7 +275,7 @@ export async function queryGoogleAdminAgent({
     body: JSON.stringify({
       class_method: 'async_stream_query',
       input: {
-        user_id: providerUserId(actorId),
+        user_id: userId,
         session_id: conversationId,
         message,
       },

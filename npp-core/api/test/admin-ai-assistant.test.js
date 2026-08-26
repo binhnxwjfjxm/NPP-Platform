@@ -36,6 +36,14 @@ test('Admin Agent Runtime parser keeps the final office reply and aggregates act
   });
 });
 
+test('Admin Agent creates the managed provider session before streaming with that exact session id', () => {
+  const runtime = readFileSync(new URL('../src/services/google-admin-agent.js', import.meta.url), 'utf8');
+  assert.match(runtime, /class_method: 'async_create_session'/);
+  assert.match(runtime, /session_id: sessionId/);
+  assert.match(runtime, /ADMIN_AI_AGENT_SESSION_UNAVAILABLE/);
+  assert.match(runtime, /:streamQuery\?alt=sse/);
+});
+
 test('Admin Agent source is read-only, backend-owned and writes source=admin through the canonical USD calculator', () => {
   const route = readFileSync(new URL('../src/routes/admin-ai-assistant.js', import.meta.url), 'utf8');
   const meter = readFileSync(new URL('../src/services/admin-ai-usage.js', import.meta.url), 'utf8');
@@ -53,6 +61,7 @@ test('Admin Agent source is read-only, backend-owned and writes source=admin thr
   assert.match(meter, /feature: 'company-assistant'/);
   assert.match(runtime, /reasoningEngines/);
   assert.match(runtime, /async_stream_query/);
+  assert.match(runtime, /async_create_session/);
   assert.doesNotMatch(runtime, /\/agents\/|Managed Agents API/);
   assert.match(server, /handleAdminAiAssistantRoutes/);
   assert.match(migration, /google\.gemini-2\.5-pro\.standard\.2026-08-24/);

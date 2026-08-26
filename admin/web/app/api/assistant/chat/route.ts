@@ -10,6 +10,8 @@ type AssistantResponse = {
   readOnly: true;
 };
 
+const ASSISTANT_REQUEST_TIMEOUT_MS = 95_000;
+
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
@@ -30,6 +32,7 @@ export async function POST(request: NextRequest) {
       method: 'POST',
       body,
       idempotencyKey,
+      timeoutMs: ASSISTANT_REQUEST_TIMEOUT_MS,
     });
     return NextResponse.json(data, { status: 200, headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
