@@ -852,7 +852,7 @@ export default function SalesOrderCommercialForm(props: Props) {
     if (estimate.mixedScope) return 'Chỉ dùng CK từng dòng hoặc chiết khấu toàn đơn trong cùng một đơn';
     if (!taxReady) return 'Chưa tải được chính sách thuế mặc định từ Công Ty';
     if (!estimate.valid) return 'Chiết khấu không hợp lệ hoặc vượt tiền hàng';
-    if (estimate.discount > 0n && (!canDiscountOverride || !documentDiscountReason.trim())) {
+    if (estimate.documentDiscountTotal > 0n && (!canDiscountOverride || !documentDiscountReason.trim())) {
       return 'Chiết khấu bổ sung toàn đơn cần đúng quyền và lý do';
     }
     return null;
