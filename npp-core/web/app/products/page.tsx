@@ -3,11 +3,11 @@ import type { Product, ProductBrand, ProductCategory, UnitOfMeasure } from '../.
 import {
   listProductCategories,
   listProductBrands,
-  listProducts,
   listUnits,
   normalizeProductGatewayError,
   resolveProductRequestId,
 } from '../../lib/product-gateway';
+import { listAllProducts } from '../../lib/product-catalog-pagination';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,7 +21,7 @@ export default async function ProductsPage() {
 
   try {
     [initialProducts, initialCategories, initialBrands, initialUnits] = await Promise.all([
-      listProducts<Product>(requestId, new URLSearchParams({ limit: '1000' })),
+      listAllProducts<Product>(requestId),
       listProductCategories<ProductCategory>(requestId, new URLSearchParams({ limit: '1000' })),
       listProductBrands<ProductBrand>(requestId, new URLSearchParams({ limit: '1000' })),
       listUnits<UnitOfMeasure>(requestId, new URLSearchParams({ limit: '1000' })),

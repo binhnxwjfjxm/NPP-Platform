@@ -5,6 +5,7 @@ import {
   normalizeProductGatewayError,
   resolveProductRequestId,
 } from '../../../lib/product-gateway';
+import { listAllProducts } from '../../../lib/product-catalog-pagination';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,7 +32,10 @@ function errorResponse(error: unknown, requestId: string) {
 export async function GET(request: NextRequest) {
   const requestId = resolveProductRequestId(request.headers.get('x-request-id'));
   try {
-    const data = await listProducts<unknown[]>(requestId, request.nextUrl.searchParams);
+    const params = request.nextUrl.searchParams;
+    const data = params.get('limit') === '1000' && !params.has('offset')
+      ? await listAllProducts<unknown>(requestId, params)
+      : await listProducts<unknown[]>(requestId, params);
     return NextResponse.json({ data, requestId }, { status: 200, headers: responseHeaders(requestId) });
   } catch (error) {
     return errorResponse(error, requestId);
