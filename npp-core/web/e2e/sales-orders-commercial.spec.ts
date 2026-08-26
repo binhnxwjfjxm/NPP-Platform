@@ -164,6 +164,7 @@ async function mockCommercialApis(page: Page) {
           defaultTaxRate: '8',
           salesChannels: [{ id: channelId, code: 'FIELD', name: 'Bán hàng thị trường' }],
           defaultSalesChannelId: channelId,
+          defaultWarehouseId: null,
           permissions: {
             canPriceOverride: true,
             canDiscountOverride: true,
@@ -198,6 +199,8 @@ async function mockCommercialApis(page: Page) {
           defaultTaxMode: 'EXCLUSIVE',
           defaultTaxRate: '8',
           eligibility: { selectable: true, code: 'ELIGIBLE', message: 'Có thể chọn để bán.' },
+          pricePreview: { status: 'RESOLVED', unitPriceMinor: String(9_000 + digits), message: null },
+          inventoryPreview: { status: 'TRACKED', onHandQuantity: '12', availableQuantity: '10', unitCode: 'THUNG' },
         }],
         requestId: `e2e-so-sku-${digits}`,
       },

@@ -123,7 +123,23 @@ export async function searchSalesOrderSkuOptions(client, {
   const normalizedWarehouseId = String(warehouseId ?? '').trim();
   const normalizedChannelId = String(salesChannelId ?? '').trim();
   const normalizedCustomerId = String(customerId ?? '').trim() || null;
-  const normalizedPricingAt = normalizePricingAt(pricingAt, requestContext.receivedAt);
+  const rawPricingAt = String(pricingAt ?? '').trim();
+  const previewContextRequested = Boolean(
+    normalizedWarehouseId
+    || normalizedChannelId
+    || normalizedCustomerId
+    || rawPricingAt,
+  );
+  if (!previewContextRequested) {
+    return legacy.searchSalesOrderSkuOptions(client, {
+      requestContext,
+      search,
+      limit,
+      offset,
+    });
+  }
+
+  const normalizedPricingAt = normalizePricingAt(rawPricingAt, requestContext.receivedAt);
   if (!UUID_PATTERN.test(normalizedWarehouseId)
     || !UUID_PATTERN.test(normalizedChannelId)
     || !normalizedPricingAt) {

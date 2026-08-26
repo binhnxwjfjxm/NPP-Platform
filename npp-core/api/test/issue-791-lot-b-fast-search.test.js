@@ -7,13 +7,17 @@ const root = new URL('../', import.meta.url);
 const read = (path) => readFile(new URL(path, root), 'utf8');
 
 test('Lô B chọn kho mặc định trong đúng warehouse scope và ưu tiên kho chính', () => {
-  const context = { scopes: { warehouseIds: ['w-1', 'w-2'], branchIds: ['b-1'] } };
+  const branchId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const warehouseOne = '11111111-1111-4111-8111-111111111111';
+  const warehouseTwo = '22222222-2222-4222-8222-222222222222';
+  const warehouseThree = '33333333-3333-4333-8333-333333333333';
+  const context = { scopes: { warehouseIds: [warehouseOne, warehouseTwo], branchIds: [branchId] } };
   const warehouses = [
-    { id: 'w-1', branch_id: 'b-1', warehouse_type: 'distribution', is_active: true },
-    { id: 'w-2', branch_id: 'b-1', warehouse_type: 'main', is_active: true },
-    { id: 'w-3', branch_id: 'b-1', warehouse_type: 'main', is_active: true },
+    { id: warehouseOne, branch_id: branchId, warehouse_type: 'distribution', is_active: true },
+    { id: warehouseTwo, branch_id: branchId, warehouse_type: 'main', is_active: true },
+    { id: warehouseThree, branch_id: branchId, warehouse_type: 'main', is_active: true },
   ];
-  assert.equal(salesOrderSearchPreviewInternals.pickDefaultWarehouseId(warehouses, context), 'w-2');
+  assert.equal(salesOrderSearchPreviewInternals.pickDefaultWarehouseId(warehouses, context), warehouseTwo);
 });
 
 test('Lô B search backend nhận đủ context và không đẩy phép tính Kho xuống browser', async () => {
@@ -35,6 +39,12 @@ test('Lô B search backend nhận đủ context và không đẩy phép tính Kh
   assert.match(repository, /on_hand_quantity/);
   assert.match(repository, /available_quantity/);
   assert.match(entry, /defaultWarehouseId/);
+});
+
+test('Lô B giữ tương thích cho caller tìm SKU cũ không gửi preview context', async () => {
+  const service = await read('src/services/sales-order-search-preview.js');
+  assert.match(service, /const previewContextRequested = Boolean/);
+  assert.match(service, /if \(!previewContextRequested\) \{[\s\S]*return legacy\.searchSalesOrderSkuOptions/);
 });
 
 test('Lô B phân biệt không quản lý tồn với hết hàng', () => {
