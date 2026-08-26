@@ -19,7 +19,7 @@ test('Issue #736 restores VND manual prices from decimal API strings without dro
   assert.match(wrapper, /unitPrice: normalizeVndMinor\(line\.unitPrice\)/);
   assert.match(wrapper, /fraction && \/\[1-9\]\//);
   assert.match(form, /manualUnitPriceMinor: line\.priceSource === 'MANUAL_OVERRIDE' \? line\.unitPrice : ''/);
-  assert.match(form, /manualReason: line\.manualOverrideReason \?\? ''/);
+  assert.match(form, /discountMode: documentDiscountActive \? 'TOTAL_AMOUNT' : line\.discountMode/);
   assert.match(form, /pricingFingerprint: resolutionFingerprint\(line\.pricingTrace \?\? \[\]\)/);
   assert.match(form, /const price = \/\^\\d\+\$\/\.test\(finalUnitPrice\(line\)\) \? BigInt\(finalUnitPrice\(line\)\) : 0n/);
 });

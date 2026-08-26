@@ -7,6 +7,7 @@ export type SalesOrderSourceType = 'MANUAL' | 'IMPORT' | 'API' | 'MCP';
 export type SalesOrderCustomerMode = 'EXISTING' | 'WALK_IN';
 export type SalesOrderTaxMode = 'EXCLUSIVE' | 'INCLUSIVE';
 export type SalesOrderDocumentDiscountMode = 'NONE' | 'PERCENT' | 'TOTAL_AMOUNT';
+export type SalesOrderLineDiscountMode = 'TOTAL_AMOUNT' | 'PER_UNIT' | 'PERCENT';
 export type SalesOrderFulfillmentStatus =
   | 'unallocated'
   | 'backordered'
@@ -64,7 +65,7 @@ export type SalesOrderLine = {
   unitPrice: string;
   manualOverrideReason: string | null;
   pricingTrace: SalesPriceStep[];
-  discountMode: 'TOTAL_AMOUNT' | 'PER_UNIT' | 'PERCENT';
+  discountMode: SalesOrderLineDiscountMode;
   discountValue: string;
   discountAmount: string;
   taxMode: SalesOrderTaxMode;
@@ -278,6 +279,8 @@ export type SalesOrderLineDraft = {
   taxRate?: string;
   manualUnitPriceMinor?: string;
   manualReason?: string;
+  discountMode?: SalesOrderLineDiscountMode;
+  discountValue?: string;
   expectedSystemUnitPriceMinor?: string;
   expectedPricingFingerprint?: string;
   note?: string;
