@@ -1,0 +1,52 @@
+name: Issue 791 Lot H Build
+
+on:
+  push:
+    branches:
+      - agent/issue-791-sku-weight-total-print-work
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/issue-791-sku-weight-total-print-work
+          fetch-depth: 0
+      - name: Apply implementation patch
+        run: python .github/scripts/issue791_lot_h_patch.py
+      - name: Syntax checks
+        run: |
+          node --check npp-core/api/src/services/product.js
+          node --check npp-core/api/src/db/repositories/product-variants.js
+          node --check npp-core/api/src/services/sales-order-legacy.js
+          node --check npp-core/api/src/db/repositories/sales-order.js
+          node --check npp-core/api/src/migrations/index.js
+          node --check npp-core/api/test/sales-order-weight.test.js
+          node --check npp-core/web/test/sales-order-weight-print.test.js
+      - name: Commit implementation if changed
+        run: |
+          if git diff --quiet; then
+            echo "No implementation changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add database/migrations/shared/117_sku_weight_sales_order_snapshot.sql \
+            npp-core/api/src/db/repositories/product-variants.js \
+            npp-core/api/src/services/product.js \
+            npp-core/api/src/db/repositories/sales-order.js \
+            npp-core/api/src/services/sales-order-legacy.js \
+            npp-core/api/src/migrations/index.js \
+            npp-core/api/test/sales-order-weight.test.js \
+            npp-core/web/lib/product-types.ts \
+            npp-core/web/app/products/product-workspace.tsx \
+            npp-core/web/lib/sales-order-types.ts \
+            npp-core/web/app/sales/sales-orders/SalesOrderPrintSheet.tsx \
+            npp-core/web/test/sales-order-weight-print.test.js
+          git diff --cached --check
+          git commit -m "feat(company): hoàn thiện khối lượng SKU #791"
+          git push origin HEAD:agent/issue-791-sku-weight-total-print-work
