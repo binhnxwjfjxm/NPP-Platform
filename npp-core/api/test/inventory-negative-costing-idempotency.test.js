@@ -12,7 +12,10 @@ const lifecycle = readFileSync(
 );
 
 test('negative costing projector uses the shared canonical idempotency contract', () => {
-  assert.match(projector, /IDEMPOTENCY_KEY_PATTERN\s+from\s+'@npp\/contracts'/);
+  assert.match(
+    projector,
+    /import\s*\{[^}]*\bIDEMPOTENCY_KEY_PATTERN\b[^}]*\}\s*from\s*['"]@npp\/contracts['"]/s,
+  );
   assert.doesNotMatch(projector, /\^\[A-Za-z0-9\._:-\]/);
   assert.match(lifecycle, /deriveIdempotencyKey/);
   assert.doesNotMatch(lifecycle, /period-snapshot:/);
