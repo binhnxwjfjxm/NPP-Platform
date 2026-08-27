@@ -107,8 +107,8 @@ export default function PrintTemplatesWorkspace() {
           </select></label>
           {selected ? <>
             <div className={styles.contentGrid}>
-              <section><h3>Thông tin được in</h3><p className={styles.helper}>Bỏ chọn mục không cần xuất hiện trên mẫu này.</p><div className={styles.fieldGrid}>
-                {selected.fields.map((field) => <label key={field.key} className={styles.fieldChoice}><input type="checkbox" checked={visibleFieldKeys.includes(field.key)} onChange={() => toggleField(field.key)} disabled={Boolean(busy)} /><span>{field.label}</span></label>)}
+              <section><h3>Thông tin được in</h3><p className={styles.helper}>Bỏ chọn mục không cần xuất hiện. Mục ghi “Luôn in” là thông tin bắt buộc của chứng từ.</p><div className={styles.fieldGrid}>
+                {selected.fields.map((field) => <label key={field.key} className={styles.fieldChoice}><input type="checkbox" checked={visibleFieldKeys.includes(field.key)} onChange={() => toggleField(field.key)} disabled={Boolean(busy) || field.required} /><span>{field.label}{field.required ? ' · Luôn in' : ''}</span></label>)}
               </div></section>
               <aside className={styles.preview} aria-label="Xem trước mẫu in">
                 <h3>Xem trước</h3><div className={`${styles.paper} ${pageSize === 'A5' ? styles.a5 : ''}`}><strong>HƯNG PHÁT</strong><h4>{selected.name.toUpperCase()}</h4><span>Số: CT-2026-000001</span><hr />

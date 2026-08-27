@@ -32,6 +32,10 @@ export default function BusinessDocumentPrint({
   actionLabel = 'In',
   title,
   subtitle = 'Chứng từ nghiệp vụ',
+  headingFallback,
+  showSubtitle = true,
+  showNumber = true,
+  suppressBrowserHeaders = false,
   number,
   status,
   meta,
@@ -51,6 +55,10 @@ export default function BusinessDocumentPrint({
   actionLabel?: string;
   title: string;
   subtitle?: string;
+  headingFallback?: ReactNode;
+  showSubtitle?: boolean;
+  showNumber?: boolean;
+  suppressBrowserHeaders?: boolean;
   number: ReactNode;
   status?: ReactNode;
   meta: BusinessDocumentMeta[];
@@ -87,13 +95,13 @@ export default function BusinessDocumentPrint({
   const visibleColumns = columns.filter((item) => visibleKeys.has(item.fieldKey ?? item.key));
   const visibleTotals = totals.filter((item) => visibleKeys.has(item.key));
   const displayTitle = template?.title?.trim() || title;
-  const displayHeading = template?.heading?.trim() || null;
-  const displaySubtitle = template?.subtitle?.trim() || subtitle;
+  const displayHeading = template?.heading?.trim() || headingFallback || null;
+  const displaySubtitle = showSubtitle ? (template?.subtitle?.trim() || subtitle) : null;
 
   return (
     <>
       <PrintAction label={actionLabel} targetId={id} onPrint={onPrint} />
-      <PrintSurface id={id} size={template?.pageSize ?? size}>
+      <PrintSurface id={id} size={template?.pageSize ?? size} suppressBrowserHeaders={suppressBrowserHeaders}>
         <article className={styles.sheet} data-testid={testId}>
           <header className={styles.header}>
             {displayHeading || displaySubtitle ? <div className={styles.brandBlock}>
@@ -102,7 +110,7 @@ export default function BusinessDocumentPrint({
             </div> : null}
             <div className={styles.titleBlock}>
               <h1>{displayTitle}</h1>
-              <p>Số: <strong>{number}</strong></p>
+              {showNumber ? <p>Số: <strong>{number}</strong></p> : null}
               {status && visibleKeys.has('status') ? <span className={styles.status}>{status}</span> : null}
             </div>
           </header>

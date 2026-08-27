@@ -9,13 +9,13 @@ function template(documentType, templateCode, name, pageSize, fields) {
     templateCode,
     name,
     pageSize,
-    fields: Object.freeze(fields.map(([key, label, selected = true]) => Object.freeze({ key, label, defaultSelected: selected }))),
+    fields: Object.freeze(fields.map(([key, label, selected = true, required = false]) => Object.freeze({ key, label, defaultSelected: selected, required }))),
   });
 }
 
 const CATALOG = Object.freeze([
   template('SALES_ORDER', 'standard', 'Đơn bán hàng', 'A4', [
-    ['customer', 'Khách hàng'], ['customer_code', 'Mã khách'], ['phone', 'Điện thoại'], ['document_date', 'Ngày đơn'], ['address', 'Địa chỉ'], ['warehouse', 'Kho'], ['delivery_method', 'Hình thức giao nhận'], ['collection_policy', 'Thanh toán'], ['requested_delivery_date', 'Ngày giao dự kiến'], ['line_no', 'STT hàng hóa'], ['line_item', 'Hàng hóa / SKU'], ['line_quantity', 'Số lượng'], ['line_unit', 'Đơn vị tính'], ['line_unit_price', 'Đơn giá'], ['line_discount', 'Chiết khấu'], ['line_tax', 'Thuế'], ['line_total', 'Thành tiền'], ['total_subtotal', 'Tạm tính'], ['total_discount', 'Tổng chiết khấu'], ['total_tax', 'Tổng thuế'], ['total_total', 'Tổng cộng'], ['note', 'Ghi chú'], ['signatures', 'Ký xác nhận'],
+    ['customer', 'Khách hàng'], ['customer_code', 'Mã khách'], ['phone', 'Điện thoại'], ['document_date', 'Ngày đơn'], ['address', 'Địa chỉ'], ['warehouse', 'Kho'], ['delivery_method', 'Hình thức giao nhận'], ['collection_policy', 'Thanh toán'], ['requested_delivery_date', 'Ngày giao dự kiến'], ['line_no', 'STT hàng hóa'], ['line_item', 'Tên sản phẩm', true, true], ['line_sku', 'SKU', false], ['line_quantity', 'Số lượng', true, true], ['line_unit', 'Đơn vị tính', true, true], ['line_unit_price', 'Đơn giá', true, true], ['line_discount', 'Chiết khấu'], ['line_tax', 'Thuế'], ['line_total', 'Thành tiền', true, true], ['total_subtotal', 'Tạm tính'], ['total_discount', 'Tổng chiết khấu'], ['total_tax', 'Tổng thuế'], ['total_total', 'Tổng cộng'], ['note', 'Ghi chú'], ['signatures', 'Ký xác nhận'],
   ]),
   template('PURCHASE_ORDER', 'standard', 'Đơn mua hàng', 'A4', [
     ['status', 'Tình trạng đơn'], ['supplier', 'Nhà cung cấp'], ['warehouse', 'Kho nhận'], ['ordered_date', 'Ngày đặt'], ['expected_date', 'Dự kiến nhận'], ['supplier_reference', 'Tham chiếu nhà cung cấp'], ['currency', 'Tiền tệ'], ['line_no', 'STT hàng hóa'], ['line_item', 'Hàng hóa / SKU'], ['line_quantity', 'Số lượng'], ['line_unit', 'Đơn vị tính'], ['line_unit_price', 'Đơn giá'], ['line_discount', 'Chiết khấu'], ['line_tax', 'Thuế'], ['line_total', 'Thành tiền'], ['total_subtotal', 'Tiền hàng'], ['total_discount', 'Tổng chiết khấu'], ['total_tax', 'Tổng thuế'], ['total_total', 'Tổng cộng'], ['note', 'Ghi chú'], ['signatures', 'Ký xác nhận'],
@@ -56,9 +56,17 @@ function cleanOptionalText(value, maxLength) {
   return text.length <= maxLength ? text : undefined;
 }
 
+function selectVisibleFields(catalog, keys) {
+  const selected = new Set(keys);
+  return catalog.fields.filter((field) => field.required || selected.has(field.key)).map((field) => field.key);
+}
+
 function present(catalog, setting) {
   const allowed = new Set(catalog.fields.map((field) => field.key));
-  const selected = Array.isArray(setting?.visible_field_keys) ? setting.visible_field_keys.filter((key) => allowed.has(key)) : catalog.fields.filter((field) => field.defaultSelected).map((field) => field.key);
+  const configured = Array.isArray(setting?.visible_field_keys)
+    ? setting.visible_field_keys.filter((key) => allowed.has(key))
+    : catalog.fields.filter((field) => field.defaultSelected).map((field) => field.key);
+  const selected = selectVisibleFields(catalog, configured);
   return Object.freeze({
     documentType: catalog.documentType,
     templateCode: catalog.templateCode,
@@ -82,8 +90,9 @@ function normalizePayload(catalog, payload) {
   if (!PAGE_SIZES.has(pageSize)) return failure('INVALID_PAGE_SIZE', 'Khổ giấy chỉ có thể là A4 hoặc A5');
   if (!Array.isArray(payload?.visibleFieldKeys)) return failure('INVALID_PRINT_FIELDS', 'Danh sách mục in không hợp lệ');
   const allowed = new Set(catalog.fields.map((field) => field.key));
-  const visibleFieldKeys = [...new Set(payload.visibleFieldKeys.map((value) => String(value ?? '').trim()))];
-  if (!visibleFieldKeys.length || visibleFieldKeys.some((key) => !FIELD_KEY_PATTERN.test(key) || !allowed.has(key))) return failure('INVALID_PRINT_FIELDS', 'Mẫu in phải có ít nhất một mục hợp lệ');
+  const requestedFieldKeys = [...new Set(payload.visibleFieldKeys.map((value) => String(value ?? '').trim()))];
+  if (!requestedFieldKeys.length || requestedFieldKeys.some((key) => !FIELD_KEY_PATTERN.test(key) || !allowed.has(key))) return failure('INVALID_PRINT_FIELDS', 'Mẫu in phải có ít nhất một mục hợp lệ');
+  const visibleFieldKeys = selectVisibleFields(catalog, requestedFieldKeys);
   const heading = cleanOptionalText(payload?.heading, 160);
   const title = cleanOptionalText(payload?.title, 160);
   const subtitle = cleanOptionalText(payload?.subtitle, 240);
