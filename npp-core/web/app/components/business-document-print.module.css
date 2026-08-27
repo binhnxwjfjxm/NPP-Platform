@@ -120,6 +120,11 @@
   white-space: nowrap;
 }
 
+.fixedTable .right:not(.noWrap) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .center {
   text-align: center !important;
 }
