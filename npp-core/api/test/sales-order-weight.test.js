@@ -22,6 +22,6 @@ test('migration 117 owns SKU weight and immutable order-line snapshots', () => {
   const sql = readFileSync(new URL('../../../database/migrations/shared/117_sku_weight_sales_order_snapshot.sql', import.meta.url), 'utf8');
   assert.match(sql, /product_variants[\s\S]*weight_value/);
   assert.match(sql, /unit_weight_kg numeric\(24,9\)/);
-  assert.match(sql, /line_weight_kg numeric\(30,9\)/);
+  assert.match(sql, /line_weight_kg numeric\(37,9\)/);
   assert.match(sql, /round\(unit_weight_kg \* ordered_quantity, 9\)/);
 });

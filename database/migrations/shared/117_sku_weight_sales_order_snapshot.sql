@@ -32,7 +32,7 @@ COMMENT ON COLUMN shared.product_variants.weight_uom_code IS
 
 ALTER TABLE sales.sales_order_version_lines
   ADD COLUMN IF NOT EXISTS unit_weight_kg numeric(24,9),
-  ADD COLUMN IF NOT EXISTS line_weight_kg numeric(30,9);
+  ADD COLUMN IF NOT EXISTS line_weight_kg numeric(37,9);
 
 DO $$
 BEGIN
