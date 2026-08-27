@@ -1,12 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { inventoryCostingInternals } from './inventory-costing.js';
+import { currentPoolUnitCost } from './inventory-negative-costing.js';
 import {
   CURRENCY_CODE,
   METHOD_VERSION,
-  divide12,
   failure,
   format12,
   parse12,
+  divide12,
 } from './inventory-costing-period-utils.js';
 import {
   canonicalFactByMovementLine,
@@ -24,12 +25,8 @@ export function baseState(row) {
     status: 'COSTED',
     anomalyCount: 0,
     projectedThroughEvent: 0,
+    negativeCostLayers: [],
   };
-}
-
-function currentAverage(state) {
-  if (state.status !== 'COSTED' || state.quantity <= 0n || state.value < 0n) return null;
-  return divide12(state.value, state.quantity);
 }
 
 function explicitUnitCost(row) {
@@ -253,12 +250,12 @@ export async function movementResolution({
           : {},
       };
     }
-    const average = currentAverage(state);
+    const average = currentPoolUnitCost(state, divide12);
     return average === null
       ? failure('INBOUND_COST_SOURCE_MISSING', 'Inbound movement cannot resolve an approved cost source')
       : { ok: true, unitCost: average, sourceCostType: 'CURRENT_POOL_AVERAGE', metadata: {} };
   }
-  const average = currentAverage(state);
+  const average = currentPoolUnitCost(state, divide12);
   return average === null
     ? failure('OUTBOUND_AVERAGE_MISSING', 'Outbound movement cannot resolve current moving-average cost')
     : { ok: true, unitCost: average, sourceCostType: 'CURRENT_POOL_AVERAGE', metadata: {} };
