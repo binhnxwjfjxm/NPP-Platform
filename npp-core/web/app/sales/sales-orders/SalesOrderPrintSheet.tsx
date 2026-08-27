@@ -95,21 +95,26 @@ export default function SalesOrderPrintSheet({
           { key: 'collection_policy', label: 'Thanh toán', value: collectionLabels[version.collectionPolicy] ?? version.collectionPolicy },
           { key: 'requested_delivery_date', label: 'Ngày giao dự kiến', value: dateText(version.requestedDeliveryDate) },
         ]}
+        tableLayout="fixed"
         columns={[
-          { key: 'no', fieldKey: 'line_no', label: 'STT', align: 'center' },
-          { key: 'item', fieldKey: 'line_item', label: 'Sản phẩm / SKU' },
-          { key: 'quantity', fieldKey: 'line_quantity', label: 'Số lượng', align: 'right' },
-          { key: 'unitPrice', fieldKey: 'line_unit_price', label: 'Đơn giá', align: 'right' },
-          ...(showDiscount ? [{ key: 'discount', fieldKey: 'line_discount', label: 'CK', align: 'right' as const }] : []),
-          ...(showTax ? [{ key: 'tax', fieldKey: 'line_tax', label: 'Thuế', align: 'right' as const }] : []),
-          { key: 'total', fieldKey: 'line_total', label: 'Thành tiền', align: 'right' },
+          { key: 'no', fieldKey: 'line_no', label: 'STT', align: 'center', width: '4%', wrap: 'nowrap' },
+          { key: 'itemName', fieldKey: 'line_item', label: 'Tên sản phẩm', width: '23%', wrap: 'anywhere' },
+          { key: 'sku', fieldKey: 'line_item', label: 'SKU', width: '12%', wrap: 'anywhere' },
+          { key: 'quantity', fieldKey: 'line_quantity', label: 'Số lượng', align: 'right', width: '8%' },
+          { key: 'unit', fieldKey: 'line_unit', label: 'ĐVT', align: 'center', width: '7%', wrap: 'nowrap' },
+          { key: 'unitPrice', fieldKey: 'line_unit_price', label: 'Đơn giá', align: 'right', width: '13%' },
+          ...(showDiscount ? [{ key: 'discount', fieldKey: 'line_discount', label: 'CK', align: 'right' as const, width: '10%' }] : []),
+          ...(showTax ? [{ key: 'tax', fieldKey: 'line_tax', label: 'Thuế', align: 'right' as const, width: '9%' }] : []),
+          { key: 'total', fieldKey: 'line_total', label: 'Thành tiền', align: 'right', width: '14%' },
         ]}
         rows={lines.map((line) => ({
           id: line.id,
           cells: {
             no: line.lineNumber,
-            item: <><strong>{line.itemName}</strong><br />{line.sku}</>,
-            quantity: `${formatQuantity(line.quantity)} ${line.unitCode}`,
+            itemName: <strong>{line.itemName}</strong>,
+            sku: line.sku,
+            quantity: formatQuantity(line.quantity),
+            unit: line.unitCode,
             unitPrice: formatMoney(line.unitPrice),
             discount: formatMoney(line.discountAmount),
             tax: formatMoney(line.taxAmount),

@@ -81,6 +81,11 @@
   page-break-inside: auto;
 }
 
+.fixedTable {
+  max-width: 100%;
+  table-layout: fixed;
+}
+
 .table th,
 .table td {
   border: 1px solid #999;
@@ -94,6 +99,18 @@
   text-align: left;
 }
 
+.fixedTable th,
+.fixedTable td {
+  box-sizing: border-box;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.fixedTable th {
+  font-size: 9.5pt;
+  line-height: 1.25;
+}
+
 .table tr {
   break-inside: avoid;
 }
@@ -103,8 +120,25 @@
   white-space: nowrap;
 }
 
+.fixedTable .right:not(.noWrap) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .center {
   text-align: center !important;
+}
+
+.wrapAnywhere {
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.noWrap {
+  white-space: nowrap !important;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .summary {
