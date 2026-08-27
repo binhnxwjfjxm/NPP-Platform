@@ -44,9 +44,8 @@ type Props = {
   onCloseExecution: () => void;
 };
 
-function hasIssuedQuantity(value: string | null | undefined): boolean {
-  const normalized = String(value ?? '0').trim();
-  return !/^[+-]?0+(?:\.0+)?$/.test(normalized || '0');
+function directStockIssueCompleted(value: SalesOrder['fulfillmentStatus']): boolean {
+  return ['issued', 'fulfilled'].includes(String(value));
 }
 
 function stockValue(
@@ -78,7 +77,7 @@ export default function SalesOrderDetail(props: Props) {
   );
   const isManual = current?.deliveryMode === 'DELIVERY'
     && current.deliveryExecutionMode === 'MANUAL';
-  const hasIssued = hasIssuedQuantity(fulfillment?.totals.issuedBaseQuantity);
+  const hasIssued = directStockIssueCompleted(order.fulfillmentStatus);
   const canCloseUnexecutedDelivery = order.status === 'confirmed'
     && !isManual
     && props.canCancel
