@@ -72,7 +72,8 @@ test('SKU repository does not duplicate the locked service stale-version guard',
   const variantUpdate = variant.calls.find((call) => call.sql.includes('UPDATE shared.product_variants'));
   assert.ok(variantUpdate);
   assert.doesNotMatch(variantUpdate.sql, /timestamptz/);
-  assert.equal(variantUpdate.params.length, 9);
+  assert.equal(variantUpdate.params.length, 11);
+  assert.deepEqual(variantUpdate.params.slice(6, 8), [undefined, undefined]);
 
   const staleCalls = [];
   const staleClient = {

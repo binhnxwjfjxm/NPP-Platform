@@ -25,3 +25,10 @@ test('migration 117 owns SKU weight and immutable order-line snapshots', () => {
   assert.match(sql, /line_weight_kg numeric\(37,9\)/);
   assert.match(sql, /round\(unit_weight_kg \* ordered_quantity, 9\)/);
 });
+
+test('sales-order amendment preserves immutable line-weight snapshots', () => {
+  const source = readFileSync(new URL('../src/services/sales-order-legacy.js', import.meta.url), 'utf8');
+  const amendment = source.slice(source.indexOf('export async function createSalesOrderAmendment'));
+  assert.match(amendment, /unitWeightKg: line\.unit_weight_kg === null \? null : String\(line\.unit_weight_kg\)/);
+  assert.match(amendment, /lineWeightKg: line\.line_weight_kg === null \? null : String\(line\.line_weight_kg\)/);
+});

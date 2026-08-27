@@ -845,6 +845,8 @@ export async function createSalesOrderAmendment(client, { requestContext, id, pa
       sku: line.sku_snapshot, itemName: line.item_name_snapshot, unitId: line.unit_id,
       unitCode: line.unit_code_snapshot, conversionToBase: String(line.conversion_to_base),
       quantity: String(line.ordered_quantity), baseQuantity: String(line.base_quantity),
+      unitWeightKg: line.unit_weight_kg === null ? null : String(line.unit_weight_kg),
+      lineWeightKg: line.line_weight_kg === null ? null : String(line.line_weight_kg),
       priceListId: line.price_list_id, priceRuleId: line.price_rule_id,
       priceSource: line.price_source, unitPrice: String(line.unit_price),
       discountMode: line.discount_mode, discountValue: String(line.discount_value),
