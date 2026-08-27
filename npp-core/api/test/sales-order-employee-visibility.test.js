@@ -62,12 +62,30 @@ test('read-all removes only employee ownership filter and preserves warehouse sc
   assert.doesNotMatch(call.sql, /so\.source_employee_id =/);
 });
 
-test('missing employee identity fails closed without read-all', async () => {
+test('actor without an employee profile can read only orders the actor created', async () => {
   const client = clientWithRows([]);
   await listSalesOrders(client, {
     installationId,
     warehouseIds: [warehouseId],
     employeeId: null,
+    actorId: 'test:sales-transaction',
+    allowAllEmployees: false,
+    limit: 10,
+    offset: 0,
+  });
+  const call = client.calls.at(-1);
+  assert.match(call.sql, /so\.created_by = \$\d+/);
+  assert.equal(call.params.includes('test:sales-transaction'), true);
+  assert.doesNotMatch(call.sql, /AND false/);
+});
+
+test('missing employee and actor identities fail closed without read-all', async () => {
+  const client = clientWithRows([]);
+  await listSalesOrders(client, {
+    installationId,
+    warehouseIds: [warehouseId],
+    employeeId: null,
+    actorId: null,
     allowAllEmployees: false,
     limit: 10,
     offset: 0,

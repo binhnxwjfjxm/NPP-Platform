@@ -29,6 +29,9 @@ function orderEmployeeVisibility(requestContext) {
     : null;
   return Object.freeze({
     employeeId,
+    actorId: typeof requestContext?.actorId === 'string' && requestContext.actorId.trim()
+      ? requestContext.actorId.trim()
+      : null,
     allowAllEmployees: hasPermission(requestContext, 'core.sales-order.read-all'),
   });
 }

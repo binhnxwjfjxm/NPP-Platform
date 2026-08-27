@@ -22,3 +22,7 @@ SET module = EXCLUDED.module,
 UPDATE shared.permission_catalog
 SET description = 'Cho phép đọc đơn bán hàng của chính nhân viên trong phạm vi kho được cấp.'
 WHERE permission_key = 'core.sales-order.read';
+
+UPDATE shared.permission_catalog
+SET description = 'Cho phép Công Ty xác nhận giao trực tiếp Delivery Order giao tận nơi, ghi Inventory OUT và công nợ theo lượng thực giao.'
+WHERE permission_key = 'core.delivery-order.manual-handover';
