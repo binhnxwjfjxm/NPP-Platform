@@ -8,6 +8,8 @@ const CODE_PATTERN = /^[A-Z0-9_-]{1,64}$/;
 const SKU_PATTERN = /^[A-Z0-9._/-]{1,96}$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const VARIANT_KINDS = new Set(['BASE', 'CARTON', 'OTHER']);
+const WEIGHT_PATTERN = /^(?:0|[1-9]\d{0,13})(?:\.\d{1,6})?$/;
+const WEIGHT_UOMS = new Set(['G', 'KG']);
 const MAX_IMPORT_PRODUCTS = 500;
 
 function invalid(code, message, retryable = false) {
@@ -70,6 +72,18 @@ function searchValue(value) {
   const normalized = text(value);
   if (normalized.length > 256) return invalid('INVALID_SEARCH', 'Search must not exceed 256 characters');
   return { ok: true, value: normalized || null };
+}
+
+function weightFields(payload, defaults = {}) {
+  const rawValue = Object.prototype.hasOwnProperty.call(payload, 'weightValue') ? payload.weightValue : defaults.weightValue;
+  const rawUom = Object.prototype.hasOwnProperty.call(payload, 'weightUomCode') ? payload.weightUomCode : defaults.weightUomCode;
+  const weightValue = rawValue === undefined || rawValue === null ? '' : String(rawValue).trim();
+  const weightUomCode = rawUom === undefined || rawUom === null ? '' : code(rawUom);
+  if (!weightValue && !weightUomCode) return { ok: true, weightValue: null, weightUomCode: null };
+  if (!weightValue || !weightUomCode) return invalid('INVALID_WEIGHT', 'Khối lượng và đơn vị khối lượng phải được nhập cùng nhau');
+  if (!WEIGHT_PATTERN.test(weightValue) || /^0(?:\.0+)?$/.test(weightValue)) return invalid('INVALID_WEIGHT', 'Khối lượng phải lớn hơn 0 và có tối đa 6 chữ số thập phân');
+  if (!WEIGHT_UOMS.has(weightUomCode)) return invalid('INVALID_WEIGHT_UOM', 'Đơn vị khối lượng phải là g hoặc kg');
+  return { ok: true, weightValue, weightUomCode };
 }
 
 export function validateProductCategoryInput(payload, { codeRequired = true, defaults = {} } = {}) {
@@ -147,9 +161,11 @@ export function validateProductVariantInput(payload, { skuRequired = true, defau
   if (!visible.ok) return visible;
   const active = booleanField(payload, 'isActive', defaults.isActive ?? true);
   if (!active.ok) return active;
+  const weight = weightFields(payload, { weightValue: defaults.weightValue, weightUomCode: defaults.weightUomCode });
+  if (!weight.ok) return weight;
   if (inventoryBase.value && variantKind !== 'BASE') return invalid('INVALID_INVENTORY_BASE', 'Inventory-base variants must use BASE kind');
   if (visible.value && !sellable.value) return invalid('INVALID_VARIANT_VISIBILITY', 'Catalog-visible variants must be sellable');
-  return { ok: true, normalized: { sku, name, variantKind, isInventoryBase: inventoryBase.value, isSellable: sellable.value, isCatalogVisible: visible.value, isActive: active.value } };
+  return { ok: true, normalized: { sku, name, variantKind, isInventoryBase: inventoryBase.value, isSellable: sellable.value, isCatalogVisible: visible.value, isActive: active.value, weightValue: weight.weightValue, weightUomCode: weight.weightUomCode } };
 }
 
 async function resolveCategory(client, { installationId, categoryId, requireActive = true }) {
@@ -378,6 +394,7 @@ export async function updateProductVariant(client, { productId, variantId, insta
     sku: existing.sku, name: existing.name, variantKind: existing.variant_kind,
     isInventoryBase: existing.is_inventory_base, isSellable: existing.is_sellable,
     isCatalogVisible: existing.is_catalog_visible, isActive: existing.is_active,
+    weightValue: existing.weight_value, weightUomCode: existing.weight_uom_code,
   } });
   if (!validation.ok) return validation;
   const next = validation.normalized;

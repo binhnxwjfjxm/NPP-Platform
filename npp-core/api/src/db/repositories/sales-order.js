@@ -85,7 +85,8 @@ const VERSION_COLUMNS = `sov.id, sov.installation_id, sov.sales_order_id, sov.ve
 const LINE_COLUMNS = `sovl.id, sovl.installation_id, sovl.sales_order_version_id,
   sovl.line_number, sovl.variant_id, sovl.sku_snapshot, sovl.item_name_snapshot,
   sovl.unit_id, sovl.unit_code_snapshot, sovl.conversion_to_base,
-  sovl.ordered_quantity, sovl.base_quantity, sovl.price_list_id, sovl.price_rule_id,
+  sovl.ordered_quantity, sovl.base_quantity, sovl.unit_weight_kg, sovl.line_weight_kg,
+  sovl.price_list_id, sovl.price_rule_id,
   sovl.price_source, sovl.unit_price, sovl.discount_mode, sovl.discount_value,
   sovl.discount_amount, sovl.tax_mode, sovl.tax_rate, sovl.tax_amount,
   sovl.line_subtotal, sovl.line_total, sovl.note,
@@ -331,7 +332,8 @@ export async function getActiveWarehouse(client, { installationId, id }) {
 export async function getSalesVariant(client, { installationId, id }) {
   return (await client.query(
     `SELECT pv.id, pv.product_id, pv.sku, pv.name, pv.is_active, pv.is_sellable,
-            pv.unit_id, pv.conversion_to_base, p.code AS product_code,
+            pv.unit_id, pv.conversion_to_base, pv.weight_value, pv.weight_uom_code,
+            p.code AS product_code,
             p.name AS product_name, p.is_active AS product_is_active,
             p.is_orderable AS product_is_orderable,
             u.code AS unit_code, u.name AS unit_name, u.is_active AS unit_is_active,
@@ -477,19 +479,19 @@ export async function insertSalesOrderVersionLines(client, {
       `INSERT INTO sales.sales_order_version_lines (
          id, installation_id, sales_order_version_id, line_number, variant_id,
          sku_snapshot, item_name_snapshot, unit_id, unit_code_snapshot,
-         conversion_to_base, ordered_quantity, base_quantity, price_list_id,
-         price_rule_id, price_source, unit_price, discount_mode, discount_value,
+         conversion_to_base, ordered_quantity, base_quantity, unit_weight_kg, line_weight_kg,
+         price_list_id, price_rule_id, price_source, unit_price, discount_mode, discount_value,
          discount_amount, tax_mode, tax_rate, tax_amount, line_subtotal, line_total,
          note, created_by, updated_by
        ) VALUES (
-         $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$26
+         $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$28
        )`,
       [randomUUID(), installationId, versionId, line.lineNumber, line.variantId,
         line.sku, line.itemName, line.unitId, line.unitCode, line.conversionToBase,
-        line.quantity, line.baseQuantity, line.priceListId, line.priceRuleId,
-        line.priceSource, line.unitPrice, line.discountMode, line.discountValue,
-        line.discountAmount, line.taxMode, line.taxRate, line.taxAmount,
-        line.lineSubtotal, line.lineTotal, line.note, actorId],
+        line.quantity, line.baseQuantity, line.unitWeightKg, line.lineWeightKg,
+        line.priceListId, line.priceRuleId, line.priceSource, line.unitPrice,
+        line.discountMode, line.discountValue, line.discountAmount, line.taxMode,
+        line.taxRate, line.taxAmount, line.lineSubtotal, line.lineTotal, line.note, actorId],
     );
   }
 }
