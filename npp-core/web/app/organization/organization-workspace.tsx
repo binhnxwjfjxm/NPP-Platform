@@ -39,6 +39,7 @@ type WarehouseFormState = {
   code: string;
   name: string;
   warehouseType: string;
+  allowNegativeStock: boolean;
 };
 
 type LocationFormState = {
@@ -129,6 +130,10 @@ function statusClass(active: boolean): string {
   return active ? styles.toneSuccess : styles.toneDanger;
 }
 
+function warehouseNegativeStockEnabled(warehouse: Warehouse): boolean {
+  return (warehouse as Warehouse & { allow_negative_stock?: boolean }).allow_negative_stock === true;
+}
+
 function entitySearchText(
   scope: WorkspaceScope,
   branch: Branch | Warehouse | WarehouseLocation,
@@ -196,7 +201,7 @@ function emptyBranchForm(): BranchFormState {
 }
 
 function emptyWarehouseForm(branchId = '', warehouseType = warehouseTypes[0]): WarehouseFormState {
-  return { branchId, code: '', name: '', warehouseType };
+  return { branchId, code: '', name: '', warehouseType, allowNegativeStock: false };
 }
 
 function emptyLocationForm(warehouseId = '', locationType = locationTypes[0]): LocationFormState {
@@ -400,6 +405,7 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
         code: entity.code,
         name: entity.name,
         warehouseType: entity.warehouse_type,
+        allowNegativeStock: warehouseNegativeStockEnabled(entity),
       });
     }
 
@@ -454,6 +460,7 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
       code: upper(warehouseDraft.code),
       name: warehouseDraft.name.trim(),
       warehouseType: warehouseDraft.warehouseType,
+      allowNegativeStock: warehouseDraft.allowNegativeStock,
     };
     const current = editor?.mode === 'edit' && editor.resource === 'warehouses'
       ? warehouses.find((item) => item.id === editor.entityId)
@@ -845,6 +852,7 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
                         <th>Tên</th>
                         <th>Thuộc chi nhánh</th>
                         <th>Loại kho</th>
+                        <th>Xuất vượt tồn</th>
                         <th>Trạng thái</th>
                         <th>Xử lý</th>
                       </tr>
@@ -852,6 +860,7 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
                     <tbody>
                       {visibleWarehouses.length ? visibleWarehouses.map((warehouse) => {
                         const branch = branchMap.get(warehouse.branch_id);
+                        const allowNegativeStock = warehouseNegativeStockEnabled(warehouse);
                         return (
                           <tr key={warehouse.id} data-testid={`warehouse-row-${warehouse.code}`}>
                             <td><code>{warehouse.code}</code></td>
@@ -863,6 +872,14 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
                             </td>
                             <td className={styles.relationCell}>{branch ? `${branch.code} · ${branch.name}` : 'Chưa xác định chi nhánh'}</td>
                             <td>{typeLabel('warehouses', warehouse.warehouse_type)}</td>
+                            <td>
+                              <span
+                                className={joinClasses(styles.statusPill, statusClass(allowNegativeStock))}
+                                data-testid={`warehouse-negative-stock-status-${warehouse.code}`}
+                              >
+                                {allowNegativeStock ? 'Đang bật' : 'Đang tắt'}
+                              </span>
+                            </td>
                             <td><span className={joinClasses(styles.statusPill, statusClass(warehouse.is_active))}>{entityStatusLabel(warehouse.is_active)}</span></td>
                             <td>
                               <div className={styles.rowActions}>
@@ -876,7 +893,7 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
                         );
                       }) : (
                         <tr>
-                          <td colSpan={6}>
+                          <td colSpan={7}>
                             <div className={styles.emptyState}>Không tìm thấy kho hàng phù hợp.</div>
                           </td>
                         </tr>
@@ -1030,6 +1047,18 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
                         <option key={type} value={type}>{warehouseTypeLabels[type]}</option>
                       ))}
                     </select>
+                  </label>
+                  <label>
+                    Chính sách tồn kho
+                    <select
+                      data-testid="warehouse-negative-stock-policy-select"
+                      value={warehouseDraft.allowNegativeStock ? 'allow' : 'deny'}
+                      onChange={(event) => setWarehouseDraft((current) => ({ ...current, allowNegativeStock: event.target.value === 'allow' }))}
+                    >
+                      <option value="deny">Không cho phép xuất vượt tồn</option>
+                      <option value="allow">Cho phép xuất vượt tồn khả dụng</option>
+                    </select>
+                    <small>Mặc định tắt. Bật chính sách không tự cấp quyền; người thao tác vẫn phải có quyền “Xuất vượt tồn khả dụng”.</small>
                   </label>
                   <div className={styles.formActions}>
                     <button type="button" className={styles.secondaryButton} onClick={closeModals}>Hủy</button>
