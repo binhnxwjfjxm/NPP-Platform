@@ -14,7 +14,7 @@ import {
   parse12,
 } from '../src/services/inventory-costing-period-utils.js';
 
-test('controlled negative costing only accepts exact server policy evidence for sales OUT', () => {
+test('controlled negative costing only requires exact server policy evidence for sales OUT', () => {
   const row = {
     direction: 'OUT',
     movement_type: 'SALES_DELIVERY_ISSUE',
@@ -29,7 +29,7 @@ test('controlled negative costing only accepts exact server policy evidence for 
     },
   };
   assert.equal(controlledNegativeStockAuthorization(row), true);
-  assert.equal(controlledNegativeStockAuthorization({ ...row, direction: 'IN' }), false);
+  assert.equal(controlledNegativeStockAuthorization({ ...row, direction: 'IN', line_metadata: {} }), true);
   assert.equal(controlledNegativeStockAuthorization({
     ...row,
     line_metadata: {
@@ -151,6 +151,7 @@ test('partially unsettled negative cost is persisted as pending anomaly, not fin
     provisionalUnitCost: parse12('100'),
     format12,
   });
+  assert.equal(controlledNegativeStockAuthorization({ direction: 'IN' }), true);
   settleNegativeCostLayers({
     state,
     inboundQuantity: parse12('2'),
