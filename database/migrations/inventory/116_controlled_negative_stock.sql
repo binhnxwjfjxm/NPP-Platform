@@ -15,7 +15,7 @@ INSERT INTO shared.permission_catalog (
   'core.inventory.negative-stock.issue',
   'Kho',
   'Xuất vượt tồn khả dụng',
-  'Cho phép xuất hàng vượt tồn khả dụng tại kho đã bật chính sách tương ứng. Hệ thống vẫn kiểm tra phạm vi kho và điều kiện nghiệp vụ.',
+  'Cho phép xuất hàng vượt tồn khả dụng tại kho đã bật chính sách tương ứng; hệ thống vẫn kiểm tra phạm vi kho và điều kiện nghiệp vụ.',
   true,
   now()
 )
