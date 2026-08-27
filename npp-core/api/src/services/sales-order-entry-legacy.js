@@ -1,6 +1,7 @@
 import * as repository from '../db/repositories/sales-order.js';
 import * as productMetadataRepository from '../db/repositories/sales-order-product-metadata.js';
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const WALK_IN_MODE = 'WALK_IN';
 const EXISTING_MODE = 'EXISTING';
 const CUSTOMER_MODES = new Set([WALK_IN_MODE, EXISTING_MODE]);
@@ -15,6 +16,21 @@ function warehouseIds(requestContext) {
   return Array.isArray(requestContext?.scopes?.warehouseIds)
     ? [...new Set(requestContext.scopes.warehouseIds.filter((value) => typeof value === 'string' && value.trim()))]
     : [];
+}
+
+function hasPermission(requestContext, permission) {
+  return Array.isArray(requestContext?.permissions) && requestContext.permissions.includes(permission);
+}
+
+function orderEmployeeVisibility(requestContext) {
+  const employeeId = typeof requestContext?.employeeId === 'string'
+    && UUID_PATTERN.test(requestContext.employeeId.trim())
+    ? requestContext.employeeId.trim()
+    : null;
+  return Object.freeze({
+    employeeId,
+    allowAllEmployees: hasPermission(requestContext, 'core.sales-order.read-all'),
+  });
 }
 
 function normalizedMode(value) {
@@ -55,10 +71,10 @@ function enforceWalkInShape(payload, sourceType) {
   const deliveryMode = String(payload?.deliveryMode ?? 'DELIVERY').trim().toUpperCase();
   const collectionPolicy = String(payload?.collectionPolicy ?? 'COLLECT_ON_DELIVERY').trim().toUpperCase();
   if (sourceType !== 'MANUAL') {
-    return failure('WALK_IN_SOURCE_FORBIDDEN', 'Khách vãng lai chỉ dùng cho đơn tạo trực tiếp tại NPP');
+    return failure('WALK_IN_SOURCE_FORBIDDEN', 'Khách vãng lai chỉ dùng cho đơn tạo trực tiếp tại Công Ty');
   }
   if (deliveryMode !== 'PICKUP') {
-    return failure('WALK_IN_PICKUP_REQUIRED', 'Khách vãng lai chỉ nhận hàng trực tiếp tại kho');
+    return failure('WALK_IN_PICKUP_REQUIRED', 'Khách vãng lai chỉ dùng Giao tại quầy');
   }
   if (!WALK_IN_COLLECTION_POLICIES.has(collectionPolicy)) {
     return failure('WALK_IN_COLLECTION_POLICY_FORBIDDEN', 'Khách vãng lai không được bán chịu hoặc giao trước thu sau');
@@ -105,7 +121,7 @@ export async function normalizeSalesOrderEntryPayload(client, {
   salesOrderId = null,
 }) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-    return failure('INVALID_INPUT', 'Sales Order payload is required');
+    return failure('INVALID_INPUT', 'Dữ liệu đơn bán hàng là bắt buộc');
   }
   const mode = normalizedMode(payload.customerMode);
   if (!mode) return failure('INVALID_CUSTOMER_MODE', 'Chế độ khách hàng không hợp lệ');
@@ -115,9 +131,10 @@ export async function normalizeSalesOrderEntryPayload(client, {
         installationId: requestContext.installationId,
         id: salesOrderId,
         warehouseIds: warehouseIds(requestContext),
+        ...orderEmployeeVisibility(requestContext),
       })
     : null;
-  if (salesOrderId && !order) return failure('SALES_ORDER_NOT_FOUND', 'Sales order not found');
+  if (salesOrderId && !order) return failure('SALES_ORDER_NOT_FOUND', 'Không tìm thấy đơn bán hàng');
   const sourceType = normalizedSourceType(payload, order);
   let settings = await repository.getSalesOrderSettings(client, {
     installationId: requestContext.installationId,
@@ -134,7 +151,7 @@ export async function normalizeSalesOrderEntryPayload(client, {
     if (!customer) {
       return failure(
         'WALK_IN_CUSTOMER_UNAVAILABLE',
-        'Khách vãng lai của installation chưa được cấu hình hợp lệ',
+        'Khách vãng lai của Công Ty chưa được cấu hình hợp lệ',
         false,
       );
     }

@@ -69,6 +69,10 @@ export async function getSalesOrderEntrySettings(client, { requestContext }) {
           'core.sales-order.discount.override',
         ),
         canConfirm: hasPermission(requestContext, 'core.sales-order.confirm'),
+        canNegativeStockIssue: hasPermission(
+          requestContext,
+          'core.inventory.negative-stock.issue',
+        ),
       }),
     }),
   });
@@ -115,7 +119,7 @@ export async function normalizeSalesOrderEntryPayload(client, args) {
   if (!UUID_PATTERN.test(salesChannelId)) {
     return failure(
       'SALES_CHANNEL_NOT_FOUND',
-      'Kênh bán hàng không tồn tại, đã ngưng hoạt động hoặc không thuộc installation',
+      'Kênh bán hàng không tồn tại, đã ngưng hoạt động hoặc không thuộc Công Ty',
     );
   }
   const channel = await commercialRepository.getActiveSalesChannel(client, {
@@ -125,7 +129,7 @@ export async function normalizeSalesOrderEntryPayload(client, args) {
   if (!channel) {
     return failure(
       'SALES_CHANNEL_NOT_FOUND',
-      'Kênh bán hàng không tồn tại, đã ngưng hoạt động hoặc không thuộc installation',
+      'Kênh bán hàng không tồn tại, đã ngưng hoạt động hoặc không thuộc Công Ty',
     );
   }
   return Object.freeze({

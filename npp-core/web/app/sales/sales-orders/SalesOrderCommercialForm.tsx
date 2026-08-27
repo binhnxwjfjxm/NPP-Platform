@@ -868,7 +868,7 @@ export default function SalesOrderCommercialForm(props: Props) {
     if (!entrySettings.salesChannels.some((channel) => channel.id === salesChannelId)) return 'Kênh bán không còn hoạt động';
     if (customerMode === 'EXISTING' && !customerId) return 'Hãy chọn khách hàng';
     if (!warehouseId) return 'Hãy chọn kho xuất';
-    if (customerMode === 'WALK_IN' && deliveryMode !== 'PICKUP') return 'Khách vãng lai chỉ nhận tại kho';
+    if (customerMode === 'WALK_IN' && deliveryMode !== 'PICKUP') return 'Khách vãng lai chỉ dùng Giao tại quầy';
     if (customerMode === 'WALK_IN' && !['PREPAID', 'COLLECT_ON_DELIVERY'].includes(collectionPolicy)) {
       return 'Khách vãng lai không được bán chịu hoặc giao trước thu sau';
     }
@@ -1052,7 +1052,7 @@ export default function SalesOrderCommercialForm(props: Props) {
               <div className={styles.walkInFields}>
                 <label><span>Tên khách (tùy chọn)</span><input value={walkInDisplayName} onChange={(event) => { setWalkInDisplayName(event.target.value); markDirty(); }} placeholder="Ví dụ: Anh Nam" /></label>
                 <label><span>Số điện thoại (tùy chọn)</span><input value={walkInPhone} onChange={(event) => { setWalkInPhone(event.target.value); markDirty(); }} placeholder="Dùng tra cứu lại đơn" /></label>
-                <span>Nhận tại kho; vẫn áp giá theo kênh/chương trình, không áp giá nhóm hoặc riêng khách.</span>
+                <span>Giao tại quầy; vẫn áp giá theo kênh/chương trình, không áp giá nhóm hoặc riêng khách.</span>
                 {props.canQuickCreateCustomer && <button type="button" className={styles.linkButton} onClick={openQuickCustomerForDelivery}>Cần giao hàng? Tạo khách chính thức</button>}
               </div>
             )}
@@ -1068,7 +1068,7 @@ export default function SalesOrderCommercialForm(props: Props) {
                 setDeliveryExecutionMode(value as SalesOrderDeliveryExecutionMode);
               }
               markDirty();
-            }}><option value="TRIP">Giao theo chuyến</option><option value="MANUAL">Giao thủ công</option><option value="PICKUP">Khách nhận tại kho</option></select></label>
+            }}><option value="TRIP">Giao theo chuyến</option><option value="MANUAL">Giao thủ công</option><option value="PICKUP">Giao tại quầy</option></select></label>
             <label><span>Thu tiền</span><select value={collectionPolicy} onChange={(event) => { setCollectionPolicy(event.target.value as SalesOrderCollectionPolicy); markDirty(); }}><option value="COLLECT_ON_DELIVERY">Thu khi giao/nhận</option><option value="PREPAID">Đã trả trước</option>{customerMode === 'EXISTING' && <><option value="COLLECT_AFTER_DELIVERY">Giao trước, thu sau</option><option value="CREDIT_TERMS">Bán chịu theo hạn mức</option></>}</select></label>
             <label><span>Ngày cần hàng</span><input type="date" value={requestedDeliveryDate} onChange={(event) => { setRequestedDeliveryDate(event.target.value); markDirty(); }} /></label>
             {deliveryMode === 'DELIVERY' && customerMode === 'EXISTING' && <label className={styles.addressField}><span>Địa chỉ giao hàng *</span><select value={addressId} onChange={(event) => { setAddressId(event.target.value); markDirty(); }}><option value="">Chọn địa chỉ</option>{addresses.map((item) => <option key={item.id} value={item.id}>{item.label} — {item.address_line1}, {item.ward ?? ''}, {item.province ?? ''}</option>)}</select></label>}
