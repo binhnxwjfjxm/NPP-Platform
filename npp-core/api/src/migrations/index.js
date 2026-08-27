@@ -168,7 +168,7 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({ id: '105_business_purge_remaining_operational_guards', sql: BUSINESS_PURGE_REMAINING_OPERATIONAL_GUARDS_SQL }),
   Object.freeze({ id: '106_business_purge_document_number_allocations', sql: BUSINESS_PURGE_DOCUMENT_NUMBER_ALLOCATIONS_SQL }),
   Object.freeze({ id: '108_management_proposals', sql: MANAGEMENT_PROPOSALS_SQL }),
-  Object.freeze({ id: '109_management_proposal_source_roundtrip', sql: MANAGEMENT_PROPOSALS_SQL }),
+  Object.freeze({ id: '109_management_proposal_source_roundtrip', sql: MANAGEMENT_PROPOSAL_SOURCE_ROUNDTRIP_SQL }),
   Object.freeze({ id: '110_management_proposal_optional_details', sql: MANAGEMENT_PROPOSAL_OPTIONAL_DETAILS_SQL }),
   Object.freeze({ id: '111_ai_usage_metering', sql: AI_USAGE_METERING_SQL }),
   Object.freeze({ id: '112_ai_website_anonymous_usage', sql: AI_WEBSITE_ANONYMOUS_USAGE_SQL }),
