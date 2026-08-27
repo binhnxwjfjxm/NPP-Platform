@@ -68,6 +68,7 @@ const HEADER_ALIASES = Object.fromEntries(CSV_COLUMNS.flatMap((column) => [
   [column.key, column.key],
 ]));
 const SOURCE_KEY_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
+const OPENING_BALANCE_PREVIEW_PAGE_SIZE = 100;
 
 function parseLine(line: string, delimiter = ','): string[] {
   const cells: string[] = [];
@@ -188,6 +189,7 @@ export default function OpeningBalanceCsvWorkspace({ initialImports, initialErro
   const [validation, setValidation] = useState<ValidationResult | null>(null);
   const [validationChecksum, setValidationChecksum] = useState<string | null>(null);
   const [imports, setImports] = useState(initialImports);
+  const [previewPage, setPreviewPage] = useState(0);
   const [busy, setBusy] = useState<'bootstrap' | 'locations' | 'validate' | 'post' | null>(null);
   const [message, setMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(
     initialError ? { kind: 'error', text: initialError } : null,
@@ -210,6 +212,11 @@ export default function OpeningBalanceCsvWorkspace({ initialImports, initialErro
     if (!row.sourceQuantity) missing.push('số lượng');
     return missing.length ? { line: index + 2, message: `Thiếu ${missing.join(', ')}` } : null;
   }).filter(Boolean) as Array<{ line: number; message: string }>, [effectiveRows]);
+  const previewPageCount = Math.max(1, Math.ceil(effectiveRows.length / OPENING_BALANCE_PREVIEW_PAGE_SIZE));
+  const effectivePreviewPage = Math.min(previewPage, previewPageCount - 1);
+  const previewStart = effectivePreviewPage * OPENING_BALANCE_PREVIEW_PAGE_SIZE;
+  const previewRows = effectiveRows.slice(previewStart, previewStart + OPENING_BALANCE_PREVIEW_PAGE_SIZE);
+  const previewEnd = Math.min(effectiveRows.length, previewStart + previewRows.length);
 
   function invalidateDraft() {
     draftRevision.current += 1;
@@ -272,6 +279,7 @@ export default function OpeningBalanceCsvWorkspace({ initialImports, initialErro
     invalidateDraft();
     setRows([]);
     setResolvedRows([]);
+    setPreviewPage(0);
     setMessage(null);
     setFilename('');
     if (!file.name.toLowerCase().endsWith('.csv')) {
@@ -371,6 +379,7 @@ export default function OpeningBalanceCsvWorkspace({ initialImports, initialErro
       setResolvedRows([]);
       setValidation(null);
       setValidationChecksum(null);
+      setPreviewPage(0);
       setFilename('');
       setSourceKey('');
       setMessage({ kind: 'success', text: 'Đã ghi nhận tồn đầu kỳ thành công. Kho đang chọn được giữ lại cho đợt tiếp theo.' });
@@ -410,9 +419,21 @@ export default function OpeningBalanceCsvWorkspace({ initialImports, initialErro
       </section>
 
       <section className={styles.card}>
-        <div className={styles.cardHeader}><div><h2>Xem trước dữ liệu</h2><p>{rows.length ? `${rows.length} dòng trong ${filename}` : 'Chưa có dữ liệu để xem trước.'}</p></div>{localErrors.length ? <span className={styles.badgeError}>{localErrors.length} dòng thiếu dữ liệu</span> : rows.length ? <span className={styles.badgeOk}>Sẵn sàng kiểm tra</span> : null}</div>
+        <div className={styles.cardHeader}>
+          <div><h2>Xem trước dữ liệu</h2><p>{rows.length ? `${rows.length} dòng trong ${filename}` : 'Chưa có dữ liệu để xem trước.'}</p></div>
+          <div className={styles.previewControls}>
+            {localErrors.length ? <span className={styles.badgeError}>{localErrors.length} dòng thiếu dữ liệu</span> : rows.length ? <span className={styles.badgeOk}>Sẵn sàng kiểm tra</span> : null}
+            {rows.length ? <span className={styles.previewCount}>Đang xem {previewStart + 1}–{previewEnd} / {rows.length}</span> : null}
+            {previewPageCount > 1 ? <>
+              <button type="button" onClick={() => setPreviewPage((current) => Math.max(0, current - 1))} disabled={effectivePreviewPage === 0}>Trang trước</button>
+              <span>Trang {effectivePreviewPage + 1}/{previewPageCount}</span>
+              <button type="button" onClick={() => setPreviewPage((current) => Math.min(previewPageCount - 1, current + 1))} disabled={effectivePreviewPage >= previewPageCount - 1}>Trang sau</button>
+            </> : null}
+          </div>
+        </div>
         <div className={styles.tableWrap}><table><thead><tr><th>Dòng</th><th>Kho</th><th>Vị trí</th><th>SKU</th><th>Tên hàng</th><th>Số lượng</th><th>Chính sách</th><th>Lô hàng</th><th>Hạn dùng</th><th>Trạng thái</th></tr></thead><tbody>
-          {rows.length === 0 ? <tr><td colSpan={10} className={styles.empty}>Chọn tệp CSV để hiển thị dữ liệu.</td></tr> : effectiveRows.slice(0, 100).map((row, index) => {
+          {rows.length === 0 ? <tr><td colSpan={10} className={styles.empty}>Chọn tệp CSV để hiển thị dữ liệu.</td></tr> : previewRows.map((row, pageIndex) => {
+            const index = previewStart + pageIndex;
             const issue = localErrors.find((item) => item.line === index + 2);
             const canonical = resolvedRows[index] ?? validation?.rows[index];
             const serverIssue = validation?.rowErrors.find((item) => item.lineNumber === index + 1);

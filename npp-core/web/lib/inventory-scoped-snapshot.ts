@@ -13,12 +13,28 @@ import {
   type InventoryTrackingPolicyCandidate,
 } from './inventory-policy-candidates';
 
+const INVENTORY_BALANCE_BATCH_SIZE = 1000;
+const INVENTORY_BALANCE_MAX_OFFSET = 100000;
+
+async function listAllInventoryBalances(requestId: string): Promise<InventorySnapshot['balances']> {
+  const balances: InventorySnapshot['balances'] = [];
+  for (let offset = 0; offset <= INVENTORY_BALANCE_MAX_OFFSET; offset += INVENTORY_BALANCE_BATCH_SIZE) {
+    const batch = await listInventoryBalances<InventorySnapshot['balances']>(
+      requestId,
+      new URLSearchParams({
+        limit: String(INVENTORY_BALANCE_BATCH_SIZE),
+        offset: String(offset),
+      }),
+    );
+    balances.push(...batch);
+    if (batch.length < INVENTORY_BALANCE_BATCH_SIZE) return balances;
+  }
+  throw new Error('Dữ liệu tồn kho vượt phạm vi tra cứu an toàn. Vui lòng liên hệ quản trị hệ thống.');
+}
+
 export async function loadInventoryBalancesSnapshot(): Promise<InventorySnapshot> {
   const requestId = resolveInventoryRequestId(undefined);
-  const balances = await listInventoryBalances<InventorySnapshot['balances']>(
-    requestId,
-    new URLSearchParams({ limit: '500' }),
-  );
+  const balances = await listAllInventoryBalances(requestId);
   return { ...createEmptyInventorySnapshot(), balances };
 }
 

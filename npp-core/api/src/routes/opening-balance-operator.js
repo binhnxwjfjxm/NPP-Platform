@@ -10,6 +10,7 @@ import {
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SKU_PATTERN = /^[^\s][\s\S]{0,95}$/;
 const LOCATION_CODE_PATTERN = /^[^\s][\s\S]{0,63}$/;
+const OPENING_BALANCE_MAX_ROWS = 1000;
 
 function apiError(code, message, details = {}, retryable = false, statusCode = 500) {
   return { code, message, details, retryable, statusCode };
@@ -234,8 +235,8 @@ export async function resolveOpeningBalanceOperatorPayload(client, requestContex
   const warehouseId = String(payload.warehouseId ?? '').trim();
   const warehouse = await getWarehouse(client, requestContext, warehouseId);
   if (!warehouse) return failure('WAREHOUSE_SCOPE_DENIED', 'Hãy chọn một kho đang hoạt động trong phạm vi được cấp', {}, 403);
-  if (!Array.isArray(payload.rows) || payload.rows.length < 1 || payload.rows.length > 500) {
-    return failure('INVALID_ROWS', 'Tệp phải có từ 1 đến 500 dòng dữ liệu');
+  if (!Array.isArray(payload.rows) || payload.rows.length < 1 || payload.rows.length > OPENING_BALANCE_MAX_ROWS) {
+    return failure('INVALID_ROWS', `Tệp phải có từ 1 đến ${OPENING_BALANCE_MAX_ROWS} dòng dữ liệu`);
   }
 
   const parsedRows = payload.rows.map((row, index) => ({

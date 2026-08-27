@@ -22,6 +22,7 @@ const SOURCE_KEY_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 const CHECKSUM_PATTERN = /^[0-9a-f]{64}$/;
 const SCALE_6 = 1_000_000n;
 const SCALE_12 = 1_000_000_000_000n;
+const OPENING_BALANCE_MAX_ROWS = 1000;
 
 function failure(code, message, retryable = false, details = {}) {
   return Object.freeze({ ok: false, code, message, retryable, details });
@@ -157,8 +158,8 @@ function normalizeRequestBody(body) {
   if (!documentDate) return failure('INVALID_DOCUMENT_DATE', 'documentDate must be a valid YYYY-MM-DD date');
   const metadata = objectValue(body.metadata);
   if (metadata === null) return failure('INVALID_METADATA', 'metadata must be a JSON object no larger than 16 KB');
-  if (!Array.isArray(body.rows) || body.rows.length < 1 || body.rows.length > 500) {
-    return failure('INVALID_ROWS', 'rows must contain between 1 and 500 items');
+  if (!Array.isArray(body.rows) || body.rows.length < 1 || body.rows.length > OPENING_BALANCE_MAX_ROWS) {
+    return failure('INVALID_ROWS', `rows must contain between 1 and ${OPENING_BALANCE_MAX_ROWS} items`);
   }
 
   const normalizedRows = [];
@@ -477,7 +478,6 @@ export async function postOpeningBalanceImport({ adapter, requestContext, idempo
         installationId: requestContext.installationId,
         sourceKey: normalized.value.sourceKey,
       });
-
       const existing = await repository.getOpeningBalanceImportBySourceKey(client, {
         installationId: requestContext.installationId,
         sourceKey: normalized.value.sourceKey,
