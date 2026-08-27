@@ -5,6 +5,7 @@ import {
 
 export const PERMISSIONS = Object.freeze({
   ...BASE_PERMISSIONS,
+  coreInventoryNegativeStockIssue: 'core.inventory.negative-stock.issue',
   coreInventoryTransferReceive: 'core.inventory-transfer.receive',
   coreInventoryTransferDamageApprove: 'core.inventory-transfer.damage-approve',
   coreInventoryTransferResolve: 'core.inventory-transfer.resolve',
@@ -95,6 +96,16 @@ export const PERMISSIONS = Object.freeze({
   mcpReportSettingWrite: 'mcp.report-setting.write',
 });
 
+const NEGATIVE_STOCK_PERMISSION_CATALOG = Object.freeze([
+  Object.freeze({
+    permissionKey: PERMISSIONS.coreInventoryNegativeStockIssue,
+    module: 'Kho',
+    label: 'Xuất vượt tồn khả dụng',
+    description: 'Cho phép xuất hàng vượt tồn khả dụng tại kho đã bật chính sách tương ứng; hệ thống vẫn kiểm tra phạm vi kho và điều kiện nghiệp vụ.',
+    isSystem: true,
+  }),
+]);
+
 const INVENTORY_TRANSFER_RECEIPT_PERMISSION_CATALOG = Object.freeze([
   ['coreInventoryTransferReceive', 'Kho', 'Nhận hàng chuyển kho', 'Cho phép ghi nhận hàng đạt, hư hỏng và hàng thừa chờ xác minh tại kho đích.'],
   ['coreInventoryTransferDamageApprove', 'Kho', 'Duyệt hư hỏng chuyển kho', 'Cho phép quản lý kho đích xác nhận biên bản hư hỏng của lần nhận chuyển kho.'],
@@ -148,13 +159,7 @@ const REPORTING_PERMISSION_CATALOG = Object.freeze([
 ]);
 
 const MANAGEMENT_PERMISSION_CATALOG = Object.freeze([
-  Object.freeze({
-    permissionKey: PERMISSIONS.coreManagementProposalSubmit,
-    module: 'Đề xuất quản trị',
-    label: 'Gửi đề xuất quản trị',
-    description: 'Cho phép nhân viên Công Ty gửi đề xuất lên Admin và đọc lại đúng đề xuất do mình tạo.',
-    isSystem: true,
-  }),
+  Object.freeze({ permissionKey: PERMISSIONS.coreManagementProposalSubmit, module: 'Đề xuất quản trị', label: 'Gửi đề xuất quản trị', description: 'Cho phép nhân viên Công Ty gửi đề xuất lên Admin và đọc lại đúng đề xuất do mình tạo.', isSystem: true }),
 ]);
 
 const MCP_PERMISSION_CATALOG = Object.freeze([
@@ -224,6 +229,7 @@ const BACKUP_PERMISSION_CATALOG = Object.freeze([
 
 export const PERMISSION_CATALOG = Object.freeze([
   ...BASE_PERMISSION_CATALOG,
+  ...NEGATIVE_STOCK_PERMISSION_CATALOG,
   ...INVENTORY_TRANSFER_RECEIPT_PERMISSION_CATALOG,
   ...STOCKTAKE_PERMISSION_CATALOG,
   ...INVENTORY_ADJUSTMENT_PERMISSION_CATALOG,

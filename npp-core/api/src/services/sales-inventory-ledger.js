@@ -1,8 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { IDEMPOTENCY_KEY_PATTERN } from '@npp/contracts';
 import * as inventoryRepository from '../db/repositories/inventory-ledger.js';
+import {
+  readControlledNegativeStockEvidence,
+  verifyControlledNegativeStockEvidence,
+} from './inventory-negative-stock-policy.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const IDEMPOTENCY_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 const QUANTITY_PATTERN = /^(0|[1-9]\d{0,17})(?:\.(\d{1,12}))?$/;
 const CODE_PATTERN = /^[A-Z0-9_.-]{1,64}$/;
 const SCALE = 1_000_000_000_000n;
@@ -180,12 +184,48 @@ async function replayOrMismatch(client, { requestContext, idempotencyKey, hash }
   return Object.freeze({ ok: true, movement, lines: Object.freeze(lines), replayed: true });
 }
 
+function negativeStockContext({ requestContext, movementId, evidence }) {
+  return JSON.stringify({
+    ...evidence,
+    installationId: requestContext.installationId,
+    movementId,
+  });
+}
+
+async function validateNegativeStockLines(client, { requestContext, movement }) {
+  const evidenceByLine = new Map();
+  const warehouseCache = new Map();
+  for (const line of movement.lines) {
+    if (!line?.metadata?.negativeStockAuthorization) continue;
+    if (movement.movementType !== 'SALES_DELIVERY_ISSUE'
+      || movement.sourceDomain !== 'SALES'
+      || movement.direction !== 'OUT') {
+      return failure('NEGATIVE_STOCK_EVIDENCE_INVALID', 'Bằng chứng xuất vượt tồn chỉ hợp lệ cho nghiệp vụ Xuất kho bán hàng');
+    }
+    let verification = warehouseCache.get(line.warehouseId);
+    if (!verification) {
+      verification = await verifyControlledNegativeStockEvidence(client, {
+        requestContext,
+        line,
+      });
+      warehouseCache.set(line.warehouseId, verification);
+    }
+    if (!verification.ok) return verification;
+    const evidence = readControlledNegativeStockEvidence(line);
+    if (!evidence) {
+      return failure('NEGATIVE_STOCK_EVIDENCE_INVALID', 'Bằng chứng cho phép xuất vượt tồn không hợp lệ');
+    }
+    evidenceByLine.set(line.lineNumber, evidence);
+  }
+  return Object.freeze({ ok: true, evidenceByLine });
+}
+
 export async function postServerOwnedDomainMovement(client, {
   requestContext,
   idempotencyKey,
   payload,
 }) {
-  if (!IDEMPOTENCY_PATTERN.test(String(idempotencyKey ?? ''))) {
+  if (!IDEMPOTENCY_KEY_PATTERN.test(String(idempotencyKey ?? ''))) {
     return failure('INVALID_IDEMPOTENCY_KEY', 'Inventory movement idempotency key is invalid');
   }
   const normalized = normalizePayload(payload);
@@ -210,6 +250,12 @@ export async function postServerOwnedDomainMovement(client, {
     || normalized.value.lines.some((line) => !allowedWarehouses.has(line.warehouseId))) {
     return failure('WAREHOUSE_SCOPE_DENIED', 'Domain movement is outside the current warehouse scope');
   }
+
+  const negativeValidation = await validateNegativeStockLines(client, {
+    requestContext,
+    movement: normalized.value,
+  });
+  if (!negativeValidation.ok) return negativeValidation;
 
   for (const line of normalized.value.lines) {
     await inventoryRepository.lockInventoryBalanceScope(client, {
@@ -243,32 +289,49 @@ export async function postServerOwnedDomainMovement(client, {
     reasonNote: normalized.value.reasonNote,
     metadata: normalized.value.metadata,
   });
+
+  const previousContextResult = await client.query(
+    "SELECT current_setting('npp.inventory_negative_stock_context', true) AS value",
+  );
+  const previousContext = previousContextResult.rows?.[0]?.value ?? '';
   const lines = [];
-  for (const line of normalized.value.lines) {
-    const signedQuantity = normalized.value.direction === 'OUT' ? -line.quantity : line.quantity;
-    lines.push(await inventoryRepository.insertMovementLine(client, {
-      id: randomUUID(),
-      installationId: requestContext.installationId,
-      movementId: movement.id,
-      lineNumber: line.lineNumber,
-      warehouseId: line.warehouseId,
-      locationId: line.locationId,
-      sourceVariantId: line.baseVariantId,
-      sourceSku: line.baseSku,
-      sourceUnitId: line.baseUnitId,
-      sourceUnitCode: line.baseUnitCode,
-      sourceQuantity: formatQuantity(line.quantity),
-      conversionToBase: '1.000000000000',
-      baseVariantId: line.baseVariantId,
-      baseSku: line.baseSku,
-      direction: normalized.value.direction,
-      baseQuantityDelta: formatQuantity(signedQuantity),
-      lotId: line.lotId,
-      lotCode: line.lotCode,
-      expiryDate: line.expiryDate,
-      sourceLineReference: line.sourceLineId,
-      metadata: line.metadata,
-    }));
+  try {
+    for (const line of normalized.value.lines) {
+      const evidence = negativeValidation.evidenceByLine.get(line.lineNumber) ?? null;
+      await client.query(
+        "SELECT set_config('npp.inventory_negative_stock_context', $1, true)",
+        [evidence ? negativeStockContext({ requestContext, movementId: movement.id, evidence }) : ''],
+      );
+      const signedQuantity = normalized.value.direction === 'OUT' ? -line.quantity : line.quantity;
+      lines.push(await inventoryRepository.insertMovementLine(client, {
+        id: randomUUID(),
+        installationId: requestContext.installationId,
+        movementId: movement.id,
+        lineNumber: line.lineNumber,
+        warehouseId: line.warehouseId,
+        locationId: line.locationId,
+        sourceVariantId: line.baseVariantId,
+        sourceSku: line.baseSku,
+        sourceUnitId: line.baseUnitId,
+        sourceUnitCode: line.baseUnitCode,
+        sourceQuantity: formatQuantity(line.quantity),
+        conversionToBase: '1.000000000000',
+        baseVariantId: line.baseVariantId,
+        baseSku: line.baseSku,
+        direction: normalized.value.direction,
+        baseQuantityDelta: formatQuantity(signedQuantity),
+        lotId: line.lotId,
+        lotCode: line.lotCode,
+        expiryDate: line.expiryDate,
+        sourceLineReference: line.sourceLineId,
+        metadata: line.metadata,
+      }));
+    }
+  } finally {
+    await client.query(
+      "SELECT set_config('npp.inventory_negative_stock_context', $1, true)",
+      [previousContext],
+    );
   }
   return Object.freeze({ ok: true, movement, lines: Object.freeze(lines), replayed: false });
 }
@@ -288,4 +351,6 @@ export const salesInventoryLedgerInternals = Object.freeze({
   formatQuantity,
   normalizeDate,
   normalizePayload,
+  negativeStockContext,
+  validateNegativeStockLines,
 });
