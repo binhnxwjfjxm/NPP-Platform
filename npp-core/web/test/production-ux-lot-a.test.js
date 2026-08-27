@@ -51,3 +51,15 @@ test('warehouse type labels are rendered directly by the React workspace', async
   assert.match(workspace, /warehouseTypeLabels\[type\]/);
   assert.doesNotMatch(workspace, /MutationObserver/);
 });
+
+test('warehouse editor exposes controlled negative stock policy and sends canonical field', async () => {
+  const workspace = await text('../app/organization/organization-workspace.tsx');
+  const types = await text('../lib/organization-types.ts');
+  assert.match(types, /allow_negative_stock: boolean/);
+  assert.match(workspace, /data-testid="warehouse-negative-stock-policy-select"/);
+  assert.match(workspace, /Cho phép xuất vượt tồn khả dụng/);
+  assert.match(workspace, /allowNegativeStock: warehouseDraft\.allowNegativeStock/);
+  assert.match(workspace, /allowNegativeStock: false/);
+  assert.match(workspace, /warehouseNegativeStockEnabled\(entity\)/);
+  assert.match(workspace, /warehouse-negative-stock-status-/);
+});
