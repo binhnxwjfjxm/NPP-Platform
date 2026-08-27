@@ -22,6 +22,7 @@ export type Warehouse = {
   code: string;
   name: string;
   warehouse_type: string;
+  allow_negative_stock: boolean;
   is_active: boolean;
   created_at: string;
   updated_at: string;
