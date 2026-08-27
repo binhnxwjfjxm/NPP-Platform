@@ -28,7 +28,7 @@ export const ROLE_PRESETS: readonly RolePreset[] = Object.freeze([
 ]);
 
 function isReadLike(key: string) {
-  return key.endsWith('.read') || key.endsWith('.driver-read') || key.endsWith('.reconciliation-read');
+  return key.endsWith('.read') || key.endsWith('.read-all') || key.endsWith('.driver-read') || key.endsWith('.reconciliation-read');
 }
 
 function matchesAnyPrefix(key: string, prefixes: readonly string[]) {

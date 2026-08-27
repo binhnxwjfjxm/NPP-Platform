@@ -111,6 +111,7 @@ export function createBootstrapPrincipal(config) {
       PERMISSIONS.corePayableAllocationCreate,
       PERMISSIONS.corePayableAllocationReverse,
       PERMISSIONS.coreSalesOrderRead,
+      PERMISSIONS.coreSalesOrderReadAll,
       PERMISSIONS.coreSalesOrderCreate,
       PERMISSIONS.coreSalesOrderUpdateDraft,
       PERMISSIONS.coreSalesOrderConfirm,

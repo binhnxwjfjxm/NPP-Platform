@@ -296,6 +296,9 @@ export async function issueDirectSalesOrderStock(client, {
     return Object.freeze({ ok: false, code: 'INVALID_IDEMPOTENCY_KEY', message: 'Khóa chống ghi trùng không hợp lệ', retryable: false, details: {} });
   }
 
+  const visible = await getSalesOrder(client, { requestContext, id });
+  if (!visible.ok) return visible;
+
   const source = await lockSource(client, {
     installationId: requestContext.installationId,
     salesOrderId: id,

@@ -20,6 +20,7 @@ type OrderLine = {
     quantity: string;
     unitPrice: string;
     lineTotal: string;
+    priceSource?: 'PRICE_ENGINE' | 'MANUAL_OVERRIDE';
     taxMode: 'EXCLUSIVE' | 'INCLUSIVE';
     taxRate: string;
 };
@@ -64,6 +65,12 @@ type Bootstrap = {
     settings: {
         defaultTaxMode: 'EXCLUSIVE' | 'INCLUSIVE';
         defaultTaxRate: string;
+        permissions?: {
+            canPriceOverride?: boolean;
+            canDiscountOverride?: boolean;
+            canConfirm?: boolean;
+            canNegativeStockIssue?: boolean;
+        };
     };
     warehouses: {
         id: string;
@@ -153,6 +160,7 @@ const PRINT_TEMPLATE_STORAGE_KEY = 'retail.print.template';
 const STOCK_ISSUED_FULFILLMENT_STATUSES = new Set(['partially_issued', 'issued', 'partially_fulfilled', 'fulfilled']);
 const linesOf = (order: Order | null) => order?.versions?.find((item) => item.versionNumber === order.currentVersionNumber)?.lines ?? order?.versions?.find((item) => item.status === 'draft')?.lines ?? order?.versions?.[0]?.lines ?? [];
 const cartFromOrder = (order: Order): CartLine[] => linesOf(order).map((line) => ({ id: line.variantId, productCode: line.sku, imageKey: null, productName: line.itemName, sku: line.sku, unitCode: line.unitCode, allowsFractional: null, quantity: line.quantity, taxMode: line.taxMode, taxRate: line.taxRate }));
+const manualPricesFromOrder = (order: Order): Record<string, string> => Object.fromEntries(linesOf(order).filter((line) => line.priceSource === 'MANUAL_OVERRIDE').map((line) => [line.variantId, normalizeVndInput(line.unitPrice)]));
 async function api<T>(path: string, init?: RequestInit) {
     const response = await fetch(path, { cache: 'no-store', ...init, headers: { Accept: 'application/json', ...(init?.headers ?? {}) } });
     const payload = await response.json().catch(() => null) as {
@@ -250,6 +258,7 @@ export default function RetailWorkspace() {
     const [orderFilter, setOrderFilter] = useState<OrderFilter>('all');
     const [editPickup, setEditPickup] = useState(false);
     const [prices, setPrices] = useState<Record<string, CachedPricePreview>>({});
+    const [manualPrices, setManualPrices] = useState<Record<string, string>>({});
     const [lineImages, setLineImages] = useState<Record<string, string>>({});
     const [scannerOpen, setScannerOpen] = useState(false);
     const [scannerMessage, setScannerMessage] = useState<string | null>(null);
@@ -289,7 +298,23 @@ export default function RetailWorkspace() {
     const forgetOperationKey = useCallback((action: string, intent = 'default') => { operationKeys.current.delete(`${action}:${order?.id ?? 'new'}:${intent}`); }, [order?.id]);
     const refreshOrders = useCallback(async () => { const list = await api<Order[]>('/api/retail/orders?limit=100&offset=0'); setOrders(list.filter((item) => item.deliveryMode === 'PICKUP')); }, []);
     const loadPrintTemplates = useCallback(async () => { const templates = await api<PrintTemplate[]>('/api/retail/print-templates'); setPrintTemplates(templates); return templates; }, []);
+    const canPriceOverride = Boolean(boot?.settings.permissions?.canPriceOverride);
+    const canNegativeStockIssue = Boolean(boot?.settings.permissions?.canNegativeStockIssue);
     function priceInputKey(variantId: string, quantity: string) { return [customerMode, customerMode === 'EXISTING' ? customerId : '', variantId, quantity].join(':'); }
+    function manualPriceFor(variantId: string) { return String(manualPrices[variantId] ?? '').trim(); }
+    function effectiveLineTotal(line: CartLine) {
+        const manual = canPriceOverride ? manualPriceFor(line.id) : '';
+        if (/^\d+$/.test(manual)) {
+            const quantity = Number(line.quantity);
+            const unitPrice = Number(manual);
+            if (!Number.isFinite(quantity) || !Number.isFinite(unitPrice)) return 0;
+            const gross = quantity * unitPrice;
+            const rate = Number(line.taxRate || 0);
+            return line.taxMode === 'EXCLUSIVE' && Number.isFinite(rate) ? Math.round(gross * (1 + rate / 100)) : gross;
+        }
+        const preview = prices[line.id];
+        return preview?.inputKey === priceInputKey(line.id, line.quantity) ? Number(preview.lineTotalMinor || 0) : 0;
+    }
     function productQuery(offset: number) {
         const params = new URLSearchParams({ search, limit: String(PRODUCT_PAGE_SIZE), offset: String(offset) });
         if (categoryId)
@@ -326,7 +351,8 @@ export default function RetailWorkspace() {
             deliveryMode: 'PICKUP', collectionPolicy: policy, currency: 'VND', ...(revision ? { expectedRevision: revision } : {}),
             lines: cart.map((line) => {
                 const preview = prices[line.id];
-                return { variantId: line.id, quantity: line.quantity, taxMode: line.taxMode, taxRate: line.taxRate, ...(preview?.inputKey === priceInputKey(line.id, line.quantity) ? { expectedSystemUnitPriceMinor: preview.finalUnitPriceMinor } : {}) };
+                const manualPrice = manualPriceFor(line.id);
+                return { variantId: line.id, quantity: line.quantity, taxMode: line.taxMode, taxRate: line.taxRate, ...(preview?.inputKey === priceInputKey(line.id, line.quantity) ? { expectedSystemUnitPriceMinor: preview.finalUnitPriceMinor } : {}), ...(canPriceOverride && /^\d+$/.test(manualPrice) ? { manualUnitPriceMinor: manualPrice } : {}) };
             }),
         };
     }
@@ -382,7 +408,7 @@ export default function RetailWorkspace() {
     useEffect(() => {
         if (!cart.length || !warehouseId || editPickup || (order && order.status !== 'draft'))
             return;
-        const fingerprint = JSON.stringify({ customerMode, customerId: customerMode === 'EXISTING' ? customerId : '', warehouseId, policy, lines: cart.map((line) => [line.id, line.quantity, prices[line.id]?.finalUnitPriceMinor ?? '']) });
+        const fingerprint = JSON.stringify({ customerMode, customerId: customerMode === 'EXISTING' ? customerId : '', warehouseId, policy, lines: cart.map((line) => [line.id, line.quantity, prices[line.id]?.finalUnitPriceMinor ?? '', manualPriceFor(line.id)]) });
         if (lastDraftFingerprint.current === fingerprint)
             return;
         const timer = window.setTimeout(() => {
@@ -395,7 +421,7 @@ export default function RetailWorkspace() {
             void request.then((next) => { lastDraftFingerprint.current = fingerprint; setOrder(next); void refreshOrders().catch(() => undefined); }).catch((reason: Error) => setError(reason.message)).finally(() => setBusy((value) => value === 'draft-sync' ? null : value));
         }, 360);
         return () => window.clearTimeout(timer);
-    }, [cart, customerId, customerMode, editPickup, keyFor, order, policy, prices, refreshOrders, warehouseId]);
+    }, [cart, customerId, customerMode, editPickup, keyFor, manualPrices, order, policy, prices, refreshOrders, warehouseId]);
     useEffect(() => {
         if (!order?.id || ['closed', 'cancelled'].includes(order.status) || editPickup)
             return;
@@ -484,7 +510,7 @@ export default function RetailWorkspace() {
     const editable = !order || order.status === 'draft' || editPickup;
     const editingDraft = editable && (!order || order.status === 'draft' || editPickup);
     const total = order ? Number(order.total || 0) : 0;
-    const cartTotal = cart.reduce((sum, line) => { const preview = prices[line.id]; return sum + (preview?.inputKey === priceInputKey(line.id, line.quantity) ? Number(preview.lineTotalMinor || 0) : 0); }, 0);
+    const cartTotal = cart.reduce((sum, line) => sum + effectiveLineTotal(line), 0);
     const totalLabel = cart.length ? money.format(cartTotal || total) : money.format(total);
     const stage = progressStage(order);
     const canEditPickup = order?.status === 'confirmed' && !STOCK_ISSUED_FULFILLMENT_STATUSES.has(order.fulfillmentStatus);
@@ -496,12 +522,17 @@ export default function RetailWorkspace() {
     const stockRows = editingDraft ? cart.map((line) => ({ variantId: line.id, quantity: line.quantity, name: line.productName })) : lineItems.map((line) => ({ variantId: line.variantId, quantity: line.quantity, name: line.itemName }));
     const shortageRows = stockRows.filter((line) => isShortage(byVariant.get(line.variantId), line.quantity));
     const stockGatePending = Boolean(order && !['closed', 'cancelled'].includes(order.status) && (availabilityLoading || stockRows.some((line) => !byVariant.has(line.variantId))));
-    const stockBlocked = shortageRows.length > 0;
-    const stockGateText = stockBlocked ? `Chưa đủ Khả dụng: ${shortageRows.map((line) => line.name).join(', ')}.` : stockGatePending ? 'Đang kiểm tra Khả dụng trước khi xử lý.' : null;
+    const stockBlocked = shortageRows.length > 0 && !canNegativeStockIssue;
+    const stockGateText = shortageRows.length > 0
+        ? canNegativeStockIssue
+            ? `Khả dụng chưa đủ: ${shortageRows.map((line) => line.name).join(', ')}. Khi Xuất kho, Công Ty sẽ kiểm tra quyền xuất vượt tồn và chính sách kho.`
+            : `Chưa đủ Khả dụng: ${shortageRows.map((line) => line.name).join(', ')}.`
+        : stockGatePending ? 'Đang kiểm tra Khả dụng trước khi xử lý.' : null;
     const visiblePrintFields = new Set(printTemplate?.visibleFieldKeys ?? ['line_no', 'line_item', 'line_quantity', 'line_unit_price', 'line_total', 'total_total']);
     function removeCartLine(id: string) {
         lastDraftFingerprint.current = '';
         setSelected((current) => { const next = new Map(current); next.delete(id); return next; });
+        setManualPrices((current) => { const next = { ...current }; delete next[id]; return next; });
         setCart((rows) => rows.filter((row) => row.id !== id));
     }
     function updateCartQuantity(id: string, value: string, fractional: boolean | null) {
@@ -548,7 +579,7 @@ export default function RetailWorkspace() {
             return false;
         }
         if (stockBlocked) {
-            setError(`${stockGateText} Hãy giảm số lượng hoặc chọn SKU khác trước khi ${actionLabel.toLowerCase()}.`);
+            setError(`${stockGateText} Tài khoản chưa có quyền xuất vượt tồn; hãy giảm số lượng hoặc chọn SKU khác trước khi ${actionLabel.toLowerCase()}.`);
             return false;
         }
         return true;
@@ -561,11 +592,12 @@ export default function RetailWorkspace() {
         setBusy('save');
         setError(null);
         try {
-            const fingerprint = JSON.stringify(cart.map((line) => [line.id, line.quantity]));
+            const fingerprint = JSON.stringify(cart.map((line) => [line.id, line.quantity, manualPriceFor(line.id)]));
             const next = await api<Order>(`/api/retail/orders/${order.id}/pickup-edit`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': keyFor('pickup-edit', fingerprint) }, body: JSON.stringify(orderPayload(order.revision)) });
             setOrder(next);
             setCart([]);
             setPrices({});
+            setManualPrices({});
             setEditPickup(false);
             setNotice('Đã lưu thay đổi đơn và giữ nguyên trạng thái Đã chốt.');
             void api<Order>(`/api/retail/orders/${next.id}`).then(setOrder).catch(() => undefined);
@@ -573,7 +605,7 @@ export default function RetailWorkspace() {
         }
         catch (reason) {
             if (isRevisionConflict(reason))
-                void api<Order>(`/api/retail/orders/${order.id}`).then((next) => { setOrder(next); setCart(cartFromOrder(next)); setNotice('Đơn vừa thay đổi ở nơi khác. Đã nạp dữ liệu mới nhất để kiểm tra lại.'); }).catch(() => undefined);
+                void api<Order>(`/api/retail/orders/${order.id}`).then((next) => { setOrder(next); setCart(cartFromOrder(next)); setManualPrices(manualPricesFromOrder(next)); setNotice('Đơn vừa thay đổi ở nơi khác. Đã nạp dữ liệu mới nhất để kiểm tra lại.'); }).catch(() => undefined);
             setError(errorMessage(reason, 'Chưa thể lưu đơn.'));
         }
         finally {
@@ -603,8 +635,10 @@ export default function RetailWorkspace() {
             const body = kind === 'confirm' ? {} : { expectedRevision: source.revision };
             const next = await api<Order>(`/api/retail/orders/${source.id}/${kind}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey }, body: JSON.stringify(body) });
             setOrder(next);
-            if (kind === 'confirm')
+            if (kind === 'confirm') {
                 setCart([]);
+                setManualPrices({});
+            }
             if (kind === 'issue-stock')
                 forgetOperationKey('issue-stock', 'current-order');
             setNotice(kind === 'confirm' ? 'Đơn đã được chốt.' : kind === 'issue-stock' ? 'Đã xuất kho.' : 'Đơn đã hoàn thành.');
@@ -652,6 +686,7 @@ export default function RetailWorkspace() {
             setWarehouseId(next.warehouseId);
             setPolicy(next.collectionPolicy);
             setCart(next.status === 'draft' ? cartFromOrder(next) : []);
+            setManualPrices(next.status === 'draft' ? manualPricesFromOrder(next) : {});
             setEditPickup(false);
             setActiveTab('entry');
             lastDraftFingerprint.current = '';
@@ -661,8 +696,8 @@ export default function RetailWorkspace() {
         }
     }
     function beginPickupEdit() { if (!order)
-        return; setCart(cartFromOrder(order)); setCustomerMode(order.customerMode); setCustomerId(order.customerId); setWarehouseId(order.warehouseId); setPolicy(order.collectionPolicy); setEditPickup(true); setNotice('Có thể sửa đơn đến trước khi xuất kho.'); }
-    function resetEntry() { setOrder(null); setCart([]); setPrices({}); setEditPickup(false); setAvailable([]); setNotice(null); setError(null); setActiveTab('entry'); lastDraftFingerprint.current = ''; }
+        return; setCart(cartFromOrder(order)); setManualPrices(manualPricesFromOrder(order)); setCustomerMode(order.customerMode); setCustomerId(order.customerId); setWarehouseId(order.warehouseId); setPolicy(order.collectionPolicy); setEditPickup(true); setNotice('Có thể sửa đơn đến trước khi xuất kho.'); }
+    function resetEntry() { setOrder(null); setCart([]); setPrices({}); setManualPrices({}); setEditPickup(false); setAvailable([]); setNotice(null); setError(null); setActiveTab('entry'); lastDraftFingerprint.current = ''; }
     function applyTemplate(template: PrintTemplate) {
         setPrintTemplate(template);
         setTemplateHeading(template.heading ?? '');
@@ -822,7 +857,9 @@ export default function RetailWorkspace() {
                 return <article className={`cart-row cart-row-saved compact-product-card ${isShortage(availability, line.quantity) ? 'stock-shortage' : ''}`} key={line.id}>{productPicture(lineImages[line.variantId], line.itemName)}<div className="line-main"><strong>{line.itemName}</strong><span>SKU: {line.sku}</span><em>{line.unitCode}</em><small>Khả dụng {availabilityLabel(availability, availabilityLoading)}</small>{isShortage(availability, line.quantity) ? <small className="shortage-text">Cần {formatQuantity(line.quantity)} · hiện có {availabilityLabel(availability)}</small> : null}</div><dl><div><dt>SL</dt><dd>{formatQuantity(line.quantity)}</dd></div><div><dt>Đơn giá</dt><dd>{money.format(Number(line.unitPrice))}</dd></div><div><dt>Thành tiền</dt><dd>{money.format(Number(line.lineTotal))}</dd></div></dl></article>;
             }) : cart.map((line) => {
                 const availability = byVariant.get(line.id);
-                return <article className={`cart-row editable compact-product-card ${isShortage(availability, line.quantity) ? 'stock-shortage' : ''}`} key={line.id}>{productPicture(line.imageKey ?? line.productCode, line.productName)}<div className="line-main"><strong>{line.productName}</strong><span>SKU: {line.sku}</span><em>{line.unitCode}</em><small>Khả dụng {order ? availabilityLabel(availability, availabilityLoading) : 'Đang chuẩn bị'}</small>{isShortage(availability, line.quantity) ? <small className="shortage-text">Cần {formatQuantity(line.quantity)} · hiện có {availabilityLabel(availability)}</small> : null}</div><div className="quantity-stepper"><button type="button" aria-label={`Giảm ${line.productName}`} onClick={() => updateCartQuantity(line.id, String(Number(line.quantity) - 1), line.allowsFractional)}>−</button><input inputMode="decimal" aria-label={`Nhập số lượng ${line.productName}`} value={line.quantity} onChange={(event) => updateCartQuantity(line.id, event.target.value, line.allowsFractional)}/><button type="button" aria-label={`Tăng ${line.productName}`} onClick={() => updateCartQuantity(line.id, String(Number(line.quantity) + 1), line.allowsFractional)}>+</button></div><dl><div><dt>Đơn giá</dt><dd>{prices[line.id]?.inputKey === priceInputKey(line.id, line.quantity) ? money.format(Number(prices[line.id].finalUnitPriceMinor)) : 'Đang tính'}</dd></div><div><dt>Thành tiền</dt><dd>{prices[line.id]?.inputKey === priceInputKey(line.id, line.quantity) ? money.format(Number(prices[line.id].lineTotalMinor)) : '—'}</dd></div></dl><button className="remove-line" type="button" aria-label={`Xóa ${line.productName} khỏi đơn`} onClick={() => removeCartLine(line.id)}>Xóa</button></article>;
+                const preview = prices[line.id]?.inputKey === priceInputKey(line.id, line.quantity) ? prices[line.id] : null;
+                const manualPrice = manualPriceFor(line.id);
+                return <article className={`cart-row editable compact-product-card ${isShortage(availability, line.quantity) ? 'stock-shortage' : ''}`} key={line.id}>{productPicture(line.imageKey ?? line.productCode, line.productName)}<div className="line-main"><strong>{line.productName}</strong><span>SKU: {line.sku}</span><em>{line.unitCode}</em><small>Khả dụng {order ? availabilityLabel(availability, availabilityLoading) : 'Đang chuẩn bị'}</small>{isShortage(availability, line.quantity) ? <small className="shortage-text">Cần {formatQuantity(line.quantity)} · hiện có {availabilityLabel(availability)}</small> : null}</div><div className="quantity-stepper"><button type="button" aria-label={`Giảm ${line.productName}`} onClick={() => updateCartQuantity(line.id, String(Number(line.quantity) - 1), line.allowsFractional)}>−</button><input inputMode="decimal" aria-label={`Nhập số lượng ${line.productName}`} value={line.quantity} onChange={(event) => updateCartQuantity(line.id, event.target.value, line.allowsFractional)}/><button type="button" aria-label={`Tăng ${line.productName}`} onClick={() => updateCartQuantity(line.id, String(Number(line.quantity) + 1), line.allowsFractional)}>+</button></div><dl><div><dt>Đơn giá</dt><dd>{canPriceOverride ? <><input inputMode="numeric" aria-label={`Đơn giá ${line.sku}`} value={manualPrice || preview?.finalUnitPriceMinor || ''} placeholder="Nhập giá" onFocus={(event) => event.currentTarget.select()} onChange={(event) => { lastDraftFingerprint.current = ''; setManualPrices((current) => ({ ...current, [line.id]: normalizeVndInput(event.target.value) })); }}/>{manualPrice ? <small>Giá đã sửa</small> : null}</> : preview ? money.format(Number(preview.finalUnitPriceMinor)) : 'Đang tính'}</dd></div><div><dt>Thành tiền</dt><dd>{preview || manualPrice ? money.format(effectiveLineTotal(line)) : '—'}</dd></div></dl><button className="remove-line" type="button" aria-label={`Xóa ${line.productName} khỏi đơn`} onClick={() => removeCartLine(line.id)}>Xóa</button></article>;
             })}
           {editingDraft && !cart.length ? <p className="empty-cart">Chưa có sản phẩm. Chọn sản phẩm để tiếp tục.</p> : null}
         </div>

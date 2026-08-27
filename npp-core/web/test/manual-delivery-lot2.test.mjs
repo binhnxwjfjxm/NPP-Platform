@@ -22,7 +22,7 @@ test('Issue #622 Lô 2 exposes exactly the three office-language delivery choice
   assert.match(form, /Hình thức giao nhận/);
   assert.match(form, /<option value="TRIP">Giao theo chuyến<\/option>/);
   assert.match(form, /<option value="MANUAL">Giao thủ công<\/option>/);
-  assert.match(form, /<option value="PICKUP">Khách nhận tại kho<\/option>/);
+  assert.match(form, /<option value="PICKUP">Giao tại quầy<\/option>/);
   assert.match(form, /deliveryExecutionMode: deliveryExecutionMode \?\? 'TRIP'/);
   assert.match(types, /SalesOrderDeliveryExecutionMode = 'TRIP' \| 'MANUAL'/);
   assert.match(detail, /deliveryMethodLabel\(current\)/);

@@ -16,6 +16,7 @@ export const PERMISSIONS = Object.freeze({
   corePayableAllocationCreate: 'core.payable-allocation.create',
   corePayableAllocationReverse: 'core.payable-allocation.reverse',
   coreSalesOrderRead: 'core.sales-order.read',
+  coreSalesOrderReadAll: 'core.sales-order.read-all',
   coreSalesOrderCreate: 'core.sales-order.create',
   coreSalesOrderUpdateDraft: 'core.sales-order.update-draft',
   coreSalesOrderConfirm: 'core.sales-order.confirm',
@@ -53,7 +54,8 @@ export const PERMISSIONS = Object.freeze({
 });
 
 const SALES_ORDER_PERMISSION_CATALOG = Object.freeze([
-  ['coreSalesOrderRead', 'Bán hàng', 'Xem đơn bán hàng', 'Cho phép đọc danh sách, chi tiết và lịch sử phiên bản đơn bán hàng trong phạm vi kho được cấp.'],
+  ['coreSalesOrderRead', 'Bán hàng', 'Xem đơn bán hàng', 'Cho phép đọc đơn bán hàng của chính nhân viên trong phạm vi kho được cấp.'],
+  ['coreSalesOrderReadAll', 'Bán hàng', 'Xem đơn của nhân viên khác', 'Cho phép đọc và xử lý phạm vi đơn của nhân viên khác khi đồng thời có quyền thao tác tương ứng; không mở rộng phạm vi kho và không tự cấp quyền sửa giá, xuất kho hoặc thu tiền.'],
   ['coreSalesOrderCreate', 'Bán hàng', 'Tạo đơn bán hàng', 'Cho phép tạo đơn bán hàng ở trạng thái nháp.'],
   ['coreSalesOrderUpdateDraft', 'Bán hàng', 'Sửa đơn bán hàng nháp', 'Cho phép cập nhật phiên bản nháp của đơn bán hàng.'],
   ['coreSalesOrderConfirm', 'Bán hàng', 'Xác nhận đơn bán hàng', 'Cho phép xác nhận đơn bán hàng và cấp số chứng từ.'],
@@ -74,7 +76,7 @@ const SALES_ORDER_PERMISSION_CATALOG = Object.freeze([
   ['coreDeliveryOrderCancel', 'Giao nhận', 'Hủy chứng từ giao nhận nháp', 'Cho phép hủy Delivery Order nháp với lý do bắt buộc và trả phần packed về hàng đợi.'],
   ['coreDeliveryOrderIssueInventory', 'Giao nhận', 'Xuất kho theo điều phối giao hàng', 'Cho phép service điều phối được cấp quyền ghi Inventory OUT từ Delivery Order đã sẵn sàng.'],
   ['coreDeliveryOrderPickupHandover', 'Giao nhận', 'Xác nhận bàn giao tại quầy', 'Cho phép xác nhận bàn giao vật lý cho khách nhận tại quầy và ghi Inventory OUT.'],
-  ['coreDeliveryOrderManualHandover', 'Giao nhận', 'Xác nhận giao thủ công', 'Cho phép NPP Operations xác nhận giao trực tiếp Delivery Order giao tận nơi, ghi Inventory OUT và công nợ theo lượng thực giao.'],
+  ['coreDeliveryOrderManualHandover', 'Giao nhận', 'Xác nhận giao thủ công', 'Cho phép Công Ty xác nhận giao trực tiếp Delivery Order giao tận nơi, ghi Inventory OUT và công nợ theo lượng thực giao.'],
   ['coreDeliveryOrderReverseInventoryIssue', 'Giao nhận', 'Đảo xuất kho giao nhận', 'Cho phép đảo một lần movement xuất kho sai khi chưa có dữ liệu downstream chặn.'],
   ['coreCustomerReturnRead', 'Hàng khách trả', 'Xem hàng khách trả', 'Cho phép đọc nguồn hàng đã xuất và phiếu hàng khách trả trong phạm vi kho.'],
   ['coreCustomerReturnCreate', 'Hàng khách trả', 'Tạo phiếu hàng khách trả', 'Cho phép tạo phiếu nháp từ dòng Delivery Order đã xuất có nguồn gốc bất biến.'],

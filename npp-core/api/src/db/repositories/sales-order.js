@@ -114,12 +114,41 @@ function appendWarehouseScope(query, params, warehouseIds, column = 'so.warehous
   return { query: `${query} AND ${column} = ANY($${params.length}::uuid[])`, params };
 }
 
+function appendEmployeeScope(query, params, {
+  employeeId = null, actorId = null, allowAllEmployees = false,
+} = {}) {
+  if (allowAllEmployees) return { query, params };
+  const normalizedEmployeeId = typeof employeeId === 'string' ? employeeId.trim() : '';
+  const normalizedActorId = typeof actorId === 'string' ? actorId.trim() : '';
+  if (!normalizedEmployeeId) {
+    if (!normalizedActorId) return { query: `${query} AND false`, params };
+    params.push(normalizedActorId);
+    return { query: `${query} AND so.created_by = $${params.length}`, params };
+  }
+  params.push(normalizedEmployeeId);
+  const index = params.length;
+  return {
+    query: `${query} AND (
+      so.source_employee_id = $${index}::uuid
+      OR EXISTS (
+        SELECT 1
+          FROM shared.users creator_user
+         WHERE creator_user.installation_id = so.installation_id
+           AND creator_user.employee_id = $${index}::uuid
+           AND so.created_by = 'user:' || creator_user.id::text
+      )
+    )`,
+    params,
+  };
+}
+
 function nowIso() {
   return new Date().toISOString();
 }
 
 export async function listSalesOrders(client, {
-  installationId, warehouseIds, status, customerId, warehouseId, search, limit = 100, offset = 0,
+  installationId, warehouseIds, employeeId = null, actorId = null, allowAllEmployees = false,
+  status, customerId, warehouseId, search, limit = 100, offset = 0,
 }) {
   const params = [installationId];
   let query = `SELECT ${ORDER_COLUMNS}
@@ -128,6 +157,7 @@ export async function listSalesOrders(client, {
     JOIN shared.warehouses w ON w.installation_id = so.installation_id AND w.id = so.warehouse_id
     WHERE so.installation_id = $1`;
   ({ query } = appendWarehouseScope(query, params, warehouseIds));
+  ({ query } = appendEmployeeScope(query, params, { employeeId, actorId, allowAllEmployees }));
   if (status) {
     params.push(status);
     query += ` AND so.status = $${params.length}`;
@@ -154,7 +184,7 @@ export async function listSalesOrders(client, {
 }
 
 export async function getSalesOrderById(client, {
-  installationId, id, warehouseIds, forUpdate = false,
+  installationId, id, warehouseIds, employeeId = null, actorId = null, allowAllEmployees = false, forUpdate = false,
 }) {
   const params = [installationId, id];
   let query = `SELECT ${ORDER_COLUMNS}
@@ -163,6 +193,7 @@ export async function getSalesOrderById(client, {
     JOIN shared.warehouses w ON w.installation_id = so.installation_id AND w.id = so.warehouse_id
     WHERE so.installation_id = $1 AND so.id = $2`;
   ({ query } = appendWarehouseScope(query, params, warehouseIds));
+  ({ query } = appendEmployeeScope(query, params, { employeeId, actorId, allowAllEmployees }));
   if (forUpdate) query += ' FOR UPDATE OF so';
   return (await client.query(query, params)).rows[0] ?? null;
 }

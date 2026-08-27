@@ -137,6 +137,16 @@ function hasPermission(requestContext, permission) {
   return Array.isArray(requestContext?.permissions) && requestContext.permissions.includes(permission);
 }
 
+function orderEmployeeVisibility(requestContext) {
+  return Object.freeze({
+    employeeId: isUuid(requestContext?.employeeId) ? requestContext.employeeId.trim() : null,
+    actorId: typeof requestContext?.actorId === 'string' && requestContext.actorId.trim()
+      ? requestContext.actorId.trim()
+      : null,
+    allowAllEmployees: hasPermission(requestContext, 'core.sales-order.read-all'),
+  });
+}
+
 function addressSnapshot(address) {
   if (!address) return null;
   return {
@@ -282,6 +292,7 @@ async function loadOrder(client, { requestContext, id, forUpdate = false }) {
     installationId: requestContext.installationId,
     id,
     warehouseIds: warehouseIds(requestContext),
+    ...orderEmployeeVisibility(requestContext),
     forUpdate,
   });
   if (!order) return failure('SALES_ORDER_NOT_FOUND', 'Sales order not found');
@@ -323,6 +334,7 @@ export async function listSalesOrders(client, input) {
   const rows = await repository.listSalesOrders(client, {
     installationId: input.requestContext.installationId,
     warehouseIds: warehouseIds(input.requestContext),
+    ...orderEmployeeVisibility(input.requestContext),
     status: input.status ?? null,
     customerId: input.customerId ?? null,
     warehouseId: input.warehouseId ?? null,
