@@ -1,15 +1,16 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { IDEMPOTENCY_KEY_PATTERN } from '@npp/contracts';
 import {
   buildAuditRecord,
   buildOutboxEvent,
   insertAuditRecord,
   insertOutboxEvent,
 } from '../audit-outbox.js';
+import { deriveIdempotencyKey } from '../idempotency-derived.js';
 import * as repository from '../db/repositories/logistics-trip-reconciliation.js';
 import { postServerOwnedDomainMovement } from './sales-inventory-ledger.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const IDEMPOTENCY_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 const QUANTITY_PATTERN = /^(0|[1-9]\d{0,17})(?:\.(\d{1,12}))?$/;
 const SCALE = 1_000_000_000_000n;
 const MAX_OPERATION_BACKDATE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -31,7 +32,7 @@ function payloadHash(value) {
 }
 
 function eventKey(prefix, value) {
-  return `${prefix}:${createHash('sha256').update(String(value)).digest('hex').slice(0, 48)}`;
+  return deriveIdempotencyKey(prefix, value);
 }
 
 function text(value, maxLength) {
@@ -297,8 +298,8 @@ export async function receiveTripReturn({
   payload,
 }) {
   if (!UUID_PATTERN.test(String(tripId ?? ''))) return failure('INVALID_TRIP_ID', 'Trip id is invalid');
-  if (!IDEMPOTENCY_PATTERN.test(String(idempotencyKey ?? ''))) {
-    return failure('INVALID_IDEMPOTENCY_KEY', 'Idempotency key must use 1-128 safe characters');
+  if (!IDEMPOTENCY_KEY_PATTERN.test(String(idempotencyKey ?? ''))) {
+    return failure('INVALID_IDEMPOTENCY_KEY', 'Idempotency key must use the canonical safe-character contract');
   }
   if (!permissions(requestContext).has('core.delivery-trip.return-receive')) {
     return failure('PERMISSION_DENIED', 'Permission core.delivery-trip.return-receive is required');
@@ -552,8 +553,8 @@ export async function closeReconciledTrip({
   payload,
 }) {
   if (!UUID_PATTERN.test(String(tripId ?? ''))) return failure('INVALID_TRIP_ID', 'Trip id is invalid');
-  if (!IDEMPOTENCY_PATTERN.test(String(idempotencyKey ?? ''))) {
-    return failure('INVALID_IDEMPOTENCY_KEY', 'Idempotency key must use 1-128 safe characters');
+  if (!IDEMPOTENCY_KEY_PATTERN.test(String(idempotencyKey ?? ''))) {
+    return failure('INVALID_IDEMPOTENCY_KEY', 'Idempotency key must use the canonical safe-character contract');
   }
   if (!permissions(requestContext).has('core.delivery-trip.close')) {
     return failure('PERMISSION_DENIED', 'Permission core.delivery-trip.close is required');

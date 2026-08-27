@@ -3,6 +3,10 @@ import { createIdempotencyKey, IDEMPOTENCY_KEY_PATTERN } from '@npp/contracts';
 import { postServerOwnedSalesMovement } from './sales-inventory-ledger.js';
 import { getSalesOrder } from './sales-order.js';
 import { reconcileDemandHold } from './sales-fulfillment-hold.js';
+import {
+  authorizeControlledNegativeStock,
+  negativeStockScopeSupported,
+} from './inventory-negative-stock-policy.js';
 
 const SCALE = 1_000_000_000_000n;
 
@@ -198,9 +202,10 @@ async function listCandidates(client, { installationId, warehouseId, baseVariant
   return result.rows ?? [];
 }
 
-async function setProjectionWriteContext(client) {
+async function setProjectionWriteContext(client, context = 'fulfillment_service') {
   await client.query(
-    "SELECT set_config('npp.sales_fulfillment_write_context', 'fulfillment_service', true)",
+    "SELECT set_config('npp.sales_fulfillment_write_context', $1, true)",
+    [context],
   );
 }
 
@@ -221,12 +226,13 @@ async function prepareDemandsForIssue(client, { installationId, salesOrderId, ac
 }
 
 async function markDemandsIssued(client, { installationId, salesOrderId, actorId }) {
-  await setProjectionWriteContext(client);
+  await setProjectionWriteContext(client, 'negative_stock_issue_service');
   const result = await client.query(
     `UPDATE sales.sales_order_fulfillment_demands
         SET picked_base_quantity = reserved_base_quantity,
             packed_base_quantity = reserved_base_quantity,
             issued_base_quantity = reserved_base_quantity,
+            negative_issued_base_quantity = backordered_base_quantity,
             updated_at = now(),
             updated_by = $3
       WHERE installation_id = $1
@@ -261,6 +267,18 @@ function sourceMatches(contract, source) {
   return source?.status === 'confirmed'
     && source.delivery_mode === contract.deliveryMode
     && source.delivery_execution_mode === contract.deliveryExecutionMode;
+}
+
+function baseLineMetadata({ id, demand, contract }) {
+  return {
+    salesOrderId: id,
+    salesOrderVersionId: demand.sales_order_version_id,
+    salesOrderLineId: demand.sales_order_line_id,
+    fulfillmentDemandId: demand.id,
+    lineNumber: demand.line_number,
+    sku: demand.sku_snapshot,
+    [contract.metadataFlag]: true,
+  };
 }
 
 export async function issueDirectSalesOrderStock(client, {
@@ -313,9 +331,10 @@ export async function issueDirectSalesOrderStock(client, {
   }
 
   const fullyIssued = demands.every((demand) => {
-    const reserved = parseQuantity(demand.reserved_base_quantity) ?? 0n;
+    const ordered = parseQuantity(demand.ordered_base_quantity) ?? 0n;
     const issued = parseQuantity(demand.issued_base_quantity) ?? 0n;
-    return reserved > 0n && issued >= reserved;
+    const negativeIssued = parseQuantity(demand.negative_issued_base_quantity) ?? 0n;
+    return ordered > 0n && issued + negativeIssued >= ordered;
   });
   if (fullyIssued) {
     return failure(contract, 'CONFLICT', 'Đơn đã Xuất kho, không thể xuất lại');
@@ -323,10 +342,11 @@ export async function issueDirectSalesOrderStock(client, {
 
   const hasExecutionFacts = demands.some((demand) => {
     const issued = parseQuantity(demand.issued_base_quantity) ?? 0n;
+    const negativeIssued = parseQuantity(demand.negative_issued_base_quantity) ?? 0n;
     const allocated = parseQuantity(demand.allocated_base_quantity) ?? 0n;
     const picked = parseQuantity(demand.picked_base_quantity) ?? 0n;
     const packed = parseQuantity(demand.packed_base_quantity) ?? 0n;
-    return issued > 0n || allocated > 0n || picked > 0n || packed > 0n;
+    return issued > 0n || negativeIssued > 0n || allocated > 0n || picked > 0n || packed > 0n;
   });
   if (hasExecutionFacts) {
     return failure(
@@ -349,30 +369,55 @@ export async function issueDirectSalesOrderStock(client, {
   }
   demands = refreshedDemands;
 
+  const negativeAuthorizationByDemand = new Map();
   for (const demand of demands) {
     const ordered = parseQuantity(demand.ordered_base_quantity);
     const reserved = parseQuantity(demand.reserved_base_quantity);
     const backordered = parseQuantity(demand.backordered_base_quantity);
     if (ordered === null || reserved === null || backordered === null
-        || ordered <= 0n || reserved !== ordered || backordered !== 0n) {
+        || ordered <= 0n || reserved + backordered !== ordered) {
       return failure(
         contract,
-        'SHORTAGE',
-        `Chưa đủ hàng để Xuất kho dòng ${demand.line_number} (${demand.sku_snapshot})`,
-        false,
-        {
-          lineNumber: demand.line_number,
-          sku: demand.sku_snapshot,
-          orderedBaseQuantity: demand.ordered_base_quantity,
-          reservedBaseQuantity: demand.reserved_base_quantity,
-          backorderedBaseQuantity: demand.backordered_base_quantity,
-        },
+        'PROJECTION_INVALID',
+        `Số lượng giữ hàng của dòng ${demand.line_number} (${demand.sku_snapshot}) không khớp đơn. Hãy tải lại trước khi Xuất kho.`,
+        true,
+        { lineNumber: demand.line_number, sku: demand.sku_snapshot },
       );
     }
+    if (backordered <= 0n) continue;
+    if (!negativeStockScopeSupported({
+      locationRequired: demand.location_required,
+      lotTrackingMode: demand.lot_tracking_mode,
+      expiryTrackingMode: demand.expiry_tracking_mode,
+    })) {
+      return failure(
+        contract,
+        'NEGATIVE_STOCK_SCOPE_REQUIRED',
+        `Dòng ${demand.line_number} (${demand.sku_snapshot}) đang quản lý vị trí/lô nên không thể xuất vượt tồn khi chưa có vị trí hoặc lô chính xác.`,
+        false,
+        { lineNumber: demand.line_number, sku: demand.sku_snapshot },
+      );
+    }
+    const authorization = await authorizeControlledNegativeStock(client, {
+      requestContext,
+      warehouseId: demand.warehouse_id,
+    });
+    if (!authorization.ok) {
+      return failure(
+        contract,
+        'NEGATIVE_STOCK_NOT_ALLOWED',
+        authorization.message,
+        false,
+        { lineNumber: demand.line_number, sku: demand.sku_snapshot, reason: authorization.code },
+      );
+    }
+    negativeAuthorizationByDemand.set(demand.id, authorization.evidence);
   }
 
   const candidatesByScope = new Map();
   for (const demand of demands) {
+    const reserved = parseQuantity(demand.reserved_base_quantity) ?? 0n;
+    if (reserved <= 0n) continue;
     const scope = `${demand.warehouse_id}|${demand.base_variant_id}`;
     if (!candidatesByScope.has(scope)) {
       await client.query(
@@ -417,15 +462,7 @@ export async function issueDirectSalesOrderStock(client, {
         lotCode: candidate.lot_code ?? null,
         expiryDate: candidate.expiry_date ?? null,
         quantity: formatQuantity(quantity),
-        metadata: {
-          salesOrderId: id,
-          salesOrderVersionId: demand.sales_order_version_id,
-          salesOrderLineId: demand.sales_order_line_id,
-          fulfillmentDemandId: demand.id,
-          lineNumber: demand.line_number,
-          sku: demand.sku_snapshot,
-          [contract.metadataFlag]: true,
-        },
+        metadata: baseLineMetadata({ id, demand, contract }),
       });
       remaining -= quantity;
       chunk += 1;
@@ -434,14 +471,40 @@ export async function issueDirectSalesOrderStock(client, {
       return failure(
         contract,
         'SHORTAGE',
-        `Tồn kho thực tế không đủ để Xuất kho dòng ${demand.line_number} (${demand.sku_snapshot})`,
-        false,
-        {
-          lineNumber: demand.line_number,
-          sku: demand.sku_snapshot,
-          missingBaseQuantity: formatQuantity(remaining),
-        },
+        `Phần hàng đã giữ cho dòng ${demand.line_number} (${demand.sku_snapshot}) không còn đủ theo vị trí/lô đã ghi nhận. Hãy tải lại trước khi Xuất kho.`,
+        true,
+        { lineNumber: demand.line_number, sku: demand.sku_snapshot, missingBaseQuantity: formatQuantity(remaining) },
       );
+    }
+
+    const negativeQuantity = parseQuantity(demand.backordered_base_quantity) ?? 0n;
+    if (negativeQuantity > 0n) {
+      const evidence = negativeAuthorizationByDemand.get(demand.id);
+      if (!evidence) {
+        return failure(contract, 'NEGATIVE_STOCK_NOT_ALLOWED', 'Chưa có quyền hợp lệ để xuất vượt tồn khả dụng.');
+      }
+      const sourceLineId = chunk === 0
+        ? demand.source_sales_order_line_id
+        : deterministicUuid(`${demand.id}|negative-stock|${chunk}`);
+      movementLines.push({
+        sourceLineId,
+        warehouseId: demand.warehouse_id,
+        locationId: null,
+        baseVariantId: demand.base_variant_id,
+        baseSku: demand.base_sku,
+        baseUnitId: demand.base_unit_id,
+        baseUnitCode: demand.base_unit_code,
+        lotId: null,
+        lotCode: null,
+        expiryDate: null,
+        quantity: formatQuantity(negativeQuantity),
+        metadata: {
+          ...baseLineMetadata({ id, demand, contract }),
+          negativeStock: true,
+          negativeStockQuantity: formatQuantity(negativeQuantity),
+          negativeStockAuthorization: evidence,
+        },
+      });
     }
   }
 
@@ -475,6 +538,7 @@ export async function issueDirectSalesOrderStock(client, {
       metadata: {
         salesOrderId: id,
         salesOrderVersionId: source.sales_order_version_id,
+        controlledNegativeStock: negativeAuthorizationByDemand.size > 0,
         [contract.metadataFlag]: true,
       },
       lines: movementLines,
@@ -510,4 +574,5 @@ export const directStockIssueInternals = Object.freeze({
   exactScopeKey,
   directMode,
   sourceMatches,
+  baseLineMetadata,
 });

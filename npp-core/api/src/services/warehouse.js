@@ -40,7 +40,6 @@ function validateExpectedUpdatedAt(value) {
   if (Number.isNaN(parsed.getTime())) {
     return { ok: false, code: 'INVALID_EXPECTED_UPDATED_AT', message: 'expectedUpdatedAt must be a valid date-time' };
   }
-
   return { ok: true, value: parsed.toISOString() };
 }
 
@@ -53,10 +52,8 @@ export function validateWarehouseInput(payload, { allowBranchIdUpdate = false } 
     return { ok: false, code: 'INVALID_INPUT', message: 'Warehouse data is required' };
   }
 
-  if (allowBranchIdUpdate) {
-    if (!validateEntityId(payload.branchId)) {
-      return { ok: false, code: 'INVALID_BRANCH_ID', message: 'Branch ID must be a valid UUID' };
-    }
+  if (allowBranchIdUpdate && !validateEntityId(payload.branchId)) {
+    return { ok: false, code: 'INVALID_BRANCH_ID', message: 'Branch ID must be a valid UUID' };
   }
 
   const code = normalizeCode(payload.code);
@@ -72,6 +69,9 @@ export function validateWarehouseInput(payload, { allowBranchIdUpdate = false } 
   if (!isValidWarehouseType(payload.warehouseType)) {
     return { ok: false, code: 'INVALID_TYPE', message: `Warehouse type must be one of: ${WAREHOUSE_TYPES.join(', ')}` };
   }
+  if (payload.allowNegativeStock !== undefined && typeof payload.allowNegativeStock !== 'boolean') {
+    return { ok: false, code: 'INVALID_NEGATIVE_STOCK_POLICY', message: 'Cho phép xuất vượt tồn phải là trạng thái bật hoặc tắt.' };
+  }
 
   return {
     ok: true,
@@ -80,6 +80,7 @@ export function validateWarehouseInput(payload, { allowBranchIdUpdate = false } 
       name,
       warehouseType: payload.warehouseType,
       branchId: payload.branchId ? payload.branchId.trim() : undefined,
+      allowNegativeStock: payload.allowNegativeStock === true,
     },
   };
 }
@@ -92,13 +93,8 @@ export async function createWarehouse(client, { installationId, payload, created
     id: validation.normalized.branchId,
     installationId,
   });
-  if (!branch) {
-    return { ok: false, code: 'BRANCH_NOT_FOUND', message: 'Branch not found or does not belong to this installation' };
-  }
-
-  if (!branch.is_active) {
-    return { ok: false, code: 'BRANCH_INACTIVE', message: 'Cannot create warehouse under inactive branch' };
-  }
+  if (!branch) return { ok: false, code: 'BRANCH_NOT_FOUND', message: 'Branch not found or does not belong to this installation' };
+  if (!branch.is_active) return { ok: false, code: 'BRANCH_INACTIVE', message: 'Cannot create warehouse under inactive branch' };
 
   const existing = await warehouseRepo.getWarehouseByCode(client, { installationId, code: validation.normalized.code });
   if (existing) return { ok: false, code: 'DUPLICATE_CODE', message: 'A warehouse with this code already exists', retryable: false };
@@ -109,17 +105,14 @@ export async function createWarehouse(client, { installationId, payload, created
     code: validation.normalized.code,
     name: validation.normalized.name,
     warehouseType: validation.normalized.warehouseType,
+    allowNegativeStock: validation.normalized.allowNegativeStock,
     createdBy,
   });
-
   return { ok: true, warehouse };
 }
 
 export async function getWarehouse(client, { installationId, id }) {
-  if (!validateEntityId(id)) {
-    return { ok: false, code: 'NOT_FOUND', message: 'Warehouse not found' };
-  }
-
+  if (!validateEntityId(id)) return { ok: false, code: 'NOT_FOUND', message: 'Warehouse not found' };
   const warehouse = await warehouseRepo.getWarehouseByIdForInstallation(client, { id: id.trim(), installationId });
   if (!warehouse) return { ok: false, code: 'NOT_FOUND', message: 'Warehouse not found' };
   return { ok: true, warehouse };
@@ -127,14 +120,10 @@ export async function getWarehouse(client, { installationId, id }) {
 
 export async function listWarehouses(client, { installationId, branchId, active, limit, offset }) {
   if (branchId) {
-    if (!validateEntityId(branchId)) {
-      return { ok: false, code: 'INVALID_BRANCH_ID', message: 'Branch ID must be a valid UUID' };
-    }
-
+    if (!validateEntityId(branchId)) return { ok: false, code: 'INVALID_BRANCH_ID', message: 'Branch ID must be a valid UUID' };
     const normalizedBranchId = branchId.trim();
     const branch = await branchRepo.getBranchByIdForInstallation(client, { id: normalizedBranchId, installationId });
     if (!branch) return { ok: false, code: 'NOT_FOUND', message: 'Branch not found' };
-
     const warehouses = await warehouseRepo.listWarehousesForBranch(client, {
       branchId: normalizedBranchId,
       installationId,
@@ -150,15 +139,20 @@ export async function listWarehouses(client, { installationId, branchId, active,
 }
 
 export async function updateWarehouse(client, { id, installationId, payload, updatedBy }) {
-  if (!validateEntityId(id)) {
-    return { ok: false, code: 'INVALID_ID', message: 'Warehouse ID must be a valid UUID' };
-  }
+  if (!validateEntityId(id)) return { ok: false, code: 'INVALID_ID', message: 'Warehouse ID must be a valid UUID' };
 
   const normalizedId = id.trim();
   const existing = await warehouseRepo.getWarehouseByIdForInstallation(client, { id: normalizedId, installationId });
   if (!existing) return { ok: false, code: 'NOT_FOUND', message: 'Warehouse not found' };
 
-  const validation = validateWarehouseInput({ code: existing.code, branchId: existing.branch_id, ...payload });
+  const validation = validateWarehouseInput({
+    code: existing.code,
+    branchId: existing.branch_id,
+    name: existing.name,
+    warehouseType: existing.warehouse_type,
+    allowNegativeStock: existing.allow_negative_stock === true,
+    ...payload,
+  });
   if (!validation.ok) return { ok: false, code: validation.code, message: validation.message };
 
   const expectedUpdatedAtValidation = validateExpectedUpdatedAt(payload.expectedUpdatedAt);
@@ -171,21 +165,17 @@ export async function updateWarehouse(client, { id, installationId, payload, upd
     installationId,
     name: validation.normalized.name,
     warehouseType: validation.normalized.warehouseType,
+    allowNegativeStock: validation.normalized.allowNegativeStock,
     updatedBy,
     expectedUpdatedAt: expectedUpdatedAtValidation?.value ?? null,
   });
 
-  if (!updated) {
-    return staleVersionConflict({ entityLabel: 'Kho', managementPath: '/organization/warehouses' });
-  }
-
+  if (!updated) return staleVersionConflict({ entityLabel: 'Kho', managementPath: '/organization/warehouses' });
   return { ok: true, warehouse: updated, beforeData: existing };
 }
 
 export async function updateWarehouseStatus(client, { id, installationId, isActive, updatedBy, expectedUpdatedAt }) {
-  if (!validateEntityId(id)) {
-    return { ok: false, code: 'INVALID_ID', message: 'Warehouse ID must be a valid UUID' };
-  }
+  if (!validateEntityId(id)) return { ok: false, code: 'INVALID_ID', message: 'Warehouse ID must be a valid UUID' };
 
   const normalizedId = id.trim();
   const existing = await warehouseRepo.getWarehouseByIdForInstallationForUpdate(client, { id: normalizedId, installationId });
@@ -195,14 +185,8 @@ export async function updateWarehouseStatus(client, { id, installationId, isActi
   if (expectedUpdatedAtValidation && !expectedUpdatedAtValidation.ok) {
     return { ok: false, code: expectedUpdatedAtValidation.code, message: expectedUpdatedAtValidation.message };
   }
-
-  if (typeof isActive !== 'boolean') {
-    return { ok: false, code: 'INVALID_ACTIVE_STATUS', message: 'isActive must be a boolean' };
-  }
-
-  if (existing.is_active === isActive) {
-    return { ok: true, warehouse: existing, beforeData: existing };
-  }
+  if (typeof isActive !== 'boolean') return { ok: false, code: 'INVALID_ACTIVE_STATUS', message: 'isActive must be a boolean' };
+  if (existing.is_active === isActive) return { ok: true, warehouse: existing, beforeData: existing };
 
   if (isActive) {
     const branch = await branchRepo.getBranchByIdForInstallationForShare(client, {
@@ -235,9 +219,6 @@ export async function updateWarehouseStatus(client, { id, installationId, isActi
     expectedUpdatedAt: expectedUpdatedAtValidation?.value ?? null,
   });
 
-  if (!updated) {
-    return staleVersionConflict({ entityLabel: 'Kho', managementPath: '/organization/warehouses' });
-  }
-
+  if (!updated) return staleVersionConflict({ entityLabel: 'Kho', managementPath: '/organization/warehouses' });
   return { ok: true, warehouse: updated, beforeData: existing };
 }

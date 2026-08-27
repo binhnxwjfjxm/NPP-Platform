@@ -1,10 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { IDEMPOTENCY_KEY_PATTERN } from '@npp/contracts';
 import {
   buildAuditRecord,
   buildOutboxEvent,
   insertAuditRecord,
   insertOutboxEvent,
 } from '../audit-outbox.js';
+import { deriveIdempotencyKey } from '../idempotency-derived.js';
 import * as dispatchRepository from '../db/repositories/logistics-trip-dispatch.js';
 import * as tripRepository from '../db/repositories/logistics-trip-planning.js';
 import * as deliveryOrderRepository from '../db/repositories/sales-delivery-orders.js';
@@ -12,7 +14,6 @@ import * as issueRepository from '../db/repositories/sales-delivery-inventory.js
 import { postServerOwnedSalesMovement } from './sales-inventory-ledger.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const IDEMPOTENCY_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 const QUANTITY_PATTERN = /^(0|[1-9]\d{0,17})(?:\.(\d{1,12}))?$/;
 const SCALE = 1_000_000_000_000n;
 const LOGISTICS_DISPATCH = 'LOGISTICS_DISPATCH';
@@ -189,7 +190,10 @@ async function loadDispatchDetail(client, { requestContext, tripId }) {
 }
 
 function issueKeyFor(idempotencyKey, deliveryOrderId) {
-  return `trip-dispatch:${payloadHash({ idempotencyKey, deliveryOrderId }).slice(0, 48)}`;
+  return deriveIdempotencyKey(
+    'trip-dispatch-issue',
+    payloadHash({ idempotencyKey, deliveryOrderId }),
+  );
 }
 
 function issueSnapshot({ issueId, assignment, dispatchId, movementResult, dispatchedAt, receiverName, issueLines }) {
@@ -363,7 +367,10 @@ async function issueDeliveryOrderInTransaction(client, {
       sourceDocumentType: 'DELIVERY_ORDER',
       sourceDocumentId: deliveryOrderId,
       sourceLineId: issueLine.id,
-      idempotencyKey: `${issueIdempotencyKey}:consume:${index + 1}`,
+      idempotencyKey: deriveIdempotencyKey(
+        'trip-dispatch-consume',
+        `${issueIdempotencyKey}.${index + 1}`,
+      ),
       payloadHash: payloadHash(adjustmentPayload),
       actorId: requestContext.actorId,
       requestId: requestContext.requestId,
@@ -376,7 +383,7 @@ async function issueDeliveryOrderInTransaction(client, {
   const movementContext = Object.freeze({ ...requestContext, receivedAt: dispatchedAt });
   const movementResult = await postServerOwnedSalesMovement(client, {
     requestContext: movementContext,
-    idempotencyKey: `delivery-issue:${issueIdempotencyKey}`,
+    idempotencyKey: deriveIdempotencyKey('delivery-issue-movement', issueIdempotencyKey),
     payload: {
       movementType: 'SALES_DELIVERY_ISSUE',
       direction: 'OUT',
@@ -586,8 +593,8 @@ export async function dispatchDeliveryTrip({
   payload,
 }) {
   if (!UUID_PATTERN.test(String(tripId ?? ''))) return failure('INVALID_TRIP_ID', 'Trip id is invalid');
-  if (!IDEMPOTENCY_PATTERN.test(String(idempotencyKey ?? ''))) {
-    return failure('INVALID_IDEMPOTENCY_KEY', 'Idempotency key must use 1-128 safe characters');
+  if (!IDEMPOTENCY_KEY_PATTERN.test(String(idempotencyKey ?? ''))) {
+    return failure('INVALID_IDEMPOTENCY_KEY', 'Idempotency key must use the canonical safe-character contract');
   }
   const permissions = grantedPermissions(requestContext);
   if (!permissions.has('core.delivery-trip.dispatch')) {

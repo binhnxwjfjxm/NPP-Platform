@@ -102,6 +102,7 @@ const AI_WEBSITE_ANONYMOUS_USAGE_SQL = readFileSync(new URL('../../../../databas
 const AI_DIALOGFLOW_CX_REQUEST_BILLING_SQL = readFileSync(new URL('../../../../database/migrations/shared/113_ai_dialogflow_cx_request_billing.sql', import.meta.url), 'utf8');
 const SALES_ORDER_PERMISSION_METADATA_SQL = readFileSync(new URL('../../../../database/migrations/shared/114_sales_order_permission_metadata.sql', import.meta.url), 'utf8');
 const SALES_ORDER_SPLIT_LINE_IDENTITY_SQL = readFileSync(new URL('../../../../database/migrations/sales/115_sales_order_split_line_identity.sql', import.meta.url), 'utf8');
+const CONTROLLED_NEGATIVE_STOCK_SQL = readFileSync(new URL('../../../../database/migrations/inventory/116_controlled_negative_stock.sql', import.meta.url), 'utf8');
 
 export const CORE_API_MIGRATIONS = Object.freeze([
   ...CORE_API_MIGRATIONS_THROUGH_045,
@@ -174,6 +175,7 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({ id: '113_ai_dialogflow_cx_request_billing', sql: AI_DIALOGFLOW_CX_REQUEST_BILLING_SQL }),
   Object.freeze({ id: '114_sales_order_permission_metadata', sql: SALES_ORDER_PERMISSION_METADATA_SQL }),
   Object.freeze({ id: '115_sales_order_split_line_identity', sql: SALES_ORDER_SPLIT_LINE_IDENTITY_SQL }),
+  Object.freeze({ id: '116_controlled_negative_stock', sql: CONTROLLED_NEGATIVE_STOCK_SQL }),
 ]);
 
 export { runMigrations };
