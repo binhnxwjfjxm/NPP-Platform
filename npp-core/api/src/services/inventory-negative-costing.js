@@ -7,6 +7,7 @@ function minBigInt(left, right) {
 }
 
 export function controlledNegativeStockAuthorization(row) {
+  if (row?.direction === 'IN') return true;
   const evidence = row?.line_metadata?.negativeStockAuthorization
     ?? row?.movement_metadata?.negativeStockAuthorization;
   return row?.direction === 'OUT'
