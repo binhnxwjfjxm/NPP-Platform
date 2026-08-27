@@ -1,9 +1,17 @@
 import { randomUUID } from 'node:crypto';
+import { IDEMPOTENCY_KEY_PATTERN } from '@npp/contracts';
 import * as repository from '../db/repositories/inventory-costing.js';
 import { inventoryCostingInternals } from './inventory-costing.js';
 import {
+  controlledNegativeStockAuthorization,
+  ensureNegativeCostLayers,
+  finalizePendingNegativeCostFacts,
+  negativeExposureQuantity,
+  registerNegativeCostExposure,
+  settleNegativeCostLayers,
+} from './inventory-negative-costing.js';
+import {
   CURRENCY_CODE,
-  IDEMPOTENCY_PATTERN,
   METHOD_VERSION,
   divide12,
   failure,
@@ -50,18 +58,22 @@ async function adjustmentEvents(client, installationId, selected, afterDate, thr
 }
 
 function balanceRows(pools) {
-  return [...pools.values()].map((state) => ({
-    warehouseId: state.warehouseId,
-    baseVariantId: state.baseVariantId,
-    methodVersion: METHOD_VERSION,
-    currencyCode: CURRENCY_CODE,
-    quantity: format12(state.quantity),
-    inventoryValue: state.status === 'COSTED' ? format12(state.value) : null,
-    averageUnitCost: state.status === 'COSTED' ? format12(state.average) : null,
-    status: state.status,
-    anomalyCount: state.anomalyCount,
-    projectedThroughEvent: state.projectedThroughEvent,
-  }));
+  return [...pools.values()].map((state) => {
+    const negativePending = ensureNegativeCostLayers(state).length > 0;
+    const status = state.status === 'COSTED' && !negativePending ? 'COSTED' : 'ANOMALY';
+    return {
+      warehouseId: state.warehouseId,
+      baseVariantId: state.baseVariantId,
+      methodVersion: METHOD_VERSION,
+      currencyCode: CURRENCY_CODE,
+      quantity: format12(state.quantity),
+      inventoryValue: status === 'COSTED' ? format12(state.value) : null,
+      averageUnitCost: status === 'COSTED' ? format12(state.average) : null,
+      status,
+      anomalyCount: state.anomalyCount,
+      projectedThroughEvent: state.projectedThroughEvent,
+    };
+  });
 }
 
 function mapRun(row) {
@@ -87,7 +99,7 @@ export async function rebuildOpenCosting(client, {
   replaceProjection = true,
   throughDate = null,
 }) {
-  if (!IDEMPOTENCY_PATTERN.test(String(idempotencyKey ?? ''))) {
+  if (!IDEMPOTENCY_KEY_PATTERN.test(String(idempotencyKey ?? ''))) {
     return failure('INVALID_IDEMPOTENCY_KEY', 'Idempotency key must contain 1-128 safe characters');
   }
   const selection = inventoryCostingInternals.normalizedWarehouseSelection(requestContext, payload);
@@ -205,6 +217,7 @@ export async function rebuildOpenCosting(client, {
     const row = event.row;
     const key = `${row.warehouse_id}:${row.base_variant_id}`;
     const state = pools.get(key) ?? baseState(row);
+    ensureNegativeCostLayers(state);
     pools.set(key, state);
     state.projectedThroughEvent = eventOrder;
 
@@ -233,7 +246,13 @@ export async function rebuildOpenCosting(client, {
       }
       state.quantity += quantityDelta;
       state.value += valueDelta;
-      state.average = state.quantity === 0n ? 0n : (divide12(state.value, state.quantity) ?? 0n);
+      if (state.quantity === 0n) {
+        if (valueDelta !== 0n && quantityDelta !== 0n) {
+          state.average = divide12(valueDelta, quantityDelta) ?? state.average;
+        }
+      } else {
+        state.average = divide12(state.value, state.quantity) ?? state.average;
+      }
       continue;
     }
 
@@ -299,9 +318,11 @@ export async function rebuildOpenCosting(client, {
     }
 
     const absoluteQuantity = quantityDelta < 0n ? -quantityDelta : quantityDelta;
-    let valueDelta = multiply12(absoluteQuantity, resolution.unitCost);
-    if (quantityDelta < 0n) valueDelta = -valueDelta;
-    if (state.quantity + quantityDelta < 0n) {
+    const grossValueDelta = multiply12(absoluteQuantity, resolution.unitCost);
+    let valueDelta = quantityDelta < 0n ? -grossValueDelta : grossValueDelta;
+    const nextQuantity = state.quantity + quantityDelta;
+    const controlledNegative = nextQuantity < 0n && controlledNegativeStockAuthorization(row);
+    if (nextQuantity < 0n && !controlledNegative) {
       const anomaly = anomalyFor(row, 'COST_NEGATIVE_STOCK', 'Cost projection would become negative', {
         poolQuantity: format12(state.quantity), quantityDelta: format12(quantityDelta),
       });
@@ -323,23 +344,62 @@ export async function rebuildOpenCosting(client, {
     }
 
     let metadata = { ...(resolution.metadata ?? {}) };
+    if (quantityDelta > 0n && state.negativeCostLayers.length > 0) {
+      const settlement = settleNegativeCostLayers({
+        state,
+        inboundQuantity: quantityDelta,
+        actualUnitCost: resolution.unitCost,
+        settlementMovementLineId: row.movement_line_id,
+        targetFactId: resolution.metadata?.originalCostFactId ?? reversalOfCostFactId,
+        multiply12,
+        divide12,
+        parse12,
+        format12,
+      });
+      if (settlement.settledQuantity > 0n) {
+        valueDelta -= settlement.valueAdjustment;
+        metadata = {
+          ...metadata,
+          negativeStockSettlement: {
+            settledQuantity: format12(settlement.settledQuantity),
+            valueAdjustment: format12(settlement.valueAdjustment),
+            grossInboundValue: format12(grossValueDelta),
+            issueMovementLineIds: settlement.issueMovementLineIds,
+          },
+        };
+      }
+    }
+
+    const previousQuantity = state.quantity;
     state.quantity += quantityDelta;
     state.value += valueDelta;
     if (state.quantity === 0n) {
       const residual = state.value;
       valueDelta -= residual;
       state.value = 0n;
-      state.average = 0n;
+      state.average = resolution.unitCost;
       metadata = { ...metadata, closingRoundingResidual: format12(residual) };
     } else {
-      state.average = divide12(state.value, state.quantity) ?? 0n;
+      state.average = divide12(state.value, state.quantity) ?? state.average;
     }
+
     const fact = movementFact(row, runId, eventOrder, {
       status: 'COSTED', unitCost: resolution.unitCost, valueDelta,
       sourceCostType: resolution.sourceCostType,
       reversalOfCostFactId,
       metadata,
     });
+    if (controlledNegative && quantityDelta < 0n) {
+      const exposedQuantity = negativeExposureQuantity(previousQuantity, quantityDelta);
+      registerNegativeCostExposure({
+        state,
+        row,
+        fact,
+        exposedQuantity,
+        provisionalUnitCost: resolution.unitCost,
+        format12,
+      });
+    }
     facts.push(fact);
     factsByLineId.set(row.movement_line_id, fact);
     factsByMovementLine.set(`${row.movement_id}:${Number(row.line_number)}`, fact);
@@ -350,6 +410,14 @@ export async function rebuildOpenCosting(client, {
     const adjustmentLineId = row.line_metadata?.inventoryAdjustmentLineId;
     if (row.direction === 'OUT' && row.line_metadata?.pairedMovement && adjustmentLineId) {
       pairedCosts.set(adjustmentLineId, { unitCost: resolution.unitCost, costFactId: fact.id });
+    }
+  }
+
+  for (const state of pools.values()) {
+    const pending = finalizePendingNegativeCostFacts({ state, anomalyFor, format12 });
+    if (pending.length > 0) {
+      state.anomalyCount += pending.length;
+      anomalies.push(...pending);
     }
   }
 
@@ -373,6 +441,7 @@ export async function rebuildOpenCosting(client, {
     sourceApp: requestContext.sourceApp ?? 'NPP_CORE',
     metadata: {
       decisionDocument: 'docs/operations/phase-7-5-costing-owner-decisions.md',
+      negativeStockDecisionDocument: 'docs/operations/issue-791-negative-stock-costing-contract.md',
       periodAware: true,
       bootstrapHistorical: !closed,
       seededFromPeriodId: closed?.id ?? null,

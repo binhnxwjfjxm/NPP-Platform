@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { deriveIdempotencyKey } from '../idempotency-derived.js';
 import { actorId, failure, hashPayload, monthBounds } from './inventory-costing-period-utils.js';
 import { rebuildOpenCosting } from './inventory-costing-period-projector.js';
 
@@ -98,9 +99,13 @@ export async function closePeriod(client, { requestContext, periodStart, idempot
   if (!period) return failure('COSTING_PERIOD_NOT_FOUND', 'Costing period was not opened');
   if (period.status === 'CLOSED') return { ok: true, period: mapPeriod(period), replayed: true };
 
+  const snapshotIdempotencyKey = deriveIdempotencyKey(
+    'inventory-cost-period-snapshot',
+    idempotencyKey,
+  );
   const projection = await rebuildOpenCosting(client, {
     requestContext,
-    idempotencyKey: `period-snapshot:${hashPayload(String(idempotencyKey)).slice(0, 64)}`,
+    idempotencyKey: snapshotIdempotencyKey,
     payload: {},
     replaceProjection: true,
     throughDate: bounds.end,
