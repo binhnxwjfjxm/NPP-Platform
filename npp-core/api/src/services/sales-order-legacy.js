@@ -16,6 +16,8 @@ const TAX_MODES = new Set(['EXCLUSIVE', 'INCLUSIVE']);
 const DISCOUNT_MODES = new Set(['TOTAL_AMOUNT', 'PER_UNIT', 'PERCENT']);
 const STATUSES = new Set(['draft', 'confirmed', 'cancelled', 'closed']);
 const SCALE = 1_000_000n;
+const WEIGHT_SCALE = 1_000_000_000n;
+const WEIGHT_UOMS = new Set(['G', 'KG']);
 const HUNDRED = 100n * SCALE;
 const SALES_ORDER_SERIES_CODE = 'SALES_ORDER';
 
@@ -90,6 +92,33 @@ function formatScaled(value) {
   return fraction ? `${whole}.${fraction}` : whole.toString();
 }
 
+function formatWeightScaled(value) {
+  const whole = value / WEIGHT_SCALE;
+  const fraction = (value % WEIGHT_SCALE).toString().padStart(9, '0').replace(/0+$/, '');
+  return fraction ? `${whole}.${fraction}` : whole.toString();
+}
+
+function parseWeightScaled(value) {
+  if (value === null || value === undefined) return null;
+  const match = /^(0|[1-9]\d*)(?:\.(\d{1,9}))?$/.exec(String(value).trim());
+  if (!match) return null;
+  return BigInt(match[1]) * WEIGHT_SCALE + BigInt((match[2] ?? '').padEnd(9, '0'));
+}
+
+export function calculateLineWeightSnapshot({ weightValue, weightUomCode, quantity }) {
+  const hasValue = weightValue !== null && weightValue !== undefined && String(weightValue).trim() !== '';
+  const hasUom = weightUomCode !== null && weightUomCode !== undefined && String(weightUomCode).trim() !== '';
+  if (!hasValue && !hasUom) return Object.freeze({ ok: true, unitWeightKg: null, lineWeightKg: null });
+  if (!hasValue || !hasUom) return Object.freeze({ ok: false, unitWeightKg: null, lineWeightKg: null });
+  const weightScaled = decimalScaled(weightValue, { allowZero: false });
+  const quantityScaled = decimalScaled(quantity, { allowZero: false });
+  const uom = String(weightUomCode).trim().toUpperCase();
+  if (weightScaled === null || quantityScaled === null || !WEIGHT_UOMS.has(uom)) return Object.freeze({ ok: false, unitWeightKg: null, lineWeightKg: null });
+  const unitWeightKgScaled = uom === 'G' ? weightScaled : weightScaled * 1000n;
+  const lineWeightKgScaled = halfUp(quantityScaled * unitWeightKgScaled, SCALE);
+  return Object.freeze({ ok: true, unitWeightKg: formatWeightScaled(unitWeightKgScaled), lineWeightKg: formatWeightScaled(lineWeightKgScaled) });
+}
+
 function halfUp(numerator, denominator) {
   return (numerator + denominator / 2n) / denominator;
 }
@@ -136,6 +165,8 @@ function mapLine(line) {
     conversionToBase: String(line.conversion_to_base),
     quantity: String(line.ordered_quantity),
     baseQuantity: String(line.base_quantity),
+    unitWeightKg: line.unit_weight_kg === null ? null : String(line.unit_weight_kg),
+    lineWeightKg: line.line_weight_kg === null ? null : String(line.line_weight_kg),
     priceListId: line.price_list_id ?? null,
     priceRuleId: line.price_rule_id ?? null,
     priceSource: line.price_source,
@@ -155,6 +186,12 @@ function mapLine(line) {
 function mapVersion(version, lines = undefined) {
   const walkInDisplayName = version.walk_in_display_name_snapshot ?? null;
   const walkInPhone = version.walk_in_phone_snapshot ?? null;
+  const mappedLines = lines ? Object.freeze(lines.map(mapLine)) : undefined;
+  const scaledWeights = mappedLines ? mappedLines.map((line) => parseWeightScaled(line.lineWeightKg)) : [];
+  const missingWeightLineCount = scaledWeights.filter((value) => value === null).length;
+  const totalWeightKg = mappedLines && mappedLines.length > 0 && missingWeightLineCount === 0
+    ? formatWeightScaled(scaledWeights.reduce((sum, value) => sum + value, 0n))
+    : null;
   return Object.freeze({
     id: version.id,
     versionNumber: String(version.version_number),
@@ -182,6 +219,8 @@ function mapVersion(version, lines = undefined) {
     discountTotal: String(version.discount_total),
     taxTotal: String(version.tax_total),
     total: String(version.total),
+    totalWeightKg,
+    missingWeightLineCount,
     amendmentReason: version.amendment_reason ?? null,
     basedOnVersionNumber: version.based_on_version_number === null ? null : String(version.based_on_version_number),
     priceOverrideReason: version.price_override_reason ?? null,
@@ -190,7 +229,7 @@ function mapVersion(version, lines = undefined) {
     createdBy: version.created_by,
     confirmedAt: version.confirmed_at ?? null,
     confirmedBy: version.confirmed_by ?? null,
-    lines: lines ? Object.freeze(lines.map(mapLine)) : undefined,
+    lines: mappedLines,
   });
 }
 
@@ -436,6 +475,8 @@ async function prepareLines(client, { requestContext, header, payload }) {
     const quantity = decimalScaled(input.quantity, { allowZero: false });
     const conversion = decimalScaled(variant.conversion_to_base, { allowZero: false });
     if (quantity === null || conversion === null) return failure('INVALID_QUANTITY', 'Quantity or unit conversion is invalid', false, { line: index + 1 });
+    const weightSnapshot = calculateLineWeightSnapshot({ weightValue: variant.weight_value, weightUomCode: variant.weight_uom_code, quantity: formatScaled(quantity) });
+    if (!weightSnapshot.ok) return failure('SKU_WEIGHT_INVALID', 'Khối lượng SKU không hợp lệ; hãy cập nhật Danh mục sản phẩm.', false, { line: index + 1 });
     if (!variant.allows_fractional && quantity % SCALE !== 0n) return failure('FRACTIONAL_QUANTITY_NOT_ALLOWED', 'Selected unit does not allow fractional quantity', false, { line: index + 1 });
 
     const manualPrice = input.manualUnitPriceMinor === undefined || input.manualUnitPriceMinor === null || input.manualUnitPriceMinor === ''
@@ -526,6 +567,8 @@ async function prepareLines(client, { requestContext, header, payload }) {
       conversionToBase: formatScaled(conversion),
       quantity: formatScaled(quantity),
       baseQuantity: formatScaled(baseQuantity),
+      unitWeightKg: weightSnapshot.unitWeightKg,
+      lineWeightKg: weightSnapshot.lineWeightKg,
       priceListId: manualPrice === null ? provenance.priceListId : null,
       priceRuleId: manualPrice === null ? provenance.priceRuleId : null,
       priceSource: manualPrice === null ? 'PRICE_ENGINE' : 'MANUAL_OVERRIDE',
@@ -802,6 +845,8 @@ export async function createSalesOrderAmendment(client, { requestContext, id, pa
       sku: line.sku_snapshot, itemName: line.item_name_snapshot, unitId: line.unit_id,
       unitCode: line.unit_code_snapshot, conversionToBase: String(line.conversion_to_base),
       quantity: String(line.ordered_quantity), baseQuantity: String(line.base_quantity),
+      unitWeightKg: line.unit_weight_kg === null ? null : String(line.unit_weight_kg),
+      lineWeightKg: line.line_weight_kg === null ? null : String(line.line_weight_kg),
       priceListId: line.price_list_id, priceRuleId: line.price_rule_id,
       priceSource: line.price_source, unitPrice: String(line.unit_price),
       discountMode: line.discount_mode, discountValue: String(line.discount_value),

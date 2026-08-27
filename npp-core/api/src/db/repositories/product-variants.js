@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 const PRODUCT_VARIANT_COLUMNS = `pv.id, pv.installation_id, pv.product_id, pv.sku, pv.name, pv.variant_kind,
   pv.is_inventory_base, pv.is_sellable, pv.is_catalog_visible, pv.is_active,
   pv.unit_id, pv.conversion_to_base, pv.is_purchasable, pv.net_content_value, pv.net_content_uom_code,
-  pv.source_unit_label, pv.source_package_description, pv.unit_source_metadata,
+  pv.weight_value, pv.weight_uom_code, pv.source_unit_label, pv.source_package_description, pv.unit_source_metadata,
   u.code AS unit_code, u.name AS unit_name, u.symbol AS unit_symbol, u.unit_kind, u.allows_fractional,
   pv.created_at, pv.updated_at, pv.created_by, pv.updated_by`;
 
@@ -61,6 +61,8 @@ export async function insertProductVariant(client, {
   isSellable,
   isCatalogVisible,
   isActive,
+  weightValue,
+  weightUomCode,
   createdBy,
 }) {
   const variantId = id ?? randomUUID();
@@ -68,12 +70,14 @@ export async function insertProductVariant(client, {
   const result = await client.query(
     `INSERT INTO shared.product_variants
       (id, installation_id, product_id, sku, name, variant_kind, is_inventory_base,
-       is_sellable, is_catalog_visible, is_active, created_at, updated_at, created_by, updated_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+       is_sellable, is_catalog_visible, is_active, weight_value, weight_uom_code,
+       created_at, updated_at, created_by, updated_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
      ON CONFLICT DO NOTHING
      RETURNING id`,
     [variantId, installationId, productId, sku, name, variantKind, Boolean(isInventoryBase),
-      Boolean(isSellable), Boolean(isCatalogVisible), Boolean(isActive), now, now, createdBy, createdBy],
+      Boolean(isSellable), Boolean(isCatalogVisible), Boolean(isActive), weightValue, weightUomCode,
+      now, now, createdBy, createdBy],
   );
   if (!result.rows[0]) return null;
   return getProductVariantByIdForInstallation(client, { id: variantId, installationId });
@@ -88,6 +92,8 @@ export async function updateProductVariant(client, {
   isSellable,
   isCatalogVisible,
   isActive,
+  weightValue,
+  weightUomCode,
   updatedBy,
 }) {
   const result = await client.query(
@@ -98,11 +104,14 @@ export async function updateProductVariant(client, {
          is_sellable = $4,
          is_catalog_visible = $5,
          is_active = $6,
+         weight_value = $7,
+         weight_uom_code = $8,
          updated_at = GREATEST(date_trunc('milliseconds', clock_timestamp()), updated_at + interval '1 millisecond'),
-         updated_by = $7
-     WHERE id = $8 AND installation_id = $9
+         updated_by = $9
+     WHERE id = $10 AND installation_id = $11
      RETURNING id`,
-    [name, variantKind, Boolean(isInventoryBase), Boolean(isSellable), Boolean(isCatalogVisible), Boolean(isActive), updatedBy, id, installationId],
+    [name, variantKind, Boolean(isInventoryBase), Boolean(isSellable), Boolean(isCatalogVisible), Boolean(isActive),
+      weightValue, weightUomCode, updatedBy, id, installationId],
   );
   if (!result.rows[0]) return null;
   return getProductVariantByIdForInstallation(client, { id, installationId });

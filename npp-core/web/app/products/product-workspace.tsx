@@ -45,7 +45,7 @@ const EMPTY_BRAND: BrandForm = {
 };
 const EMPTY_VARIANT: VariantForm = {
   sku: '', name: '', variantKind: 'BASE', isInventoryBase: false,
-  isSellable: true, isCatalogVisible: false, isActive: true,
+  isSellable: true, isCatalogVisible: false, isActive: true, weightValue: '', weightUomCode: 'KG',
 };
 
 const VARIANT_KIND_LABELS: Record<ProductVariant['variant_kind'], string> = {
@@ -145,6 +145,8 @@ function variantToForm(variant: ProductVariant): VariantForm {
     isSellable: variant.is_sellable,
     isCatalogVisible: variant.is_catalog_visible,
     isActive: variant.is_active,
+    weightValue: variant.weight_value ?? '',
+    weightUomCode: variant.weight_uom_code ?? 'KG',
   };
 }
 
@@ -493,7 +495,8 @@ export default function ProductWorkspace({
     if (!selectedProduct) return;
     startWork();
     try {
-      const body = { ...variantForm, ...(editingVariant ? { expectedUpdatedAt: editingVariant.updated_at } : {}) };
+      const weightValue = variantForm.weightValue.trim();
+      const body = { ...variantForm, weightValue: weightValue || null, weightUomCode: weightValue ? variantForm.weightUomCode : null, ...(editingVariant ? { expectedUpdatedAt: editingVariant.updated_at } : {}) };
       const saved = editingVariant
         ? await requestJson<ProductVariant>(`/api/products/${selectedProduct.id}/variants/${editingVariant.id}`, {
             method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
@@ -580,7 +583,7 @@ export default function ProductWorkspace({
 
             {selectedProduct ? <div className={styles.variantPanel} data-testid="variant-panel">
               <div className={styles.sectionHeader}><div><h3>Mã hàng (SKU) của {selectedProduct.code}</h3><p>Quản lý SKU, đơn vị tính, quy đổi và mã vạch của sản phẩm.</p></div><button type="button" className={styles.primaryButton} onClick={openVariantCreate} data-testid="add-variant-button">Thêm SKU</button></div>
-              <div className={styles.tableWrapper}><table className={styles.table}><thead><tr><BusinessTableSequenceHeader /><th>SKU</th><th>Tên</th><th>Loại</th><th>Tồn chuẩn</th><th>Bán</th><th>Hiển thị bán hàng</th><th>Trạng thái</th><th></th></tr></thead><tbody>{variants.map((variant, rowIndex) => <tr key={variant.id} data-testid={`variant-row-${variant.sku}`}><BusinessTableSequenceCell rowIndex={rowIndex} /><td><strong>{variant.sku}</strong></td><td>{variant.name}</td><td>{VARIANT_KIND_LABELS[variant.variant_kind]}</td><td>{variant.is_inventory_base ? 'Có' : 'Không'}</td><td>{variant.is_sellable ? 'Có' : 'Không'}</td><td>{variant.is_catalog_visible ? 'Có' : 'Không'}</td><td>{variant.is_active ? 'Đang sử dụng' : 'Ngừng sử dụng'}</td><td className={styles.rowActions}><button type="button" onClick={() => openVariantEdit(variant)}>Sửa</button><button type="button" onClick={() => openUnitSetup(selectedProduct, variant)} data-testid={`manage-units-${variant.sku}`}>Đơn vị và mã vạch</button></td></tr>)}{variants.length === 0 ? <tr><td colSpan={9} className={styles.empty}>Sản phẩm chưa có SKU</td></tr> : null}</tbody></table></div>
+              <div className={styles.tableWrapper}><table className={styles.table}><thead><tr><BusinessTableSequenceHeader /><th>SKU</th><th>Tên</th><th>Loại</th><th>Khối lượng</th><th>Tồn chuẩn</th><th>Bán</th><th>Hiển thị bán hàng</th><th>Trạng thái</th><th></th></tr></thead><tbody>{variants.map((variant, rowIndex) => <tr key={variant.id} data-testid={`variant-row-${variant.sku}`}><BusinessTableSequenceCell rowIndex={rowIndex} /><td><strong>{variant.sku}</strong></td><td>{variant.name}</td><td>{VARIANT_KIND_LABELS[variant.variant_kind]}</td><td>{variant.weight_value ? `${variant.weight_value} ${variant.weight_uom_code === 'G' ? 'g' : 'kg'}` : '—'}</td><td>{variant.is_inventory_base ? 'Có' : 'Không'}</td><td>{variant.is_sellable ? 'Có' : 'Không'}</td><td>{variant.is_catalog_visible ? 'Có' : 'Không'}</td><td>{variant.is_active ? 'Đang sử dụng' : 'Ngừng sử dụng'}</td><td className={styles.rowActions}><button type="button" onClick={() => openVariantEdit(variant)}>Sửa</button><button type="button" onClick={() => openUnitSetup(selectedProduct, variant)} data-testid={`manage-units-${variant.sku}`}>Đơn vị và mã vạch</button></td></tr>)}{variants.length === 0 ? <tr><td colSpan={10} className={styles.empty}>Sản phẩm chưa có SKU</td></tr> : null}</tbody></table></div>
             </div> : null}
           </section>
         ) : null}
@@ -622,6 +625,8 @@ export default function ProductWorkspace({
             <label>Mã hàng (SKU)<input value={variantForm.sku} disabled={Boolean(editingVariant)} onChange={(event) => setVariantForm({ ...variantForm, sku: event.target.value })} data-testid="variant-sku-input" /></label>
             <label>Tên SKU<input value={variantForm.name} onChange={(event) => setVariantForm({ ...variantForm, name: event.target.value })} data-testid="variant-name-input" /></label>
             <label>Loại<select value={variantForm.variantKind} onChange={(event) => setVariantForm({ ...variantForm, variantKind: event.target.value as VariantForm['variantKind'] })}><option value="BASE">Đơn vị lẻ</option><option value="CARTON">Thùng</option><option value="OTHER">Khác</option></select></label>
+            <label>Khối lượng<input inputMode="decimal" value={variantForm.weightValue} onChange={(event) => setVariantForm({ ...variantForm, weightValue: event.target.value.replace(',', '.') })} placeholder="Ví dụ: 0.5" data-testid="variant-weight-input" /></label>
+            <label>Đơn vị khối lượng<select value={variantForm.weightUomCode} onChange={(event) => setVariantForm({ ...variantForm, weightUomCode: event.target.value as VariantForm['weightUomCode'] })} data-testid="variant-weight-uom-select"><option value="G">g</option><option value="KG">kg</option></select></label>
           </div>
           <div className={styles.checks}><label><input type="checkbox" checked={variantForm.isInventoryBase} onChange={(event) => setVariantForm({ ...variantForm, isInventoryBase: event.target.checked, variantKind: event.target.checked ? 'BASE' : variantForm.variantKind })} /> Đơn vị tồn chuẩn</label><label><input type="checkbox" checked={variantForm.isSellable} onChange={(event) => setVariantForm({ ...variantForm, isSellable: event.target.checked, isCatalogVisible: event.target.checked ? variantForm.isCatalogVisible : false })} /> Được phép bán</label><label><input type="checkbox" checked={variantForm.isCatalogVisible} onChange={(event) => setVariantForm({ ...variantForm, isCatalogVisible: event.target.checked })} /> Hiển thị trong danh mục bán hàng</label><label><input type="checkbox" checked={variantForm.isActive} onChange={(event) => setVariantForm({ ...variantForm, isActive: event.target.checked })} /> Đang sử dụng</label></div>
         </Modal>

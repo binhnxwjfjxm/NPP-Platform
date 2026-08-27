@@ -57,6 +57,8 @@ export type SalesOrderLine = {
   conversionToBase: string;
   quantity: string;
   baseQuantity: string;
+  unitWeightKg: string | null;
+  lineWeightKg: string | null;
   priceListId: string | null;
   priceRuleId: string | null;
   priceSource: 'PRICE_ENGINE' | 'MANUAL_OVERRIDE';
@@ -107,6 +109,8 @@ export type SalesOrderVersion = {
   discountTotal: string;
   taxTotal: string;
   total: string;
+  totalWeightKg: string | null;
+  missingWeightLineCount: number;
   documentDiscountMode: SalesOrderDocumentDiscountMode;
   documentDiscountValue: string;
   documentDiscountReason: string | null;

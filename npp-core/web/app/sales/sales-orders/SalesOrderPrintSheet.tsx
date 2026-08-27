@@ -34,6 +34,14 @@ function isZeroAmount(value: string | number | null | undefined) {
   return /^[-+]?0+(?:\.0+)?$/.test(normalized);
 }
 
+function formatWeightKg(value: string | null | undefined): string {
+  const match = /^(\d+)(?:\.(\d+))?$/.exec(String(value ?? '').trim());
+  if (!match) return 'Chưa đủ dữ liệu';
+  const whole = match[1].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  const fraction = (match[2] ?? '').replace(/0+$/, '');
+  return `${whole}${fraction ? `,${fraction}` : ''} kg`;
+}
+
 export default function SalesOrderPrintSheet({
   order,
   version,
@@ -128,6 +136,7 @@ export default function SalesOrderPrintSheet({
           { key: 'total_subtotal', label: 'Tạm tính', value: `${formatMoney(version.subtotal)} ₫` },
           ...(showDiscount ? [{ key: 'total_discount', label: 'Chiết khấu', value: `${formatMoney(version.discountTotal)} ₫` }] : []),
           ...(showTax ? [{ key: 'total_tax', label: 'Thuế', value: `${formatMoney(version.taxTotal)} ₫` }] : []),
+          { key: 'total_weight', label: 'Tổng khối lượng', value: version.missingWeightLineCount > 0 ? 'Chưa đủ dữ liệu' : formatWeightKg(version.totalWeightKg) },
           { key: 'total_total', label: 'TỔNG CỘNG', value: `${formatMoney(version.total)} ₫`, emphasis: true },
         ]}
         note={version.note || undefined}

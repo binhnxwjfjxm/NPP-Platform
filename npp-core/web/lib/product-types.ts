@@ -60,6 +60,8 @@ export type ProductVariant = {
   is_purchasable: boolean;
   net_content_value: string | null;
   net_content_uom_code: string | null;
+  weight_value: string | null;
+  weight_uom_code: 'G' | 'KG' | null;
   source_unit_label: string | null;
   source_package_description: string | null;
   unit_code: string | null;
@@ -111,6 +113,8 @@ export type VariantForm = {
   isSellable: boolean;
   isCatalogVisible: boolean;
   isActive: boolean;
+  weightValue: string;
+  weightUomCode: 'G' | 'KG';
 };
 
 export type UnitKind = 'COUNT' | 'WEIGHT' | 'VOLUME' | 'PACKAGE' | 'OTHER';
