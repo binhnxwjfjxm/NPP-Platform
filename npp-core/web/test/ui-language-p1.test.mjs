@@ -58,8 +58,8 @@ test('P1 business language uses Công Ty for company-facing NPP/Core wording', (
   assert.match(onboardingPage, /Bộ phận bán hàng/);
   assert.match(onboardingPage, /Hệ thống Công Ty/);
   assert.match(onboardingReview, /mã khách Công Ty/);
-  assert.match(businessPrint, /const displayHeading = template\?\.heading\?\.trim\(\) \|\| null/);
-  assert.match(businessPrint, /const displaySubtitle = template\?\.subtitle\?\.trim\(\) \|\| subtitle/);
+  assert.match(businessPrint, /const displayHeading = template\?\.heading\?\.trim\(\) \|\| headingFallback \|\| null/);
+  assert.match(businessPrint, /const displaySubtitle = showSubtitle \? \(template\?\.subtitle\?\.trim\(\) \|\| subtitle\) : null/);
   assert.doesNotMatch(businessPrint, /Bản in từ Hệ thống Công Ty/);
   assert.match(customerMedia, /MCP Thị trường và Công Ty/);
   assert.match(customerMedia, /Nguồn: Công Ty/);
