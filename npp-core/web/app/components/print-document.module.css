@@ -63,6 +63,28 @@
     page: document-a5;
   }
 
+  .printSurface[data-print-size='A4'][data-print-suppress-browser-headers='true'] {
+    page: document-a4-clean;
+  }
+
+  .printSurface[data-print-size='A5'][data-print-suppress-browser-headers='true'] {
+    page: document-a5-clean;
+  }
+
+  .printSurface[data-print-active='true'][data-print-suppress-browser-headers='true'] {
+    box-sizing: border-box;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+  }
+
+  .printSurface[data-print-active='true'][data-print-size='A4'][data-print-suppress-browser-headers='true'] {
+    padding: 11mm 10mm 12mm;
+  }
+
+  .printSurface[data-print-active='true'][data-print-size='A5'][data-print-suppress-browser-headers='true'] {
+    padding: 9mm 8mm 10mm;
+  }
+
   @page document-a4 {
     size: A4 portrait;
     margin: 11mm 10mm 12mm;
@@ -71,5 +93,15 @@
   @page document-a5 {
     size: A5 portrait;
     margin: 9mm 8mm 10mm;
+  }
+
+  @page document-a4-clean {
+    size: A4 portrait;
+    margin: 0;
+  }
+
+  @page document-a5-clean {
+    size: A5 portrait;
+    margin: 0;
   }
 }

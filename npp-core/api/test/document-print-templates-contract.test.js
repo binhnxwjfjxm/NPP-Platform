@@ -34,16 +34,28 @@ test('print template migrations keep installation scope and add configurable hea
   assert.ok(PERMISSION_REGISTRY.has(PERMISSIONS.corePrintTemplateManage));
 });
 
-test('print template catalog owns defaults and validates heading fields', () => {
+test('print template catalog keeps Sales Order core columns and separates optional SKU', () => {
   const keys = DOCUMENT_PRINT_TEMPLATE_CATALOG.map((item) => `${item.documentType}:${item.templateCode}`);
   for (const expected of ['SALES_ORDER:standard', 'PURCHASE_ORDER:standard', 'GOODS_RECEIPT:standard', 'CUSTOMER_PAYMENT:standard', 'DELIVERY_ORDER:standard', 'DELIVERY_ORDER:packing-list', 'INVENTORY_TRANSFER:standard', 'STOCKTAKE:standard']) assert.ok(keys.includes(expected), expected);
   const sales = documentPrintTemplateInternals.lookup('sales_order', 'standard');
   assert.ok(sales);
-  const valid = documentPrintTemplateInternals.normalizePayload(sales, { pageSize: 'A4', visibleFieldKeys: ['customer', 'line_item', 'line_unit', 'total_total'], heading: 'NGUYÊN LIỆU TRÀ SỮA', title: 'PHIẾU XUẤT KHO', subtitle: 'Bán tại quầy' });
-  assert.deepEqual(valid.visibleFieldKeys, ['customer', 'line_item', 'line_unit', 'total_total']);
+  assert.equal(sales.fields.find((field) => field.key === 'line_item')?.label, 'Tên sản phẩm');
+  assert.equal(sales.fields.find((field) => field.key === 'line_item')?.required, true);
+  assert.equal(sales.fields.find((field) => field.key === 'line_sku')?.defaultSelected, false);
+  assert.equal(sales.fields.find((field) => field.key === 'line_sku')?.required, false);
+  assert.equal(sales.fields.find((field) => field.key === 'line_quantity')?.required, true);
+  assert.equal(sales.fields.find((field) => field.key === 'line_unit')?.required, true);
+  assert.equal(sales.fields.find((field) => field.key === 'line_unit_price')?.required, true);
+  assert.equal(sales.fields.find((field) => field.key === 'line_total')?.required, true);
+
+  const valid = documentPrintTemplateInternals.normalizePayload(sales, { pageSize: 'A4', visibleFieldKeys: ['customer', 'line_sku', 'total_total'], heading: 'NGUYÊN LIỆU TRÀ SỮA', title: 'PHIẾU XUẤT KHO', subtitle: 'Bán tại quầy' });
+  assert.deepEqual(valid.visibleFieldKeys, ['customer', 'line_item', 'line_sku', 'line_quantity', 'line_unit', 'line_unit_price', 'line_total', 'total_total']);
   assert.equal(valid.heading, 'NGUYÊN LIỆU TRÀ SỮA');
   assert.equal(valid.title, 'PHIẾU XUẤT KHO');
   assert.equal(valid.subtitle, 'Bán tại quầy');
+
+  const presented = documentPrintTemplateInternals.present(sales, { visible_field_keys: ['customer', 'line_sku'], page_size: 'A4' });
+  assert.deepEqual(presented.visibleFieldKeys, ['customer', 'line_item', 'line_sku', 'line_quantity', 'line_unit', 'line_unit_price', 'line_total']);
   assert.equal(documentPrintTemplateInternals.normalizePayload(sales, { pageSize: 'A3', visibleFieldKeys: ['customer'] }).code, 'INVALID_PAGE_SIZE');
   assert.equal(documentPrintTemplateInternals.normalizePayload(sales, { pageSize: 'A4', visibleFieldKeys: ['customer', 'not_allowed'] }).code, 'INVALID_PRINT_FIELDS');
   assert.equal(documentPrintTemplateInternals.normalizePayload(sales, { pageSize: 'A4', visibleFieldKeys: ['customer'], heading: 'x'.repeat(161) }).code, 'INVALID_PRINT_HEADING');

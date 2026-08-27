@@ -4,6 +4,7 @@ export type DocumentPrintTemplateField = {
   key: string;
   label: string;
   defaultSelected: boolean;
+  required: boolean;
 };
 
 export type DocumentPrintTemplate = {

@@ -82,7 +82,10 @@ export default function SalesOrderPrintSheet({
         actionLabel="In đơn"
         onPrint={recordPrint}
         title="ĐƠN BÁN HÀNG"
-        subtitle="Chứng từ bán hàng"
+        headingFallback="Hưng Phát Company"
+        showSubtitle={false}
+        showNumber={false}
+        suppressBrowserHeaders
         number={order.number ?? 'BẢN NHÁP'}
         meta={[
           { key: 'customer', label: 'Khách hàng', value: displayCustomer },
@@ -99,7 +102,7 @@ export default function SalesOrderPrintSheet({
         columns={[
           { key: 'no', fieldKey: 'line_no', label: 'STT', align: 'center', width: '4%', wrap: 'nowrap' },
           { key: 'itemName', fieldKey: 'line_item', label: 'Tên sản phẩm', width: '23%', wrap: 'anywhere' },
-          { key: 'sku', fieldKey: 'line_item', label: 'SKU', width: '12%', wrap: 'anywhere' },
+          { key: 'sku', fieldKey: 'line_sku', label: 'SKU', width: '12%', wrap: 'anywhere' },
           { key: 'quantity', fieldKey: 'line_quantity', label: 'Số lượng', align: 'right', width: '8%' },
           { key: 'unit', fieldKey: 'line_unit', label: 'ĐVT', align: 'center', width: '7%', wrap: 'nowrap' },
           { key: 'unitPrice', fieldKey: 'line_unit_price', label: 'Đơn giá', align: 'right', width: '13%' },

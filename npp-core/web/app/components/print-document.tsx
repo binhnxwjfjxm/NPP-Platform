@@ -71,10 +71,12 @@ export function PrintSurface({
   children,
   id,
   size = 'A4',
+  suppressBrowserHeaders = false,
 }: {
   children: ReactNode;
   id?: string;
   size?: PrintPageSize;
+  suppressBrowserHeaders?: boolean;
 }) {
   return (
     <section
@@ -82,6 +84,7 @@ export function PrintSurface({
       data-print-surface
       data-print-id={id}
       data-print-size={size}
+      data-print-suppress-browser-headers={suppressBrowserHeaders ? 'true' : undefined}
     >
       {children}
     </section>
