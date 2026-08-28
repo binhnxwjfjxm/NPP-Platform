@@ -20,19 +20,20 @@ test('Lô B chọn kho mặc định trong đúng warehouse scope và ưu tiên 
   assert.equal(salesOrderSearchPreviewInternals.pickDefaultWarehouseId(warehouses, context), warehouseTwo);
 });
 
-test('Lô B search backend nhận đủ context và không đẩy phép tính Kho xuống browser', async () => {
-  const [route, service, repository, entry] = await Promise.all([
+test('Lô B search backend nhận đủ context, batch giá và không đẩy phép tính Kho xuống browser', async () => {
+  const [route, service, pricing, repository, entry] = await Promise.all([
     read('src/routes/sales-orders.js'),
     read('src/services/sales-order-search-preview.js'),
+    read('src/services/sales-order-search-pricing.js'),
     read('src/db/repositories/sales-order-search-preview.js'),
     read('src/services/sales-order-entry.js'),
   ]);
   for (const field of ['warehouseId', 'salesChannelId', 'customerId', 'pricingAt']) {
     assert.match(route, new RegExp(field));
   }
-  assert.match(service, /quantity: '1'/);
-  assert.match(service, /allowMissingBasePrice: true/);
-  assert.match(service, /pricingService\.resolvePrice/);
+  assert.match(service, /searchPricingService\.resolveSalesOrderSearchPrices/);
+  assert.match(service, /const \[inventoryRows, pricingByVariantId\] = await Promise\.all/);
+  assert.match(pricing, /quantity: '1'/);
   assert.match(repository, /inventory\.inventory_balances/);
   assert.match(repository, /sales\.sales_order_fulfillment_demands/);
   assert.match(repository, /is_inventory_managed/);
