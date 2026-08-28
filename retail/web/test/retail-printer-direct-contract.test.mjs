@@ -30,6 +30,29 @@ test('Retail có contract máy in local, nhớ cấu hình và không gửi máy
   assert.match(workspace, /settings\.method === 'DIRECT_WIFI' && settings\.profile && !settings\.previewBeforePrint/);
 });
 
+test('thiết lập in trên PWA vẫn chạm được và không hứa sai khổ giấy nhiệt', async () => {
+  const panel = await read('app/printer-settings-panel.tsx');
+  const directButton = panel.match(/<button[^>]*aria-checked=\{draft\.method === 'DIRECT_WIFI'\}[^>]*onClick=\{chooseDirectMethod\}[^>]*>/)?.[0] ?? '';
+
+  assert.ok(directButton, 'phải tìm thấy nút In Wi-Fi trực tiếp');
+  assert.match(directButton, /aria-disabled={!directReady}/);
+  assert.doesNotMatch(directButton, /\sdisabled=/);
+  assert.match(panel, /Bản Retail đang mở là bản web/);
+  assert.match(panel, /draft\.method === 'DIRECT_WIFI' \? <>\s*<option value="80mm">80 mm<\/option><option value="58mm">58 mm<\/option><\/?> : <>\s*<option value="A4">A4<\/option><option value="A5">A5<\/option>/s);
+  assert.match(panel, /máy in\/AirPrint chưa cung cấp khổ đó cho iPhone/);
+});
+
+test('in thử bằng hệ thống giữ CSS khổ giấy cho tới khi cửa sổ in kết thúc', async () => {
+  const panel = await read('app/printer-settings-panel.tsx');
+
+  assert.match(panel, /80mm 120mm/);
+  assert.match(panel, /58mm 100mm/);
+  assert.match(panel, /addEventListener\('afterprint', cleanup/);
+  assert.match(panel, /requestAnimationFrame\(\(\) => \{/);
+  assert.match(panel, /setTimeout\(cleanup, 120000\)/);
+  assert.doesNotMatch(panel, /setTimeout\(\(\) => \{ style\.remove\(\); testScreen\.remove\(\); \}, 0\)/);
+});
+
 test('direct print dùng payload chứng từ chuẩn hóa và fallback hệ thống chỉ khi an toàn', async () => {
   const [bridge, workspace] = await Promise.all([
     read('lib/printer-bridge.ts'),
