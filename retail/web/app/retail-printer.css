@@ -94,6 +94,24 @@
   opacity: .58;
 }
 
+.printer-methods > button.unavailable {
+  border-style: dashed;
+  background: #f8faf9;
+}
+
+.printer-methods > button.unavailable > span {
+  background: #f0f2f1;
+  color: #68736d;
+}
+
+.printer-methods > button.unavailable small {
+  color: #5f6d65;
+}
+
+.printer-system-note {
+  margin: 10px 0 0;
+}
+
 .selected-printer {
   display: grid;
   grid-template-columns: 14px minmax(0, 1fr) auto;
