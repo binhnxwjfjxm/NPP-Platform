@@ -387,6 +387,37 @@ export async function handleSalesOrderRoutes(req, res, options) {
     return true;
   }
 
+  if (pathname === '/api/sales-orders/sku-previews' && method === 'GET') {
+    const context = await authenticateAndAuthorize(
+      req,
+      res,
+      options,
+      options.PERMISSIONS.coreSalesOrderRead,
+    );
+    if (!context) return true;
+    const url = new URL(`http://localhost${req.url}`);
+    try {
+      const result = await searchPreviewService.getSalesOrderSkuPreviews(options.getPool(), {
+        requestContext: context,
+        variantIds: url.searchParams.getAll('variantId'),
+        warehouseId: url.searchParams.get('warehouseId'),
+        salesChannelId: url.searchParams.get('salesChannelId'),
+        customerId: url.searchParams.get('customerId'),
+        pricingAt: url.searchParams.get('pricingAt'),
+      });
+      if (!result.ok) sendServiceError(res, result, options);
+      else sendSuccess(res, result.previews, options.requestId, options.receivedAt);
+    } catch (error) {
+      sendError(
+        res,
+        apiError(error.code, error.publicMessage, {}, false, error.statusCode),
+        options.requestId,
+        options.receivedAt,
+      );
+    }
+    return true;
+  }
+
   if (pathname === '/api/sales-orders' && method === 'GET') {
     const context = await authenticateAndAuthorize(
       req,

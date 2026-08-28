@@ -128,35 +128,26 @@ export async function resolveDefaultWarehouseId(client, { requestContext }) {
   return pickDefaultWarehouseId(warehouses, requestContext);
 }
 
-export async function searchSalesOrderSkuOptions(client, {
+function normalizeVariantIds(variantIds) {
+  const ids = [...new Set(
+    (Array.isArray(variantIds) ? variantIds : [])
+      .map((id) => String(id ?? '').trim())
+      .filter(Boolean),
+  )];
+  return ids.length <= 50 && ids.every((id) => UUID_PATTERN.test(id)) ? ids : null;
+}
+
+async function resolvePreviewContext(client, {
   requestContext,
-  search,
   warehouseId,
   salesChannelId,
   customerId = null,
   pricingAt,
-  limit = 20,
-  offset = 0,
 }) {
   const normalizedWarehouseId = String(warehouseId ?? '').trim();
   const normalizedChannelId = String(salesChannelId ?? '').trim();
   const normalizedCustomerId = String(customerId ?? '').trim() || null;
   const rawPricingAt = String(pricingAt ?? '').trim();
-  const previewContextRequested = Boolean(
-    normalizedWarehouseId
-    || normalizedChannelId
-    || normalizedCustomerId
-    || rawPricingAt,
-  );
-  if (!previewContextRequested) {
-    return legacy.searchSalesOrderSkuOptions(client, {
-      requestContext,
-      search,
-      limit,
-      offset,
-    });
-  }
-
   const normalizedPricingAt = normalizePricingAt(rawPricingAt, requestContext.receivedAt);
   if (!UUID_PATTERN.test(normalizedWarehouseId)
     || !UUID_PATTERN.test(normalizedChannelId)
@@ -198,6 +189,71 @@ export async function searchSalesOrderSkuOptions(client, {
     normalizedCustomerGroupId = customer.group_id ?? null;
   }
 
+  return Object.freeze({
+    ok: true,
+    context: Object.freeze({
+      warehouseId: normalizedWarehouseId,
+      salesChannelId: normalizedChannelId,
+      customerId: normalizedCustomerId,
+      customerGroupId: normalizedCustomerGroupId,
+      pricingAt: normalizedPricingAt,
+    }),
+  });
+}
+
+async function previewByVariantId(client, { requestContext, previewContext, variantIds }) {
+  const [inventoryRows, pricingByVariantId] = await Promise.all([
+    previewRepository.listSalesOrderSkuInventoryPreviews(client, {
+      installationId: requestContext.installationId,
+      warehouseId: previewContext.warehouseId,
+      variantIds,
+    }),
+    searchPricingService.resolveSalesOrderSearchPrices(client, {
+      installationId: requestContext.installationId,
+      variantIds,
+      priceAt: previewContext.pricingAt,
+      channelId: previewContext.salesChannelId,
+      customerGroupId: previewContext.customerGroupId,
+      customerId: previewContext.customerId,
+    }),
+  ]);
+  const inventoryByVariantId = new Map(inventoryRows.map((row) => [row.sales_variant_id, row]));
+  return new Map(variantIds.map((id) => {
+    const inventory = inventoryPreview(inventoryByVariantId.get(id));
+    return [id, Object.freeze({
+      id,
+      pricePreview: pricePreview(pricingByVariantId.get(id)),
+      inventoryPreview: inventory,
+      eligibilityMessage: inventoryHeldMessage(inventory),
+    })];
+  }));
+}
+
+export async function searchSalesOrderSkuOptions(client, {
+  requestContext,
+  search,
+  warehouseId,
+  salesChannelId,
+  customerId = null,
+  pricingAt,
+  limit = 20,
+  offset = 0,
+}) {
+  const previewContextRequested = Boolean(
+    String(warehouseId ?? '').trim()
+    || String(salesChannelId ?? '').trim()
+    || String(customerId ?? '').trim()
+    || String(pricingAt ?? '').trim(),
+  );
+  if (!previewContextRequested) {
+    return legacy.searchSalesOrderSkuOptions(client, { requestContext, search, limit, offset });
+  }
+
+  const resolvedContext = await resolvePreviewContext(client, {
+    requestContext, warehouseId, salesChannelId, customerId, pricingAt,
+  });
+  if (!resolvedContext.ok) return resolvedContext;
+
   const base = await legacy.searchSalesOrderSkuOptions(client, {
     requestContext,
     search,
@@ -207,35 +263,50 @@ export async function searchSalesOrderSkuOptions(client, {
   if (!base.ok || base.skuOptions.length === 0) return base;
 
   const variantIds = base.skuOptions.map((option) => option.id);
-  const [inventoryRows, pricingByVariantId] = await Promise.all([
-    previewRepository.listSalesOrderSkuInventoryPreviews(client, {
-      installationId: requestContext.installationId,
-      warehouseId: normalizedWarehouseId,
-      variantIds,
-    }),
-    searchPricingService.resolveSalesOrderSearchPrices(client, {
-      installationId: requestContext.installationId,
-      variantIds,
-      priceAt: normalizedPricingAt,
-      channelId: normalizedChannelId,
-      customerGroupId: normalizedCustomerGroupId,
-      customerId: normalizedCustomerId,
-    }),
-  ]);
-  const inventoryByVariantId = new Map(inventoryRows.map((row) => [row.sales_variant_id, row]));
+  const previews = await previewByVariantId(client, {
+    requestContext,
+    previewContext: resolvedContext.context,
+    variantIds,
+  });
   const enriched = base.skuOptions.map((option) => {
-    const inventory = inventoryPreview(inventoryByVariantId.get(option.id));
+    const preview = previews.get(option.id);
     const eligibility = option.eligibility.selectable
-      ? Object.freeze({ ...option.eligibility, message: inventoryHeldMessage(inventory) })
+      ? Object.freeze({ ...option.eligibility, message: preview?.eligibilityMessage ?? '' })
       : option.eligibility;
     return Object.freeze({
       ...option,
       eligibility,
-      pricePreview: pricePreview(pricingByVariantId.get(option.id)),
-      inventoryPreview: inventory,
+      pricePreview: preview.pricePreview,
+      inventoryPreview: preview.inventoryPreview,
     });
   });
   return Object.freeze({ ok: true, skuOptions: Object.freeze(enriched) });
+}
+
+export async function getSalesOrderSkuPreviews(client, {
+  requestContext,
+  variantIds,
+  warehouseId,
+  salesChannelId,
+  customerId = null,
+  pricingAt,
+}) {
+  const ids = normalizeVariantIds(variantIds);
+  if (!ids || ids.length === 0) return failure('INVALID_SALES_ORDER_SEARCH_VARIANTS', 'Danh sách hàng hóa không hợp lệ');
+  const resolvedContext = await resolvePreviewContext(client, {
+    requestContext, warehouseId, salesChannelId, customerId, pricingAt,
+  });
+  if (!resolvedContext.ok) return resolvedContext;
+  const orderableIds = await salesOrderRepository.listOrderableSalesVariantIds(client, {
+    installationId: requestContext.installationId,
+    variantIds: ids,
+  });
+  const previews = await previewByVariantId(client, {
+    requestContext,
+    previewContext: resolvedContext.context,
+    variantIds: orderableIds,
+  });
+  return Object.freeze({ ok: true, previews: Object.freeze(orderableIds.map((id) => previews.get(id))) });
 }
 
 export const salesOrderSearchPreviewInternals = Object.freeze({
@@ -243,6 +314,7 @@ export const salesOrderSearchPreviewInternals = Object.freeze({
   inventoryHeldMessage,
   inventoryPreview,
   normalizePricingAt,
+  normalizeVariantIds,
   pickDefaultWarehouseId,
   pricePreview,
 });
