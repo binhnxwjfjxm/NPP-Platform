@@ -32,10 +32,11 @@ test('Retail có contract máy in local, nhớ cấu hình và không gửi máy
 
 test('thiết lập in trên PWA vẫn chạm được và không hứa sai khổ giấy nhiệt', async () => {
   const panel = await read('app/printer-settings-panel.tsx');
+  const directButton = panel.match(/<button[^>]*aria-checked=\{draft\.method === 'DIRECT_WIFI'\}[^>]*onClick=\{chooseDirectMethod\}[^>]*>/)?.[0] ?? '';
 
-  assert.match(panel, /aria-disabled={!directReady}/);
-  assert.match(panel, /onClick={chooseDirectMethod}/);
-  assert.doesNotMatch(panel, /disabled={!directReady}/);
+  assert.ok(directButton, 'phải tìm thấy nút In Wi-Fi trực tiếp');
+  assert.match(directButton, /aria-disabled={!directReady}/);
+  assert.doesNotMatch(directButton, /\sdisabled=/);
   assert.match(panel, /Bản Retail đang mở là bản web/);
   assert.match(panel, /draft\.method === 'DIRECT_WIFI' \? <>\s*<option value="80mm">80 mm<\/option><option value="58mm">58 mm<\/option><\/?> : <>\s*<option value="A4">A4<\/option><option value="A5">A5<\/option>/s);
   assert.match(panel, /máy in\/AirPrint chưa cung cấp khổ đó cho iPhone/);
