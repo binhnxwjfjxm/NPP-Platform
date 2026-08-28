@@ -17,6 +17,14 @@ export function normalizeVndMinor(value: string | number | null | undefined): st
   return fraction && /[1-9]/.test(fraction) ? normalized : match[1];
 }
 
+export function normalizeEditableDecimal(value: string | number | null | undefined): string {
+  const normalized = String(value ?? '').trim();
+  const match = /^(0|[1-9]\d{0,18})(?:\.(\d{1,6}))?$/.exec(normalized);
+  if (!match) return normalized;
+  const fraction = (match[2] ?? '').replace(/0+$/, '');
+  return fraction ? `${match[1]}.${fraction}` : match[1];
+}
+
 export function normalizeVersionForEditing(
   version: SalesOrderFormProps['version'],
 ): SalesOrderFormProps['version'] {
@@ -28,6 +36,7 @@ export function normalizeVersionForEditing(
       baseUnitPrice: normalizeVndMinor(line.baseUnitPrice),
       systemUnitPrice: normalizeVndMinor(line.systemUnitPrice),
       unitPrice: normalizeVndMinor(line.unitPrice),
+      discountValue: normalizeEditableDecimal(line.discountValue),
     })),
   };
 }
@@ -67,6 +76,10 @@ export default function SalesOrderForm(props: SalesOrderFormProps) {
       <style>{`
         .${styles.orderEditorBody}{grid-auto-rows:max-content}
         .salesOrderFormInlineError{grid-column:1/-1;padding:.65rem .8rem;border:1px solid #e2a696;border-radius:10px;background:#fff3ef;color:#8f3528;font-weight:750}
+        .${styles.lineTableHeader}>span:nth-child(5),.${styles.lineTableHeader}>span:nth-child(6){text-align:center}
+        .${styles.directPriceInput}{text-align:center!important}
+        .${styles.discountControls} select{text-align:center!important;text-align-last:center}
+        .${styles.discountControls} input{text-align:center!important}
       `}</style>
     </>
   );
