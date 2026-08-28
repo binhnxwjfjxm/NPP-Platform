@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { bulkUpdateProductVariants } from '../src/services/product-bulk-update.js';
+import { bulkUpdateProductVariants, identifyProductVariants } from '../src/services/product-bulk-update.js';
 
 function variant(sku, overrides = {}) {
   return {
@@ -31,6 +31,42 @@ function deps(items, updates = []) {
     },
   };
 }
+
+test('Cập nhật SP — nhận diện SKU theo batch trước khi chọn thuộc tính cập nhật', async () => {
+  let lookupCalls = 0;
+  let requestedSkus = [];
+  const result = await identifyProductVariants(null, {
+    installationId: 'installation-test',
+    payload: {
+      rows: [
+        { rowNumber: 2, cells: ['sku-a', '1'] },
+        { rowNumber: 3, cells: ['SKU-KHONG-CO', '2'] },
+        { rowNumber: 4, cells: ['sku-dup', '3'] },
+        { rowNumber: 5, cells: ['SKU-DUP', '4'] },
+        { rowNumber: 6, cells: ['', '5'] },
+      ],
+    },
+  }, {
+    getProductVariantsByIdsOrSkus: async (_client, { ids, skus }) => {
+      lookupCalls += 1;
+      assert.deepEqual(ids, []);
+      requestedSkus = skus;
+      return [variant('SKU-A', { product_name: 'Sản phẩm A' })];
+    },
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(lookupCalls, 1, 'nhận diện nhiều SKU phải dùng một truy vấn batch');
+  assert.deepEqual(requestedSkus, ['SKU-A', 'SKU-KHONG-CO']);
+  assert.equal(result.identified, 1);
+  assert.equal(result.skipped, 4);
+  assert.equal(result.rows[0].sku, 'SKU-A');
+  assert.equal(result.rows[0].productName, 'Sản phẩm A');
+  assert.equal(result.rows[1].errors[0].code, 'SKU_NOT_FOUND');
+  assert.equal(result.rows[2].errors[0].code, 'DUPLICATE_SKU');
+  assert.equal(result.rows[3].errors[0].code, 'DUPLICATE_SKU');
+  assert.equal(result.rows[4].errors[0].code, 'MISSING_SKU');
+});
 
 test('Cập nhật SP — Bỏ qua, ô trống và cột thiếu giữ đúng ba semantics khác nhau', async () => {
   const updates = [];
