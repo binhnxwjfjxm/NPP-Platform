@@ -5,18 +5,23 @@ import { readFile } from 'node:fs/promises';
 const root = new URL('../', import.meta.url);
 const read = (path) => readFile(new URL(path, root), 'utf8');
 
-test('Lô B frontend gửi đúng context và hiển thị giá/tồn/khả dụng trước khi Add', async () => {
-  const [form, types, gateway] = await Promise.all([
+test('Lô B frontend hiện SKU trước rồi gửi đúng context để cập nhật giá/tồn/khả dụng', async () => {
+  const [form, types, gateway, previewGateway] = await Promise.all([
     read('app/sales/sales-orders/SalesOrderCommercialForm.tsx'),
     read('lib/sales-order-types.ts'),
     read('lib/sales-order-gateway.ts'),
+    read('lib/sales-order-preview-gateway.ts'),
   ]);
-  for (const field of ['warehouseId', 'salesChannelId', 'pricingAt', "query.set('customerId'"]) {
+  for (const field of ['warehouseId', 'salesChannelId', 'pricingAt', "previewQuery.set('customerId'"]) {
     assert.match(form, new RegExp(field.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
+  assert.match(form, /\/api\/sales-orders\/sku-previews/);
+  assert.match(form, /skuSearchRunRef/);
   for (const field of ['warehouseId', 'salesChannelId', 'customerId', 'pricingAt']) {
-    assert.match(gateway, new RegExp(`q\\.set\\('${field}'`));
+    assert.match(previewGateway, new RegExp(`searchParams\\.get\\('${field}'`));
   }
+  assert.match(previewGateway, /new URLSearchParams\(\{ warehouseId, salesChannelId, pricingAt/);
+  assert.match(previewGateway, /query\.set\('customerId'/);
   assert.match(gateway, /INVALID_SALES_CHANNEL_ID/);
   assert.match(gateway, /INVALID_PRICING_AT/);
   assert.match(form, /option\.pricePreview/);
