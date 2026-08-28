@@ -17,6 +17,22 @@ export type BusinessDocumentColumn = {
 export type BusinessDocumentRow = { id: string; cells: Record<string, ReactNode> };
 export type BusinessDocumentTotal = { key: string; label: string; value: ReactNode; emphasis?: boolean };
 
+let printTemplatesRequest: Promise<DocumentPrintTemplate[]> | null = null;
+
+function loadPrintTemplates(): Promise<DocumentPrintTemplate[]> {
+  if (!printTemplatesRequest) {
+    printTemplatesRequest = fetch('/api/document-print-templates', { cache: 'no-store' })
+      .then(async (response) => {
+        if (!response.ok) return [];
+        const payload = await response.json() as { data?: DocumentPrintTemplate[] };
+        return Array.isArray(payload.data) ? payload.data : [];
+      })
+      .catch(() => [])
+      .finally(() => { printTemplatesRequest = null; });
+  }
+  return printTemplatesRequest;
+}
+
 function columnClassName(column: BusinessDocumentColumn): string | undefined {
   const classes = [
     column.align === 'right' ? styles.right : column.align === 'center' ? styles.center : '',
@@ -73,20 +89,23 @@ export default function BusinessDocumentPrint({
   onPrint?: () => void;
 }) {
   const [template, setTemplate] = useState<DocumentPrintTemplate | null>(null);
+  const [templateResolved, setTemplateResolved] = useState(!documentType);
   const defaultKeys = new Set(['status', ...meta.map((item) => item.key), ...columns.map((item) => item.fieldKey ?? item.key), ...totals.map((item) => item.key), 'note', 'signatures']);
 
   useEffect(() => {
     setTemplate(null);
-    if (!documentType) return undefined;
+    if (!documentType) {
+      setTemplateResolved(true);
+      return undefined;
+    }
+    setTemplateResolved(false);
     let active = true;
-    void fetch('/api/document-print-templates', { cache: 'no-store' })
-      .then(async (response) => {
-        if (!response.ok) return null;
-        const payload = await response.json() as { data?: DocumentPrintTemplate[] };
-        return payload.data?.find((item) => item.documentType === documentType && item.templateCode === templateCode) ?? null;
-      })
-      .then((next) => { if (active) setTemplate(next); })
-      .catch(() => { if (active) setTemplate(null); });
+    void loadPrintTemplates()
+      .then((templates) => {
+        if (!active) return;
+        setTemplate(templates.find((item) => item.documentType === documentType && item.templateCode === templateCode) ?? null);
+        setTemplateResolved(true);
+      });
     return () => { active = false; };
   }, [documentType, templateCode]);
 
@@ -102,7 +121,7 @@ export default function BusinessDocumentPrint({
     <>
       <PrintAction label={actionLabel} targetId={id} onPrint={onPrint} />
       <PrintSurface id={id} size={template?.pageSize ?? size} suppressBrowserHeaders={suppressBrowserHeaders}>
-        <article className={styles.sheet} data-testid={testId}>
+        <article className={styles.sheet} data-testid={testId} data-print-template-ready={templateResolved ? 'true' : 'false'}>
           <header className={styles.header}>
             {displayHeading || displaySubtitle ? <div className={styles.brandBlock}>
               {displayHeading ? <strong className={styles.brand}>{displayHeading}</strong> : null}
