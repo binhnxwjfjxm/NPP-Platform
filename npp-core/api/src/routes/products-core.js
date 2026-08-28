@@ -1,9 +1,10 @@
-import { createSuccessEnvelope } from '@npp/contracts';
+import { createIdempotencyKey, createSuccessEnvelope } from '@npp/contracts';
 import { sendJson, sendSuccess, sendError } from '../http-utils.js';
 import { readJsonBody, normalizeIdempotencyKey } from '../idempotency.js';
 import { buildAuditRecord, insertAuditRecord, withAuditOutboxTransaction } from '../audit-outbox.js';
 import * as productService from '../services/product.js';
 import * as productCrudService from '../services/product-with-inventory-policy.js';
+import * as productBulkUpdateService from '../services/product-bulk-update.js';
 
 const RESOURCES = Object.freeze({
   category: Object.freeze({
@@ -35,7 +36,7 @@ function apiError(code, message, details = {}, retryable = false, statusCode = 5
 }
 
 function statusFor(result) {
-  if (['NOT_FOUND', 'CATEGORY_NOT_FOUND', 'BRAND_NOT_FOUND', 'PRODUCT_NOT_FOUND', 'VARIANT_NOT_FOUND', 'PARENT_CATEGORY_NOT_FOUND'].includes(result.code)) return 404;
+  if (['NOT_FOUND', 'CATEGORY_NOT_FOUND', 'BRAND_NOT_FOUND', 'PRODUCT_NOT_FOUND', 'VARIANT_NOT_FOUND', 'PARENT_CATEGORY_NOT_FOUND', 'SKU_NOT_FOUND'].includes(result.code)) return 404;
   if (['DUPLICATE_CODE', 'DUPLICATE_SKU', 'CONFLICT', 'ACTIVE_DEPENDENTS', 'STALE_VERSION', 'DOMAIN_CONFLICT', 'CATEGORY_INACTIVE', 'BRAND_INACTIVE', 'PARENT_CATEGORY_INACTIVE', 'PRODUCT_INACTIVE', 'INVALID_ORDERABLE_STATUS', 'VARIANT_PRODUCT_MISMATCH', 'CONFLICTING_PRODUCT_ID', 'CONFLICTING_VARIANT_ID', 'IMPORT_VARIANT_SNAPSHOT_INCOMPLETE'].includes(result.code)) return 409;
   return 400;
 }
@@ -113,13 +114,19 @@ async function idempotentMutation(req, res, context, {
             if (!serviceResult.ok) return { failed: serviceResult };
             const entity = entityKey === 'import'
               ? { imported: serviceResult.imported, created: serviceResult.created, updated: serviceResult.updated }
-              : serviceResult[entityKey];
+              : entityKey === 'bulkUpdate'
+                ? { updated: serviceResult.updated, skipped: serviceResult.skipped, unchanged: serviceResult.unchanged, rows: serviceResult.rows }
+                : serviceResult[entityKey];
+            const isSummaryResource = entityKey === 'import' || entityKey === 'bulkUpdate';
+            const auditData = entityKey === 'bulkUpdate'
+              ? { updated: entity.updated, skipped: entity.skipped, unchanged: entity.unchanged }
+              : entity;
             await insertAuditRecord(client, buildAuditRecord({
               requestContext: context.requestContext,
               action,
               resourceType,
-              resourceId: entityKey === 'import' ? context.requestId : entity.id,
-              afterData: entity,
+              resourceId: isSummaryResource ? context.requestId : entity.id,
+              afterData: auditData,
               metadata: metadata(entity, serviceResult),
             }));
             return { entity };
@@ -252,6 +259,47 @@ async function handleMasterResource(req, res, context, descriptor, id) {
 
 async function handleProducts(req, res, context, pathname) {
   const method = String(req.method || 'GET').toUpperCase();
+  if (pathname === '/api/products/variants/bulk-update' && method === 'PATCH') {
+    const body = await payload(req, res, context);
+    if (body === null) return true;
+    if (body?.dryRun === true) {
+      try {
+        const result = await productBulkUpdateService.bulkUpdateProductVariants(context.getPool(), {
+          installationId: context.requestContext.installationId,
+          payload: body,
+          updatedBy: context.requestContext.actorId,
+        });
+        if (!result.ok) return sendServiceError(res, result, context), true;
+        sendSuccess(res, {
+          updated: 0,
+          skipped: result.skipped,
+          ready: result.ready,
+          unchanged: result.unchanged,
+          rows: result.rows,
+          operationKey: createIdempotencyKey('product-variants-bulk-update'),
+        }, context.requestId, context.receivedAt);
+      } catch {
+        sendError(res, apiError('PRODUCT_STORAGE_UNAVAILABLE', 'Product data is temporarily unavailable', {}, true, 503), context.requestId, context.receivedAt);
+      }
+      return true;
+    }
+    await idempotentMutation(req, res, context, {
+      route: pathname,
+      body,
+      mutate: (client) => productBulkUpdateService.bulkUpdateProductVariants(client, {
+        installationId: context.requestContext.installationId,
+        payload: body,
+        updatedBy: context.requestContext.actorId,
+      }),
+      resourceType: 'product_variant_bulk_update',
+      entityKey: 'bulkUpdate',
+      action: 'bulk_update',
+      metadata: (entity) => ({ updated: entity.updated, skipped: entity.skipped, unchanged: entity.unchanged }),
+      responseStatus: 200,
+    });
+    return true;
+  }
+
   if (pathname === '/api/products/import' && method === 'POST') {
     const body = await payload(req, res, context);
     if (body === null) return true;
