@@ -32,14 +32,6 @@ const defaultCapabilities: PrinterBridgeCapabilities = {
   cashDrawer: false,
 };
 
-function isThermalPaper(paper: PrinterPaper) {
-  return paper === '80mm' || paper === '58mm';
-}
-
-function systemPaper(paper: PrinterPaper): PrinterPaper {
-  return isThermalPaper(paper) ? 'A4' : paper;
-}
-
 function paperCss(paper: PrinterPaper) {
   const size = paper === '80mm' ? '80mm 120mm' : paper === '58mm' ? '58mm 100mm' : paper;
   return `@page { size: ${size}; margin: ${paper === '80mm' || paper === '58mm' ? '4mm' : '10mm'}; }`;
@@ -74,7 +66,6 @@ function systemPrintTest(paper: PrinterPaper) {
 
   window.addEventListener('afterprint', cleanup, { once: true });
   fallbackTimer = window.setTimeout(cleanup, 120000);
-
   window.requestAnimationFrame(() => {
     window.requestAnimationFrame(() => window.print());
   });
@@ -105,6 +96,7 @@ export function PrinterSettingsPanel({ initialSettings, onSaved, onClose, onNoti
   const [host, setHost] = useState(initialSettings.profile?.host ?? '');
   const [port, setPort] = useState(initialSettings.profile?.port ?? 9100);
   const [advancedOpen, setAdvancedOpen] = useState(Boolean(initialSettings.profile?.host));
+  const [directHelpOpen, setDirectHelpOpen] = useState(false);
 
   useEffect(() => {
     setDraft(initialSettings);
@@ -119,20 +111,12 @@ export function PrinterSettingsPanel({ initialSettings, onSaved, onClose, onNoti
       if (cancelled) return;
       setCapabilities(next);
       if (!next.directWifi) {
-        setDraft((current) => ({
-          ...current,
-          method: 'SYSTEM',
-          paper: systemPaper(current.paper),
-        }));
+        setDraft((current) => ({ ...current, method: 'SYSTEM' }));
       }
     }).catch(() => {
       if (cancelled) return;
       setCapabilities(defaultCapabilities);
-      setDraft((current) => ({
-        ...current,
-        method: 'SYSTEM',
-        paper: systemPaper(current.paper),
-      }));
+      setDraft((current) => ({ ...current, method: 'SYSTEM' }));
     }).finally(() => {
       if (!cancelled) setCheckingBridge(false);
     });
@@ -149,9 +133,11 @@ export function PrinterSettingsPanel({ initialSettings, onSaved, onClose, onNoti
   function chooseDirectMethod() {
     onError('');
     if (!directReady) {
-      onNotice('Bản Retail đang mở là bản web. In Wi‑Fi trực tiếp và khổ giấy nhiệt 80/58 mm dùng trên Retail Mobile; trên bản này hãy dùng In bằng hệ thống.');
+      setDirectHelpOpen(true);
+      onNotice('In Wi‑Fi trực tiếp cần bản Retail Mobile. Bản web vẫn có thể in thử A4, A5, 80 mm và 58 mm bằng cửa sổ in của thiết bị.');
       return;
     }
+    setDirectHelpOpen(false);
     setDraft((current) => ({
       ...current,
       method: 'DIRECT_WIFI',
@@ -189,7 +175,7 @@ export function PrinterSettingsPanel({ initialSettings, onSaved, onClose, onNoti
     onError('');
     if (draft.method === 'SYSTEM') {
       systemPrintTest(draft.paper);
-      onNotice('Đã mở giao diện in của thiết bị. Khổ giấy thực tế trong cửa sổ này do máy in/AirPrint cung cấp.');
+      onNotice('Đã mở giao diện in của thiết bị. Phiếu được định dạng theo khổ đã chọn; máy in/AirPrint quyết định khổ giấy thực tế có hỗ trợ hay không.');
       return;
     }
     if (!directReady) {
@@ -250,7 +236,6 @@ export function PrinterSettingsPanel({ initialSettings, onSaved, onClose, onNoti
     }
     const normalized = savePrinterSettings({
       ...draft,
-      paper: draft.method === 'SYSTEM' ? systemPaper(draft.paper) : draft.paper,
       profile: profile ? { ...profile, paper: draft.paper } : null,
     });
     onSaved(normalized);
@@ -270,10 +255,11 @@ export function PrinterSettingsPanel({ initialSettings, onSaved, onClose, onNoti
     <section className="printer-setting-section">
       <header><strong>Phương thức in mặc định</strong><small>Chọn cách nhân viên dùng hằng ngày.</small></header>
       <div className="printer-methods" role="radiogroup" aria-label="Phương thức in mặc định">
-        <button type="button" role="radio" aria-checked={draft.method === 'DIRECT_WIFI'} aria-disabled={!directReady} className={`${draft.method === 'DIRECT_WIFI' ? 'active ' : ''}${!directReady ? 'unavailable' : ''}`.trim()} onClick={chooseDirectMethod}><span>Wi‑Fi</span><strong>In Wi‑Fi trực tiếp</strong><small>{checkingBridge ? 'Đang kiểm tra thiết bị…' : directReady ? 'In thẳng tới máy đã lưu' : 'Chạm để xem yêu cầu sử dụng'}</small></button>
-        <button type="button" role="radio" aria-checked={draft.method === 'SYSTEM'} className={draft.method === 'SYSTEM' ? 'active' : ''} onClick={() => setDraft((current) => ({ ...current, method: 'SYSTEM', paper: systemPaper(current.paper) }))}><span>↗</span><strong>In bằng hệ thống</strong><small>AirPrint hoặc máy in đã cài trên điện thoại</small></button>
+        <button type="button" role="radio" aria-checked={draft.method === 'DIRECT_WIFI'} className={`${draft.method === 'DIRECT_WIFI' ? 'active ' : ''}${!directReady ? 'unavailable' : ''}`.trim()} onClick={chooseDirectMethod}><span>Wi‑Fi</span><strong>In Wi‑Fi trực tiếp</strong><small>{checkingBridge ? 'Đang kiểm tra thiết bị…' : directReady ? 'In thẳng tới máy đã lưu' : 'Chạm để xem cách sử dụng'}</small></button>
+        <button type="button" role="radio" aria-checked={draft.method === 'SYSTEM'} className={draft.method === 'SYSTEM' ? 'active' : ''} onClick={() => { setDirectHelpOpen(false); setDraft((current) => ({ ...current, method: 'SYSTEM' })); }}><span>↗</span><strong>In bằng hệ thống</strong><small>AirPrint hoặc máy in đã cài trên điện thoại</small></button>
       </div>
-      {!checkingBridge && !directReady ? <p className="settings-help printer-system-note">Bản web không thể kết nối thẳng máy in nhiệt bằng địa chỉ IP. Muốn dùng máy 80/58 mm qua Wi‑Fi/LAN, mở Retail Mobile; bản web dùng cửa sổ in của iPhone.</p> : null}
+      {!checkingBridge && !directReady ? <p className="settings-help printer-system-note">Bản web không thể gửi dữ liệu thẳng tới địa chỉ IP của máy in. Anh vẫn có thể chọn 80 mm hoặc 58 mm bên dưới để kiểm tra bố cục qua cửa sổ in hệ thống.</p> : null}
+      {directHelpOpen && !directReady ? <div className="printer-web-help" role="status"><strong>In Wi‑Fi trực tiếp cần Retail Mobile</strong><p>Bản web không được phép mở kết nối TCP trực tiếp tới máy in LAN. Vì vậy phần nhập IP và Tìm máy in chỉ mở trên Retail Mobile. Để test ngay trên bản web, chọn In bằng hệ thống → 80 mm hoặc 58 mm → In thử.</p></div> : null}
     </section>
 
     {draft.method === 'DIRECT_WIFI' ? <section className="printer-setting-section">
@@ -286,8 +272,8 @@ export function PrinterSettingsPanel({ initialSettings, onSaved, onClose, onNoti
     </section> : null}
 
     <section className="printer-setting-section printer-compact-options">
-      <label><span><strong>Khổ giấy</strong><small>{draft.method === 'DIRECT_WIFI' ? 'Chọn đúng cuộn giấy đang lắp.' : 'Chọn khổ giấy văn phòng cần định dạng.'}</small></span><select value={draft.paper} onChange={(event) => setDraft((current) => ({ ...current, paper: event.target.value as PrinterPaper, profile: current.profile ? { ...current.profile, paper: event.target.value as PrinterPaper } : null }))}>{draft.method === 'DIRECT_WIFI' ? <><option value="80mm">80 mm</option><option value="58mm">58 mm</option></> : <><option value="A4">A4</option><option value="A5">A5</option></>}</select></label>
-      {draft.method === 'DIRECT_WIFI' ? <><label><span><strong>Số bản in</strong><small>Tối đa 5 bản mỗi lần.</small></span><select value={draft.copies} onChange={(event) => setDraft((current) => ({ ...current, copies: Number(event.target.value) }))}>{[1, 2, 3, 4, 5].map((value) => <option key={value} value={value}>{value}</option>)}</select></label><label className="printer-switch"><span><strong>Xem trước trước khi in</strong><small>Tắt để in nhanh khi máy đã sẵn sàng.</small></span><input type="checkbox" checked={draft.previewBeforePrint} onChange={(event) => setDraft((current) => ({ ...current, previewBeforePrint: event.target.checked }))}/></label></> : <p className="settings-help">Máy in, khổ giấy thực tế và số bản được chọn trong cửa sổ in của điện thoại. Nếu cửa sổ này không có đúng khổ giấy, máy in/AirPrint chưa cung cấp khổ đó cho iPhone.</p>}
+      <label><span><strong>Khổ giấy</strong><small>{draft.method === 'DIRECT_WIFI' ? 'Chọn đúng cuộn giấy đang lắp.' : 'Chọn định dạng phiếu cần in.'}</small></span><select value={draft.paper} onChange={(event) => setDraft((current) => ({ ...current, paper: event.target.value as PrinterPaper, profile: current.profile ? { ...current.profile, paper: event.target.value as PrinterPaper } : null }))}>{draft.method === 'DIRECT_WIFI' ? <><option value="80mm">80 mm</option><option value="58mm">58 mm</option></> : <><option value="A4">A4</option><option value="A5">A5</option><option value="80mm">80 mm</option><option value="58mm">58 mm</option></>}</select></label>
+      {draft.method === 'DIRECT_WIFI' ? <><label><span><strong>Số bản in</strong><small>Tối đa 5 bản mỗi lần.</small></span><select value={draft.copies} onChange={(event) => setDraft((current) => ({ ...current, copies: Number(event.target.value) }))}>{[1, 2, 3, 4, 5].map((value) => <option key={value} value={value}>{value}</option>)}</select></label><label className="printer-switch"><span><strong>Xem trước trước khi in</strong><small>Tắt để in nhanh khi máy đã sẵn sàng.</small></span><input type="checkbox" checked={draft.previewBeforePrint} onChange={(event) => setDraft((current) => ({ ...current, previewBeforePrint: event.target.checked }))}/></label></> : <p className="settings-help">A4, A5, 80 mm và 58 mm đều dùng được để định dạng phiếu trên bản web. Khổ giấy thật vẫn phải có trong máy in/AirPrint của thiết bị; nếu hệ thống không nhận đúng khổ, dùng Retail Mobile để in trực tiếp máy nhiệt.</p>}
     </section>
 
     <div className="printer-test-row"><span><strong>Trạng thái</strong><small>{status}</small></span><button className="secondary-action" type="button" disabled={testing} onClick={() => void testPrinter()}>{testing ? 'Đang kiểm tra…' : 'In thử'}</button></div>
