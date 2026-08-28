@@ -30,16 +30,19 @@ test('Retail có contract máy in local, nhớ cấu hình và không gửi máy
   assert.match(workspace, /settings\.method === 'DIRECT_WIFI' && settings\.profile && !settings\.previewBeforePrint/);
 });
 
-test('thiết lập in trên PWA vẫn chạm được và không hứa sai khổ giấy nhiệt', async () => {
+test('thiết lập in trên web chạm được và cho test đủ A4 A5 80 58', async () => {
   const panel = await read('app/printer-settings-panel.tsx');
   const directButton = panel.match(/<button[^>]*aria-checked=\{draft\.method === 'DIRECT_WIFI'\}[^>]*onClick=\{chooseDirectMethod\}[^>]*>/)?.[0] ?? '';
 
   assert.ok(directButton, 'phải tìm thấy nút In Wi-Fi trực tiếp');
-  assert.match(directButton, /aria-disabled={!directReady}/);
+  assert.doesNotMatch(directButton, /aria-disabled/);
   assert.doesNotMatch(directButton, /\sdisabled=/);
-  assert.match(panel, /Bản Retail đang mở là bản web/);
-  assert.match(panel, /draft\.method === 'DIRECT_WIFI' \? <>\s*<option value="80mm">80 mm<\/option><option value="58mm">58 mm<\/option><\/?> : <>\s*<option value="A4">A4<\/option><option value="A5">A5<\/option>/s);
-  assert.match(panel, /máy in\/AirPrint chưa cung cấp khổ đó cho iPhone/);
+  assert.match(panel, /setDirectHelpOpen\(true\)/);
+  assert.match(panel, /In Wi‑Fi trực tiếp cần Retail Mobile/);
+  assert.match(panel, /Bản web vẫn có thể in thử A4, A5, 80 mm và 58 mm/);
+  assert.match(panel, /<option value="A4">A4<\/option><option value="A5">A5<\/option><option value="80mm">80 mm<\/option><option value="58mm">58 mm<\/option>/);
+  assert.match(panel, /A4, A5, 80 mm và 58 mm đều dùng được để định dạng phiếu trên bản web/);
+  assert.doesNotMatch(panel, /function systemPaper/);
 });
 
 test('in thử bằng hệ thống giữ CSS khổ giấy cho tới khi cửa sổ in kết thúc', async () => {
