@@ -1,6 +1,19 @@
 'use client';
 import { createIdempotencyKey } from '@npp/contracts';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { PrinterSettingsPanel } from './printer-settings-panel';
+import {
+    DEFAULT_PRINTER_SETTINGS,
+    PRINTER_SETTINGS_STORAGE_KEY,
+    RetailPrinterError,
+    buildSalesOrderPrintPayload,
+    loadPrinterSettings,
+    printWithConfiguredPrinter,
+    printerSettingsSummary,
+    savePrinterSettings,
+    type PrinterPaper,
+    type PrinterSettings,
+} from '../lib/printer-bridge';
 type Product = {
     id: string;
     productCode: string;
@@ -101,7 +114,7 @@ type CachedPricePreview = PricePreview & {
 type RetailTab = 'home' | 'entry' | 'orders' | 'settings';
 type OrderFilter = 'all' | 'draft' | 'confirmed' | 'issued' | 'closed' | 'cancelled';
 type PaymentMethod = 'CASH' | 'BANK_TRANSFER';
-type PrintPaper = 'A4' | 'A5' | '80mm' | '58mm';
+type PrintPaper = PrinterPaper;
 type SettingsPanel = 'account' | 'printer' | 'template' | 'logout' | null;
 type PrintTemplate = {
     documentType: string;
@@ -269,6 +282,7 @@ export default function RetailWorkspace() {
     const [printOpen, setPrintOpen] = useState(false);
     const [printPaper, setPrintPaper] = useState<PrintPaper>('A4');
     const [draftPrintPaper, setDraftPrintPaper] = useState<PrintPaper>('A4');
+    const [printerSettings, setPrinterSettings] = useState<PrinterSettings>(DEFAULT_PRINTER_SETTINGS);
     const [settingsPanel, setSettingsPanel] = useState<SettingsPanel>(null);
     const [templateHeading, setTemplateHeading] = useState('');
     const [templateTitle, setTemplateTitle] = useState('');
@@ -359,11 +373,15 @@ export default function RetailWorkspace() {
         };
     }
     useEffect(() => {
-        const storedPaper = safePaper(window.localStorage.getItem(PRINT_PAPER_STORAGE_KEY));
-        if (storedPaper) {
-            setPrintPaper(storedPaper);
-            setDraftPrintPaper(storedPaper);
-        }
+        const loadedPrinterSettings = loadPrinterSettings();
+        const legacyPaper = safePaper(window.localStorage.getItem(PRINT_PAPER_STORAGE_KEY));
+        const migratedPrinterSettings = window.localStorage.getItem(PRINTER_SETTINGS_STORAGE_KEY)
+            ? loadedPrinterSettings
+            : { ...loadedPrinterSettings, paper: legacyPaper ?? loadedPrinterSettings.paper };
+        const persistedPrinterSettings = savePrinterSettings(migratedPrinterSettings);
+        setPrinterSettings(persistedPrinterSettings);
+        setPrintPaper(persistedPrinterSettings.paper);
+        setDraftPrintPaper(persistedPrinterSettings.paper);
         void api<Bootstrap>('/api/retail/bootstrap').then((data) => {
             setBoot(data);
             setOrders(data.orders.filter((item) => item.deliveryMode === 'PICKUP'));
@@ -727,6 +745,71 @@ export default function RetailWorkspace() {
         setTemplateTitle(template.title ?? template.name);
         setTemplateSubtitle(template.subtitle ?? '');
     }
+    function changePaper(value: PrintPaper) {
+        setPrintPaper(value);
+        setDraftPrintPaper(value);
+        setPrinterSettings((current) => {
+            const next = { ...current, paper: value, profile: current.profile ? { ...current.profile, paper: value } : null };
+            savePrinterSettings(next);
+            return next;
+        });
+        window.localStorage.setItem(PRINT_PAPER_STORAGE_KEY, value);
+    }
+    function buildOrderPrintPayload(template: PrintTemplate | null, settings: PrinterSettings) {
+        const visibleFields = new Set(template?.visibleFieldKeys ?? ['line_no', 'line_item', 'line_quantity', 'line_unit_price', 'line_total', 'total_total']);
+        return buildSalesOrderPrintPayload({
+            paper: settings.paper,
+            copies: settings.copies,
+            heading: template?.heading,
+            title: template?.title ?? template?.name ?? 'Đơn bán hàng',
+            subtitle: template?.subtitle,
+            documentNumber: order?.number ?? 'Đơn bán hàng',
+            customer: order?.customerName,
+            warehouse: order?.warehouseName,
+            date: dateLabel(order?.updatedAt),
+            visibleFields,
+            lines: linesOf(order).map((line) => ({
+                itemName: line.itemName,
+                sku: line.sku,
+                quantity: formatQuantity(line.quantity),
+                unitCode: line.unitCode,
+                unitPrice: money.format(Number(line.unitPrice)),
+                lineTotal: money.format(Number(line.lineTotal)),
+            })),
+            total: money.format(Number(order?.total ?? 0)),
+        });
+    }
+    function printBySystem(paper: PrintPaper) {
+        const style = document.createElement('style');
+        style.dataset.retailPrintPage = 'true';
+        style.textContent = printPageCss(paper);
+        document.head.appendChild(style);
+        window.print();
+        window.setTimeout(() => style.remove(), 0);
+    }
+    async function printConfiguredOrder(template: PrintTemplate | null, settings: PrinterSettings, allowSystemFallback: boolean) {
+        if (!order)
+            return false;
+        if (settings.method === 'SYSTEM') {
+            printBySystem(settings.paper);
+            return true;
+        }
+        try {
+            await printWithConfiguredPrinter(settings, buildOrderPrintPayload(template, settings));
+            setNotice(`Đã gửi ${settings.copies} bản tới ${settings.profile?.name ?? 'máy in Wi‑Fi'}.`);
+            return true;
+        }
+        catch (reason) {
+            const message = errorMessage(reason, 'Không kết nối được máy in.');
+            if (allowSystemFallback && reason instanceof RetailPrinterError && reason.safeToFallback) {
+                setNotice(`${message} Đang mở In bằng hệ thống để anh/chị chọn máy in.`);
+                printBySystem(settings.paper);
+                return false;
+            }
+            setError(message);
+            return false;
+        }
+    }
     async function openPrintPreview() {
         if (!order)
             return;
@@ -740,17 +823,29 @@ export default function RetailWorkspace() {
                 ?? null;
             if (template)
                 applyTemplate(template);
+            const settings = loadPrinterSettings();
+            setPrinterSettings(settings);
+            setPrintPaper(settings.paper);
+            setDraftPrintPaper(settings.paper);
+            if (settings.method === 'DIRECT_WIFI' && settings.profile && !settings.previewBeforePrint) {
+                const printed = await printConfiguredOrder(template, settings, false);
+                if (!printed)
+                    setPrintOpen(true);
+                return;
+            }
             setPrintOpen(true);
         }
         catch (reason) {
             setError(errorMessage(reason, 'Chưa thể tải cấu hình Mẫu phiếu.'));
         }
     }
-    function changePaper(value: PrintPaper) { setPrintPaper(value); setDraftPrintPaper(value); window.localStorage.setItem(PRINT_PAPER_STORAGE_KEY, value); }
     function openSettings(panel: Exclude<SettingsPanel, null>) {
         setError(null);
-        if (panel === 'printer')
-            setDraftPrintPaper(printPaper);
+        if (panel === 'printer') {
+            const settings = loadPrinterSettings();
+            setPrinterSettings(settings);
+            setDraftPrintPaper(settings.paper);
+        }
         if (panel === 'template') {
             void loadPrintTemplates().then((templates) => {
                 const savedCode = window.localStorage.getItem(PRINT_TEMPLATE_STORAGE_KEY);
@@ -795,33 +890,10 @@ export default function RetailWorkspace() {
             current.add(key);
         setPrintTemplate({ ...printTemplate, visibleFieldKeys: [...current] });
     }
-    function printNow() {
-        const style = document.createElement('style');
-        style.dataset.retailPrintPage = 'true';
-        style.textContent = printPageCss(printPaper);
-        document.head.appendChild(style);
-        window.print();
-        window.setTimeout(() => style.remove(), 0);
-    }
-    function printTest() {
-        const shell = document.querySelector<HTMLElement>('.retail-lot7');
-        if (!shell) {
-            setError('Chưa thể mở bản in thử trên thiết bị này.');
-            return;
-        }
-        changePaper(draftPrintPaper);
-        const testScreen = document.createElement('section');
-        testScreen.className = `print-screen printer-test-screen paper-${printPaperClass(draftPrintPaper)}`;
-        testScreen.setAttribute('aria-hidden', 'true');
-        testScreen.innerHTML = `<article class="print-document printer-test-document"><header><p>BÁN TẠI QUẦY</p><h1>PHIẾU IN THỬ</h1><p>Kiểm tra khổ giấy và máy in</p><small>${draftPrintPaper}</small></header><div class="printer-test-body"><strong>In thử thành công khi phiếu này ra đúng khổ.</strong><span>Khổ giấy: ${draftPrintPaper}</span><span>${new Date().toLocaleString('vi-VN')}</span></div></article>`;
-        shell.appendChild(testScreen);
-        const style = document.createElement('style');
-        style.dataset.retailPrintPage = 'true';
-        style.textContent = printPageCss(draftPrintPaper);
-        document.head.appendChild(style);
-        setNotice('Điện thoại sẽ mở giao diện in để chọn máy in.');
-        window.print();
-        window.setTimeout(() => { style.remove(); testScreen.remove(); }, 0);
+    async function printNow() {
+        const settings = loadPrinterSettings();
+        setPrinterSettings(settings);
+        await printConfiguredOrder(printTemplate, settings, true);
     }
     const productPicture = (imageKey: string | undefined, label: string) => <span className="product-visual"><span className="product-symbol product-symbol-large product-fallback" aria-hidden="true">{label.slice(0, 1)}</span>{imageKey ? <img className="product-photo" src={productImage(imageKey)} alt="" onError={(event) => { event.currentTarget.hidden = true; }}/> : null}</span>;
     const title = activeTab === 'home' ? 'Trang chủ' : activeTab === 'orders' ? 'Đơn hàng' : activeTab === 'settings' ? 'Cài đặt' : order ? 'Chi tiết đơn' : 'Lên đơn';
@@ -860,7 +932,7 @@ export default function RetailWorkspace() {
       <header className="settings-heading"><p className="section-kicker">CÀI ĐẶT</p><h2>Thiết lập bán tại quầy</h2><p>Chọn từng mục để thiết lập. Thay đổi chỉ được áp dụng khi xác nhận.</p></header>
       <div className="settings-list">
         <button className="settings-row" type="button" onClick={() => openSettings('account')}><span className="settings-icon" aria-hidden="true">◎</span><span><strong>Tài khoản</strong><small>Phiên đăng nhập và quyền nhân sự Công Ty</small></span><b aria-hidden="true">›</b></button>
-        <button className="settings-row" type="button" onClick={() => openSettings('printer')}><span className="settings-icon" aria-hidden="true">▣</span><span><strong>Thiết lập in</strong><small>Khổ giấy mặc định: {printPaper}</small></span><b aria-hidden="true">›</b></button>
+        <button className="settings-row" type="button" onClick={() => openSettings('printer')}><span className="settings-icon" aria-hidden="true">▣</span><span><strong>Thiết lập in</strong><small>{printerSettingsSummary(printerSettings)}</small></span><b aria-hidden="true">›</b></button>
         <button className="settings-row" type="button" onClick={() => openSettings('template')}><span className="settings-icon" aria-hidden="true">≡</span><span><strong>Mẫu phiếu</strong><small>Tiêu đề và các mục hiển thị trên chứng từ</small></span><b aria-hidden="true">›</b></button>
         <button className="settings-row danger-row" type="button" onClick={() => openSettings('logout')}><span className="settings-icon" aria-hidden="true">↪</span><span><strong>Đăng xuất</strong><small>Kết thúc phiên làm việc trên thiết bị này</small></span><b aria-hidden="true">›</b></button>
       </div>
@@ -898,7 +970,7 @@ export default function RetailWorkspace() {
     {settingsPanel ? <section className="dialog-backdrop settings-sheet-backdrop" role="dialog" aria-modal="true" aria-label={settingsPanel === 'account' ? 'Tài khoản' : settingsPanel === 'printer' ? 'Thiết lập in' : settingsPanel === 'template' ? 'Mẫu phiếu' : 'Đăng xuất'}><div className="settings-sheet sheet-enter">
       <header><div><p className="section-kicker">CÀI ĐẶT</p><h2>{settingsPanel === 'account' ? 'Tài khoản' : settingsPanel === 'printer' ? 'Thiết lập in' : settingsPanel === 'template' ? 'Mẫu phiếu' : 'Đăng xuất'}</h2></div><button className="text-action" type="button" onClick={() => setSettingsPanel(null)}>Đóng</button></header>
       {settingsPanel === 'account' ? <><div className="settings-sheet-copy"><span className="settings-icon" aria-hidden="true">◎</span><div><strong>Phiên nhân sự Công Ty</strong><p>Ứng dụng sử dụng quyền của tài khoản đang đăng nhập để thực hiện nghiệp vụ bán tại quầy.</p></div></div><div className="settings-sheet-actions"><button className="secondary-action" type="button" onClick={() => setSettingsPanel(null)}>Hủy</button></div></> : null}
-      {settingsPanel === 'printer' ? <><label className="settings-control">Khổ giấy mặc định<select value={draftPrintPaper} onChange={(event) => setDraftPrintPaper(event.target.value as PrintPaper)}><option value="A4">A4</option><option value="A5">A5</option><option value="80mm">80 mm</option><option value="58mm">58 mm</option></select></label><p className="settings-help">Khi bấm In, điện thoại sẽ mở giao diện chọn máy in của thiết bị. Retail chỉ lưu khổ giấy, không giả trạng thái đã kết nối máy in.</p><div className="settings-sheet-actions"><button className="secondary-action" type="button" onClick={printTest}>In thử</button><button className="primary-action" type="button" onClick={() => { changePaper(draftPrintPaper); setSettingsPanel(null); setNotice('Đã lưu khổ giấy mặc định trên thiết bị này.'); }}>Lưu khổ giấy</button></div></> : null}
+      {settingsPanel === 'printer' ? <PrinterSettingsPanel initialSettings={printerSettings} onSaved={(next) => { setPrinterSettings(next); setPrintPaper(next.paper); setDraftPrintPaper(next.paper); setSettingsPanel(null); setNotice('Đã lưu thiết lập in trên thiết bị này.'); }} onClose={() => setSettingsPanel(null)} onNotice={(message) => setNotice(message)} onError={(message) => setError(message || null)}/> : null}
       {settingsPanel === 'template' ? <>{printTemplate ? <div className="template-editor"><label className="settings-control">Mẫu<select value={printTemplate.templateCode} onChange={(event) => { const next = printTemplates.find((item) => item.documentType === 'SALES_ORDER' && item.templateCode === event.target.value); if (next)
             applyTemplate(next); }}>{printTemplates.filter((item) => item.documentType === 'SALES_ORDER').map((item) => <option key={`${item.documentType}-${item.templateCode}`} value={item.templateCode}>{item.name}</option>)}</select></label><label>Tiêu đề đầu phiếu<input value={templateHeading} maxLength={160} placeholder="Ví dụ: NGUYÊN LIỆU TRÀ SỮA" onChange={(event) => setTemplateHeading(event.target.value)}/></label><label>Tên chứng từ<input value={templateTitle} maxLength={160} placeholder={printTemplate.name} onChange={(event) => setTemplateTitle(event.target.value)}/></label><label>Dòng phụ<input value={templateSubtitle} maxLength={240} placeholder="Không bắt buộc" onChange={(event) => setTemplateSubtitle(event.target.value)}/></label><fieldset><legend>Mục hiển thị</legend><div className="field-checks">{printTemplate.fields?.map((field) => <label key={field.key}><input type="checkbox" checked={printTemplate.visibleFieldKeys.includes(field.key)} onChange={() => togglePrintField(field.key)}/>{field.label}</label>)}</div></fieldset><div className="settings-sheet-actions"><button className="secondary-action" type="button" onClick={() => setSettingsPanel(null)}>Hủy</button><button className="secondary-action" type="button" onClick={() => void openPrintPreview()} disabled={!order}>Xem trước</button><button className="primary-action" type="button" disabled={busy === 'print-template' || !printTemplate.visibleFieldKeys.length} onClick={() => void savePrintTemplate()}>{busy === 'print-template' ? 'Đang lưu…' : 'Lưu'}</button></div></div> : <p className="settings-help">Đang tải Mẫu phiếu…</p>}</> : null}
       {settingsPanel === 'logout' ? <><p className="settings-help">Đăng xuất sẽ kết thúc phiên làm việc trên thiết bị này.</p><div className="settings-sheet-actions"><button className="secondary-action" type="button" onClick={() => setSettingsPanel(null)}>Hủy</button><form action="/api/auth/logout" method="post"><button className="primary-action logout-action" type="submit">Đăng xuất</button></form></div></> : null}
@@ -907,6 +979,6 @@ export default function RetailWorkspace() {
     {open ? <section className="product-sheet sheet-enter" role="dialog" aria-modal="true" aria-label="Chọn sản phẩm"><header className="sheet-header"><button className="round-icon" type="button" onClick={() => setOpen(false)}>‹</button><div><h2>Chọn sản phẩm</h2></div><button className="text-action scan-action" type="button" onClick={() => { setScannerMessage(null); setScannerOpen(true); }}>Quét mã</button></header><div className="search-box"><span>⌕</span><input className="product-search" autoFocus placeholder="Tìm tên, SKU, quy cách" value={search} onChange={(event) => setSearch(event.target.value)}/></div><div className="filter-tabs" ref={filterTabs} role="tablist" aria-label="Nhóm sản phẩm"><span className="filter-highlight" aria-hidden="true" style={{ transform: `translateX(${marker.left}px)`, width: marker.width }}/>{[{ id: '', name: 'Tất cả' }, ...(boot?.categories ?? [])].map((category) => <button key={category.id || 'all'} className={categoryId === category.id ? 'active' : ''} type="button" role="tab" aria-selected={categoryId === category.id} onClick={() => setCategoryId(category.id)}>{category.name}</button>)}</div><div className="product-list">{products.map((product) => { const row = selected.get(product.id); const preview = prices[product.id]; const expectedKey = priceInputKey(product.id, row?.quantity ?? '1'); const price = preview?.inputKey === expectedKey ? preview : null; const availability = productAvailability.find((item) => item.variantId === product.id); return <article className={`product-row lot7-product-row ${row ? 'selected' : ''}`} key={product.id}>{productPicture(product.imageKey ?? product.productCode, product.productName)}<div className="product-copy"><strong>{product.productName}</strong><small>SKU: {product.sku}</small><em>{product.unitCode} | Khả dụng: {!warehouseId ? '—' : productAvailabilityLoading ? 'Đang tải' : availability ? availabilityLabel(availability) : '—'}</em><b>{price ? money.format(Number(price.finalUnitPriceMinor)) : 'Đang tính giá'}</b></div>{row ? <div className="quantity-stepper"><button type="button" onClick={() => adjustSelected(product, -1)}>−</button><output>{row.quantity}</output><button type="button" onClick={() => adjustSelected(product, 1)}>+</button></div> : <button className="add-product" type="button" onClick={() => toggleProduct(product)}>+</button>}</article>; })}{productsLoading && products.length === 0 ? <p className="empty-cart">Đang tải sản phẩm…</p> : null}{!productsLoading && products.length === 0 ? <p className="empty-cart">Không có sản phẩm phù hợp.</p> : null}{productsHasMore ? <button className="secondary-action" type="button" disabled={productsLoading} onClick={() => void loadMoreProducts()}>{productsLoading ? 'Đang tải thêm…' : 'Tải thêm sản phẩm'}</button> : null}</div><button className="sheet-submit primary-action" type="button" disabled={!selected.size} onClick={addSelected}><span className="selection-count">{selected.size}</span> Thêm {selected.size} sản phẩm vào đơn <b>›</b></button></section> : null}
     {scannerOpen ? <section className="dialog-backdrop" role="dialog" aria-modal="true"><div className="scanner-dialog sheet-enter"><header><div><p className="section-kicker">QUÉT MÃ</p><h2>Đưa mã vào khung hình</h2></div><button className="text-action" type="button" onClick={() => setScannerOpen(false)}>Đóng</button></header>{scannerMessage ? <p className="notice error">{scannerMessage}</p> : <video className="scanner-video" ref={videoRef} autoPlay muted playsInline/>}</div></section> : null}
     {payment ? <section className="dialog-backdrop payment-screen" role="dialog" aria-modal="true"><div className="payment-dialog sheet-enter lot7-payment"><header><button className="round-icon" type="button" onClick={() => setPayment(false)}>‹</button><div><p className="section-kicker">THANH TOÁN</p><h2>Thu tiền / Nợ</h2></div><span /></header><div className="payment-summary"><span>Tổng thanh toán</span><strong>{money.format(Number(order?.receivableRemainingAmount ?? total))}</strong><div className="payment-balance"><span>Đã thu</span><b>{money.format(Math.max(0, total - Number(order?.receivableRemainingAmount ?? total)))}</b><span>Còn lại</span><b>{money.format(Number(order?.receivableRemainingAmount ?? total))}</b></div></div><div className="payment-methods"><button type="button" className={paymentMethod === 'CASH' ? 'active' : ''} onClick={() => setPaymentMethod('CASH')}>Tiền mặt</button><button type="button" className={paymentMethod === 'BANK_TRANSFER' ? 'active' : ''} onClick={() => setPaymentMethod('BANK_TRANSFER')}>Chuyển khoản</button></div><label>Nhập số tiền nhận<input inputMode="numeric" value={paid} onChange={(event) => setPaid(normalizeVndInput(event.target.value))}/></label><div className="payment-footer"><button className="secondary-action" type="button" disabled={busy === 'settlement'} onClick={() => void settle('0')}>Ghi nợ</button><button className="primary-action" type="button" disabled={busy === 'settlement' || !paid.trim()} onClick={() => void settle()}>{busy === 'settlement' ? 'Đang ghi nhận…' : 'Hoàn tất thu tiền'}</button></div></div></section> : null}
-    {printOpen && order ? <section className={`print-screen paper-${printPaperClass(printPaper)}`} role="dialog" aria-modal="true"><div className="print-toolbar"><button className="round-icon" type="button" onClick={() => setPrintOpen(false)}>‹</button><div><h2>Xem trước phiếu</h2><small>{printTemplate?.name ?? 'Mẫu phiếu'}</small></div><button className="primary-action" type="button" onClick={printNow}>In</button></div><div className="print-paper-picker"><label>Khổ in<select value={printPaper} onChange={(event) => changePaper(event.target.value as PrintPaper)}><option value="A4">A4</option><option value="A5">A5</option><option value="80mm">80 mm</option><option value="58mm">58 mm</option></select></label><p>Khi bấm In, chọn máy in trong giao diện in của điện thoại.</p></div><article className="print-document"><header>{printTemplate?.heading ? <p>{printTemplate.heading}</p> : null}<h1>{printTemplate?.title ?? printTemplate?.name ?? 'Đơn bán hàng'}</h1>{printTemplate?.subtitle ? <p>{printTemplate.subtitle}</p> : null}<small>{order.number ?? 'Đơn bán hàng'}</small></header><div className="print-meta">{visiblePrintFields.has('customer') ? <p><span>Khách hàng</span><strong>{order.customerName}</strong></p> : null}{visiblePrintFields.has('warehouse') ? <p><span>Kho bán</span><strong>{order.warehouseName}</strong></p> : null}{visiblePrintFields.has('document_date') ? <p><span>Ngày</span><strong>{dateLabel(order.updatedAt)}</strong></p> : null}</div>{visiblePrintFields.has('line_item') ? <table><thead><tr>{visiblePrintFields.has('line_no') ? <th>STT</th> : null}<th>Sản phẩm</th>{visiblePrintFields.has('line_quantity') ? <th>SL</th> : null}<th>ĐVT</th>{visiblePrintFields.has('line_unit_price') ? <th>Đơn giá</th> : null}{visiblePrintFields.has('line_total') ? <th>Thành tiền</th> : null}</tr></thead><tbody>{lineItems.map((line, index) => <tr key={line.id}>{visiblePrintFields.has('line_no') ? <td>{index + 1}</td> : null}<td><strong>{line.itemName}</strong><small>{line.sku}</small></td>{visiblePrintFields.has('line_quantity') ? <td>{formatQuantity(line.quantity)}</td> : null}<td>{line.unitCode}</td>{visiblePrintFields.has('line_unit_price') ? <td>{money.format(Number(line.unitPrice))}</td> : null}{visiblePrintFields.has('line_total') ? <td>{money.format(Number(line.lineTotal))}</td> : null}</tr>)}</tbody></table> : null}<footer>{visiblePrintFields.has('total_total') ? <p className="print-grand-total"><span>Tổng cộng</span><strong>{money.format(Number(order.total))}</strong></p> : null}{visiblePrintFields.has('note') ? <p className="print-note"><span>Ghi chú</span><strong>—</strong></p> : null}{visiblePrintFields.has('signatures') ? <div className="print-signatures"><span>Người lập</span><span>Khách hàng</span></div> : null}</footer></article></section> : null}
+    {printOpen && order ? <section className={`print-screen paper-${printPaperClass(printPaper)}`} role="dialog" aria-modal="true"><div className="print-toolbar"><button className="round-icon" type="button" onClick={() => setPrintOpen(false)}>‹</button><div><h2>Xem trước phiếu</h2><small>{printTemplate?.name ?? 'Mẫu phiếu'}</small></div><button className="primary-action" type="button" onClick={() => void printNow()}>In</button></div><div className="print-paper-picker"><label>Khổ in<select value={printPaper} onChange={(event) => changePaper(event.target.value as PrintPaper)}><option value="A4">A4</option><option value="A5">A5</option><option value="80mm">80 mm</option><option value="58mm">58 mm</option></select></label><p>{printerSettings.method === 'DIRECT_WIFI' && printerSettings.profile ? `Máy mặc định: ${printerSettings.profile.name}.` : 'Khi bấm In, chọn máy in trong giao diện in của điện thoại.'}</p></div><article className="print-document"><header>{printTemplate?.heading ? <p>{printTemplate.heading}</p> : null}<h1>{printTemplate?.title ?? printTemplate?.name ?? 'Đơn bán hàng'}</h1>{printTemplate?.subtitle ? <p>{printTemplate.subtitle}</p> : null}<small>{order.number ?? 'Đơn bán hàng'}</small></header><div className="print-meta">{visiblePrintFields.has('customer') ? <p><span>Khách hàng</span><strong>{order.customerName}</strong></p> : null}{visiblePrintFields.has('warehouse') ? <p><span>Kho bán</span><strong>{order.warehouseName}</strong></p> : null}{visiblePrintFields.has('document_date') ? <p><span>Ngày</span><strong>{dateLabel(order.updatedAt)}</strong></p> : null}</div>{visiblePrintFields.has('line_item') ? <table><thead><tr>{visiblePrintFields.has('line_no') ? <th>STT</th> : null}<th>Sản phẩm</th>{visiblePrintFields.has('line_quantity') ? <th>SL</th> : null}<th>ĐVT</th>{visiblePrintFields.has('line_unit_price') ? <th>Đơn giá</th> : null}{visiblePrintFields.has('line_total') ? <th>Thành tiền</th> : null}</tr></thead><tbody>{lineItems.map((line, index) => <tr key={line.id}>{visiblePrintFields.has('line_no') ? <td>{index + 1}</td> : null}<td><strong>{line.itemName}</strong><small>{line.sku}</small></td>{visiblePrintFields.has('line_quantity') ? <td>{formatQuantity(line.quantity)}</td> : null}<td>{line.unitCode}</td>{visiblePrintFields.has('line_unit_price') ? <td>{money.format(Number(line.unitPrice))}</td> : null}{visiblePrintFields.has('line_total') ? <td>{money.format(Number(line.lineTotal))}</td> : null}</tr>)}</tbody></table> : null}<footer>{visiblePrintFields.has('total_total') ? <p className="print-grand-total"><span>Tổng cộng</span><strong>{money.format(Number(order.total))}</strong></p> : null}{visiblePrintFields.has('note') ? <p className="print-note"><span>Ghi chú</span><strong>—</strong></p> : null}{visiblePrintFields.has('signatures') ? <div className="print-signatures"><span>Người lập</span><span>Khách hàng</span></div> : null}</footer></article></section> : null}
   </main>;
 }

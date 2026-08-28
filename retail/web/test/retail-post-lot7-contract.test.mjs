@@ -72,19 +72,24 @@ test('điều hướng Retail đúng bốn mục và Trang chủ không có nút
 });
 
 test('Cài đặt dùng hàng có chevron và bottom sheet cho Tài khoản Thiết lập in Mẫu phiếu Đăng xuất', async () => {
-  const page = await readWorkspace();
+  const [page, panel, bridge] = await Promise.all([
+    readWorkspace(), read('app/printer-settings-panel.tsx'), read('lib/printer-bridge.ts'),
+  ]);
   assert.match(page, /className="settings-row"[^>]*>[\s\S]*?<strong>Tài khoản<\/strong>/);
   assert.match(page, /<strong>Thiết lập in<\/strong>/);
   assert.match(page, /<strong>Mẫu phiếu<\/strong>/);
   assert.match(page, /<strong>Đăng xuất<\/strong>/);
   assert.match(page, /className="settings-sheet sheet-enter"/);
-  assert.match(page, />In thử<\/button>/);
-  assert.match(page, />Lưu khổ giấy<\/button>/);
-  assert.match(page, /PRINT_PAPER_STORAGE_KEY/);
-  assert.match(page, /window\.localStorage\.setItem\(PRINT_PAPER_STORAGE_KEY/);
-  assert.match(page, /điện thoại sẽ mở giao diện chọn máy in của thiết bị/);
-  assert.match(page, /Retail chỉ lưu khổ giấy, không giả trạng thái đã kết nối máy in/);
-  assert.doesNotMatch(page, /Máy in Wi-Fi được chọn trong hộp thoại in của thiết bị/);
+  assert.match(page, /PrinterSettingsPanel/);
+  assert.match(page, /printerSettingsSummary\(printerSettings\)/);
+  assert.match(panel, />In thử<\/button>/);
+  assert.match(panel, />Lưu thiết lập<\/button>/);
+  assert.match(panel, /In Wi‑Fi trực tiếp/);
+  assert.match(panel, /Tìm máy in/);
+  assert.match(panel, /Cài đặt nâng cao/);
+  assert.match(bridge, /PRINTER_SETTINGS_STORAGE_KEY/);
+  assert.match(bridge, /window\.localStorage\.setItem/);
+  assert.doesNotMatch(bridge, /fetch\(/);
 });
 
 test('Mẫu phiếu PATCH xong GET lại cấu hình Công Ty rồi mới áp dụng', async () => {
@@ -133,7 +138,7 @@ test('tiền VND không để phần thập phân rác ở ô thu tiền', async
 
 test('in phiếu hỗ trợ A4 A5 80mm 58mm và không đưa ảnh vào chứng từ', async () => {
   const page = await readWorkspace();
-  assert.match(page, /type PrintPaper = 'A4' \| 'A5' \| '80mm' \| '58mm'/);
+  assert.match(page, /type PrintPaper = PrinterPaper/);
   assert.match(page, /visiblePrintFields\.has\('line_item'\)/);
   const printSlice = page.slice(page.indexOf('className="print-document"'));
   assert.doesNotMatch(printSlice, /productPicture|product-photo/);

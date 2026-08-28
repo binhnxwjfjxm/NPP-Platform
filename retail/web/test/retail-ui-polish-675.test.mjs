@@ -52,20 +52,26 @@ test('Nút thêm sản phẩm ngoài đơn và nút cộng trong danh sách có 
   assert.match(css, /place-items: center/);
 });
 
-test('Thiết lập in trên mobile chỉ lưu khổ giấy và có In thử thật qua giao diện in của thiết bị', async () => {
-  const [workspace, css] = await Promise.all([
+test('Thiết lập in mobile có direct Wi-Fi khi native bridge tồn tại và fallback hệ thống khi không có', async () => {
+  const [workspace, printerPanel, printerCss, bridge, baseCss] = await Promise.all([
     read('app/retail-workspace.tsx'),
+    read('app/printer-settings-panel.tsx'),
+    read('app/retail-printer.css'),
+    read('lib/printer-bridge.ts'),
     read('app/retail-final-polish.css'),
   ]);
   assert.match(workspace, /<strong>Thiết lập in<\/strong>/);
-  assert.match(workspace, /Khổ giấy mặc định/);
-  assert.match(workspace, /onClick=\{printTest\}>In thử<\/button>/);
-  assert.match(workspace, /function printTest\(\)/);
-  assert.match(workspace, /window\.print\(\)/);
-  assert.match(workspace, /Retail chỉ lưu khổ giấy, không giả trạng thái đã kết nối máy in/);
-  assert.doesNotMatch(workspace, /Máy in Wi-Fi được chọn trong hộp thoại in của thiết bị/);
-  assert.doesNotMatch(css, /Máy in hiện tại · Chọn khi in|Máy in chọn khi bấm In/);
-  assert.match(css, /\.printer-test-screen/);
+  assert.match(workspace, /PrinterSettingsPanel/);
+  assert.match(workspace, /printWithConfiguredPrinter/);
+  assert.match(printerPanel, /In Wi‑Fi trực tiếp/);
+  assert.match(printerPanel, /In bằng hệ thống/);
+  assert.match(printerPanel, /Tìm máy in/);
+  assert.match(printerPanel, /In thử/);
+  assert.match(bridge, /window\.RetailPrinterBridge/);
+  assert.match(bridge, /window\.localStorage\.setItem/);
+  assert.doesNotMatch(bridge, /fetch\(/);
+  assert.match(printerCss, /\.printer-methods/);
+  assert.match(baseCss, /\.printer-test-screen/);
 });
 
 test('A4 và A5 chia header phiếu hai bên, giấy nhiệt giữ một cột', async () => {
@@ -84,9 +90,11 @@ test('Tiêu đề đơn và phiếu in có hierarchy riêng thay vì header thô
   assert.match(css, /\.print-document > header small/);
 });
 
-test('layout nạp final polish sau các lớp Retail trước đó', async () => {
+test('layout nạp final polish sau các lớp Retail trước đó và nạp lớp máy in riêng', async () => {
   const layout = await read('app/layout.tsx');
   const homeIndex = layout.indexOf("import './retail-home-polish.css'");
   const finalIndex = layout.indexOf("import './retail-final-polish.css'");
+  const printerIndex = layout.indexOf("import './retail-printer.css'");
   assert.ok(homeIndex >= 0 && finalIndex > homeIndex);
+  assert.ok(printerIndex > finalIndex);
 });
