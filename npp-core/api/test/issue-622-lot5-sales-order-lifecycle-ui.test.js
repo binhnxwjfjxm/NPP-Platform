@@ -41,7 +41,12 @@ test('Issue #622 Lô 5 keeps one Sales Orders page and groups work by business s
   assert.match(workspace, /order\.deliveryStatus === 'delivered'\) status = 'Đã giao'/);
   assert.match(workspace, /order\.deliveryStatus === 'partially_delivered'\) status = 'Đã giao một phần'/);
   assert.match(workspace, /order\.deliveryStatus === 'dispatched'\) status = 'Đang giao'/);
-  assert.match(workspace, /return `\$\{status\} · \$\{orderLaneLabel\(order\)\}`/);
+  assert.match(workspace, /order\.status === 'draft'\) return 'Đặt hàng'/);
+  assert.match(workspace, /data-sales-order-lane=\{orderLane\(order\)\}/);
+  assert.match(workspace, /\{orderLaneLabel\(order\)\}<\/span>/);
+  assert.match(workspace, /data-sales-order-tone=\{orderCardTone\(order\)\}/);
+  assert.match(workspace, /\{orderCardStatus\(order\)\}<\/span>/);
+  assert.doesNotMatch(workspace, /return `\$\{status\} · \$\{orderLaneLabel\(order\)\}`/);
 
   assert.match(workspace, /title="Đơn bán hàng"/);
   assert.match(workspace, /actions=\{canCreate \?/);
@@ -54,6 +59,9 @@ test('Issue #622 Lô 5 separates service lane from work stage and payment', asyn
   for (const label of ['Mua tại quầy', 'Giao thủ công', 'Giao theo chuyến']) {
     assert.match(workspace, new RegExp(label));
   }
+  assert.match(workspace, />Luồng bán</);
+  assert.match(workspace, />Trạng thái giao</);
+  assert.match(workspace, /filterDivider/);
   assert.match(workspace, /order\.deliveryMode === 'PICKUP'/);
   assert.match(workspace, /order\.deliveryExecutionMode === 'MANUAL' \? 'manual' : 'trip'/);
   assert.match(workspace, /type OrderLaneFilter = 'all' \| 'counter' \| 'manual' \| 'trip'/);
