@@ -259,6 +259,26 @@ async function handleMasterResource(req, res, context, descriptor, id) {
 
 async function handleProducts(req, res, context, pathname) {
   const method = String(req.method || 'GET').toUpperCase();
+  if (pathname === '/api/products/variants/identify' && method === 'POST') {
+    const body = await payload(req, res, context);
+    if (body === null) return true;
+    try {
+      const result = await productBulkUpdateService.identifyProductVariants(context.getPool(), {
+        installationId: context.requestContext.installationId,
+        payload: body,
+      });
+      if (!result.ok) return sendServiceError(res, result, context), true;
+      sendSuccess(res, {
+        identified: result.identified,
+        skipped: result.skipped,
+        rows: result.rows,
+      }, context.requestId, context.receivedAt);
+    } catch {
+      sendError(res, apiError('PRODUCT_STORAGE_UNAVAILABLE', 'Product data is temporarily unavailable', {}, true, 503), context.requestId, context.receivedAt);
+    }
+    return true;
+  }
+
   if (pathname === '/api/products/variants/bulk-update' && method === 'PATCH') {
     const body = await payload(req, res, context);
     if (body === null) return true;
@@ -424,7 +444,8 @@ export async function handleProductRoutes(req, res, options) {
   }
   const requestContext = options.createContext({ config: options.config, principal: auth.principal, requestId: options.requestId, receivedAt: options.receivedAt });
   const method = String(req.method || 'GET').toUpperCase();
-  const permission = options.authorize(requestContext, method === 'GET' ? options.PERMISSIONS.coreProductRead : options.PERMISSIONS.coreProductWrite);
+  const isReadOperation = method === 'GET' || (method === 'POST' && pathname === '/api/products/variants/identify');
+  const permission = options.authorize(requestContext, isReadOperation ? options.PERMISSIONS.coreProductRead : options.PERMISSIONS.coreProductWrite);
   if (!permission.ok) {
     sendError(res, apiError('FORBIDDEN', 'Permission denied', {}, false, 403), options.requestId, options.receivedAt);
     return true;
