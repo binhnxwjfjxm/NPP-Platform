@@ -17,6 +17,7 @@ import type {
   SalesOrderEntrySettings,
   SalesOrderLineDiscountMode,
   SalesOrderSkuSearchOption,
+  SalesOrderSkuSearchPreview,
   SalesOrderTaxMode,
   SalesOrderVersion,
   SalesPriceResolution,
@@ -32,7 +33,7 @@ import styles from './sales-orders.module.css';
 
 export type SalesOrderFormMode = 'create' | 'draft' | 'amendment' | 'manual-edit';
 
-const SEARCH_DELAY_MS = 260;
+const SEARCH_DELAY_MS = 120;
 const SEARCH_PAGE_SIZE = 30;
 const REPRICE_DELAY_MS = 320;
 const SCALE = 1_000_000n;
@@ -303,6 +304,7 @@ function pricingLabel(step: SalesPriceStep): string {
 }
 
 function searchPriceText(option: SalesOrderSkuSearchOption): string {
+  if (option.pricePreview.status === 'PENDING') return 'Đang tính giá…';
   if (option.pricePreview.status === 'RESOLVED' && option.pricePreview.unitPriceMinor !== null) {
     return vnd(option.pricePreview.unitPriceMinor);
   }
@@ -310,6 +312,7 @@ function searchPriceText(option: SalesOrderSkuSearchOption): string {
 }
 
 function searchInventoryPrimary(option: SalesOrderSkuSearchOption): string {
+  if (option.inventoryPreview.status === 'PENDING') return 'Đang lấy tồn…';
   if (option.inventoryPreview.status === 'NOT_MANAGED') return 'Không quản lý tồn';
   if (option.inventoryPreview.status !== 'TRACKED') return 'Chưa có số liệu tồn';
   const unit = option.inventoryPreview.unitCode ? ` ${option.inventoryPreview.unitCode}` : '';
@@ -320,6 +323,19 @@ function searchInventorySecondary(option: SalesOrderSkuSearchOption): string | n
   if (option.inventoryPreview.status !== 'TRACKED') return null;
   const unit = option.inventoryPreview.unitCode ? ` ${option.inventoryPreview.unitCode}` : '';
   return `Khả dụng ${compactQuantity(option.inventoryPreview.availableQuantity)}${unit}`;
+}
+
+function withPendingSearchPreview(option: Omit<SalesOrderSkuSearchOption, 'pricePreview' | 'inventoryPreview'>): SalesOrderSkuSearchOption {
+  return {
+    ...option,
+    pricePreview: { status: 'PENDING', unitPriceMinor: null, message: null },
+    inventoryPreview: {
+      status: 'PENDING',
+      onHandQuantity: null,
+      availableQuantity: null,
+      unitCode: null,
+    },
+  };
 }
 
 function pricingSummary(line: LineDraft): string {
@@ -367,6 +383,7 @@ export default function SalesOrderCommercialForm(props: Props) {
   const [skuTerm, setSkuTerm] = useState('');
   const [skuResults, setSkuResults] = useState<SalesOrderSkuSearchOption[]>([]);
   const [skuLoading, setSkuLoading] = useState(false);
+  const [skuPreviewLoading, setSkuPreviewLoading] = useState(false);
   const [activeSkuIndex, setActiveSkuIndex] = useState(0);
   const [quickOpen, setQuickOpen] = useState(false);
   const [quickCustomer, setQuickCustomer] = useState<QuickCustomerDraft>(() => ({
@@ -384,6 +401,7 @@ export default function SalesOrderCommercialForm(props: Props) {
   const pricingContextRef = useRef('');
   const quantitySignatureRef = useRef('');
   const pricingRunRef = useRef(0);
+  const skuSearchRunRef = useRef(0);
 
   useEffect(() => {
     linesRef.current = lines;
@@ -580,30 +598,58 @@ export default function SalesOrderCommercialForm(props: Props) {
 
   useEffect(() => {
     const term = skuTerm.trim();
+    const run = ++skuSearchRunRef.current;
     setActiveSkuIndex(0);
     if (term.length < MIN_PRODUCT_SEARCH_LENGTH || !warehouseId || !salesChannelId) {
       setSkuResults([]);
+      setSkuLoading(false);
+      setSkuPreviewLoading(false);
       return;
     }
     const controller = new AbortController();
+    setSkuResults([]);
+    setSkuPreviewLoading(false);
     const timer = window.setTimeout(async () => {
       setSkuLoading(true);
       try {
         const query = new URLSearchParams({
           search: term,
-          warehouseId,
-          salesChannelId,
-          pricingAt,
           limit: String(SEARCH_PAGE_SIZE),
           offset: '0',
         });
-        if (customerMode === 'EXISTING' && customerId) query.set('customerId', customerId);
-        const rows = await apiRequest<SalesOrderSkuSearchOption[]>(`/api/sales-orders/sku-search?${query}`, { signal: controller.signal });
-        if (!controller.signal.aborted) setSkuResults(rows);
+        const rows = await apiRequest<Omit<SalesOrderSkuSearchOption, 'pricePreview' | 'inventoryPreview'>[]>(`/api/sales-orders/sku-search?${query}`, { signal: controller.signal });
+        if (controller.signal.aborted || run !== skuSearchRunRef.current) return;
+        setSkuResults(rows.map(withPendingSearchPreview));
+        setSkuLoading(false);
+        if (rows.length === 0) return;
+
+        setSkuPreviewLoading(true);
+        const previewQuery = new URLSearchParams({ warehouseId, salesChannelId, pricingAt });
+        if (customerMode === 'EXISTING' && customerId) previewQuery.set('customerId', customerId);
+        for (const row of rows) previewQuery.append('variantId', row.id);
+        try {
+          const previews = await apiRequest<SalesOrderSkuSearchPreview[]>(`/api/sales-orders/sku-previews?${previewQuery}`, { signal: controller.signal });
+          if (controller.signal.aborted || run !== skuSearchRunRef.current) return;
+          const previewById = new Map(previews.map((preview) => [preview.id, preview]));
+          setSkuResults((current) => current.map((option) => {
+            const preview = previewById.get(option.id);
+            if (!preview) return option;
+            return {
+              ...option,
+              eligibility: option.eligibility.selectable
+                ? { ...option.eligibility, message: preview.eligibilityMessage }
+                : option.eligibility,
+              pricePreview: preview.pricePreview,
+              inventoryPreview: preview.inventoryPreview,
+            };
+          }));
+        } finally {
+          if (!controller.signal.aborted && run === skuSearchRunRef.current) setSkuPreviewLoading(false);
+        }
       } catch (error) {
         if (!controller.signal.aborted) onError(error instanceof Error ? error.message : 'Không tìm được hàng hóa');
       } finally {
-        if (!controller.signal.aborted) setSkuLoading(false);
+        if (!controller.signal.aborted && run === skuSearchRunRef.current) setSkuLoading(false);
       }
     }, SEARCH_DELAY_MS);
     return () => {
@@ -1094,6 +1140,7 @@ export default function SalesOrderCommercialForm(props: Props) {
                 <label><span>Tìm hàng nhanh</span><input ref={searchRef} value={skuTerm} onChange={(event) => setSkuTerm(event.target.value)} onKeyDown={handleSkuKeyDown} placeholder="Tên sản phẩm, mã hàng, SKU hoặc barcode" autoComplete="off" /></label>
               </div>
               {skuLoading && <span className={styles.searchStatus}>Đang tìm…</span>}
+              {!skuLoading && skuPreviewLoading && <span className={styles.searchStatus}>Đang cập nhật giá và tồn…</span>}
               {skuResults.length > 0 && (
                 <div className={styles.skuResults} role="listbox">
                   {skuResults.map((option, index) => (

@@ -228,13 +228,13 @@ export type SalesOrderSkuEligibility = {
 };
 
 export type SalesOrderSkuPricePreview = {
-  status: 'RESOLVED' | 'MISSING' | 'UNAVAILABLE';
+  status: 'PENDING' | 'RESOLVED' | 'MISSING' | 'UNAVAILABLE';
   unitPriceMinor: string | null;
   message: string | null;
 };
 
 export type SalesOrderSkuInventoryPreview = {
-  status: 'TRACKED' | 'NOT_MANAGED' | 'UNAVAILABLE';
+  status: 'PENDING' | 'TRACKED' | 'NOT_MANAGED' | 'UNAVAILABLE';
   onHandQuantity: string | null;
   availableQuantity: string | null;
   unitCode: string | null;
@@ -258,6 +258,13 @@ export type SalesOrderSkuSearchOption = {
   eligibility: SalesOrderSkuEligibility;
   pricePreview: SalesOrderSkuPricePreview;
   inventoryPreview: SalesOrderSkuInventoryPreview;
+};
+
+export type SalesOrderSkuSearchPreview = {
+  id: string;
+  pricePreview: SalesOrderSkuPricePreview;
+  inventoryPreview: SalesOrderSkuInventoryPreview;
+  eligibilityMessage: string;
 };
 
 export type SalesPriceResolution = {

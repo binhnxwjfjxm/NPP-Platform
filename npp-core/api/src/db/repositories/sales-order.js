@@ -449,6 +449,30 @@ export async function searchSalesOrderSkuOptions(client, {
   return result.rows;
 }
 
+export async function listOrderableSalesVariantIds(client, { installationId, variantIds }) {
+  const ids = Array.isArray(variantIds) ? variantIds : [];
+  if (ids.length === 0) return [];
+  const result = await client.query(
+    `SELECT pv.id
+     FROM shared.product_variants pv
+     JOIN shared.products p
+       ON p.installation_id = pv.installation_id AND p.id = pv.product_id
+     JOIN shared.units_of_measure u
+       ON u.installation_id = pv.installation_id AND u.id = pv.unit_id
+     WHERE pv.installation_id = $1
+       AND pv.id = ANY($2::uuid[])
+       AND p.is_active = true
+       AND p.is_orderable = true
+       AND pv.is_active = true
+       AND pv.is_sellable = true
+       AND u.is_active = true
+       AND pv.conversion_to_base IS NOT NULL
+       AND pv.conversion_to_base > 0`,
+    [installationId, ids],
+  );
+  return result.rows.map((row) => row.id);
+}
+
 export async function insertSalesOrder(client, data) {
   const id = randomUUID();
   const now = nowIso();
