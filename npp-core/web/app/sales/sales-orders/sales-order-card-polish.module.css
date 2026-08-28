@@ -1,0 +1,187 @@
+.filterPanelCompact {
+  gap: .42rem;
+}
+
+.filterPanelTitle {
+  font-size: .82rem;
+  font-weight: 850;
+  color: #202a26;
+}
+
+.filterControlRow {
+  display: flex;
+  align-items: center;
+  gap: .62rem;
+  min-width: 0;
+  overflow-x: auto;
+  padding-bottom: .08rem;
+  scrollbar-width: thin;
+}
+
+.filterGroupInline {
+  display: flex !important;
+  align-items: center;
+  gap: .42rem !important;
+  min-width: max-content;
+  padding-top: 0 !important;
+  border-top: 0 !important;
+}
+
+.filterDivider {
+  flex: 0 0 auto;
+  color: #9aa6a1;
+  font-weight: 800;
+}
+
+.filterChip {
+  min-height: 30px !important;
+  padding: .28rem .58rem !important;
+  border-radius: 9px !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .85), 0 2px 5px rgba(27, 38, 34, .08) !important;
+  transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease, background .14s ease;
+}
+
+.filterChip:hover {
+  transform: translateY(-1px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9), 0 4px 8px rgba(27, 38, 34, .12) !important;
+}
+
+.laneChip,
+.orderLaneBadge {
+  background: var(--lane-bg) !important;
+  border-color: var(--lane-border) !important;
+  color: var(--lane-text) !important;
+}
+
+.laneChip[data-sales-order-lane='all'] {
+  --lane-bg: #f6f8f7;
+  --lane-border: #d0d8d5;
+  --lane-text: #46534e;
+}
+
+.laneChip[data-sales-order-lane='counter'],
+.orderLaneBadge[data-sales-order-lane='counter'] {
+  --lane-bg: #fff5e8;
+  --lane-border: #e8b76d;
+  --lane-text: #8a5613;
+}
+
+.laneChip[data-sales-order-lane='manual'],
+.orderLaneBadge[data-sales-order-lane='manual'] {
+  --lane-bg: #eef6ff;
+  --lane-border: #8fb9eb;
+  --lane-text: #275f9b;
+}
+
+.laneChip[data-sales-order-lane='trip'],
+.orderLaneBadge[data-sales-order-lane='trip'] {
+  --lane-bg: #f5efff;
+  --lane-border: #bea5e9;
+  --lane-text: #65459f;
+}
+
+.laneChip[aria-pressed='true'] {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .68), 0 3px 7px rgba(27, 38, 34, .13) !important;
+}
+
+.statusChip {
+  background: #f7f9f8 !important;
+  border-color: #d4dcda !important;
+  color: #4c5954 !important;
+}
+
+.statusChip[aria-selected='true'] {
+  background: #edf3f0 !important;
+  border-color: #9cada6 !important;
+  color: #2f4840 !important;
+}
+
+.orderCardGrid {
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: center;
+  column-gap: .62rem !important;
+}
+
+.orderCardMain {
+  display: grid;
+  gap: .28rem;
+  min-width: 0;
+}
+
+.orderCardTopCompact {
+  justify-content: flex-start !important;
+  align-items: baseline !important;
+}
+
+.orderCardStateStack {
+  display: grid;
+  gap: .2rem;
+  justify-items: stretch;
+  align-self: center;
+  min-width: 7.4rem;
+}
+
+.orderLaneBadge,
+.orderStatusBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 23px;
+  padding: .12rem .42rem;
+  border: 1px solid;
+  border-radius: 8px;
+  font-size: .68rem;
+  font-weight: 820;
+  line-height: 1.05;
+  white-space: nowrap;
+}
+
+.orderStatusBadge {
+  background: #f4f6f5;
+  border-color: #d9dfdd;
+  color: #4f5b57;
+}
+
+.orderStatusBadge[data-sales-order-tone='draft'] {
+  background: #f5f7f6;
+  border-color: #d9dfdd;
+  color: #53605b;
+}
+
+.orderStatusBadge[data-sales-order-tone='confirmed'] {
+  background: #edf6f1;
+  border-color: #b9d5c7;
+  color: #2d654c;
+}
+
+.orderStatusBadge[data-sales-order-tone='waiting'] {
+  background: #fff7e8;
+  border-color: #ead19b;
+  color: #75531b;
+}
+
+.orderStatusBadge[data-sales-order-tone='closed'] {
+  background: #edf7f2;
+  border-color: #b6d9c7;
+  color: #256147;
+}
+
+.orderStatusBadge[data-sales-order-tone='cancelled'] {
+  background: #fff0ef;
+  border-color: #efc1bd;
+  color: #8a3e37;
+}
+
+@media (max-width: 760px) {
+  .filterControlRow {
+    gap: .48rem;
+  }
+
+  .filterChip {
+    padding: .26rem .48rem !important;
+  }
+
+  .orderCardStateStack {
+    min-width: 6.8rem;
+  }
+}

@@ -18,6 +18,7 @@ import {
   pendingVersion,
 } from './sales-order-ui';
 import styles from './sales-orders.module.css';
+import polishStyles from './sales-order-card-polish.module.css';
 
 type OrderSourceFilter = 'all' | 'internal' | 'mcp' | 'customer';
 type OrderWorkStage = 'all' | 'active' | 'preparing' | 'waiting_delivery' | 'completed' | 'cancelled';
@@ -103,8 +104,8 @@ function orderCardStatus(order: SalesOrder): string {
   else if (order.fulfillmentStatus === 'backordered') status = 'Chờ hàng';
   else if (order.fulfillmentStatus === 'partially_reserved') status = 'Chờ hàng một phần';
   else if (orderWorkStage(order) === 'preparing') status = 'Đang chuẩn bị';
-  else if (order.status === 'draft') return 'Nháp';
-  return `${status} · ${orderLaneLabel(order)}`;
+  else if (order.status === 'draft') return 'Đặt hàng';
+  return status;
 }
 
 function orderCardTone(order: SalesOrder): string {
@@ -406,39 +407,45 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
           <article><strong>{allStageCounts.completed}</strong><span>Đã hoàn thành</span></article>
         </section>
 
-        <section className={styles.filterPanel} aria-label="Bộ lọc đơn bán hàng">
-          <div className={styles.filterGroup}>
-            <span className={styles.filterLabel}>Hình thức giao</span>
-            <div className={styles.filterChips} aria-label="Hình thức giao">
-              {LANE_OPTIONS.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  aria-pressed={lane === option.value}
-                  className={lane === option.value ? styles.segmentActive : styles.segment}
-                  onClick={() => setLane(option.value)}
-                >
-                  {option.label}
-                </button>
-              ))}
+        <section className={`${styles.filterPanel} ${polishStyles.filterPanelCompact}`} aria-label="Bộ lọc đơn bán hàng">
+          <strong className={polishStyles.filterPanelTitle}>Hình thức giao</strong>
+          <div className={polishStyles.filterControlRow}>
+            <div className={`${styles.filterGroup} ${polishStyles.filterGroupInline}`}>
+              <span className={styles.filterLabel}>Luồng bán</span>
+              <div className={styles.filterChips} aria-label="Luồng bán">
+                {LANE_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    aria-pressed={lane === option.value}
+                    data-sales-order-lane={option.value}
+                    className={`${lane === option.value ? styles.segmentActive : styles.segment} ${polishStyles.filterChip} ${polishStyles.laneChip}`}
+                    onClick={() => setLane(option.value)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
 
-          <div className={styles.filterGroup}>
-            <span className={styles.filterLabel}>Trạng thái</span>
-            <div className={styles.filterChips} role="tablist" aria-label="Trạng thái đơn bán hàng">
-              {WORK_STAGE_OPTIONS.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  role="tab"
-                  aria-selected={workStage === option.value}
-                  className={workStage === option.value ? styles.segmentActive : styles.segment}
-                  onClick={() => setWorkStage(option.value)}
-                >
-                  {option.label} · {stageCounts[option.value]}
-                </button>
-              ))}
+            <span className={polishStyles.filterDivider} aria-hidden="true">|</span>
+
+            <div className={`${styles.filterGroup} ${polishStyles.filterGroupInline}`}>
+              <span className={styles.filterLabel}>Trạng thái giao</span>
+              <div className={styles.filterChips} role="tablist" aria-label="Trạng thái giao">
+                {WORK_STAGE_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    role="tab"
+                    aria-selected={workStage === option.value}
+                    className={`${workStage === option.value ? styles.segmentActive : styles.segment} ${polishStyles.filterChip} ${polishStyles.statusChip}`}
+                    onClick={() => setWorkStage(option.value)}
+                  >
+                    {option.label} · {stageCounts[option.value]}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </section>
@@ -457,17 +464,28 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
                 <button
                   type="button"
                   key={order.id}
-                  className={`${styles.orderCard} ${selected?.id === order.id ? styles.orderCardActive : ''}`}
+                  className={`${styles.orderCard} ${polishStyles.orderCardGrid} ${selected?.id === order.id ? styles.orderCardActive : ''}`}
                   disabled={loadingId === order.id}
                   onClick={() => loadOrder(order.id)}
                 >
-                  <div className={styles.orderCardTop}><div className={styles.orderCardNumber}><BusinessSequenceNumber rowIndex={rowIndex} className={styles.orderSequence} /><strong>{order.number ?? 'Đơn nháp chưa cấp số'}</strong></div><span data-sales-order-tone={orderCardTone(order)}>{orderCardStatus(order)}</span></div>
-                  <b>{order.customerCode} — {order.customerName}</b>
-                  <div className={styles.orderCardMeta}>
-                    <small>Nguồn {salesOrderSourceLabel(order.sourceType, order.sourceId)}</small>
-                    <small>Kho {order.warehouseCode} · {collectionLabels[order.collectionPolicy] ?? 'Theo thỏa thuận thanh toán'}</small>
-                    <small>Kênh {order.salesChannelCode ?? 'chưa xác định'}{order.salesChannelName ? ` — ${order.salesChannelName}` : ''}</small>
-                    <small>Cập nhật {formatVietnamDateTime(order.updatedAt)}</small>
+                  <div className={polishStyles.orderCardMain}>
+                    <div className={`${styles.orderCardTop} ${polishStyles.orderCardTopCompact}`}>
+                      <div className={styles.orderCardNumber}>
+                        <BusinessSequenceNumber rowIndex={rowIndex} className={styles.orderSequence} />
+                        <strong>{order.number ?? 'Đơn đặt hàng chưa cấp số'}</strong>
+                      </div>
+                    </div>
+                    <b>{order.customerCode} — {order.customerName}</b>
+                    <div className={styles.orderCardMeta}>
+                      <small>Nguồn {salesOrderSourceLabel(order.sourceType, order.sourceId)}</small>
+                      <small>Kho {order.warehouseCode} · {collectionLabels[order.collectionPolicy] ?? 'Theo thỏa thuận thanh toán'}</small>
+                      <small>Kênh {order.salesChannelCode ?? 'chưa xác định'}{order.salesChannelName ? ` — ${order.salesChannelName}` : ''}</small>
+                      <small>Cập nhật {formatVietnamDateTime(order.updatedAt)}</small>
+                    </div>
+                  </div>
+                  <div className={polishStyles.orderCardStateStack} aria-label="Luồng giao và trạng thái đơn">
+                    <span className={polishStyles.orderLaneBadge} data-sales-order-lane={orderLane(order)}>{orderLaneLabel(order)}</span>
+                    <span className={polishStyles.orderStatusBadge} data-sales-order-tone={orderCardTone(order)}>{orderCardStatus(order)}</span>
                   </div>
                 </button>
               ))}
