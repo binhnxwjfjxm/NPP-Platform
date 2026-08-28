@@ -99,6 +99,7 @@ const salesItems: NavItem[] = [
   { href: '/management', label: 'Điều hành bán hàng', icon: 'panel', testId: 'nav-sales-operations' },
   { href: '/management/proposals', label: 'Đề xuất', icon: 'panel', testId: 'nav-management-proposals' },
   { href: '/sales/sales-orders', label: 'Đơn bán hàng', icon: 'panel', testId: 'nav-sales-orders' },
+  { href: '/sales/order-management', label: 'Quản lý đơn hàng', icon: 'panel', testId: 'nav-order-management' },
   { href: '/management/customer-onboarding', label: 'Mở/liên kết mã khách', icon: 'user', testId: 'nav-customer-onboarding' },
 ];
 

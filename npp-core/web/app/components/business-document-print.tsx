@@ -17,6 +17,22 @@ export type BusinessDocumentColumn = {
 export type BusinessDocumentRow = { id: string; cells: Record<string, ReactNode> };
 export type BusinessDocumentTotal = { key: string; label: string; value: ReactNode; emphasis?: boolean };
 
+let printTemplatesRequest: Promise<DocumentPrintTemplate[]> | null = null;
+
+function loadPrintTemplates(): Promise<DocumentPrintTemplate[]> {
+  if (!printTemplatesRequest) {
+    printTemplatesRequest = fetch('/api/document-print-templates', { cache: 'no-store' })
+      .then(async (response) => {
+        if (!response.ok) return [];
+        const payload = await response.json() as { data?: DocumentPrintTemplate[] };
+        return Array.isArray(payload.data) ? payload.data : [];
+      })
+      .catch(() => [])
+      .finally(() => { printTemplatesRequest = null; });
+  }
+  return printTemplatesRequest;
+}
+
 function columnClassName(column: BusinessDocumentColumn): string | undefined {
   const classes = [
     column.align === 'right' ? styles.right : column.align === 'center' ? styles.center : '',
@@ -79,14 +95,11 @@ export default function BusinessDocumentPrint({
     setTemplate(null);
     if (!documentType) return undefined;
     let active = true;
-    void fetch('/api/document-print-templates', { cache: 'no-store' })
-      .then(async (response) => {
-        if (!response.ok) return null;
-        const payload = await response.json() as { data?: DocumentPrintTemplate[] };
-        return payload.data?.find((item) => item.documentType === documentType && item.templateCode === templateCode) ?? null;
-      })
-      .then((next) => { if (active) setTemplate(next); })
-      .catch(() => { if (active) setTemplate(null); });
+    void loadPrintTemplates()
+      .then((templates) => {
+        if (!active) return;
+        setTemplate(templates.find((item) => item.documentType === documentType && item.templateCode === templateCode) ?? null);
+      });
     return () => { active = false; };
   }, [documentType, templateCode]);
 
