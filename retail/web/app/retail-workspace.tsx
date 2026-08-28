@@ -214,7 +214,7 @@ function isShortage(row: Availability | undefined, requested: string) { if (!row
     return false; if (row.availabilityStatus === 'UNAVAILABLE')
     return true; const available = Number(row.availableQuantity); const quantity = Number(requested); return Number.isFinite(available) && Number.isFinite(quantity) && available < quantity; }
 function safePaper(value: string | null): PrintPaper | null { return value === 'A4' || value === 'A5' || value === '80mm' || value === '58mm' ? value : null; }
-function printPageCss(paper: PrintPaper) { return `@page { size: ${paper === '80mm' ? '80mm auto' : paper === '58mm' ? '58mm auto' : paper}; margin: ${paper === '80mm' || paper === '58mm' ? '4mm' : '10mm'}; }`; }
+function printPageCss(paper: PrintPaper) { return `@page { size: ${paper === '80mm' ? '80mm 120mm' : paper === '58mm' ? '58mm 100mm' : paper}; margin: ${paper === '80mm' || paper === '58mm' ? '4mm' : '10mm'}; }`; }
 function printPaperClass(paper: PrintPaper) { return paper === 'A4' ? 'a4' : paper === 'A5' ? 'a5' : paper === '80mm' ? '80' : '58'; }
 function normalizeVndInput(value: string | number | null | undefined) {
     const text = String(value ?? '').trim();
@@ -784,8 +784,24 @@ export default function RetailWorkspace() {
         style.dataset.retailPrintPage = 'true';
         style.textContent = printPageCss(paper);
         document.head.appendChild(style);
-        window.print();
-        window.setTimeout(() => style.remove(), 0);
+
+        let cleaned = false;
+        let fallbackTimer = 0;
+        const cleanup = () => {
+            if (cleaned)
+                return;
+            cleaned = true;
+            window.removeEventListener('afterprint', cleanup);
+            if (fallbackTimer)
+                window.clearTimeout(fallbackTimer);
+            style.remove();
+        };
+
+        window.addEventListener('afterprint', cleanup, { once: true });
+        fallbackTimer = window.setTimeout(cleanup, 120000);
+        window.requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => window.print());
+        });
     }
     async function printConfiguredOrder(template: PrintTemplate | null, settings: PrinterSettings, allowSystemFallback: boolean) {
         if (!order)
