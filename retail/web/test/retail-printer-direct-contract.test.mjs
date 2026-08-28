@@ -38,11 +38,13 @@ test('thiết lập in trên web chạm được và cho test đủ A4 A5 80 58'
   assert.doesNotMatch(directButton, /aria-disabled/);
   assert.doesNotMatch(directButton, /\sdisabled=/);
   assert.match(panel, /setDirectHelpOpen\(true\)/);
-  assert.match(panel, /In Wi‑Fi trực tiếp cần Retail Mobile/);
+  assert.match(panel, /In Wi‑Fi trực tiếp cần ứng dụng Retail trên điện thoại/);
   assert.match(panel, /Bản web vẫn có thể in thử A4, A5, 80 mm và 58 mm/);
   assert.match(panel, /<option value="A4">A4<\/option><option value="A5">A5<\/option><option value="80mm">80 mm<\/option><option value="58mm">58 mm<\/option>/);
   assert.match(panel, /A4, A5, 80 mm và 58 mm đều dùng được để định dạng phiếu trên bản web/);
   assert.doesNotMatch(panel, /function systemPaper/);
+  assert.doesNotMatch(panel, /\bTCP\b/);
+  assert.doesNotMatch(panel, />Anh\b/);
 });
 
 test('in thử bằng hệ thống giữ CSS khổ giấy cho tới khi cửa sổ in kết thúc', async () => {
