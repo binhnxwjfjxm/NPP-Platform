@@ -210,6 +210,9 @@ export function createProductVariant<T>(productId: string, requestId: string, bo
 export function patchProductVariant<T>(productId: string, variantId: string, requestId: string, body: unknown): Promise<T> {
   return req<T>({ method: 'PATCH', path: variantPath(productId, variantId), requestId, body });
 }
+export function identifyProductVariants<T>(requestId: string, body: unknown): Promise<T> {
+  return req<T>({ method: 'POST', path: '/api/products/variants/identify', requestId, body });
+}
 export function bulkUpdateProductVariants<T>(requestId: string, body: unknown, key?: string): Promise<T> {
   const dryRun = Boolean(body && typeof body === 'object' && !Array.isArray(body) && (body as { dryRun?: unknown }).dryRun === true);
   return req<T>({
