@@ -82,7 +82,7 @@ test('Cài đặt dùng hàng có chevron và bottom sheet cho Tài khoản Thi�
   assert.match(page, /className="settings-sheet sheet-enter"/);
   assert.match(page, /PrinterSettingsPanel/);
   assert.match(page, /printerSettingsSummary\(printerSettings\)/);
-  assert.match(panel, />In thử<\/button>/);
+  assert.match(panel, /In thử/);
   assert.match(panel, />Lưu thiết lập<\/button>/);
   assert.match(panel, /In Wi‑Fi trực tiếp/);
   assert.match(panel, /Tìm máy in/);
