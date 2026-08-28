@@ -250,8 +250,18 @@ async function fetchOrderDetail(id: string): Promise<SalesOrder> {
   return payload.data;
 }
 
-function waitForPrintSurfaces(): Promise<void> {
-  return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+async function waitForPrintSurfaces(targetIds: string[], timeoutMs = 8000): Promise<void> {
+  const startedAt = Date.now();
+  for (;;) {
+    const surfaces = Array.from(document.querySelectorAll<HTMLElement>('[data-print-surface]'));
+    const byId = new Map(surfaces.map((surface) => [surface.dataset.printId ?? '', surface]));
+    const allReady = targetIds.every((targetId) => byId.get(targetId)?.querySelector('[data-print-template-ready="true"]'));
+    if (allReady) return;
+    if (Date.now() - startedAt >= timeoutMs) {
+      throw new Error('Mẫu in Công Ty chưa sẵn sàng. Chưa thực hiện in để tránh dùng mẫu chưa hoàn chỉnh.');
+    }
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  }
 }
 
 function clearPrintState() {
@@ -460,17 +470,12 @@ export default function OrderManagementWorkspace() {
 
   async function loadDetailsForPrint(selected: ListOrder[]): Promise<SalesOrder[]> {
     const result: SalesOrder[] = [];
-    const missing = selected.filter((order) => !detailCacheRef.current.has(order.id));
-    for (let index = 0; index < missing.length; index += 6) {
-      const chunk = missing.slice(index, index + 6);
+    for (let index = 0; index < selected.length; index += 6) {
+      const chunk = selected.slice(index, index + 6);
       const loaded = await Promise.all(chunk.map((order) => fetchOrderDetail(order.id)));
       loaded.forEach((order) => detailCacheRef.current.set(order.id, order));
+      result.push(...loaded);
     }
-    selected.forEach((order) => {
-      const loaded = detailCacheRef.current.get(order.id);
-      if (loaded) result.push(loaded);
-    });
-    if (result.length !== selected.length) throw new Error('Không tải đủ chi tiết các đơn đã chọn. Chưa thực hiện in để tránh thiếu đơn.');
     return result;
   }
 
@@ -484,12 +489,12 @@ export default function OrderManagementWorkspace() {
       const details = await loadDetailsForPrint(printable);
       const ready = details.filter((order) => isPrintable(order) && activeVersion(order));
       if (ready.length !== printable.length) throw new Error('Có đơn đã thay đổi và không còn đủ điều kiện in. Hãy tải lại danh sách.');
-      setPrintOrders(ready);
-      await waitForPrintSurfaces();
       const targetIds = ready.map((order) => {
         const version = activeVersion(order) as SalesOrderVersion;
         return `sales-order-${order.id}-${version.id}`;
       });
+      setPrintOrders(ready);
+      await waitForPrintSurfaces(targetIds);
       printTargets(targetIds);
       for (const order of ready) {
         const version = activeVersion(order) as SalesOrderVersion;

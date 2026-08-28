@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 const workspaceSource = readFileSync(new URL('../app/sales/order-management/OrderManagementWorkspace.tsx', import.meta.url), 'utf8');
 const cssSource = readFileSync(new URL('../app/sales/order-management/order-management.module.css', import.meta.url), 'utf8');
 const shellSource = readFileSync(new URL('../app/components/app-shell-core.tsx', import.meta.url), 'utf8');
+const businessPrintSource = readFileSync(new URL('../app/components/business-document-print.tsx', import.meta.url), 'utf8');
 
 test('issue 817 exposes Quản lý đơn hàng in the Bán hàng navigation', () => {
   assert.match(shellSource, /href: '\/sales\/order-management'/);
@@ -33,6 +34,16 @@ test('issue 817 batch print reuses the canonical SalesOrderPrintSheet and curren
   assert.match(workspaceSource, /\/api\/sales-orders\/\$\{encodeURIComponent\(id\)\}/);
   assert.match(workspaceSource, /data-print-root/);
   assert.match(workspaceSource, /pageBreakBefore/);
+});
+
+test('issue 817 batch print waits for the resolved Công Ty print template and refetches selected details', () => {
+  assert.match(businessPrintSource, /templateResolved/);
+  assert.match(businessPrintSource, /data-print-template-ready=\{templateResolved \? 'true' : 'false'\}/);
+  assert.match(workspaceSource, /waitForPrintSurfaces\(targetIds/);
+  assert.match(workspaceSource, /data-print-template-ready="true"/);
+  assert.match(workspaceSource, /selected\.slice\(index, index \+ 6\)/);
+  assert.match(workspaceSource, /Promise\.all\(chunk\.map\(\(order\) => fetchOrderDetail\(order\.id\)\)\)/);
+  assert.doesNotMatch(workspaceSource, /const missing = selected\.filter/);
 });
 
 test('issue 817 keeps the agreed compact table and excludes Sapo-only actions', () => {

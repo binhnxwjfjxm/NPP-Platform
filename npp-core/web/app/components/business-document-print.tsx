@@ -89,16 +89,22 @@ export default function BusinessDocumentPrint({
   onPrint?: () => void;
 }) {
   const [template, setTemplate] = useState<DocumentPrintTemplate | null>(null);
+  const [templateResolved, setTemplateResolved] = useState(!documentType);
   const defaultKeys = new Set(['status', ...meta.map((item) => item.key), ...columns.map((item) => item.fieldKey ?? item.key), ...totals.map((item) => item.key), 'note', 'signatures']);
 
   useEffect(() => {
     setTemplate(null);
-    if (!documentType) return undefined;
+    if (!documentType) {
+      setTemplateResolved(true);
+      return undefined;
+    }
+    setTemplateResolved(false);
     let active = true;
     void loadPrintTemplates()
       .then((templates) => {
         if (!active) return;
         setTemplate(templates.find((item) => item.documentType === documentType && item.templateCode === templateCode) ?? null);
+        setTemplateResolved(true);
       });
     return () => { active = false; };
   }, [documentType, templateCode]);
@@ -115,7 +121,7 @@ export default function BusinessDocumentPrint({
     <>
       <PrintAction label={actionLabel} targetId={id} onPrint={onPrint} />
       <PrintSurface id={id} size={template?.pageSize ?? size} suppressBrowserHeaders={suppressBrowserHeaders}>
-        <article className={styles.sheet} data-testid={testId}>
+        <article className={styles.sheet} data-testid={testId} data-print-template-ready={templateResolved ? 'true' : 'false'}>
           <header className={styles.header}>
             {displayHeading || displaySubtitle ? <div className={styles.brandBlock}>
               {displayHeading ? <strong className={styles.brand}>{displayHeading}</strong> : null}
