@@ -4,6 +4,7 @@
 > Original date: `2026-07-31`  
 > Phase 9.0 topology refresh: `2026-08-08`  
 > Retail topology refresh: `2026-08-20`  
+> Retail printer-shell addendum: `2026-08-28`  
 > Applies to: `NPP_PLATFORM_MASTER_PLAN.md`
 
 This addendum is the active frontend/runtime topology. Where the older Master Plan or the original version of this addendum conflicts with the verified topology below, this file and the later owner-locked decision sources take precedence.
@@ -61,6 +62,17 @@ Mobile/PWA for assigned trips/stops, dispatch handover, POD, actual delivery, fa
 
 Mobile-first counter-sales surface. Retail has no business backend, database, inventory ledger, receivable ledger or report store of its own. It calls the Công Ty API through server-side routes and uses canonical product, price, order, inventory, payment and receivable facts. Auto Deploy is locked OFF; source merge and production deployment remain separate operations.
 
+Retail may additionally be distributed inside a thin **device shell** under `retail/mobile/**` when a device-only capability cannot be provided safely by a browser/PWA. The first approved capability is local Wi‑Fi/LAN printing on iOS. This shell:
+
+- loads the same `retail.nguyenlieuhungphat.com` Retail UI;
+- exposes only a local printer bridge to the WebView;
+- may discover/connect/send jobs to printers on the same LAN;
+- stores printer profile/preferences on the device only;
+- does **not** create a new business frontend, backend, database, order authority, inventory authority or payment authority;
+- does not proxy LAN printer traffic through Vercel or Heroku.
+
+The native shell is a separate **mobile distribution artifact**, not an eighth Vercel project. App Store/TestFlight signing/release is an explicit production operation and is not implied by merging source.
+
 ### Website
 
 Public website/content/catalog experience in `binhnxwjfjxm/nguyenlieuhungphat`.
@@ -80,11 +92,15 @@ MCP API     -> MCP field domain + canonical Công Ty integration
 
 The Công Ty and MCP backends deploy/release/smoke/rollback independently. Admin, Delivery, Retail, Website and Customer Ordering do not gain independent business authorities merely because they are separate frontends.
 
+Device-only Retail printer code is not a backend service and must not be used to execute business mutations outside the normal Retail/Công Ty API boundary.
+
 ## 3. Database
 
 The target remains one PostgreSQL installation shared by domain schemas. No frontend connects directly to PostgreSQL.
 
 Actual production DB attachment/credential/role capability must be audited from provider truth before database mutation; documentation must not claim least privilege that the provider/tier has not verified.
+
+Printer profiles, local IP addresses and print preferences are device-local presentation settings and do not require a PostgreSQL schema.
 
 ## 4. Deployment boundary
 
@@ -96,7 +112,8 @@ Provider rules remain:
 - Công Ty and MCP Heroku automatic deploy remain OFF;
 - frontend-only changes do not authorize backend deployment;
 - production mutation requires an explicit owner command;
-- Retail production deploy uses its own exact manual command and never piggybacks another frontend deployment.
+- Retail production deploy uses its own exact manual command and never piggybacks another frontend deployment;
+- Retail iOS signing/TestFlight/App Store rollout is separate from Vercel Retail deployment and requires its own explicit owner command and device smoke test.
 
 ## 5. Current architecture summary
 
@@ -105,6 +122,7 @@ Provider rules remain:
 2 backend services
 1 shared PostgreSQL installation
 2 GitHub repositories
++ optional Retail device shell for device-only capabilities (not a business service)
 ```
 
-Detailed Phase 9.0 evidence and unresolved provider gates remain recorded in `docs/operations/phase-9-0-readiness-audit.md`. Retail execution and regression gates are tracked in Issue #675.
+Detailed Phase 9.0 evidence and unresolved provider gates remain recorded in `docs/operations/phase-9-0-readiness-audit.md`. Retail execution and regression gates are tracked in Issue #675; direct printer work is tracked in Issue #810.

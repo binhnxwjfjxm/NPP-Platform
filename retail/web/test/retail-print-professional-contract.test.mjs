@@ -45,12 +45,24 @@ test('A4 A5 cân header và 80 58 dùng bố cục receipt riêng thay vì bản
   assert.match(baseCss, /\.paper-80 \.print-document/);
 });
 
-test('thiết lập in mobile vẫn chỉ lưu khổ giấy và mở giao diện in thật', async () => {
-  const workspace = await read('app/retail-workspace.tsx');
+test('thiết lập in mobile có direct Wi-Fi thật khi có native bridge và vẫn giữ fallback hệ thống', async () => {
+  const [workspace, panel, bridge] = await Promise.all([
+    read('app/retail-workspace.tsx'),
+    read('app/printer-settings-panel.tsx'),
+    read('lib/printer-bridge.ts'),
+  ]);
   assert.match(workspace, /<strong>Thiết lập in<\/strong>/);
-  assert.match(workspace, /Khổ giấy mặc định/);
-  assert.match(workspace, /onClick=\{printTest\}>In thử/);
-  assert.match(workspace, /window\.print\(\)/);
-  assert.match(workspace, /điện thoại sẽ mở giao diện chọn máy in của thiết bị/);
-  assert.doesNotMatch(workspace, /Máy in hiện tại/);
+  assert.match(workspace, /PrinterSettingsPanel/);
+  assert.match(workspace, /printWithConfiguredPrinter/);
+  assert.match(workspace, /printBySystem/);
+  assert.match(panel, /In Wi‑Fi trực tiếp/);
+  assert.match(panel, /In bằng hệ thống/);
+  assert.match(panel, /Tìm máy in/);
+  assert.match(panel, /Địa chỉ máy in/);
+  assert.match(panel, /Khổ giấy/);
+  assert.match(panel, /Số bản in/);
+  assert.match(panel, /Xem trước trước khi in/);
+  assert.match(bridge, /RetailPrinterBridge/);
+  assert.match(bridge, /window\.localStorage/);
+  assert.doesNotMatch(bridge, /fetch\(/);
 });
