@@ -35,6 +35,12 @@ function parseCsv(text: string) {
   return rows;
 }
 
+const XML_NAMESPACE_PREFIX = '(?:[A-Za-z_][\\w.-]*:)?';
+
+function xmlElementRegex(tag: string, flags = 'g') {
+  return new RegExp(`<${XML_NAMESPACE_PREFIX}${tag}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${XML_NAMESPACE_PREFIX}${tag}>`, flags);
+}
+
 function decodeXml(value: string) {
   return value
     .replace(/&lt;/g, '<')
@@ -47,7 +53,7 @@ function decodeXml(value: string) {
 }
 
 function xmlTexts(fragment: string) {
-  return Array.from(fragment.matchAll(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g), (match) => decodeXml(match[1])).join('');
+  return Array.from(fragment.matchAll(xmlElementRegex('t')), (match) => decodeXml(match[1])).join('');
 }
 
 function columnIndex(cellReference: string) {
@@ -122,11 +128,40 @@ async function unzipText(buffer: ArrayBuffer, entry: ZipEntry) {
 function cellValue(attributes: string, body: string, sharedStrings: string[]) {
   const type = attributes.match(/\bt="([^"]+)"/)?.[1] ?? '';
   if (type === 'inlineStr') return xmlTexts(body);
-  const raw = body.match(/<v(?:\s[^>]*)?>([\s\S]*?)<\/v>/)?.[1] ?? '';
+  const raw = body.match(xmlElementRegex('v', ''))?.[1] ?? '';
   if (type === 's') return sharedStrings[Number(raw)] ?? '';
   if (type === 'b') return raw === '1' ? 'TRUE' : 'FALSE';
   if (type === 'str') return decodeXml(raw);
   return decodeXml(raw);
+}
+
+export function parseSharedStringsXml(xml: string) {
+  return Array.from(xml.matchAll(xmlElementRegex('si')), (match) => xmlTexts(match[1]));
+}
+
+export function parseWorksheetXml(xml: string, sharedStrings: string[]) {
+  const rows: string[][] = [];
+  const rowRegex = new RegExp(`<${XML_NAMESPACE_PREFIX}row\\b[^>]*>([\\s\\S]*?)<\\/${XML_NAMESPACE_PREFIX}row>`, 'g');
+  const cellRegex = new RegExp(`<${XML_NAMESPACE_PREFIX}c\\b([^>]*)>([\\s\\S]*?)<\\/${XML_NAMESPACE_PREFIX}c>`, 'g');
+  const emptyCellRegex = new RegExp(`<${XML_NAMESPACE_PREFIX}c\\b([^>]*)\\/>`, 'g');
+
+  for (const rowMatch of xml.matchAll(rowRegex)) {
+    const cells: string[] = [];
+    const body = rowMatch[1];
+    const matches = [
+      ...Array.from(body.matchAll(cellRegex), (match) => ({ attributes: match[1], body: match[2] })),
+      ...Array.from(body.matchAll(emptyCellRegex), (match) => ({ attributes: match[1], body: '' })),
+    ];
+    for (const cell of matches) {
+      const reference = cell.attributes.match(/\br="([^"]+)"/)?.[1] ?? '';
+      const index = columnIndex(reference);
+      if (index < 0) continue;
+      while (cells.length < index) cells.push('');
+      cells[index] = cellValue(cell.attributes, cell.body, sharedStrings);
+    }
+    rows.push(cells);
+  }
+  return rows;
 }
 
 async function parseXlsx(buffer: ArrayBuffer) {
@@ -141,31 +176,11 @@ async function parseXlsx(buffer: ArrayBuffer) {
   if (sheetNames.length === 0) throw new Error('Tệp Excel không có trang tính dữ liệu');
 
   const sharedEntry = directory.get('xl/sharedStrings.xml');
-  const sharedStrings = sharedEntry
-    ? Array.from((await unzipText(buffer, sharedEntry)).matchAll(/<si(?:\s[^>]*)?>([\s\S]*?)<\/si>/g), (match) => xmlTexts(match[1]))
-    : [];
+  const sharedStrings = sharedEntry ? parseSharedStringsXml(await unzipText(buffer, sharedEntry)) : [];
   const sheetEntry = directory.get(sheetNames[0]);
   if (!sheetEntry) throw new Error('Không đọc được trang tính đầu tiên');
   const xml = await unzipText(buffer, sheetEntry);
-  const rows: string[][] = [];
-
-  for (const rowMatch of xml.matchAll(/<row\b[^>]*>([\s\S]*?)<\/row>/g)) {
-    const cells: string[] = [];
-    const body = rowMatch[1];
-    const matches = [
-      ...Array.from(body.matchAll(/<c\b([^>]*)>([\s\S]*?)<\/c>/g), (match) => ({ attributes: match[1], body: match[2] })),
-      ...Array.from(body.matchAll(/<c\b([^>]*)\/>/g), (match) => ({ attributes: match[1], body: '' })),
-    ];
-    for (const cell of matches) {
-      const reference = cell.attributes.match(/\br="([^"]+)"/)?.[1] ?? '';
-      const index = columnIndex(reference);
-      if (index < 0) continue;
-      while (cells.length < index) cells.push('');
-      cells[index] = cellValue(cell.attributes, cell.body, sharedStrings);
-    }
-    rows.push(cells);
-  }
-  return rows;
+  return parseWorksheetXml(xml, sharedStrings);
 }
 
 export async function readSpreadsheetMatrix(file: File) {
