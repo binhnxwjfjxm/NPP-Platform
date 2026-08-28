@@ -14,6 +14,9 @@ const gatewaySource = readFileSync(new URL('../lib/sales-order-gateway.ts', impo
 const bootstrapSource = readFileSync(new URL('../lib/sales-order-bootstrap.ts', import.meta.url), 'utf8');
 const contextSource = readFileSync(new URL('../lib/sales-order-context.ts', import.meta.url), 'utf8');
 const appShellSource = readFileSync(new URL('../app/components/app-shell-core.tsx', import.meta.url), 'utf8');
+const layoutSource = readFileSync(new URL('../app/layout.tsx', import.meta.url), 'utf8');
+const quickActionsSource = readFileSync(new URL('../app/components/global-quick-actions.tsx', import.meta.url), 'utf8');
+const quickActionsCssSource = readFileSync(new URL('../app/components/global-quick-actions.module.css', import.meta.url), 'utf8');
 const skuRouteSource = readFileSync(new URL('../app/api/sales-orders/sku-search/route.ts', import.meta.url), 'utf8');
 const settingsRouteSource = readFileSync(new URL('../app/api/sales-orders/entry-settings/route.ts', import.meta.url), 'utf8');
 const recoveryE2eSource = readFileSync(new URL('../e2e/sales-orders-price-recovery.spec.ts', import.meta.url), 'utf8');
@@ -161,4 +164,28 @@ test('AppShell keeps the existing navigation contract while exposing Sales Order
   assert.match(appShellSource, /data-testid=\{testId\}/);
   assert.match(appShellSource, /testId: 'nav-sales-orders'/);
   assert.match(appShellSource, /href: '\/sales\/sales-orders'/);
+});
+
+test('global quick actions are mounted once and expose three compact new-tab shortcuts', () => {
+  assert.match(layoutSource, /<GlobalQuickActions \/>/);
+  assert.match(quickActionsSource, /href: '\/sales\/sales-orders\?quickAction=create'/);
+  assert.match(quickActionsSource, /label: 'Tạo đơn bán'/);
+  assert.match(quickActionsSource, /href: '\/customers'/);
+  assert.match(quickActionsSource, /href: '\/products'/);
+  assert.match(quickActionsSource, /target="_blank"/);
+  assert.match(quickActionsSource, /prefetch=\{false\}/);
+  assert.match(quickActionsSource, /aria-expanded=\{open\}/);
+  assert.match(quickActionsSource, /event\.key === 'Escape'/);
+  assert.match(quickActionsSource, /pathname\.startsWith\('\/login'\)/);
+  assert.match(quickActionsCssSource, /\.quickActions\s*\{[\s\S]*position:\s*fixed/);
+  assert.match(quickActionsCssSource, /cubic-bezier\(0\.2, 0\.86, 0\.24, 1\.12\)/);
+  assert.match(quickActionsCssSource, /@media \(prefers-reduced-motion: reduce\)/);
+});
+
+test('global create shortcut opens the canonical Sales Order form once and clears its URL trigger', () => {
+  assert.match(workspaceSource, /const quickCreateHandledRef = useRef\(false\)/);
+  assert.match(workspaceSource, /params\.get\('quickAction'\) !== 'create'/);
+  assert.match(workspaceSource, /window\.history\.replaceState/);
+  assert.match(workspaceSource, /setFormMode\('create'\)/);
+  assert.match(workspaceSource, /Bạn không có quyền tạo đơn bán hàng/);
 });

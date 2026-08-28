@@ -181,6 +181,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
   const [amendmentReason, setAmendmentReason] = useState('');
   const [cancellationReason, setCancellationReason] = useState('');
   const stockIssueKeyRef = useRef<StockIssueKeyState | null>(null);
+  const quickCreateHandledRef = useRef(false);
 
   const permissions = useMemo(() => new Set(initialBootstrap.permissionKeys), [initialBootstrap.permissionKeys]);
   const canCreate = permissions.has(SALES_ORDER_PERMISSION_KEYS.create);
@@ -193,6 +194,31 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
   const canPriceOverride = permissions.has(SALES_ORDER_PERMISSION_KEYS.priceOverride);
   const canDiscountOverride = permissions.has(SALES_ORDER_PERMISSION_KEYS.discountOverride);
   const canQuickCreateCustomer = permissions.has(SALES_ORDER_PERMISSION_KEYS.customerWrite);
+
+  useEffect(() => {
+    if (quickCreateHandledRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('quickAction') !== 'create') return;
+    quickCreateHandledRef.current = true;
+
+    const nextUrl = new URL(window.location.href);
+    nextUrl.searchParams.delete('quickAction');
+    window.history.replaceState(
+      window.history.state,
+      '',
+      `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`,
+    );
+
+    setNotice(null);
+    setOperationError(null);
+    setFormVersion(null);
+    if (!canCreate) {
+      setError('Bạn không có quyền tạo đơn bán hàng.');
+      return;
+    }
+    setError(null);
+    setFormMode('create');
+  }, [canCreate]);
 
   const selectedStateKey = selected ? orderBusinessStateKey(selected) : null;
   const visibleOperationError = operationError
