@@ -33,6 +33,9 @@ type Notice = { kind: 'success' | 'error'; message: string } | null;
 
 const QUANTITY_SCALE = 1_000_000_000_000n;
 const QUANTITY_PATTERN = /^(-?)(\d+)(?:\.(\d{1,12}))?$/;
+const INVENTORY_BALANCE_BATCH_SIZE = 1000;
+const INVENTORY_BALANCE_MAX_OFFSET = 100000;
+const INVENTORY_TABLE_PAGE_SIZE = 100;
 
 function balanceKey(balance: InventoryBalance): string {
   return [balance.warehouse_id, balance.location_id ?? '<null>', balance.base_variant_id, balance.lot_id ?? '<null>'].join(':');
@@ -135,11 +138,24 @@ async function requestJson<T>(path: string): Promise<T> {
   return payload.data;
 }
 
+async function loadAllBalances(): Promise<InventoryBalance[]> {
+  const balances: InventoryBalance[] = [];
+  for (let offset = 0; offset <= INVENTORY_BALANCE_MAX_OFFSET; offset += INVENTORY_BALANCE_BATCH_SIZE) {
+    const batch = await requestJson<InventoryBalance[]>(
+      `/api/inventory/balances?limit=${INVENTORY_BALANCE_BATCH_SIZE}&offset=${offset}`,
+    );
+    balances.push(...batch);
+    if (batch.length < INVENTORY_BALANCE_BATCH_SIZE) return balances;
+  }
+  throw new Error('Dữ liệu tồn kho vượt phạm vi tra cứu an toàn. Vui lòng liên hệ quản trị hệ thống.');
+}
+
 export default function InventoryBalancesWorkspace({ title, subtitle, initialSnapshot, initialError = null }: Props) {
   const [balances, setBalances] = useState(initialSnapshot.balances);
   const [selectedBalance, setSelectedBalance] = useState<InventoryBalance | null>(null);
   const [drillDown, setDrillDown] = useState<InventoryMovementLine[]>([]);
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(0);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(initialError);
   const [notice, setNotice] = useState<Notice>(null);
@@ -161,6 +177,10 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
     balance.lot_code,
     balance.expiry_date,
   ).includes(normalizedSearch)), [balances, normalizedSearch]);
+  const pageCount = Math.max(1, Math.ceil(filteredBalances.length / INVENTORY_TABLE_PAGE_SIZE));
+  const effectivePage = Math.min(page, pageCount - 1);
+  const pageStart = effectivePage * INVENTORY_TABLE_PAGE_SIZE;
+  const visibleBalances = filteredBalances.slice(pageStart, pageStart + INVENTORY_TABLE_PAGE_SIZE);
 
   const sameSkuAtWarehouse = useMemo(() => {
     if (!selectedBalance) return [];
@@ -180,12 +200,12 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
     setError(null);
     setNotice(null);
     try {
-      const next = await requestJson<InventoryBalance[]>('/api/inventory/balances?limit=500');
+      const next = await loadAllBalances();
       setBalances(next);
       setSelectedBalance((current) => current
         ? next.find((item) => balanceKey(item) === balanceKey(current)) ?? null
         : null);
-      setNotice({ kind: 'success', message: 'Dữ liệu tồn kho đã được làm mới.' });
+      setNotice({ kind: 'success', message: `Đã làm mới ${next.length} dòng tồn kho.` });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Không tải được dữ liệu tồn kho');
     } finally {
@@ -221,13 +241,16 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
               <input
                 aria-label="Tìm theo sản phẩm, SKU, kho, vị trí hoặc lô"
                 value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                onChange={(event) => { setSearch(event.target.value); setPage(0); }}
                 placeholder="Tìm theo sản phẩm, SKU, kho, vị trí hoặc lô"
                 className={styles.searchInput}
                 data-testid="inventory-balances-search-input"
               />
             </div>
             <div className={styles.actionRow}>
+              <span className={styles.subtle}>{filteredBalances.length} dòng · Trang {effectivePage + 1}/{pageCount}</span>
+              <button type="button" className={styles.miniButton} onClick={() => setPage((current) => Math.max(0, current - 1))} disabled={effectivePage === 0}>Trang trước</button>
+              <button type="button" className={styles.miniButton} onClick={() => setPage((current) => Math.min(pageCount - 1, current + 1))} disabled={effectivePage >= pageCount - 1}>Trang sau</button>
               <button type="button" className={styles.primaryAction} onClick={refreshBalances} disabled={busy === 'refresh'}>
                 {busy === 'refresh' ? 'Đang làm mới...' : 'Làm mới dữ liệu'}
               </button>
@@ -245,13 +268,13 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
                   <tr><BusinessTableSequenceHeader /><th>Kho / vị trí</th><th>Sản phẩm / SKU</th><th>Lô</th><th>Hạn dùng</th><th>Tồn kho</th><th>Đã giữ cho đơn</th><th>Có thể xuất</th><th></th></tr>
                 </thead>
                 <tbody>
-                  {filteredBalances.length === 0 ? (
+                  {visibleBalances.length === 0 ? (
                     <tr><td colSpan={9} className={styles.subtle}>Chưa có dữ liệu tồn kho.</td></tr>
-                  ) : filteredBalances.map((balance, rowIndex) => {
+                  ) : visibleBalances.map((balance, rowIndex) => {
                     const packageRule = packageRuleLabel(balance);
                     return (
                       <tr key={balanceKey(balance)} data-testid={`inventory-balance-${balanceKey(balance)}`}>
-                        <BusinessTableSequenceCell rowIndex={rowIndex} />
+                        <BusinessTableSequenceCell rowIndex={pageStart + rowIndex} />
                         <td>
                           <div>{balance.warehouse_code} · {balance.warehouse_name}</div>
                           <div className={styles.subtle}>{joinValues(balance.location_code, balance.location_name) || 'Không vị trí'}</div>

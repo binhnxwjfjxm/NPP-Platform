@@ -14,6 +14,7 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
 const DECIMAL_PATTERN = /^(?:0|[1-9]\d{0,13})(?:\.\d{1,6})?$/;
 const CODE_PATTERN = /^[A-Z0-9_.-]{1,64}$/;
 const SCALE_6 = 1_000_000n;
+const INVENTORY_MOVEMENT_MAX_LINES = 1000;
 const ENABLED_POSTING_TYPES = new Map([
   ['OPENING_BALANCE', 'IN'],
   ['MANUAL_INBOUND', 'IN'],
@@ -126,8 +127,8 @@ function normalizePostingPayload(payload) {
   if (!CODE_PATTERN.test(sourceDomain)) return failure('INVALID_SOURCE_DOMAIN', 'sourceDomain is invalid');
   const documentDate = strictDate(payload.documentDate);
   if (!documentDate) return failure('INVALID_DOCUMENT_DATE', 'documentDate must be a valid YYYY-MM-DD date');
-  if (!Array.isArray(payload.lines) || payload.lines.length < 1 || payload.lines.length > 500) {
-    return failure('INVALID_LINES', 'Movement must contain between 1 and 500 lines');
+  if (!Array.isArray(payload.lines) || payload.lines.length < 1 || payload.lines.length > INVENTORY_MOVEMENT_MAX_LINES) {
+    return failure('INVALID_LINES', `Movement must contain between 1 and ${INVENTORY_MOVEMENT_MAX_LINES} lines`);
   }
   const metadata = objectValue(payload.metadata);
   if (metadata === null) return failure('INVALID_METADATA', 'metadata must be a JSON object no larger than 16 KB');
