@@ -16,7 +16,8 @@ test('product page renders one integrated workspace without detached sidebar com
   assert.match(page, /initialUnits=\{initialUnits\}/);
   assert.doesNotMatch(page, /detachedUnitWorkspace|<ProductUnitWorkspace/);
 
-  assert.match(workspace, /type Tab = 'products' \| 'categories' \| 'brands' \| 'units'/);
+  assert.match(workspace, /type Tab = 'products' \| 'updates' \| 'categories' \| 'brands' \| 'units'/);
+  assert.match(workspace, /data-testid="product-updates-tab"/);
   assert.match(workspace, /data-testid="units-tab"/);
   assert.match(workspace, /data-testid=\{`manage-units-\$\{variant\.sku\}`\}/);
   assert.match(workspace, /<ProductUnitWorkspace initialProducts=\{products\} initialUnits=\{initialUnits\} selection=\{unitSelection\}/);

@@ -10,6 +10,7 @@ test('product catalog uses the shared React modal for every editor', async () =>
   const workspace = await source('../app/products/product-workspace.tsx');
   assert.match(workspace, /import Modal from '\.\.\/components\/modal'/);
   assert.match(workspace, /open=\{showProductForm\}[\s\S]*testId="product-form"/);
+  assert.match(workspace, /open=\{showVariantManager\}[\s\S]*testId="variant-panel"/);
   assert.match(workspace, /open=\{showVariantForm\}[\s\S]*testId="variant-form"/);
   assert.match(workspace, /open=\{showCategoryForm\}[\s\S]*testId="category-form"/);
   assert.match(workspace, /open=\{showBrandForm\}[\s\S]*testId="brand-form"/);
@@ -27,6 +28,7 @@ test('catalog modal dismissal clears form-scoped errors and respects busy saves'
 test('catalog editors cannot open while another operation is busy', async () => {
   const workspace = await source('../app/products/product-workspace.tsx');
   for (const name of [
+    'openVariantManager',
     'openProductCreate',
     'openProductEdit',
     'openCategoryCreate',
@@ -44,8 +46,11 @@ test('product editing fails closed when the SKU list cannot be loaded', async ()
   const workspace = await source('../app/products/product-workspace.tsx');
   assert.match(workspace, /async function loadVariants\(product: Product\): Promise<boolean>/);
   assert.match(workspace, /setSelectedProduct\(null\);[\s\S]*setVariants\(\[\]\);[\s\S]*return false;/);
-  assert.match(workspace, /const loaded = await loadVariants\(product\);[\s\S]*if \(!loaded\) return;/);
-  assert.doesNotMatch(workspace, /await loadVariants\(product\);[\s\S]*setError\(null\);[\s\S]*setShowProductForm\(true\)/);
+
+  const editFunction = workspace.match(/async function openProductEdit\(product: Product\) \{([\s\S]*?)\n  \}\n\n  async function saveProduct/)?.[1];
+  assert.ok(editFunction, 'openProductEdit function must remain present');
+  assert.match(editFunction, /const loaded = await loadVariants\(product\);[\s\S]*if \(!loaded\) return;/);
+  assert.doesNotMatch(editFunction, /setShowProductForm\(true\)[\s\S]*if \(!loaded\) return/);
 });
 
 test('shared modal keeps focus behavior stable while parent callbacks change', async () => {
