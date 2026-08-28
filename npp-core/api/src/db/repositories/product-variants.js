@@ -183,7 +183,12 @@ export async function countActiveSellableVariantsForProductExcludingVariant(clie
 
 export async function getProductVariantsByIdsOrSkus(client, { installationId, ids, skus }) {
   const result = await client.query(
-    `${BASE_SELECT}
+    `SELECT ${PRODUCT_VARIANT_COLUMNS}, p.name AS product_name, p.catalog_name AS product_catalog_name
+     FROM shared.product_variants pv
+     LEFT JOIN shared.units_of_measure u
+       ON u.installation_id = pv.installation_id AND u.id = pv.unit_id
+     LEFT JOIN shared.products p
+       ON p.installation_id = pv.installation_id AND p.id = pv.product_id
      WHERE pv.installation_id = $1
        AND (pv.id = ANY($2::uuid[]) OR pv.sku = ANY($3::text[]))`,
     [installationId, ids, skus],
