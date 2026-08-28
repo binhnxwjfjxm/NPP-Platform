@@ -1,5 +1,5 @@
 import * as legacy from './sales-order-entry-legacy.js';
-import * as pricingService from './pricing.js';
+import * as searchPricingService from './sales-order-search-pricing.js';
 import * as commercialRepository from '../db/repositories/sales-order-commercial.js';
 import * as salesOrderRepository from '../db/repositories/sales-order.js';
 import * as warehouseRepository from '../db/repositories/warehouse.js';
@@ -184,6 +184,8 @@ export async function searchSalesOrderSkuOptions(client, {
     return failure('WAREHOUSE_NOT_FOUND', 'Kho đã chọn không còn hoạt động');
   }
   if (!channel) return failure('SALES_CHANNEL_NOT_FOUND', 'Kênh bán không còn hoạt động');
+
+  let normalizedCustomerGroupId = null;
   if (normalizedCustomerId) {
     if (!UUID_PATTERN.test(normalizedCustomerId)) {
       return failure('CUSTOMER_NOT_FOUND', 'Khách hàng không hợp lệ');
@@ -193,6 +195,7 @@ export async function searchSalesOrderSkuOptions(client, {
       id: normalizedCustomerId,
     });
     if (!customer?.is_active) return failure('CUSTOMER_NOT_FOUND', 'Khách hàng không còn hoạt động');
+    normalizedCustomerGroupId = customer.group_id ?? null;
   }
 
   const base = await legacy.searchSalesOrderSkuOptions(client, {
@@ -203,25 +206,24 @@ export async function searchSalesOrderSkuOptions(client, {
   });
   if (!base.ok || base.skuOptions.length === 0) return base;
 
-  const inventoryRows = await previewRepository.listSalesOrderSkuInventoryPreviews(client, {
-    installationId: requestContext.installationId,
-    warehouseId: normalizedWarehouseId,
-    variantIds: base.skuOptions.map((option) => option.id),
-  });
-  const inventoryByVariantId = new Map(inventoryRows.map((row) => [row.sales_variant_id, row]));
-  const enriched = await Promise.all(base.skuOptions.map(async (option) => {
-    const pricing = await pricingService.resolvePrice(client, {
+  const variantIds = base.skuOptions.map((option) => option.id);
+  const [inventoryRows, pricingByVariantId] = await Promise.all([
+    previewRepository.listSalesOrderSkuInventoryPreviews(client, {
       installationId: requestContext.installationId,
-      payload: {
-        variantId: option.id,
-        quantity: '1',
-        currencyCode: 'VND',
-        priceAt: normalizedPricingAt,
-        channelId: normalizedChannelId,
-        ...(normalizedCustomerId ? { customerId: normalizedCustomerId } : {}),
-        allowMissingBasePrice: true,
-      },
-    });
+      warehouseId: normalizedWarehouseId,
+      variantIds,
+    }),
+    searchPricingService.resolveSalesOrderSearchPrices(client, {
+      installationId: requestContext.installationId,
+      variantIds,
+      priceAt: normalizedPricingAt,
+      channelId: normalizedChannelId,
+      customerGroupId: normalizedCustomerGroupId,
+      customerId: normalizedCustomerId,
+    }),
+  ]);
+  const inventoryByVariantId = new Map(inventoryRows.map((row) => [row.sales_variant_id, row]));
+  const enriched = base.skuOptions.map((option) => {
     const inventory = inventoryPreview(inventoryByVariantId.get(option.id));
     const eligibility = option.eligibility.selectable
       ? Object.freeze({ ...option.eligibility, message: inventoryHeldMessage(inventory) })
@@ -229,10 +231,10 @@ export async function searchSalesOrderSkuOptions(client, {
     return Object.freeze({
       ...option,
       eligibility,
-      pricePreview: pricePreview(pricing),
+      pricePreview: pricePreview(pricingByVariantId.get(option.id)),
       inventoryPreview: inventory,
     });
-  }));
+  });
   return Object.freeze({ ok: true, skuOptions: Object.freeze(enriched) });
 }
 
