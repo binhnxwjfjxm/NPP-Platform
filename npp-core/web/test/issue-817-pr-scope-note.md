@@ -1,0 +1,1 @@
+Issue #817 PR scope marker: frontend-only Quản lý đơn hàng. No backend, no database, no migration, no production deploy.
