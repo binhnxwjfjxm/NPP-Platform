@@ -13,6 +13,7 @@ import {
   activeVersion,
   apiRequest,
   collectionLabels,
+  formatMoney,
   formatVietnamDateTime,
   mutationKey,
   pendingVersion,
@@ -31,6 +32,7 @@ type OrderOperationError = Readonly<{
   message: string;
 }>;
 type StockIssueKeyState = Readonly<{ orderId: string; stateKey: string; key: string }>;
+type SalesOrderListValue = SalesOrder & Readonly<{ total?: string }>;
 
 const WORK_STAGE_OPTIONS: ReadonlyArray<Readonly<{ value: OrderWorkStage; label: string }>> = [
   { value: 'all', label: 'Tất cả trạng thái' },
@@ -116,6 +118,10 @@ function orderCardTone(order: SalesOrder): string {
     return 'waiting';
   }
   return order.status === 'draft' ? 'draft' : 'confirmed';
+}
+
+function orderCardTotal(order: SalesOrder): string {
+  return activeVersion(order)?.total ?? String((order as SalesOrderListValue).total ?? '0');
 }
 
 function matchesSearch(order: SalesOrder, term: string): boolean {
@@ -472,7 +478,9 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
                     <div className={`${styles.orderCardTop} ${polishStyles.orderCardTopCompact}`}>
                       <div className={styles.orderCardNumber}>
                         <BusinessSequenceNumber rowIndex={rowIndex} className={styles.orderSequence} />
-                        <strong>{order.number ?? 'Đơn đặt hàng chưa cấp số'}</strong>
+                        <strong>{order.number ? `#${order.number.replace(/^#/, '')}` : 'Đơn đặt hàng chưa cấp số'}</strong>
+                        <span className={polishStyles.orderCardNumberDivider} aria-hidden="true">|</span>
+                        <strong className={polishStyles.orderCardTotal}>{formatMoney(orderCardTotal(order))}đ</strong>
                       </div>
                     </div>
                     <b>{order.customerCode} — {order.customerName}</b>

@@ -40,7 +40,8 @@ export async function listCurrentDeliveryExecutionModes(client, {
   const result = await client.query(
     `SELECT sales_order.id AS sales_order_id,
             version.delivery_mode,
-            version.delivery_execution_mode
+            version.delivery_execution_mode,
+            version.total
        FROM sales.sales_orders sales_order
        JOIN sales.sales_order_versions version
          ON version.installation_id = sales_order.installation_id

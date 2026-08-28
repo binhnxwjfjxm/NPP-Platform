@@ -113,6 +113,18 @@
   align-items: baseline !important;
 }
 
+.orderCardNumberDivider {
+  color: #aab3af;
+  font-weight: 650;
+}
+
+.orderCardTotal {
+  color: #155c46;
+  font-size: calc(1em + 1px);
+  font-weight: 850;
+  white-space: nowrap;
+}
+
 .orderCardStateStack {
   display: grid;
   gap: .2rem;
