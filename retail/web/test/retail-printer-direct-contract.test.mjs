@@ -58,6 +58,19 @@ test('in thử bằng hệ thống giữ CSS khổ giấy cho tới khi cửa s�
   assert.doesNotMatch(panel, /setTimeout\(\(\) => \{ style\.remove\(\); testScreen\.remove\(\); \}, 0\)/);
 });
 
+test('in đơn thật bằng hệ thống giữ khổ giấy cho tới khi cửa sổ in kết thúc', async () => {
+  const workspace = await read('app/retail-workspace.tsx');
+  const systemPrint = workspace.match(/function printBySystem\(paper: PrintPaper\) \{[\s\S]*?\n    \}\n    async function printConfiguredOrder/)?.[0] ?? '';
+
+  assert.ok(systemPrint, 'phải tìm thấy luồng In bằng hệ thống của đơn thật');
+  assert.match(workspace, /80mm 120mm/);
+  assert.match(workspace, /58mm 100mm/);
+  assert.match(systemPrint, /addEventListener\('afterprint', cleanup/);
+  assert.match(systemPrint, /setTimeout\(cleanup, 120000\)/);
+  assert.match(systemPrint, /requestAnimationFrame\(\(\) => \{/);
+  assert.doesNotMatch(systemPrint, /setTimeout\(\(\) => style\.remove\(\), 0\)/);
+});
+
 test('direct print dùng payload chứng từ chuẩn hóa và fallback hệ thống chỉ khi an toàn', async () => {
   const [bridge, workspace] = await Promise.all([
     read('lib/printer-bridge.ts'),

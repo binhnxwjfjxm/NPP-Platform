@@ -10,6 +10,7 @@ import './retail-print-professional.css';
 import './retail-product-picker-polish.css';
 import './retail-printer.css';
 import { PwaRegistration } from './pwa-registration';
+import { RetailSystemPrintPageSizer } from './retail-system-print-page-sizer';
 
 export const metadata: Metadata = {
   title: 'Bán tại quầy',
@@ -32,5 +33,5 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
-  return <html lang="vi"><body><PwaRegistration />{children}</body></html>;
+  return <html lang="vi"><body><PwaRegistration /><RetailSystemPrintPageSizer />{children}</body></html>;
 }
