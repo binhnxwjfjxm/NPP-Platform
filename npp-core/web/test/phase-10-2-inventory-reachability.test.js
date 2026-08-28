@@ -29,7 +29,10 @@ test('10.2 inventory routes load only their own runtime surface', () => {
     scopedSnapshot.indexOf('export async function loadInventoryLotsSnapshot'),
     scopedSnapshot.indexOf('export async function loadInventoryTrackingPolicySnapshot'),
   );
-  assert.match(balanceLoader, /listInventoryBalances/);
+  assert.match(scopedSnapshot, /async function listAllInventoryBalances/);
+  assert.match(scopedSnapshot, /limit: String\(INVENTORY_BALANCE_BATCH_SIZE\)/);
+  assert.match(scopedSnapshot, /offset: String\(offset\)/);
+  assert.match(balanceLoader, /listAllInventoryBalances/);
   assert.doesNotMatch(balanceLoader, /listInventoryLots|listInventoryTrackingPolicies|listOpeningBalanceImports/);
   assert.match(lotLoader, /listInventoryLots/);
   assert.doesNotMatch(lotLoader, /listInventoryBalances|listInventoryTrackingPolicies|listOpeningBalanceImports/);
