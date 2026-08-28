@@ -67,6 +67,13 @@ function normalizeRows(value) {
   return { ok: true, rows };
 }
 
+function normalizedSkuSet(rows) {
+  const normalizedSkus = rows.map((row) => canonicalSku(row.cells[0]));
+  const skuCounts = new Map();
+  for (const sku of normalizedSkus) if (sku) skuCounts.set(sku, (skuCounts.get(sku) ?? 0) + 1);
+  return { normalizedSkus, skuCounts };
+}
+
 function displayWeight(value, uom) {
   if (value === null || value === undefined || value === '') return 'Chưa khai báo';
   const label = uom === 'G' ? 'g' : uom === 'KG' ? 'kg' : asText(uom);
@@ -80,6 +87,18 @@ function rowError(rowNumber, sku, code, message, cells) {
     status: 'error',
     errors: [{ code, message }],
     changes: [],
+    cells,
+  };
+}
+
+function identificationError(rowNumber, sku, code, message, cells) {
+  return {
+    rowNumber,
+    sku,
+    productName: '',
+    variantName: '',
+    status: 'error',
+    errors: [{ code, message }],
     cells,
   };
 }
@@ -147,6 +166,65 @@ function buildWeightPatch(existing, mappings, cells) {
   };
 }
 
+export async function identifyProductVariants(client, {
+  installationId,
+  payload,
+}, dependencies = {}) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return invalid('INVALID_UPDATE_PAYLOAD', 'Dữ liệu nhận diện SKU không hợp lệ');
+  const rowResult = normalizeRows(payload.rows);
+  if (!rowResult.ok) return rowResult;
+  const rows = rowResult.rows;
+  const { normalizedSkus, skuCounts } = normalizedSkuSet(rows);
+  const candidateSkus = Array.from(new Set(normalizedSkus.filter((sku) => sku && (skuCounts.get(sku) ?? 0) === 1)));
+  const lookupVariants = dependencies.getProductVariantsByIdsOrSkus ?? variantRepo.getProductVariantsByIdsOrSkus;
+  const variants = candidateSkus.length > 0
+    ? await lookupVariants(client, { installationId, ids: [], skus: candidateSkus })
+    : [];
+  const bySku = new Map(variants.map((variant) => [variant.sku, variant]));
+
+  const identifiedRows = [];
+  let identified = 0;
+  let skipped = 0;
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = rows[index];
+    const rawSku = asText(row.cells[0]);
+    const sku = normalizedSkus[index];
+    if (!rawSku) {
+      identifiedRows.push(identificationError(row.rowNumber, '', 'MISSING_SKU', 'SKU không được để trống', row.cells));
+      skipped += 1;
+      continue;
+    }
+    if (!sku) {
+      identifiedRows.push(identificationError(row.rowNumber, rawSku, 'INVALID_SKU', 'SKU không hợp lệ', row.cells));
+      skipped += 1;
+      continue;
+    }
+    if ((skuCounts.get(sku) ?? 0) > 1) {
+      identifiedRows.push(identificationError(row.rowNumber, sku, 'DUPLICATE_SKU', 'SKU bị trùng trong cùng tệp', row.cells));
+      skipped += 1;
+      continue;
+    }
+    const existing = bySku.get(sku);
+    if (!existing) {
+      identifiedRows.push(identificationError(row.rowNumber, sku, 'SKU_NOT_FOUND', 'SKU không tồn tại trong Công Ty', row.cells));
+      skipped += 1;
+      continue;
+    }
+    identified += 1;
+    identifiedRows.push({
+      rowNumber: row.rowNumber,
+      sku,
+      productName: asText(existing.product_name) || asText(existing.product_catalog_name) || asText(existing.name),
+      variantName: asText(existing.name),
+      status: 'identified',
+      errors: [],
+      cells: row.cells,
+    });
+  }
+
+  return { ok: true, identified, skipped, rows: identifiedRows };
+}
+
 export async function bulkUpdateProductVariants(client, {
   installationId,
   payload,
@@ -163,9 +241,7 @@ export async function bulkUpdateProductVariants(client, {
   const lookupVariant = dependencies.getProductVariantBySku ?? variantRepo.getProductVariantBySku;
   const updateVariant = dependencies.updateProductVariant ?? productService.updateProductVariant;
 
-  const normalizedSkus = rows.map((row) => canonicalSku(row.cells[0]));
-  const skuCounts = new Map();
-  for (const sku of normalizedSkus) if (sku) skuCounts.set(sku, (skuCounts.get(sku) ?? 0) + 1);
+  const { normalizedSkus, skuCounts } = normalizedSkuSet(rows);
 
   const previewRows = [];
   let updated = 0;
