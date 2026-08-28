@@ -631,17 +631,17 @@ export default function SalesOrderCommercialForm(props: Props) {
           const previews = await apiRequest<SalesOrderSkuSearchPreview[]>(`/api/sales-orders/sku-previews?${previewQuery}`, { signal: controller.signal });
           if (controller.signal.aborted || run !== skuSearchRunRef.current) return;
           const previewById = new Map(previews.map((preview) => [preview.id, preview]));
-          setSkuResults((current) => current.map((option) => {
+          setSkuResults((current) => current.flatMap((option) => {
             const preview = previewById.get(option.id);
-            if (!preview) return option;
-            return {
+            if (!preview) return [];
+            return [{
               ...option,
               eligibility: option.eligibility.selectable
                 ? { ...option.eligibility, message: preview.eligibilityMessage }
                 : option.eligibility,
               pricePreview: preview.pricePreview,
               inventoryPreview: preview.inventoryPreview,
-            };
+            }];
           }));
         } finally {
           if (!controller.signal.aborted && run === skuSearchRunRef.current) setSkuPreviewLoading(false);

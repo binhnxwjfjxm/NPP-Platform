@@ -17,6 +17,8 @@ test('Lô B frontend hiện SKU trước rồi gửi đúng context để cập 
   }
   assert.match(form, /\/api\/sales-orders\/sku-previews/);
   assert.match(form, /skuSearchRunRef/);
+  assert.match(form, /current\.flatMap\(\(option\)/);
+  assert.match(form, /if \(!preview\) return \[\]/);
   for (const field of ['warehouseId', 'salesChannelId', 'customerId', 'pricingAt']) {
     assert.match(previewGateway, new RegExp(`searchParams\\.get\\('${field}'`));
   }
