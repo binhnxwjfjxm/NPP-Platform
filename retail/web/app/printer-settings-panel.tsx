@@ -134,7 +134,7 @@ export function PrinterSettingsPanel({ initialSettings, onSaved, onClose, onNoti
     onError('');
     if (!directReady) {
       setDirectHelpOpen(true);
-      onNotice('In Wi‑Fi trực tiếp cần bản Retail Mobile. Bản web vẫn có thể in thử A4, A5, 80 mm và 58 mm bằng cửa sổ in của thiết bị.');
+      onNotice('In Wi‑Fi trực tiếp cần ứng dụng Retail trên điện thoại. Bản web vẫn có thể in thử A4, A5, 80 mm và 58 mm bằng cửa sổ in của thiết bị.');
       return;
     }
     setDirectHelpOpen(false);
@@ -258,8 +258,8 @@ export function PrinterSettingsPanel({ initialSettings, onSaved, onClose, onNoti
         <button type="button" role="radio" aria-checked={draft.method === 'DIRECT_WIFI'} className={`${draft.method === 'DIRECT_WIFI' ? 'active ' : ''}${!directReady ? 'unavailable' : ''}`.trim()} onClick={chooseDirectMethod}><span>Wi‑Fi</span><strong>In Wi‑Fi trực tiếp</strong><small>{checkingBridge ? 'Đang kiểm tra thiết bị…' : directReady ? 'In thẳng tới máy đã lưu' : 'Chạm để xem cách sử dụng'}</small></button>
         <button type="button" role="radio" aria-checked={draft.method === 'SYSTEM'} className={draft.method === 'SYSTEM' ? 'active' : ''} onClick={() => { setDirectHelpOpen(false); setDraft((current) => ({ ...current, method: 'SYSTEM' })); }}><span>↗</span><strong>In bằng hệ thống</strong><small>AirPrint hoặc máy in đã cài trên điện thoại</small></button>
       </div>
-      {!checkingBridge && !directReady ? <p className="settings-help printer-system-note">Bản web không thể gửi dữ liệu thẳng tới địa chỉ IP của máy in. Anh vẫn có thể chọn 80 mm hoặc 58 mm bên dưới để kiểm tra bố cục qua cửa sổ in hệ thống.</p> : null}
-      {directHelpOpen && !directReady ? <div className="printer-web-help" role="status"><strong>In Wi‑Fi trực tiếp cần Retail Mobile</strong><p>Bản web không được phép mở kết nối TCP trực tiếp tới máy in LAN. Vì vậy phần nhập IP và Tìm máy in chỉ mở trên Retail Mobile. Để test ngay trên bản web, chọn In bằng hệ thống → 80 mm hoặc 58 mm → In thử.</p></div> : null}
+      {!checkingBridge && !directReady ? <p className="settings-help printer-system-note">Bản web không thể gửi dữ liệu thẳng tới địa chỉ IP của máy in. Vẫn có thể chọn 80 mm hoặc 58 mm bên dưới để kiểm tra bố cục qua cửa sổ in hệ thống.</p> : null}
+      {directHelpOpen && !directReady ? <div className="printer-web-help" role="status"><strong>In Wi‑Fi trực tiếp cần ứng dụng Retail trên điện thoại</strong><p>Bản web không thể kết nối trực tiếp tới máy in trong mạng nội bộ. Vì vậy phần nhập địa chỉ máy in và Tìm máy in chỉ mở trong ứng dụng Retail trên điện thoại. Để test ngay trên bản web, chọn In bằng hệ thống → 80 mm hoặc 58 mm → In thử.</p></div> : null}
     </section>
 
     {draft.method === 'DIRECT_WIFI' ? <section className="printer-setting-section">
@@ -273,7 +273,7 @@ export function PrinterSettingsPanel({ initialSettings, onSaved, onClose, onNoti
 
     <section className="printer-setting-section printer-compact-options">
       <label><span><strong>Khổ giấy</strong><small>{draft.method === 'DIRECT_WIFI' ? 'Chọn đúng cuộn giấy đang lắp.' : 'Chọn định dạng phiếu cần in.'}</small></span><select value={draft.paper} onChange={(event) => setDraft((current) => ({ ...current, paper: event.target.value as PrinterPaper, profile: current.profile ? { ...current.profile, paper: event.target.value as PrinterPaper } : null }))}>{draft.method === 'DIRECT_WIFI' ? <><option value="80mm">80 mm</option><option value="58mm">58 mm</option></> : <><option value="A4">A4</option><option value="A5">A5</option><option value="80mm">80 mm</option><option value="58mm">58 mm</option></>}</select></label>
-      {draft.method === 'DIRECT_WIFI' ? <><label><span><strong>Số bản in</strong><small>Tối đa 5 bản mỗi lần.</small></span><select value={draft.copies} onChange={(event) => setDraft((current) => ({ ...current, copies: Number(event.target.value) }))}>{[1, 2, 3, 4, 5].map((value) => <option key={value} value={value}>{value}</option>)}</select></label><label className="printer-switch"><span><strong>Xem trước trước khi in</strong><small>Tắt để in nhanh khi máy đã sẵn sàng.</small></span><input type="checkbox" checked={draft.previewBeforePrint} onChange={(event) => setDraft((current) => ({ ...current, previewBeforePrint: event.target.checked }))}/></label></> : <p className="settings-help">A4, A5, 80 mm và 58 mm đều dùng được để định dạng phiếu trên bản web. Khổ giấy thật vẫn phải có trong máy in/AirPrint của thiết bị; nếu hệ thống không nhận đúng khổ, dùng Retail Mobile để in trực tiếp máy nhiệt.</p>}
+      {draft.method === 'DIRECT_WIFI' ? <><label><span><strong>Số bản in</strong><small>Tối đa 5 bản mỗi lần.</small></span><select value={draft.copies} onChange={(event) => setDraft((current) => ({ ...current, copies: Number(event.target.value) }))}>{[1, 2, 3, 4, 5].map((value) => <option key={value} value={value}>{value}</option>)}</select></label><label className="printer-switch"><span><strong>Xem trước trước khi in</strong><small>Tắt để in nhanh khi máy đã sẵn sàng.</small></span><input type="checkbox" checked={draft.previewBeforePrint} onChange={(event) => setDraft((current) => ({ ...current, previewBeforePrint: event.target.checked }))}/></label></> : <p className="settings-help">A4, A5, 80 mm và 58 mm đều dùng được để định dạng phiếu trên bản web. Khổ giấy thật vẫn phải có trong máy in/AirPrint của thiết bị; nếu hệ thống không nhận đúng khổ, dùng ứng dụng Retail trên điện thoại để in trực tiếp máy nhiệt.</p>}
     </section>
 
     <div className="printer-test-row"><span><strong>Trạng thái</strong><small>{status}</small></span><button className="secondary-action" type="button" disabled={testing} onClick={() => void testPrinter()}>{testing ? 'Đang kiểm tra…' : 'In thử'}</button></div>
