@@ -606,16 +606,22 @@ export async function listSalesOrders(client, input) {
   });
   const facts = new Map(rows.map((row) => [
     row.sales_order_id,
-    fallbackExecutionMode(row.delivery_mode, row.delivery_execution_mode),
+    Object.freeze({
+      deliveryExecutionMode: fallbackExecutionMode(row.delivery_mode, row.delivery_execution_mode),
+      total: String(row.total ?? 0),
+    }),
   ]));
   return Object.freeze({
     ...result,
-    salesOrders: Object.freeze(result.salesOrders.map((order) => Object.freeze({
-      ...order,
-      deliveryExecutionMode: facts.has(order.id)
-        ? facts.get(order.id)
-        : fallbackExecutionMode(order.deliveryMode, null),
-    }))),
+    salesOrders: Object.freeze(result.salesOrders.map((order) => {
+      const fact = facts.get(order.id);
+      return Object.freeze({
+        ...order,
+        deliveryExecutionMode: fact?.deliveryExecutionMode
+          ?? fallbackExecutionMode(order.deliveryMode, null),
+        total: fact?.total ?? '0',
+      });
+    })),
   });
 }
 
