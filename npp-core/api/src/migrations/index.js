@@ -105,6 +105,7 @@ const SALES_ORDER_SPLIT_LINE_IDENTITY_SQL = readFileSync(new URL('../../../../da
 const CONTROLLED_NEGATIVE_STOCK_SQL = readFileSync(new URL('../../../../database/migrations/inventory/116_controlled_negative_stock.sql', import.meta.url), 'utf8');
 const SKU_WEIGHT_SALES_ORDER_SNAPSHOT_SQL = readFileSync(new URL('../../../../database/migrations/shared/117_sku_weight_sales_order_snapshot.sql', import.meta.url), 'utf8');
 const SALES_ORDER_EMPLOYEE_VISIBILITY_SQL = readFileSync(new URL('../../../../database/migrations/shared/118_sales_order_employee_visibility.sql', import.meta.url), 'utf8');
+const RETAIL_PRINT_AGENT_SQL = readFileSync(new URL('../../../../database/migrations/shared/119_retail_print_agent.sql', import.meta.url), 'utf8');
 
 export const CORE_API_MIGRATIONS = Object.freeze([
   ...CORE_API_MIGRATIONS_THROUGH_045,
@@ -180,6 +181,7 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({ id: '116_controlled_negative_stock', sql: CONTROLLED_NEGATIVE_STOCK_SQL }),
   Object.freeze({ id: '117_sku_weight_sales_order_snapshot', sql: SKU_WEIGHT_SALES_ORDER_SNAPSHOT_SQL }),
   Object.freeze({ id: '118_sales_order_employee_visibility', sql: SALES_ORDER_EMPLOYEE_VISIBILITY_SQL }),
+  Object.freeze({ id: '119_retail_print_agent', sql: RETAIL_PRINT_AGENT_SQL }),
 ]);
 
 export { runMigrations };
