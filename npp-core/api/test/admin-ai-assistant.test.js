@@ -2,46 +2,46 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  parseAdminAgentResourceName,
-  parseAdminAgentRuntimeResponse,
+  parseAdminAgentGatewayResponse,
+  readAdminAgentRuntimeConfig,
 } from '../src/services/google-admin-agent.js';
 
-test('Admin Agent accepts only the production Agent Runtime ReasoningEngine resource shape', () => {
-  const parsed = parseAdminAgentResourceName('projects/hck-agent-chat-prod/locations/us-central1/reasoningEngines/1234567890');
-  assert.equal(parsed.projectId, 'hck-agent-chat-prod');
-  assert.equal(parsed.location, 'us-central1');
-  assert.equal(parsed.resourceId, '1234567890');
+test('Admin Agent runtime uses the existing Website AI server channel and Gemini 2.5 Pro', () => {
+  const config = readAdminAgentRuntimeConfig({
+    ADMIN_AI_GATEWAY_BASE_URL: 'https://www.nguyenlieuhungphat.com',
+    WEBSITE_AI_API_TOKEN: 'server-only-token',
+    ADMIN_AI_AGENT_MODEL: 'gemini-2.5-pro',
+  });
+  assert.equal(config.gatewayBaseUrl, 'https://www.nguyenlieuhungphat.com');
+  assert.equal(config.model, 'gemini-2.5-pro');
   assert.throws(
-    () => parseAdminAgentResourceName('projects/hck-agent-chat-prod/locations/global/agents/e326abbf-77f7-4b16-996c-64408c4dd136'),
-    (error) => error.code === 'ADMIN_AI_AGENT_RESOURCE_INVALID',
+    () => readAdminAgentRuntimeConfig({ ADMIN_AI_GATEWAY_BASE_URL: 'http://example.com', WEBSITE_AI_API_TOKEN: 'x' }),
+    (error) => error.code === 'ADMIN_AI_GATEWAY_URL_INVALID',
   );
 });
 
-test('Admin Agent Runtime parser keeps the final office reply and aggregates actual provider token metadata', () => {
-  const body = [
-    'data: {"id":"evt-1","invocation_id":"invoke-1","content":{"role":"model","parts":[{"text":"Đang tổng hợp số liệu."}]},"usage_metadata":{"prompt_token_count":100,"cached_content_token_count":10,"candidates_token_count":20,"thoughts_token_count":5,"tool_use_prompt_token_count":3,"total_token_count":128}}',
-    '',
-    'data: {"id":"evt-2","invocation_id":"invoke-1","content":{"role":"model","parts":[{"text":"Doanh số hôm nay đang tăng so với hôm qua."}]},"usageMetadata":{"promptTokenCount":50,"cachedContentTokenCount":0,"candidatesTokenCount":10,"thoughtsTokenCount":2,"toolUsePromptTokenCount":1,"totalTokenCount":63}}',
-  ].join('\n');
-  const result = parseAdminAgentRuntimeResponse(body);
+test('Admin Agent gateway response keeps provider usage metadata for canonical metering', () => {
+  const result = parseAdminAgentGatewayResponse({
+    ok: true,
+    capability: 'company-admin-ai',
+    readOnly: true,
+    replyText: 'Doanh số hôm nay đang tăng so với hôm qua.',
+    conversationId: 'admin-conversation-1',
+    providerRequestId: 'invoke-1',
+    model: 'gemini-2.5-pro',
+    occurredAt: '2026-08-29T08:00:00.000Z',
+    usageMetadata: {
+      promptTokenCount: 150,
+      cachedContentTokenCount: 10,
+      candidatesTokenCount: 30,
+      thoughtsTokenCount: 7,
+      toolUsePromptTokenCount: 4,
+      totalTokenCount: 191,
+    },
+  }, 'admin-conversation-1');
   assert.equal(result.replyText, 'Doanh số hôm nay đang tăng so với hôm qua.');
   assert.equal(result.providerRequestId, 'invoke-1');
-  assert.deepEqual(result.usageMetadata, {
-    promptTokenCount: 150,
-    cachedContentTokenCount: 10,
-    candidatesTokenCount: 30,
-    thoughtsTokenCount: 7,
-    toolUsePromptTokenCount: 4,
-    totalTokenCount: 191,
-  });
-});
-
-test('Admin Agent creates the managed provider session before streaming with that exact session id', () => {
-  const runtime = readFileSync(new URL('../src/services/google-admin-agent.js', import.meta.url), 'utf8');
-  assert.match(runtime, /class_method: 'async_create_session'/);
-  assert.match(runtime, /session_id: sessionId/);
-  assert.match(runtime, /ADMIN_AI_AGENT_SESSION_UNAVAILABLE/);
-  assert.match(runtime, /:streamQuery\?alt=sse/);
+  assert.equal(result.usageMetadata.totalTokenCount, 191);
 });
 
 test('Admin Agent source is read-only, backend-owned and writes source=admin through the canonical USD calculator', () => {
@@ -59,10 +59,11 @@ test('Admin Agent source is read-only, backend-owned and writes source=admin thr
   assert.match(meter, /calculateUsageUsd/);
   assert.match(meter, /source: 'admin'/);
   assert.match(meter, /feature: 'company-assistant'/);
-  assert.match(runtime, /reasoningEngines/);
-  assert.match(runtime, /async_stream_query/);
-  assert.match(runtime, /async_create_session/);
-  assert.doesNotMatch(runtime, /\/agents\/|Managed Agents API/);
+  assert.match(runtime, /ADMIN_AI_GATEWAY_BASE_URL/);
+  assert.match(runtime, /WEBSITE_AI_API_TOKEN/);
+  assert.match(runtime, /x-company-admin-ai-gateway/);
+  assert.match(runtime, /redirect: 'error'/);
+  assert.doesNotMatch(runtime, /SERVICE_ACCOUNT_JSON|private_key|oauth2\.googleapis\.com|reasoningEngines/);
   assert.match(server, /handleAdminAiAssistantRoutes/);
   assert.match(migration, /google\.gemini-2\.5-pro\.standard\.2026-08-24/);
   assert.doesNotMatch(route, /UPDATE\s+shared\.|DELETE\s+FROM\s+shared\./i);
