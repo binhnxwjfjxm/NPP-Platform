@@ -31,7 +31,7 @@ jobs:
       VERCEL_WEBSITE_PROJECT_ID: prj_rXqH83GFDHuEGUcQrrv82JBPWnjU
       VERCEL_ORDERING_PROJECT_ID: prj_btLk3p4FhmShgKFdRBMq6ZFOagKe
       COMPANY_API_URL: https://hung-phat-945da1547594.herokuapp.com
-      WEBSITE_AI_BASE_URL: https://nguyenlieuhungphat.com
+      WEBSITE_AI_BASE_URL: https://www.nguyenlieuhungphat.com
       ORDERING_AI_ACTOR_ID: service:ordering-ai
     steps:
       - name: Validate exact issue command
@@ -244,6 +244,15 @@ jobs:
           if (valueFor(orderingEnv, 'CORE_API_BASE_URL').replace(/\/$/, '') !== env.COMPANY_API_URL) throw new Error('ordering_api_url_mismatch');
           if (valueFor(orderingEnv, 'WEBSITE_AI_BASE_URL').replace(/\/$/, '') !== env.WEBSITE_AI_BASE_URL) throw new Error('ordering_website_url_mismatch');
           if (valueFor(websiteEnv, 'COMPANY_API_URL').replace(/\/$/, '') !== env.COMPANY_API_URL) throw new Error('website_company_api_url_mismatch');
+
+          const websiteGatewayProbe = await fetch(new URL('/api/dialogflow/chat', env.WEBSITE_AI_BASE_URL), {
+            method: 'GET',
+            redirect: 'manual',
+            signal: AbortSignal.timeout(15_000),
+          });
+          if (websiteGatewayProbe.status >= 300 && websiteGatewayProbe.status < 400) {
+            throw new Error(`ordering_website_gateway_redirected:${websiteGatewayProbe.status}`);
+          }
 
           for (const path of ['/health/live', '/health/ready']) {
             const response = await fetch(`${env.COMPANY_API_URL}${path}`, { signal: AbortSignal.timeout(15_000) });
