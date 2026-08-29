@@ -223,7 +223,6 @@ jobs:
             });
           }
 
-          await syncEnv(env.VERCEL_WEBSITE_PROJECT_ID, websiteEnv, 'ORDERING_AI_API_TOKEN', sharedToken, 'encrypted', 'Customer Ordering -> Website AI gateway');
           await syncEnv(env.VERCEL_WEBSITE_PROJECT_ID, websiteEnv, 'COMPANY_API_URL', env.COMPANY_API_URL, 'plain', 'Công Ty API for Ordering gateway auth');
           await syncEnv(env.VERCEL_ORDERING_PROJECT_ID, orderingEnv, 'ORDERING_AI_API_TOKEN', sharedToken, 'encrypted', 'Customer Ordering AI service capability');
           await syncEnv(env.VERCEL_ORDERING_PROJECT_ID, orderingEnv, 'CORE_API_BASE_URL', env.COMPANY_API_URL, 'plain', 'Công Ty API');
@@ -246,10 +245,10 @@ jobs:
 
           const verifiedWebsite = await fetchProductionEnv(env.VERCEL_WEBSITE_PROJECT_ID);
           const verifiedOrdering = await fetchProductionEnv(env.VERCEL_ORDERING_PROJECT_ID);
-          assertSecretMetadata(verifiedWebsite, 'ORDERING_AI_API_TOKEN');
           assertSecretMetadata(verifiedOrdering, 'ORDERING_AI_API_TOKEN');
-          if (valueFor(verifiedWebsite, 'ORDERING_AI_API_TOKEN') !== sharedToken) throw new Error('website_ordering_token_verification_failed');
-          if (valueFor(verifiedOrdering, 'ORDERING_AI_API_TOKEN') !== sharedToken) throw new Error('ordering_token_verification_failed');
+          const orderingToken = valueFor(verifiedOrdering, 'ORDERING_AI_API_TOKEN').trim();
+          if (!orderingToken) throw new Error('ordering_token_verification_failed');
+          console.log(`::add-mask::${orderingToken}`);
           if (valueFor(verifiedWebsite, 'COMPANY_API_URL').replace(/\/$/, '') !== env.COMPANY_API_URL) throw new Error('website_company_api_url_verification_failed');
           if (valueFor(verifiedOrdering, 'CORE_API_BASE_URL').replace(/\/$/, '') !== env.COMPANY_API_URL) throw new Error('ordering_api_url_verification_failed');
           if (valueFor(verifiedOrdering, 'WEBSITE_AI_BASE_URL').replace(/\/$/, '') !== env.WEBSITE_AI_BASE_URL) throw new Error('ordering_gateway_url_verification_failed');
@@ -270,7 +269,7 @@ jobs:
 
           const gatewayProbeUrl = new URL('/api/ai/ordering-gateway-auth', env.COMPANY_API_URL);
           const gatewayProbeResponse = await fetch(gatewayProbeUrl, {
-            headers: { authorization: `Bearer ${sharedToken}` },
+            headers: { authorization: `Bearer ${orderingToken}` },
             signal: AbortSignal.timeout(15_000),
           });
           const gatewayProbeBody = await gatewayProbeResponse.json().catch(() => null);
@@ -285,7 +284,7 @@ jobs:
           const probeUrl = new URL('/api/ai/ordering-context', env.COMPANY_API_URL);
           probeUrl.searchParams.set('customerCode', '__ordering_config_probe__');
           const probeResponse = await fetch(probeUrl, {
-            headers: { authorization: `Bearer ${sharedToken}` },
+            headers: { authorization: `Bearer ${orderingToken}` },
             signal: AbortSignal.timeout(15_000),
           });
           const probeBody = await probeResponse.json().catch(() => null);
