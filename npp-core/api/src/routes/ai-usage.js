@@ -5,8 +5,10 @@ import { normalizeIdempotencyKey, readJsonBody } from '../idempotency.js';
 
 const EVENTS_ROOT = '/api/ai/usage-events';
 const SUMMARY_ROOT = '/api/ai/usage-summary';
+const ORDERING_CONTEXT_ROOT = '/api/ai/ordering-context';
 const MANAGER_ROLES = new Set(['bootstrap', 'system:security-owner', 'system:implementation-owner']);
 const WEBSITE_AI_ROLE = 'website-ai-service';
+const ORDERING_AI_ROLE = 'ordering-ai-service';
 const SOURCES = new Set(['admin', 'website', 'ordering']);
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SAFE_SLUG = /^[a-z0-9][a-z0-9._-]{0,95}$/;
@@ -134,13 +136,18 @@ function isWebsiteAiService(context) {
   return roles(context).includes(WEBSITE_AI_ROLE);
 }
 
+function isOrderingAiService(context) {
+  return roles(context).includes(ORDERING_AI_ROLE);
+}
+
 function canAttemptAiUsageWrite(context) {
-  return canManageAiUsage(context) || isWebsiteAiService(context);
+  return canManageAiUsage(context) || isWebsiteAiService(context) || isOrderingAiService(context);
 }
 
 export function canWriteAiUsage(context, usage) {
   if (canManageAiUsage(context)) return true;
-  return isWebsiteAiService(context) && usage?.source === 'website';
+  if (isWebsiteAiService(context)) return usage?.source === 'website';
+  return isOrderingAiService(context) && usage?.source === 'ordering';
 }
 
 function decimalRateToScaled(value) {
@@ -274,6 +281,30 @@ async function customerCredit(adapter, installationId, customerId) {
     usedUsd: String(row.used_usd),
     remainingUsd: String(row.remaining_usd),
     usagePercent: String(row.usage_percent),
+  });
+}
+
+async function orderingContext(adapter, context, url) {
+  const customerCode = String(url.searchParams.get('customerCode') ?? '').trim();
+  if (!customerCode || customerCode.length > 120) {
+    throw apiError('AI_ORDERING_CUSTOMER_CODE_REQUIRED', 'Không xác định được khách hàng đang sử dụng ứng dụng', {}, false, 400);
+  }
+  const result = await adapter.query(
+    `SELECT id
+       FROM shared.customers
+      WHERE installation_id = $1
+        AND code = $2
+        AND is_active = true
+      LIMIT 2`,
+    [context.installationId, customerCode],
+  );
+  if (result.rows?.length !== 1) {
+    throw apiError('AI_ORDERING_CUSTOMER_NOT_FOUND', 'Khách hàng không còn hoạt động hoặc không tồn tại', {}, false, 404);
+  }
+  const customerId = String(result.rows[0].id);
+  return Object.freeze({
+    customerId,
+    credit: await customerCredit(adapter, context.installationId, customerId),
   });
 }
 
@@ -584,11 +615,30 @@ function sendPublicError(res, error, options, fallbackCode, fallbackMessage) {
 
 export async function handleAiUsageRoutes(req, res, options) {
   const url = new URL(req.url ?? '/', 'http://127.0.0.1');
-  if (url.pathname !== EVENTS_ROOT && url.pathname !== SUMMARY_ROOT) return false;
+  if (![EVENTS_ROOT, SUMMARY_ROOT, ORDERING_CONTEXT_ROOT].includes(url.pathname)) return false;
   const context = await authenticate(req, res, options);
   if (!context) return true;
   const method = String(req.method ?? 'GET').toUpperCase();
   const adapter = options.getPool();
+
+  if (url.pathname === ORDERING_CONTEXT_ROOT) {
+    if (method !== 'GET') {
+      sendError(res, apiError('METHOD_NOT_ALLOWED', 'Phương thức không được hỗ trợ', {}, false, 405), options.requestId, options.receivedAt);
+      return true;
+    }
+    if (!isOrderingAiService(context)) {
+      sendError(res, apiError('FORBIDDEN', 'Dịch vụ hiện tại không có quyền đọc hạn mức AI của khách hàng', {}, false, 403), options.requestId, options.receivedAt);
+      return true;
+    }
+    try {
+      const data = await orderingContext(adapter, context, url);
+      res.setHeader('Cache-Control', 'no-store');
+      sendSuccess(res, data, options.requestId, options.receivedAt);
+    } catch (error) {
+      sendPublicError(res, error, options, 'AI_ORDERING_CONTEXT_FAILED', 'Không xác định được hạn mức hỗ trợ AI của khách hàng');
+    }
+    return true;
+  }
 
   if (method === 'GET') {
     if (!canManageAiUsage(context)) {

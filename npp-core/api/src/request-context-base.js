@@ -192,6 +192,16 @@ export function createWebsiteAiPrincipal(config) {
   });
 }
 
+export function createOrderingAiPrincipal(config) {
+  if (!config.orderingAiApiToken) return null;
+  return normalizePrincipal({
+    actorId: config.orderingAiActorId,
+    roles: ['ordering-ai-service'],
+    permissions: [],
+    sourceApp: 'customer-ordering',
+  });
+}
+
 export function createDeliveryFrontendPrincipal(config, employeeId) {
   if (!config.deliveryFrontendApiToken || !UUID_PATTERN.test(String(employeeId ?? ''))) return null;
   return normalizePrincipal({
@@ -254,6 +264,9 @@ export function authenticateRequest(req, config) {
   }
   if (config.websiteAiApiToken && tokenMatches(candidate, config.websiteAiApiToken)) {
     return { ok: true, principal: createWebsiteAiPrincipal(config) };
+  }
+  if (config.orderingAiApiToken && tokenMatches(candidate, config.orderingAiApiToken)) {
+    return { ok: true, principal: createOrderingAiPrincipal(config) };
   }
   if (tokenMatches(candidate, config.backendApiToken)) {
     return { ok: true, principal: createBootstrapPrincipal(config) };
