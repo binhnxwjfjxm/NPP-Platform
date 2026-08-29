@@ -1,0 +1,332 @@
+name: Customer Ordering AI production config gate
+
+on:
+  workflow_dispatch:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: ordering-ai-production-config
+  cancel-in-progress: false
+
+jobs:
+  configure:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.number == 5 &&
+       github.event.comment.body == '/configure-ordering-ai-production' &&
+       contains(fromJSON('["binhnxwjfjxm","khuongbinhinfo-a11y"]'), github.actor))
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      DEPLOY_REF: main
+      HEROKU_APP_NAME: hung-phat
+      HEROKU_FORBIDDEN_APP_NAME: hung-phat-mcp
+      VERCEL_ORG_ID: team_hBA8rX68UHC8ogvREkOyQlJ2
+      VERCEL_WEBSITE_PROJECT_ID: prj_rXqH83GFDHuEGUcQrrv82JBPWnjU
+      VERCEL_ORDERING_PROJECT_ID: prj_btLk3p4FhmShgKFdRBMq6ZFOagKe
+      COMPANY_API_URL: https://hung-phat-945da1547594.herokuapp.com
+      ORDERING_AI_ACTOR_ID: service:ordering-ai
+      DIALOGFLOW_CX_PROJECT_ID: hck-agent-chat-prod
+      DIALOGFLOW_CX_LOCATION: global
+      DIALOGFLOW_CX_AGENT_ID: e326abbf-77f7-4b16-996c-64408c4dd136
+      DIALOGFLOW_CX_AGENT_DISPLAY_NAME: Hưng Phát
+      DIALOGFLOW_CX_LANGUAGE_CODE: vi
+    steps:
+      - name: Validate exact issue command
+        if: github.event_name == 'issue_comment'
+        shell: bash
+        env:
+          COMMENT_BODY: '${{ github.event.comment.body }}'
+        run: |
+          set -euo pipefail
+          test "$COMMENT_BODY" = '/configure-ordering-ai-production'
+
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: '${{ env.DEPLOY_REF }}'
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact origin/main SHA
+        id: target
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          test "$(git rev-parse --is-shallow-repository)" = "false"
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Audit and synchronize Customer Ordering AI production configuration
+        id: config
+        shell: bash
+        env:
+          HEROKU_API_KEY: '${{ secrets.HEROKU_API_KEY }}'
+          VERCEL_TOKEN: '${{ secrets.VERCEL_TOKEN }}'
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from 'node:fs';
+          import { createSign, randomBytes } from 'node:crypto';
+
+          const env = process.env;
+          const required = (value, name) => {
+            if (!value) throw new Error(`${name}_missing`);
+            return value;
+          };
+
+          required(env.HEROKU_API_KEY, 'heroku_api_key');
+          required(env.VERCEL_TOKEN, 'vercel_token');
+          if (env.HEROKU_APP_NAME !== 'hung-phat' || env.HEROKU_APP_NAME === env.HEROKU_FORBIDDEN_APP_NAME) {
+            throw new Error('unexpected_heroku_target');
+          }
+          if (!/^https:\/\/[^/]+$/.test(env.COMPANY_API_URL)) throw new Error('invalid_company_api_url');
+          if (env.DIALOGFLOW_CX_PROJECT_ID !== 'hck-agent-chat-prod') throw new Error('unexpected_dialogflow_project');
+          if (env.DIALOGFLOW_CX_LOCATION !== 'global') throw new Error('unexpected_dialogflow_location');
+          if (env.DIALOGFLOW_CX_AGENT_ID !== 'e326abbf-77f7-4b16-996c-64408c4dd136') throw new Error('unexpected_dialogflow_agent_id');
+          if (env.DIALOGFLOW_CX_AGENT_DISPLAY_NAME !== 'Hưng Phát') throw new Error('unexpected_dialogflow_agent_name');
+          if (env.DIALOGFLOW_CX_LANGUAGE_CODE !== 'vi') throw new Error('unexpected_dialogflow_language');
+
+          const herokuHeaders = {
+            Accept: 'application/vnd.heroku+json; version=3',
+            Authorization: `Bearer ${env.HEROKU_API_KEY}`,
+            'Content-Type': 'application/json',
+          };
+          const vercelHeaders = {
+            Authorization: `Bearer ${env.VERCEL_TOKEN}`,
+            'Content-Type': 'application/json',
+          };
+
+          async function jsonRequest(url, options = {}) {
+            const response = await fetch(url, options);
+            const body = await response.json().catch(() => null);
+            if (!response.ok) {
+              const code = body?.error?.code || body?.id || 'unknown';
+              throw new Error(`provider_request_failed:${response.status}:${code}`);
+            }
+            return body;
+          }
+
+          const herokuApp = await jsonRequest(
+            `https://api.heroku.com/apps/${encodeURIComponent(env.HEROKU_APP_NAME)}`,
+            { headers: herokuHeaders },
+          );
+          if (herokuApp?.name !== env.HEROKU_APP_NAME) throw new Error('heroku_app_identity_mismatch');
+
+          async function fetchProject(projectId) {
+            return jsonRequest(
+              `https://api.vercel.com/v9/projects/${encodeURIComponent(projectId)}?teamId=${encodeURIComponent(env.VERCEL_ORG_ID)}`,
+              { headers: vercelHeaders },
+            );
+          }
+          const websiteProject = await fetchProject(env.VERCEL_WEBSITE_PROJECT_ID);
+          const orderingProject = await fetchProject(env.VERCEL_ORDERING_PROJECT_ID);
+          if (websiteProject?.name !== 'nguyenlieuhungphat') throw new Error('website_project_identity_mismatch');
+          if (orderingProject?.name !== 'customer-ordering') throw new Error('ordering_project_identity_mismatch');
+          if ((orderingProject?.rootDirectory || '.') !== 'customer-ordering') throw new Error('ordering_project_root_mismatch');
+          if (orderingProject?.nodeVersion !== '24.x') throw new Error('ordering_node_runtime_not_24');
+
+          const herokuConfigUrl = `https://api.heroku.com/apps/${encodeURIComponent(env.HEROKU_APP_NAME)}/config-vars`;
+          const herokuConfig = await jsonRequest(herokuConfigUrl, { headers: herokuHeaders });
+
+          async function fetchProductionEnv(projectId) {
+            const url = new URL(`https://api.vercel.com/v9/projects/${encodeURIComponent(projectId)}/env`);
+            url.searchParams.set('teamId', env.VERCEL_ORG_ID);
+            url.searchParams.set('decrypt', 'true');
+            url.searchParams.set('source', 'vercel-cli:pull');
+            const body = await jsonRequest(url, { headers: vercelHeaders });
+            const entries = Array.isArray(body) ? body : Array.isArray(body?.envs) ? body.envs : [];
+            return entries.filter((entry) => {
+              const targets = Array.isArray(entry?.target) ? entry.target : [entry?.target].filter(Boolean);
+              return targets.includes('production') && !entry?.gitBranch;
+            });
+          }
+
+          function entriesFor(entries, key) {
+            return entries.filter((entry) => entry?.key === key);
+          }
+          function valueFor(entries, key) {
+            const matches = entriesFor(entries, key);
+            if (matches.length === 0) return '';
+            const values = [...new Set(matches.map((entry) => typeof entry?.value === 'string' ? entry.value : ''))];
+            if (values.length !== 1) throw new Error(`conflicting_vercel_env:${key}`);
+            return values[0];
+          }
+          function assertSecret(entries, key) {
+            const matches = entriesFor(entries, key);
+            if (matches.length !== 1) throw new Error(`vercel_secret_metadata_count_invalid:${key}:${matches.length}`);
+            const type = String(matches[0]?.type || '');
+            if (!['encrypted', 'sensitive'].includes(type)) throw new Error(`vercel_secret_metadata_type_invalid:${key}:${type || 'missing'}`);
+            if (matches[0]?.decrypted !== true) throw new Error(`vercel_secret_not_decrypted:${key}`);
+          }
+          function parseServiceAccount(raw) {
+            try {
+              const value = JSON.parse(raw);
+              if (value?.client_email && value?.private_key && value?.project_id) return value;
+            } catch {}
+            return null;
+          }
+
+          const websiteEnv = await fetchProductionEnv(env.VERCEL_WEBSITE_PROJECT_ID);
+          const credentialKeys = [
+            'DIALOGFLOW_CX_SERVICE_ACCOUNT_JSON',
+            'DIALOGFLOW_SERVICE_ACCOUNT_JSON',
+            'GOOGLE_SERVICE_ACCOUNT_JSON',
+          ];
+          const credentialKey = credentialKeys.find((key) => entriesFor(websiteEnv, key).length === 1);
+          if (!credentialKey) throw new Error('website_dialogflow_service_account_missing');
+          assertSecret(websiteEnv, credentialKey);
+          const credentialRaw = valueFor(websiteEnv, credentialKey);
+          const serviceAccount = parseServiceAccount(credentialRaw);
+          if (!serviceAccount) throw new Error('website_dialogflow_service_account_invalid');
+
+          function b64(value) {
+            return Buffer.from(JSON.stringify(value)).toString('base64url');
+          }
+          const now = Math.floor(Date.now() / 1000);
+          const unsigned = `${b64({ alg: 'RS256', typ: 'JWT' })}.${b64({
+            iss: serviceAccount.client_email,
+            scope: 'https://www.googleapis.com/auth/dialogflow',
+            aud: 'https://oauth2.googleapis.com/token',
+            iat: now - 30,
+            exp: now + 3300,
+          })}`;
+          const signer = createSign('RSA-SHA256');
+          signer.update(unsigned);
+          signer.end();
+          const assertion = `${unsigned}.${signer.sign(serviceAccount.private_key).toString('base64url')}`;
+          const oauthResponse = await fetch('https://oauth2.googleapis.com/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+              grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+              assertion,
+            }),
+          });
+          const oauthBody = await oauthResponse.json().catch(() => null);
+          if (!oauthResponse.ok || !oauthBody?.access_token) throw new Error(`google_service_account_probe_failed:${oauthResponse.status}`);
+
+          const agentUrl = `https://dialogflow.googleapis.com/v3/projects/${encodeURIComponent(env.DIALOGFLOW_CX_PROJECT_ID)}/locations/${encodeURIComponent(env.DIALOGFLOW_CX_LOCATION)}/agents/${encodeURIComponent(env.DIALOGFLOW_CX_AGENT_ID)}`;
+          const agentResponse = await fetch(agentUrl, { headers: { authorization: `Bearer ${oauthBody.access_token}` } });
+          const agentBody = await agentResponse.json().catch(() => null);
+          if (!agentResponse.ok) throw new Error(`dialogflow_agent_probe_failed:${agentResponse.status}`);
+          if (agentBody?.displayName !== env.DIALOGFLOW_CX_AGENT_DISPLAY_NAME) throw new Error('dialogflow_agent_name_mismatch');
+
+          const reservedTokens = [
+            herokuConfig?.BACKEND_API_TOKEN,
+            herokuConfig?.MCP_ONBOARDING_API_TOKEN,
+            herokuConfig?.MCP_SALES_API_TOKEN,
+            herokuConfig?.WEBSITE_AI_API_TOKEN,
+            herokuConfig?.DELIVERY_FRONTEND_API_TOKEN,
+          ].filter(Boolean);
+          let sharedToken = String(herokuConfig?.ORDERING_AI_API_TOKEN || '');
+          if (!sharedToken || reservedTokens.includes(sharedToken)) sharedToken = randomBytes(48).toString('base64url');
+          console.log(`::add-mask::${sharedToken}`);
+
+          async function upsertOrderingEnv(key, value, type) {
+            const endpoint = new URL(`https://api.vercel.com/v10/projects/${encodeURIComponent(env.VERCEL_ORDERING_PROJECT_ID)}/env`);
+            endpoint.searchParams.set('teamId', env.VERCEL_ORG_ID);
+            endpoint.searchParams.set('upsert', 'true');
+            await jsonRequest(endpoint, {
+              method: 'POST',
+              headers: vercelHeaders,
+              body: JSON.stringify([{
+                key,
+                value,
+                type,
+                target: ['production'],
+                comment: 'Customer Ordering AI production contract',
+              }]),
+            });
+          }
+
+          await upsertOrderingEnv('CORE_API_BASE_URL', env.COMPANY_API_URL, 'plain');
+          await upsertOrderingEnv('ORDERING_AI_API_TOKEN', sharedToken, 'encrypted');
+          await upsertOrderingEnv('DIALOGFLOW_CX_SERVICE_ACCOUNT_JSON', credentialRaw, 'encrypted');
+          await upsertOrderingEnv('DIALOGFLOW_CX_PROJECT_ID', env.DIALOGFLOW_CX_PROJECT_ID, 'plain');
+          await upsertOrderingEnv('DIALOGFLOW_CX_LOCATION', env.DIALOGFLOW_CX_LOCATION, 'plain');
+          await upsertOrderingEnv('DIALOGFLOW_CX_AGENT_ID', env.DIALOGFLOW_CX_AGENT_ID, 'plain');
+          await upsertOrderingEnv('DIALOGFLOW_CX_AGENT_DISPLAY_NAME', env.DIALOGFLOW_CX_AGENT_DISPLAY_NAME, 'plain');
+          await upsertOrderingEnv('DIALOGFLOW_CX_LANGUAGE_CODE', env.DIALOGFLOW_CX_LANGUAGE_CODE, 'plain');
+
+          const herokuPatch = {};
+          if (String(herokuConfig?.ORDERING_AI_API_TOKEN || '') !== sharedToken) herokuPatch.ORDERING_AI_API_TOKEN = sharedToken;
+          if (String(herokuConfig?.ORDERING_AI_ACTOR_ID || '') !== env.ORDERING_AI_ACTOR_ID) herokuPatch.ORDERING_AI_ACTOR_ID = env.ORDERING_AI_ACTOR_ID;
+          if (Object.keys(herokuPatch).length > 0) {
+            await jsonRequest(herokuConfigUrl, {
+              method: 'PATCH',
+              headers: herokuHeaders,
+              body: JSON.stringify(herokuPatch),
+            });
+          }
+
+          const verifiedHerokuConfig = await jsonRequest(herokuConfigUrl, { headers: herokuHeaders });
+          if (verifiedHerokuConfig?.ORDERING_AI_API_TOKEN !== sharedToken) throw new Error('heroku_ordering_token_verification_failed');
+          if (verifiedHerokuConfig?.ORDERING_AI_ACTOR_ID !== env.ORDERING_AI_ACTOR_ID) throw new Error('heroku_ordering_actor_verification_failed');
+
+          const verifiedOrderingEnv = await fetchProductionEnv(env.VERCEL_ORDERING_PROJECT_ID);
+          if (valueFor(verifiedOrderingEnv, 'ORDERING_AI_API_TOKEN') !== sharedToken) throw new Error('vercel_ordering_token_verification_failed');
+          if (valueFor(verifiedOrderingEnv, 'CORE_API_BASE_URL').replace(/\/$/, '') !== env.COMPANY_API_URL) throw new Error('vercel_ordering_api_url_verification_failed');
+          if (valueFor(verifiedOrderingEnv, 'DIALOGFLOW_CX_PROJECT_ID') !== env.DIALOGFLOW_CX_PROJECT_ID) throw new Error('vercel_ordering_dialogflow_project_verification_failed');
+          if (valueFor(verifiedOrderingEnv, 'DIALOGFLOW_CX_AGENT_ID') !== env.DIALOGFLOW_CX_AGENT_ID) throw new Error('vercel_ordering_dialogflow_agent_verification_failed');
+          assertSecret(verifiedOrderingEnv, 'DIALOGFLOW_CX_SERVICE_ACCOUNT_JSON');
+          const copiedServiceAccount = parseServiceAccount(valueFor(verifiedOrderingEnv, 'DIALOGFLOW_CX_SERVICE_ACCOUNT_JSON'));
+          if (!copiedServiceAccount || copiedServiceAccount.client_email !== serviceAccount.client_email) {
+            throw new Error('vercel_ordering_dialogflow_credential_verification_failed');
+          }
+
+          async function waitHealth(path) {
+            const deadline = Date.now() + 180_000;
+            let last = 0;
+            while (Date.now() < deadline) {
+              const response = await fetch(`${env.COMPANY_API_URL}${path}`, { signal: AbortSignal.timeout(10_000) }).catch(() => null);
+              last = response?.status || 0;
+              if (last === 200) return;
+              await new Promise((resolve) => setTimeout(resolve, 3000));
+            }
+            throw new Error(`company_health_failed:${path}:${last || 'none'}`);
+          }
+          await waitHealth('/health/live');
+          await waitHealth('/health/ready');
+
+          const probeUrl = new URL('/api/ai/ordering-context', env.COMPANY_API_URL);
+          probeUrl.searchParams.set('customerCode', '__ordering_config_probe__');
+          const probeResponse = await fetch(probeUrl, {
+            headers: { authorization: `Bearer ${sharedToken}` },
+            signal: AbortSignal.timeout(15_000),
+          });
+          const probeBody = await probeResponse.json().catch(() => null);
+          if (probeResponse.status !== 404 || probeBody?.error?.code !== 'AI_ORDERING_CUSTOMER_NOT_FOUND') {
+            throw new Error(`ordering_service_probe_failed:${probeResponse.status}:${probeBody?.error?.code || 'unknown'}`);
+          }
+
+          appendFileSync(process.env.GITHUB_OUTPUT, `source_sha=${process.env.GITHUB_SHA}\n`);
+          console.log('ORDERING_AI_CONFIG=success');
+          console.log('ORDERING_AI_DIALOGFLOW_IDENTITY=success');
+          console.log('ORDERING_AI_BACKEND_TOKEN=success');
+          NODE
+
+      - name: Summarize Customer Ordering AI production configuration
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "SOURCE_SHA=${{ steps.target.outputs.sha }}"
+            echo "HEROKU_APP=${HEROKU_APP_NAME}"
+            echo "VERCEL_PROJECT=customer-ordering"
+            echo "DIALOGFLOW_AGENT=${DIALOGFLOW_CX_AGENT_DISPLAY_NAME}"
+            echo "BOUNDARY=read-only guidance"
+          } >> "$GITHUB_STEP_SUMMARY"
