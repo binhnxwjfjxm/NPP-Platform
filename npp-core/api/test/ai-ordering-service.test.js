@@ -54,3 +54,17 @@ test('Customer Ordering context resolves only active canonical customers and exp
   assert.match(source, /credit: await customerCredit/);
   assert.doesNotMatch(source, /ORDERING_CONTEXT_ROOT[\s\S]{0,1200}(?:orders|sales_orders|inventory|addresses)/i);
 });
+
+test('Ordering gateway authorization is owned by Công Ty auth and does not query business data', () => {
+  const source = readFileSync(new URL('../src/server.js', import.meta.url), 'utf8');
+  const start = source.indexOf("if (url.pathname === '/api/ai/ordering-gateway-auth')");
+  const end = source.indexOf("if (url.pathname === '/api/idempotency-test')", start);
+  assert.notEqual(start, -1);
+  assert.notEqual(end, -1);
+  const route = source.slice(start, end);
+  assert.match(route, /authenticate\(req, runtimeConfig\)/);
+  assert.match(route, /requestContext\.roles\.includes\('ordering-ai-service'\)/);
+  assert.match(route, /authorized: true/);
+  assert.match(route, /capability: 'ordering-ai'/);
+  assert.doesNotMatch(route, /getPool|queryDb|\.query\(|customer|orders|inventory/i);
+});

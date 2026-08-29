@@ -146,6 +146,7 @@ export function createCoreApiServer(options = {}) {
       ['/health/ready', new Set(['GET'])],
       ['/api/config', new Set(['GET'])],
       ['/health/authenticated', new Set(['GET'])],
+      ['/api/ai/ordering-gateway-auth', new Set(['GET'])],
       ['/api/idempotency-test', new Set(['POST'])],
       ['/api/audit-outbox-test', new Set(['POST'])],
     ]);
@@ -249,6 +250,32 @@ export function createCoreApiServer(options = {}) {
         actorId: requestContext.actorId,
         installationId: requestContext.installationId,
         requestId: requestContext.requestId,
+      }, requestId, receivedAt);
+      return;
+    }
+
+    if (url.pathname === '/api/ai/ordering-gateway-auth') {
+      const authResult = authenticate(req, runtimeConfig);
+      if (!authResult.ok) {
+        res.setHeader('WWW-Authenticate', 'Bearer');
+        sendError(res, createError('UNAUTHORIZED', 'Authorization required', {}, false, 401), requestId, receivedAt);
+        return;
+      }
+      const requestContext = createContext({
+        config: runtimeConfig,
+        principal: authResult.principal,
+        requestId,
+        receivedAt,
+      });
+      req.requestContext = requestContext;
+      if (!requestContext.roles.includes('ordering-ai-service')) {
+        sendError(res, createError('FORBIDDEN', 'Permission denied', {}, false, 403), requestId, receivedAt);
+        return;
+      }
+      res.setHeader('Cache-Control', 'no-store');
+      sendSuccess(res, {
+        authorized: true,
+        capability: 'ordering-ai',
       }, requestId, receivedAt);
       return;
     }
