@@ -1,0 +1,206 @@
+name: Admin AI production config gate
+
+on:
+  workflow_dispatch:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: read
+
+concurrency:
+  group: admin-ai-production-config
+  cancel-in-progress: false
+
+jobs:
+  configure:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.number == 5 &&
+       github.event.comment.body == '/configure-admin-ai-production' &&
+       contains(fromJSON('["binhnxwjfjxm","khuongbinhinfo-a11y"]'), github.actor))
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      DEPLOY_REF: main
+      HEROKU_APP_NAME: hung-phat
+      HEROKU_FORBIDDEN_APP_NAME: hung-phat-mcp
+      COMPANY_API_URL: https://hung-phat-945da1547594.herokuapp.com
+      ADMIN_AI_AGENT_MODEL: gemini-2.5-pro
+
+    steps:
+      - name: Validate exact issue command
+        if: github.event_name == 'issue_comment'
+        shell: bash
+        env:
+          COMMENT_BODY: '${{ github.event.comment.body }}'
+        run: |
+          set -euo pipefail
+          test "$COMMENT_BODY" = '/configure-admin-ai-production'
+
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: '${{ env.DEPLOY_REF }}'
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact origin/main SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          test "$(git rev-parse --is-shallow-repository)" = "false"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+
+      - name: Validate Agent Platform identity and configure Công Ty
+        shell: bash
+        env:
+          HEROKU_API_KEY: '${{ secrets.HEROKU_API_KEY }}'
+          ADMIN_AI_AGENT_RESOURCE_NAME: '${{ secrets.ADMIN_AI_AGENT_RESOURCE_NAME }}'
+          ADMIN_AI_AGENT_CONSUMER_PROJECT_ID: '${{ secrets.ADMIN_AI_AGENT_CONSUMER_PROJECT_ID }}'
+          ADMIN_AI_AGENT_SERVICE_ACCOUNT_JSON: '${{ secrets.ADMIN_AI_AGENT_SERVICE_ACCOUNT_JSON }}'
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { createSign } from 'node:crypto';
+
+          const env = process.env;
+          const text = (value) => String(value ?? '').trim();
+          const required = (name) => {
+            const value = text(env[name]);
+            if (!value) throw new Error(`secure_input_missing:${name}`);
+            return value;
+          };
+          const resourceName = required('ADMIN_AI_AGENT_RESOURCE_NAME');
+          const consumerProjectId = required('ADMIN_AI_AGENT_CONSUMER_PROJECT_ID');
+          const rawCredential = required('ADMIN_AI_AGENT_SERVICE_ACCOUNT_JSON');
+          const herokuApiKey = required('HEROKU_API_KEY');
+          const model = text(env.ADMIN_AI_AGENT_MODEL);
+
+          if (env.HEROKU_APP_NAME !== 'hung-phat' || env.HEROKU_APP_NAME === env.HEROKU_FORBIDDEN_APP_NAME) {
+            throw new Error('unexpected_heroku_target');
+          }
+          const resourceMatch = /^projects\/([a-z][a-z0-9-]{4,61}[a-z0-9]|[0-9]{6,20})\/locations\/([a-z0-9-]{2,40})\/reasoningEngines\/([A-Za-z0-9._-]{1,160})$/.exec(resourceName);
+          if (!resourceMatch) throw new Error('admin_ai_resource_invalid');
+          if (!/^[a-z][a-z0-9-]{4,61}[a-z0-9]$/.test(consumerProjectId)) throw new Error('admin_ai_consumer_project_invalid');
+          if (model !== 'gemini-2.5-pro') throw new Error('admin_ai_model_mismatch');
+
+          let credential;
+          try { credential = JSON.parse(rawCredential); } catch { throw new Error('admin_ai_credential_invalid_json'); }
+          const credentialProjectId = text(credential?.project_id);
+          const clientEmail = text(credential?.client_email);
+          const privateKey = text(credential?.private_key).replace(/\\n/g, '\n');
+          if (!/^[a-z][a-z0-9-]{4,61}[a-z0-9]$/.test(credentialProjectId) || !clientEmail.includes('@') || !privateKey.includes('PRIVATE KEY')) {
+            throw new Error('admin_ai_credential_invalid_shape');
+          }
+
+          const base64UrlJson = (value) => Buffer.from(JSON.stringify(value), 'utf8').toString('base64url');
+          const issuedAt = Math.floor(Date.now() / 1000);
+          const header = base64UrlJson({ alg: 'RS256', typ: 'JWT' });
+          const payload = base64UrlJson({
+            iss: clientEmail,
+            scope: 'https://www.googleapis.com/auth/cloud-platform',
+            aud: 'https://oauth2.googleapis.com/token',
+            iat: issuedAt,
+            exp: issuedAt + 3600,
+          });
+          const unsigned = `${header}.${payload}`;
+          const signer = createSign('RSA-SHA256');
+          signer.update(unsigned);
+          signer.end();
+          const assertion = `${unsigned}.${signer.sign(privateKey).toString('base64url')}`;
+          const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+            method: 'POST',
+            headers: { 'content-type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+              grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+              assertion,
+            }).toString(),
+            signal: AbortSignal.timeout(15_000),
+          });
+          const tokenBody = await tokenResponse.json().catch(() => null);
+          const accessToken = text(tokenBody?.access_token);
+          if (!tokenResponse.ok || !accessToken) throw new Error(`admin_ai_oauth_probe_failed:${tokenResponse.status}`);
+
+          const location = resourceMatch[2];
+          const resourceResponse = await fetch(`https://${location}-aiplatform.googleapis.com/v1/${resourceName}`, {
+            headers: {
+              authorization: `Bearer ${accessToken}`,
+              'x-goog-user-project': consumerProjectId,
+            },
+            signal: AbortSignal.timeout(15_000),
+          });
+          const resourceBody = await resourceResponse.json().catch(() => null);
+          if (!resourceResponse.ok) {
+            const providerStatus = text(resourceBody?.error?.status) || 'unknown';
+            throw new Error(`admin_ai_resource_probe_failed:${resourceResponse.status}:${providerStatus}`);
+          }
+          if (text(resourceBody?.name) !== resourceName) throw new Error('admin_ai_resource_identity_mismatch');
+
+          const herokuHeaders = {
+            Accept: 'application/vnd.heroku+json; version=3',
+            Authorization: `Bearer ${herokuApiKey}`,
+            'Content-Type': 'application/json',
+          };
+          const configUrl = `https://api.heroku.com/apps/${encodeURIComponent(env.HEROKU_APP_NAME)}/config-vars`;
+          const currentResponse = await fetch(configUrl, { headers: herokuHeaders, signal: AbortSignal.timeout(15_000) });
+          const current = await currentResponse.json().catch(() => null);
+          if (!currentResponse.ok || !current || typeof current !== 'object') throw new Error(`heroku_config_read_failed:${currentResponse.status}`);
+
+          const desired = {
+            ADMIN_AI_AGENT_RESOURCE_NAME: resourceName,
+            ADMIN_AI_AGENT_MODEL: model,
+            ADMIN_AI_AGENT_CONSUMER_PROJECT_ID: consumerProjectId,
+            ADMIN_AI_AGENT_SERVICE_ACCOUNT_JSON: rawCredential,
+          };
+          const patch = {};
+          for (const [key, value] of Object.entries(desired)) {
+            if (text(current[key]) !== value) patch[key] = value;
+          }
+          if (Object.keys(patch).length) {
+            const patchResponse = await fetch(configUrl, {
+              method: 'PATCH',
+              headers: herokuHeaders,
+              body: JSON.stringify(patch),
+              signal: AbortSignal.timeout(15_000),
+            });
+            if (!patchResponse.ok) throw new Error(`heroku_config_patch_failed:${patchResponse.status}`);
+            await patchResponse.arrayBuffer();
+          }
+
+          const verifyResponse = await fetch(configUrl, { headers: herokuHeaders, signal: AbortSignal.timeout(15_000) });
+          const verified = await verifyResponse.json().catch(() => null);
+          if (!verifyResponse.ok || !verified || typeof verified !== 'object') throw new Error(`heroku_config_verify_failed:${verifyResponse.status}`);
+          for (const key of Object.keys(desired)) {
+            if (!text(verified[key])) throw new Error(`heroku_config_missing:${key}`);
+          }
+          if (text(verified.ADMIN_AI_AGENT_RESOURCE_NAME) !== resourceName) throw new Error('heroku_admin_ai_resource_mismatch');
+          if (text(verified.ADMIN_AI_AGENT_MODEL) !== model) throw new Error('heroku_admin_ai_model_mismatch');
+          if (text(verified.ADMIN_AI_AGENT_CONSUMER_PROJECT_ID) !== consumerProjectId) throw new Error('heroku_admin_ai_consumer_project_mismatch');
+          if (text(verified.ADMIN_AI_AGENT_SERVICE_ACCOUNT_JSON) !== rawCredential) throw new Error('heroku_admin_ai_credential_mismatch');
+
+          console.log('ADMIN_AI_CONFIG=success');
+          console.log('ADMIN_AI_OAUTH=success');
+          console.log('ADMIN_AI_RESOURCE_IDENTITY=success');
+          NODE
+
+      - name: Verify Công Ty health after config restart
+        shell: bash
+        run: |
+          set -euo pipefail
+          for path in /health/live /health/ready; do
+            ok=0
+            for attempt in $(seq 1 18); do
+              status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 15 "${COMPANY_API_URL}${path}" || true)"
+              if [ "$status" = '200' ]; then
+                ok=1
+                break
+              fi
+              sleep 5
+            done
+            test "$ok" = '1'
+          done
+          echo 'ADMIN_AI_COMPANY_HEALTH=success'
