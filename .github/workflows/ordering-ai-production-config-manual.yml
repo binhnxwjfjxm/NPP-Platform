@@ -232,9 +232,14 @@ jobs:
           const herokuConfig = await jsonRequest(`https://api.heroku.com/apps/${encodeURIComponent(env.HEROKU_APP_NAME)}/config-vars`, { headers: herokuHeaders });
           const orderingEnv = await productionEnv(env.VERCEL_ORDERING_PROJECT_ID);
           const websiteEnv = await productionEnv(env.VERCEL_WEBSITE_PROJECT_ID);
-          const orderingToken = valueFor(orderingEnv, 'ORDERING_AI_API_TOKEN').trim();
+          const orderingSecretEntries = orderingEnv.filter((entry) => entry?.key === 'ORDERING_AI_API_TOKEN');
+          if (orderingSecretEntries.length !== 1) throw new Error(`ordering_token_metadata_count_invalid:${orderingSecretEntries.length}`);
+          const orderingSecretType = String(orderingSecretEntries[0]?.type || '');
+          if (!['sensitive', 'encrypted'].includes(orderingSecretType)) throw new Error(`ordering_token_metadata_type_invalid:${orderingSecretType || 'missing'}`);
+
+          const orderingToken = String(env.ORDERING_SHARED_TOKEN || '').trim();
+          if (!orderingToken) throw new Error('ordering_shared_token_missing');
           console.log(`::add-mask::${orderingToken}`);
-          if (!orderingToken) throw new Error('ordering_token_missing_after_update');
           if (orderingToken !== String(herokuConfig?.ORDERING_AI_API_TOKEN || '')) throw new Error('ordering_token_runtime_mismatch');
           if (valueFor(orderingEnv, 'CORE_API_BASE_URL').replace(/\/$/, '') !== env.COMPANY_API_URL) throw new Error('ordering_api_url_mismatch');
           if (valueFor(orderingEnv, 'WEBSITE_AI_BASE_URL').replace(/\/$/, '') !== env.WEBSITE_AI_BASE_URL) throw new Error('ordering_website_url_mismatch');
