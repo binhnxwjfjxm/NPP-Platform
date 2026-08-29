@@ -189,7 +189,7 @@ jobs:
           set -euo pipefail
           export VERCEL_ORG_ID
           export VERCEL_PROJECT_ID="$VERCEL_ORDERING_PROJECT_ID"
-          printf '%s\n' "$ORDERING_SHARED_TOKEN" | vercel env update ORDERING_AI_API_TOKEN production --sensitive --token "$VERCEL_TOKEN"
+          printf '%s\n' "$ORDERING_SHARED_TOKEN" | vercel env update ORDERING_AI_API_TOKEN production --sensitive --yes --token "$VERCEL_TOKEN"
 
       - name: Verify production runtime contract end to end
         shell: bash
