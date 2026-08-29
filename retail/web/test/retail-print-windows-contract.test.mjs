@@ -41,13 +41,17 @@ test('sau khi backend nhận job thì mất xác nhận không tự fallback đ�
 });
 
 test('Cài đặt Retail có mã kết nối Windows, trạng thái và vẫn giữ luồng iOS hiện có', async () => {
-  const panel = await read('app/printer-settings-panel.tsx');
+  const [panel, pairing] = await Promise.all([
+    read('app/printer-settings-panel.tsx'),
+    read('app/retail-print-windows-pairing.tsx'),
+  ]);
+  assert.match(panel, /RetailPrintWindowsPairing/);
   assert.match(panel, /Retail Print trên Windows/);
-  assert.match(panel, /Mã kết nối/);
-  assert.match(panel, /8 ký tự trên Retail Print/);
-  assert.match(panel, /pairRetailPrintAgent/);
-  assert.match(panel, /Làm mới danh sách/);
-  assert.match(panel, /Không cần nhập IP máy in trên điện thoại/);
+  assert.match(pairing, /Mã kết nối/);
+  assert.match(pairing, /8 ký tự trên Retail Print/);
+  assert.match(pairing, /pairRetailPrintAgent/);
+  assert.match(pairing, /Làm mới danh sách/);
+  assert.match(pairing, /Không cần nhập IP máy in trên điện thoại/);
   assert.match(panel, /In Wi‑Fi trực tiếp/);
   assert.match(panel, /Cài đặt nâng cao/);
 });

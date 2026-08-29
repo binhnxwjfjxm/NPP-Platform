@@ -6,10 +6,11 @@ const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 const readRepo = (path) => readFile(new URL(`../../../${path}`, import.meta.url), 'utf8');
 
 test('Retail giữ cấu hình máy in trên thiết bị và thêm Retail Print Windows mà không gửi IP lên backend', async () => {
-  const [bridge, webBridge, panel, workspace] = await Promise.all([
+  const [bridge, webBridge, panel, pairing, workspace] = await Promise.all([
     read('lib/printer-bridge.ts'),
     read('lib/retail-print-web-bridge.ts'),
     read('app/printer-settings-panel.tsx'),
+    read('app/retail-print-windows-pairing.tsx'),
     read('app/retail-workspace.tsx'),
   ]);
 
@@ -22,10 +23,13 @@ test('Retail giữ cấu hình máy in trên thiết bị và thêm Retail Print
   assert.match(panel, /import '\.\.\/lib\/retail-print-web-bridge'/);
   assert.doesNotMatch(bridge, /fetch\(/);
   assert.match(webBridge, /retail-print-windows\/1/);
-  assert.doesNotMatch(webBridge, /host:\s*[^n]|port:\s*\d|192\.168\./);
-  assert.match(panel, /Làm mới danh sách/);
-  assert.match(panel, /Mã kết nối/);
+  assert.match(webBridge, /host: null/);
+  assert.match(webBridge, /port: null/);
+  assert.doesNotMatch(webBridge, /profile\?\.host|profile\.host|profile\?\.port|profile\.port|192\.168\./);
+  assert.match(pairing, /Làm mới danh sách/);
+  assert.match(pairing, /Mã kết nối/);
   assert.match(panel, /Địa chỉ máy in/);
+  assert.match(panel, /capabilities\.manualIp/);
   assert.match(panel, /Số bản in/);
   assert.match(panel, /Xem trước trước khi in/);
   assert.match(panel, /In thử/);
@@ -35,14 +39,17 @@ test('Retail giữ cấu hình máy in trên thiết bị và thêm Retail Print
 });
 
 test('thiết lập in web hỗ trợ Retail Print Windows và vẫn cho test hệ thống đủ A4 A5 80 58', async () => {
-  const panel = await read('app/printer-settings-panel.tsx');
+  const [panel, pairing] = await Promise.all([
+    read('app/printer-settings-panel.tsx'),
+    read('app/retail-print-windows-pairing.tsx'),
+  ]);
   const directButton = panel.match(/<button[^>]*aria-checked=\{draft\.method === 'DIRECT_WIFI'\}[^>]*onClick=\{chooseDirectMethod\}[^>]*>/)?.[0] ?? '';
 
   assert.ok(directButton, 'phải tìm thấy nút in trực tiếp');
   assert.doesNotMatch(directButton, /aria-disabled/);
   assert.doesNotMatch(directButton, /\sdisabled=/);
   assert.match(panel, /Retail Print trên Windows/);
-  assert.match(panel, /Mở Retail Print trên Windows → Lấy mã → nhập mã vào đây/);
+  assert.match(pairing, /Mở Retail Print trên Windows → Lấy mã → nhập mã vào đây/);
   assert.match(panel, /<option value="A4">A4<\/option><option value="A5">A5<\/option><option value="80mm">80 mm<\/option><option value="58mm">58 mm<\/option>/);
   assert.match(panel, /A4, A5, 80 mm và 58 mm đều dùng được để định dạng phiếu trên bản web/);
   assert.doesNotMatch(panel, /function systemPaper/);
