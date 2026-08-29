@@ -169,6 +169,7 @@ jobs:
           }
 
           const websiteEnv = await fetchProductionEnv(env.VERCEL_WEBSITE_PROJECT_ID);
+          const orderingEnv = await fetchProductionEnv(env.VERCEL_ORDERING_PROJECT_ID);
           const credentialKeys = [
             'DIALOGFLOW_CX_SERVICE_ACCOUNT_JSON',
             'DIALOGFLOW_SERVICE_ACCOUNT_JSON',
@@ -196,10 +197,25 @@ jobs:
           if (!sharedToken || reservedTokens.includes(sharedToken)) sharedToken = randomBytes(48).toString('base64url');
           console.log(`::add-mask::${sharedToken}`);
 
-          async function upsertEnv(projectId, key, value, type, comment) {
+          async function syncEnv(projectId, existingEntries, key, value, type, comment) {
+            const matches = entriesFor(existingEntries, key);
+            if (matches.length > 1) throw new Error(`vercel_env_count_invalid:${key}:${matches.length}`);
+
+            if (matches.length === 1) {
+              const envId = String(matches[0]?.id || '');
+              if (!envId) throw new Error(`vercel_env_id_missing:${key}`);
+              const endpoint = new URL(`https://api.vercel.com/v9/projects/${encodeURIComponent(projectId)}/env/${encodeURIComponent(envId)}`);
+              endpoint.searchParams.set('teamId', env.VERCEL_ORG_ID);
+              await jsonRequest(endpoint, {
+                method: 'PATCH',
+                headers: vercelHeaders,
+                body: JSON.stringify({ key, value, type, target: ['production'], comment }),
+              });
+              return;
+            }
+
             const endpoint = new URL(`https://api.vercel.com/v10/projects/${encodeURIComponent(projectId)}/env`);
             endpoint.searchParams.set('teamId', env.VERCEL_ORG_ID);
-            endpoint.searchParams.set('upsert', 'true');
             await jsonRequest(endpoint, {
               method: 'POST',
               headers: vercelHeaders,
@@ -207,11 +223,11 @@ jobs:
             });
           }
 
-          await upsertEnv(env.VERCEL_WEBSITE_PROJECT_ID, 'ORDERING_AI_API_TOKEN', sharedToken, 'encrypted', 'Customer Ordering -> Website AI gateway');
-          await upsertEnv(env.VERCEL_WEBSITE_PROJECT_ID, 'COMPANY_API_URL', env.COMPANY_API_URL, 'plain', 'Công Ty API for Ordering gateway auth');
-          await upsertEnv(env.VERCEL_ORDERING_PROJECT_ID, 'ORDERING_AI_API_TOKEN', sharedToken, 'encrypted', 'Customer Ordering AI service capability');
-          await upsertEnv(env.VERCEL_ORDERING_PROJECT_ID, 'CORE_API_BASE_URL', env.COMPANY_API_URL, 'plain', 'Công Ty API');
-          await upsertEnv(env.VERCEL_ORDERING_PROJECT_ID, 'WEBSITE_AI_BASE_URL', env.WEBSITE_AI_BASE_URL, 'plain', 'Shared customer-facing AI gateway');
+          await syncEnv(env.VERCEL_WEBSITE_PROJECT_ID, websiteEnv, 'ORDERING_AI_API_TOKEN', sharedToken, 'encrypted', 'Customer Ordering -> Website AI gateway');
+          await syncEnv(env.VERCEL_WEBSITE_PROJECT_ID, websiteEnv, 'COMPANY_API_URL', env.COMPANY_API_URL, 'plain', 'Công Ty API for Ordering gateway auth');
+          await syncEnv(env.VERCEL_ORDERING_PROJECT_ID, orderingEnv, 'ORDERING_AI_API_TOKEN', sharedToken, 'encrypted', 'Customer Ordering AI service capability');
+          await syncEnv(env.VERCEL_ORDERING_PROJECT_ID, orderingEnv, 'CORE_API_BASE_URL', env.COMPANY_API_URL, 'plain', 'Công Ty API');
+          await syncEnv(env.VERCEL_ORDERING_PROJECT_ID, orderingEnv, 'WEBSITE_AI_BASE_URL', env.WEBSITE_AI_BASE_URL, 'plain', 'Shared customer-facing AI gateway');
 
           const herokuPatch = {};
           if (String(herokuConfig?.ORDERING_AI_API_TOKEN || '') !== sharedToken) herokuPatch.ORDERING_AI_API_TOKEN = sharedToken;
