@@ -1,7 +1,7 @@
 'use client';
 
 import { createIdempotencyKey } from '@npp/contracts';
-import { FormEvent, useRef, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import styles from './company-assistant.module.css';
 
 type ChatMessage = {
@@ -26,6 +26,13 @@ type AssistantResponse = {
 
 type ErrorResponse = { message?: unknown; retryable?: unknown };
 
+const SUGGESTIONS = [
+  'Tóm tắt những điểm cần chú ý hôm nay',
+  'Doanh số và công nợ nào cần theo dõi?',
+  'Tồn kho nào đang có dấu hiệu bất thường?',
+  'MCP và giao hàng có việc gì cần xử lý?',
+] as const;
+
 function safeText(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
@@ -40,21 +47,33 @@ function usageNote(payload: AssistantResponse): string | undefined {
 
 export function CompanyAssistantChat() {
   const conversationRef = useRef('');
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const conversationEndRef = useRef<HTMLDivElement>(null);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [failedAttempt, setFailedAttempt] = useState<PendingAttempt | null>(null);
   const [statusMessage, setStatusMessage] = useState('');
   const [busy, setBusy] = useState(false);
 
+  useEffect(() => {
+    conversationEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [messages, busy, failedAttempt]);
+
   function conversationId(): string {
     if (!conversationRef.current) conversationRef.current = createIdempotencyKey('admin-conversation');
     return conversationRef.current;
   }
 
-  async function sendAttempt(attempt: PendingAttempt) {
+  async function sendAttempt(attempt: PendingAttempt, appendOwner = false) {
     setBusy(true);
     setFailedAttempt(null);
-    setStatusMessage('Đang hỏi Trợ lý Công Ty…');
+    setStatusMessage('Đang tổng hợp số liệu và chuẩn bị câu trả lời…');
+    if (appendOwner) {
+      setMessages((current) => [
+        ...current,
+        { id: `${attempt.idempotencyKey}-owner`, role: 'owner', text: attempt.message },
+      ]);
+    }
     try {
       const response = await fetch('/api/assistant/chat', {
         method: 'POST',
@@ -80,10 +99,10 @@ export function CompanyAssistantChat() {
       }
       setMessages((current) => [
         ...current,
-        { id: attempt.idempotencyKey, role: 'owner', text: attempt.message },
         { id: `${attempt.idempotencyKey}-reply`, role: 'assistant', text: replyText, usageNote: usageNote(payload ?? {}) },
       ]);
-      setInput('');
+      const returnedConversationId = safeText(payload?.conversationId);
+      if (returnedConversationId) conversationRef.current = returnedConversationId;
       setStatusMessage('');
     } catch {
       setStatusMessage('Kết nối tạm thời gián đoạn. Anh có thể thử lại đúng lượt hỏi này.');
@@ -102,57 +121,112 @@ export function CompanyAssistantChat() {
       conversationId: conversationId(),
       idempotencyKey: createIdempotencyKey('admin-assistant'),
     });
-    void sendAttempt(attempt);
+    setInput('');
+    void sendAttempt(attempt, true);
+  }
+
+  function chooseSuggestion(message: string) {
+    if (busy) return;
+    setInput(message);
+    textareaRef.current?.focus();
   }
 
   return (
-    <section className={`card ${styles.workspace}`} aria-label="Trợ lý Công Ty">
-      <div className={styles.intro}>
-        <div>
+    <section className={styles.workspace} aria-label="Trợ lý Công Ty">
+      <header className={styles.hero}>
+        <div className={styles.heroMark} aria-hidden="true">✦</div>
+        <div className={styles.heroCopy}>
           <span className={styles.eyebrow}>Dành cho Chủ Công Ty</span>
-          <h2>Hỏi nhanh, đọc số liệu, chưa cho phép hành động</h2>
-          <p>Giai đoạn đầu chỉ mở quyền đọc. Trợ lý không tự tạo, sửa, duyệt hoặc xóa dữ liệu Công Ty.</p>
+          <h2>Hỏi số liệu nhanh, chưa cho phép hành động</h2>
+          <p>Trợ lý chỉ đọc dữ liệu được cấp quyền để tổng hợp và trả lời. Không tự tạo, sửa, duyệt hoặc xóa dữ liệu Công Ty.</p>
         </div>
-        <span className={styles.readOnlyBadge}>Chỉ đọc</span>
+        <span className={styles.readOnlyBadge}><i aria-hidden="true" />Chỉ đọc</span>
+      </header>
+
+      <div className={styles.suggestions} aria-label="Câu hỏi gợi ý">
+        <span className={styles.suggestionLabel}>Hỏi nhanh</span>
+        <div className={styles.suggestionRail}>
+          {SUGGESTIONS.map((suggestion) => (
+            <button
+              className={styles.suggestionButton}
+              disabled={busy}
+              key={suggestion}
+              onClick={() => chooseSuggestion(suggestion)}
+              type="button"
+            >
+              {suggestion}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div className={styles.conversation} aria-live="polite">
-        {messages.length === 0 ? (
-          <div className={styles.emptyState}>
-            <strong>Có thể bắt đầu bằng một câu hỏi quản trị.</strong>
-            <span>Ví dụ: “Tóm tắt những điểm cần chú ý hôm nay.”</span>
+      <div className={styles.chatPanel}>
+        <div className={styles.conversation} aria-busy={busy} aria-live="polite">
+          {messages.length === 0 && !busy ? (
+            <div className={styles.emptyState}>
+              <span className={styles.emptyMark} aria-hidden="true">✦</span>
+              <strong>Sẵn sàng hỗ trợ anh xem nhanh tình hình Công Ty.</strong>
+              <span>Chọn một câu hỏi gợi ý hoặc nhập nội dung bên dưới.</span>
+            </div>
+          ) : null}
+
+          {messages.map((message) => (
+            <article className={message.role === 'owner' ? styles.ownerMessage : styles.assistantMessage} key={message.id}>
+              <small>{message.role === 'owner' ? 'Anh' : 'Trợ lý Công Ty'}</small>
+              <p>{message.text}</p>
+              {message.usageNote ? <span className={styles.usageNote}>{message.usageNote}</span> : null}
+            </article>
+          ))}
+
+          {busy ? (
+            <article className={`${styles.assistantMessage} ${styles.pendingMessage}`}>
+              <small>Trợ lý Công Ty</small>
+              <div className={styles.pendingRow}>
+                <span className={styles.pendingDots} aria-hidden="true"><i /><i /><i /></span>
+                <span>Đang tổng hợp số liệu…</span>
+              </div>
+              <span className={styles.pendingHint}>Câu hỏi tổng hợp có thể cần vài chục giây.</span>
+            </article>
+          ) : null}
+
+          {statusMessage && !busy ? (
+            <div className={failedAttempt ? styles.errorNotice : styles.statusNotice} role="status">
+              <strong>{failedAttempt ? 'Lượt hỏi chưa hoàn tất' : 'Thông báo'}</strong>
+              <span>{statusMessage}</span>
+              {failedAttempt ? (
+                <button disabled={busy} onClick={() => void sendAttempt(failedAttempt)} type="button">Thử lại lượt này</button>
+              ) : null}
+            </div>
+          ) : null}
+          <div ref={conversationEndRef} />
+        </div>
+
+        <form className={styles.composer} onSubmit={submit}>
+          <div className={styles.composerTopline}>
+            <label htmlFor="company-assistant-message">Câu hỏi cho Trợ lý Công Ty</label>
+            <span>Tối đa 6.000 ký tự</span>
           </div>
-        ) : messages.map((message) => (
-          <article className={message.role === 'owner' ? styles.ownerMessage : styles.assistantMessage} key={message.id}>
-            <small>{message.role === 'owner' ? 'Anh' : 'Trợ lý Công Ty'}</small>
-            <p>{message.text}</p>
-            {message.usageNote ? <span className={styles.usageNote}>{message.usageNote}</span> : null}
-          </article>
-        ))}
+          <div className={styles.composerBox}>
+            <textarea
+              id="company-assistant-message"
+              maxLength={6000}
+              onChange={(event) => setInput(event.target.value)}
+              placeholder="Ví dụ: Tóm tắt những việc cần chú ý hôm nay…"
+              ref={textareaRef}
+              rows={3}
+              value={input}
+            />
+            <button className={styles.sendButton} disabled={busy || !input.trim()} type="submit">
+              <span>{busy ? 'Đang xử lý' : 'Gửi'}</span>
+              <b aria-hidden="true">→</b>
+            </button>
+          </div>
+          <div className={styles.composerMeta}>
+            <span>Chỉ đọc dữ liệu theo quyền Chủ Công Ty.</span>
+            <span>Mỗi lượt hỏi được ghi nhận token và chi phí trong quản lý tín dụng AI.</span>
+          </div>
+        </form>
       </div>
-
-      <form className={styles.composer} onSubmit={submit}>
-        <label htmlFor="company-assistant-message">Nội dung cần hỏi</label>
-        <textarea
-          id="company-assistant-message"
-          maxLength={6000}
-          onChange={(event) => setInput(event.target.value)}
-          placeholder="Nhập câu hỏi quản trị…"
-          rows={4}
-          value={input}
-        />
-        <div className={styles.composerActions}>
-          <span>{statusMessage || 'Mỗi lượt hỏi được ghi nhận token và chi phí vào báo cáo AI / tín dụng.'}</span>
-          <button disabled={busy || !input.trim()} type="submit">{busy ? 'Đang gửi…' : 'Gửi câu hỏi'}</button>
-        </div>
-      </form>
-
-      {failedAttempt ? (
-        <div className={styles.retryBar}>
-          <span>Lượt hỏi chưa hoàn tất.</span>
-          <button disabled={busy} onClick={() => void sendAttempt(failedAttempt)} type="button">Thử lại</button>
-        </div>
-      ) : null}
     </section>
   );
 }
