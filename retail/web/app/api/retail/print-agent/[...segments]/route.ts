@@ -46,12 +46,22 @@ function parts(params: { segments: string[] }) {
   return params.segments.map((part) => String(part));
 }
 
+function uuid(value: string | undefined, label: string) {
+  if (!value || !UUID_PATTERN.test(value)) throw new CompanyGatewayError('INVALID_ID', `${label} không hợp lệ`, 400, false);
+  return value;
+}
+
 export async function GET(request: NextRequest, { params }: { params: { segments: string[] } }) {
   const id = requestId(request);
   const path = parts(params);
   try {
     if (path.length === 1 && path[0] === 'status') {
       const result = await companyRequest<unknown>({ path: '/api/retail/print-agent/status', requestId: id });
+      return json(result.data, result.requestId);
+    }
+    if (path.length === 2 && path[0] === 'jobs') {
+      const jobId = uuid(path[1], 'Mã lệnh in');
+      const result = await companyRequest<unknown>({ path: `/api/retail/print-agent/jobs/${jobId}`, requestId: id });
       return json(result.data, result.requestId);
     }
     throw new CompanyGatewayError('NOT_FOUND', 'Không tìm thấy chức năng yêu cầu', 404, false);
@@ -75,14 +85,9 @@ export async function POST(request: NextRequest, { params }: { params: { segment
     }
 
     if (path.length === 3 && path[0] === 'agents' && path[2] === 'jobs') {
-      const agentId = path[1];
-      if (!UUID_PATTERN.test(agentId)) {
-        throw new CompanyGatewayError('INVALID_PRINT_AGENT_ID', 'Mã Retail Print không hợp lệ', 400, false);
-      }
+      const agentId = uuid(path[1], 'Mã Retail Print');
       const key = request.headers.get('idempotency-key');
-      if (!key) {
-        throw new CompanyGatewayError('MISSING_IDEMPOTENCY_KEY', 'Thiếu khóa chống gửi lệnh in trùng', 400, false);
-      }
+      if (!key) throw new CompanyGatewayError('MISSING_IDEMPOTENCY_KEY', 'Thiếu khóa chống gửi lệnh in trùng', 400, false);
       const result = await companyRequest<unknown>({
         path: `/api/retail/print-agent/agents/${agentId}/jobs`,
         method: 'POST',

@@ -5,9 +5,10 @@ import test from 'node:test';
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 const readRepo = (path) => readFile(new URL(`../../../${path}`, import.meta.url), 'utf8');
 
-test('Retail có contract máy in local, nhớ cấu hình và không gửi máy in lên backend', async () => {
-  const [bridge, panel, workspace] = await Promise.all([
+test('Retail giữ cấu hình máy in trên thiết bị và thêm Retail Print Windows mà không gửi IP lên backend', async () => {
+  const [bridge, webBridge, panel, workspace] = await Promise.all([
     read('lib/printer-bridge.ts'),
+    read('lib/retail-print-web-bridge.ts'),
     read('app/printer-settings-panel.tsx'),
     read('app/retail-workspace.tsx'),
   ]);
@@ -18,9 +19,12 @@ test('Retail có contract máy in local, nhớ cấu hình và không gửi máy
   assert.match(bridge, /copies: safeCopies/);
   assert.match(bridge, /previewBeforePrint/);
   assert.match(bridge, /window\.localStorage\.setItem/);
+  assert.match(panel, /import '\.\.\/lib\/retail-print-web-bridge'/);
   assert.doesNotMatch(bridge, /fetch\(/);
-  assert.match(panel, /Tìm máy in/);
-  assert.match(panel, /Cài đặt nâng cao/);
+  assert.match(webBridge, /retail-print-windows\/1/);
+  assert.doesNotMatch(webBridge, /host:\s*[^n]|port:\s*\d|192\.168\./);
+  assert.match(panel, /Làm mới danh sách/);
+  assert.match(panel, /Mã kết nối/);
   assert.match(panel, /Địa chỉ máy in/);
   assert.match(panel, /Số bản in/);
   assert.match(panel, /Xem trước trước khi in/);
@@ -30,16 +34,15 @@ test('Retail có contract máy in local, nhớ cấu hình và không gửi máy
   assert.match(workspace, /settings\.method === 'DIRECT_WIFI' && settings\.profile && !settings\.previewBeforePrint/);
 });
 
-test('thiết lập in trên web chạm được và cho test đủ A4 A5 80 58', async () => {
+test('thiết lập in web hỗ trợ Retail Print Windows và vẫn cho test hệ thống đủ A4 A5 80 58', async () => {
   const panel = await read('app/printer-settings-panel.tsx');
   const directButton = panel.match(/<button[^>]*aria-checked=\{draft\.method === 'DIRECT_WIFI'\}[^>]*onClick=\{chooseDirectMethod\}[^>]*>/)?.[0] ?? '';
 
-  assert.ok(directButton, 'phải tìm thấy nút In Wi-Fi trực tiếp');
+  assert.ok(directButton, 'phải tìm thấy nút in trực tiếp');
   assert.doesNotMatch(directButton, /aria-disabled/);
   assert.doesNotMatch(directButton, /\sdisabled=/);
-  assert.match(panel, /setDirectHelpOpen\(true\)/);
-  assert.match(panel, /In Wi‑Fi trực tiếp cần ứng dụng Retail trên điện thoại/);
-  assert.match(panel, /Bản web vẫn có thể in thử A4, A5, 80 mm và 58 mm/);
+  assert.match(panel, /Retail Print trên Windows/);
+  assert.match(panel, /Mở Retail Print trên Windows → Lấy mã → nhập mã vào đây/);
   assert.match(panel, /<option value="A4">A4<\/option><option value="A5">A5<\/option><option value="80mm">80 mm<\/option><option value="58mm">58 mm<\/option>/);
   assert.match(panel, /A4, A5, 80 mm và 58 mm đều dùng được để định dạng phiếu trên bản web/);
   assert.doesNotMatch(panel, /function systemPaper/);
@@ -72,9 +75,10 @@ test('in đơn thật bằng hệ thống giữ khổ giấy cho tới khi cửa
 });
 
 test('direct print dùng payload chứng từ chuẩn hóa và fallback hệ thống chỉ khi an toàn', async () => {
-  const [bridge, workspace] = await Promise.all([
+  const [bridge, workspace, webBridge] = await Promise.all([
     read('lib/printer-bridge.ts'),
     read('app/retail-workspace.tsx'),
+    read('lib/retail-print-web-bridge.ts'),
   ]);
 
   assert.match(bridge, /documentType: 'SALES_ORDER' \| 'PRINTER_TEST'/);
@@ -82,11 +86,13 @@ test('direct print dùng payload chứng từ chuẩn hóa và fallback hệ th�
   assert.match(bridge, /safeToFallback/);
   assert.match(workspace, /reason instanceof RetailPrinterError && reason\.safeToFallback/);
   assert.match(workspace, /printBySystem\(settings\.paper\)/);
+  assert.match(webBridge, /PRINT_AGENT_OFFLINE/);
+  assert.match(webBridge, /PRINT_AGENT_NOT_FOUND/);
   assert.doesNotMatch(bridge, /192\.168\./);
   assert.doesNotMatch(bridge, /:9100.*fetch/);
 });
 
-test('iOS shell cấp bridge LAN thật, Local Network permission và raster tiếng Việt cho ESC POS', async () => {
+test('iOS shell vẫn cấp bridge LAN thật, Local Network permission và raster tiếng Việt cho ESC POS', async () => {
   const [nativeBridge, webView, plist, project, scheme] = await Promise.all([
     readRepo('retail/mobile/ios/NPPRetail/RetailPrinterBridge.swift'),
     readRepo('retail/mobile/ios/NPPRetail/RetailWebView.swift'),

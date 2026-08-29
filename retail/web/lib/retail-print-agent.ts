@@ -8,6 +8,17 @@ export type RetailPrintAgent = {
   name: string;
   status: 'ONLINE' | 'OFFLINE';
   lastSeenAt?: string | null;
+  printerName?: string | null;
+  paperWidthMm?: 58 | 80 | null;
+};
+
+export type RetailPrintJobState = {
+  jobId: string;
+  status: 'QUEUED' | 'CLAIMED' | 'COMPLETED' | 'FAILED';
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  createdAt?: string | null;
+  completedAt?: string | null;
 };
 
 type Envelope<T> = {
@@ -63,9 +74,50 @@ export function createRetailPrintJob(
   payload: RetailPrintPayload,
   idempotencyKey = createIdempotencyKey('retail-print-job'),
 ) {
-  return request<{ jobId: string; status: 'QUEUED' }>(`/agents/${encodeURIComponent(agentId)}/jobs`, {
+  return request<{ jobId: string; status: 'QUEUED' | 'CLAIMED' }>(`/agents/${encodeURIComponent(agentId)}/jobs`, {
     method: 'POST',
     headers: { 'Idempotency-Key': idempotencyKey },
     body: JSON.stringify({ payload }),
   });
+}
+
+
+export async function submitRetailPrintJob(agentId: string, payload: RetailPrintPayload) {
+  const idempotencyKey = createIdempotencyKey('retail-print-job');
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return await createRetailPrintJob(agentId, payload, idempotencyKey);
+    } catch (error) {
+      lastError = error;
+      if (!(error instanceof RetailPrintAgentError) || !error.retryable || attempt === 1) throw error;
+      await new Promise((resolve) => window.setTimeout(resolve, 350));
+    }
+  }
+  throw lastError;
+}
+
+export function getRetailPrintJob(jobId: string) {
+  return request<RetailPrintJobState>(`/jobs/${encodeURIComponent(jobId)}`);
+}
+
+export async function waitForRetailPrintJob(jobId: string, timeoutMs = 20_000) {
+  const deadline = Date.now() + Math.max(1_000, Math.min(timeoutMs, 30_000));
+  while (Date.now() < deadline) {
+    const state = await getRetailPrintJob(jobId);
+    if (state.status === 'COMPLETED') return state;
+    if (state.status === 'FAILED') {
+      throw new RetailPrintAgentError(
+        state.errorCode ?? 'PRINTER_SEND_FAILED',
+        state.errorMessage ?? 'Retail Print không in được chứng từ',
+        false,
+      );
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 500));
+  }
+  throw new RetailPrintAgentError(
+    'PRINT_STATUS_UNKNOWN',
+    'Đã gửi lệnh in nhưng chưa nhận được xác nhận. Không tự in lại để tránh trùng phiếu.',
+    false,
+  );
 }
