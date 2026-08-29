@@ -7,7 +7,7 @@ on:
 
 permissions:
   contents: read
-  issues: write
+  issues: read
 
 concurrency:
   group: ordering-ai-production-config
@@ -33,11 +33,6 @@ jobs:
       COMPANY_API_URL: https://hung-phat-945da1547594.herokuapp.com
       WEBSITE_AI_BASE_URL: https://nguyenlieuhungphat.com
       ORDERING_AI_ACTOR_ID: service:ordering-ai
-      DIALOGFLOW_CX_PROJECT_ID: hck-agent-chat-prod
-      DIALOGFLOW_CX_LOCATION: global
-      DIALOGFLOW_CX_AGENT_ID: e326abbf-77f7-4b16-996c-64408c4dd136
-      DIALOGFLOW_CX_AGENT_DISPLAY_NAME: Hưng Phát
-      DIALOGFLOW_CX_LANGUAGE_CODE: vi
     steps:
       - name: Validate exact issue command
         if: github.event_name == 'issue_comment'
@@ -56,22 +51,22 @@ jobs:
           persist-credentials: false
 
       - name: Verify exact origin/main SHA
-        id: target
         shell: bash
         run: |
           set -euo pipefail
           git fetch --prune --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
           test "$(git rev-parse --is-shallow-repository)" = "false"
-          sha="$(git rev-parse HEAD)"
-          test "$sha" = "$(git rev-parse origin/main)"
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
 
       - name: Setup Node 24
         uses: actions/setup-node@v4
         with:
           node-version: 24
 
-      - name: Audit and synchronize Customer Ordering AI production configuration
+      - name: Install pinned Vercel CLI
+        run: npm install --global vercel@58.0.0
+
+      - name: Resolve canonical Ordering token and synchronize plain production URLs
         shell: bash
         env:
           HEROKU_API_KEY: '${{ secrets.HEROKU_API_KEY }}'
@@ -80,20 +75,17 @@ jobs:
           set -euo pipefail
           node --input-type=module <<'NODE'
           import { randomBytes } from 'node:crypto';
+          import { appendFileSync } from 'node:fs';
 
           const env = process.env;
           const required = (value, name) => {
             if (!value) throw new Error(`${name}_missing`);
             return value;
           };
-
           required(env.HEROKU_API_KEY, 'heroku_api_key');
           required(env.VERCEL_TOKEN, 'vercel_token');
           if (env.HEROKU_APP_NAME !== 'hung-phat' || env.HEROKU_APP_NAME === env.HEROKU_FORBIDDEN_APP_NAME) {
             throw new Error('unexpected_heroku_target');
-          }
-          for (const [name, value] of [['company_api_url', env.COMPANY_API_URL], ['website_ai_base_url', env.WEBSITE_AI_BASE_URL]]) {
-            if (!/^https:\/\/[^/]+$/.test(value || '')) throw new Error(`invalid_${name}`);
           }
 
           const herokuHeaders = {
@@ -105,84 +97,21 @@ jobs:
             Authorization: `Bearer ${env.VERCEL_TOKEN}`,
             'Content-Type': 'application/json',
           };
-
           async function jsonRequest(url, options = {}) {
             const response = await fetch(url, options);
             const body = await response.json().catch(() => null);
-            if (!response.ok) {
-              const code = body?.error?.code || body?.id || 'unknown';
-              throw new Error(`provider_request_failed:${response.status}:${code}`);
-            }
+            if (!response.ok) throw new Error(`provider_request_failed:${response.status}:${body?.error?.code || body?.id || 'unknown'}`);
             return body;
           }
-
-          const herokuApp = await jsonRequest(
-            `https://api.heroku.com/apps/${encodeURIComponent(env.HEROKU_APP_NAME)}`,
-            { headers: herokuHeaders },
-          );
-          if (herokuApp?.name !== env.HEROKU_APP_NAME) throw new Error('heroku_app_identity_mismatch');
-
-          async function fetchProject(projectId) {
-            return jsonRequest(
-              `https://api.vercel.com/v9/projects/${encodeURIComponent(projectId)}?teamId=${encodeURIComponent(env.VERCEL_ORG_ID)}`,
-              { headers: vercelHeaders },
-            );
+          async function project(projectId) {
+            return jsonRequest(`https://api.vercel.com/v9/projects/${encodeURIComponent(projectId)}?teamId=${encodeURIComponent(env.VERCEL_ORG_ID)}`, { headers: vercelHeaders });
           }
-          const websiteProject = await fetchProject(env.VERCEL_WEBSITE_PROJECT_ID);
-          const orderingProject = await fetchProject(env.VERCEL_ORDERING_PROJECT_ID);
-          if (websiteProject?.name !== 'nguyenlieuhungphat') throw new Error('website_project_identity_mismatch');
-          if (orderingProject?.name !== 'customer-ordering') throw new Error('ordering_project_identity_mismatch');
-          if ((orderingProject?.rootDirectory || '.') !== 'customer-ordering') throw new Error('ordering_project_root_mismatch');
-          if (websiteProject?.nodeVersion !== '24.x' || orderingProject?.nodeVersion !== '24.x') {
-            throw new Error('unexpected_node_runtime');
-          }
-
-          async function fetchProductionEnv(projectId) {
-            const url = new URL(`https://api.vercel.com/v9/projects/${encodeURIComponent(projectId)}/env`);
-            url.searchParams.set('teamId', env.VERCEL_ORG_ID);
-            url.searchParams.set('decrypt', 'true');
-            url.searchParams.set('source', 'vercel-cli:pull');
-            const body = await jsonRequest(url, { headers: vercelHeaders });
-            const entries = Array.isArray(body) ? body : Array.isArray(body?.envs) ? body.envs : [];
-            return entries.filter((entry) => {
-              const targets = Array.isArray(entry?.target) ? entry.target : [entry?.target].filter(Boolean);
-              return targets.includes('production') && !entry?.gitBranch;
-            });
-          }
-          function entriesFor(entries, key) {
-            return entries.filter((entry) => entry?.key === key);
-          }
-          function valueFor(entries, key) {
-            const matches = entriesFor(entries, key);
-            if (matches.length === 0) return '';
-            const values = [...new Set(matches.map((entry) => typeof entry?.value === 'string' ? entry.value : ''))];
-            if (values.length !== 1) throw new Error(`conflicting_vercel_env:${key}`);
-            return values[0];
-          }
-          function assertSecretMetadata(entries, key) {
-            const matches = entriesFor(entries, key);
-            if (matches.length !== 1) throw new Error(`vercel_secret_metadata_count_invalid:${key}:${matches.length}`);
-            const type = String(matches[0]?.type || '');
-            if (!['encrypted', 'sensitive'].includes(type)) {
-              throw new Error(`vercel_secret_metadata_type_invalid:${key}:${type || 'missing'}`);
-            }
-          }
-
-          const websiteEnv = await fetchProductionEnv(env.VERCEL_WEBSITE_PROJECT_ID);
-          const orderingEnv = await fetchProductionEnv(env.VERCEL_ORDERING_PROJECT_ID);
-          const credentialKeys = [
-            'DIALOGFLOW_CX_SERVICE_ACCOUNT_JSON',
-            'DIALOGFLOW_SERVICE_ACCOUNT_JSON',
-            'GOOGLE_SERVICE_ACCOUNT_JSON',
-          ];
-          const credentialKey = credentialKeys.find((key) => entriesFor(websiteEnv, key).length === 1);
-          if (!credentialKey) throw new Error('website_dialogflow_service_account_missing');
-          assertSecretMetadata(websiteEnv, credentialKey);
-          if (valueFor(websiteEnv, 'DIALOGFLOW_CX_PROJECT_ID') !== env.DIALOGFLOW_CX_PROJECT_ID) throw new Error('website_dialogflow_project_mismatch');
-          if (valueFor(websiteEnv, 'DIALOGFLOW_CX_LOCATION') !== env.DIALOGFLOW_CX_LOCATION) throw new Error('website_dialogflow_location_mismatch');
-          if (valueFor(websiteEnv, 'DIALOGFLOW_CX_AGENT_ID') !== env.DIALOGFLOW_CX_AGENT_ID) throw new Error('website_dialogflow_agent_mismatch');
-          if (valueFor(websiteEnv, 'DIALOGFLOW_CX_AGENT_DISPLAY_NAME') !== env.DIALOGFLOW_CX_AGENT_DISPLAY_NAME) throw new Error('website_dialogflow_name_mismatch');
-          if (valueFor(websiteEnv, 'DIALOGFLOW_CX_LANGUAGE_CODE') !== env.DIALOGFLOW_CX_LANGUAGE_CODE) throw new Error('website_dialogflow_language_mismatch');
+          const website = await project(env.VERCEL_WEBSITE_PROJECT_ID);
+          const ordering = await project(env.VERCEL_ORDERING_PROJECT_ID);
+          if (website?.name !== 'nguyenlieuhungphat') throw new Error('website_project_identity_mismatch');
+          if (ordering?.name !== 'customer-ordering') throw new Error('ordering_project_identity_mismatch');
+          if ((ordering?.rootDirectory || '.') !== 'customer-ordering') throw new Error('ordering_project_root_mismatch');
+          if (website?.nodeVersion !== '24.x' || ordering?.nodeVersion !== '24.x') throw new Error('unexpected_node_runtime');
 
           const herokuConfigUrl = `https://api.heroku.com/apps/${encodeURIComponent(env.HEROKU_APP_NAME)}/config-vars`;
           const herokuConfig = await jsonRequest(herokuConfigUrl, { headers: herokuHeaders });
@@ -197,129 +126,143 @@ jobs:
           if (!sharedToken || reservedTokens.includes(sharedToken)) sharedToken = randomBytes(48).toString('base64url');
           console.log(`::add-mask::${sharedToken}`);
 
-          async function syncEnv(projectId, existingEntries, key, value, type, comment) {
-            const matches = entriesFor(existingEntries, key);
-            if (matches.length > 1) throw new Error(`vercel_env_count_invalid:${key}:${matches.length}`);
-
-            if (matches.length === 1) {
-              const envId = String(matches[0]?.id || '');
-              if (!envId) throw new Error(`vercel_env_id_missing:${key}`);
-              const endpoint = new URL(`https://api.vercel.com/v9/projects/${encodeURIComponent(projectId)}/env/${encodeURIComponent(envId)}`);
-              endpoint.searchParams.set('teamId', env.VERCEL_ORG_ID);
-              await jsonRequest(endpoint, {
-                method: 'PATCH',
-                headers: vercelHeaders,
-                body: JSON.stringify({ key, value, type, target: ['production'], comment }),
-              });
-              return;
-            }
-
-            const endpoint = new URL(`https://api.vercel.com/v10/projects/${encodeURIComponent(projectId)}/env`);
-            endpoint.searchParams.set('teamId', env.VERCEL_ORG_ID);
-            await jsonRequest(endpoint, {
-              method: 'POST',
-              headers: vercelHeaders,
-              body: JSON.stringify([{ key, value, type, target: ['production'], comment }]),
-            });
-          }
-
-          await syncEnv(env.VERCEL_WEBSITE_PROJECT_ID, websiteEnv, 'COMPANY_API_URL', env.COMPANY_API_URL, 'plain', 'Công Ty API for Ordering gateway auth');
-          await syncEnv(env.VERCEL_ORDERING_PROJECT_ID, orderingEnv, 'ORDERING_AI_API_TOKEN', sharedToken, 'encrypted', 'Customer Ordering AI service capability');
-          await syncEnv(env.VERCEL_ORDERING_PROJECT_ID, orderingEnv, 'CORE_API_BASE_URL', env.COMPANY_API_URL, 'plain', 'Công Ty API');
-          await syncEnv(env.VERCEL_ORDERING_PROJECT_ID, orderingEnv, 'WEBSITE_AI_BASE_URL', env.WEBSITE_AI_BASE_URL, 'plain', 'Shared customer-facing AI gateway');
-
           const herokuPatch = {};
           if (String(herokuConfig?.ORDERING_AI_API_TOKEN || '') !== sharedToken) herokuPatch.ORDERING_AI_API_TOKEN = sharedToken;
           if (String(herokuConfig?.ORDERING_AI_ACTOR_ID || '') !== env.ORDERING_AI_ACTOR_ID) herokuPatch.ORDERING_AI_ACTOR_ID = env.ORDERING_AI_ACTOR_ID;
-          if (Object.keys(herokuPatch).length > 0) {
+          if (Object.keys(herokuPatch).length) {
             await jsonRequest(herokuConfigUrl, {
-              method: 'PATCH',
-              headers: herokuHeaders,
-              body: JSON.stringify(herokuPatch),
+              method: 'PATCH', headers: herokuHeaders, body: JSON.stringify(herokuPatch),
             });
           }
 
-          const verifiedHeroku = await jsonRequest(herokuConfigUrl, { headers: herokuHeaders });
-          if (verifiedHeroku?.ORDERING_AI_API_TOKEN !== sharedToken) throw new Error('heroku_ordering_token_verification_failed');
-          if (verifiedHeroku?.ORDERING_AI_ACTOR_ID !== env.ORDERING_AI_ACTOR_ID) throw new Error('heroku_ordering_actor_verification_failed');
+          async function productionEnv(projectId) {
+            const url = new URL(`https://api.vercel.com/v9/projects/${encodeURIComponent(projectId)}/env`);
+            url.searchParams.set('teamId', env.VERCEL_ORG_ID);
+            url.searchParams.set('decrypt', 'true');
+            url.searchParams.set('source', 'vercel-cli:pull');
+            const body = await jsonRequest(url, { headers: vercelHeaders });
+            const entries = Array.isArray(body) ? body : Array.isArray(body?.envs) ? body.envs : [];
+            return entries.filter((entry) => {
+              const targets = Array.isArray(entry?.target) ? entry.target : [entry?.target].filter(Boolean);
+              return targets.includes('production') && !entry?.gitBranch;
+            });
+          }
+          const websiteEnv = await productionEnv(env.VERCEL_WEBSITE_PROJECT_ID);
+          const orderingEnv = await productionEnv(env.VERCEL_ORDERING_PROJECT_ID);
+          const entriesFor = (entries, key) => entries.filter((entry) => entry?.key === key);
 
-          const verifiedWebsite = await fetchProductionEnv(env.VERCEL_WEBSITE_PROJECT_ID);
-          const verifiedOrdering = await fetchProductionEnv(env.VERCEL_ORDERING_PROJECT_ID);
-          assertSecretMetadata(verifiedOrdering, 'ORDERING_AI_API_TOKEN');
-          const orderingToken = valueFor(verifiedOrdering, 'ORDERING_AI_API_TOKEN').trim();
-          if (!orderingToken) throw new Error('ordering_token_verification_failed');
-          console.log(`::add-mask::${orderingToken}`);
-          if (valueFor(verifiedWebsite, 'COMPANY_API_URL').replace(/\/$/, '') !== env.COMPANY_API_URL) throw new Error('website_company_api_url_verification_failed');
-          if (valueFor(verifiedOrdering, 'CORE_API_BASE_URL').replace(/\/$/, '') !== env.COMPANY_API_URL) throw new Error('ordering_api_url_verification_failed');
-          if (valueFor(verifiedOrdering, 'WEBSITE_AI_BASE_URL').replace(/\/$/, '') !== env.WEBSITE_AI_BASE_URL) throw new Error('ordering_gateway_url_verification_failed');
-
-          async function waitHealth(path) {
-            const deadline = Date.now() + 180_000;
-            let last = 0;
-            while (Date.now() < deadline) {
-              const response = await fetch(`${env.COMPANY_API_URL}${path}`, { signal: AbortSignal.timeout(10_000) }).catch(() => null);
-              last = response?.status || 0;
-              if (last === 200) return;
-              await new Promise((resolve) => setTimeout(resolve, 3000));
+          async function syncPlain(projectId, entries, key, value, comment) {
+            const matches = entriesFor(entries, key);
+            if (matches.length > 1) throw new Error(`vercel_env_count_invalid:${key}:${matches.length}`);
+            if (matches.length === 1) {
+              const id = String(matches[0]?.id || '');
+              if (!id) throw new Error(`vercel_env_id_missing:${key}`);
+              const url = new URL(`https://api.vercel.com/v9/projects/${encodeURIComponent(projectId)}/env/${encodeURIComponent(id)}`);
+              url.searchParams.set('teamId', env.VERCEL_ORG_ID);
+              await jsonRequest(url, {
+                method: 'PATCH', headers: vercelHeaders,
+                body: JSON.stringify({ key, value, type: 'plain', target: ['production'], comment }),
+              });
+              return;
             }
-            throw new Error(`company_health_failed:${path}:${last || 'none'}`);
-          }
-          await waitHealth('/health/live');
-          await waitHealth('/health/ready');
-
-          const gatewayProbeUrl = new URL('/api/ai/ordering-gateway-auth', env.COMPANY_API_URL);
-          const gatewayProbeResponse = await fetch(gatewayProbeUrl, {
-            headers: { authorization: `Bearer ${orderingToken}` },
-            signal: AbortSignal.timeout(15_000),
-          });
-          const gatewayProbeBody = await gatewayProbeResponse.json().catch(() => null);
-          if (
-            gatewayProbeResponse.status !== 200 ||
-            gatewayProbeBody?.data?.authorized !== true ||
-            gatewayProbeBody?.data?.capability !== 'ordering-ai'
-          ) {
-            throw new Error(`ordering_gateway_auth_probe_failed:${gatewayProbeResponse.status}:${gatewayProbeBody?.error?.code || 'unknown'}`);
+            const url = new URL(`https://api.vercel.com/v10/projects/${encodeURIComponent(projectId)}/env`);
+            url.searchParams.set('teamId', env.VERCEL_ORG_ID);
+            await jsonRequest(url, {
+              method: 'POST', headers: vercelHeaders,
+              body: JSON.stringify([{ key, value, type: 'plain', target: ['production'], comment }]),
+            });
           }
 
-          const probeUrl = new URL('/api/ai/ordering-context', env.COMPANY_API_URL);
-          probeUrl.searchParams.set('customerCode', '__ordering_config_probe__');
-          const probeResponse = await fetch(probeUrl, {
-            headers: { authorization: `Bearer ${orderingToken}` },
-            signal: AbortSignal.timeout(15_000),
+          await syncPlain(env.VERCEL_WEBSITE_PROJECT_ID, websiteEnv, 'COMPANY_API_URL', env.COMPANY_API_URL, 'Công Ty API for Ordering gateway');
+          await syncPlain(env.VERCEL_ORDERING_PROJECT_ID, orderingEnv, 'CORE_API_BASE_URL', env.COMPANY_API_URL, 'Công Ty API');
+          await syncPlain(env.VERCEL_ORDERING_PROJECT_ID, orderingEnv, 'WEBSITE_AI_BASE_URL', env.WEBSITE_AI_BASE_URL, 'Website AI gateway');
+
+          appendFileSync(process.env.GITHUB_ENV, `ORDERING_SHARED_TOKEN=${sharedToken}\n`);
+          NODE
+
+      - name: Update Customer Ordering production capability token with Vercel CLI
+        shell: bash
+        env:
+          VERCEL_TOKEN: '${{ secrets.VERCEL_TOKEN }}'
+        run: |
+          set -euo pipefail
+          export VERCEL_ORG_ID
+          export VERCEL_PROJECT_ID="$VERCEL_ORDERING_PROJECT_ID"
+          printf '%s\n' "$ORDERING_SHARED_TOKEN" | vercel env update ORDERING_AI_API_TOKEN production --sensitive --token "$VERCEL_TOKEN"
+
+      - name: Verify production runtime contract end to end
+        shell: bash
+        env:
+          HEROKU_API_KEY: '${{ secrets.HEROKU_API_KEY }}'
+          VERCEL_TOKEN: '${{ secrets.VERCEL_TOKEN }}'
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const env = process.env;
+          const herokuHeaders = {
+            Accept: 'application/vnd.heroku+json; version=3',
+            Authorization: `Bearer ${env.HEROKU_API_KEY}`,
+          };
+          const vercelHeaders = { Authorization: `Bearer ${env.VERCEL_TOKEN}` };
+          async function jsonRequest(url, options = {}) {
+            const response = await fetch(url, options);
+            const body = await response.json().catch(() => null);
+            if (!response.ok) throw new Error(`provider_request_failed:${response.status}:${body?.error?.code || 'unknown'}`);
+            return body;
+          }
+          async function productionEnv(projectId) {
+            const url = new URL(`https://api.vercel.com/v9/projects/${encodeURIComponent(projectId)}/env`);
+            url.searchParams.set('teamId', env.VERCEL_ORG_ID);
+            url.searchParams.set('decrypt', 'true');
+            url.searchParams.set('source', 'vercel-cli:pull');
+            const body = await jsonRequest(url, { headers: vercelHeaders });
+            const entries = Array.isArray(body) ? body : Array.isArray(body?.envs) ? body.envs : [];
+            return entries.filter((entry) => {
+              const targets = Array.isArray(entry?.target) ? entry.target : [entry?.target].filter(Boolean);
+              return targets.includes('production') && !entry?.gitBranch;
+            });
+          }
+          const valueFor = (entries, key) => {
+            const matches = entries.filter((entry) => entry?.key === key);
+            if (matches.length !== 1) throw new Error(`vercel_env_count_invalid:${key}:${matches.length}`);
+            return String(matches[0]?.value || '');
+          };
+
+          const herokuConfig = await jsonRequest(`https://api.heroku.com/apps/${encodeURIComponent(env.HEROKU_APP_NAME)}/config-vars`, { headers: herokuHeaders });
+          const orderingEnv = await productionEnv(env.VERCEL_ORDERING_PROJECT_ID);
+          const websiteEnv = await productionEnv(env.VERCEL_WEBSITE_PROJECT_ID);
+          const orderingToken = valueFor(orderingEnv, 'ORDERING_AI_API_TOKEN').trim();
+          console.log(`::add-mask::${orderingToken}`);
+          if (!orderingToken) throw new Error('ordering_token_missing_after_update');
+          if (orderingToken !== String(herokuConfig?.ORDERING_AI_API_TOKEN || '')) throw new Error('ordering_token_runtime_mismatch');
+          if (valueFor(orderingEnv, 'CORE_API_BASE_URL').replace(/\/$/, '') !== env.COMPANY_API_URL) throw new Error('ordering_api_url_mismatch');
+          if (valueFor(orderingEnv, 'WEBSITE_AI_BASE_URL').replace(/\/$/, '') !== env.WEBSITE_AI_BASE_URL) throw new Error('ordering_website_url_mismatch');
+          if (valueFor(websiteEnv, 'COMPANY_API_URL').replace(/\/$/, '') !== env.COMPANY_API_URL) throw new Error('website_company_api_url_mismatch');
+
+          for (const path of ['/health/live', '/health/ready']) {
+            const response = await fetch(`${env.COMPANY_API_URL}${path}`, { signal: AbortSignal.timeout(15_000) });
+            if (response.status !== 200) throw new Error(`company_health_failed:${path}:${response.status}`);
+          }
+
+          const gateway = await fetch(new URL('/api/ai/ordering-gateway-auth', env.COMPANY_API_URL), {
+            headers: { authorization: `Bearer ${orderingToken}` }, signal: AbortSignal.timeout(15_000),
           });
-          const probeBody = await probeResponse.json().catch(() => null);
-          if (probeResponse.status !== 404 || probeBody?.error?.code !== 'AI_ORDERING_CUSTOMER_NOT_FOUND') {
-            throw new Error(`ordering_service_probe_failed:${probeResponse.status}:${probeBody?.error?.code || 'unknown'}`);
+          const gatewayBody = await gateway.json().catch(() => null);
+          if (gateway.status !== 200 || gatewayBody?.data?.authorized !== true || gatewayBody?.data?.capability !== 'ordering-ai') {
+            throw new Error(`ordering_gateway_auth_probe_failed:${gateway.status}:${gatewayBody?.error?.code || 'unknown'}`);
+          }
+
+          const contextUrl = new URL('/api/ai/ordering-context', env.COMPANY_API_URL);
+          contextUrl.searchParams.set('customerCode', '__ordering_config_probe__');
+          const context = await fetch(contextUrl, {
+            headers: { authorization: `Bearer ${orderingToken}` }, signal: AbortSignal.timeout(15_000),
+          });
+          const contextBody = await context.json().catch(() => null);
+          if (context.status !== 404 || contextBody?.error?.code !== 'AI_ORDERING_CUSTOMER_NOT_FOUND') {
+            throw new Error(`ordering_service_probe_failed:${context.status}:${contextBody?.error?.code || 'unknown'}`);
           }
 
           console.log('ORDERING_AI_CONFIG=success');
-          console.log('ORDERING_AI_GATEWAY=website-runtime');
           console.log('ORDERING_AI_GATEWAY_AUTH=success');
           console.log('ORDERING_AI_BACKEND_TOKEN=success');
-          console.log('ORDERING_AI_DIALOGFLOW_CREDENTIAL_COPY=disabled');
           NODE
-
-      - name: Publish sanitized production configuration evidence
-        if: success()
-        shell: bash
-        env:
-          GH_TOKEN: '${{ github.token }}'
-          TARGET_SHA: '${{ steps.target.outputs.sha }}'
-        run: |
-          set -euo pipefail
-          body="$(cat <<EOF
-          ## Customer Ordering AI production config gate — success
-
-          ORDERING_AI_CONFIG=success
-          ORDERING_AI_GATEWAY=website-runtime
-          ORDERING_AI_GATEWAY_AUTH=success
-          ORDERING_AI_BACKEND_TOKEN=success
-          ORDERING_AI_DIALOGFLOW_CREDENTIAL_COPY=disabled
-          SOURCE_SHA=$TARGET_SHA
-          GITHUB_RUN_ID=$GITHUB_RUN_ID
-          EOF
-          )"
-          gh api --method POST \
-            "repos/$GITHUB_REPOSITORY/issues/764/comments" \
-            -f body="$body" \
-            >/dev/null
