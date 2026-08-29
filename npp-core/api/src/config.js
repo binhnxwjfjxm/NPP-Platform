@@ -242,6 +242,21 @@ export function loadConfig(envInput) {
     ? validateServiceActorId(configuredWebsiteAiActorId, 'WEBSITE_AI_ACTOR_ID', nodeEnv, 'service:website-ai')
     : '';
 
+  const orderingAiApiToken = text(env.ORDERING_AI_API_TOKEN);
+  const configuredOrderingAiActorId = text(env.ORDERING_AI_ACTOR_ID);
+  if (!orderingAiApiToken && configuredOrderingAiActorId) {
+    fail('incomplete_ordering_ai_config', 'ORDERING_AI_API_TOKEN is required when ORDERING_AI_ACTOR_ID is configured');
+  }
+  if (orderingAiApiToken) {
+    validateNamedToken(orderingAiApiToken, 'ORDERING_AI_API_TOKEN', nodeEnv);
+    if ([backendApiToken, mcpOnboardingApiToken, mcpSalesApiToken, websiteAiApiToken].includes(orderingAiApiToken)) {
+      fail('ordering_ai_token_reuse_forbidden', 'ORDERING_AI_API_TOKEN must differ from other backend tokens');
+    }
+  }
+  const orderingAiActorId = orderingAiApiToken
+    ? validateServiceActorId(configuredOrderingAiActorId, 'ORDERING_AI_ACTOR_ID', nodeEnv, 'service:ordering-ai')
+    : '';
+
   const deliveryFrontendApiToken = text(env.DELIVERY_FRONTEND_API_TOKEN);
   const configuredDeliveryFrontendActorId = text(env.DELIVERY_FRONTEND_ACTOR_ID);
   const configuredDeliveryFrontendWarehouseIds = text(env.DELIVERY_FRONTEND_WAREHOUSE_IDS);
@@ -258,7 +273,7 @@ export function loadConfig(envInput) {
   }
   if (deliveryFrontendApiToken) {
     validateNamedToken(deliveryFrontendApiToken, 'DELIVERY_FRONTEND_API_TOKEN', nodeEnv);
-    if ([backendApiToken, mcpOnboardingApiToken, mcpSalesApiToken, websiteAiApiToken].includes(deliveryFrontendApiToken)) {
+    if ([backendApiToken, mcpOnboardingApiToken, mcpSalesApiToken, websiteAiApiToken, orderingAiApiToken].includes(deliveryFrontendApiToken)) {
       fail('delivery_frontend_token_reuse_forbidden', 'DELIVERY_FRONTEND_API_TOKEN must differ from other backend tokens');
     }
   }
@@ -318,6 +333,8 @@ export function loadConfig(envInput) {
     mcpSalesWarehouseIds,
     websiteAiApiToken,
     websiteAiActorId,
+    orderingAiApiToken,
+    orderingAiActorId,
     deliveryFrontendApiToken,
     deliveryFrontendActorId,
     deliveryFrontendWarehouseIds,
@@ -345,6 +362,7 @@ export function getSanitizedConfig(config) {
     mcpSalesConfigured: Boolean(config.mcpSalesApiToken),
     mcpSalesWarehouseScopeCount: config.mcpSalesWarehouseIds.length,
     websiteAiConfigured: Boolean(config.websiteAiApiToken),
+    orderingAiConfigured: Boolean(config.orderingAiApiToken),
     deliveryFrontendConfigured: Boolean(config.deliveryFrontendApiToken),
     deliveryFrontendWarehouseScopeCount: config.deliveryFrontendWarehouseIds.length,
     databaseSslMode: config.databaseSslMode,
