@@ -194,6 +194,9 @@ function parseCatalogQuery(url) {
   const offset = Number(url.searchParams.get('offset') ?? 0);
   return {
     search: (url.searchParams.get('search') ?? '').slice(0, 256),
+    categoryId: (url.searchParams.get('categoryId') ?? '').trim() || null,
+    purchaseMode: (url.searchParams.get('purchaseMode') ?? '').trim().toLowerCase() || null,
+    includeCategories: url.searchParams.get('includeCategories') === '1',
     limit: Number.isFinite(limit) ? Math.max(1, Math.min(50, Math.trunc(limit))) : 50,
     offset: Number.isFinite(offset) ? Math.max(0, Math.trunc(offset)) : 0,
   };
@@ -477,7 +480,7 @@ export async function handleCustomerPortalRoutes(req, res, options) {
   }
   if (req.method === 'GET' && url.pathname === '/api/customer-portal/catalog') {
     const result = await service.listPortalCatalog(options.getPool(), { requestContext, membership, ...parseCatalogQuery(url) });
-    result.ok ? sendSuccess(res, { items: result.items, limit: result.limit, offset: result.offset, hasMore: result.hasMore }, options.requestId, options.receivedAt) : sendServiceError(res, result, options);
+    result.ok ? sendSuccess(res, { items: result.items, categories: result.categories, limit: result.limit, offset: result.offset, hasMore: result.hasMore }, options.requestId, options.receivedAt) : sendServiceError(res, result, options);
     return true;
   }
   if (req.method === 'GET' && url.pathname === '/api/customer-portal/orders') {
