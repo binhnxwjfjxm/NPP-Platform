@@ -4,7 +4,7 @@ import { logGatewayFailure } from './gateway-diagnostics';
 import { requireNppWorkforceSessionToken } from './internal-auth-client';
 import { CustomerGatewayError } from './customer-gateway';
 
-const REQUEST_TIMEOUT_MS = 8_000;
+const REQUEST_TIMEOUT_MS = 60_000;
 type Method = 'POST' | 'PATCH';
 type CoreEnvelope<T> = { data?: T; error?: { code?: string; message?: string; retryable?: boolean; details?: unknown } };
 

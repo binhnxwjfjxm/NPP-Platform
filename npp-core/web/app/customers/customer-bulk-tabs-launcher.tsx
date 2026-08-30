@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import CustomerBulkWorkspace from './customer-bulk-workspace';
 
@@ -10,6 +10,11 @@ export default function CustomerBulkTabsLauncher() {
   const [mode, setMode] = useState<BulkMode>(null);
   const [tabHost, setTabHost] = useState<HTMLElement | null>(null);
   const [contentHost, setContentHost] = useState<HTMLElement | null>(null);
+  const modeRef = useRef<BulkMode>(null);
+
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
 
   useEffect(() => {
     const root = document.querySelector('[data-testid="customers-page"]');
@@ -28,7 +33,13 @@ export default function CustomerBulkTabsLauncher() {
     nextContentHost.dataset.customerBulkHost = 'true';
     tabs.insertAdjacentElement('afterend', nextContentHost);
 
-    const clearBulk = () => setMode(null);
+    const clearBulk = () => {
+      if (modeRef.current !== null) {
+        window.location.reload();
+        return;
+      }
+      setMode(null);
+    };
     existingButtons[0].addEventListener('click', clearBulk);
     existingButtons[1].addEventListener('click', clearBulk);
     setTabHost(nextTabHost);

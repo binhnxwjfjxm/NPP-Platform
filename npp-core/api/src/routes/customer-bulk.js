@@ -21,6 +21,20 @@ async function payload(req, res, context) {
   }
 }
 
+function invalidExpectedUpdatedAtRows(body) {
+  if (!Array.isArray(body?.rows)) return [];
+  const invalidRows = [];
+  for (let index = 0; index < body.rows.length; index += 1) {
+    const row = body.rows[index];
+    const value = row?.expectedUpdatedAt;
+    if (value === undefined || value === null || value === '') continue;
+    if (typeof value !== 'string' || Number.isNaN(new Date(value).getTime())) {
+      invalidRows.push(Number.isInteger(row?.rowNumber) && row.rowNumber > 0 ? row.rowNumber : index + 1);
+    }
+  }
+  return invalidRows;
+}
+
 function requireIdempotency(req) {
   const raw = req.headers['idempotency-key'];
   if (raw === undefined || raw === null) return { ok: false, code: 'MISSING_IDEMPOTENCY_KEY', message: 'Idempotency-Key header is required' };
@@ -124,6 +138,25 @@ export async function handleCustomerBulkRoutes(req, res, options) {
   }
   const body = await payload(req, res, context);
   if (body === null) return true;
+
+  if (pathname === '/api/customers/bulk-update' && method === 'PATCH' && body.dryRun !== true) {
+    const invalidRows = invalidExpectedUpdatedAtRows(body);
+    if (invalidRows.length > 0) {
+      sendError(
+        res,
+        apiError(
+          'INVALID_EXPECTED_UPDATED_AT',
+          'Mốc thời gian đối chiếu không hợp lệ, hãy xem trước lại',
+          { rows: invalidRows },
+          false,
+          400,
+        ),
+        context.requestId,
+        context.receivedAt,
+      );
+      return true;
+    }
+  }
 
   if (pathname === '/api/customers/identify' && method === 'POST') {
     try {

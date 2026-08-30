@@ -52,3 +52,18 @@ test('Web proxy — có đủ ba endpoint bulk khách hàng', () => {
   assert.match(gateway, /\/api\/customers\/import/);
   assert.match(gateway, /\/api\/customers\/bulk-update/);
 });
+
+test('Bulk KH — timeout đủ cho lô lớn và quay lại danh sách sẽ nạp dữ liệu mới', () => {
+  const gateway = read('lib/customer-bulk-gateway.ts');
+  const launcher = read('app/customers/customer-bulk-tabs-launcher.tsx');
+  assert.match(gateway, /REQUEST_TIMEOUT_MS = 60_000/);
+  assert.match(launcher, /modeRef\.current/);
+  assert.match(launcher, /window\.location\.reload\(\)/);
+});
+
+test('Bulk KH — apply từ API chặn mốc thời gian đối chiếu sai trước khi vào service', () => {
+  const route = read('../api/src/routes/customer-bulk.js');
+  assert.match(route, /invalidExpectedUpdatedAtRows/);
+  assert.match(route, /INVALID_EXPECTED_UPDATED_AT/);
+  assert.match(route, /Number\.isNaN\(new Date\(value\)\.getTime\(\)\)/);
+});
