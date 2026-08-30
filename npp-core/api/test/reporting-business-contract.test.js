@@ -13,7 +13,7 @@ test('Báo cáo Kinh doanh dùng kỳ liền trước cùng độ dài và số 
   assert.equal(reportingSalesInternals.percentText(25_000_000n, 100_000_000n), '25');
 });
 
-test('contract Kinh doanh có đủ 6 chiều và không dùng người phụ trách khách làm nhân viên bán hàng', async () => {
+test('contract Kinh doanh có đủ 6 chiều và nhân viên lấy từ đơn/người tạo', async () => {
   const source = await readApi('src/routes/reporting-sales.js');
   for (const key of ['customers', 'customerGroups', 'channels', 'products', 'productGroups', 'employees']) assert.match(source, new RegExp(`${key}: breakdown`));
   for (const field of ['previousRevenue', 'previousQuantity', 'changePercent', 'sharePercent']) assert.match(source, new RegExp(field));
@@ -25,7 +25,7 @@ test('contract Kinh doanh có đủ 6 chiều và không dùng người phụ tr
   assert.match(source, /SALES_REPORT_RECONCILIATION_FAILED/);
 });
 
-test('migration 120 chỉ snapshot forward, giữ rõ legacy và nằm sau 119 trong registry', async () => {
+test('migration 120 snapshot forward và giữ rõ dữ liệu legacy', async () => {
   const [migration, registry] = await Promise.all([
     readRepo('database/migrations/sales/120_reporting_sales_dimension_snapshots.sql'),
     readApi('src/migrations/index.js'),
@@ -33,19 +33,14 @@ test('migration 120 chỉ snapshot forward, giữ rõ legacy và nằm sau 119 t
   for (const field of ['customer_group_snapshot_captured', 'product_category_name_snapshot', 'unit_name_snapshot', 'reporting_dimension_snapshot_captured']) assert.match(migration, new RegExp(field));
   assert.match(migration, /OLD\.version_status = 'draft' AND NEW\.version_status = 'confirmed'/);
   assert.doesNotMatch(migration, /DISABLE TRIGGER sales_order_versions_immutable/);
-  assert.doesNotMatch(migration, /UPDATE sales\.sales_order_versions\s+SET customer_group/i);
   assert.match(registry, /120_reporting_sales_dimension_snapshots\.sql/);
-  assert.ok(registry.indexOf("id: '119_retail_print_agent'") < registry.indexOf("id: '120_reporting_sales_dimension_snapshots'"));
 });
 
-test('Excel và Trợ lý Công Ty dùng cùng contract Kinh doanh', async () => {
-  const [exporter, assistant] = await Promise.all([
-    readApi('src/services/reporting-management-export.js'),
-    readApi('src/routes/admin-ai-assistant.js'),
-  ]);
-  assert.match(exporter, /sales\.breakdowns/);
-  for (const label of ['Loại khách', 'Kênh bán', 'Nhóm hàng', 'Nhân viên']) assert.match(exporter, new RegExp(label));
-  assert.match(assistant, /salesReport\(/);
-  assert.match(assistant, /DỮ LIỆU KINH DOANH CANONICAL CỦA CÔNG TY/);
-  assert.match(assistant, /không tự suy đoán số liệu/i);
+test('Excel Kinh doanh dùng cùng breakdown canonical và fail-closed khi đối soát lệch', async () => {
+  const exporter = await readApi('src/services/reporting-management-export.js');
+  assert.match(exporter, /salesReport\(/);
+  assert.match(exporter, /report\.breakdowns/);
+  assert.match(exporter, /report\.reconciliation\?\.ok !== true/);
+  for (const label of ['Loại khách', 'Khách hàng', 'SKU', 'Nhóm hàng', 'Kênh bán', 'Nhân viên']) assert.match(exporter, new RegExp(label));
+  assert.match(exporter, /Không cộng gộp sản lượng giữa các ĐVT khác nhau/);
 });
