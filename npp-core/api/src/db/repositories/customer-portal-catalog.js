@@ -122,12 +122,42 @@ export async function searchPortalCatalogOptions(client, {
 
 export async function listPortalCatalogCategories(client, { installationId }) {
   const result = await client.query(
-    `SELECT id, code, name, parent_category_id, sort_order
-     FROM shared.product_categories
-     WHERE installation_id = $1
-       AND is_active = true
-       AND is_catalog_visible = true
-     ORDER BY sort_order ASC, code ASC, id ASC`,
+    `WITH RECURSIVE eligible_categories AS (
+       SELECT DISTINCT p.category_id AS id
+       FROM shared.product_variants pv
+       JOIN shared.products p
+         ON p.installation_id = pv.installation_id
+        AND p.id = pv.product_id
+       LEFT JOIN shared.units_of_measure u
+         ON u.installation_id = pv.installation_id
+        AND u.id = pv.unit_id
+       WHERE pv.installation_id = $1
+         AND p.is_active = true
+         AND p.is_orderable = true
+         AND pv.is_active = true
+         AND pv.is_sellable = true
+         AND pv.unit_id IS NOT NULL
+         AND u.is_active = true
+         AND pv.conversion_to_base IS NOT NULL
+         AND pv.conversion_to_base > 0
+         AND p.category_id IS NOT NULL
+     ), category_tree AS (
+       SELECT eligible.id
+       FROM eligible_categories eligible
+       UNION
+       SELECT category.parent_category_id
+       FROM shared.product_categories category
+       JOIN category_tree current ON current.id = category.id
+       WHERE category.installation_id = $1
+         AND category.parent_category_id IS NOT NULL
+     )
+     SELECT category.id, category.code, category.name, category.parent_category_id, category.sort_order
+     FROM shared.product_categories category
+     JOIN category_tree eligible ON eligible.id = category.id
+     WHERE category.installation_id = $1
+       AND category.is_active = true
+       AND category.is_catalog_visible = true
+     ORDER BY category.sort_order ASC, category.code ASC, category.id ASC`,
     [installationId],
   );
   return result.rows;
