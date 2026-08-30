@@ -1,36 +1,93 @@
-import { CoreDownloadError, requestCoreReportDownload } from '../../../lib/core-download';
+import Link from 'next/link';
+import { AdminIconTabs } from '../admin-icon-tabs';
+import { AdminShell } from '../admin-shell';
+import {
+  AdminFilterChip,
+  AdminKpiCard,
+  AdminKpiGrid,
+  AdminStatePanel,
+  AdminStatusBadge,
+  AdminToolbar,
+  type AdminStateTone,
+  type AdminStatusTone,
+} from '../admin-ui-primitives';
+import {
+  normalizeReportPeriod,
+  reportPeriods,
+  resolveReportRange,
+  type ReportDomain,
+  type ReportState,
+} from './report-data';
+import { loadLotCPresentation } from './report-lot-c-data';
+import styles from './report-center.module.css';
 
-const REPORTS = new Set(['executive', 'sales-profit', 'debt', 'inventory', 'delivery-cod', 'mcp', 'people', 'decisions']);
-const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const tabs = [
+  { key: 'executive', label: 'Điều hành', icon: 'overview' as const },
+  { key: 'sales', label: 'Kinh doanh', icon: 'tag' as const },
+  { key: 'profit', label: 'Lợi nhuận', icon: 'coin' as const },
+  { key: 'debt', label: 'Công nợ', icon: 'coin' as const },
+  { key: 'inventory', label: 'Kho', icon: 'warehouse' as const },
+  { key: 'delivery-cod', label: 'Giao vận & COD', icon: 'truck' as const },
+  { key: 'mcp', label: 'MCP / thị trường', icon: 'mobile' as const },
+  { key: 'people', label: 'Nhân sự / hiệu suất', icon: 'user' as const },
+  { key: 'decisions', label: 'Đề xuất & cảnh báo', icon: 'document' as const },
+];
+const warehouseFilterDomains = new Set<ReportDomain>(['debt', 'inventory', 'delivery-cod']);
+function normalizeDomain(value: string | undefined): ReportDomain { if (value === 'sales-profit') return 'sales'; return tabs.some((tab) => tab.key === value) ? value as ReportDomain : 'executive'; }
+function reportHref(tab: ReportDomain, period: string, warehouseId?: string | null): string { const params = new URLSearchParams(); if (tab !== 'executive') params.set('tab', tab); if (tab !== 'debt' && period !== 'Tháng này') params.set('period', period); if (warehouseId && warehouseFilterDomains.has(tab)) params.set('warehouseId', warehouseId); const query = params.toString(); return query ? `/reports?${query}` : '/reports'; }
+function stateTone(state: ReportState): AdminStateTone { if (state === 'ready') return 'ok'; if (state === 'partial') return 'partial'; if (state === 'forbidden') return 'forbidden'; if (state === 'error') return 'error'; return 'empty'; }
+function reportStatusTone(state: ReportState): AdminStatusTone { if (state === 'ready') return 'success'; if (state === 'partial') return 'attention'; if (state === 'forbidden' || state === 'error') return 'danger'; return 'neutral'; }
 
-export async function GET(request: Request) {
-  const incoming = new URL(request.url);
-  const report = String(incoming.searchParams.get('report') ?? '').trim();
-  if (!REPORTS.has(report)) return Response.json({ error: { message: 'Nhóm báo cáo không hợp lệ' } }, { status: 400, headers: { 'Cache-Control': 'no-store' } });
+export default async function ReportsPage({ searchParams }: { searchParams?: { tab?: string; period?: string; warehouseId?: string } }) {
+  const selected = normalizeDomain(searchParams?.tab);
+  const period = normalizeReportPeriod(searchParams?.period);
+  const warehouseId = warehouseFilterDomains.has(selected) ? searchParams?.warehouseId ?? null : null;
+  const item = await loadLotCPresentation(selected, period, warehouseId);
+  const tabItems = [
+    ...tabs.map((tab) => ({ href: reportHref(tab.key as ReportDomain, period, warehouseId), label: tab.label, icon: tab.icon, active: selected === tab.key })),
+    { href: '/reports/ai-usage', label: 'AI / tín dụng', icon: 'coin' as const, active: false },
+    { href: '/reports/company-assistant', label: 'Trợ lý Công Ty', icon: 'overview' as const, active: false },
+  ];
+  const trendMax = item.trend.reduce((max, point) => Math.max(max, point.value), 0);
+  const detailParams = new URLSearchParams(); if (selected !== 'debt') detailParams.set('period', period); if (warehouseId) detailParams.set('warehouseId', warehouseId);
+  const detailQuery = detailParams.toString();
+  const exportParams = new URLSearchParams({ report: selected });
+  if (selected !== 'debt') { const range = resolveReportRange(period); exportParams.set('from', range.from); exportParams.set('to', range.to); }
+  if (warehouseId) exportParams.set('warehouseId', warehouseId);
+  const exportHref = `/reports/export?${exportParams.toString()}`;
 
-  const query = new URLSearchParams({ report });
-  if (report !== 'debt') {
-    const from = String(incoming.searchParams.get('from') ?? '').trim();
-    const to = String(incoming.searchParams.get('to') ?? '').trim();
-    if (!DATE.test(from) || !DATE.test(to)) return Response.json({ error: { message: 'Phạm vi thời gian không hợp lệ' } }, { status: 400, headers: { 'Cache-Control': 'no-store' } });
-    query.set('from', from); query.set('to', to);
-  }
-  const warehouseId = String(incoming.searchParams.get('warehouseId') ?? '').trim();
-  if (warehouseId) query.set('warehouseId', warehouseId);
-
-  try {
-    const upstream = await requestCoreReportDownload(`/api/reporting/management-export?${query.toString()}`);
-    const headers = new Headers({
-      'Cache-Control': 'no-store, max-age=0',
-      'Content-Type': upstream.headers.get('content-type') || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': upstream.headers.get('content-disposition') || 'attachment; filename="Bao-cao-quan-tri.xlsx"',
-      'X-Content-Type-Options': 'nosniff',
-    });
-    const length = upstream.headers.get('content-length'); if (length) headers.set('Content-Length', length);
-    return new Response(upstream.body, { status: 200, headers });
-  } catch (error) {
-    const status = error instanceof CoreDownloadError ? error.statusCode : 503;
-    const message = error instanceof CoreDownloadError ? error.publicMessage : 'Không xuất được báo cáo quản trị';
-    return Response.json({ error: { message } }, { status, headers: { 'Cache-Control': 'no-store' } });
-  }
+  return (
+    <AdminShell activeSection="reports" title="Báo cáo quản trị" subtitle="Theo dõi số liệu quản trị từ Công Ty và MCP trong phạm vi quyền hiện tại.">
+      <AdminIconTabs label="Nhóm báo cáo quản trị" tabs={tabItems} />
+      <AdminToolbar label="Kỳ và phạm vi báo cáo" actions={<a className={styles.toolbarAction} href={exportHref}>Xuất báo cáo Excel</a>}>
+        <span className={styles.toolbarLabel}>Kỳ xem</span>
+        {selected === 'debt' ? <AdminStatusBadge tone="info">Số dư hiện tại</AdminStatusBadge> : reportPeriods.map((candidate) => <AdminFilterChip key={candidate} href={reportHref(selected, candidate, warehouseId)} label={candidate} active={period === candidate} />)}
+        {item.warehouseFilter && item.warehouseFilter.options.length > 0 ? <>
+          <span className={styles.toolbarLabel}>Kho</span>
+          <AdminFilterChip href={reportHref(selected, period, null)} label="Tất cả kho" active={!item.warehouseFilter.selectedId} />
+          {item.warehouseFilter.options.map((option) => <AdminFilterChip key={option.value} href={reportHref(selected, period, option.value)} label={option.label} active={item.warehouseFilter?.selectedId === option.value} />)}
+        </> : null}
+      </AdminToolbar>
+      <AdminStatePanel className={styles.reportState} title={item.stateLabel} message={item.stateMessage} tone={stateTone(item.state)} />
+      <section className={`card ${styles.hero}`}>
+        <div className={styles.heroCopy}><span className={styles.eyebrow}>{item.domainLabel} · {item.periodLabel}</span><h2>{item.title}</h2><p>{item.summary}</p></div>
+        <div className={styles.comparison}><small>{item.primary.label}</small><strong>{item.primary.value}</strong><AdminStatusBadge tone={reportStatusTone(item.state)} className={styles.reportStatusBadge}>{item.stateLabel}</AdminStatusBadge><small>Phạm vi thời gian</small><b>{item.periodLabel}</b></div>
+      </section>
+      {item.metrics.length > 0 ? <AdminKpiGrid label="Chỉ số quản trị" className={styles.reportKpis}>{item.metrics.map((metric) => <AdminKpiCard key={metric.label} label={metric.label} value={metric.value} note={metric.note} />)}</AdminKpiGrid> : null}
+      <section className={`card ${styles.trend}`}>
+        <div className={styles.sectionHeading}><div><span>Xu hướng kỳ</span><h3>Diễn biến từ số liệu thật</h3></div>{item.trendLabel ? <strong>{item.trendLabel}</strong> : null}</div>
+        {item.trend.length > 0 ? <>
+          <div className={styles.sparkBars} aria-label={item.trendLabel ?? 'Diễn biến kỳ'}>
+            {item.trend.map((point) => { const height = trendMax > 0 ? Math.max(8, Math.round((point.value / trendMax) * 100)) : 8; return <span key={`${point.label}-${point.display}`} style={{ height: `${height}%` }} title={`${point.label}: ${point.display}`} />; })}
+          </div>
+          <div className={styles.detailRows} aria-label="Giá trị xu hướng theo ngày">
+            {item.trend.map((point) => <div key={`visible-${point.label}-${point.display}`}><span>{point.label}</span><strong>{point.display}</strong></div>)}
+          </div>
+          <p className={styles.detailNote}>{item.trendNote}</p>
+        </> : <p className={styles.detailNote}>{item.trendNote}</p>}
+      </section>
+      <section className={`card ${styles.highlights}`}><div className={styles.sectionHeading}><div><span>Điểm cần chú ý</span><h3>Trạng thái dữ liệu</h3></div></div>{item.highlights.map((highlight, index) => <div className={styles.highlightRow} key={`${index}-${highlight}`}><span>{index + 1}</span><p>{highlight}</p></div>)}</section>
+      <Link className={`card ${styles.detailLink}`} href={`/reports/${item.id}${detailQuery ? `?${detailQuery}` : ''}`}><span>Xem báo cáo chi tiết</span><strong>→</strong></Link>
+    </AdminShell>
+  );
 }
