@@ -1,7 +1,9 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { Customer } from '../../lib/customer-types';
+import shellStyles from '../components/app-shell.module.css';
 import styles from '../organization/organization.module.css';
 import customerStyles from './customers.module.css';
 import CustomerMediaDialog from './customer-media-dialog';
@@ -14,6 +16,7 @@ export default function CustomerMediaLauncher({ customers }: Props) {
   const [options, setOptions] = useState(customers);
   const [selected, setSelected] = useState<Customer | null>(null);
   const [search, setSearch] = useState('');
+  const [topbarActions, setTopbarActions] = useState<HTMLElement | null>(null);
   const visible = useMemo(() => {
     const term = search.trim().toLocaleLowerCase('vi');
     if (!term) return options.slice(0, 100);
@@ -23,6 +26,12 @@ export default function CustomerMediaLauncher({ customers }: Props) {
         .some((value) => String(value).toLocaleLowerCase('vi').includes(term)))
       .slice(0, 100);
   }, [options, search]);
+
+  useEffect(() => {
+    const actions = document.querySelector(`.${shellStyles.topbarActions}`);
+    setTopbarActions(actions instanceof HTMLElement ? actions : null);
+    return () => setTopbarActions(null);
+  }, []);
 
   async function openPicker() {
     setPickerOpen(true);
@@ -35,24 +44,21 @@ export default function CustomerMediaLauncher({ customers }: Props) {
     }
   }
 
+  const launcherButton = (
+    <button
+      type="button"
+      data-testid="customer-media-launcher"
+      className={shellStyles.actionButton}
+      onClick={() => void openPicker()}
+      style={{ order: -1 }}
+    >
+      Ảnh khách
+    </button>
+  );
+
   return (
     <>
-      <button
-        type="button"
-        data-testid="customer-media-launcher"
-        className={styles.primaryButton}
-        onClick={() => void openPicker()}
-        style={{
-          position: 'fixed',
-          right: 24,
-          bottom: 24,
-          zIndex: 70,
-          borderRadius: 999,
-          boxShadow: '0 8px 28px rgba(15, 23, 42, 0.18)',
-        }}
-      >
-        Ảnh khách
-      </button>
+      {topbarActions ? createPortal(launcherButton, topbarActions) : null}
 
       {pickerOpen && !selected ? (
         <div className={styles.modalBackdrop} role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) setPickerOpen(false); }}>
