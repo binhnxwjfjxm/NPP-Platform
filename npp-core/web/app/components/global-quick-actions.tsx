@@ -72,6 +72,16 @@ export function GlobalQuickActions() {
     };
   }, [open]);
 
+  function handlePointerEnter(event: React.PointerEvent<HTMLDivElement>) {
+    if (event.pointerType !== 'mouse') return;
+    setOpen(true);
+  }
+
+  function handlePointerLeave(event: React.PointerEvent<HTMLDivElement>) {
+    if (event.pointerType !== 'mouse') return;
+    setOpen(false);
+  }
+
   if (pathname === '/' || pathname.startsWith('/login')) return null;
 
   return (
@@ -79,6 +89,8 @@ export function GlobalQuickActions() {
       ref={rootRef}
       className={`${styles.quickActions} ${open ? styles.quickActionsOpen : ''}`}
       data-testid="global-quick-actions"
+      onPointerEnter={handlePointerEnter}
+      onPointerLeave={handlePointerLeave}
     >
       <div
         id="global-quick-actions-menu"
