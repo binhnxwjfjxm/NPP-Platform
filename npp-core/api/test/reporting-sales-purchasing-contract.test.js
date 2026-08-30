@@ -106,9 +106,12 @@ test('8.1 live queries keep canonical source, lifecycle and currency contracts e
   assert.match(sales, /AT TIME ZONE '\$\{BUSINESS_TIMEZONE\}'/);
   assert.match(sales, /warehouse_id = ANY\(\$2::uuid\[\]\)/);
   assert.match(purchasing, /warehouse_id = ANY\(\$2::uuid\[\]\)/);
-  assert.match(sales, /GROUP BY currency_code/);
+  assert.match(sales, /line\.line_total::text/);
+  assert.match(sales, /sov\.total::text AS version_total/);
+  assert.match(sales, /const revenues = revenueSummary\(facts\)/);
+  assert.match(sales, /const reportReconciliation = reconciliation\(facts\)/);
   assert.match(purchasing, /GROUP BY currency_code/);
-  assert.match(sales, /status IN \('confirmed','closed'\)/);
+  assert.match(sales, /so\.status IN \('confirmed','closed'\)/);
   assert.match(purchasing, /approved','partially_received','fully_received','closed/);
   assert.match(common, /MAX_REPORTING_RANGE_DAYS = 366/);
   assert.doesNotMatch(route + common + sales + purchasing, /readJsonBody|executeRequestWithIdempotency|withAuditOutboxTransaction/);
@@ -117,26 +120,31 @@ test('8.1 live queries keep canonical source, lifecycle and currency contracts e
   assert.match(server, /reporting-sales-purchasing\.js/);
 });
 
-test('8.1 ranking groups by stable IDs and uses latest snapshots only as display labels', () => {
+test('8.1 ranking groups by stable IDs and keeps canonical snapshots as display labels', () => {
   const sales = source('../src/routes/reporting-sales.js');
   const purchasing = source('../src/routes/reporting-purchasing.js');
 
-  assert.match(sales, /GROUP BY currency_code, customer_id/);
-  assert.match(sales, /array_agg\(customer_code_snapshot ORDER BY confirmed_at DESC, id DESC\)/);
-  assert.match(sales, /GROUP BY scoped\.currency_code, sovl\.variant_id/);
-  assert.match(sales, /array_agg\(sovl\.sku_snapshot ORDER BY scoped\.confirmed_at DESC, scoped\.id DESC\)/);
+  assert.match(sales, /customers: \(fact\) => \(\{ id: fact\.customerId, code: fact\.customerCode, name: fact\.customerName/);
+  assert.match(sales, /products: \(fact\) => \(\{ id: fact\.variantId, code: fact\.sku, name: fact\.itemName/);
+  assert.match(sales, /entityIdentity = identity\(dimension\.id/);
+  assert.match(sales, /const groupKey = `\$\{entityIdentity\}\|\$\{text\(fact\.currencyCode\)\}\|\$\{unitIdentity\}`/);
+  assert.match(sales, /customer_group_snapshot_captured/);
+  assert.match(sales, /reporting_dimension_snapshot_captured/);
+  assert.match(sales, /legacy-current-master/);
   assert.match(purchasing, /GROUP BY scoped\.currency_code, pol\.variant_id/);
   assert.match(purchasing, /array_agg\(pol\.sku_snapshot ORDER BY scoped\.order_date DESC, scoped\.created_at DESC, scoped\.id DESC\)/);
 });
 
-test('8.1 reporting keeps decimal values as database strings for the web layer', () => {
+test('8.1 reporting keeps decimal values exact and string-safe for the web layer', () => {
   const sales = source('../src/routes/reporting-sales.js');
   const purchasing = source('../src/routes/reporting-purchasing.js');
-  assert.match(sales, /COALESCE\(sum\(total\), 0::numeric\)::text/);
+
+  assert.match(sales, /line\.ordered_quantity::text/);
+  assert.match(sales, /line\.line_total::text/);
+  assert.match(sales, /function decimalText\(value\)/);
+  assert.match(sales, /BigInt\(/);
   assert.match(purchasing, /COALESCE\(sum\(total\), 0::numeric\)::text/);
-  assert.match(sales, /sum\(sovl\.base_quantity\)/);
   assert.match(purchasing, /sum\(pol\.base_quantity\)/);
-  assert.match(sales, /base_quantity::text/);
   assert.match(purchasing, /base_quantity::text/);
   assert.doesNotMatch(sales + purchasing, /parseFloat\(|parseInt\(/);
 });
