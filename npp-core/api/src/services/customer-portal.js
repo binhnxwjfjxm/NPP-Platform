@@ -1,4 +1,5 @@
 import * as portalRepository from '../db/repositories/customer-portal.js';
+import * as portalCatalogRepository from '../db/repositories/customer-portal-catalog.js';
 import * as pricingService from './pricing.js';
 import * as salesOrderService from './sales-order.js';
 import * as salesOrderEntryService from './sales-order-entry.js';
@@ -8,6 +9,7 @@ const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._:-]{8,200}$/;
 const MAX_ORDER_LINES = 200;
 const PORTAL_SOURCE_PREFIX = 'CUSTOMER_PORTAL:';
 const CATALOG_PRICE_CONCURRENCY = 4;
+const PURCHASE_MODES = new Set(['retail', 'case']);
 const PROCESSING_FULFILLMENT_STATES = new Set([
   'backordered',
   'partially_reserved', 'reserved',
@@ -172,6 +174,25 @@ function mapPortalSnapshot(row) {
   });
 }
 
+function purchaseModeFor(option) {
+  return String(option?.variant_kind ?? '').toUpperCase() === 'CARTON' ? 'case' : 'retail';
+}
+
+function variantKindsForPurchaseMode(purchaseMode) {
+  if (purchaseMode === 'case') return Object.freeze(['CARTON']);
+  if (purchaseMode === 'retail') return Object.freeze(['BASE', 'OTHER']);
+  return null;
+}
+
+function mapCatalogCategory(row) {
+  return Object.freeze({
+    id: row.id,
+    name: row.name,
+    shortName: row.name,
+    parentCategoryId: row.parent_category_id ?? null,
+  });
+}
+
 export async function resolvePortalMembership(client, { installationId, subject }) {
   const membership = await portalRepository.getActiveMembershipByIdentity(client, {
     installationId,
@@ -218,20 +239,38 @@ export async function listPortalCatalog(client, {
   requestContext,
   membership,
   search = '',
+  categoryId = null,
+  purchaseMode = null,
+  includeCategories = false,
   limit = 50,
   offset = 0,
 }) {
+  const normalizedSearch = String(search ?? '').trim();
   const normalizedLimit = Math.max(1, Math.min(50, Number(limit) || 50));
   const normalizedOffset = Math.max(0, Number(offset) || 0);
-  const result = await salesOrderEntryService.searchSalesOrderSkuOptions(client, {
-    requestContext,
-    search,
-    limit: normalizedLimit,
-    offset: normalizedOffset,
-  });
-  if (!result.ok) return result;
+  const normalizedCategoryId = String(categoryId ?? '').trim() || null;
+  const normalizedPurchaseMode = String(purchaseMode ?? '').trim().toLowerCase() || null;
+  if (normalizedSearch.length > 256) return failure('INVALID_SEARCH', 'Từ khóa tìm hàng không được vượt quá 256 ký tự.');
+  if (normalizedCategoryId && !UUID_PATTERN.test(normalizedCategoryId)) return failure('INVALID_CATEGORY_ID', 'Nhóm sản phẩm không hợp lệ.');
+  if (normalizedPurchaseMode && !PURCHASE_MODES.has(normalizedPurchaseMode)) return failure('INVALID_PURCHASE_MODE', 'Hình thức mua không hợp lệ.');
+
+  const [catalogRows, categoryRows] = await Promise.all([
+    portalCatalogRepository.searchPortalCatalogOptions(client, {
+      installationId: requestContext.installationId,
+      search: normalizedSearch,
+      categoryId: normalizedCategoryId,
+      variantKinds: variantKindsForPurchaseMode(normalizedPurchaseMode),
+      limit: normalizedLimit + 1,
+      offset: normalizedOffset,
+    }),
+    includeCategories
+      ? portalCatalogRepository.listPortalCatalogCategories(client, { installationId: requestContext.installationId })
+      : Promise.resolve([]),
+  ]);
+  const hasMore = catalogRows.length > normalizedLimit;
+  const pageRows = catalogRows.slice(0, normalizedLimit);
   const priceAt = new Date().toISOString();
-  const items = await mapWithConcurrency(result.skuOptions, CATALOG_PRICE_CONCURRENCY, async (option) => {
+  const items = await mapWithConcurrency(pageRows, CATALOG_PRICE_CONCURRENCY, async (option) => {
     const resolved = await pricingService.resolvePrice(client, {
       installationId: requestContext.installationId,
       payload: {
@@ -246,19 +285,32 @@ export async function listPortalCatalog(client, {
     return Object.freeze({
       sku: option.sku,
       variantId: option.id,
-      productId: option.productId,
-      productCode: option.productCode,
-      name: option.productName,
-      variantName: option.variantName,
-      unitCode: option.unitCode,
-      unitName: option.unitName,
-      conversionToBase: option.conversionToBase,
+      productId: option.product_id,
+      productCode: option.product_code,
+      name: option.product_name,
+      variantName: option.variant_name,
+      categoryId: option.category_id ?? null,
+      categoryName: option.category_name ?? null,
+      parentCategoryId: option.parent_category_id ?? null,
+      parentCategoryName: option.parent_category_name ?? null,
+      brandName: option.brand_name ?? null,
+      purchaseMode: purchaseModeFor(option),
+      unitCode: option.unit_code,
+      unitName: option.unit_name,
+      conversionToBase: option.conversion_to_base,
       price: resolved.ok
         ? Object.freeze({ status: 'available', amount: Number(resolved.resolution.finalUnitPriceMinor), currency: 'VND' })
         : Object.freeze({ status: 'customer_price_pending', amount: null, currency: 'VND' }),
     });
   });
-  return Object.freeze({ ok: true, items: Object.freeze(items), limit: normalizedLimit, offset: normalizedOffset, hasMore: items.length === normalizedLimit });
+  return Object.freeze({
+    ok: true,
+    items: Object.freeze(items),
+    categories: Object.freeze(categoryRows.map(mapCatalogCategory)),
+    limit: normalizedLimit,
+    offset: normalizedOffset,
+    hasMore,
+  });
 }
 
 async function resolveOrderLines(client, { requestContext, lines }) {
@@ -372,3 +424,4 @@ export async function cancelPortalOrder(client, {
 }
 
 export const CUSTOMER_PORTAL_SOURCE_PREFIX = PORTAL_SOURCE_PREFIX;
+export const customerPortalCatalogInternals = Object.freeze({ purchaseModeFor, variantKindsForPurchaseMode });
