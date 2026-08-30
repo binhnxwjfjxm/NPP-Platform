@@ -52,7 +52,7 @@ export default function CustomerMediaLauncher({ customers }: Props) {
       onClick={() => void openPicker()}
       style={{ order: -1 }}
     >
-      Ảnh khách hàng
+      Ảnh khách
     </button>
   );
 
