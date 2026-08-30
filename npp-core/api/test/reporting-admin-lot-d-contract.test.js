@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const routePath = new URL('../src/routes/reporting-admin-lot-d.js', import.meta.url);
 const exportPath = new URL('../src/services/reporting-management-export.js', import.meta.url);
+const exportBasePath = new URL('../src/services/reporting-management-export-base.js', import.meta.url);
 const serverPath = new URL('../src/server.js', import.meta.url);
 
 test('Lô D opens only canonical business alert sources and keeps stable business identities', async () => {
@@ -26,7 +27,12 @@ test('Lô D opens only canonical business alert sources and keeps stable busines
 });
 
 test('Lô D export requires export permission plus each report read contract on the backend', async () => {
-  const [route, service] = await Promise.all([readFile(routePath, 'utf8'), readFile(exportPath, 'utf8')]);
+  const [route, wrapper, base] = await Promise.all([
+    readFile(routePath, 'utf8'),
+    readFile(exportPath, 'utf8'),
+    readFile(exportBasePath, 'utf8'),
+  ]);
+  const service = `${wrapper}\n${base}`;
   assert.match(route, /coreReportingExport/);
   for (const permission of [
     'coreReportingControlTowerRead',
@@ -40,6 +46,8 @@ test('Lô D export requires export permission plus each report read contract on 
   ]) assert.match(route, new RegExp(permission));
   assert.match(route, /validateScope/);
   assert.match(route, /resolveReportingMcpScope/);
+  assert.match(wrapper, /createBaseExport/);
+  assert.match(wrapper, /options\.reportKey === 'sales-profit'/);
   assert.match(service, /buildMultiSheetXlsx/);
   assert.match(service, /Phạm vi quyền/);
   assert.match(service, /Đối chiếu/);

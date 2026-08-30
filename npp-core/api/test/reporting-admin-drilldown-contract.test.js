@@ -7,15 +7,16 @@ const source = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 test('Admin drill-down extends Sales reporting with bounded customer and document facts', () => {
   const sales = source('../src/routes/reporting-sales.js');
 
-  assert.match(sales, /customers: mapRows\(customers\.rows\)/);
-  assert.match(sales, /documents: mapRows\(documents\.rows\)/);
-  assert.match(sales, /id AS sales_order_id/);
-  assert.match(sales, /customer_id/);
-  assert.match(sales, /order_number/);
-  assert.match(sales, /LIMIT 100/);
+  assert.match(sales, /customers: compatibilityCustomerRows/);
+  assert.match(sales, /documents: mapRows\(documentsResult\.rows\)/);
+  assert.match(sales, /so\.id AS sales_order_id/);
+  assert.match(sales, /sov\.customer_id/);
+  assert.match(sales, /so\.order_number/);
+  assert.match(sales, /slice\(0, 100\)/);
   assert.match(sales, /LIMIT 200/);
-  assert.match(sales, /status IN \('confirmed','closed'\)/);
-  assert.match(sales, /GROUP BY currency_code, customer_id/);
+  assert.match(sales, /so\.status IN \('confirmed','closed'\)/);
+  assert.match(sales, /customers: breakdown\(facts, 'customers'\)/);
+  assert.match(sales, /entityIdentity = identity\(dimension\.id/);
   assert.doesNotMatch(sales, /parseFloat\(|parseInt\(|Number\(/);
 });
 

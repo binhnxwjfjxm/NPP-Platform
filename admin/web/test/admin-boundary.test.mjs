@@ -35,7 +35,7 @@ test('admin main module shells keep management taxonomy without fake mutations',
   for (const label of ['Tất cả','Thương mại','Khách hàng & công nợ','Ngoại lệ vận hành','MCP','Lịch sử']) assert.match(proposals,new RegExp(label.replace(/[&]/g,'\\&')));
   assert.doesNotMatch(proposals, /label: 'Kho'|label: 'Giao vận & COD'/);
   for (const label of ['Tổng hợp','Kinh doanh','Công nợ','Kho','Giao vận','MCP','Quy tắc','Lịch sử']) assert.match(alerts,new RegExp(label));
-  for (const label of ['Điều hành','Kinh doanh & lợi nhuận','Công nợ','Kho','Giao vận & COD','MCP / thị trường','Nhân sự / hiệu suất','Đề xuất & cảnh báo']) assert.match(reports,new RegExp(label.replace(/[\/]/g,'\\/')));
+  for (const label of ['Điều hành','Kinh doanh','Lợi nhuận','Công nợ','Kho','Giao vận & COD','MCP / thị trường','Nhân sự / hiệu suất','Đề xuất & cảnh báo']) assert.match(reports,new RegExp(label.replace(/[\/]/g,'\\/')));
   assert.doesNotMatch(`${proposals}\n${alerts}\n${reports}`, /requestCore|fetch\(|POST|PUT|PATCH|DELETE|Idempotency-Key/);
 });
 
