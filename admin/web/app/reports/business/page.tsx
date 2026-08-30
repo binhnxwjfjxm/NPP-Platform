@@ -222,48 +222,77 @@ export default async function BusinessReportPage({
         </nav>
 
         <div className={`${styles.analysisLayout} ${selectedRow ? styles.withDetail : ''}`}>
-          <div className={styles.tableWrap}>
-            {rows.length ? (
-              <table className={styles.analysisTable}>
-                <thead>
-                  <tr>
-                    <th>Tên</th>
-                    <th>Doanh thu</th>
-                    <th>Sản lượng</th>
-                    <th>Tỷ trọng</th>
-                    <th>Kỳ trước</th>
-                    <th>Thay đổi</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((row, index) => {
-                    const toneClass = changeTone(row) === 'up' ? styles.changeUp : changeTone(row) === 'down' ? styles.changeDown : styles.changeNeutral;
-                    const selected = selectedRowIndex === index;
-                    return (
-                      <tr key={rowToken(row, index)} className={selected ? styles.selectedRow : undefined}>
-                        <td>
-                          <Link className={styles.rowLink} href={rowDetailHref(row, index)}>
-                            <strong>{row.name || 'Chưa có tên'}</strong>
-                            {row.code ? <small>{row.code}</small> : null}
-                          </Link>
-                        </td>
-                        <td>{money(row.revenue, row.currencyCode)}</td>
-                        <td>{quantity(row.quantity, row.unit)}</td>
-                        <td>{text(row.sharePercent)}%</td>
-                        <td>
-                          <strong>{money(row.previousRevenue, row.currencyCode)}</strong>
-                          <small>{quantity(row.previousQuantity, row.unit)}</small>
-                        </td>
-                        <td><span className={`${styles.changeBadge} ${toneClass}`}>{change(row)}</span></td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            ) : (
-              <p className={styles.emptyText}>Không phát sinh dữ liệu trong mục này.</p>
-            )}
-          </div>
+          {rows.length ? (
+            <>
+              <div className={styles.desktopTableWrap}>
+                <table className={styles.analysisTable}>
+                  <thead>
+                    <tr>
+                      <th>Tên</th>
+                      <th>Doanh thu</th>
+                      <th>Sản lượng</th>
+                      <th>Tỷ trọng</th>
+                      <th>Kỳ trước</th>
+                      <th>Thay đổi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((row, index) => {
+                      const toneClass = changeTone(row) === 'up' ? styles.changeUp : changeTone(row) === 'down' ? styles.changeDown : styles.changeNeutral;
+                      const selected = selectedRowIndex === index;
+                      return (
+                        <tr key={rowToken(row, index)} className={selected ? styles.selectedRow : undefined}>
+                          <td>
+                            <Link className={styles.rowLink} href={rowDetailHref(row, index)}>
+                              <strong>{row.name || 'Chưa có tên'}</strong>
+                              {row.code ? <small>{row.code}</small> : null}
+                            </Link>
+                          </td>
+                          <td>{money(row.revenue, row.currencyCode)}</td>
+                          <td>{quantity(row.quantity, row.unit)}</td>
+                          <td>{text(row.sharePercent)}%</td>
+                          <td>
+                            <strong>{money(row.previousRevenue, row.currencyCode)}</strong>
+                            <small>{quantity(row.previousQuantity, row.unit)}</small>
+                          </td>
+                          <td><span className={`${styles.changeBadge} ${toneClass}`}>{change(row)}</span></td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className={styles.mobileList} aria-label={`${selectedDimensionLabel} trên điện thoại`}>
+                {rows.map((row, index) => (
+                  <details className={styles.mobileRowGroup} key={`mobile-${rowToken(row, index)}`}>
+                    <summary className={styles.mobileRow}>
+                      <span className={styles.mobileRowCopy}>
+                        <strong>{row.name || 'Chưa có tên'}</strong>
+                        <small>{row.code ? `${row.code} · ` : ''}{quantity(row.quantity, row.unit)}</small>
+                      </span>
+                      <span className={styles.mobileRowAside}>
+                        <strong>{money(row.revenue, row.currencyCode)}</strong>
+                        <span className={styles.mobileRowChevron} aria-hidden="true">›</span>
+                      </span>
+                    </summary>
+                    <div className={styles.mobileDetail}>
+                      <dl className={styles.mobileDetailList}>
+                        <div><dt>Tỷ trọng</dt><dd>{text(row.sharePercent)}%</dd></div>
+                        <div><dt>Kỳ trước</dt><dd>{money(row.previousRevenue, row.currencyCode)} · {quantity(row.previousQuantity, row.unit)}</dd></div>
+                        <div><dt>Thay đổi</dt><dd>{change(row)}</dd></div>
+                      </dl>
+                      {row.source === 'legacy-current-master' ? (
+                        <p className={styles.legacyNote}>Đơn cũ đang tham chiếu danh mục hiện tại.</p>
+                      ) : null}
+                    </div>
+                  </details>
+                ))}
+              </div>
+            </>
+          ) : (
+            <p className={styles.emptyText}>Không phát sinh dữ liệu trong mục này.</p>
+          )}
 
           {selectedRow ? (
             <aside className={styles.detailPanel} aria-label={`Chi tiết ${selectedRow.name}`}>
@@ -291,10 +320,19 @@ export default async function BusinessReportPage({
       </section>
 
       {report.warnings.length ? (
-        <section className={`card ${styles.warningPanel}`}>
-          <strong>Điểm cần lưu ý</strong>
-          <ul>{report.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
-        </section>
+        <>
+          <section className={`card ${styles.warningPanel} ${styles.warningDesktop}`}>
+            <strong>Điểm cần lưu ý</strong>
+            <ul>{report.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
+          </section>
+          <details className={`card ${styles.warningPanel} ${styles.warningMobile}`}>
+            <summary>
+              <span>Có {report.warnings.length} điểm cần lưu ý</span>
+              <span aria-hidden="true">›</span>
+            </summary>
+            <ul>{report.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
+          </details>
+        </>
       ) : null}
     </AdminShell>
   );
