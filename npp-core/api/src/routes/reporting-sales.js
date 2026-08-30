@@ -60,42 +60,61 @@ function currentFacts(facts) { return facts.filter((fact) => fact.period === 'cu
 
 function dimensionDefinition(key) {
   const definitions = {
-    customers: (fact) => ({ id: fact.customerId, code: fact.customerCode, name: fact.customerName, source: 'order-snapshot' }),
-    customerGroups: (fact) => ({ id: fact.customerGroupId, code: fact.customerGroupCode, name: fact.customerGroupName, source: fact.customerGroupSource }),
-    channels: (fact) => ({ id: fact.salesChannelId, code: fact.salesChannelCode, name: fact.salesChannelName, source: fact.salesChannelId ? 'order-snapshot' : 'unavailable' }),
-    products: (fact) => ({ id: fact.variantId, code: fact.sku, name: fact.itemName, source: 'order-line-snapshot' }),
-    productGroups: (fact) => ({ id: fact.productGroupId, code: fact.productGroupCode, name: fact.productGroupName, source: fact.productGroupSource }),
-    employees: (fact) => ({ id: fact.employeeId, code: fact.employeeCode, name: fact.employeeName, source: fact.employeeSource }),
+    customers: (fact) => ({ id: fact.customerId, code: fact.customerCode, name: text(fact.customerName, 'Khách chưa xác định'), source: 'order-snapshot' }),
+    customerGroups: (fact) => ({ id: fact.customerGroupId, code: fact.customerGroupCode, name: fact.customerGroupId ? fact.customerGroupName : 'Chưa phân loại', source: fact.customerGroupSource }),
+    channels: (fact) => ({ id: fact.salesChannelId, code: fact.salesChannelCode, name: fact.salesChannelId ? fact.salesChannelName : 'Chưa xác định kênh bán', source: fact.salesChannelId ? 'order-snapshot' : 'unavailable' }),
+    products: (fact) => ({ id: fact.variantId, code: fact.sku, name: text(fact.itemName, 'Sản phẩm chưa xác định'), source: 'order-line-snapshot' }),
+    productGroups: (fact) => ({ id: fact.productGroupId, code: fact.productGroupCode, name: fact.productGroupId ? fact.productGroupName : 'Chưa phân loại', source: fact.productGroupSource }),
+    employees: (fact) => ({ id: fact.employeeId, code: fact.employeeCode, name: fact.employeeId ? fact.employeeName : 'Chưa xác định nhân viên bán hàng', source: fact.employeeSource }),
   };
   return definitions[key];
 }
 
 function breakdown(facts, key) {
   const select = dimensionDefinition(key);
+  const keepQuantity = key === 'products';
   const grouped = new Map();
   const currentDenominators = new Map();
   for (const fact of facts) {
     const dimension = select(fact);
     const unit = unitOf(fact);
-    const entityIdentity = identity(dimension.id, `${text(dimension.code)}|${text(dimension.name, 'Không xác định')}`);
+    const entityIdentity = identity(dimension.id, `${text(dimension.code)}|${text(dimension.name, 'Chưa xác định')}`);
     const unitIdentity = identity(unit.id, unit.code);
-    const groupKey = `${entityIdentity}|${text(fact.currencyCode)}|${unitIdentity}`;
+    const currencyCode = text(fact.currencyCode, 'VND');
+    const groupKey = `${entityIdentity}|${currencyCode}${keepQuantity ? `|${unitIdentity}` : ''}`;
     const revenue = decimal6(fact.lineTotal);
     const quantity = decimal6(fact.orderedQuantity);
-    const existing = grouped.get(groupKey) ?? { id: text(dimension.id) || null, code: text(dimension.code) || null, name: text(dimension.name, 'Không xác định'), source: text(dimension.source, 'unavailable'), currencyCode: text(fact.currencyCode, 'VND'), unit, currentRevenue: 0n, currentQuantity: 0n, previousRevenue: 0n, previousQuantity: 0n, hasCurrent: false };
+    const existing = grouped.get(groupKey) ?? {
+      id: text(dimension.id) || null,
+      code: text(dimension.code) || null,
+      name: text(dimension.name, 'Chưa xác định'),
+      source: text(dimension.source, 'unavailable'),
+      currencyCode,
+      unit: keepQuantity ? unit : Object.freeze({ id: null, code: '', name: '' }),
+      currentRevenue: 0n,
+      currentQuantity: 0n,
+      previousRevenue: 0n,
+      previousQuantity: 0n,
+      documentIds: new Set(),
+      customerIds: new Set(),
+      productIds: new Set(),
+      hasCurrent: false,
+    };
     if (fact.period === 'current') {
       existing.currentRevenue += revenue;
-      existing.currentQuantity += quantity;
+      if (keepQuantity) existing.currentQuantity += quantity;
       existing.hasCurrent = true;
       existing.id = text(dimension.id) || existing.id;
       existing.code = text(dimension.code) || existing.code;
       existing.name = text(dimension.name, existing.name);
       existing.source = text(dimension.source, existing.source);
-      const denominatorKey = `${existing.currencyCode}|${unitIdentity}`;
-      currentDenominators.set(denominatorKey, (currentDenominators.get(denominatorKey) ?? 0n) + revenue);
+      if (text(fact.salesOrderId)) existing.documentIds.add(text(fact.salesOrderId));
+      if (text(fact.customerId)) existing.customerIds.add(text(fact.customerId));
+      if (text(fact.variantId)) existing.productIds.add(text(fact.variantId));
+      currentDenominators.set(currencyCode, (currentDenominators.get(currencyCode) ?? 0n) + revenue);
     } else {
       existing.previousRevenue += revenue;
-      existing.previousQuantity += quantity;
+      if (keepQuantity) existing.previousQuantity += quantity;
     }
     grouped.set(groupKey, existing);
   }
@@ -104,13 +123,22 @@ function breakdown(facts, key) {
     if (left.currentRevenue !== right.currentRevenue) return left.currentRevenue > right.currentRevenue ? -1 : 1;
     return left.name.localeCompare(right.name, 'vi');
   }).map((row) => {
-    const unitIdentity = identity(row.unit.id, row.unit.code);
-    const denominator = currentDenominators.get(`${row.currencyCode}|${unitIdentity}`) ?? 0n;
+    const denominator = currentDenominators.get(row.currencyCode) ?? 0n;
     return Object.freeze({
-      id: row.id, code: row.code, name: row.name, source: row.source, currencyCode: row.currencyCode,
-      revenue: decimalText(row.currentRevenue), quantity: decimalText(row.currentQuantity), unit: row.unit,
+      id: row.id,
+      code: row.code,
+      name: row.name,
+      source: row.source,
+      currencyCode: row.currencyCode,
+      revenue: decimalText(row.currentRevenue),
+      quantity: keepQuantity ? decimalText(row.currentQuantity) : '',
+      unit: row.unit,
+      documentCount: String(row.documentIds.size),
+      customerCount: String(row.customerIds.size),
+      productCount: String(row.productIds.size),
       sharePercent: percentText(row.currentRevenue, denominator) ?? '0',
-      previousRevenue: decimalText(row.previousRevenue), previousQuantity: decimalText(row.previousQuantity),
+      previousRevenue: decimalText(row.previousRevenue),
+      previousQuantity: keepQuantity ? decimalText(row.previousQuantity) : '',
       changePercent: row.previousRevenue === 0n ? null : percentText(row.currentRevenue - row.previousRevenue, row.previousRevenue),
       comparisonState: row.previousRevenue === 0n && row.currentRevenue > 0n ? 'new' : row.currentRevenue === 0n && row.previousRevenue > 0n ? 'inactive' : 'comparable',
     });
@@ -247,6 +275,7 @@ export async function salesReport(adapter, requestContext, filters, warehouseIds
   const summaryCounts = mapRow(summaryResult.rows?.[0] ?? {});
   const revenues = revenueSummary(facts);
   const quantities = quantitySummary(facts);
+  const soldProductCount = String(new Set(currentFacts(facts).map((fact) => text(fact.variantId)).filter(Boolean)).size);
   const breakdowns = Object.freeze({
     customers: breakdown(facts, 'customers'),
     customerGroups: breakdown(facts, 'customerGroups'),
@@ -261,11 +290,11 @@ export async function salesReport(adapter, requestContext, filters, warehouseIds
   const compatibilityCustomerRows = compatibilityCustomers(breakdowns.customers);
 
   return Object.freeze({
-    family: 'sales', contractVersion: '2026-08-29', generatedAt: requestContext.receivedAt, timezone: BUSINESS_TIMEZONE,
+    family: 'sales', contractVersion: '2026-08-30', generatedAt: requestContext.receivedAt, timezone: BUSINESS_TIMEZONE,
     filters: Object.freeze({ from: filters.from, to: filters.to, warehouseId: filters.warehouseId }),
-    basis: Object.freeze({ date: 'sales.sales_orders.confirmed_at', revenue: 'sum(sales.sales_order_version_lines.line_total), reconciled exactly to latest confirmed/superseded version total', quantity: 'ordered_quantity kept at original order unit; never summed across different units', employee: 'sales_orders.source_employee_id, otherwise creator user employee mapping; customer responsible employee is not used', historicalDimensions: 'confirmed snapshots when captured; legacy rows explicitly mark current-master fallback instead of silently rewriting history', effectiveStates: Object.freeze(['confirmed', 'closed']) }),
+    basis: Object.freeze({ date: 'sales.sales_orders.confirmed_at', revenue: 'sum(sales.sales_order_version_lines.line_total), reconciled exactly to latest confirmed/superseded version total', quantity: 'ordered_quantity is only shown on product rows where the product identity is explicit; quantities are never aggregated across different units or unrelated products', employee: 'sales_orders.source_employee_id, otherwise creator user employee mapping; customer responsible employee is not used', historicalDimensions: 'confirmed snapshots when captured; legacy rows explicitly mark current-master fallback instead of silently rewriting history', effectiveStates: Object.freeze(['confirmed', 'closed']) }),
     comparison: Object.freeze({ current: Object.freeze({ from: filters.from, to: filters.to, dayCount: previous.dayCount }), previous: Object.freeze({ from: previous.from, to: previous.to, dayCount: previous.dayCount }) }),
-    summary: Object.freeze({ ...summaryCounts, revenues, quantities }), breakdowns,
+    summary: Object.freeze({ ...summaryCounts, revenues, quantities, soldProductCount }), breakdowns,
     reconciliation: reportReconciliation, dataQuality, dailyTrend: trend, documents: mapRows(documentsResult.rows),
     currencyTotals: Object.freeze(revenues.map((row) => Object.freeze({ currencyCode: row.currencyCode, documentCount: row.documentCount, totalValue: row.revenue }))),
     statusBreakdown: Object.freeze([]),

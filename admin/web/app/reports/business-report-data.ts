@@ -14,6 +14,9 @@ export type BusinessRow = {
   revenue: string;
   quantity: string;
   unit: { id: string | null; code: string; name: string };
+  documentCount?: string;
+  customerCount?: string;
+  productCount?: string;
   sharePercent: string;
   previousRevenue: string;
   previousQuantity: string;

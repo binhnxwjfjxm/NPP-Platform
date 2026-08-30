@@ -34,6 +34,36 @@ function quantity(value: unknown, unit: { code?: string; name?: string }): strin
   return `${new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 6 }).format(number(value))} ${label}`;
 }
 
+function metricLabel(dimension: BusinessBreakdownKey): string {
+  if (dimension === 'products') return 'Sản lượng';
+  if (dimension === 'customers') return 'Số đơn';
+  if (dimension === 'productGroups') return 'Số sản phẩm';
+  return 'Hoạt động';
+}
+
+function metric(row: BusinessRow, dimension: BusinessBreakdownKey): string {
+  const documents = text(row.documentCount);
+  const customers = text(row.customerCount);
+  const products = text(row.productCount);
+  if (dimension === 'products') return quantity(row.quantity, row.unit);
+  if (dimension === 'customers') return `${documents} đơn`;
+  if (dimension === 'customerGroups') return `${customers} khách · ${documents} đơn`;
+  if (dimension === 'channels') return `${documents} đơn · ${customers} khách`;
+  if (dimension === 'productGroups') return `${products} sản phẩm`;
+  return `${documents} đơn · ${customers} khách`;
+}
+
+function rowName(row: BusinessRow, dimension: BusinessBreakdownKey): string {
+  const name = String(row.name ?? '').trim();
+  if ((dimension === 'customerGroups' || dimension === 'productGroups') && (!row.id || name === 'Không xác định')) return 'Chưa phân loại';
+  return name || 'Chưa có tên';
+}
+
+function previousValue(row: BusinessRow, dimension: BusinessBreakdownKey): string {
+  const revenue = money(row.previousRevenue, row.currencyCode);
+  return dimension === 'products' ? `${revenue} · ${quantity(row.previousQuantity, row.unit)}` : revenue;
+}
+
 function change(row: BusinessRow): string {
   if (row.changePercent !== null && row.changePercent !== '') {
     const parsed = Number(row.changePercent);
@@ -90,7 +120,6 @@ export default async function BusinessReportPage({
   const selectedDimensionLabel = dimensions.find((item) => item.key === selectedDimension)?.label ?? 'Khách hàng';
 
   const revenues = Array.isArray(report.summary.revenues) ? report.summary.revenues as Record<string, unknown>[] : [];
-  const quantities = Array.isArray(report.summary.quantities) ? report.summary.quantities as Record<string, unknown>[] : [];
   const rows = report.breakdowns[selectedDimension] ?? [];
   const series = trendSeries(report.trend);
 
@@ -120,7 +149,7 @@ export default async function BusinessReportPage({
     <AdminShell
       activeSection="reports"
       title="Báo cáo Kinh doanh"
-      subtitle="Theo dõi doanh thu, sản lượng và cơ cấu bán hàng."
+      subtitle="Theo dõi doanh thu, đơn hàng, khách mua và sản lượng theo từng sản phẩm."
       contentWidth="wide"
     >
       <AdminToolbar
@@ -157,9 +186,9 @@ export default async function BusinessReportPage({
           note="Giữ riêng từng loại tiền."
         />
         <AdminKpiCard
-          label="Sản lượng"
-          value={quantities.length ? quantities.map((row) => quantity(row.quantity, (row.unit ?? {}) as { code?: string; name?: string })).join(' · ') : 'Không phát sinh'}
-          note="Không cộng gộp các ĐVT khác nhau."
+          label="Mặt hàng đã bán"
+          value={text(report.summary.soldProductCount)}
+          note="Sản lượng xem theo từng sản phẩm để không cộng gộp sai ĐVT."
         />
         <AdminKpiCard label="Đơn đã chốt" value={text(report.summary.effectiveOrderCount)} note="Đơn xác nhận hoặc hoàn tất." />
         <AdminKpiCard label="Khách mua" value={text(report.summary.buyerCount)} note="Khách có đơn hiệu lực." />
@@ -230,7 +259,7 @@ export default async function BusinessReportPage({
                     <tr>
                       <th>Tên</th>
                       <th>Doanh thu</th>
-                      <th>Sản lượng</th>
+                      <th>{metricLabel(selectedDimension)}</th>
                       <th>Tỷ trọng</th>
                       <th>Kỳ trước</th>
                       <th>Thay đổi</th>
@@ -244,16 +273,16 @@ export default async function BusinessReportPage({
                         <tr key={rowToken(row, index)} className={selected ? styles.selectedRow : undefined}>
                           <td>
                             <Link className={styles.rowLink} href={rowDetailHref(row, index)}>
-                              <strong>{row.name || 'Chưa có tên'}</strong>
+                              <strong>{rowName(row, selectedDimension)}</strong>
                               {row.code ? <small>{row.code}</small> : null}
                             </Link>
                           </td>
                           <td>{money(row.revenue, row.currencyCode)}</td>
-                          <td>{quantity(row.quantity, row.unit)}</td>
+                          <td>{metric(row, selectedDimension)}</td>
                           <td>{text(row.sharePercent)}%</td>
                           <td>
                             <strong>{money(row.previousRevenue, row.currencyCode)}</strong>
-                            <small>{quantity(row.previousQuantity, row.unit)}</small>
+                            {selectedDimension === 'products' ? <small>{quantity(row.previousQuantity, row.unit)}</small> : null}
                           </td>
                           <td><span className={`${styles.changeBadge} ${toneClass}`}>{change(row)}</span></td>
                         </tr>
@@ -268,8 +297,8 @@ export default async function BusinessReportPage({
                   <details className={styles.mobileRowGroup} key={`mobile-${rowToken(row, index)}`}>
                     <summary className={styles.mobileRow}>
                       <span className={styles.mobileRowCopy}>
-                        <strong>{row.name || 'Chưa có tên'}</strong>
-                        <small>{row.code ? `${row.code} · ` : ''}{quantity(row.quantity, row.unit)}</small>
+                        <strong>{rowName(row, selectedDimension)}</strong>
+                        <small>{[row.code, metric(row, selectedDimension)].filter(Boolean).join(' · ')}</small>
                       </span>
                       <span className={styles.mobileRowAside}>
                         <strong>{money(row.revenue, row.currencyCode)}</strong>
@@ -278,8 +307,9 @@ export default async function BusinessReportPage({
                     </summary>
                     <div className={styles.mobileDetail}>
                       <dl className={styles.mobileDetailList}>
+                        <div><dt>{metricLabel(selectedDimension)}</dt><dd>{metric(row, selectedDimension)}</dd></div>
                         <div><dt>Tỷ trọng</dt><dd>{text(row.sharePercent)}%</dd></div>
-                        <div><dt>Kỳ trước</dt><dd>{money(row.previousRevenue, row.currencyCode)} · {quantity(row.previousQuantity, row.unit)}</dd></div>
+                        <div><dt>Kỳ trước</dt><dd>{previousValue(row, selectedDimension)}</dd></div>
                         <div><dt>Thay đổi</dt><dd>{change(row)}</dd></div>
                       </dl>
                       {row.source === 'legacy-current-master' ? (
@@ -295,20 +325,20 @@ export default async function BusinessReportPage({
           )}
 
           {selectedRow ? (
-            <aside className={styles.detailPanel} aria-label={`Chi tiết ${selectedRow.name}`}>
+            <aside className={styles.detailPanel} aria-label={`Chi tiết ${rowName(selectedRow, selectedDimension)}`}>
               <div className={styles.detailHeader}>
                 <div>
                   <span>Chi tiết</span>
-                  <h3>{selectedRow.name || 'Chưa có tên'}</h3>
+                  <h3>{rowName(selectedRow, selectedDimension)}</h3>
                   {selectedRow.code ? <small>{selectedRow.code}</small> : null}
                 </div>
                 <Link href={closeDetailHref} className={styles.closeDetail} aria-label="Đóng chi tiết">×</Link>
               </div>
               <dl className={styles.detailList}>
                 <div><dt>Doanh thu</dt><dd>{money(selectedRow.revenue, selectedRow.currencyCode)}</dd></div>
-                <div><dt>Sản lượng</dt><dd>{quantity(selectedRow.quantity, selectedRow.unit)}</dd></div>
+                <div><dt>{metricLabel(selectedDimension)}</dt><dd>{metric(selectedRow, selectedDimension)}</dd></div>
                 <div><dt>Tỷ trọng</dt><dd>{text(selectedRow.sharePercent)}%</dd></div>
-                <div><dt>Kỳ trước</dt><dd>{money(selectedRow.previousRevenue, selectedRow.currencyCode)}</dd></div>
+                <div><dt>Kỳ trước</dt><dd>{previousValue(selectedRow, selectedDimension)}</dd></div>
                 <div><dt>Thay đổi</dt><dd>{change(selectedRow)}</dd></div>
               </dl>
               {selectedRow.source === 'legacy-current-master' ? (

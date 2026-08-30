@@ -29,13 +29,31 @@ test('Kinh doanh dùng màn hình làm việc: tab phân tích, bảng và chi t
   assert.match(page, /<table className=\{styles\.analysisTable\}>/);
   assert.match(page, /rowDetailHref/);
   assert.match(page, /Đối soát/);
-  assert.match(page, /Không cộng gộp các ĐVT khác nhau/);
   assert.match(page, /trendChart/);
   assert.match(workspaceStyles, /\.analysisLayout\.withDetail/);
   assert.match(workspaceStyles, /\.dimensionTabs/);
   assert.match(loader, /reconciliation\.ok !== true/);
   assert.match(reconciliation, /Đối soát Báo cáo Kinh doanh/);
   assert.match(profit, /Thiếu giá vốn/);
+});
+
+test('Kinh doanh không dùng sản lượng tổng vô nghĩa cho các chiều không phải sản phẩm', async () => {
+  const [page, loader] = await Promise.all([
+    read('app/reports/business/page.tsx'),
+    read('app/reports/business-report-data.ts'),
+  ]);
+
+  assert.match(page, /function metricLabel/);
+  assert.match(page, /dimension === 'products'.*'Sản lượng'/s);
+  assert.match(page, /dimension === 'customers'.*'Số đơn'/s);
+  assert.match(page, /dimension === 'productGroups'.*'Số sản phẩm'/s);
+  assert.match(page, /customerGroups'.*khách.*đơn/s);
+  assert.match(page, /channels'.*đơn.*khách/s);
+  assert.match(page, /Mặt hàng đã bán/);
+  assert.match(page, /Sản lượng xem theo từng sản phẩm để không cộng gộp sai ĐVT/);
+  assert.match(page, /Chưa phân loại/);
+  assert.doesNotMatch(page, /<th>Sản lượng<\/th>/);
+  for (const field of ['documentCount', 'customerCount', 'productCount']) assert.match(loader, new RegExp(field));
 });
 
 test('Kinh doanh trên điện thoại dùng danh sách gọn thay cho bảng cuộn ngang', async () => {
@@ -47,6 +65,7 @@ test('Kinh doanh trên điện thoại dùng danh sách gọn thay cho bảng cu
   assert.match(page, /className=\{styles\.desktopTableWrap\}/);
   assert.match(page, /className=\{styles\.mobileList\}/);
   assert.match(page, /<details className=\{styles\.mobileRowGroup\}/);
+  assert.match(page, /metric\(row, selectedDimension\)/);
   assert.match(page, /<dt>Tỷ trọng<\/dt>/);
   assert.match(page, /<dt>Kỳ trước<\/dt>/);
   assert.match(page, /<dt>Thay đổi<\/dt>/);

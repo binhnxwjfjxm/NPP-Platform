@@ -13,10 +13,52 @@ test('Báo cáo Kinh doanh dùng kỳ liền trước cùng độ dài và số 
   assert.equal(reportingSalesInternals.percentText(25_000_000n, 100_000_000n), '25');
 });
 
+test('breakdown quản trị không nhân bản kênh/nhóm theo ĐVT và chỉ giữ sản lượng ở sản phẩm', () => {
+  const facts = [
+    {
+      period: 'current', salesOrderId: 'order-1', currencyCode: 'VND', lineTotal: '2004000', orderedQuantity: '3',
+      unitId: 'unit-case', unitCode: 'THUNG', unitName: 'Thùng', customerId: 'customer-1', variantId: 'variant-a',
+      salesChannelId: 'channel-horeca', salesChannelCode: 'HORECA', salesChannelName: 'Kênh Quán',
+      productGroupId: null, productGroupCode: null, productGroupName: null, productGroupSource: 'legacy-unavailable',
+    },
+    {
+      period: 'current', salesOrderId: 'order-2', currencyCode: 'VND', lineTotal: '300000', orderedQuantity: '1',
+      unitId: 'unit-box', unitCode: 'HOP', unitName: 'Hộp', customerId: 'customer-2', variantId: 'variant-b',
+      salesChannelId: 'channel-horeca', salesChannelCode: 'HORECA', salesChannelName: 'Kênh Quán',
+      productGroupId: null, productGroupCode: null, productGroupName: null, productGroupSource: 'legacy-unavailable',
+    },
+  ];
+
+  const channels = reportingSalesInternals.breakdown(facts, 'channels');
+  assert.equal(channels.length, 1);
+  assert.equal(channels[0].name, 'Kênh Quán');
+  assert.equal(channels[0].revenue, '2304000');
+  assert.equal(channels[0].quantity, '');
+  assert.equal(channels[0].documentCount, '2');
+  assert.equal(channels[0].customerCount, '2');
+  assert.equal(channels[0].sharePercent, '100');
+
+  const productGroups = reportingSalesInternals.breakdown(facts, 'productGroups');
+  assert.equal(productGroups.length, 1);
+  assert.equal(productGroups[0].name, 'Chưa phân loại');
+  assert.equal(productGroups[0].productCount, '2');
+  assert.equal(productGroups[0].quantity, '');
+
+  const products = reportingSalesInternals.breakdown(facts, 'products');
+  assert.equal(products.length, 2);
+  assert.deepEqual(products.map((row) => [row.id, row.quantity, row.unit.name]), [
+    ['variant-a', '3', 'Thùng'],
+    ['variant-b', '1', 'Hộp'],
+  ]);
+});
+
 test('contract Kinh doanh có đủ 6 chiều và nhân viên lấy từ đơn/người tạo', async () => {
   const source = await readApi('src/routes/reporting-sales.js');
   for (const key of ['customers', 'customerGroups', 'channels', 'products', 'productGroups', 'employees']) assert.match(source, new RegExp(`${key}: breakdown`));
-  for (const field of ['previousRevenue', 'previousQuantity', 'changePercent', 'sharePercent']) assert.match(source, new RegExp(field));
+  for (const field of ['previousRevenue', 'previousQuantity', 'changePercent', 'sharePercent', 'documentCount', 'customerCount', 'productCount']) assert.match(source, new RegExp(field));
+  assert.match(source, /keepQuantity = key === 'products'/);
+  assert.match(source, /Chưa phân loại/);
+  assert.match(source, /soldProductCount/);
   assert.match(source, /line\.line_total/);
   assert.match(source, /line\.ordered_quantity/);
   assert.match(source, /so\.source_employee_id/);
