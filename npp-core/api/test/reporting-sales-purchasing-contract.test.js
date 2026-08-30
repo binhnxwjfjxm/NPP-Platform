@@ -120,14 +120,16 @@ test('8.1 live queries keep canonical source, lifecycle and currency contracts e
   assert.match(server, /reporting-sales-purchasing\.js/);
 });
 
-test('8.1 ranking groups by stable IDs and keeps canonical snapshots as display labels', () => {
+test('8.1 ranking groups by stable IDs, keeps canonical snapshots and only splits quantity by unit for products', () => {
   const sales = source('../src/routes/reporting-sales.js');
   const purchasing = source('../src/routes/reporting-purchasing.js');
 
-  assert.match(sales, /customers: \(fact\) => \(\{ id: fact\.customerId, code: fact\.customerCode, name: fact\.customerName/);
-  assert.match(sales, /products: \(fact\) => \(\{ id: fact\.variantId, code: fact\.sku, name: fact\.itemName/);
+  assert.match(sales, /customers: \(fact\) => \(\{ id: fact\.customerId, code: fact\.customerCode, name: text\(fact\.customerName,/);
+  assert.match(sales, /products: \(fact\) => \(\{ id: fact\.variantId, code: fact\.sku, name: text\(fact\.itemName,/);
   assert.match(sales, /entityIdentity = identity\(dimension\.id/);
-  assert.match(sales, /const groupKey = `\$\{entityIdentity\}\|\$\{text\(fact\.currencyCode\)\}\|\$\{unitIdentity\}`/);
+  assert.match(sales, /const keepQuantity = key === 'products'/);
+  assert.match(sales, /const groupKey = `\$\{entityIdentity\}\|\$\{currencyCode\}\$\{keepQuantity/);
+  assert.doesNotMatch(sales, /const groupKey = `\$\{entityIdentity\}\|\$\{text\(fact\.currencyCode\)\}\|\$\{unitIdentity\}`/);
   assert.match(sales, /customer_group_snapshot_captured/);
   assert.match(sales, /reporting_dimension_snapshot_captured/);
   assert.match(sales, /legacy-current-master/);
