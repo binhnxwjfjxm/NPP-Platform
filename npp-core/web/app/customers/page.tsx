@@ -1,4 +1,5 @@
 import CustomerWorkspace from './customer-workspace';
+import CustomerBulkTabsLauncher from './customer-bulk-tabs-launcher';
 import CustomerMediaLauncher from './customer-media-launcher';
 import type { Customer, CustomerGroup } from '../../lib/customer-types';
 import { listVietnamProvinces } from '../../lib/vietnam-administrative-data';
@@ -35,6 +36,7 @@ export default async function CustomersPage() {
         initialProvinces={initialProvinces}
         initialError={initialError}
       />
+      <CustomerBulkTabsLauncher />
       <CustomerMediaLauncher customers={initialCustomers} />
     </>
   );

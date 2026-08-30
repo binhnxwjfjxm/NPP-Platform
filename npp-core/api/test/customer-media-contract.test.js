@@ -41,10 +41,12 @@ test('Core and MCP share one browser resize contract', () => {
 
 test('Core media projection keeps object keys backend-only and issues signed URLs at read time', () => {
   const repository = read('../src/db/repositories/customer-media.js');
-  const route = read('../src/routes/customers.js');
+  const routeEntry = read('../src/routes/customers.js');
+  const route = read('../src/routes/customers-existing.js');
   assert.match(repository, /objectKey: row\.object_key/);
   const publicProjection = repository.slice(repository.indexOf('export function customerMediaPublic'), repository.indexOf('export async function getCustomerMedia'));
   assert.doesNotMatch(publicProjection, /objectKey/);
+  assert.match(routeEntry, /handleExistingCustomerRoutes/);
   assert.match(route, /createPresignedGetUrl/);
   assert.match(route, /createPresignedPutUrl/);
   assert.match(route, /\/media\/prepare/);
