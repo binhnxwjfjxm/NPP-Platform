@@ -37,3 +37,24 @@ test('Kinh doanh dùng màn hình làm việc: tab phân tích, bảng và chi t
   assert.match(reconciliation, /Đối soát Báo cáo Kinh doanh/);
   assert.match(profit, /Thiếu giá vốn/);
 });
+
+test('Kinh doanh trên điện thoại dùng danh sách gọn thay cho bảng cuộn ngang', async () => {
+  const [page, workspaceStyles] = await Promise.all([
+    read('app/reports/business/page.tsx'),
+    read('app/reports/business/business-workspace.module.css'),
+  ]);
+
+  assert.match(page, /className=\{styles\.desktopTableWrap\}/);
+  assert.match(page, /className=\{styles\.mobileList\}/);
+  assert.match(page, /<details className=\{styles\.mobileRowGroup\}/);
+  assert.match(page, /<dt>Tỷ trọng<\/dt>/);
+  assert.match(page, /<dt>Kỳ trước<\/dt>/);
+  assert.match(page, /<dt>Thay đổi<\/dt>/);
+  assert.match(page, /Có \{report\.warnings\.length\} điểm cần lưu ý/);
+  assert.match(workspaceStyles, /@media\(max-width:760px\).*\.desktopTableWrap\{display:none\}/s);
+  assert.match(workspaceStyles, /@media\(max-width:760px\).*\.mobileList\{display:block\}/s);
+  assert.match(workspaceStyles, /@media\(max-width:760px\).*\.detailPanel\{display:none\}/s);
+  assert.match(workspaceStyles, /\.warningMobile\{display:none\}/);
+  assert.match(workspaceStyles, /@media\(max-width:760px\).*\.warningMobile\{display:block/s);
+  assert.doesNotMatch(workspaceStyles, /@media\(max-width:760px\)[^}]*\.analysisTable\{min-width:/s);
+});
