@@ -1,56 +1,85 @@
 .quickActions {
+  --quick-accent: #4f46e5;
+  --quick-accent-strong: #2563eb;
   position: fixed;
   right: max(20px, env(safe-area-inset-right));
   bottom: max(20px, env(safe-area-inset-bottom));
   z-index: 35;
   display: grid;
   justify-items: end;
+  isolation: isolate;
+}
+
+.quickActions::before {
+  content: '';
+  position: absolute;
+  right: -10px;
+  bottom: -10px;
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(79, 70, 229, 0.22), rgba(37, 99, 235, 0));
+  filter: blur(10px);
+  opacity: 0.72;
+  pointer-events: none;
+  transition: opacity 180ms ease, transform 240ms ease;
+  transform: scale(0.9);
 }
 
 .quickActionList {
   position: absolute;
   right: 0;
-  bottom: 62px;
+  bottom: 48px;
   display: grid;
-  gap: 9px;
+  gap: 10px;
   justify-items: end;
+  padding-bottom: 14px;
   pointer-events: none;
 }
 
 .quickActionItem {
   display: inline-flex;
-  min-height: 42px;
+  min-height: 44px;
   align-items: center;
   gap: 10px;
-  padding: 4px 5px 4px 14px;
-  border: 1px solid #d8d1cb;
-  border-radius: 22px;
-  background: rgba(255, 255, 255, 0.97);
-  color: #4b4039;
-  box-shadow: 0 8px 22px rgba(54, 39, 30, 0.14), 0 1px 2px rgba(54, 39, 30, 0.08);
-  font-size: 0.79rem;
-  font-weight: 700;
+  padding: 5px 6px 5px 15px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(16px) saturate(145%);
+  color: #243047;
+  box-shadow:
+    0 16px 36px rgba(15, 23, 42, 0.12),
+    0 3px 8px rgba(15, 23, 42, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.82);
+  font-size: 0.8rem;
+  font-weight: 720;
   line-height: 1;
+  letter-spacing: -0.01em;
   text-decoration: none;
   white-space: nowrap;
   opacity: 0;
   pointer-events: none;
-  transform: translate3d(0, 14px, 0) scale(0.94);
+  transform: translate3d(12px, 16px, 0) scale(0.9);
   transform-origin: right bottom;
   transition:
-    opacity 160ms ease,
-    transform 240ms cubic-bezier(0.2, 0.86, 0.24, 1.12),
+    opacity 170ms ease,
+    transform 260ms cubic-bezier(0.16, 1, 0.3, 1),
     border-color 160ms ease,
     background 160ms ease,
-    box-shadow 160ms ease;
+    color 160ms ease,
+    box-shadow 180ms ease;
   will-change: transform, opacity;
 }
 
 .quickActionPrimary {
-  border-color: #573223;
-  background: linear-gradient(180deg, #805038, #643a29);
-  color: #fffaf6;
-  box-shadow: 0 9px 24px rgba(74, 42, 28, 0.24), 0 2px 0 #3e241a;
+  border-color: rgba(99, 102, 241, 0.54);
+  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 48%, #2563eb 100%);
+  color: #ffffff;
+  box-shadow:
+    0 18px 38px rgba(79, 70, 229, 0.24),
+    0 4px 10px rgba(37, 99, 235, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.26);
 }
 
 .quickActionLabel {
@@ -60,23 +89,44 @@
 
 .quickActionIcon {
   display: grid;
-  width: 32px;
-  height: 32px;
-  flex: 0 0 32px;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
   place-items: center;
+  border: 1px solid rgba(99, 102, 241, 0.12);
   border-radius: 50%;
-  background: #f3ece7;
-  color: #5b3425;
+  background: linear-gradient(145deg, #eef2ff, #e0e7ff);
+  color: #4f46e5;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.quickActionItem:nth-child(1) .quickActionIcon {
+  border-color: rgba(14, 165, 233, 0.14);
+  background: linear-gradient(145deg, #ecfeff, #e0f2fe);
+  color: #0284c7;
+}
+
+.quickActionItem:nth-child(2) .quickActionIcon {
+  border-color: rgba(16, 185, 129, 0.14);
+  background: linear-gradient(145deg, #ecfdf5, #d1fae5);
+  color: #059669;
 }
 
 .quickActionPrimary .quickActionIcon {
-  background: rgba(255, 250, 246, 0.14);
-  color: #f1c9a8;
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 .icon {
   width: 18px;
   height: 18px;
+}
+
+.quickActionsOpen::before {
+  opacity: 1;
+  transform: scale(1.08);
 }
 
 .quickActionsOpen .quickActionList {
@@ -89,61 +139,97 @@
   transform: translate3d(0, 0, 0) scale(1);
 }
 
-.quickActionsOpen .quickActionItem:nth-child(3) { transition-delay: 20ms; }
-.quickActionsOpen .quickActionItem:nth-child(2) { transition-delay: 55ms; }
-.quickActionsOpen .quickActionItem:nth-child(1) { transition-delay: 90ms; }
+.quickActionsOpen .quickActionItem:nth-child(3) { transition-delay: 18ms; }
+.quickActionsOpen .quickActionItem:nth-child(2) { transition-delay: 52ms; }
+.quickActionsOpen .quickActionItem:nth-child(1) { transition-delay: 86ms; }
 
 .quickActionsOpen .quickActionItem:hover {
-  border-color: #c6b8ae;
-  background: #fff;
-  box-shadow: 0 10px 26px rgba(54, 39, 30, 0.18), 0 2px 3px rgba(54, 39, 30, 0.08);
-  transform: translate3d(0, -1px, 0) scale(1.015);
+  border-color: rgba(99, 102, 241, 0.28);
+  background: rgba(255, 255, 255, 0.98);
+  color: #172033;
+  box-shadow:
+    0 20px 42px rgba(15, 23, 42, 0.15),
+    0 5px 12px rgba(15, 23, 42, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92);
+  transform: translate3d(-4px, -2px, 0) scale(1.02);
 }
 
 .quickActionsOpen .quickActionPrimary:hover {
-  border-color: #4d2a1e;
-  background: linear-gradient(180deg, #87563d, #69402d);
-  box-shadow: 0 11px 28px rgba(74, 42, 28, 0.28), 0 2px 0 #3b2118;
+  border-color: rgba(129, 140, 248, 0.72);
+  background: linear-gradient(135deg, #6d72f4 0%, #554ce8 48%, #2f6ee8 100%);
+  color: #ffffff;
+  box-shadow:
+    0 22px 46px rgba(79, 70, 229, 0.3),
+    0 6px 14px rgba(37, 99, 235, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+.quickActionItem:focus-visible,
+.quickActionTrigger:focus-visible {
+  outline: 3px solid rgba(99, 102, 241, 0.28);
+  outline-offset: 3px;
 }
 
 .quickActionTrigger {
+  position: relative;
   display: grid;
-  width: 52px;
-  height: 52px;
+  width: 56px;
+  height: 56px;
+  overflow: hidden;
   place-items: center;
-  border: 1px solid #573223;
+  border: 1px solid rgba(255, 255, 255, 0.55);
   border-radius: 50%;
-  background: linear-gradient(180deg, #805038, #5b3425);
-  color: #fffaf6;
-  box-shadow: 0 9px 24px rgba(74, 42, 28, 0.24), 0 0 0 3px rgba(212, 170, 134, 0.22);
+  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 46%, #2563eb 100%);
+  color: #ffffff;
+  box-shadow:
+    0 18px 38px rgba(79, 70, 229, 0.28),
+    0 5px 12px rgba(15, 23, 42, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    inset 0 -1px 0 rgba(30, 64, 175, 0.28);
   cursor: pointer;
   transition:
-    transform 180ms cubic-bezier(0.2, 0.86, 0.24, 1.12),
-    box-shadow 180ms ease,
-    background 180ms ease;
+    transform 190ms cubic-bezier(0.2, 0.86, 0.24, 1.12),
+    box-shadow 190ms ease,
+    filter 190ms ease;
+}
+
+.quickActionTrigger::before {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  border-radius: inherit;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0) 44%);
+  pointer-events: none;
 }
 
 .quickActionTrigger:hover {
-  background: linear-gradient(180deg, #87563d, #643a29);
-  box-shadow: 0 11px 28px rgba(74, 42, 28, 0.28), 0 0 0 4px rgba(212, 170, 134, 0.24);
-  transform: translateY(-1px);
+  box-shadow:
+    0 22px 44px rgba(79, 70, 229, 0.34),
+    0 7px 16px rgba(15, 23, 42, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.44),
+    inset 0 -1px 0 rgba(30, 64, 175, 0.26);
+  filter: saturate(1.08) brightness(1.03);
+  transform: translateY(-2px) scale(1.03);
 }
 
 .quickActionTrigger:active {
-  transform: translateY(1px) scale(0.98);
+  transform: translateY(1px) scale(0.97);
 }
 
 .quickActionTriggerIcon {
+  position: relative;
+  z-index: 1;
   display: grid;
   place-items: center;
-  transition: transform 240ms cubic-bezier(0.2, 0.86, 0.24, 1.12);
+  transition: transform 260ms cubic-bezier(0.2, 0.86, 0.24, 1.12);
 }
 
 .quickActionsOpen .quickActionTriggerIcon {
-  transform: rotate(45deg);
+  transform: rotate(45deg) scale(0.94);
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .quickActions::before,
   .quickActionItem,
   .quickActionTrigger,
   .quickActionTriggerIcon {
@@ -157,7 +243,31 @@
     bottom: max(14px, env(safe-area-inset-bottom));
   }
 
-  .quickActionList { bottom: 58px; gap: 8px; }
-  .quickActionItem { min-height: 40px; padding-left: 12px; }
-  .quickActionTrigger { width: 50px; height: 50px; }
+  .quickActions::before {
+    width: 70px;
+    height: 70px;
+  }
+
+  .quickActionList {
+    bottom: 44px;
+    gap: 8px;
+    padding-bottom: 14px;
+  }
+
+  .quickActionItem {
+    min-height: 42px;
+    padding: 4px 5px 4px 13px;
+    font-size: 0.78rem;
+  }
+
+  .quickActionIcon {
+    width: 32px;
+    height: 32px;
+    flex-basis: 32px;
+  }
+
+  .quickActionTrigger {
+    width: 52px;
+    height: 52px;
+  }
 }
