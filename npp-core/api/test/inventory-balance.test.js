@@ -16,6 +16,7 @@ import {
   getInventoryBalance,
   inventoryBalanceInternals,
   listInventoryMovementDrillDown,
+  listInventoryMovementHistory,
   reconcileInventoryBalances,
 } from '../src/services/inventory-balance.js';
 
@@ -236,6 +237,31 @@ test('Inventory projection, reconciliation, rebuild and drill-down match the imm
       0n,
     );
     assert.equal(drillTotal, parseScale12(balanceResult.balance.on_hand_quantity));
+
+    const history = await listInventoryMovementHistory(pool, {
+      requestContext: scopedContext('req-balance-history'),
+      warehouseId: master.warehouseId,
+      baseVariantId: master.baseVariantId,
+      scopeMode: 'warehouse',
+      limit: 51,
+      offset: 0,
+    });
+    assert.equal(history.ok, true, history.message);
+    assert.equal(history.rows.length, 3);
+    assert.equal(String(history.rows[0].stock_after), '12.000000000000');
+    assert.equal(history.rows.every((row) => row.warehouse_id === master.warehouseId), true);
+    assert.equal(history.rows.every((row) => Number(row.line_count) === 1), true);
+
+    const invalidHistoryScope = await listInventoryMovementHistory(pool, {
+      requestContext: scopedContext('req-balance-history-invalid'),
+      warehouseId: master.warehouseId,
+      baseVariantId: master.baseVariantId,
+      scopeMode: 'all',
+      limit: 51,
+      offset: 0,
+    });
+    assert.equal(invalidHistoryScope.ok, false);
+    assert.equal(invalidHistoryScope.code, 'INVALID_HISTORY_SCOPE');
 
     const initialReconciliation = await reconcileInventoryBalances(pool, {
       requestContext: scopedContext('req-balance-reconcile'),
