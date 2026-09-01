@@ -360,8 +360,6 @@ function pricingSummary(line: LineDraft): string {
 }
 
 function variantBusinessLabel(variant: ProductVariant): string {
-  const unitLabel = variant.unit_name?.trim() || variant.unit_symbol?.trim() || variant.unit_code?.trim();
-  if (unitLabel) return unitLabel;
   return variant.variant_kind === 'CARTON' ? 'Thùng' : 'Lẻ';
 }
 
@@ -594,7 +592,7 @@ export default function SalesOrderCommercialForm(props: Props) {
           options,
           loading: false,
           loaded: true,
-          error: options.length ? null : 'Sản phẩm chưa có ĐVT bán hàng hợp lệ.',
+          error: options.length ? null : 'Sản phẩm chưa có SKU Lẻ/Thùng đang được phép bán.',
         },
       }));
     } catch (error) {
@@ -605,7 +603,7 @@ export default function SalesOrderCommercialForm(props: Props) {
           options: [],
           loading: false,
           loaded: false,
-          error: error instanceof Error ? error.message : 'Không tải được ĐVT bán hàng.',
+          error: error instanceof Error ? error.message : 'Không tải được SKU Lẻ/Thùng.',
         },
       }));
     }
@@ -620,7 +618,7 @@ export default function SalesOrderCommercialForm(props: Props) {
       const currentOption = rows.find((option) => option.id === line.variantId)
         ?? rows.find((option) => option.sku === line.sku);
       if (!currentOption) {
-        setLineVariantErrors((current) => ({ ...current, [line.clientLineId]: 'Không xác định được ĐVT của SKU này.' }));
+        setLineVariantErrors((current) => ({ ...current, [line.clientLineId]: 'Không xác định được nhóm Lẻ/Thùng của SKU này.' }));
         return;
       }
       setLines((current) => current.map((item) => item.clientLineId === line.clientLineId ? {
@@ -639,7 +637,7 @@ export default function SalesOrderCommercialForm(props: Props) {
       lineProductResolveRef.current.delete(line.clientLineId);
       setLineVariantErrors((current) => ({
         ...current,
-        [line.clientLineId]: error instanceof Error ? error.message : 'Không tải được lựa chọn ĐVT.',
+        [line.clientLineId]: error instanceof Error ? error.message : 'Không tải được lựa chọn Lẻ/Thùng.',
       }));
     }
   }, [loadProductVariants]);
@@ -894,7 +892,7 @@ export default function SalesOrderCommercialForm(props: Props) {
       || !option.unit_id
       || !option.unit_code
       || !option.conversion_to_base) {
-      return onError('ĐVT đã chọn không còn hợp lệ để bán.');
+      return onError('SKU Lẻ/Thùng đã chọn không còn hợp lệ để bán.');
     }
     setLines((current) => current.map((line) => line.clientLineId === clientLineId ? {
       ...line,
@@ -1437,7 +1435,7 @@ export default function SalesOrderCommercialForm(props: Props) {
                       type="button"
                       className={styles.linkButton}
                       aria-label={`Tách dòng ${line.sku}`}
-                      title="Tách dòng riêng để bán cùng sản phẩm theo ĐVT khác hoặc điều kiện thương mại khác"
+                      title="Tách dòng riêng để bán cùng sản phẩm theo Lẻ/Thùng hoặc điều kiện thương mại khác"
                       disabled={!canPriceOverride || line.resolvingPrice}
                       onClick={() => void splitLine(line.clientLineId)}
                     >↳ Tách dòng</button>
@@ -1456,7 +1454,7 @@ export default function SalesOrderCommercialForm(props: Props) {
                     }}
                     className={styles.directPriceInput}
                     data-testid={`sales-line-variant-select-${index + 1}`}
-                    aria-label={`Chọn ĐVT cho ${line.sku}`}
+                    aria-label={`Chọn Lẻ hoặc Thùng cho ${line.sku}`}
                     value={line.variantId}
                     disabled={line.resolvingPrice || choiceState?.loading === true}
                     onChange={(event) => void changeLineVariant(line.clientLineId, event.target.value)}
