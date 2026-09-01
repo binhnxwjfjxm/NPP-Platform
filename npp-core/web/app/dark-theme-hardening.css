@@ -1,6 +1,6 @@
 /* Global dark-theme contract for the Công Ty UI.
-   Loaded after all legacy visual layers. The goal is not to restyle each page independently:
-   every application surface must inherit one dark semantic system, while document paper stays light. */
+   Loaded after all legacy visual layers. Container selectors stay deliberately narrow:
+   legacy child labels/copies must not accidentally become cards or panels. */
 
 :root[data-hp-theme='dark'] {
   --hp-canvas: #111512;
@@ -70,8 +70,8 @@
   color: var(--hp-ink) !important;
 }
 
-/* Contrast contract: legacy modules contain many hard-coded brown/slate text colors.
-   In dark mode every descendant inherits from its semantic parent first; semantic tones are restored below. */
+/* Legacy modules contain many fixed brown/slate text declarations. In dark mode the
+   default contract is readable light text; semantic/muted tones are restored below. */
 :root[data-hp-theme='dark'] body:not([data-printing='true']) * {
   color: inherit !important;
 }
@@ -137,34 +137,18 @@
   transition: background-color 9999s ease-out 0s;
 }
 
-/* Structural surface contract. This covers current and legacy page families instead of patching routes one by one. */
+/* Structural surfaces. Camel-case suffix selectors are intentional: `summaryCard`
+   is a surface, while `cardLabel` is not; `formPanel` is a surface, `panelHeader` is not. */
 :root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
-  section, article, fieldset, dialog, [role='dialog'], [role='listbox'], [role='menu'],
-  [class*='Card'], [class*='card'],
-  [class*='Panel'], [class*='panel'],
-  [class*='Dialog'], [class*='dialog'],
-  [class*='Modal'], [class*='modal'],
-  [class*='Toolbar'], [class*='toolbar'],
-  [class*='TableWrap'], [class*='tableWrap'],
-  [class*='TableWrapper'], [class*='tableWrapper'],
-  [class*='TableSection'], [class*='tableSection'],
-  [class*='Surface'], [class*='surface'],
-  [class*='Summary'], [class*='summary'],
-  [class*='Hero'], [class*='hero'],
-  [class*='Intro'], [class*='intro'],
-  [class*='Pane'], [class*='pane'],
-  [class*='Tile'], [class*='tile'],
-  [class*='Box'], [class*='box'],
-  [class*='Drawer'], [class*='drawer'],
-  [class*='Popover'], [class*='popover'],
-  [class*='Sheet'], [class*='sheet'],
-  [class*='Editor'], [class*='editor'],
-  [class*='SelectorBar'], [class*='selectorBar'],
-  [class*='FormPanel'], [class*='formPanel'],
-  [class*='DetailPanel'], [class*='detailPanel'],
-  [class*='WorkspacePanel'], [class*='workspacePanel'],
-  [class*='QuickLink'], [class*='quickLink'],
-  [class*='Result'], [class*='result']
+  section, article, fieldset, dialog,
+  [role='dialog'], [role='listbox'], [role='menu'],
+  [class*='Card'], [class*='Panel'], [class*='Dialog'], [class*='Modal'],
+  [class*='Toolbar'], [class*='TableWrapper'], [class*='TableSection'],
+  [class*='Surface'], [class*='Summary'], [class*='Hero'], [class*='Intro'],
+  [class*='Pane'], [class*='Tile'], [class*='Box'], [class*='Drawer'],
+  [class*='Popover'], [class*='Sheet'], [class*='Editor'], [class*='SelectorBar'],
+  [class*='FormPanel'], [class*='DetailPanel'], [class*='WorkspacePanel'],
+  [class*='QuickLink'], [class*='Section']
 ):not([class*='Backdrop']):not([class*='backdrop']):not([class*='Overlay']):not([class*='overlay']) {
   border-color: var(--hp-border) !important;
   background-color: var(--hp-surface) !important;
@@ -173,16 +157,41 @@
   box-shadow: none;
 }
 
-/* Camel-case/lowercase Section classes are common in Kho, Khách hàng and report workspaces. */
+/* Exact lowercase container names are constrained by element/parent so child classes
+   such as cardLabel, panelHeader, sectionCopy and toolbarActions are never promoted. */
 :root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
-  [class*='Section'], [class*='section']
-):not([class*='Header']):not([class*='header']):not([class*='Title']):not([class*='title']):not([class*='Actions']):not([class*='actions']):not([class*='Tabs']):not([class*='tabs']) {
+  article[class*='card'], section[class*='card'],
+  section[class*='panel'], article[class*='panel'], aside[class*='panel'],
+  form[class*='modal'], [role='dialog'] > [class*='modal'],
+  a[class*='quickLink'],
+  div[class*='tableWrap'],
+  [class*='organization-module'][class*='tableSection'],
+  [class*='organization-module'][class*='toolbar']:not([class*='toolbarActions']):not([class*='toolbarSearch']):not([class*='toolbarFilter'])
+) {
   border-color: var(--hp-border) !important;
   background-color: var(--hp-surface) !important;
   background-image: none !important;
+  color: var(--hp-ink) !important;
+  box-shadow: none !important;
 }
 
-/* Known nested light cells that have no class of their own. */
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='cards'], [class*='Cards'], [class*='summaryGrid'], [class*='SummaryGrid']
+) > :where(article, section, div[class*='card']) {
+  border-color: var(--hp-border) !important;
+  background: var(--hp-surface) !important;
+  color: var(--hp-ink) !important;
+  box-shadow: none !important;
+}
+
+/* Pricing result is a real surface; generic `result*` classes elsewhere can be labels/counters. */
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [class*='pricing-module'][class*='result'] {
+  border-color: var(--hp-success-border) !important;
+  background: var(--hp-success-bg) !important;
+  color: var(--hp-ink) !important;
+}
+
+/* Known nested light cells that have no container class of their own. */
 :root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
   [class*='resultGrid'], [class*='ResultGrid'],
   [class*='documentGrid'], [class*='DocumentGrid']
@@ -199,7 +208,7 @@
   background: var(--hp-surface-muted) !important;
 }
 
-/* Inline legacy white surfaces are still present in a few modal implementations. */
+/* Inline legacy white surfaces still exist in a few dialogs. */
 :root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
   [style*='background: #fff'],
   [style*='background:#fff'],
@@ -284,7 +293,7 @@
   color: var(--hp-ink) !important;
 }
 
-/* Secondary actions stay neutral. Primary/save/confirm actions use the forest-green family. */
+/* Secondary actions stay neutral. Primary/save/confirm/create actions use forest green. */
 :root[data-hp-theme='dark'] body:not([data-printing='true']) button:not([class*='danger']):not([class*='Danger']):not([class*='warning']):not([class*='Warning']):not([class*='success']):not([class*='Success']):not([class*='error']):not([class*='Error']) {
   border-color: var(--hp-border-strong) !important;
   background-color: var(--hp-surface-soft) !important;
@@ -333,7 +342,7 @@
   cursor: not-allowed !important;
 }
 
-/* Neutral chips/badges are dark. Semantic states below retain their meaning without bright white fills. */
+/* Neutral chips/badges are dark. Semantic states retain meaning without pale fills. */
 :root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
   [class*='Badge'], [class*='badge'], [class*='Pill'], [class*='pill'], [class*='Chip'], [class*='chip']
 ) {
@@ -483,7 +492,7 @@
   color: var(--hp-ink) !important;
 }
 
-/* Product and pricing families have several named light bars/wrappers. */
+/* Product/pricing/inventory families have a few named light bars/wrappers. */
 :root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
   [class*='unitSelectorBar'], [class*='UnitSelectorBar'],
   [class*='updateUploadPanel'], [class*='UpdateUploadPanel'],

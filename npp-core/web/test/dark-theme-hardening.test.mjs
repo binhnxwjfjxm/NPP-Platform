@@ -35,24 +35,35 @@ test('dark theme resets legacy brown and slate text to readable inherited contra
   assert.match(css, /color:\s*var\(--hp-muted\)\s*!important/);
 });
 
-test('dark theme covers legacy structural surfaces instead of route-by-route patches', () => {
+test('dark theme covers structural surfaces without promoting child labels into panels', () => {
   for (const selector of [
-    "[class*='TableWrap']",
+    "[class*='Card']",
+    "[class*='Panel']",
     "[class*='TableWrapper']",
     "[class*='TableSection']",
     "[class*='Hero']",
     "[class*='Intro']",
-    "[class*='QuickLink']",
-    "[class*='Result']",
     "[class*='WorkspacePanel']",
     "[class*='Section']",
-    "[class*='section']",
+    "article[class*='card']",
+    "section[class*='panel']",
+    "form[class*='modal']",
+    "div[class*='tableWrap']",
   ]) {
     assert.ok(css.includes(selector), `missing dark surface coverage for ${selector}`);
   }
 
+  assert.doesNotMatch(css, /\[class\*='card'\],\s*\n\s*\[class\*='Panel'\]/);
+  assert.doesNotMatch(css, /\[class\*='panel'\],\s*\n\s*\[class\*='Dialog'\]/);
+  assert.doesNotMatch(css, /\[class\*='hero'\],/);
+  assert.doesNotMatch(css, /\[class\*='section'\]\s*\n/);
+  assert.match(css, /\[class\*='cards'\][\s\S]*> :where\(article, section, div\[class\*='card'\]\)/);
+});
+
+test('dark theme covers inline white dialogs while keeping backdrops translucent', () => {
   assert.match(css, /\[style\*='background: #fff'\]/);
   assert.match(css, /\[style\*='background: rgb\(255, 255, 255\)'\]/);
+  assert.match(css, /\[role='dialog'\] > \[class\*='modal'\]/);
   assert.match(css, /\[class\*='Backdrop'\]/);
   assert.match(css, /background:\s*rgba\(3, 8, 5, \.74\)\s*!important/);
 });
@@ -105,10 +116,10 @@ test('representative legacy modules with hard-coded light UI are covered by the 
   assert.match(pricing, /\.tableWrapper[\s\S]*background:\s*#fff/);
   assert.match(inventory, /\.hero[\s\S]*#fffaf6/);
 
-  assert.ok(css.includes("[class*='TableSection']"));
+  assert.ok(css.includes("[class*='organization-module'][class*='tableSection']"));
   assert.ok(css.includes("[class*='TableWrapper']"));
   assert.ok(css.includes("[class*='Intro']"));
-  assert.ok(css.includes("[class*='Hero']"));
+  assert.match(css, /\bsection, article, fieldset, dialog/);
   assert.match(css, /body:not\(\[data-printing='true'\]\) \*/);
 });
 
