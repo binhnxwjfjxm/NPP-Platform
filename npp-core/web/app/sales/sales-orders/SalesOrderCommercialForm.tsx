@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Customer, CustomerAddress } from '../../../lib/customer-types';
-import type { Product } from '../../../lib/product-types';
+import type { Product, ProductVariant } from '../../../lib/product-types';
 import type { Warehouse } from '../../../lib/organization-types';
 import { pricingPolicyLabel, pricingResolutionReasonLabel } from '../../../lib/business-language';
 import { MIN_PRODUCT_SEARCH_LENGTH } from '../../../lib/product-search-contract';
@@ -41,10 +41,12 @@ const HUNDRED = 100n * SCALE;
 
 type LineDraft = {
   clientLineId: string;
+  productId: string | null;
   variantId: string;
   sku: string;
   name: string;
   unitCode: string;
+  conversionToBase: string;
   quantity: string;
   taxMode: SalesOrderTaxMode;
   taxRate: string;
@@ -58,6 +60,13 @@ type LineDraft = {
   resolvingPrice: boolean;
   priceError: string | null;
   pricingErrorCode: string | null;
+};
+
+type LineVariantChoiceState = {
+  options: ProductVariant[];
+  loading: boolean;
+  loaded: boolean;
+  error: string | null;
 };
 
 type QuickCustomerDraft = {
@@ -148,10 +157,12 @@ function versionLines(version?: SalesOrderVersion | null): LineDraft[] {
     && (parseScaled(version?.documentDiscountValue ?? '0', true) ?? 0n) > 0n;
   return (version?.lines ?? []).map((line) => ({
     clientLineId: line.id,
+    productId: null,
     variantId: line.variantId,
     sku: line.sku,
     name: line.itemName,
     unitCode: line.unitCode,
+    conversionToBase: line.conversionToBase,
     quantity: compactQuantity(line.quantity),
     taxMode: line.taxMode,
     taxRate: line.taxRate,
@@ -348,6 +359,12 @@ function pricingSummary(line: LineDraft): string {
   return `${labels.join(' · ')}${applied.length > 2 ? ` · ${applied.length} chính sách` : ''}`;
 }
 
+function variantBusinessLabel(variant: ProductVariant): string {
+  const kind = variant.variant_kind === 'CARTON' ? 'Thùng' : 'Lẻ';
+  const unit = variant.unit_code ? ` · ${variant.unit_code}` : '';
+  return `${kind} · ${variant.sku}${unit}`;
+}
+
 export default function SalesOrderCommercialForm(props: Props) {
   const { version, onClose, onError } = props;
   const initialWalkIn = version?.customerMode === 'WALK_IN';
@@ -376,6 +393,8 @@ export default function SalesOrderCommercialForm(props: Props) {
   const [showMore, setShowMore] = useState(Boolean(version?.note));
   const [lines, setLines] = useState<LineDraft[]>(versionLines(version));
   const [expandedLineId, setExpandedLineId] = useState<string | null>(null);
+  const [lineVariantChoices, setLineVariantChoices] = useState<Record<string, LineVariantChoiceState>>({});
+  const [lineVariantErrors, setLineVariantErrors] = useState<Record<string, string>>({});
   const linesRef = useRef(lines);
   const committedDraftRef = useRef<SalesOrder | null>(null);
   const [addresses, setAddresses] = useState<CustomerAddress[]>([]);
@@ -398,10 +417,13 @@ export default function SalesOrderCommercialForm(props: Props) {
   const searchRef = useRef<HTMLInputElement>(null);
   const quantityRefs = useRef(new Map<string, HTMLInputElement>());
   const priceRefs = useRef(new Map<string, HTMLInputElement>());
+  const variantRefs = useRef(new Map<string, HTMLSelectElement>());
   const pricingContextRef = useRef('');
   const quantitySignatureRef = useRef('');
   const pricingRunRef = useRef(0);
   const skuSearchRunRef = useRef(0);
+  const lineProductResolveRef = useRef(new Set<string>());
+  const variantProductLoadRef = useRef(new Set<string>());
 
   useEffect(() => {
     linesRef.current = lines;
@@ -546,6 +568,88 @@ export default function SalesOrderCommercialForm(props: Props) {
       return result ? { ...line, ...result, resolvingPrice: false } : line;
     }));
   }, [customerId, customerMode, priceFor, salesChannelId]);
+
+  const loadProductVariants = useCallback(async (productId: string) => {
+    if (variantProductLoadRef.current.has(productId)) return;
+    variantProductLoadRef.current.add(productId);
+    setLineVariantChoices((current) => ({
+      ...current,
+      [productId]: { options: current[productId]?.options ?? [], loading: true, loaded: false, error: null },
+    }));
+    try {
+      const variants = await apiRequest<ProductVariant[]>(`/api/products/${productId}/variants`);
+      const options = variants
+        .filter((variant) => variant.product_id === productId)
+        .filter((variant) => variant.is_active && variant.is_sellable)
+        .filter((variant) => variant.variant_kind === 'BASE' || variant.variant_kind === 'CARTON')
+        .filter((variant) => Boolean(variant.unit_id && variant.unit_code && variant.conversion_to_base))
+        .sort((left, right) => {
+          const leftRank = left.variant_kind === 'BASE' ? 0 : 1;
+          const rightRank = right.variant_kind === 'BASE' ? 0 : 1;
+          return leftRank - rightRank || left.sku.localeCompare(right.sku);
+        });
+      setLineVariantChoices((current) => ({
+        ...current,
+        [productId]: {
+          options,
+          loading: false,
+          loaded: true,
+          error: options.length ? null : 'Sản phẩm chưa có SKU Lẻ/Thùng đang được phép bán.',
+        },
+      }));
+    } catch (error) {
+      variantProductLoadRef.current.delete(productId);
+      setLineVariantChoices((current) => ({
+        ...current,
+        [productId]: {
+          options: [],
+          loading: false,
+          loaded: false,
+          error: error instanceof Error ? error.message : 'Không tải được SKU Lẻ/Thùng.',
+        },
+      }));
+    }
+  }, []);
+
+  const resolveLineProduct = useCallback(async (line: LineDraft) => {
+    if (line.productId || lineProductResolveRef.current.has(line.clientLineId)) return;
+    lineProductResolveRef.current.add(line.clientLineId);
+    try {
+      const query = new URLSearchParams({ search: line.sku, limit: '50', offset: '0' });
+      const rows = await apiRequest<Omit<SalesOrderSkuSearchOption, 'pricePreview' | 'inventoryPreview'>[]>(`/api/sales-orders/sku-search?${query}`);
+      const currentOption = rows.find((option) => option.id === line.variantId)
+        ?? rows.find((option) => option.sku === line.sku);
+      if (!currentOption) {
+        setLineVariantErrors((current) => ({ ...current, [line.clientLineId]: 'Không xác định được nhóm Lẻ/Thùng của SKU này.' }));
+        return;
+      }
+      setLines((current) => current.map((item) => item.clientLineId === line.clientLineId ? {
+        ...item,
+        productId: currentOption.productId,
+        conversionToBase: currentOption.conversionToBase ?? item.conversionToBase,
+      } : item));
+      setLineVariantErrors((current) => {
+        if (!current[line.clientLineId]) return current;
+        const next = { ...current };
+        delete next[line.clientLineId];
+        return next;
+      });
+      await loadProductVariants(currentOption.productId);
+    } catch (error) {
+      lineProductResolveRef.current.delete(line.clientLineId);
+      setLineVariantErrors((current) => ({
+        ...current,
+        [line.clientLineId]: error instanceof Error ? error.message : 'Không tải được lựa chọn Lẻ/Thùng.',
+      }));
+    }
+  }, [loadProductVariants]);
+
+  useEffect(() => {
+    for (const line of lines) {
+      if (line.productId) void loadProductVariants(line.productId);
+      else void resolveLineProduct(line);
+    }
+  }, [lines, loadProductVariants, resolveLineProduct]);
 
   useEffect(() => {
     apiRequest<SalesOrderEntrySettings>('/api/sales-orders/entry-settings')
@@ -705,6 +809,12 @@ export default function SalesOrderCommercialForm(props: Props) {
     }, 0);
   }
 
+  function focusLineVariant(clientLineId: string) {
+    window.setTimeout(() => {
+      variantRefs.current.get(clientLineId)?.focus();
+    }, 0);
+  }
+
   async function addSku(option: SalesOrderSkuSearchOption) {
     if (!option.eligibility.selectable) return onError(option.eligibility.message);
     if (!salesChannelId) return onError('Hãy chọn kênh bán trước khi thêm hàng');
@@ -713,10 +823,12 @@ export default function SalesOrderCommercialForm(props: Props) {
     }
     const pending: LineDraft = {
       clientLineId: crypto.randomUUID(),
+      productId: option.productId,
       variantId: option.id,
       sku: option.sku,
       name: option.productName,
       unitCode: option.unitCode ?? '',
+      conversionToBase: option.conversionToBase ?? '1',
       quantity: '1',
       taxMode: option.defaultTaxMode,
       taxRate: option.defaultTaxRate,
@@ -735,6 +847,7 @@ export default function SalesOrderCommercialForm(props: Props) {
     setLines((current) => [...current, pending]);
     setSkuTerm('');
     setSkuResults([]);
+    void loadProductVariants(option.productId);
     focusLineQuantity(pending.clientLineId);
     markDirty();
     try {
@@ -769,7 +882,69 @@ export default function SalesOrderCommercialForm(props: Props) {
     }
   }
 
-  function splitLine(sourceClientLineId: string) {
+  async function changeLineVariant(clientLineId: string, nextVariantId: string) {
+    const source = linesRef.current.find((line) => line.clientLineId === clientLineId);
+    if (!source || !source.productId || source.variantId === nextVariantId || source.resolvingPrice) return;
+    const choice = lineVariantChoices[source.productId];
+    const option = choice?.options.find((variant) => variant.id === nextVariantId);
+    if (!option
+      || !option.is_active
+      || !option.is_sellable
+      || (option.variant_kind !== 'BASE' && option.variant_kind !== 'CARTON')
+      || !option.unit_id
+      || !option.unit_code
+      || !option.conversion_to_base) {
+      return onError('SKU Lẻ/Thùng đã chọn không còn hợp lệ để bán.');
+    }
+    setLines((current) => current.map((line) => line.clientLineId === clientLineId ? {
+      ...line,
+      variantId: option.id,
+      sku: option.sku,
+      unitCode: option.unit_code ?? '',
+      conversionToBase: option.conversion_to_base ?? '1',
+      manualUnitPriceMinor: '',
+      baseUnitPriceMinor: '0',
+      systemUnitPriceMinor: '0',
+      pricingFingerprint: '',
+      priceSteps: [],
+      resolvingPrice: true,
+      priceError: null,
+      pricingErrorCode: null,
+    } : line));
+    markDirty();
+    try {
+      const resolution = await priceFor({
+        variantId: option.id,
+        quantity: source.quantity,
+        mode: customerMode,
+        selectedCustomerId: customerId,
+        channelId: salesChannelId,
+        effectiveAt: pricingAt,
+      });
+      setLines((current) => current.map((line) => line.clientLineId === clientLineId && line.variantId === option.id ? {
+        ...line,
+        baseUnitPriceMinor: resolution.baseUnitPriceMinor,
+        systemUnitPriceMinor: resolution.systemUnitPriceMinor ?? resolution.finalUnitPriceMinor,
+        pricingFingerprint: resolution.resolutionFingerprint,
+        priceSteps: resolution.steps,
+        resolvingPrice: false,
+        priceError: null,
+        pricingErrorCode: null,
+      } : line));
+    } catch (error) {
+      const details = pricingErrorDetails(error);
+      setLines((current) => current.map((line) => line.clientLineId === clientLineId && line.variantId === option.id ? {
+        ...line,
+        resolvingPrice: false,
+        pricingFingerprint: '',
+        priceSteps: [],
+        priceError: details.message,
+        pricingErrorCode: details.code,
+      } : line));
+    }
+  }
+
+  async function splitLine(sourceClientLineId: string) {
     if (!canPriceOverride) return onError('Cần quyền Sửa giá bán trên đơn để tách dòng.');
     const source = linesRef.current.find((line) => line.clientLineId === sourceClientLineId);
     if (!source || source.resolvingPrice) return;
@@ -777,7 +952,9 @@ export default function SalesOrderCommercialForm(props: Props) {
       ...source,
       clientLineId: crypto.randomUUID(),
       quantity: '1',
-      manualUnitPriceMinor: '0',
+      manualUnitPriceMinor: '',
+      baseUnitPriceMinor: '0',
+      systemUnitPriceMinor: '0',
       discountMode: 'PERCENT',
       discountValue: '0',
       pricingFingerprint: '',
@@ -792,7 +969,37 @@ export default function SalesOrderCommercialForm(props: Props) {
       return [...current.slice(0, sourceIndex + 1), split, ...current.slice(sourceIndex + 1)];
     });
     markDirty();
-    focusLinePrice(split.clientLineId);
+    focusLineVariant(split.clientLineId);
+    try {
+      const resolution = await priceFor({
+        variantId: split.variantId,
+        quantity: '1',
+        mode: customerMode,
+        selectedCustomerId: customerId,
+        channelId: salesChannelId,
+        effectiveAt: pricingAt,
+      });
+      setLines((current) => current.map((line) => line.clientLineId === split.clientLineId ? {
+        ...line,
+        baseUnitPriceMinor: resolution.baseUnitPriceMinor,
+        systemUnitPriceMinor: resolution.systemUnitPriceMinor ?? resolution.finalUnitPriceMinor,
+        pricingFingerprint: resolution.resolutionFingerprint,
+        priceSteps: resolution.steps,
+        resolvingPrice: false,
+        priceError: null,
+        pricingErrorCode: null,
+      } : line));
+    } catch (error) {
+      const details = pricingErrorDetails(error);
+      setLines((current) => current.map((line) => line.clientLineId === split.clientLineId ? {
+        ...line,
+        resolvingPrice: false,
+        pricingFingerprint: '',
+        priceSteps: [],
+        priceError: details.message,
+        pricingErrorCode: details.code,
+      } : line));
+    }
   }
 
   function handleSkuKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
@@ -1197,8 +1404,13 @@ export default function SalesOrderCommercialForm(props: Props) {
           </section>
 
           <section className={styles.orderLines} aria-label="Hàng hóa trong đơn">
-            <header className={styles.lineTableHeader}><span>STT</span><span>Hàng hóa</span><span>ĐVT</span><span>SL</span><span>Đơn giá</span><span>CK</span><span>Thành tiền</span><span /></header>
-            {lines.map((line, index) => (
+            <header className={styles.lineTableHeader}><span>STT</span><span>Hàng hóa</span><span>Lẻ/Thùng</span><span>SL</span><span>Đơn giá</span><span>CK</span><span>Thành tiền</span><span /></header>
+            {lines.map((line, index) => {
+              const choiceState = line.productId ? lineVariantChoices[line.productId] : undefined;
+              const variantOptions = choiceState?.options ?? [];
+              const hasCurrentOption = variantOptions.some((variant) => variant.id === line.variantId);
+              const lineVariantError = lineVariantErrors[line.clientLineId] ?? choiceState?.error ?? null;
+              return (
               <article className={styles.orderLineCard} key={line.clientLineId} data-testid={`sales-order-line-${index + 1}`}>
                 <BusinessSequenceNumber rowIndex={index} className={styles.lineSequence} />
                 <div className={styles.lineIdentity}>
@@ -1225,9 +1437,9 @@ export default function SalesOrderCommercialForm(props: Props) {
                       type="button"
                       className={styles.linkButton}
                       aria-label={`Tách dòng ${line.sku}`}
-                      title="Tách dòng riêng cho bù hàng, khuyến mãi hoặc hàng tặng"
+                      title="Tách dòng riêng để bán cùng sản phẩm theo Lẻ/Thùng hoặc điều kiện thương mại khác"
                       disabled={!canPriceOverride || line.resolvingPrice}
-                      onClick={() => splitLine(line.clientLineId)}
+                      onClick={() => void splitLine(line.clientLineId)}
                     >↳ Tách dòng</button>
                   </div>
                   {line.priceError && (
@@ -1236,7 +1448,26 @@ export default function SalesOrderCommercialForm(props: Props) {
                     </small>
                   )}
                 </div>
-                <div className={styles.unitCell}><span>ĐVT</span><strong>{line.unitCode || '—'}</strong></div>
+                <div className={styles.unitCell}>
+                  <span>Đơn vị bán · Lẻ/Thùng</span>
+                  <select
+                    ref={(node) => {
+                      if (node) variantRefs.current.set(line.clientLineId, node);
+                      else variantRefs.current.delete(line.clientLineId);
+                    }}
+                    data-testid={`sales-line-variant-select-${index + 1}`}
+                    aria-label={`Chọn Lẻ hoặc Thùng cho ${line.sku}`}
+                    value={line.variantId}
+                    disabled={line.resolvingPrice || choiceState?.loading === true}
+                    onChange={(event) => void changeLineVariant(line.clientLineId, event.target.value)}
+                  >
+                    {!hasCurrentOption && <option value={line.variantId}>{line.unitCode || 'ĐVT'} · {line.sku}</option>}
+                    {variantOptions.map((variant) => <option key={variant.id} value={variant.id}>{variantBusinessLabel(variant)}</option>)}
+                  </select>
+                  <small>Quy đổi kho ×{compactQuantity(line.conversionToBase)}</small>
+                  {choiceState?.loading && <small>Đang tải Lẻ/Thùng…</small>}
+                  {lineVariantError && <small className={styles.ineligible}>{lineVariantError}</small>}
+                </div>
                 <div className={styles.quantityCell}>
                   <span>SL</span>
                   <div className={styles.quantityStepper}>
@@ -1363,7 +1594,8 @@ export default function SalesOrderCommercialForm(props: Props) {
                   </div>
                 </div>
               </article>
-            ))}
+              );
+            })}
             {lines.length === 0 && <p className={styles.empty}>Chưa có hàng hóa. Dùng ô tìm nhanh phía trên để thêm hàng.</p>}
           </section>
           <div data-testid="sales-order-scroll-sentinel" className={styles.scrollSentinel}>Cuối danh sách hàng hóa</div>
