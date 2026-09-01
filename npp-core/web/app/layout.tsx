@@ -13,6 +13,7 @@ import './hung-phat-warm-gold.css';
 import './core-office-density.css';
 import './sales-order-entry-polish.css';
 import './appearance-theme.css';
+import './dark-theme-hardening.css';
 
 const beVietnamPro = Be_Vietnam_Pro({
   subsets: ['latin', 'vietnamese'],
