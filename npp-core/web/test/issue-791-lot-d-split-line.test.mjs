@@ -55,8 +55,11 @@ test('Lô 2 switches the real Lẻ/Thùng variant on every line and reprices fro
   assert.match(form, /manualUnitPriceMinor: '',[\s\S]*?baseUnitPriceMinor: '0',[\s\S]*?systemUnitPriceMinor: '0',[\s\S]*?pricingFingerprint: ''/);
   assert.match(form, /variantId: option\.id,[\s\S]*?quantity: source\.quantity,[\s\S]*?effectiveAt: pricingAt/);
   assert.match(form, /data-testid={`sales-line-variant-select-\$\{index \+ 1\}`}/);
+  assert.match(form, /className=\{styles\.directPriceInput\}[\s\S]*?data-testid=\{`sales-line-variant-select-/);
   assert.match(form, /onChange=\{\(event\) => void changeLineVariant\(line\.clientLineId, event\.target\.value\)\}/);
-  assert.match(form, /Đơn vị bán · Lẻ\/Thùng/);
-  assert.match(form, /Quy đổi kho ×\{compactQuantity\(line\.conversionToBase\)\}/);
+  assert.match(form, /<span>Hàng hóa<\/span><span>ĐVT<\/span><span>SL<\/span>/);
+  assert.match(form, /function variantBusinessLabel\(variant: ProductVariant\): string \{[\s\S]*?return variant\.variant_kind === 'CARTON' \? 'Thùng' : 'Lẻ';/);
+  assert.doesNotMatch(form, /Đơn vị bán · Lẻ\/Thùng/);
+  assert.doesNotMatch(form, /Quy đổi kho/);
   assert.match(form, /lines: lines\.map\(\(line\) => \(\{[\s\S]*?variantId: line\.variantId/);
 });
