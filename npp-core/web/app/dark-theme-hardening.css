@@ -1,6 +1,6 @@
-/* Dark theme hardening for Công Ty UI.
-   Loaded after appearance-theme.css so legacy light-only CSS cannot leave bright surfaces behind.
-   Print/document paper remains light by design. */
+/* Global dark-theme contract for the Công Ty UI.
+   Loaded after all legacy visual layers. Container selectors stay deliberately narrow:
+   legacy child labels/copies must not accidentally become cards or panels. */
 
 :root[data-hp-theme='dark'] {
   --hp-canvas: #111512;
@@ -30,8 +30,20 @@
   --hp-sidebar-muted: rgba(224, 236, 228, .64);
   --hp-row-even: #181e1a;
   --hp-row-hover: #213027;
+  --hp-success-bg: #183527;
+  --hp-success-border: #355f47;
+  --hp-success-fg: #c5ead2;
+  --hp-warning-bg: #342b18;
+  --hp-warning-border: #6a5730;
+  --hp-warning-fg: #f0d79a;
+  --hp-danger-bg: #3a201e;
+  --hp-danger-border: #74423d;
+  --hp-danger-fg: #f0b8b0;
+  --hp-info-bg: #1b2e3a;
+  --hp-info-border: #3c6074;
+  --hp-info-fg: #bfdbea;
 
-  /* Legacy aliases used by older Công Ty modules. */
+  /* Legacy aliases still used by older Công Ty modules. */
   --surface: var(--hp-surface);
   --surface-soft: var(--hp-surface-soft);
   --surface-muted: var(--hp-surface-muted);
@@ -51,79 +63,248 @@
   --office-muted: var(--hp-muted);
 }
 
+:root[data-hp-theme='dark'],
 :root[data-hp-theme='dark'] body:not([data-printing='true']) {
+  color-scheme: dark;
   background: var(--hp-canvas) !important;
   color: var(--hp-ink) !important;
 }
 
-:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(h1, h2, h3, h4, h5, h6, legend) {
+/* Legacy modules contain many fixed brown/slate text declarations. In dark mode the
+   default contract is readable light text; semantic/muted tones are restored below. */
+:root[data-hp-theme='dark'] body:not([data-printing='true']) * {
+  color: inherit !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='muted'], [class*='Muted'],
+  [class*='meta'], [class*='Meta'],
+  [class*='hint'], [class*='Hint'],
+  [class*='caption'], [class*='Caption'],
+  [class*='subtitle'], [class*='Subtitle'],
+  [class*='description'], [class*='Description'],
+  [class*='helper'], [class*='Helper'],
+  [class*='kicker'], [class*='Kicker'],
+  [class*='eyebrow'], [class*='Eyebrow'],
+  [class*='subtle'], [class*='Subtle'],
+  [class*='empty'], [class*='Empty']
+) {
+  color: var(--hp-muted) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [data-testid='app-sidebar'] :where(
+  [class*='navHint'], [class*='navLabel'], [class*='userCopy'] small
+) {
+  color: var(--hp-sidebar-muted) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) ::selection {
+  background: var(--hp-primary-soft);
   color: var(--hp-ink);
 }
 
 :root[data-hp-theme='dark'] body:not([data-printing='true']) :where(input, select, textarea, option) {
   border-color: var(--hp-border) !important;
   background: var(--hp-control-surface) !important;
+  background-image: none !important;
   color: var(--hp-ink) !important;
+  caret-color: var(--hp-primary-hover);
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(input, textarea)::placeholder {
+  color: #7f8c83 !important;
+  opacity: 1;
 }
 
 :root[data-hp-theme='dark'] body:not([data-printing='true']) :where(input, select, textarea):focus-visible {
-  outline-color: var(--hp-focus-outer) !important;
+  outline: 2px solid var(--hp-focus-outer) !important;
+  outline-offset: 1px;
   border-color: var(--hp-focus-outer) !important;
   box-shadow: 0 0 0 3px var(--hp-primary-ring) !important;
 }
 
 :root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
-  [class*='Card'], [class*='card'],
-  [class*='Panel'], [class*='panel'],
-  [class*='Dialog'], [class*='dialog'],
-  [class*='Modal'], [class*='modal'],
-  [class*='Toolbar'], [class*='toolbar'],
-  [class*='TableWrap'], [class*='tableWrap'],
-  [class*='Surface'], [class*='surface'],
-  [class*='Summary'], [class*='summary']
-):not([class*='status']):not([class*='Status']):not([class*='danger']):not([class*='Danger']):not([class*='warning']):not([class*='Warning']):not([class*='success']):not([class*='Success']):not([class*='error']):not([class*='Error']):not([class*='print']):not([class*='Print']) {
+  input[type='checkbox'], input[type='radio'], input[type='range'], progress
+) {
+  accent-color: var(--hp-primary-hover);
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(input, textarea):-webkit-autofill,
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(input, textarea):-webkit-autofill:hover,
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(input, textarea):-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--hp-ink) !important;
+  box-shadow: 0 0 0 1000px var(--hp-control-surface) inset !important;
+  transition: background-color 9999s ease-out 0s;
+}
+
+/* Structural surfaces. Camel-case suffix selectors are intentional: `summaryCard`
+   is a surface, while `cardLabel` is not; `formPanel` is a surface, `panelHeader` is not. */
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  section, article, fieldset, dialog,
+  [role='dialog'], [role='listbox'], [role='menu'],
+  [class*='Card'], [class*='Panel'], [class*='Dialog'], [class*='Modal'],
+  [class*='Toolbar'], [class*='TableWrapper'], [class*='TableSection'],
+  [class*='Surface'], [class*='Summary'], [class*='Hero'], [class*='Intro'],
+  [class*='Pane'], [class*='Tile'], [class*='Box'], [class*='Drawer'],
+  [class*='Popover'], [class*='Sheet'], [class*='Editor'], [class*='SelectorBar'],
+  [class*='FormPanel'], [class*='DetailPanel'], [class*='WorkspacePanel'],
+  [class*='QuickLink'], [class*='Section']
+):not([class*='Backdrop']):not([class*='backdrop']):not([class*='Overlay']):not([class*='overlay']) {
   border-color: var(--hp-border) !important;
   background-color: var(--hp-surface) !important;
   background-image: none !important;
-  color: var(--hp-ink);
+  color: var(--hp-ink) !important;
+  box-shadow: none;
 }
 
-/* Common headers/footers/tabs that historically carried fixed white/gray fills. */
+/* Exact lowercase container names are constrained by element/parent so child classes
+   such as cardLabel, panelHeader, sectionCopy and toolbarActions are never promoted. */
 :root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
-  [class*='dialog'] [class*='header'],
-  [class*='dialog'] [class*='footer'],
-  [class*='modal'] [class*='header'],
-  [class*='modal'] [class*='footer'],
-  [class*='tabs'], [class*='Tabs']
-):not([class*='print']):not([class*='Print']) {
+  article[class*='card'], section[class*='card'],
+  section[class*='panel'], article[class*='panel'], aside[class*='panel'],
+  form[class*='modal'], [role='dialog'] > [class*='modal'],
+  a[class*='quickLink'],
+  div[class*='tableWrap'],
+  [class*='organization-module'][class*='tableSection'],
+  [class*='organization-module'][class*='toolbar']:not([class*='toolbarActions']):not([class*='toolbarSearch']):not([class*='toolbarFilter'])
+) {
   border-color: var(--hp-border) !important;
-  background: var(--hp-surface-soft) !important;
+  background-color: var(--hp-surface) !important;
+  background-image: none !important;
+  color: var(--hp-ink) !important;
+  box-shadow: none !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='cards'], [class*='Cards'], [class*='summaryGrid'], [class*='SummaryGrid']
+) > :where(article, section, div[class*='card']) {
+  border-color: var(--hp-border) !important;
+  background: var(--hp-surface) !important;
+  color: var(--hp-ink) !important;
+  box-shadow: none !important;
+}
+
+/* Pricing result is a real surface; generic `result*` classes elsewhere can be labels/counters. */
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [class*='pricing-module'][class*='result'] {
+  border-color: var(--hp-success-border) !important;
+  background: var(--hp-success-bg) !important;
   color: var(--hp-ink) !important;
 }
 
-:root[data-hp-theme='dark'] body:not([data-printing='true']) :where([class*='tabActive'], [class*='TabActive']) {
+/* Known nested light cells that have no container class of their own. */
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='resultGrid'], [class*='ResultGrid'],
+  [class*='documentGrid'], [class*='DocumentGrid']
+) > div {
+  border-color: var(--hp-border) !important;
+  background: var(--hp-surface-muted) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='treeStats'], [class*='TreeStats'],
+  [class*='stats'], [class*='Stats']
+) > :where(span, div) {
+  border-color: var(--hp-border) !important;
+  background: var(--hp-surface-muted) !important;
+}
+
+/* Inline legacy white surfaces still exist in a few dialogs. */
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [style*='background: #fff'],
+  [style*='background:#fff'],
+  [style*='background-color: #fff'],
+  [style*='background-color:#fff'],
+  [style*='background: rgb(255, 255, 255)'],
+  [style*='background-color: rgb(255, 255, 255)'],
+  [style*='background: rgba(255, 255, 255'],
+  [style*='background-color: rgba(255, 255, 255']
+) {
+  background-color: var(--hp-surface) !important;
+  background-image: none !important;
+}
+
+/* Backdrops/overlays must stay translucent instead of becoming opaque panels. */
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='Backdrop'], [class*='backdrop'], [class*='Overlay'], [class*='overlay']
+) {
+  background: rgba(3, 8, 5, .74) !important;
+  color: var(--hp-ink) !important;
+}
+
+/* Tables are a major source of white glare and unreadable brown text. */
+:root[data-hp-theme='dark'] body:not([data-printing='true']) table {
+  border-color: var(--hp-border) !important;
+  background: var(--hp-surface) !important;
+  color: var(--hp-ink) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(th, td) {
+  border-color: var(--hp-border) !important;
+  color: var(--hp-ink) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) thead :where(tr, th),
+:root[data-hp-theme='dark'] body:not([data-printing='true']) table > :where(thead, tbody) > tr:first-child > th {
+  background: var(--hp-surface-muted) !important;
+  color: #cbd5ce !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) tbody tr:nth-child(even) :where(td, th) {
+  background-color: var(--hp-row-even) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) tbody tr:hover :where(td, th) {
+  background-color: var(--hp-row-hover) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(code, kbd, pre) {
+  border-color: var(--hp-border) !important;
+  background: var(--hp-surface-muted) !important;
+  color: #dce5df !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) hr {
+  border-color: var(--hp-border) !important;
+}
+
+/* Tabs and selected controls use green as a restrained state cue, not a neon fill. */
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='tabs'], [class*='Tabs']
+) {
+  border-color: var(--hp-border) !important;
+  background: var(--hp-surface-soft) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='tabActive'], [class*='TabActive'],
+  [role='tab'][aria-selected='true'],
+  button[aria-pressed='true']
+) {
   border-color: var(--hp-primary-border) !important;
   background: var(--hp-primary-soft) !important;
   color: #dcebe2 !important;
   box-shadow: inset 0 -2px 0 var(--hp-sidebar-accent) !important;
 }
 
-:root[data-hp-theme='dark'] body:not([data-printing='true']) :where([class*='tab'], [class*='Tab']):hover {
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='tab'], [class*='Tab'], [role='tab']
+):hover {
   background: #233029 !important;
   color: var(--hp-ink) !important;
 }
 
-/* Secondary controls stay restrained; the green family is reserved for primary actions. */
+/* Secondary actions stay neutral. Primary/save/confirm/create actions use forest green. */
 :root[data-hp-theme='dark'] body:not([data-printing='true']) button:not([class*='danger']):not([class*='Danger']):not([class*='warning']):not([class*='Warning']):not([class*='success']):not([class*='Success']):not([class*='error']):not([class*='Error']) {
-  border-color: var(--hp-border-strong);
-  background-color: var(--hp-surface-soft);
-  background-image: none;
-  color: var(--hp-ink);
+  border-color: var(--hp-border-strong) !important;
+  background-color: var(--hp-surface-soft) !important;
+  background-image: none !important;
+  color: var(--hp-ink) !important;
+  box-shadow: none !important;
 }
 
 :root[data-hp-theme='dark'] body:not([data-printing='true']) button:not([class*='danger']):not([class*='Danger']):not([class*='warning']):not([class*='Warning']):not([class*='success']):not([class*='Success']):not([class*='error']):not([class*='Error']):hover {
-  border-color: #526158;
-  background: #26312a;
+  border-color: #526158 !important;
+  background: #26312a !important;
 }
 
 :root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
@@ -131,6 +312,7 @@
   button[class*='Submit'], button[class*='submit'],
   button[class*='Save'], button[class*='save'],
   button[class*='Confirm'], button[class*='confirm'],
+  button[class*='Create'], button[class*='create'],
   a[class*='Primary'], a[class*='primary']
 ):not([class*='danger']):not([class*='Danger']):not([class*='warning']):not([class*='Warning']):not([class*='error']):not([class*='Error']) {
   border-color: #477e61 !important;
@@ -144,6 +326,7 @@
   button[class*='Submit'], button[class*='submit'],
   button[class*='Save'], button[class*='save'],
   button[class*='Confirm'], button[class*='confirm'],
+  button[class*='Create'], button[class*='create'],
   a[class*='Primary'], a[class*='primary']
 ):hover {
   background: linear-gradient(180deg, #478a6a, var(--hp-primary-hover)) !important;
@@ -153,7 +336,59 @@
   outline-color: var(--hp-focus-outer) !important;
 }
 
-/* Operational tables: remove white editors and pale fixed headers. */
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(button, input, select, textarea):disabled {
+  opacity: .62 !important;
+  color: var(--hp-muted) !important;
+  cursor: not-allowed !important;
+}
+
+/* Neutral chips/badges are dark. Semantic states retain meaning without pale fills. */
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='Badge'], [class*='badge'], [class*='Pill'], [class*='pill'], [class*='Chip'], [class*='chip']
+) {
+  border-color: var(--hp-border-strong) !important;
+  background: var(--hp-surface-muted) !important;
+  color: var(--hp-ink) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='Success'], [class*='success'], [class*='Increase'], [class*='increase'], [class*='Positive'], [class*='positive']
+) {
+  border-color: var(--hp-success-border) !important;
+  background-color: var(--hp-success-bg) !important;
+  background-image: none !important;
+  color: var(--hp-success-fg) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='Warning'], [class*='warning'], [class*='Pending'], [class*='pending']
+) {
+  border-color: var(--hp-warning-border) !important;
+  background-color: var(--hp-warning-bg) !important;
+  background-image: none !important;
+  color: var(--hp-warning-fg) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='Danger'], [class*='danger'], [class*='Error'], [class*='error'],
+  [class*='Decrease'], [class*='decrease'], [class*='Negative'], [class*='negative']
+) {
+  border-color: var(--hp-danger-border) !important;
+  background-color: var(--hp-danger-bg) !important;
+  background-image: none !important;
+  color: var(--hp-danger-fg) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='Info'], [class*='info'], [class*='Notice'], [class*='notice']
+) {
+  border-color: var(--hp-info-border) !important;
+  background-color: var(--hp-info-bg) !important;
+  background-image: none !important;
+  color: var(--hp-info-fg) !important;
+}
+
+/* Operational table leftovers. */
 :root[data-hp-theme='dark'] body:not([data-printing='true']) [data-testid='fulfillment-product-table'] > div > input {
   background: var(--hp-control-surface) !important;
   color: var(--hp-ink) !important;
@@ -167,7 +402,7 @@
   color: var(--hp-muted) !important;
 }
 
-/* Dashboard has several explicit white gradients that generic background-color cannot override. */
+/* Dashboard explicit gradients and chart centres. */
 :root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
   [class*='dashboard-module'][class*='kpiCard'],
   [class*='dashboard-module'][class*='shortcut'],
@@ -192,7 +427,7 @@
   [class*='dashboard-module'][class*='shortcutIcon']
 ) {
   background: var(--hp-primary-soft) !important;
-  color: #8eb59d !important;
+  color: #9ab9a4 !important;
 }
 
 :root[data-hp-theme='dark'] body:not([data-printing='true']) [class*='dashboard-module'][class*='measurementActions'] button {
@@ -216,7 +451,14 @@
   fill: var(--hp-surface) !important;
 }
 
-/* User/role/settings navigation surfaces. */
+/* Dark skeletons avoid white shimmer flashes while loading. */
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where([class*='Skeleton'], [class*='skeleton']) {
+  border-color: var(--hp-border) !important;
+  background: linear-gradient(90deg, var(--hp-surface-soft) 25%, var(--hp-surface-muted) 50%, var(--hp-surface-soft) 75%) !important;
+  background-size: 200% 100% !important;
+}
+
+/* Shared user/settings navigation. */
 :root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
   [class*='app-shell-user-tabs-module'][class*='tabs'],
   [class*='settings-module'][class*='tabs']
@@ -233,7 +475,7 @@
   color: #dcebe2 !important;
 }
 
-/* Shared modal: prevent white dialog, footer and close button. */
+/* Shared modal close/footer. */
 :root[data-hp-theme='dark'] body:not([data-printing='true']) [class*='modal-module'][class*='dialog'] {
   border-color: var(--hp-border) !important;
   background: var(--hp-surface) !important;
@@ -250,7 +492,28 @@
   color: var(--hp-ink) !important;
 }
 
-/* Select menus, native controls and scrollbars should not flash light. */
+/* Product/pricing/inventory families have a few named light bars/wrappers. */
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='unitSelectorBar'], [class*='UnitSelectorBar'],
+  [class*='updateUploadPanel'], [class*='UpdateUploadPanel'],
+  [class*='balanceTableWrap'], [class*='BalanceTableWrap']
+) {
+  border-color: var(--hp-border) !important;
+  background: var(--hp-surface-soft) !important;
+}
+
+/* The sample document in Cài đặt > Mẫu in intentionally remains paper-white. */
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [class*='print-templates-module'][class*='paper'],
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [class*='print-templates-module'][class*='paper'] * {
+  border-color: #d8d0c8 !important;
+  background-color: transparent;
+  color: #2d2925 !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [class*='print-templates-module'][class*='paper'] {
+  background: #fff !important;
+}
+
 :root[data-hp-theme='dark'] body:not([data-printing='true']) :where(select, option) {
   color-scheme: dark;
 }
@@ -260,11 +523,12 @@
 }
 
 :root[data-hp-theme='dark'] body:not([data-printing='true']) ::-webkit-scrollbar-thumb {
+  border: 2px solid #111512;
+  border-radius: 999px;
   background: #4b5b51;
   background-clip: padding-box;
 }
 
-/* Printing remains paper-white regardless of selected app theme. */
 @media print {
   :root[data-hp-theme='dark'],
   :root[data-hp-theme='dark'] body {
@@ -273,10 +537,14 @@
     color: #000 !important;
   }
 
+  :root[data-hp-theme='dark'] body * {
+    color: #000;
+  }
+
   :root[data-hp-theme='dark'] [data-print-active='true'],
   :root[data-hp-theme='dark'] [data-print-active='true'] * {
     background-color: transparent;
-    color: #000;
+    color: #000 !important;
   }
 
   :root[data-hp-theme='dark'] [data-print-active='true'] {
