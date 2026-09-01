@@ -1,0 +1,345 @@
+/* Lô 2 — Giao diện Công Ty.
+   Palette tham chiếu: /THEM-XANH-LA.png, /THEME-XANH-NHAT.png, /THEME-TOI.png.
+   File này được nạp cuối để theme chỉ thay token/màu, không đổi bố cục hay nghiệp vụ. */
+
+:root {
+  --hp-ui-scale: 1;
+  --hp-primary: var(--hp-bronze);
+  --hp-primary-strong: var(--hp-bronze-strong);
+  --hp-primary-soft: var(--hp-bronze-soft);
+  --hp-primary-border: rgba(152, 96, 15, .32);
+  --hp-primary-ring: rgba(152, 96, 15, .12);
+  --hp-primary-contrast: #fffdf8;
+  --hp-border-strong: #cbbfae;
+  --hp-row-even: #fbfaf8;
+  --hp-row-hover: var(--hp-bronze-soft);
+  --hp-sidebar-start: #5a3b20;
+  --hp-sidebar-end: #3f2a18;
+  --hp-sidebar-active-start: #aa721d;
+  --hp-sidebar-active-end: #87530b;
+  --hp-sidebar-accent: #d6b076;
+  --hp-sidebar-fg: #fffdf8;
+  --hp-sidebar-muted: rgba(255, 253, 248, .58);
+  --hp-topbar: rgba(250, 248, 244, .94);
+  --hp-control-surface: var(--hp-surface);
+}
+
+:root[data-hp-scale='-4'] { --hp-ui-scale: .84; }
+:root[data-hp-scale='-3'] { --hp-ui-scale: .88; }
+:root[data-hp-scale='-2'] { --hp-ui-scale: .92; }
+:root[data-hp-scale='-1'] { --hp-ui-scale: .96; }
+:root[data-hp-scale='0'] { --hp-ui-scale: 1; }
+:root[data-hp-scale='1'] { --hp-ui-scale: 1.04; }
+:root[data-hp-scale='2'] { --hp-ui-scale: 1.08; }
+:root[data-hp-scale='3'] { --hp-ui-scale: 1.12; }
+:root[data-hp-scale='4'] { --hp-ui-scale: 1.16; }
+
+:root[data-hp-theme='green'] {
+  color-scheme: light;
+  --hp-canvas: #ffffff;
+  --hp-surface: #ffffff;
+  --hp-surface-soft: #f4f9f5;
+  --hp-surface-muted: #e8f2eb;
+  --hp-bronze: #2f7d52;
+  --hp-bronze-strong: #205f3d;
+  --hp-bronze-soft: #e4f3e9;
+  --hp-ink: #243129;
+  --hp-muted: #66746b;
+  --hp-border: #d8e5dc;
+  --hp-focus-inner: #ffffff;
+  --hp-focus-outer: #2f7d52;
+  --hp-shadow: 0 8px 22px rgba(30, 83, 54, .07);
+  --hp-primary: #2f7d52;
+  --hp-primary-strong: #205f3d;
+  --hp-primary-soft: #e4f3e9;
+  --hp-primary-border: rgba(47, 125, 82, .3);
+  --hp-primary-ring: rgba(47, 125, 82, .12);
+  --hp-primary-contrast: #ffffff;
+  --hp-border-strong: #bed3c5;
+  --hp-row-even: #fbfdfb;
+  --hp-row-hover: #edf8f0;
+  --hp-sidebar-start: #285f43;
+  --hp-sidebar-end: #17452f;
+  --hp-sidebar-active-start: #3b8a61;
+  --hp-sidebar-active-end: #286f4b;
+  --hp-sidebar-accent: #9dd5b4;
+  --hp-sidebar-fg: #f8fff9;
+  --hp-sidebar-muted: rgba(241, 255, 246, .62);
+  --hp-topbar: rgba(255, 255, 255, .95);
+  --hp-control-surface: #ffffff;
+
+  --page-bg: var(--hp-canvas);
+  --page-fg: var(--hp-ink);
+  --office-brown: var(--hp-primary);
+  --office-brown-dark: var(--hp-primary-strong);
+  --office-border: var(--hp-border);
+  --office-muted: var(--hp-muted);
+
+  --npp-page: var(--hp-canvas);
+  --npp-surface: var(--hp-surface);
+  --npp-surface-soft: var(--hp-surface-soft);
+  --npp-border: var(--hp-border);
+  --npp-border-strong: var(--hp-border-strong);
+  --npp-text: var(--hp-ink);
+  --npp-text-muted: var(--hp-muted);
+  --npp-brown-950: #123524;
+  --npp-brown-900: #17452f;
+  --npp-brown-800: #205f3d;
+  --npp-brown-700: #286f4b;
+  --npp-brown-600: #3b8a61;
+  --npp-taupe: #9dd5b4;
+}
+
+:root[data-hp-theme='dark'] {
+  color-scheme: dark;
+  --hp-canvas: #111512;
+  --hp-surface: #1a201c;
+  --hp-surface-soft: #202721;
+  --hp-surface-muted: #29312b;
+  --hp-bronze: #28b96c;
+  --hp-bronze-strong: #56d891;
+  --hp-bronze-soft: #173a27;
+  --hp-ink: #f1f5f2;
+  --hp-muted: #a5b0a8;
+  --hp-border: #354039;
+  --hp-focus-inner: #101512;
+  --hp-focus-outer: #30c878;
+  --hp-shadow: 0 10px 28px rgba(0, 0, 0, .28);
+  --hp-primary: #28b96c;
+  --hp-primary-strong: #56d891;
+  --hp-primary-soft: #173a27;
+  --hp-primary-border: rgba(40, 185, 108, .42);
+  --hp-primary-ring: rgba(40, 185, 108, .18);
+  --hp-primary-contrast: #07120b;
+  --hp-border-strong: #47544c;
+  --hp-row-even: #181e1a;
+  --hp-row-hover: #1e3427;
+  --hp-sidebar-start: #0d1711;
+  --hp-sidebar-end: #08100c;
+  --hp-sidebar-active-start: #1f7548;
+  --hp-sidebar-active-end: #155b37;
+  --hp-sidebar-accent: #45d483;
+  --hp-sidebar-fg: #f4fff8;
+  --hp-sidebar-muted: rgba(224, 241, 230, .6);
+  --hp-topbar: rgba(18, 23, 20, .95);
+  --hp-control-surface: #171d19;
+
+  --page-bg: var(--hp-canvas);
+  --page-fg: var(--hp-ink);
+  --office-brown: var(--hp-primary);
+  --office-brown-dark: var(--hp-primary-strong);
+  --office-border: var(--hp-border);
+  --office-muted: var(--hp-muted);
+
+  --npp-page: var(--hp-canvas);
+  --npp-surface: var(--hp-surface);
+  --npp-surface-soft: var(--hp-surface-soft);
+  --npp-border: var(--hp-border);
+  --npp-border-strong: var(--hp-border-strong);
+  --npp-text: var(--hp-ink);
+  --npp-text-muted: var(--hp-muted);
+  --npp-brown-950: #08100c;
+  --npp-brown-900: #0d1711;
+  --npp-brown-800: #155b37;
+  --npp-brown-700: #1f7548;
+  --npp-brown-600: #28a862;
+  --npp-taupe: #45d483;
+}
+
+/* Hai theme mới mới ghi đè chrome; theme Mặc định tiếp tục dùng nguyên CSS hiện tại. */
+:root[data-hp-theme='green'] [data-collapsed],
+:root[data-hp-theme='dark'] [data-collapsed] {
+  background: var(--hp-canvas) !important;
+  color: var(--hp-ink) !important;
+}
+
+:root[data-hp-theme='green'] [data-testid='app-sidebar'],
+:root[data-hp-theme='green'] [data-collapsed] > aside,
+:root[data-hp-theme='dark'] [data-testid='app-sidebar'],
+:root[data-hp-theme='dark'] [data-collapsed] > aside {
+  border-right-color: color-mix(in srgb, var(--hp-sidebar-fg) 12%, transparent) !important;
+  background: linear-gradient(180deg, var(--hp-sidebar-start), var(--hp-sidebar-end)) !important;
+  color: var(--hp-sidebar-fg) !important;
+  box-shadow: 10px 0 30px rgba(0, 0, 0, .14) !important;
+}
+
+:root[data-hp-theme='green'] [data-testid='app-sidebar'] [class*='navItemActive'],
+:root[data-hp-theme='green'] [data-collapsed] > aside a[aria-current='page'],
+:root[data-hp-theme='green'] [data-collapsed] > aside [data-active='true'],
+:root[data-hp-theme='dark'] [data-testid='app-sidebar'] [class*='navItemActive'],
+:root[data-hp-theme='dark'] [data-collapsed] > aside a[aria-current='page'],
+:root[data-hp-theme='dark'] [data-collapsed] > aside [data-active='true'] {
+  border-color: color-mix(in srgb, var(--hp-sidebar-accent) 28%, transparent) !important;
+  background: linear-gradient(180deg, var(--hp-sidebar-active-start), var(--hp-sidebar-active-end)) !important;
+  color: var(--hp-sidebar-fg) !important;
+  box-shadow: inset 3px 0 0 var(--hp-sidebar-accent), 0 5px 14px rgba(0, 0, 0, .18) !important;
+}
+
+:root[data-hp-theme='green'] [data-testid='app-sidebar'] [class*='navItemActive'] [class*='navIcon'],
+:root[data-hp-theme='green'] [data-testid='app-sidebar'] [class*='navGroupActive'] [class*='navIcon'],
+:root[data-hp-theme='dark'] [data-testid='app-sidebar'] [class*='navItemActive'] [class*='navIcon'],
+:root[data-hp-theme='dark'] [data-testid='app-sidebar'] [class*='navGroupActive'] [class*='navIcon'] {
+  color: var(--hp-sidebar-accent) !important;
+}
+
+:root[data-hp-theme='green'] [data-testid='app-sidebar'] [class*='subnavItemActive'] [class*='subnavRail'],
+:root[data-hp-theme='dark'] [data-testid='app-sidebar'] [class*='subnavItemActive'] [class*='subnavRail'] {
+  background: var(--hp-sidebar-accent) !important;
+}
+
+:root[data-hp-theme='green'] [data-testid='app-sidebar'] [class*='navHint'],
+:root[data-hp-theme='green'] [data-testid='app-sidebar'] [class*='navLabel'],
+:root[data-hp-theme='green'] [data-testid='app-sidebar'] [class*='userCopy'] small,
+:root[data-hp-theme='dark'] [data-testid='app-sidebar'] [class*='navHint'],
+:root[data-hp-theme='dark'] [data-testid='app-sidebar'] [class*='navLabel'],
+:root[data-hp-theme='dark'] [data-testid='app-sidebar'] [class*='userCopy'] small {
+  color: var(--hp-sidebar-muted) !important;
+}
+
+:root[data-hp-theme='green'] [data-testid='app-sidebar'] ~ div[class*='main'],
+:root[data-hp-theme='dark'] [data-testid='app-sidebar'] ~ div[class*='main'] {
+  background: var(--hp-canvas) !important;
+  color: var(--hp-ink) !important;
+}
+
+:root[data-hp-theme='green'] [data-testid='app-sidebar'] ~ div[class*='main'] > header,
+:root[data-hp-theme='green'] [data-collapsed] > div:last-child > header,
+:root[data-hp-theme='dark'] [data-testid='app-sidebar'] ~ div[class*='main'] > header,
+:root[data-hp-theme='dark'] [data-collapsed] > div:last-child > header {
+  border-bottom-color: var(--hp-border) !important;
+  background: var(--hp-topbar) !important;
+  color: var(--hp-ink) !important;
+}
+
+:root[data-hp-theme='green'] [data-testid='app-sidebar'] ~ div[class*='main'] [class*='kicker'],
+:root[data-hp-theme='green'] [data-testid='app-sidebar'] ~ div[class*='main'] [class*='subtitle'],
+:root[data-hp-theme='dark'] [data-testid='app-sidebar'] ~ div[class*='main'] [class*='kicker'],
+:root[data-hp-theme='dark'] [data-testid='app-sidebar'] ~ div[class*='main'] [class*='subtitle'] {
+  color: var(--hp-muted) !important;
+}
+
+:root[data-hp-theme='green'] [data-testid='app-sidebar'] ~ div[class*='main'] [class*='title'],
+:root[data-hp-theme='dark'] [data-testid='app-sidebar'] ~ div[class*='main'] [class*='title'] {
+  color: var(--hp-primary-strong) !important;
+}
+
+:root[data-hp-theme='green'] [data-testid='app-sidebar'] ~ div[class*='main'] [class*='actionButton'],
+:root[data-hp-theme='dark'] [data-testid='app-sidebar'] ~ div[class*='main'] [class*='actionButton'] {
+  border-color: var(--hp-border-strong) !important;
+  background: var(--hp-surface) !important;
+  color: var(--hp-ink) !important;
+  box-shadow: var(--hp-shadow) !important;
+}
+
+:root[data-hp-theme='green'] [data-testid='app-sidebar'] ~ div[class*='main'] [class*='actionButtonPrimary'],
+:root[data-hp-theme='dark'] [data-testid='app-sidebar'] ~ div[class*='main'] [class*='actionButtonPrimary'] {
+  border-color: var(--hp-primary-strong) !important;
+  background: linear-gradient(180deg, var(--hp-primary), var(--hp-primary-strong)) !important;
+  color: var(--hp-primary-contrast) !important;
+}
+
+:root[data-hp-theme='green'],
+:root[data-hp-theme='green'] body,
+:root[data-hp-theme='dark'],
+:root[data-hp-theme='dark'] body {
+  background: var(--hp-canvas) !important;
+  color: var(--hp-ink);
+}
+
+:root[data-hp-theme='green'] body,
+:root[data-hp-theme='dark'] body {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--hp-surface) 72%, transparent), transparent 190px), var(--hp-canvas) !important;
+}
+
+:root[data-hp-theme='green'] input,
+:root[data-hp-theme='green'] select,
+:root[data-hp-theme='green'] textarea,
+:root[data-hp-theme='dark'] input,
+:root[data-hp-theme='dark'] select,
+:root[data-hp-theme='dark'] textarea {
+  border-color: var(--hp-border) !important;
+  background: var(--hp-control-surface) !important;
+  color: var(--hp-ink) !important;
+}
+
+:root[data-hp-theme='green'] input::placeholder,
+:root[data-hp-theme='green'] textarea::placeholder,
+:root[data-hp-theme='dark'] input::placeholder,
+:root[data-hp-theme='dark'] textarea::placeholder { color: var(--hp-muted); }
+
+:root[data-hp-theme='green'] table,
+:root[data-hp-theme='dark'] table { border-color: var(--hp-border) !important; background: var(--hp-surface) !important; color: var(--hp-ink); }
+:root[data-hp-theme='green'] thead,
+:root[data-hp-theme='green'] th,
+:root[data-hp-theme='dark'] thead,
+:root[data-hp-theme='dark'] th { background: var(--hp-surface-muted) !important; color: var(--hp-ink) !important; }
+:root[data-hp-theme='green'] th,
+:root[data-hp-theme='green'] td,
+:root[data-hp-theme='dark'] th,
+:root[data-hp-theme='dark'] td { border-color: var(--hp-border) !important; }
+:root[data-hp-theme='green'] tbody tr:nth-child(even),
+:root[data-hp-theme='dark'] tbody tr:nth-child(even) { background: var(--hp-row-even) !important; }
+:root[data-hp-theme='green'] tbody tr:hover,
+:root[data-hp-theme='dark'] tbody tr:hover { background: var(--hp-row-hover) !important; }
+
+/* Foundation cũ còn màu cố định được kéo về token khi bật theme mới. */
+:root[data-hp-theme='green'] [class*='organization-module'] input,
+:root[data-hp-theme='green'] [class*='organization-module'] select,
+:root[data-hp-theme='green'] [class*='organization-module'] textarea,
+:root[data-hp-theme='dark'] [class*='organization-module'] input,
+:root[data-hp-theme='dark'] [class*='organization-module'] select,
+:root[data-hp-theme='dark'] [class*='organization-module'] textarea {
+  border-color: var(--hp-border-strong) !important;
+  background: var(--hp-control-surface) !important;
+  color: var(--hp-ink) !important;
+}
+
+:root[data-hp-theme='green'] [class*='organization-module'] h2,
+:root[data-hp-theme='green'] [class*='organization-module'] h3,
+:root[data-hp-theme='green'] [class*='organization-module'][class*='summaryCard'] strong,
+:root[data-hp-theme='dark'] [class*='organization-module'] h2,
+:root[data-hp-theme='dark'] [class*='organization-module'] h3,
+:root[data-hp-theme='dark'] [class*='organization-module'][class*='summaryCard'] strong,
+:root[data-hp-theme='dark'] [class*='role-workspace-module'][class*='permissionGroupHeader'] strong,
+:root[data-hp-theme='dark'] [class*='role-workspace-module'][class*='permissionKey'] {
+  color: var(--hp-ink) !important;
+}
+
+:root[data-hp-theme='dark'] main:has(img[alt='Logo Hưng Phát Company']) {
+  background: var(--hp-canvas) !important;
+}
+
+:root[data-hp-theme='dark'] main:has(img[alt='Logo Hưng Phát Company']) section,
+:root[data-hp-theme='dark'] main:has(img[alt='Logo Hưng Phát Company']) [class*='panel'] {
+  border-color: var(--hp-border) !important;
+  background: var(--hp-surface) !important;
+  color: var(--hp-ink) !important;
+}
+
+:root[data-hp-theme='dark'] main:has(img[alt='Logo Hưng Phát Company']) h1,
+:root[data-hp-theme='dark'] main:has(img[alt='Logo Hưng Phát Company']) [class*='hint'],
+:root[data-hp-theme='dark'] main:has(img[alt='Logo Hưng Phát Company']) section > div:first-child strong::after {
+  color: var(--hp-ink) !important;
+}
+
+/* Card/panel nghiệp vụ: chỉ đổi nền trung tính ở dark mode; không đụng trạng thái cảnh báo/thành công. */
+:root[data-hp-theme='dark'] body :where(
+  [class*='Card'], [class*='card'],
+  [class*='Panel'], [class*='panel'],
+  [class*='Toolbar'], [class*='toolbar'],
+  [class*='TableWrap'], [class*='tableWrap'],
+  [class*='Surface'], [class*='surface'],
+  [class*='Modal'], [class*='modal'],
+  [class*='Dialog'], [class*='dialog']
+):not([class*='status']):not([class*='Status']):not([class*='danger']):not([class*='Danger']):not([class*='warning']):not([class*='Warning']):not([class*='success']):not([class*='Success']):not([class*='error']):not([class*='Error']) {
+  border-color: var(--hp-border) !important;
+  background-color: var(--hp-surface) !important;
+  color: var(--hp-ink);
+}
+
+:root[data-hp-theme='dark'] hr { border-color: var(--hp-border); }
+:root[data-hp-theme='dark'] ::-webkit-scrollbar-thumb { background: #536158; background-clip: padding-box; }
+
+@media print {
+  :root { --hp-ui-scale: 1 !important; color-scheme: light; }
+}

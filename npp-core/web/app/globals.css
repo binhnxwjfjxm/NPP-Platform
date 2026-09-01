@@ -18,7 +18,7 @@ html {
   min-height: 100%;
   background: var(--page-bg);
   scroll-behavior: smooth;
-  font-size: 120%;
+  font-size: calc(120% * var(--hp-ui-scale, 1));
 }
 
 body {

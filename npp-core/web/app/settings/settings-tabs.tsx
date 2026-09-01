@@ -1,12 +1,13 @@
 import Link from 'next/link';
 import styles from './settings.module.css';
 
-type SettingsTab = 'data-backup' | 'print-templates' | 'desktop-app';
+type SettingsTab = 'data-backup' | 'print-templates' | 'desktop-app' | 'appearance';
 
 const tabs: ReadonlyArray<{ key: SettingsTab; href: string; label: string }> = [
   { key: 'data-backup', href: '/settings/data-backup', label: 'Dữ liệu & sao lưu' },
   { key: 'print-templates', href: '/settings/print-templates', label: 'Mẫu in' },
   { key: 'desktop-app', href: '/settings/desktop-app', label: 'Ứng dụng máy tính' },
+  { key: 'appearance', href: '/settings/appearance', label: 'Giao diện' },
 ];
 
 export default function SettingsTabs({ active }: { active: SettingsTab }) {

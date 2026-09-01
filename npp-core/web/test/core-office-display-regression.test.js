@@ -29,9 +29,9 @@ test('Đơn bán hàng exposes distinct visual tones for business statuses', () 
   }
 });
 
-test('Công Ty screen typography keeps the shared 120 percent scale while print and main control hit areas stay stable', () => {
+test('Công Ty screen typography keeps the 120 percent baseline with shared display scaling while print and main control hit areas stay stable', () => {
   assert.match(layoutSource, /import '\.\/core-office-density\.css';/);
-  assert.match(globalsCss, /html\s*\{[\s\S]*?font-size:\s*120%;/);
+  assert.match(globalsCss, /html\s*\{[\s\S]*?font-size:\s*calc\(120%\s*\*\s*var\(--hp-ui-scale,\s*1\)\);/);
   assert.match(globalsCss, /body\s*\{[\s\S]*?font-size:\s*0\.875rem;/);
   assert.doesNotMatch(densityCss, /font-size:\s*80%/);
   assert.doesNotMatch(densityCss, /font-size:\s*11\.2px/);
