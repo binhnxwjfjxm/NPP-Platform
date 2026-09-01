@@ -489,7 +489,7 @@ export async function listInventoryMovementHistory(client, {
           AND location.id = line.location_id
          LEFT JOIN shared.users actor_user
            ON actor_user.installation_id = movement.installation_id
-          AND actor_user.id::text = movement.posted_by
+          AND ('user:' || actor_user.id::text) = movement.posted_by
          LEFT JOIN shared.employees actor_employee
            ON actor_employee.installation_id = actor_user.installation_id
           AND actor_employee.id = actor_user.employee_id
@@ -500,7 +500,7 @@ export async function listInventoryMovementHistory(client, {
             $6::text = 'warehouse'
             OR (
               line.location_id IS NOT DISTINCT FROM $4::uuid
-              AND ($5::uuid IS NULL OR line.lot_id IS NOT DISTINCT FROM $5)
+              AND line.lot_id IS NOT DISTINCT FROM $5::uuid
             )
           )
         GROUP BY movement.id,
