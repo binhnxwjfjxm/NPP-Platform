@@ -40,7 +40,7 @@ test('Issue #791 Lô D keys repricing and async updates by client line identity,
   assert.doesNotMatch(form, /const byVariant = new Map/);
 });
 
-test('Lô 2 switches the real Lẻ/Thùng variant on every line and reprices from canonical pricing', async () => {
+test('Lô 2 switches the real sellable ĐVT variant on every line and reprices from canonical pricing', async () => {
   const form = await readFile(formPath, 'utf8');
 
   assert.match(form, /productId: string \| null;/);
@@ -55,8 +55,13 @@ test('Lô 2 switches the real Lẻ/Thùng variant on every line and reprices fro
   assert.match(form, /manualUnitPriceMinor: '',[\s\S]*?baseUnitPriceMinor: '0',[\s\S]*?systemUnitPriceMinor: '0',[\s\S]*?pricingFingerprint: ''/);
   assert.match(form, /variantId: option\.id,[\s\S]*?quantity: source\.quantity,[\s\S]*?effectiveAt: pricingAt/);
   assert.match(form, /data-testid={`sales-line-variant-select-\$\{index \+ 1\}`}/);
+  assert.match(form, /className=\{styles\.directPriceInput\}[\s\S]*?data-testid=\{`sales-line-variant-select-/);
   assert.match(form, /onChange=\{\(event\) => void changeLineVariant\(line\.clientLineId, event\.target\.value\)\}/);
-  assert.match(form, /Đơn vị bán · Lẻ\/Thùng/);
-  assert.match(form, /Quy đổi kho ×\{compactQuantity\(line\.conversionToBase\)\}/);
+  assert.match(form, /<span>Hàng hóa<\/span><span>ĐVT<\/span><span>SL<\/span>/);
+  assert.match(form, /const unitLabel = variant\.unit_name\?\.trim\(\) \|\| variant\.unit_symbol\?\.trim\(\) \|\| variant\.unit_code\?\.trim\(\);/);
+  assert.match(form, /if \(unitLabel\) return unitLabel;/);
+  assert.match(form, /aria-label=\{`Chọn ĐVT cho \$\{line\.sku\}`\}/);
+  assert.doesNotMatch(form, /Đơn vị bán · Lẻ\/Thùng/);
+  assert.doesNotMatch(form, /Quy đổi kho/);
   assert.match(form, /lines: lines\.map\(\(line\) => \(\{[\s\S]*?variantId: line\.variantId/);
 });
