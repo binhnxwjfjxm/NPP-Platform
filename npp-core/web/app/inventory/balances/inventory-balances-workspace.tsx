@@ -31,6 +31,7 @@ type RequestEnvelope<T> = {
 };
 
 type Notice = { kind: 'success' | 'error'; message: string } | null;
+type InventoryViewTab = 'balances' | 'history';
 
 type InventoryMovementHistoryRow = {
   movement_id: string;
@@ -94,13 +95,6 @@ function scaledToQuantity(value: bigint): string {
 
 function sumQuantities(values: string[]): string {
   return scaledToQuantity(values.reduce((sum, value) => sum + quantityToScaled(value), 0n));
-}
-
-function balanceScopeLabel(balance: InventoryBalance): string {
-  return joinValues(
-    balance.location_code ? `Vị trí ${balance.location_code}` : 'Không vị trí',
-    balance.lot_code ? `Lô ${balance.lot_code}` : 'Không lô',
-  );
 }
 
 function unitLabel(name: string | null, symbol: string | null, code: string | null): string {
@@ -220,10 +214,12 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
   const searchParams = useSearchParams();
   const requestedSku = (searchParams.get('sku') ?? '').trim();
   const requestedWarehouseId = (searchParams.get('warehouseId') ?? '').trim();
+  const hasHistoryDeepLink = Boolean(requestedSku && requestedWarehouseId);
+  const [activeTab, setActiveTab] = useState<InventoryViewTab>(hasHistoryDeepLink ? 'history' : 'balances');
   const [balances, setBalances] = useState(initialSnapshot.balances);
   const [selectedBalance, setSelectedBalance] = useState<InventoryBalance | null>(null);
+  const [historySku, setHistorySku] = useState(requestedSku);
   const [historyRows, setHistoryRows] = useState<InventoryMovementHistoryRow[]>([]);
-  const [historyAllScopes, setHistoryAllScopes] = useState(false);
   const [historyPage, setHistoryPage] = useState(0);
   const [historyHasMore, setHistoryHasMore] = useState(false);
   const [selectedHistory, setSelectedHistory] = useState<InventoryMovementHistoryRow | null>(null);
@@ -259,10 +255,8 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
 
   const sameSkuAtWarehouse = useMemo(() => {
     if (!selectedBalance) return [];
-    return balances
-      .filter((balance) => balance.warehouse_id === selectedBalance.warehouse_id
-        && balance.base_variant_id === selectedBalance.base_variant_id)
-      .sort((left, right) => balanceScopeLabel(left).localeCompare(balanceScopeLabel(right), 'vi'));
+    return balances.filter((balance) => balance.warehouse_id === selectedBalance.warehouse_id
+      && balance.base_variant_id === selectedBalance.base_variant_id);
   }, [balances, selectedBalance]);
 
   const sameSkuWarehouseTotal = useMemo(
@@ -270,21 +264,25 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
     [sameSkuAtWarehouse],
   );
 
-  const loadDrillDown = useCallback(async (balance: InventoryBalance, allScopes = false, nextPage = 0) => {
+  const loadWarehouseHistory = useCallback(async (
+    balance: InventoryBalance,
+    nextPage = 0,
+    displaySku = balance.base_sku,
+  ) => {
     setBusy(`history-${balanceKey(balance)}`);
     setSelectedBalance(balance);
-    setHistoryAllScopes(allScopes);
+    setHistorySku(displaySku);
+    setActiveTab('history');
     setError(null);
+    setNotice(null);
     try {
       const params = new URLSearchParams({
         warehouseId: balance.warehouse_id,
         baseVariantId: balance.base_variant_id,
+        scope: 'warehouse',
         limit: String(HISTORY_FETCH_SIZE),
         offset: String(nextPage * HISTORY_PAGE_SIZE),
       });
-      if (allScopes) params.set('scope', 'warehouse');
-      if (!allScopes && balance.location_id) params.set('locationId', balance.location_id);
-      if (!allScopes && balance.lot_id) params.set('lotId', balance.lot_id);
       const rows = await requestJson<InventoryMovementHistoryRow[]>(`/api/inventory/balances/history?${params.toString()}`);
       setHistoryRows(rows.slice(0, HISTORY_PAGE_SIZE));
       setHistoryPage(nextPage);
@@ -298,10 +296,10 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
   }, []);
 
   useEffect(() => {
-    if (!requestedSku || selectedBalance) return;
+    if (!hasHistoryDeepLink || selectedBalance) return;
     const normalizedRequestedSku = normalizeSearch(requestedSku);
     const candidate = balances.find((balance) => {
-      if (requestedWarehouseId && balance.warehouse_id !== requestedWarehouseId) return false;
+      if (balance.warehouse_id !== requestedWarehouseId) return false;
       return [balance.base_sku, balance.package_sku]
         .filter(Boolean)
         .some((sku) => normalizeSearch(String(sku)) === normalizedRequestedSku);
@@ -309,8 +307,8 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
     if (!candidate) return;
     setSearch(requestedSku);
     setPage(0);
-    void loadDrillDown(candidate, true, 0);
-  }, [balances, loadDrillDown, requestedSku, requestedWarehouseId, selectedBalance]);
+    void loadWarehouseHistory(candidate, 0, requestedSku);
+  }, [balances, hasHistoryDeepLink, loadWarehouseHistory, requestedSku, requestedWarehouseId, selectedBalance]);
 
   useEffect(() => {
     if (!selectedHistory) return undefined;
@@ -343,7 +341,55 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
     <AppShell title={title} subtitle={subtitle} kicker="Tồn kho, lô và nhập đầu kỳ">
       <div className={styles.page} data-testid="inventory-balances-page">
         <section className={`${styles.hero} ${styles.compactHero}`} data-testid="inventory-local-controls">
-          <div className={styles.heroControls}>
+          <div className={styles.topRow}>
+            <div className={styles.tabs} role="tablist" aria-label="Tra cứu tồn kho">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === 'balances'}
+                className={`${styles.tab} ${activeTab === 'balances' ? styles.tabActive : ''}`}
+                onClick={() => setActiveTab('balances')}
+                data-testid="inventory-balances-tab"
+              >
+                <span className={styles.tabLabel}>Tồn kho</span>
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === 'history'}
+                className={`${styles.tab} ${activeTab === 'history' ? styles.tabActive : ''}`}
+                onClick={() => setActiveTab('history')}
+                data-testid="inventory-history-tab"
+              >
+                <span className={styles.tabLabel}>Lịch sử kho</span>
+              </button>
+            </div>
+
+            {activeTab === 'balances' ? (
+              <div className={styles.actionRow}>
+                <span className={styles.subtle}>{filteredBalances.length} dòng · Trang {effectivePage + 1}/{pageCount}</span>
+                <button type="button" className={styles.miniButton} onClick={() => setPage((current) => Math.max(0, current - 1))} disabled={effectivePage === 0}>Trang trước</button>
+                <button type="button" className={styles.miniButton} onClick={() => setPage((current) => Math.min(pageCount - 1, current + 1))} disabled={effectivePage >= pageCount - 1}>Trang sau</button>
+                <button type="button" className={styles.primaryAction} onClick={refreshBalances} disabled={busy === 'refresh'}>
+                  {busy === 'refresh' ? 'Đang làm mới...' : 'Làm mới dữ liệu'}
+                </button>
+              </div>
+            ) : selectedBalance ? (
+              <div className={styles.actionRow}>
+                <span className={styles.subtle}>50 dòng/trang</span>
+                <button
+                  type="button"
+                  className={styles.primaryAction}
+                  onClick={() => void loadWarehouseHistory(selectedBalance, historyPage, historySku)}
+                  disabled={busy === `history-${balanceKey(selectedBalance)}`}
+                >
+                  {busy === `history-${balanceKey(selectedBalance)}` ? 'Đang làm mới...' : 'Làm mới lịch sử'}
+                </button>
+              </div>
+            ) : null}
+          </div>
+
+          {activeTab === 'balances' ? (
             <div className={styles.toolbar}>
               <input
                 aria-label="Tìm theo sản phẩm, SKU, kho, vị trí hoặc lô"
@@ -354,21 +400,20 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
                 data-testid="inventory-balances-search-input"
               />
             </div>
-            <div className={styles.actionRow}>
-              <span className={styles.subtle}>{filteredBalances.length} dòng · Trang {effectivePage + 1}/{pageCount}</span>
-              <button type="button" className={styles.miniButton} onClick={() => setPage((current) => Math.max(0, current - 1))} disabled={effectivePage === 0}>Trang trước</button>
-              <button type="button" className={styles.miniButton} onClick={() => setPage((current) => Math.min(pageCount - 1, current + 1))} disabled={effectivePage >= pageCount - 1}>Trang sau</button>
-              <button type="button" className={styles.primaryAction} onClick={refreshBalances} disabled={busy === 'refresh'}>
-                {busy === 'refresh' ? 'Đang làm mới...' : 'Làm mới dữ liệu'}
-              </button>
+          ) : selectedBalance ? (
+            <div className={styles.subtle} data-testid="inventory-history-filter">
+              Đang xem SKU <strong>{historySku || selectedBalance.base_sku}</strong> tại kho <strong>{selectedBalance.warehouse_code} · {selectedBalance.warehouse_name}</strong>.
             </div>
-          </div>
+          ) : (
+            <div className={styles.subtle}>Chọn “Xem lịch sử” tại tab Tồn kho để tra cứu biến động của một SKU theo kho.</div>
+          )}
+
           {error ? <div className={`${styles.banner} ${styles.bannerError}`} data-testid="inventory-error">{error}</div> : null}
           {notice ? <div className={`${styles.banner} ${notice.kind === 'success' ? styles.bannerSuccess : styles.bannerError}`}>{notice.message}</div> : null}
         </section>
 
-        <section className={styles.balanceSection} data-testid="inventory-balances-section">
-          <div className={styles.balanceLayout}>
+        {activeTab === 'balances' ? (
+          <section className={styles.balanceSection} data-testid="inventory-balances-section">
             <div className={`${styles.tableWrap} ${styles.balanceTableWrap}`}>
               <table className={styles.table}>
                 <thead>
@@ -398,92 +443,90 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
                         <td><InventoryQuantity balance={balance} value={balance.on_hand_quantity} /></td>
                         <td><InventoryQuantity balance={balance} value={balance.reserved_quantity} /></td>
                         <td><InventoryQuantity balance={balance} value={balance.available_quantity} /></td>
-                        <td><button type="button" className={styles.miniButton} onClick={() => void loadDrillDown(balance, false, 0)}>Xem lịch sử</button></td>
+                        <td>
+                          <button
+                            type="button"
+                            className={styles.miniButton}
+                            onClick={() => void loadWarehouseHistory(balance, 0, balance.base_sku)}
+                          >Xem lịch sử</button>
+                        </td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
             </div>
+          </section>
+        ) : (
+          <section className={`${styles.panel} ${styles.balanceDetailPanel}`} data-testid="inventory-history-section">
+            {selectedBalance ? (
+              <>
+                <div className={styles.historySummary} data-testid="inventory-selected-scope">
+                  <div>
+                    <h3 className={styles.panelTitle}>Lịch sử kho</h3>
+                    <strong>{selectedBalance.product_name}</strong>
+                    <div className={styles.mono}>{historySku || selectedBalance.base_sku}</div>
+                    <div className={styles.subtle}>{selectedBalance.warehouse_code} · {selectedBalance.warehouse_name}</div>
+                  </div>
+                  <div className={styles.historyStock}>
+                    <span className={styles.subtle}>Tồn hiện tại tại kho</span>
+                    <InventoryQuantity balance={selectedBalance} value={sameSkuWarehouseTotal} />
+                  </div>
+                </div>
 
-            {selectedBalance ? <aside className={`${styles.panel} ${styles.balanceDetailPanel}`} data-testid="inventory-drilldown-panel">
-              <div className={styles.historySummary} data-testid="inventory-selected-scope">
-                <div>
-                  <h3 className={styles.panelTitle}>Lịch sử xuất nhập tồn</h3>
-                  <strong>{selectedBalance.product_name}</strong>
-                  <div className={styles.mono}>{selectedBalance.base_sku}</div>
-                  <div className={styles.subtle}>{selectedBalance.warehouse_code} · {selectedBalance.warehouse_name}</div>
+                <div className={styles.historyTableHeader}>
+                  <div className={styles.subtle}>Mỗi biến động kho là một dòng, sắp theo thời điểm ghi nhận.</div>
+                  <div className={styles.actionRow}>
+                    <span className={styles.subtle}>Trang {historyPage + 1}</span>
+                    <button type="button" className={styles.miniButton} disabled={historyPage === 0} onClick={() => void loadWarehouseHistory(selectedBalance, historyPage - 1, historySku)}>Trang trước</button>
+                    <button type="button" className={styles.miniButton} disabled={!historyHasMore} onClick={() => void loadWarehouseHistory(selectedBalance, historyPage + 1, historySku)}>Trang sau</button>
+                  </div>
                 </div>
-                <div className={styles.historyStock}>
-                  <span className={styles.subtle}>Tồn hiện tại</span>
-                  <InventoryQuantity balance={selectedBalance} value={historyAllScopes ? sameSkuWarehouseTotal : selectedBalance.on_hand_quantity} />
-                </div>
+
+                {historyRows.length === 0 ? <p className={styles.subtle}>Chưa có giao dịch nào của SKU này tại kho đã chọn.</p> : (
+                  <div className={`${styles.tableWrap} ${styles.historyTableWrap}`}>
+                    <table className={`${styles.table} ${styles.historyTable}`} data-testid="inventory-history-table">
+                      <thead>
+                        <tr>
+                          <th>Ngày ghi nhận</th>
+                          <th>Nhân viên</th>
+                          <th>Thao tác</th>
+                          <th>Số lượng thay đổi</th>
+                          <th>Tồn kho</th>
+                          <th>Mã chứng từ</th>
+                          <th>Kho</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {historyRows.map((row) => {
+                          const delta = quantityToScaled(row.base_quantity_delta);
+                          const documentNumber = historyDocumentNumber(row);
+                          return (
+                            <tr key={row.movement_id} data-testid={`inventory-history-${row.movement_id}`}>
+                              <td>{formatDateTime(row.posted_at)}</td>
+                              <td>{row.posted_by_name || 'Hệ thống'}</td>
+                              <td>{movementLabel(row)}</td>
+                              <td className={`${styles.historyNumber} ${delta >= 0n ? styles.historyIncrease : styles.historyDecrease}`}>{canonicalQuantityLabel(row.base_quantity_delta, selectedBalance)}</td>
+                              <td className={styles.historyNumber}>{canonicalQuantityLabel(row.stock_after, selectedBalance)}</td>
+                              <td>{documentNumber ? <button type="button" className={styles.documentButton} onClick={() => setSelectedHistory(row)}>{documentNumber}</button> : '—'}</td>
+                              <td>{row.warehouse_code} · {row.warehouse_name}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className={styles.stack} data-testid="inventory-history-empty-state">
+                <h3 className={styles.panelTitle}>Lịch sử kho</h3>
+                <p className={styles.panelCopy}>Chưa chọn SKU và kho. Mở tab Tồn kho, chọn dòng cần xem rồi bấm “Xem lịch sử”.</p>
+                <div><button type="button" className={styles.secondaryAction} onClick={() => setActiveTab('balances')}>Sang tab Tồn kho</button></div>
               </div>
-
-              <div className={styles.historyScopeBar} data-testid="inventory-lot-breakdown">
-                <span className={styles.subtle}>Phạm vi:</span>
-                <button
-                  type="button"
-                  className={`${styles.miniButton} ${historyAllScopes ? styles.scopeButtonActive : ''}`}
-                  onClick={() => void loadDrillDown(selectedBalance, true, 0)}
-                >Toàn kho</button>
-                {sameSkuAtWarehouse.map((balance) => (
-                  <button
-                    key={balanceKey(balance)}
-                    type="button"
-                    className={`${styles.miniButton} ${!historyAllScopes && balanceKey(balance) === balanceKey(selectedBalance) ? styles.scopeButtonActive : ''}`}
-                    onClick={() => void loadDrillDown(balance, false, 0)}
-                    disabled={busy === `history-${balanceKey(balance)}`}
-                  >{balanceScopeLabel(balance)}</button>
-                ))}
-              </div>
-
-              <div className={styles.historyTableHeader}>
-                <div className={styles.subtle}>{historyAllScopes ? 'Toàn bộ vị trí / lô của SKU tại kho' : balanceScopeLabel(selectedBalance)}</div>
-                <div className={styles.actionRow}>
-                  <span className={styles.subtle}>Trang {historyPage + 1}</span>
-                  <button type="button" className={styles.miniButton} disabled={historyPage === 0} onClick={() => void loadDrillDown(selectedBalance, historyAllScopes, historyPage - 1)}>Trang trước</button>
-                  <button type="button" className={styles.miniButton} disabled={!historyHasMore} onClick={() => void loadDrillDown(selectedBalance, historyAllScopes, historyPage + 1)}>Trang sau</button>
-                </div>
-              </div>
-
-              {historyRows.length === 0 ? <p className={styles.subtle}>Chưa có giao dịch nào trong phạm vi này.</p> : (
-                <div className={`${styles.tableWrap} ${styles.historyTableWrap}`}>
-                  <table className={`${styles.table} ${styles.historyTable}`} data-testid="inventory-history-table">
-                    <thead>
-                      <tr>
-                        <th>Ngày ghi nhận</th>
-                        <th>Nhân viên</th>
-                        <th>Thao tác</th>
-                        <th>Số lượng thay đổi</th>
-                        <th>Tồn kho</th>
-                        <th>Mã chứng từ</th>
-                        <th>Kho</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {historyRows.map((row) => {
-                        const delta = quantityToScaled(row.base_quantity_delta);
-                        const documentNumber = historyDocumentNumber(row);
-                        return (
-                          <tr key={row.movement_id} data-testid={`inventory-history-${row.movement_id}`}>
-                            <td>{formatDateTime(row.posted_at)}</td>
-                            <td>{row.posted_by_name || 'Hệ thống'}</td>
-                            <td>{movementLabel(row)}</td>
-                            <td className={`${styles.historyNumber} ${delta >= 0n ? styles.historyIncrease : styles.historyDecrease}`}>{canonicalQuantityLabel(row.base_quantity_delta, selectedBalance)}</td>
-                            <td className={styles.historyNumber}>{canonicalQuantityLabel(row.stock_after, selectedBalance)}</td>
-                            <td>{documentNumber ? <button type="button" className={styles.documentButton} onClick={() => setSelectedHistory(row)}>{documentNumber}</button> : '—'}</td>
-                            <td>{row.warehouse_code} · {row.warehouse_name}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </aside> : null}
-          </div>
-        </section>
+            )}
+          </section>
+        )}
 
         {selectedHistory && selectedBalance ? (
           <div className={styles.modalBackdrop} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedHistory(null); }}>
