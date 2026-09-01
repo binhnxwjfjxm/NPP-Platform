@@ -102,16 +102,17 @@ test('order-management custom states and delivery lanes keep their business colo
   }
 });
 
-test('buttons default dark but primary, print and link actions are restored explicitly', () => {
-  const neutralButtonIndex = css.indexOf("body:not([data-printing='true']) button {");
+test('button baseline is zero-specificity so semantic and primary variants can win', () => {
+  const neutralButtonIndex = css.indexOf(":where(button) {");
   const primaryIndex = css.indexOf("button[class*='Primary']");
   const printIndex = css.indexOf("button[class*='Print']");
   const linkIndex = css.indexOf("button[class*='Link']");
 
-  assert.ok(neutralButtonIndex >= 0, 'missing neutral dark button baseline');
+  assert.ok(neutralButtonIndex >= 0, 'missing zero-specificity neutral dark button baseline');
   assert.ok(primaryIndex > neutralButtonIndex, 'primary override must follow neutral baseline');
   assert.ok(printIndex > neutralButtonIndex, 'print override must follow neutral baseline');
   assert.ok(linkIndex > neutralButtonIndex, 'link override must follow neutral baseline');
+  assert.doesNotMatch(css, /body:not\(\[data-printing='true'\]\)\s+button\s*\{/);
   assert.match(css, /linear-gradient\(180deg, var\(--hp-primary-strong\), var\(--hp-primary\)\)/);
 });
 
