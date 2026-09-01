@@ -36,11 +36,7 @@
   box-shadow: none !important;
 }
 
-/*
-  CSS Modules compile `organization.module.css` to classes such as
-  `organization_summaryCard__...`, not `organization-module...`.
-  These selectors intentionally use the built class prefix.
-*/
+/* CSS Module runtime prefixes use the file stem, for example organization_summaryCard__. */
 :root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
   [class*='organization_summaryCard__'],
   [class*='organization_panel__'],
@@ -180,7 +176,8 @@
   [class*='fulfillment-workspace_progressStrip__'] strong,
   [class*='fulfillment-workspace_allocateToolbar__'] strong,
   [class*='fulfillment-workspace_locationRow__'] > strong,
-  [class*='fulfillment-workspace_allocationRow__'] > div:first-child strong
+  [class*='fulfillment-workspace_allocationRow__'] > div:first-child strong,
+  [class*='fulfillment-workspace_productRow__'] > strong
 ) {
   color: var(--hp-ink) !important;
 }
@@ -192,6 +189,16 @@
   [class*='fulfillment-workspace_allocationRow__'] > em
 ) {
   color: var(--hp-primary-strong) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='fulfillment-workspace_status__'],
+  [class*='fulfillment-workspace_orderPrimary__'] > em,
+  [class*='fulfillment-workspace_notice__']
+) {
+  border-color: var(--hp-success-border) !important;
+  background: var(--hp-success-bg) !important;
+  color: var(--hp-success-fg) !important;
 }
 
 /*
@@ -245,7 +252,7 @@
   [class*='Section__'], [class*='section__'],
   [class*='Strip__'], [class*='strip__'],
   [class*='Bar__'], [class*='bar__']
-) {
+):not([class*='Skeleton']):not([class*='skeleton']) {
   border-color: var(--hp-border) !important;
   background-color: var(--hp-surface) !important;
   background-image: none !important;

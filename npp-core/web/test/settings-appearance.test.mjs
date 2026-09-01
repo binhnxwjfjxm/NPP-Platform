@@ -90,11 +90,13 @@ test('theme Tối phủ đúng CSS Module runtime và menu dùng hàng phẳng',
   assert.match(runtime, /fulfillment-workspace_topBar__/);
   assert.match(runtime, /fulfillment-workspace_orderRow__/);
   assert.match(runtime, /fulfillment-workspace_productRow__/);
+  assert.match(runtime, /fulfillment-workspace_status__/);
   assert.match(runtime, /print-templates_paper__/);
   assert.match(runtime, /\[data-testid='app-sidebar'\] \[class\*='navItem__'\]/);
   assert.match(runtime, /box-shadow:\s*inset 3px 0 0 var\(--hp-sidebar-accent\)/);
-  assert.doesNotMatch(runtime, /organization-module/);
-  assert.doesNotMatch(runtime, /dashboard-module/);
-  assert.doesNotMatch(runtime, /role-workspace-module/);
-  assert.doesNotMatch(runtime, /print-templates-module/);
+  assert.match(runtime, /:not\(\[class\*='Skeleton'\]\):not\(\[class\*='skeleton'\]\)/);
+  assert.doesNotMatch(runtime, /\[class\*='organization-module/);
+  assert.doesNotMatch(runtime, /\[class\*='dashboard-module/);
+  assert.doesNotMatch(runtime, /\[class\*='role-workspace-module/);
+  assert.doesNotMatch(runtime, /\[class\*='print-templates-module/);
 });
