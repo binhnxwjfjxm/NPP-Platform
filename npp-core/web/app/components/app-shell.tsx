@@ -1,19 +1,15 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
 import type { ComponentProps } from 'react';
 import { AppShell as CoreAppShell } from './app-shell-core';
 import styles from './app-shell-user-tabs.module.css';
 
 type AppShellProps = ComponentProps<typeof CoreAppShell>;
+type UserAccessTab = 'accounts' | 'scopes';
 
-function UserAccessTabs() {
-  const pathname = usePathname();
-  const inUserArea = pathname === '/access/users' || pathname.startsWith('/access/users/');
-  if (!inUserArea) return null;
-
-  const scopesActive = pathname.startsWith('/access/users/scopes');
+function UserAccessTabs({ active }: { active: UserAccessTab }) {
+  const scopesActive = active === 'scopes';
   return (
     <nav className={styles.tabs} aria-label="Quản lý người dùng">
       <Link
@@ -37,14 +33,20 @@ function UserAccessTabs() {
 /**
  * Shared NPP Operations shell.
  *
- * Business modules must stay discoverable in the persistent left navigation.
- * Page-specific actions belong in `actions`; navigation must not appear and
- * disappear according to the current pathname.
+ * Business modules stay discoverable in the persistent left navigation.
+ * User-account child tabs are page-local navigation and do not change the
+ * persistent sidebar contract.
  */
 export function AppShell({ children, ...props }: AppShellProps) {
+  const userTab: UserAccessTab | null = props.title === 'Người dùng'
+    ? 'accounts'
+    : props.title === 'Phạm vi chi nhánh & kho'
+      ? 'scopes'
+      : null;
+
   return (
     <CoreAppShell {...props}>
-      <UserAccessTabs />
+      {userTab ? <UserAccessTabs active={userTab} /> : null}
       {children}
     </CoreAppShell>
   );

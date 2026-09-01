@@ -20,13 +20,14 @@ test('warehouse scope UI keeps full-company owner and regular-user empty-scope b
 });
 
 test('Người dùng exposes Tài khoản and Phạm vi chi nhánh & kho as child tabs, not sidebar items', () => {
-  assert.match(appShell, /pathname === '\/access\/users'/);
-  assert.match(appShell, /pathname\.startsWith\('\/access\/users\/'\)/);
+  assert.match(appShell, /props\.title === 'Người dùng'/);
+  assert.match(appShell, /props\.title === 'Phạm vi chi nhánh & kho'/);
   assert.match(appShell, /href="\/access\/users"/);
   assert.match(appShell, /Tài khoản/);
   assert.match(appShell, /href="\/access\/users\/scopes"/);
   assert.match(appShell, /Phạm vi chi nhánh &amp; kho/);
   assert.match(appShell, /aria-current=/);
+  assert.doesNotMatch(appShell, /usePathname/);
   assert.doesNotMatch(coreShell, /href: '\/access\/users\/scopes'/);
 });
 
