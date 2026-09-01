@@ -5,15 +5,29 @@ import { readFile } from 'node:fs/promises';
 const workspace = await readFile(new URL('../app/access/users/scopes/user-scope-workspace.tsx', import.meta.url), 'utf8');
 const route = await readFile(new URL('../app/api/access/users/[id]/scopes/route.ts', import.meta.url), 'utf8');
 const accessTypes = await readFile(new URL('../lib/access-types.ts', import.meta.url), 'utf8');
+const appShell = await readFile(new URL('../app/components/app-shell.tsx', import.meta.url), 'utf8');
+const coreShell = await readFile(new URL('../app/components/app-shell-core.tsx', import.meta.url), 'utf8');
 
-test('warehouse scope UI keeps owner full-installation and regular-user zero-scope contracts visible', () => {
-  assert.match(workspace, /Security Owner — toàn installation/);
-  assert.match(workspace, /Zero-scope đang được chọn/);
-  assert.match(workspace, /ngưng hoạt động \/ lịch sử/);
+test('warehouse scope UI keeps full-company owner and regular-user empty-scope behavior visible', () => {
+  assert.match(workspace, /Tài khoản quản trị — toàn Công Ty/);
+  assert.match(workspace, /Chưa cấp kho:/);
+  assert.match(workspace, /ngừng sử dụng \/ lịch sử/);
   assert.match(workspace, /branchIds: sortedIds\(draftBranchIds\)/);
   assert.match(workspace, /warehouseIds: sortedIds\(draftWarehouseIds\)/);
   assert.match(accessTypes, /warehouse_ids: string\[\]/);
   assert.match(accessTypes, /owner_kind: 'PERMANENT' \| 'TEMPORARY' \| null/);
+  assert.doesNotMatch(workspace, /Security Owner|Zero-scope|toàn installation|canonical|Core tự tính/);
+});
+
+test('Người dùng exposes Tài khoản and Phạm vi chi nhánh & kho as child tabs, not sidebar items', () => {
+  assert.match(appShell, /pathname === '\/access\/users'/);
+  assert.match(appShell, /pathname\.startsWith\('\/access\/users\/'\)/);
+  assert.match(appShell, /href="\/access\/users"/);
+  assert.match(appShell, /Tài khoản/);
+  assert.match(appShell, /href="\/access\/users\/scopes"/);
+  assert.match(appShell, /Phạm vi chi nhánh &amp; kho/);
+  assert.match(appShell, /aria-current=/);
+  assert.doesNotMatch(coreShell, /href: '\/access\/users\/scopes'/);
 });
 
 test('scope mutation uses canonical shared HTTP Idempotency-Key and reuses key by logical intent', () => {
