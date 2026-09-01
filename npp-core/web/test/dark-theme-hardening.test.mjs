@@ -9,33 +9,34 @@ const root = path.resolve(here, '..');
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
 
 const css = read('app/dark-theme-hardening.css');
+const appearance = read('app/appearance-theme.css');
 
-test('dark theme contract loads after the base appearance theme', () => {
+test('dark contract loads after the base appearance theme', () => {
   const layout = read('app/layout.tsx');
   const baseThemeIndex = layout.indexOf("import './appearance-theme.css';");
-  const hardeningIndex = layout.indexOf("import './dark-theme-hardening.css';");
+  const contractIndex = layout.indexOf("import './dark-theme-hardening.css';");
 
   assert.ok(baseThemeIndex >= 0, 'base appearance theme import must remain');
-  assert.ok(hardeningIndex > baseThemeIndex, 'dark theme contract must load after the base theme');
+  assert.ok(contractIndex > baseThemeIndex, 'dark contract must load after the base theme');
 });
 
-test('dark theme uses restrained forest green instead of neon accents', () => {
-  assert.match(css, /--hp-primary:\s*#347456/);
-  assert.match(css, /--hp-primary-hover:\s*#3e8060/);
-  assert.match(css, /--hp-focus-outer:\s*#6c9f82/);
-  assert.match(css, /--hp-primary-contrast:\s*#f4fbf6/);
-  assert.doesNotMatch(css, /#28b96c|#56d891|#45d483/i);
+test('THEME-TOI palette remains owned by appearance-theme and is not replaced by hardening', () => {
+  assert.match(appearance, /:root\[data-hp-theme='dark'\][\s\S]*--hp-primary:\s*#28b96c/);
+  assert.match(appearance, /:root\[data-hp-theme='dark'\][\s\S]*--hp-primary-strong:\s*#56d891/);
+  assert.match(appearance, /:root\[data-hp-theme='dark'\][\s\S]*--hp-sidebar-accent:\s*#45d483/);
+  assert.doesNotMatch(css, /--hp-primary\s*:/);
+  assert.doesNotMatch(css, /--hp-primary-strong\s*:/);
+  assert.doesNotMatch(css, /--hp-sidebar-accent\s*:/);
 });
 
-test('dark theme resets legacy brown and slate text to readable inherited contrast', () => {
-  assert.match(css, /body:not\(\[data-printing='true'\]\) \*\s*\{\s*color:\s*inherit\s*!important/s);
+test('dark contract never erases every component color with a universal selector', () => {
+  assert.doesNotMatch(css, /body:not\(\[data-printing='true'\]\)\s*\*\s*\{[\s\S]*?color:\s*inherit\s*!important/);
+  assert.doesNotMatch(css, /body:not\(\[data-printing='true'\]\)\s*\*\s*\{[\s\S]*?color:\s*var\(--hp-ink\)\s*!important/);
   assert.match(css, /\[class\*='muted'\]/);
-  assert.match(css, /\[class\*='meta'\]/);
-  assert.match(css, /\[class\*='hint'\]/);
-  assert.match(css, /color:\s*var\(--hp-muted\)\s*!important/);
+  assert.match(css, /\[class\*='title'\]/);
 });
 
-test('dark theme covers structural surfaces without promoting child labels into panels', () => {
+test('dark contract covers structural surfaces and known legacy pale bars', () => {
   for (const selector of [
     "[class*='Card']",
     "[class*='Panel']",
@@ -44,88 +45,96 @@ test('dark theme covers structural surfaces without promoting child labels into 
     "[class*='Hero']",
     "[class*='Intro']",
     "[class*='WorkspacePanel']",
-    "[class*='Section']",
     "article[class*='card']",
-    "section[class*='panel']",
-    "form[class*='modal']",
-    "div[class*='tableWrap']",
+    "div[class*='card']",
+    "[class*='selectionBar']",
+    "[class*='pagination']",
+    "[class*='detailHeader']",
+    "[class*='detailFacts']",
   ]) {
     assert.ok(css.includes(selector), `missing dark surface coverage for ${selector}`);
   }
 
-  assert.doesNotMatch(css, /\[class\*='card'\],\s*\n\s*\[class\*='Panel'\]/);
-  assert.doesNotMatch(css, /\[class\*='panel'\],\s*\n\s*\[class\*='Dialog'\]/);
-  assert.doesNotMatch(css, /\[class\*='hero'\],/);
-  assert.doesNotMatch(css, /\[class\*='section'\]\s*\n/);
-  assert.match(css, /\[class\*='cards'\][\s\S]*> :where\(article, section, div\[class\*='card'\]\)/);
-});
-
-test('dark theme covers inline white dialogs while keeping backdrops translucent', () => {
   assert.match(css, /\[style\*='background: #fff'\]/);
   assert.match(css, /\[style\*='background: rgb\(255, 255, 255\)'\]/);
-  assert.match(css, /\[role='dialog'\] > \[class\*='modal'\]/);
-  assert.match(css, /\[class\*='Backdrop'\]/);
-  assert.match(css, /background:\s*rgba\(3, 8, 5, \.74\)\s*!important/);
 });
 
-test('dark theme makes tables dark and text legible across list screens', () => {
+test('dark tables and form controls cannot keep light chrome or dark text', () => {
+  assert.match(css, /:where\(input, select, textarea, option\)[\s\S]*background:\s*var\(--hp-control-surface\)\s*!important/);
   assert.match(css, /body:not\(\[data-printing='true'\]\) table\s*\{/);
-  assert.match(css, /:where\(th, td\)/);
+  assert.match(css, /:where\(th, td\)[\s\S]*color:\s*var\(--hp-ink\)\s*!important/);
   assert.match(css, /thead :where\(tr, th\)/);
-  assert.match(css, /--hp-row-even:\s*#181e1a/);
-  assert.match(css, /--hp-row-hover:\s*#213027/);
-});
-
-test('dark theme replaces bright status pills with dark semantic tones', () => {
-  assert.match(css, /--hp-success-bg:\s*#183527/);
-  assert.match(css, /--hp-warning-bg:\s*#342b18/);
-  assert.match(css, /--hp-danger-bg:\s*#3a201e/);
-  assert.match(css, /--hp-info-bg:\s*#1b2e3a/);
-  assert.match(css, /\[class\*='Success'\]/);
-  assert.match(css, /\[class\*='Warning'\]/);
-  assert.match(css, /\[class\*='Danger'\]/);
-  assert.match(css, /\[class\*='Info'\]/);
-});
-
-test('dark theme keeps buttons restrained and primary actions green', () => {
-  assert.match(css, /background-color:\s*var\(--hp-surface-soft\)\s*!important/);
-  assert.match(css, /button\[class\*='Primary'\]/);
-  assert.match(css, /button\[class\*='Save'\]/);
-  assert.match(css, /button\[class\*='Confirm'\]/);
-  assert.match(css, /linear-gradient\(180deg, var\(--hp-primary-hover\), var\(--hp-primary\)\)/);
-});
-
-test('dark theme prevents common white flashes from browser controls and loading states', () => {
   assert.match(css, /-webkit-autofill/);
-  assert.match(css, /0 0 0 1000px var\(--hp-control-surface\) inset/);
+});
+
+test('all six shared status tones have distinct dark semantic colors', () => {
+  for (const token of [
+    '--hp-neutral-bg',
+    '--hp-info-bg',
+    '--hp-progress-bg',
+    '--hp-warning-bg',
+    '--hp-success-bg',
+    '--hp-danger-bg',
+  ]) {
+    assert.ok(css.includes(token), `missing semantic token ${token}`);
+  }
+
+  for (const tone of ['neutral', 'info', 'progress', 'warning', 'success', 'danger']) {
+    assert.ok(css.includes(`[data-tone='${tone}']`), `missing data-tone mapping for ${tone}`);
+  }
+});
+
+test('order-management custom states and delivery lanes keep their business colors', () => {
+  const orderCss = read('app/sales/order-management/order-management.module.css');
+
+  for (const tone of ['draft', 'confirmed', 'waiting', 'cancelled', 'closed']) {
+    assert.ok(orderCss.includes(`data-tone='${tone}'`), `fixture missing order tone ${tone}`);
+    assert.ok(css.includes(`[data-tone='${tone}']`), `dark contract missing order tone ${tone}`);
+  }
+
+  for (const lane of ['counter', 'manual', 'trip']) {
+    assert.ok(orderCss.includes(`data-lane='${lane}'`), `fixture missing delivery lane ${lane}`);
+    assert.ok(css.includes(`[data-lane='${lane}']`), `dark contract missing delivery lane ${lane}`);
+  }
+
+  for (const stage of ['active', 'preparing', 'waiting_delivery', 'completed', 'cancelled']) {
+    assert.ok(css.includes(`[data-stage='${stage}']`), `dark contract missing summary stage ${stage}`);
+  }
+});
+
+test('button baseline is zero-specificity so semantic and primary variants can win', () => {
+  const neutralButtonIndex = css.indexOf(":where(button) {");
+  const primaryIndex = css.indexOf("button[class*='Primary']");
+  const printIndex = css.indexOf("button[class*='Print']");
+  const linkIndex = css.indexOf("button[class*='Link']");
+
+  assert.ok(neutralButtonIndex >= 0, 'missing zero-specificity neutral dark button baseline');
+  assert.ok(primaryIndex > neutralButtonIndex, 'primary override must follow neutral baseline');
+  assert.ok(printIndex > neutralButtonIndex, 'print override must follow neutral baseline');
+  assert.ok(linkIndex > neutralButtonIndex, 'link override must follow neutral baseline');
+  assert.doesNotMatch(css, /body:not\(\[data-printing='true'\]\)\s+button\s*\{/);
+  assert.match(css, /linear-gradient\(180deg, var\(--hp-primary-strong\), var\(--hp-primary\)\)/);
+});
+
+test('semantic data-tone rules are later than the neutral badge baseline', () => {
+  const neutralBadgeIndex = css.indexOf("[class*='Badge']");
+  const successToneIndex = css.indexOf("[data-tone='success']");
+  const dangerToneIndex = css.indexOf("[data-tone='danger']");
+
+  assert.ok(neutralBadgeIndex >= 0);
+  assert.ok(successToneIndex > neutralBadgeIndex);
+  assert.ok(dangerToneIndex > neutralBadgeIndex);
+});
+
+test('loading, overlay and scrollbar chrome stay dark', () => {
+  assert.match(css, /\[class\*='Backdrop'\]/);
+  assert.match(css, /background:\s*rgba\(2, 8, 5, \.78\)\s*!important/);
   assert.match(css, /\[class\*='Skeleton'\]/);
   assert.match(css, /::-webkit-scrollbar-track/);
 });
 
-test('representative legacy modules with hard-coded light UI are covered by the global contract', () => {
-  const organization = read('app/organization/organization.module.css');
-  const customers = read('app/customers/customers.module.css');
-  const products = read('app/products/products.module.css');
-  const pricing = read('app/pricing/pricing.module.css');
-  const inventory = read('app/inventory/inventory-workspace.module.css');
-
-  assert.match(organization, /\.tableSection[\s\S]*background:\s*#fff/);
-  assert.match(organization, /\.table td[\s\S]*color:\s*#4a423c/);
-  assert.match(customers, /background:\s*#fff/);
-  assert.match(products, /\.unitIntro[\s\S]*linear-gradient\(135deg, #f8fafc, #fff\)/);
-  assert.match(pricing, /\.tableWrapper[\s\S]*background:\s*#fff/);
-  assert.match(inventory, /\.hero[\s\S]*#fffaf6/);
-
-  assert.ok(css.includes("[class*='organization-module'][class*='tableSection']"));
-  assert.ok(css.includes("[class*='TableWrapper']"));
-  assert.ok(css.includes("[class*='Intro']"));
-  assert.match(css, /\bsection, article, fieldset, dialog/);
-  assert.match(css, /body:not\(\[data-printing='true'\]\) \*/);
-});
-
-test('dark theme keeps document paper white while application chrome stays dark', () => {
+test('sample paper and print output remain white by design', () => {
   assert.match(css, /print-templates-module/);
-  assert.match(css, /\[class\*='paper'\]/);
   assert.match(css, /background:\s*#fff\s*!important/);
   assert.match(css, /@media print/);
   assert.match(css, /\[data-print-active='true'\]/);
