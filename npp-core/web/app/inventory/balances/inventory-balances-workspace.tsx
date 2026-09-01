@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { AppShell } from '../../components/app-shell';
 import {
   BusinessTableSequenceCell,
@@ -151,10 +152,14 @@ async function loadAllBalances(): Promise<InventoryBalance[]> {
 }
 
 export default function InventoryBalancesWorkspace({ title, subtitle, initialSnapshot, initialError = null }: Props) {
+  const searchParams = useSearchParams();
+  const requestedSku = (searchParams.get('sku') ?? '').trim();
+  const requestedWarehouseId = (searchParams.get('warehouseId') ?? '').trim();
   const [balances, setBalances] = useState(initialSnapshot.balances);
   const [selectedBalance, setSelectedBalance] = useState<InventoryBalance | null>(null);
   const [drillDown, setDrillDown] = useState<InventoryMovementLine[]>([]);
-  const [search, setSearch] = useState('');
+  const [historyAllScopes, setHistoryAllScopes] = useState(false);
+  const [search, setSearch] = useState(requestedSku);
   const [page, setPage] = useState(0);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(initialError);
@@ -172,6 +177,8 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
     balance.base_variant_name,
     balance.base_unit_code,
     balance.base_unit_name,
+    balance.package_sku,
+    balance.package_variant_name,
     balance.package_unit_code,
     balance.package_unit_name,
     balance.lot_code,
@@ -195,6 +202,41 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
     [sameSkuAtWarehouse],
   );
 
+  const loadDrillDown = useCallback(async (balance: InventoryBalance, allScopes = false) => {
+    setBusy(`drill-${balanceKey(balance)}`);
+    setSelectedBalance(balance);
+    setHistoryAllScopes(allScopes);
+    setError(null);
+    try {
+      const params = new URLSearchParams({
+        warehouseId: balance.warehouse_id,
+        baseVariantId: balance.base_variant_id,
+      });
+      if (!allScopes && balance.location_id) params.set('locationId', balance.location_id);
+      if (!allScopes && balance.lot_id) params.set('lotId', balance.lot_id);
+      setDrillDown(await requestJson<InventoryMovementLine[]>(`/api/inventory/balances/drill-down?${params.toString()}`));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Không tải được lịch sử tồn kho');
+    } finally {
+      setBusy(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!requestedSku || selectedBalance) return;
+    const normalizedRequestedSku = normalizeSearch(requestedSku);
+    const candidate = balances.find((balance) => {
+      if (requestedWarehouseId && balance.warehouse_id !== requestedWarehouseId) return false;
+      return [balance.base_sku, balance.package_sku]
+        .filter(Boolean)
+        .some((sku) => normalizeSearch(String(sku)) === normalizedRequestedSku);
+    });
+    if (!candidate) return;
+    setSearch(requestedSku);
+    setPage(0);
+    void loadDrillDown(candidate, true);
+  }, [balances, loadDrillDown, requestedSku, requestedWarehouseId, selectedBalance]);
+
   async function refreshBalances() {
     setBusy('refresh');
     setError(null);
@@ -208,25 +250,6 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
       setNotice({ kind: 'success', message: `Đã làm mới ${next.length} dòng tồn kho.` });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Không tải được dữ liệu tồn kho');
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function loadDrillDown(balance: InventoryBalance) {
-    setBusy(`drill-${balanceKey(balance)}`);
-    setSelectedBalance(balance);
-    setError(null);
-    try {
-      const params = new URLSearchParams({
-        warehouseId: balance.warehouse_id,
-        baseVariantId: balance.base_variant_id,
-      });
-      if (balance.location_id) params.set('locationId', balance.location_id);
-      if (balance.lot_id) params.set('lotId', balance.lot_id);
-      setDrillDown(await requestJson<InventoryMovementLine[]>(`/api/inventory/balances/drill-down?${params.toString()}`));
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Không tải được lịch sử tồn kho');
     } finally {
       setBusy(null);
     }
@@ -282,6 +305,7 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
                         <td>
                           <div><strong>{balance.product_name}</strong></div>
                           <div className={styles.mono}>{balance.base_sku}</div>
+                          {balance.package_sku && balance.package_sku !== balance.base_sku ? <div className={styles.subtle}>SKU thùng: {balance.package_sku}</div> : null}
                           {balance.base_variant_name ? <div className={styles.subtle}>{balance.base_variant_name}</div> : null}
                           {packageRule ? <div className={styles.subtle}>{packageRule}</div> : null}
                         </td>
@@ -290,7 +314,7 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
                         <td><InventoryQuantity balance={balance} value={balance.on_hand_quantity} /></td>
                         <td><InventoryQuantity balance={balance} value={balance.reserved_quantity} /></td>
                         <td><InventoryQuantity balance={balance} value={balance.available_quantity} /></td>
-                        <td><button type="button" className={styles.miniButton} onClick={() => loadDrillDown(balance)}>Xem chi tiết</button></td>
+                        <td><button type="button" className={styles.miniButton} onClick={() => void loadDrillDown(balance)}>Xem chi tiết</button></td>
                       </tr>
                     );
                   })}
@@ -299,18 +323,18 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
             </div>
 
             {selectedBalance ? <aside className={`${styles.panel} ${styles.balanceDetailPanel}`} data-testid="inventory-drilldown-panel">
-              <h3 className={styles.panelTitle}>Lịch sử tồn kho theo vị trí / lô</h3>
+              <h3 className={styles.panelTitle}>{historyAllScopes ? 'Lịch sử xuất nhập tồn của SKU tại kho' : 'Lịch sử tồn kho theo vị trí / lô'}</h3>
               <div className={styles.stack}>
                   <div className={styles.banner} data-testid="inventory-selected-scope">
                     <strong>{selectedBalance.warehouse_code} — {selectedBalance.warehouse_name}</strong>
-                    <div className={styles.subtle}>{balanceScopeLabel(selectedBalance)}</div>
+                    <div className={styles.subtle}>{historyAllScopes ? 'Toàn bộ vị trí / lô của SKU tại kho' : balanceScopeLabel(selectedBalance)}</div>
                     <div><strong>{selectedBalance.product_name}</strong></div>
                     <div className={styles.mono}>{selectedBalance.base_sku}{selectedBalance.base_variant_name ? ` · ${selectedBalance.base_variant_name}` : ''}</div>
+                    {selectedBalance.package_sku && selectedBalance.package_sku !== selectedBalance.base_sku ? <div className={styles.subtle}>SKU thùng: {selectedBalance.package_sku}</div> : null}
                     {packageRuleLabel(selectedBalance) ? <div className={styles.subtle}>{packageRuleLabel(selectedBalance)}</div> : null}
-                    <div>Tồn của dòng đang chọn:</div>
-                    <InventoryQuantity balance={selectedBalance} value={selectedBalance.on_hand_quantity} />
-                    <div>Tổng tồn SKU tại kho:</div>
-                    <InventoryQuantity balance={selectedBalance} value={sameSkuWarehouseTotal} />
+                    <div>{historyAllScopes ? 'Tồn tại phạm vi đang hiển thị:' : 'Tồn của dòng đang chọn:'}</div>
+                    <InventoryQuantity balance={selectedBalance} value={historyAllScopes ? sameSkuWarehouseTotal : selectedBalance.on_hand_quantity} />
+                    {!historyAllScopes ? <><div>Tổng tồn SKU tại kho:</div><InventoryQuantity balance={selectedBalance} value={sameSkuWarehouseTotal} /></> : null}
                   </div>
 
                   <div>
@@ -321,7 +345,7 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
                           key={balanceKey(balance)}
                           type="button"
                           className={styles.miniButton}
-                          onClick={() => loadDrillDown(balance)}
+                          onClick={() => void loadDrillDown(balance)}
                           disabled={busy === `drill-${balanceKey(balance)}`}
                         >
                           {balanceScopeLabel(balance)} · {canonicalQuantityLabel(balance.on_hand_quantity, balance)}
@@ -331,7 +355,9 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
                   </div>
 
                   <p className={styles.subtle}>
-                    Lịch sử bên dưới chỉ lọc đúng kho, vị trí và lô đang chọn. Tổng tồn của SKU có thể gồm nhiều lô hoặc nhiều vị trí khác nhau.
+                    {historyAllScopes
+                      ? 'Đang hiển thị lịch sử của SKU trong toàn bộ vị trí và lô thuộc kho được mở từ đơn bán hàng. Chọn một phạm vi bên trên nếu cần xem riêng.'
+                      : 'Lịch sử bên dưới chỉ lọc đúng kho, vị trí và lô đang chọn. Tổng tồn của SKU có thể gồm nhiều lô hoặc nhiều vị trí khác nhau.'}
                   </p>
 
                   {drillDown.length === 0 ? <p className={styles.subtle}>Chưa có giao dịch nào được tải cho phạm vi này.</p> : (
@@ -342,7 +368,7 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
                           <span className={styles.pill}>{canonicalQuantityLabel(line.base_quantity_delta, selectedBalance)}</span>
                         </div>
                         <div className={styles.subtle}>
-                          <div>{`Kho ${selectedBalance.warehouse_code} · ${balanceScopeLabel(selectedBalance)}`}</div>
+                          <div>{historyAllScopes ? `Kho ${selectedBalance.warehouse_code} · toàn bộ vị trí / lô` : `Kho ${selectedBalance.warehouse_code} · ${balanceScopeLabel(selectedBalance)}`}</div>
                           <div className={styles.mono}>{joinValues(line.base_sku, line.lot_code ? `Lô ${line.lot_code}` : null, line.expiry_date)}</div>
                           <div>{line.source_line_reference ? `Tham chiếu: ${line.source_line_reference}` : 'Biến động tồn kho'}</div>
                         </div>

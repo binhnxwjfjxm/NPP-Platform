@@ -6,13 +6,15 @@ const inventoryPage = await readFile(new URL('../app/inventory/balances/page.tsx
 const inventoryWorkspace = await readFile(new URL('../app/inventory/balances/inventory-balances-workspace.tsx', import.meta.url), 'utf8');
 const salesWorkspace = await readFile(new URL('../app/sales/sales-orders/SalesOrderWorkspace.tsx', import.meta.url), 'utf8');
 
-test('inventory balance drill-down makes exact lot scope and warehouse SKU total explicit', () => {
+test('inventory balance drill-down keeps exact manual scope and supports warehouse-wide SKU deep links', () => {
   assert.match(inventoryPage, /InventoryBalancesWorkspace/);
   assert.match(inventoryWorkspace, /Lịch sử tồn kho theo vị trí \/ lô/);
   assert.match(inventoryWorkspace, /Tổng tồn SKU tại kho/);
   assert.match(inventoryWorkspace, /Chi tiết cùng SKU trong kho/);
   assert.match(inventoryWorkspace, /warehouseId: balance\.warehouse_id/);
-  assert.match(inventoryWorkspace, /if \(balance\.lot_id\) params\.set\('lotId', balance\.lot_id\)/);
+  assert.match(inventoryWorkspace, /if \(!allScopes && balance\.location_id\) params\.set\('locationId', balance\.location_id\)/);
+  assert.match(inventoryWorkspace, /if \(!allScopes && balance\.lot_id\) params\.set\('lotId', balance\.lot_id\)/);
+  assert.match(inventoryWorkspace, /loadDrillDown\(candidate, true\)/);
   assert.match(inventoryWorkspace, /Tổng tồn của SKU có thể gồm nhiều lô hoặc nhiều vị trí khác nhau/);
 });
 

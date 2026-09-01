@@ -421,6 +421,10 @@ export default function SalesOrderCommercialForm(props: Props) {
         .some((value) => String(value).toLocaleLowerCase('vi').includes(term));
     })
     .sort((left, right) => left.code.localeCompare(right.code)), [customerRows, customerSearch]);
+  const selectedCustomer = useMemo(
+    () => customerRows.find((item) => item.id === customerId) ?? null,
+    [customerId, customerRows],
+  );
 
   const estimate = useMemo(() => {
     const gross = lines.map(grossMinor);
@@ -1093,7 +1097,44 @@ export default function SalesOrderCommercialForm(props: Props) {
             </div>
 
             {customerMode === 'EXISTING' ? (
-              <label className={styles.customerField}><span>Khách hàng *</span><input value={customerSearch} onChange={(event) => setCustomerSearch(event.target.value)} placeholder="Tìm mã, tên hoặc số điện thoại" /><select value={customerId} onChange={(event) => { setCustomerId(event.target.value); markDirty(); }}><option value="">Chọn khách hàng</option>{activeCustomers.map((item) => <option key={item.id} value={item.id}>{item.code} — {item.name}{item.phone ? ` · ${item.phone}` : ''}</option>)}</select></label>
+              <label className={styles.customerField}>
+                <span>Khách hàng *</span>
+                <div className={styles.productSearchBox}>
+                  <input
+                    value={customerSearch}
+                    onChange={(event) => setCustomerSearch(event.target.value)}
+                    placeholder="Tìm mã, tên hoặc số điện thoại"
+                    autoComplete="off"
+                    data-testid="sales-customer-search-input"
+                  />
+                  {customerSearch.trim() && activeCustomers.length > 0 ? (
+                    <div className={styles.skuResults} role="listbox" aria-label="Kết quả tìm khách hàng" data-testid="sales-customer-results">
+                      {activeCustomers.slice(0, SEARCH_PAGE_SIZE).map((item) => (
+                        <button
+                          type="button"
+                          key={item.id}
+                          className={styles.skuResult}
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => {
+                            setCustomerId(item.id);
+                            setCustomerSearch('');
+                            markDirty();
+                          }}
+                        >
+                          <div><span>{item.name}</span><strong>{item.code}</strong><small>{item.phone || 'Không có số điện thoại'}</small></div>
+                          <div><b>Chọn khách</b><small>{item.email || 'Khách Công Ty đang hoạt động'}</small></div>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+                {selectedCustomer ? (
+                  <div className={styles.walkInNotice} data-testid="sales-selected-customer">
+                    <strong>{selectedCustomer.code} — {selectedCustomer.name}</strong>
+                    <span>{selectedCustomer.phone || 'Không có số điện thoại'}</span>
+                  </div>
+                ) : null}
+              </label>
             ) : (
               <div className={styles.walkInFields}>
                 <label><span>Tên khách (tùy chọn)</span><input value={walkInDisplayName} onChange={(event) => { setWalkInDisplayName(event.target.value); markDirty(); }} placeholder="Ví dụ: Anh Nam" /></label>
@@ -1163,7 +1204,14 @@ export default function SalesOrderCommercialForm(props: Props) {
                 <div className={styles.lineIdentity}>
                   <strong>{line.name}</strong>
                   <div className={styles.inlineActions}>
-                    <span>SKU {line.sku}</span>
+                    <a
+                      className={styles.linkButton}
+                      href={`/inventory/balances?sku=${encodeURIComponent(line.sku)}&warehouseId=${encodeURIComponent(warehouseId)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      aria-label={`Mở lịch sử xuất nhập tồn của ${line.sku}`}
+                      title="Mở lịch sử xuất nhập tồn trong tab mới"
+                    >SKU {line.sku}</a>
                     <button
                       type="button"
                       className={styles.linkButton}
