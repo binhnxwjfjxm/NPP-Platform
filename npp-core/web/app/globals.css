@@ -18,6 +18,7 @@ html {
   min-height: 100%;
   background: var(--page-bg);
   scroll-behavior: smooth;
+  font-size: 120%;
 }
 
 body {
@@ -28,7 +29,7 @@ body {
     var(--page-bg);
   color: var(--page-fg);
   font-family: var(--font-sans), 'Segoe UI', Arial, sans-serif;
-  font-size: 14px;
+  font-size: 0.875rem;
   font-variant-numeric: tabular-nums;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
