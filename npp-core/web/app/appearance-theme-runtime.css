@@ -1,0 +1,319 @@
+/* Theme runtime contract — Công Ty
+   Centralized final mapping for legacy CSS Modules that still carry light-only colors.
+   Loaded after dark-theme-hardening.css so the rules below resolve module naming and
+   keep the sidebar/navigation flat across all appearance themes. */
+
+/* Sidebar: flat navigation rows, no chunky card boxes. */
+[data-testid='app-sidebar'] [class*='navItem__'],
+[data-testid='app-sidebar'] [class*='navItemActive__'] {
+  border: 0 !important;
+  border-radius: 5px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+[data-testid='app-sidebar'] [class*='navItem__']:hover {
+  border: 0 !important;
+  background: color-mix(in srgb, var(--hp-sidebar-fg) 7%, transparent) !important;
+  box-shadow: none !important;
+}
+
+[data-testid='app-sidebar'] [class*='navItemActive__'],
+[data-testid='app-sidebar'] a[aria-current='page'] {
+  border: 0 !important;
+  background: color-mix(in srgb, var(--hp-sidebar-accent) 14%, transparent) !important;
+  box-shadow: inset 3px 0 0 var(--hp-sidebar-accent) !important;
+}
+
+[data-testid='app-sidebar'] [class*='subnavItem__'] {
+  border: 0 !important;
+  border-radius: 4px !important;
+  box-shadow: none !important;
+}
+
+[data-testid='app-sidebar'] [class*='subnavItemActive__'] {
+  background: color-mix(in srgb, var(--hp-sidebar-accent) 10%, transparent) !important;
+  box-shadow: none !important;
+}
+
+/*
+  CSS Modules compile `organization.module.css` to classes such as
+  `organization_summaryCard__...`, not `organization-module...`.
+  These selectors intentionally use the built class prefix.
+*/
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='organization_summaryCard__'],
+  [class*='organization_panel__'],
+  [class*='organization_tableSection__'],
+  [class*='organization_toolbar__'],
+  [class*='organization_tableWrap__'],
+  [class*='organization_treeCard__'],
+  [class*='organization_quickLink__'],
+  [class*='customers_addressCard__'],
+  [class*='role-workspace_permissionColumn__'],
+  [class*='role-workspace_permissionItem__']
+) {
+  border-color: var(--hp-border) !important;
+  background: var(--hp-surface) !important;
+  background-image: none !important;
+  color: var(--hp-ink) !important;
+  box-shadow: none !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='organization_panelChip__'],
+  [class*='organization_treeStats__'] span,
+  [class*='organization_table__'] th,
+  [class*='role-workspace_permissionColumn__']
+) {
+  border-color: var(--hp-border) !important;
+  background: var(--hp-surface-muted) !important;
+  color: var(--hp-ink) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='organization_panelKicker__'],
+  [class*='organization_quickLink__'] span,
+  [class*='organization_treeMeta__'],
+  [class*='organization_toolbar__'] label,
+  [class*='organization_relationCell__'],
+  [class*='organization_entityStack__'] span,
+  [class*='organization_confirmText__'],
+  [class*='customers_muted__'],
+  [class*='customers_addressMeta__']
+) {
+  color: var(--hp-muted) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='organization_summaryCard__'] strong,
+  [class*='organization_panelHeader__'] h2,
+  [class*='organization_sectionHeader__'] h2,
+  [class*='organization_modalHeader__'] h3,
+  [class*='organization_quickLink__'] strong,
+  [class*='organization_treeCard__'] h3,
+  [class*='organization_entityStack__'] strong,
+  [class*='role-workspace_permissionGroupHeader__'] strong,
+  [class*='role-workspace_permissionKey__']
+) {
+  color: var(--hp-ink) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='organization_entityCode__'],
+  [class*='organization_table__'] code
+) {
+  border-color: var(--hp-primary-border) !important;
+  background: var(--hp-primary-soft) !important;
+  color: var(--hp-primary-strong) !important;
+}
+
+/* Fulfillment / Chuẩn bị hàng: legacy div-based tables and headers. */
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='fulfillment-workspace_topBar__'],
+  [class*='fulfillment-workspace_queuePanel__'],
+  [class*='fulfillment-workspace_detailPanel__'],
+  [class*='fulfillment-workspace_queueHeader__'],
+  [class*='fulfillment-workspace_orderHeader__'],
+  [class*='fulfillment-workspace_sectionHeading__'],
+  [class*='fulfillment-workspace_progressStrip__'],
+  [class*='fulfillment-workspace_allocateToolbar__'],
+  [class*='fulfillment-workspace_tableHeader__']
+) {
+  border-color: var(--hp-border) !important;
+  background: var(--hp-surface-soft) !important;
+  color: var(--hp-ink) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='fulfillment-workspace_orderRow__'],
+  [class*='fulfillment-workspace_productRow__'],
+  [class*='fulfillment-workspace_locationRow__'],
+  [class*='fulfillment-workspace_allocationRow__'],
+  [class*='fulfillment-workspace_emptyTable__']
+) {
+  border-color: var(--hp-border) !important;
+  background: var(--hp-surface) !important;
+  color: var(--hp-ink) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='fulfillment-workspace_orderRow__']:hover,
+  [class*='fulfillment-workspace_orderRowActive__'],
+  [class*='fulfillment-workspace_productRow__']:hover,
+  [class*='fulfillment-workspace_productRowActive__']
+) {
+  background: var(--hp-row-hover) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='fulfillment-workspace_stageSummary__'],
+  [class*='fulfillment-workspace_queueHeader__'] p,
+  [class*='fulfillment-workspace_sectionHeading__'] p,
+  [class*='fulfillment-workspace_processHeader__'] p,
+  [class*='fulfillment-workspace_filters__'] label > span,
+  [class*='fulfillment-workspace_orderIdentity__'] > small,
+  [class*='fulfillment-workspace_orderMoney__'] > small,
+  [class*='fulfillment-workspace_orderTitle__'] span,
+  [class*='fulfillment-workspace_orderTotal__'] span,
+  [class*='fulfillment-workspace_processHeader__'] span,
+  [class*='fulfillment-workspace_orderMeta__'] span,
+  [class*='fulfillment-workspace_orderTotal__'] small,
+  [class*='fulfillment-workspace_sectionHeading__'] > span,
+  [class*='fulfillment-workspace_progressStrip__'] span,
+  [class*='fulfillment-workspace_allocateToolbar__'] span,
+  [class*='fulfillment-workspace_allocationRow__'] small,
+  [class*='fulfillment-workspace_empty__'],
+  [class*='fulfillment-workspace_emptyTable__']
+) {
+  color: var(--hp-muted) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='fulfillment-workspace_stageSummary__'] strong,
+  [class*='fulfillment-workspace_queueHeader__'] h3,
+  [class*='fulfillment-workspace_sectionHeading__'] h4,
+  [class*='fulfillment-workspace_processHeader__'] h4,
+  [class*='fulfillment-workspace_orderTitle__'] h3,
+  [class*='fulfillment-workspace_orderPrimary__'] > strong,
+  [class*='fulfillment-workspace_orderMeta__'] strong,
+  [class*='fulfillment-workspace_progressStrip__'] strong,
+  [class*='fulfillment-workspace_allocateToolbar__'] strong,
+  [class*='fulfillment-workspace_locationRow__'] > strong,
+  [class*='fulfillment-workspace_allocationRow__'] > div:first-child strong
+) {
+  color: var(--hp-ink) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='fulfillment-workspace_orderMoney__'] > strong,
+  [class*='fulfillment-workspace_orderTotal__'] strong,
+  [class*='fulfillment-workspace_productRow__'] > em,
+  [class*='fulfillment-workspace_allocationRow__'] > em
+) {
+  color: var(--hp-primary-strong) !important;
+}
+
+/*
+  Audited legacy module families. Exact local-class suffixes avoid repainting layout-only
+  wrappers while normalizing card/header/row/table chrome that previously stayed white.
+*/
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='pricing_'],
+  [class*='products_'],
+  [class*='suppliers_'],
+  [class*='customers_'],
+  [class*='settings_'],
+  [class*='dashboard_'],
+  [class*='management_'],
+  [class*='organization_'],
+  [class*='user-workspace_'],
+  [class*='role-workspace_'],
+  [class*='employee-directory_'],
+  [class*='operations-history_'],
+  [class*='inventory-workspace_'],
+  [class*='transfer-workspace_'],
+  [class*='manual-inbound-workspace_'],
+  [class*='delivery-order-workspace_'],
+  [class*='stocktake-workspace_'],
+  [class*='fulfillment-workspace_'],
+  [class*='trip-planning-workspace_'],
+  [class*='trip-dispatch-workspace_'],
+  [class*='delivery-attempt-workspace_'],
+  [class*='purchase-prices_'],
+  [class*='purchase-order-editor-v2_'],
+  [class*='supplier-returns_'],
+  [class*='sales-orders_'],
+  [class*='sales-order-card-polish_'],
+  [class*='manual-sales-order-settlement_'],
+  [class*='supplier-payments_'],
+  [class*='sales-settlement-reconciliation-workspace_'],
+  [class*='proposals_'],
+  [class*='customer-onboarding-review_'],
+  [class*='inventory-reporting-workspace_'],
+  [class*='reporting-dashboard-workspace_'],
+  [class*='app-shell-user-tabs_'],
+  [class*='product-inventory-policy_']
+):is(
+  [class*='Card__'], [class*='card__'],
+  [class*='Panel__'], [class*='panel__'],
+  [class*='Header__'], [class*='header__'],
+  [class*='Heading__'], [class*='heading__'],
+  [class*='Toolbar__'], [class*='toolbar__'],
+  [class*='Table__'], [class*='table__'],
+  [class*='TableWrap__'], [class*='tableWrap__'],
+  [class*='Section__'], [class*='section__'],
+  [class*='Strip__'], [class*='strip__'],
+  [class*='Bar__'], [class*='bar__']
+) {
+  border-color: var(--hp-border) !important;
+  background-color: var(--hp-surface) !important;
+  background-image: none !important;
+  color: var(--hp-ink) !important;
+  box-shadow: none !important;
+}
+
+/* Restore semantic states after legacy surface normalization. */
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [data-tone='neutral'], [class*='status-badge_'][class*='neutral__']
+) {
+  border-color: var(--hp-neutral-border) !important;
+  background: var(--hp-neutral-bg) !important;
+  color: var(--hp-neutral-fg) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [data-tone='success'], [data-tone='confirmed'], [data-tone='active'], [data-tone='completed'],
+  [data-tone='paid'], [data-tone='received'], [data-tone='posted'], [data-tone='reconciled'],
+  [class*='toneSuccess__'], [class*='tonesuccess__']
+) {
+  border-color: var(--hp-success-border) !important;
+  background: var(--hp-success-bg) !important;
+  color: var(--hp-success-fg) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [data-tone='warning'], [data-tone='waiting'], [data-tone='pending'], [data-tone='draft'],
+  [data-tone='partial'], [data-tone='locked'], [data-tone='blocked'], [data-tone='overdue']
+) {
+  border-color: var(--hp-warning-border) !important;
+  background: var(--hp-warning-bg) !important;
+  color: var(--hp-warning-fg) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [data-tone='danger'], [data-tone='cancelled'], [data-tone='canceled'], [data-tone='failed'],
+  [data-tone='rejected'], [data-tone='void'], [data-tone='error'],
+  [class*='toneDanger__'], [class*='tonedanger__']
+) {
+  border-color: var(--hp-danger-border) !important;
+  background: var(--hp-danger-bg) !important;
+  color: var(--hp-danger-fg) !important;
+}
+
+/* Dashboard module selector uses the actual built prefix. */
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='dashboard_kpiCard__'],
+  [class*='dashboard_shortcut__'],
+  [class*='dashboard_analyticsCard__'],
+  [class*='dashboard_kpiSection__'],
+  [class*='dashboard_launchpad__'],
+  [class*='dashboard_measurementSection__']
+) {
+  border-color: var(--hp-border) !important;
+  background: var(--hp-surface) !important;
+  color: var(--hp-ink) !important;
+  box-shadow: none !important;
+}
+
+/* Paper previews and real print output stay white by design. */
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [class*='print-templates_paper__'],
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [class*='print-templates_paper__'] * {
+  border-color: #d8d0c8 !important;
+  background-color: transparent !important;
+  color: #2d2925 !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [class*='print-templates_paper__'] {
+  background: #fff !important;
+}
