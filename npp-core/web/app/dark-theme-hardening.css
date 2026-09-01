@@ -1,0 +1,285 @@
+/* Dark theme hardening for Công Ty UI.
+   Loaded after appearance-theme.css so legacy light-only CSS cannot leave bright surfaces behind.
+   Print/document paper remains light by design. */
+
+:root[data-hp-theme='dark'] {
+  --hp-canvas: #111512;
+  --hp-surface: #1a201c;
+  --hp-surface-soft: #202721;
+  --hp-surface-muted: #29312b;
+  --hp-control-surface: #171d19;
+  --hp-ink: #eef3ef;
+  --hp-muted: #a5b0a8;
+  --hp-border: #354039;
+  --hp-border-strong: #47544c;
+  --hp-primary: #347456;
+  --hp-primary-hover: #3e8060;
+  --hp-primary-strong: #2b6249;
+  --hp-primary-soft: #183326;
+  --hp-primary-border: rgba(91, 145, 111, .5);
+  --hp-primary-ring: rgba(108, 159, 130, .22);
+  --hp-primary-contrast: #f4fbf6;
+  --hp-focus-inner: #111512;
+  --hp-focus-outer: #6c9f82;
+  --hp-sidebar-start: #0d1711;
+  --hp-sidebar-end: #08100c;
+  --hp-sidebar-active-start: #2f684d;
+  --hp-sidebar-active-end: #285840;
+  --hp-sidebar-accent: #6c9f82;
+  --hp-sidebar-fg: #f1f7f3;
+  --hp-sidebar-muted: rgba(224, 236, 228, .64);
+  --hp-row-even: #181e1a;
+  --hp-row-hover: #213027;
+
+  /* Legacy aliases used by older Công Ty modules. */
+  --surface: var(--hp-surface);
+  --surface-soft: var(--hp-surface-soft);
+  --surface-muted: var(--hp-surface-muted);
+  --page: var(--hp-canvas);
+  --page-bg: var(--hp-canvas);
+  --page-fg: var(--hp-ink);
+  --ink: var(--hp-ink);
+  --text: var(--hp-ink);
+  --muted: var(--hp-muted);
+  --line: var(--hp-border);
+  --border: var(--hp-border);
+  --accent: var(--hp-primary);
+  --accent-strong: var(--hp-primary-hover);
+  --office-brown: var(--hp-primary);
+  --office-brown-dark: var(--hp-primary-strong);
+  --office-border: var(--hp-border);
+  --office-muted: var(--hp-muted);
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) {
+  background: var(--hp-canvas) !important;
+  color: var(--hp-ink) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(h1, h2, h3, h4, h5, h6, legend) {
+  color: var(--hp-ink);
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(input, select, textarea, option) {
+  border-color: var(--hp-border) !important;
+  background: var(--hp-control-surface) !important;
+  color: var(--hp-ink) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(input, select, textarea):focus-visible {
+  outline-color: var(--hp-focus-outer) !important;
+  border-color: var(--hp-focus-outer) !important;
+  box-shadow: 0 0 0 3px var(--hp-primary-ring) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='Card'], [class*='card'],
+  [class*='Panel'], [class*='panel'],
+  [class*='Dialog'], [class*='dialog'],
+  [class*='Modal'], [class*='modal'],
+  [class*='Toolbar'], [class*='toolbar'],
+  [class*='TableWrap'], [class*='tableWrap'],
+  [class*='Surface'], [class*='surface'],
+  [class*='Summary'], [class*='summary']
+):not([class*='status']):not([class*='Status']):not([class*='danger']):not([class*='Danger']):not([class*='warning']):not([class*='Warning']):not([class*='success']):not([class*='Success']):not([class*='error']):not([class*='Error']):not([class*='print']):not([class*='Print']) {
+  border-color: var(--hp-border) !important;
+  background-color: var(--hp-surface) !important;
+  background-image: none !important;
+  color: var(--hp-ink);
+}
+
+/* Common headers/footers/tabs that historically carried fixed white/gray fills. */
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='dialog'] [class*='header'],
+  [class*='dialog'] [class*='footer'],
+  [class*='modal'] [class*='header'],
+  [class*='modal'] [class*='footer'],
+  [class*='tabs'], [class*='Tabs']
+):not([class*='print']):not([class*='Print']) {
+  border-color: var(--hp-border) !important;
+  background: var(--hp-surface-soft) !important;
+  color: var(--hp-ink) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where([class*='tabActive'], [class*='TabActive']) {
+  border-color: var(--hp-primary-border) !important;
+  background: var(--hp-primary-soft) !important;
+  color: #dcebe2 !important;
+  box-shadow: inset 0 -2px 0 var(--hp-sidebar-accent) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where([class*='tab'], [class*='Tab']):hover {
+  background: #233029 !important;
+  color: var(--hp-ink) !important;
+}
+
+/* Secondary controls stay restrained; the green family is reserved for primary actions. */
+:root[data-hp-theme='dark'] body:not([data-printing='true']) button:not([class*='danger']):not([class*='Danger']):not([class*='warning']):not([class*='Warning']):not([class*='success']):not([class*='Success']):not([class*='error']):not([class*='Error']) {
+  border-color: var(--hp-border-strong);
+  background-color: var(--hp-surface-soft);
+  background-image: none;
+  color: var(--hp-ink);
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) button:not([class*='danger']):not([class*='Danger']):not([class*='warning']):not([class*='Warning']):not([class*='success']):not([class*='Success']):not([class*='error']):not([class*='Error']):hover {
+  border-color: #526158;
+  background: #26312a;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  button[class*='Primary'], button[class*='primary'],
+  button[class*='Submit'], button[class*='submit'],
+  button[class*='Save'], button[class*='save'],
+  button[class*='Confirm'], button[class*='confirm'],
+  a[class*='Primary'], a[class*='primary']
+):not([class*='danger']):not([class*='Danger']):not([class*='warning']):not([class*='Warning']):not([class*='error']):not([class*='Error']) {
+  border-color: #477e61 !important;
+  background: linear-gradient(180deg, var(--hp-primary-hover), var(--hp-primary)) !important;
+  color: var(--hp-primary-contrast) !important;
+  box-shadow: 0 5px 14px rgba(24, 67, 46, .28) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  button[class*='Primary'], button[class*='primary'],
+  button[class*='Submit'], button[class*='submit'],
+  button[class*='Save'], button[class*='save'],
+  button[class*='Confirm'], button[class*='confirm'],
+  a[class*='Primary'], a[class*='primary']
+):hover {
+  background: linear-gradient(180deg, #478a6a, var(--hp-primary-hover)) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(button, a, input, select, textarea):focus-visible {
+  outline-color: var(--hp-focus-outer) !important;
+}
+
+/* Operational tables: remove white editors and pale fixed headers. */
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [data-testid='fulfillment-product-table'] > div > input {
+  background: var(--hp-control-surface) !important;
+  color: var(--hp-ink) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [data-testid='fulfillment-product-table'] > div:first-child {
+  background: var(--hp-surface-muted) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [data-testid='fulfillment-product-table'] > div:first-child > span {
+  color: var(--hp-muted) !important;
+}
+
+/* Dashboard has several explicit white gradients that generic background-color cannot override. */
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='dashboard-module'][class*='kpiCard'],
+  [class*='dashboard-module'][class*='shortcut'],
+  [class*='dashboard-module'][class*='analyticsCard'],
+  [class*='dashboard-module'][class*='kpiSection'],
+  [class*='dashboard-module'][class*='launchpad'],
+  [class*='dashboard-module'][class*='measurementSection']
+) {
+  border-color: var(--hp-border) !important;
+  background: var(--hp-surface) !important;
+  color: var(--hp-ink) !important;
+  box-shadow: none !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [class*='dashboard-module'][class*='shortcut']:hover {
+  border-color: var(--hp-primary-border) !important;
+  background: var(--hp-surface-soft) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='dashboard-module'][class*='kpiIcon'],
+  [class*='dashboard-module'][class*='shortcutIcon']
+) {
+  background: var(--hp-primary-soft) !important;
+  color: #8eb59d !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [class*='dashboard-module'][class*='measurementActions'] button {
+  border-color: var(--hp-border-strong) !important;
+  background: var(--hp-surface-soft) !important;
+  color: var(--hp-ink) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [class*='dashboard-module'][class*='donut']::after {
+  background: var(--hp-surface) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='dashboard-module'][class*='barTrack'],
+  [class*='dashboard-module'][class*='agingTrack']
+) {
+  background: var(--hp-surface-muted) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [class*='dashboard-module'][class*='trendPoint'] {
+  fill: var(--hp-surface) !important;
+}
+
+/* User/role/settings navigation surfaces. */
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='app-shell-user-tabs-module'][class*='tabs'],
+  [class*='settings-module'][class*='tabs']
+) {
+  border-color: var(--hp-border) !important;
+  background: var(--hp-surface-soft) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='app-shell-user-tabs-module'][class*='tabActive'],
+  [class*='settings-module'][class*='tabActive']
+) {
+  background: var(--hp-primary-soft) !important;
+  color: #dcebe2 !important;
+}
+
+/* Shared modal: prevent white dialog, footer and close button. */
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [class*='modal-module'][class*='dialog'] {
+  border-color: var(--hp-border) !important;
+  background: var(--hp-surface) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [class*='modal-module'][class*='footer'] {
+  border-color: var(--hp-border) !important;
+  background: var(--hp-surface-soft) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [class*='modal-module'][class*='closeButton'] {
+  border-color: var(--hp-border-strong) !important;
+  background: var(--hp-surface-soft) !important;
+  color: var(--hp-ink) !important;
+}
+
+/* Select menus, native controls and scrollbars should not flash light. */
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(select, option) {
+  color-scheme: dark;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) ::-webkit-scrollbar-track {
+  background: #111512;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) ::-webkit-scrollbar-thumb {
+  background: #4b5b51;
+  background-clip: padding-box;
+}
+
+/* Printing remains paper-white regardless of selected app theme. */
+@media print {
+  :root[data-hp-theme='dark'],
+  :root[data-hp-theme='dark'] body {
+    color-scheme: light !important;
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  :root[data-hp-theme='dark'] [data-print-active='true'],
+  :root[data-hp-theme='dark'] [data-print-active='true'] * {
+    background-color: transparent;
+    color: #000;
+  }
+
+  :root[data-hp-theme='dark'] [data-print-active='true'] {
+    background: #fff !important;
+  }
+}
