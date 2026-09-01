@@ -24,9 +24,11 @@ test('a sales line SKU opens its inventory history in a new tab', () => {
   assert.match(sales, /Mở lịch sử xuất nhập tồn/);
 });
 
-test('inventory deep link resolves both base and package SKU within the selected warehouse', () => {
-  assert.match(inventory, /searchParams\.get\('sku'\)/);
-  assert.match(inventory, /searchParams\.get\('warehouseId'\)/);
-  assert.match(inventory, /balance\.package_sku/);
-  assert.match(inventory, /loadDrillDown\(candidate, true, 0\)/);
+test('inventory deep link resolves base or package SKU and opens warehouse history', () => {
+  assert.ok(inventory.includes("searchParams.get('sku')"));
+  assert.ok(inventory.includes("searchParams.get('warehouseId')"));
+  assert.ok(inventory.includes('balance.package_sku'));
+  assert.ok(inventory.includes('loadWarehouseHistory(candidate, 0, requestedSku)'));
+  assert.ok(inventory.includes("scope: 'warehouse'"));
+  assert.ok(inventory.includes("hasHistoryDeepLink ? 'history' : 'balances'"));
 });

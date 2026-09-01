@@ -6,13 +6,15 @@ const inventoryPage = await readFile(new URL('../app/inventory/balances/page.tsx
 const inventoryWorkspace = await readFile(new URL('../app/inventory/balances/inventory-balances-workspace.tsx', import.meta.url), 'utf8');
 const salesWorkspace = await readFile(new URL('../app/sales/sales-orders/SalesOrderWorkspace.tsx', import.meta.url), 'utf8');
 
-test('inventory history is movement-grouped, paginated and opens document details in place', () => {
+test('inventory history is warehouse-scoped, paginated and opens document details in place', () => {
   assert.match(inventoryPage, /InventoryBalancesWorkspace/);
   assert.match(inventoryWorkspace, /\/api\/inventory\/balances\/history\?/);
-  assert.match(inventoryWorkspace, /params\.set\('scope', 'warehouse'\)/);
-  assert.match(inventoryWorkspace, /if \(!allScopes && balance\.location_id\) params\.set\('locationId', balance\.location_id\)/);
-  assert.match(inventoryWorkspace, /if \(!allScopes && balance\.lot_id\) params\.set\('lotId', balance\.lot_id\)/);
+  assert.match(inventoryWorkspace, /scope: 'warehouse'/);
+  assert.doesNotMatch(inventoryWorkspace, /params\.set\('locationId'/);
+  assert.doesNotMatch(inventoryWorkspace, /params\.set\('lotId'/);
   assert.match(inventoryWorkspace, /HISTORY_PAGE_SIZE = 50/);
+  assert.match(inventoryWorkspace, /data-testid="inventory-balances-tab"/);
+  assert.match(inventoryWorkspace, /data-testid="inventory-history-tab"/);
   assert.match(inventoryWorkspace, /data-testid="inventory-history-table"/);
   assert.match(inventoryWorkspace, /<th>Ngày ghi nhận<\/th>/);
   assert.match(inventoryWorkspace, /<th>Nhân viên<\/th>/);
@@ -24,8 +26,9 @@ test('inventory history is movement-grouped, paginated and opens document detail
   assert.match(inventoryWorkspace, /historyRows\.map\(\(row\) =>/);
   assert.match(inventoryWorkspace, /setSelectedHistory\(row\)/);
   assert.match(inventoryWorkspace, /role="dialog"/);
-  assert.match(inventoryWorkspace, /loadDrillDown\(candidate, true, 0\)/);
-  assert.doesNotMatch(inventoryWorkspace, /drillDown\.map/);
+  assert.match(inventoryWorkspace, /loadWarehouseHistory\(candidate, 0, requestedSku\)/);
+  assert.match(inventoryWorkspace, /hasHistoryDeepLink \? 'history' : 'balances'/);
+  assert.doesNotMatch(inventoryWorkspace, /inventory-drilldown-panel/);
 });
 
 test('sales order list refreshes canonical data and keeps backordered confirmed orders visible', () => {
