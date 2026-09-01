@@ -111,7 +111,7 @@
 }
 
 /* Buttons default to a dark neutral control. Semantic/primary variants below win explicitly. */
-:root[data-hp-theme='dark'] body:not([data-printing='true']) button {
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(button) {
   border-color: var(--hp-border-strong) !important;
   background-color: var(--hp-surface-soft) !important;
   background-image: none !important;
@@ -119,7 +119,7 @@
   box-shadow: none !important;
 }
 
-:root[data-hp-theme='dark'] body:not([data-printing='true']) button:hover:not(:disabled) {
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(button):hover:not(:disabled) {
   border-color: color-mix(in srgb, var(--hp-primary) 42%, var(--hp-border-strong)) !important;
   background-color: #25312a !important;
 }
