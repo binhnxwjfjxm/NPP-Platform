@@ -1,7 +1,6 @@
 'use client';
 
 import { createIdempotencyKey } from '@npp/contracts';
-import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { AppShell } from '../../../components/app-shell';
 import type { AccessUser } from '../../../../lib/access-types';
@@ -142,7 +141,7 @@ export default function UserScopeWorkspace({
       setDraftBranchIds(saved.branchIds);
       setDraftWarehouseIds(saved.warehouseIds);
       setNotice(saved.warehouseIds.length === 0
-        ? 'Đã lưu zero-scope. Tài khoản này sẽ không thấy chứng từ theo kho cho tới khi được cấp lại.'
+        ? 'Đã lưu phạm vi trống. Tài khoản này sẽ không thấy chứng từ theo kho cho tới khi được cấp lại.'
         : `Đã cấp ${saved.warehouseIds.length} kho cho ${selectedUser.login_name}.`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Không cập nhật được phạm vi người dùng');
@@ -156,17 +155,16 @@ export default function UserScopeWorkspace({
 
   return (
     <AppShell
-      title="Phạm vi người dùng"
-      subtitle="Cấp chi nhánh và kho canonical cho tài khoản nghiệp vụ; Security Owner tự có phạm vi toàn installation."
+      title="Phạm vi chi nhánh & kho"
+      subtitle="Cấp chi nhánh và kho cho từng tài khoản. Tài khoản quản trị cấp cao tự có phạm vi toàn Công Ty."
     >
       <main className={styles.page}>
         <header className={styles.header}>
           <div>
             <p className={styles.kicker}>Nhân sự &amp; phân quyền</p>
-            <h1>Phạm vi chi nhánh / kho</h1>
-            <p>PO, Phiếu nhận hàng và các dữ liệu theo kho chỉ hiển thị trong phạm vi được cấp. Không bỏ filter nghiệp vụ.</p>
+            <h1>Phạm vi chi nhánh &amp; kho</h1>
+            <p>Đơn mua hàng, Phiếu nhận hàng và các dữ liệu theo kho chỉ hiển thị trong phạm vi được cấp.</p>
           </div>
-          <Link className={styles.backLink} href="/access/users">← Người dùng</Link>
         </header>
 
         {error && <div className={styles.error} role="alert">{error}</div>}
@@ -187,7 +185,7 @@ export default function UserScopeWorkspace({
                 >
                   <strong>{user.employee_full_name ?? user.login_name}</strong>
                   <span>{user.login_name}{user.employee_code ? ` · ${user.employee_code}` : ''}</span>
-                  <small>{user.owner_kind ? 'Toàn installation' : `${user.warehouse_ids.length} kho`}</small>
+                  <small>{user.owner_kind ? 'Toàn Công Ty' : `${user.warehouse_ids.length} kho`}</small>
                 </button>
               ))}
             </div>
@@ -206,14 +204,14 @@ export default function UserScopeWorkspace({
 
               {ownerFullScope ? (
                 <div className={styles.ownerNotice}>
-                  <strong>Security Owner — toàn installation</strong>
-                  <p>Phạm vi được Core tự tính từ toàn bộ branch/warehouse canonical, gồm kho inactive để đọc chứng từ lịch sử. Không cấp tay tại đây.</p>
+                  <strong>Tài khoản quản trị — toàn Công Ty</strong>
+                  <p>Phạm vi được hệ thống tự áp dụng cho toàn bộ chi nhánh và kho, gồm dữ liệu lịch sử. Không cần cấp tay tại đây.</p>
                 </div>
               ) : (
                 <>
                   <div className={styles.warning}>
                     {draftWarehouseIds.length === 0
-                      ? 'Zero-scope đang được chọn: tài khoản sẽ không thấy PO/Phiếu nhận hàng theo kho.'
+                      ? 'Chưa cấp kho: tài khoản sẽ không thấy Đơn mua hàng, Phiếu nhận hàng và dữ liệu theo kho.'
                       : 'Chỉ các kho được chọn bên dưới mới xuất hiện trong dữ liệu nghiệp vụ của tài khoản này.'}
                   </div>
 
@@ -223,7 +221,7 @@ export default function UserScopeWorkspace({
                       {branches.map((branch) => (
                         <label key={branch.id} className={styles.option}>
                           <input type="checkbox" checked={draftBranchIds.includes(branch.id)} onChange={() => toggleBranch(branch.id)} disabled={busy} />
-                          <span><strong>{branch.name}</strong><small>{branch.code}{branch.is_active ? '' : ' · ngưng hoạt động / lịch sử'}</small></span>
+                          <span><strong>{branch.name}</strong><small>{branch.code}{branch.is_active ? '' : ' · ngừng sử dụng / lịch sử'}</small></span>
                         </label>
                       ))}
                     </div>
@@ -237,7 +235,7 @@ export default function UserScopeWorkspace({
                         return (
                           <label key={warehouse.id} className={styles.option}>
                             <input type="checkbox" checked={draftWarehouseIds.includes(warehouse.id)} onChange={() => toggleWarehouse(warehouse)} disabled={busy} />
-                            <span><strong>{warehouse.name}</strong><small>{warehouse.code} · {branch?.name ?? 'Không rõ chi nhánh'}{warehouse.is_active ? '' : ' · ngưng hoạt động / lịch sử'}</small></span>
+                            <span><strong>{warehouse.name}</strong><small>{warehouse.code} · {branch?.name ?? 'Không rõ chi nhánh'}{warehouse.is_active ? '' : ' · ngừng sử dụng / lịch sử'}</small></span>
                           </label>
                         );
                       })}
