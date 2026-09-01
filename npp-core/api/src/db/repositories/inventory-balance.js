@@ -21,6 +21,16 @@ function presentInventoryBalance(row) {
   };
 }
 
+function presentInventoryMovementHistory(row) {
+  if (!row) return row;
+  return {
+    ...row,
+    document_date: toLocalDateOnly(row.document_date),
+    posted_at: row.posted_at instanceof Date ? row.posted_at.toISOString() : row.posted_at,
+    line_count: Number(row.line_count ?? 0),
+  };
+}
+
 async function withBalanceWriteContext(client, context, operation) {
   const previousResult = await client.query(
     "SELECT current_setting('npp.inventory_balance_write_context', true) AS value",
@@ -423,4 +433,106 @@ export async function listInventoryMovementDrillDown(client, {
     posted_at: row.posted_at instanceof Date ? row.posted_at.toISOString() : row.posted_at,
     expiry_date: toLocalDateOnly(row.expiry_date),
   }));
+}
+
+export async function listInventoryMovementHistory(client, {
+  installationId,
+  warehouseId,
+  locationId = null,
+  baseVariantId,
+  lotId = null,
+  scopeMode = 'exact',
+  limit = 51,
+  offset = 0,
+}) {
+  const result = await client.query(
+    `WITH movement_history AS (
+       SELECT movement.id AS movement_id,
+              movement.movement_type,
+              movement.source_domain,
+              movement.source_document_type,
+              movement.source_document_id,
+              movement.source_document_number,
+              movement.document_number,
+              movement.document_date,
+              movement.posted_at,
+              movement.posted_by,
+              movement.reason_code,
+              movement.reason_note,
+              movement.reversal_of_movement_id,
+              line.warehouse_id,
+              warehouse.code AS warehouse_code,
+              warehouse.name AS warehouse_name,
+              line.base_variant_id,
+              max(line.base_sku) AS base_sku,
+              sum(line.base_quantity_delta)::numeric(30,12) AS base_quantity_delta,
+              count(*)::int AS line_count,
+              max(actor_employee.full_name) AS posted_by_name,
+              string_agg(
+                DISTINCT COALESCE(location.code, 'Không vị trí'),
+                ', ' ORDER BY COALESCE(location.code, 'Không vị trí')
+              ) AS location_summary,
+              string_agg(
+                DISTINCT COALESCE(line.lot_code, 'Không lô'),
+                ', ' ORDER BY COALESCE(line.lot_code, 'Không lô')
+              ) AS lot_summary
+         FROM inventory.inventory_movement_lines line
+         JOIN inventory.inventory_movements movement
+           ON movement.installation_id = line.installation_id
+          AND movement.id = line.movement_id
+         JOIN shared.warehouses warehouse
+           ON warehouse.installation_id = line.installation_id
+          AND warehouse.id = line.warehouse_id
+         LEFT JOIN shared.warehouse_locations location
+           ON location.installation_id = line.installation_id
+          AND location.warehouse_id = line.warehouse_id
+          AND location.id = line.location_id
+         LEFT JOIN shared.users actor_user
+           ON actor_user.installation_id = movement.installation_id
+          AND ('user:' || actor_user.id::text) = movement.posted_by
+         LEFT JOIN shared.employees actor_employee
+           ON actor_employee.installation_id = actor_user.installation_id
+          AND actor_employee.id = actor_user.employee_id
+        WHERE line.installation_id = $1
+          AND line.warehouse_id = $2
+          AND line.base_variant_id = $3
+          AND (
+            $6::text = 'warehouse'
+            OR (
+              line.location_id IS NOT DISTINCT FROM $4::uuid
+              AND line.lot_id IS NOT DISTINCT FROM $5::uuid
+            )
+          )
+        GROUP BY movement.id,
+                 movement.movement_type,
+                 movement.source_domain,
+                 movement.source_document_type,
+                 movement.source_document_id,
+                 movement.source_document_number,
+                 movement.document_number,
+                 movement.document_date,
+                 movement.posted_at,
+                 movement.posted_by,
+                 movement.reason_code,
+                 movement.reason_note,
+                 movement.reversal_of_movement_id,
+                 line.warehouse_id,
+                 warehouse.code,
+                 warehouse.name,
+                 line.base_variant_id
+     ), sequenced AS (
+       SELECT history.*,
+              sum(history.base_quantity_delta) OVER (
+                ORDER BY history.posted_at ASC, history.movement_id ASC
+                ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+              )::numeric(30,12) AS stock_after
+         FROM movement_history history
+     )
+     SELECT *
+       FROM sequenced
+      ORDER BY posted_at DESC, movement_id DESC
+      LIMIT $7 OFFSET $8`,
+    [installationId, warehouseId, baseVariantId, locationId, lotId, scopeMode, limit, offset],
+  );
+  return (result.rows ?? []).map(presentInventoryMovementHistory);
 }

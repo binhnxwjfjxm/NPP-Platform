@@ -138,6 +138,77 @@
 .twoColumnForm .primaryAction { padding: 9px 14px; border-radius: 10px; box-shadow: none; }
 .fullWidth { grid-column: 1 / -1; }
 
+.historySummary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 2px 2px 12px;
+  border-bottom: 1px solid rgba(52, 32, 24, 0.08);
+}
+.historyStock { display: grid; justify-items: end; gap: 2px; text-align: right; }
+.historyScopeBar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.scopeButtonActive { background: #5b321e; color: #fff; }
+.historyTableHeader { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.historyTableWrap { border-radius: 10px; }
+.historyTable { min-width: 1120px; font-feature-settings: 'tnum'; font-variant-numeric: tabular-nums; }
+.historyTable th,
+.historyTable td { padding: 9px 10px; vertical-align: middle; }
+.historyTable th:nth-child(4),
+.historyTable th:nth-child(5),
+.historyTable td:nth-child(4),
+.historyTable td:nth-child(5) { text-align: right; white-space: nowrap; }
+.historyNumber { font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace; font-weight: 750; }
+.historyIncrease { color: #176248; }
+.historyDecrease { color: #9f2520; }
+.documentButton {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #176aa6;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 760;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(29, 22, 18, 0.42);
+}
+.documentDialog {
+  display: grid;
+  width: min(760px, 100%);
+  max-height: min(86vh, 860px);
+  gap: 16px;
+  overflow: auto;
+  padding: 20px;
+  border: 1px solid rgba(52, 32, 24, 0.12);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 28px 70px rgba(29, 22, 18, 0.26);
+}
+.documentDialogHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.documentGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.documentGrid > div {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid rgba(52, 32, 24, 0.08);
+  border-radius: 10px;
+  background: #fbfaf8;
+}
+.documentGrid span,
+.documentNote span { color: #7b6a60; font-size: 0.78rem; font-weight: 760; }
+.documentGrid strong { font-size: 0.9rem; line-height: 1.45; }
+.documentNote { display: grid; gap: 6px; padding: 12px 0 0; border-top: 1px solid rgba(52, 32, 24, 0.08); }
+.documentNote p { margin: 0; line-height: 1.55; }
+
 @media (max-width: 1180px) {
   .cards,
   .filters,
@@ -150,4 +221,9 @@
   .heroControls { grid-template-columns: 1fr; }
   .compactHero { padding: 12px; }
   .compactHero .primaryAction { width: 100%; }
+  .historySummary { display: grid; }
+  .historyStock { justify-items: start; text-align: left; }
+  .documentGrid { grid-template-columns: 1fr; }
+  .modalBackdrop { padding: 10px; }
+  .documentDialog { padding: 16px; }
 }

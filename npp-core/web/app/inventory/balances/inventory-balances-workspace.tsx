@@ -10,11 +10,11 @@ import {
 import styles from '../inventory-workspace.module.css';
 import {
   formatDate,
+  formatDateTime,
   formatQuantity,
   matchTerm,
   normalizeSearch,
   type InventoryBalance,
-  type InventoryMovementLine,
   type InventorySnapshot,
 } from '../../../lib/inventory-types';
 
@@ -32,11 +32,40 @@ type RequestEnvelope<T> = {
 
 type Notice = { kind: 'success' | 'error'; message: string } | null;
 
+type InventoryMovementHistoryRow = {
+  movement_id: string;
+  movement_type: string;
+  source_domain: string;
+  source_document_type: string | null;
+  source_document_id: string | null;
+  source_document_number: string | null;
+  document_number: string | null;
+  document_date: string | null;
+  posted_at: string;
+  posted_by: string;
+  posted_by_name: string | null;
+  reason_code: string | null;
+  reason_note: string | null;
+  reversal_of_movement_id: string | null;
+  warehouse_id: string;
+  warehouse_code: string;
+  warehouse_name: string;
+  base_variant_id: string;
+  base_sku: string;
+  base_quantity_delta: string;
+  stock_after: string;
+  line_count: number;
+  location_summary: string | null;
+  lot_summary: string | null;
+};
+
 const QUANTITY_SCALE = 1_000_000_000_000n;
 const QUANTITY_PATTERN = /^(-?)(\d+)(?:\.(\d{1,12}))?$/;
 const INVENTORY_BALANCE_BATCH_SIZE = 1000;
 const INVENTORY_BALANCE_MAX_OFFSET = 100000;
 const INVENTORY_TABLE_PAGE_SIZE = 100;
+const HISTORY_PAGE_SIZE = 50;
+const HISTORY_FETCH_SIZE = HISTORY_PAGE_SIZE + 1;
 
 function balanceKey(balance: InventoryBalance): string {
   return [balance.warehouse_id, balance.location_id ?? '<null>', balance.base_variant_id, balance.lot_id ?? '<null>'].join(':');
@@ -44,10 +73,6 @@ function balanceKey(balance: InventoryBalance): string {
 
 function joinValues(...values: Array<string | null | undefined>): string {
   return values.filter(Boolean).join(' · ');
-}
-
-function movementDirectionLabel(value: InventoryMovementLine['direction']) {
-  return value === 'IN' ? 'Nhập kho' : 'Xuất kho';
 }
 
 function quantityToScaled(value: string): bigint {
@@ -130,6 +155,46 @@ function InventoryQuantity({ balance, value }: { balance: InventoryBalance; valu
   );
 }
 
+function movementLabel(row: InventoryMovementHistoryRow): string {
+  const labels: Record<string, string> = {
+    SALES_DELIVERY_ISSUE: 'Xuất kho giao khách',
+    PURCHASE_RECEIPT: 'Nhập hàng',
+    SUPPLIER_RETURN: 'Xuất trả nhà cung cấp',
+    TRANSFER_ISSUE: 'Xuất chuyển kho',
+    TRANSFER_RECEIPT: 'Nhập chuyển kho',
+    OPENING_BALANCE: 'Thiết lập tồn đầu kỳ',
+    MANUAL_INBOUND: 'Nhập kho thủ công',
+    STOCKTAKE_ADJUSTMENT: 'Cân bằng sau kiểm kê',
+    STOCKTAKE_ADJUSTMENT_REVERSAL: 'Hoàn tác cân bằng kiểm kê',
+    LOGISTICS_TRIP_RETURN: 'Nhập hàng hoàn',
+    REVERSAL: 'Hoàn tác giao dịch kho',
+  };
+  if (labels[row.movement_type]) return labels[row.movement_type];
+  if (row.movement_type.startsWith('MANUAL_ADJUSTMENT_')) return 'Điều chỉnh tồn kho';
+  return quantityToScaled(row.base_quantity_delta) >= 0n ? 'Nhập kho' : 'Xuất kho';
+}
+
+function documentTypeLabel(value: string | null): string {
+  const labels: Record<string, string> = {
+    SALES_ORDER: 'Đơn bán hàng',
+    DELIVERY_ORDER: 'Phiếu giao hàng',
+    PURCHASE_RECEIPT: 'Phiếu nhận hàng',
+    SUPPLIER_RETURN: 'Phiếu trả nhà cung cấp',
+    INVENTORY_TRANSFER: 'Phiếu chuyển kho',
+    INVENTORY_TRANSFER_RECEIPT: 'Phiếu nhận chuyển kho',
+    INVENTORY_ADJUSTMENT: 'Phiếu điều chỉnh tồn',
+    OPENING_BALANCE_IMPORT: 'Thiết lập tồn đầu kỳ',
+    MANUAL_INBOUND: 'Phiếu nhập kho',
+    STOCKTAKE: 'Phiếu kiểm kê',
+    INVENTORY_REVERSAL: 'Phiếu hoàn tác kho',
+  };
+  return value ? labels[value] ?? 'Chứng từ kho' : 'Chứng từ kho';
+}
+
+function historyDocumentNumber(row: InventoryMovementHistoryRow): string | null {
+  return row.source_document_number || row.document_number || null;
+}
+
 async function requestJson<T>(path: string): Promise<T> {
   const response = await fetch(path, { cache: 'no-store', headers: { Accept: 'application/json' } });
   const payload = (await response.json().catch(() => ({}))) as RequestEnvelope<T>;
@@ -157,8 +222,11 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
   const requestedWarehouseId = (searchParams.get('warehouseId') ?? '').trim();
   const [balances, setBalances] = useState(initialSnapshot.balances);
   const [selectedBalance, setSelectedBalance] = useState<InventoryBalance | null>(null);
-  const [drillDown, setDrillDown] = useState<InventoryMovementLine[]>([]);
+  const [historyRows, setHistoryRows] = useState<InventoryMovementHistoryRow[]>([]);
   const [historyAllScopes, setHistoryAllScopes] = useState(false);
+  const [historyPage, setHistoryPage] = useState(0);
+  const [historyHasMore, setHistoryHasMore] = useState(false);
+  const [selectedHistory, setSelectedHistory] = useState<InventoryMovementHistoryRow | null>(null);
   const [search, setSearch] = useState(requestedSku);
   const [page, setPage] = useState(0);
   const [busy, setBusy] = useState<string | null>(null);
@@ -202,8 +270,8 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
     [sameSkuAtWarehouse],
   );
 
-  const loadDrillDown = useCallback(async (balance: InventoryBalance, allScopes = false) => {
-    setBusy(`drill-${balanceKey(balance)}`);
+  const loadDrillDown = useCallback(async (balance: InventoryBalance, allScopes = false, nextPage = 0) => {
+    setBusy(`history-${balanceKey(balance)}`);
     setSelectedBalance(balance);
     setHistoryAllScopes(allScopes);
     setError(null);
@@ -211,10 +279,17 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
       const params = new URLSearchParams({
         warehouseId: balance.warehouse_id,
         baseVariantId: balance.base_variant_id,
+        limit: String(HISTORY_FETCH_SIZE),
+        offset: String(nextPage * HISTORY_PAGE_SIZE),
       });
+      if (allScopes) params.set('scope', 'warehouse');
       if (!allScopes && balance.location_id) params.set('locationId', balance.location_id);
       if (!allScopes && balance.lot_id) params.set('lotId', balance.lot_id);
-      setDrillDown(await requestJson<InventoryMovementLine[]>(`/api/inventory/balances/drill-down?${params.toString()}`));
+      const rows = await requestJson<InventoryMovementHistoryRow[]>(`/api/inventory/balances/history?${params.toString()}`);
+      setHistoryRows(rows.slice(0, HISTORY_PAGE_SIZE));
+      setHistoryPage(nextPage);
+      setHistoryHasMore(rows.length > HISTORY_PAGE_SIZE);
+      setSelectedHistory(null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Không tải được lịch sử tồn kho');
     } finally {
@@ -234,8 +309,17 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
     if (!candidate) return;
     setSearch(requestedSku);
     setPage(0);
-    void loadDrillDown(candidate, true);
+    void loadDrillDown(candidate, true, 0);
   }, [balances, loadDrillDown, requestedSku, requestedWarehouseId, selectedBalance]);
+
+  useEffect(() => {
+    if (!selectedHistory) return undefined;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSelectedHistory(null);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [selectedHistory]);
 
   async function refreshBalances() {
     setBusy('refresh');
@@ -314,7 +398,7 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
                         <td><InventoryQuantity balance={balance} value={balance.on_hand_quantity} /></td>
                         <td><InventoryQuantity balance={balance} value={balance.reserved_quantity} /></td>
                         <td><InventoryQuantity balance={balance} value={balance.available_quantity} /></td>
-                        <td><button type="button" className={styles.miniButton} onClick={() => void loadDrillDown(balance)}>Xem chi tiết</button></td>
+                        <td><button type="button" className={styles.miniButton} onClick={() => void loadDrillDown(balance, false, 0)}>Xem lịch sử</button></td>
                       </tr>
                     );
                   })}
@@ -323,62 +407,108 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
             </div>
 
             {selectedBalance ? <aside className={`${styles.panel} ${styles.balanceDetailPanel}`} data-testid="inventory-drilldown-panel">
-              <h3 className={styles.panelTitle}>{historyAllScopes ? 'Lịch sử xuất nhập tồn của SKU tại kho' : 'Lịch sử tồn kho theo vị trí / lô'}</h3>
-              <div className={styles.stack}>
-                  <div className={styles.banner} data-testid="inventory-selected-scope">
-                    <strong>{selectedBalance.warehouse_code} — {selectedBalance.warehouse_name}</strong>
-                    <div className={styles.subtle}>{historyAllScopes ? 'Toàn bộ vị trí / lô của SKU tại kho' : balanceScopeLabel(selectedBalance)}</div>
-                    <div><strong>{selectedBalance.product_name}</strong></div>
-                    <div className={styles.mono}>{selectedBalance.base_sku}{selectedBalance.base_variant_name ? ` · ${selectedBalance.base_variant_name}` : ''}</div>
-                    {selectedBalance.package_sku && selectedBalance.package_sku !== selectedBalance.base_sku ? <div className={styles.subtle}>SKU thùng: {selectedBalance.package_sku}</div> : null}
-                    {packageRuleLabel(selectedBalance) ? <div className={styles.subtle}>{packageRuleLabel(selectedBalance)}</div> : null}
-                    <div>{historyAllScopes ? 'Tồn tại phạm vi đang hiển thị:' : 'Tồn của dòng đang chọn:'}</div>
-                    <InventoryQuantity balance={selectedBalance} value={historyAllScopes ? sameSkuWarehouseTotal : selectedBalance.on_hand_quantity} />
-                    {!historyAllScopes ? <><div>Tổng tồn SKU tại kho:</div><InventoryQuantity balance={selectedBalance} value={sameSkuWarehouseTotal} /></> : null}
-                  </div>
-
-                  <div>
-                    <strong>Chi tiết cùng SKU trong kho</strong>
-                    <div className={styles.rowActions} data-testid="inventory-lot-breakdown">
-                      {sameSkuAtWarehouse.map((balance) => (
-                        <button
-                          key={balanceKey(balance)}
-                          type="button"
-                          className={styles.miniButton}
-                          onClick={() => void loadDrillDown(balance)}
-                          disabled={busy === `drill-${balanceKey(balance)}`}
-                        >
-                          {balanceScopeLabel(balance)} · {canonicalQuantityLabel(balance.on_hand_quantity, balance)}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <p className={styles.subtle}>
-                    {historyAllScopes
-                      ? 'Đang hiển thị lịch sử của SKU trong toàn bộ vị trí và lô thuộc kho được mở từ đơn bán hàng. Chọn một phạm vi bên trên nếu cần xem riêng.'
-                      : 'Lịch sử bên dưới chỉ lọc đúng kho, vị trí và lô đang chọn. Tổng tồn của SKU có thể gồm nhiều lô hoặc nhiều vị trí khác nhau.'}
-                  </p>
-
-                  {drillDown.length === 0 ? <p className={styles.subtle}>Chưa có giao dịch nào được tải cho phạm vi này.</p> : (
-                    <div className={styles.stack}>{drillDown.map((line) => (
-                      <div key={line.id ?? `${line.movement_id}-${line.base_quantity_delta}`} className={styles.banner}>
-                        <div className={styles.rowActions}>
-                          <span className={styles.pill}>{movementDirectionLabel(line.direction)}</span>
-                          <span className={styles.pill}>{canonicalQuantityLabel(line.base_quantity_delta, selectedBalance)}</span>
-                        </div>
-                        <div className={styles.subtle}>
-                          <div>{historyAllScopes ? `Kho ${selectedBalance.warehouse_code} · toàn bộ vị trí / lô` : `Kho ${selectedBalance.warehouse_code} · ${balanceScopeLabel(selectedBalance)}`}</div>
-                          <div className={styles.mono}>{joinValues(line.base_sku, line.lot_code ? `Lô ${line.lot_code}` : null, line.expiry_date)}</div>
-                          <div>{line.source_line_reference ? `Tham chiếu: ${line.source_line_reference}` : 'Biến động tồn kho'}</div>
-                        </div>
-                      </div>
-                    ))}</div>
-                  )}
+              <div className={styles.historySummary} data-testid="inventory-selected-scope">
+                <div>
+                  <h3 className={styles.panelTitle}>Lịch sử xuất nhập tồn</h3>
+                  <strong>{selectedBalance.product_name}</strong>
+                  <div className={styles.mono}>{selectedBalance.base_sku}</div>
+                  <div className={styles.subtle}>{selectedBalance.warehouse_code} · {selectedBalance.warehouse_name}</div>
+                </div>
+                <div className={styles.historyStock}>
+                  <span className={styles.subtle}>Tồn hiện tại</span>
+                  <InventoryQuantity balance={selectedBalance} value={historyAllScopes ? sameSkuWarehouseTotal : selectedBalance.on_hand_quantity} />
+                </div>
               </div>
+
+              <div className={styles.historyScopeBar} data-testid="inventory-lot-breakdown">
+                <span className={styles.subtle}>Phạm vi:</span>
+                <button
+                  type="button"
+                  className={`${styles.miniButton} ${historyAllScopes ? styles.scopeButtonActive : ''}`}
+                  onClick={() => void loadDrillDown(selectedBalance, true, 0)}
+                >Toàn kho</button>
+                {sameSkuAtWarehouse.map((balance) => (
+                  <button
+                    key={balanceKey(balance)}
+                    type="button"
+                    className={`${styles.miniButton} ${!historyAllScopes && balanceKey(balance) === balanceKey(selectedBalance) ? styles.scopeButtonActive : ''}`}
+                    onClick={() => void loadDrillDown(balance, false, 0)}
+                    disabled={busy === `history-${balanceKey(balance)}`}
+                  >{balanceScopeLabel(balance)}</button>
+                ))}
+              </div>
+
+              <div className={styles.historyTableHeader}>
+                <div className={styles.subtle}>{historyAllScopes ? 'Toàn bộ vị trí / lô của SKU tại kho' : balanceScopeLabel(selectedBalance)}</div>
+                <div className={styles.actionRow}>
+                  <span className={styles.subtle}>Trang {historyPage + 1}</span>
+                  <button type="button" className={styles.miniButton} disabled={historyPage === 0} onClick={() => void loadDrillDown(selectedBalance, historyAllScopes, historyPage - 1)}>Trang trước</button>
+                  <button type="button" className={styles.miniButton} disabled={!historyHasMore} onClick={() => void loadDrillDown(selectedBalance, historyAllScopes, historyPage + 1)}>Trang sau</button>
+                </div>
+              </div>
+
+              {historyRows.length === 0 ? <p className={styles.subtle}>Chưa có giao dịch nào trong phạm vi này.</p> : (
+                <div className={`${styles.tableWrap} ${styles.historyTableWrap}`}>
+                  <table className={`${styles.table} ${styles.historyTable}`} data-testid="inventory-history-table">
+                    <thead>
+                      <tr>
+                        <th>Ngày ghi nhận</th>
+                        <th>Nhân viên</th>
+                        <th>Thao tác</th>
+                        <th>Số lượng thay đổi</th>
+                        <th>Tồn kho</th>
+                        <th>Mã chứng từ</th>
+                        <th>Kho</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {historyRows.map((row) => {
+                        const delta = quantityToScaled(row.base_quantity_delta);
+                        const documentNumber = historyDocumentNumber(row);
+                        return (
+                          <tr key={row.movement_id} data-testid={`inventory-history-${row.movement_id}`}>
+                            <td>{formatDateTime(row.posted_at)}</td>
+                            <td>{row.posted_by_name || 'Hệ thống'}</td>
+                            <td>{movementLabel(row)}</td>
+                            <td className={`${styles.historyNumber} ${delta >= 0n ? styles.historyIncrease : styles.historyDecrease}`}>{canonicalQuantityLabel(row.base_quantity_delta, selectedBalance)}</td>
+                            <td className={styles.historyNumber}>{canonicalQuantityLabel(row.stock_after, selectedBalance)}</td>
+                            <td>{documentNumber ? <button type="button" className={styles.documentButton} onClick={() => setSelectedHistory(row)}>{documentNumber}</button> : '—'}</td>
+                            <td>{row.warehouse_code} · {row.warehouse_name}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </aside> : null}
           </div>
         </section>
+
+        {selectedHistory && selectedBalance ? (
+          <div className={styles.modalBackdrop} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedHistory(null); }}>
+            <section className={styles.documentDialog} role="dialog" aria-modal="true" aria-labelledby="inventory-document-dialog-title">
+              <div className={styles.documentDialogHeader}>
+                <div>
+                  <div className={styles.subtle}>{documentTypeLabel(selectedHistory.source_document_type)}</div>
+                  <h3 id="inventory-document-dialog-title" className={styles.panelTitle}>{historyDocumentNumber(selectedHistory) || 'Chi tiết chứng từ kho'}</h3>
+                </div>
+                <button type="button" className={styles.miniButton} onClick={() => setSelectedHistory(null)}>Đóng</button>
+              </div>
+              <div className={styles.documentGrid}>
+                <div><span>Ngày ghi nhận</span><strong>{formatDateTime(selectedHistory.posted_at)}</strong></div>
+                <div><span>Nhân viên</span><strong>{selectedHistory.posted_by_name || 'Hệ thống'}</strong></div>
+                <div><span>Thao tác</span><strong>{movementLabel(selectedHistory)}</strong></div>
+                <div><span>Số lượng thay đổi</span><strong>{canonicalQuantityLabel(selectedHistory.base_quantity_delta, selectedBalance)}</strong></div>
+                <div><span>Tồn sau giao dịch</span><strong>{canonicalQuantityLabel(selectedHistory.stock_after, selectedBalance)}</strong></div>
+                <div><span>Kho</span><strong>{selectedHistory.warehouse_code} · {selectedHistory.warehouse_name}</strong></div>
+                <div><span>Vị trí</span><strong>{selectedHistory.location_summary || 'Không vị trí'}</strong></div>
+                <div><span>Lô</span><strong>{selectedHistory.lot_summary || 'Không lô'}</strong></div>
+              </div>
+              {selectedHistory.reason_note ? <div className={styles.documentNote}><span>Ghi chú</span><p>{selectedHistory.reason_note}</p></div> : null}
+            </section>
+          </div>
+        ) : null}
       </div>
     </AppShell>
   );

@@ -28,5 +28,5 @@ test('inventory deep link resolves both base and package SKU within the selected
   assert.match(inventory, /searchParams\.get\('sku'\)/);
   assert.match(inventory, /searchParams\.get\('warehouseId'\)/);
   assert.match(inventory, /balance\.package_sku/);
-  assert.match(inventory, /loadDrillDown\(candidate, true\)/);
+  assert.match(inventory, /loadDrillDown\(candidate, true, 0\)/);
 });

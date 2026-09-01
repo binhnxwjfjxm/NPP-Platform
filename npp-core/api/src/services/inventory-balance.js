@@ -9,6 +9,7 @@ import { PERMISSIONS } from '../access/permissions.js';
 import * as repository from '../db/repositories/inventory-balance.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const HISTORY_SCOPE_MODES = new Set(['exact', 'warehouse']);
 
 function failure(code, message, retryable = false) {
   return Object.freeze({ ok: false, code, message, retryable });
@@ -116,6 +117,45 @@ export async function listInventoryMovementDrillDown(client, {
     offset,
   });
   return Object.freeze({ ok: true, lines: Object.freeze(lines) });
+}
+
+export async function listInventoryMovementHistory(client, {
+  requestContext,
+  warehouseId,
+  locationId = null,
+  baseVariantId,
+  lotId = null,
+  scopeMode = 'exact',
+  limit = 51,
+  offset = 0,
+}) {
+  const validation = validateReadScope(requestContext, {
+    warehouseId,
+    locationId,
+    baseVariantId,
+    lotId,
+  });
+  if (!validation.ok) return validation;
+  if (!HISTORY_SCOPE_MODES.has(scopeMode)) {
+    return failure('INVALID_HISTORY_SCOPE', 'scope must be exact or warehouse');
+  }
+  if (!Number.isInteger(limit) || limit < 1 || limit > 1000) {
+    return failure('INVALID_LIMIT', 'limit must be an integer between 1 and 1000');
+  }
+  if (!Number.isInteger(offset) || offset < 0 || offset > 100000) {
+    return failure('INVALID_OFFSET', 'offset must be an integer between 0 and 100000');
+  }
+  const rows = await repository.listInventoryMovementHistory(client, {
+    installationId: requestContext.installationId,
+    warehouseId,
+    locationId: scopeMode === 'warehouse' ? null : (locationId || null),
+    baseVariantId,
+    lotId: scopeMode === 'warehouse' ? null : (lotId || null),
+    scopeMode,
+    limit,
+    offset,
+  });
+  return Object.freeze({ ok: true, rows: Object.freeze(rows) });
 }
 
 export async function reconcileInventoryBalances(client, { requestContext }) {

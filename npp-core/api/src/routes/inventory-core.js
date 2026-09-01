@@ -16,7 +16,10 @@ import {
   postOpeningBalanceImport,
   validateOpeningBalanceImport,
 } from '../services/opening-balance.js';
-import { listInventoryMovementDrillDown } from '../services/inventory-balance.js';
+import {
+  listInventoryMovementDrillDown,
+  listInventoryMovementHistory,
+} from '../services/inventory-balance.js';
 import * as warehouseRepository from '../db/repositories/warehouse.js';
 import { handleFulfillmentOperationRoutes } from './fulfillment-operations.js';
 import { handleFulfillmentReversalRoutes } from './fulfillment-reversal.js';
@@ -241,8 +244,25 @@ async function handleBalances(req, res, options, pathname, method) {
   if (!requestContext) return true;
   const scopedRequestContext = await ensureWarehouseScopes(options.getPool(), requestContext);
   const url = new URL(`http://localhost${req.url}`);
+  const history = pathname.endsWith('/history');
   const drillDown = pathname.endsWith('/drill-down');
   try {
+    if (history) {
+      const result = await listInventoryMovementHistory(options.getPool(), {
+        requestContext: scopedRequestContext,
+        warehouseId: url.searchParams.get('warehouseId'),
+        locationId: url.searchParams.get('locationId'),
+        baseVariantId: url.searchParams.get('baseVariantId'),
+        lotId: url.searchParams.get('lotId'),
+        scopeMode: url.searchParams.get('scope') || 'exact',
+        limit: parseInteger(url.searchParams.get('limit'), 51, 1000),
+        offset: parseInteger(url.searchParams.get('offset'), 0, 100000),
+      });
+      if (!result.ok) return sendServiceError(res, result, options), true;
+      writeSuccess(res, result.rows, options);
+      return true;
+    }
+
     if (drillDown) {
       const result = await listInventoryMovementDrillDown(options.getPool(), {
         requestContext: scopedRequestContext,
