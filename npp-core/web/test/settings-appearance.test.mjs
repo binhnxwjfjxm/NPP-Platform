@@ -34,9 +34,15 @@ test('giao diện lưu trên trình duyệt và bootstrap trước khi app hiể
   assert.match(layout, /data-hp-scale="0"/);
   assert.match(layout, /localStorage\.getItem/);
   assert.match(layout, /appearance-theme\.css/);
+  assert.match(layout, /dark-theme-hardening\.css/);
+  assert.match(layout, /appearance-theme-runtime\.css/);
   assert.ok(
     layout.indexOf("import './appearance-theme.css';") > layout.indexOf("import './sales-order-entry-polish.css';"),
-    'appearance theme must load last so it can switch color tokens without changing page layout',
+    'appearance theme must load after legacy page polish',
+  );
+  assert.ok(
+    layout.indexOf("import './appearance-theme-runtime.css';") > layout.indexOf("import './dark-theme-hardening.css';"),
+    'runtime theme contract must load last so legacy screen chrome cannot override it',
   );
   assert.match(workspace, /localStorage\.setItem/);
   assert.match(workspace, /applyAppearance/);
@@ -72,4 +78,25 @@ test('theme dùng token tập trung và khóa theo ba ảnh tham chiếu trong r
   assert.match(theme, /--hp-primary:/);
   assert.match(theme, /--hp-border:/);
   assert.match(theme, /color-scheme:\s*dark/);
+});
+
+test('theme Tối phủ đúng CSS Module runtime và menu dùng hàng phẳng', () => {
+  const runtime = read('app/appearance-theme-runtime.css');
+
+  assert.match(runtime, /organization_summaryCard__/);
+  assert.match(runtime, /organization_table__/);
+  assert.match(runtime, /role-workspace_permissionColumn__/);
+  assert.match(runtime, /dashboard_kpiCard__/);
+  assert.match(runtime, /fulfillment-workspace_topBar__/);
+  assert.match(runtime, /fulfillment-workspace_orderRow__/);
+  assert.match(runtime, /fulfillment-workspace_productRow__/);
+  assert.match(runtime, /fulfillment-workspace_status__/);
+  assert.match(runtime, /print-templates_paper__/);
+  assert.match(runtime, /\[data-testid='app-sidebar'\] \[class\*='navItem__'\]/);
+  assert.match(runtime, /box-shadow:\s*inset 3px 0 0 var\(--hp-sidebar-accent\)/);
+  assert.match(runtime, /:not\(\[class\*='Skeleton'\]\):not\(\[class\*='skeleton'\]\)/);
+  assert.doesNotMatch(runtime, /\[class\*='organization-module/);
+  assert.doesNotMatch(runtime, /\[class\*='dashboard-module/);
+  assert.doesNotMatch(runtime, /\[class\*='role-workspace-module/);
+  assert.doesNotMatch(runtime, /\[class\*='print-templates-module/);
 });
