@@ -360,9 +360,7 @@ function pricingSummary(line: LineDraft): string {
 }
 
 function variantBusinessLabel(variant: ProductVariant): string {
-  const kind = variant.variant_kind === 'CARTON' ? 'Thùng' : 'Lẻ';
-  const unit = variant.unit_code ? ` · ${variant.unit_code}` : '';
-  return `${kind} · ${variant.sku}${unit}`;
+  return variant.variant_kind === 'CARTON' ? 'Thùng' : 'Lẻ';
 }
 
 export default function SalesOrderCommercialForm(props: Props) {
@@ -1404,7 +1402,7 @@ export default function SalesOrderCommercialForm(props: Props) {
           </section>
 
           <section className={styles.orderLines} aria-label="Hàng hóa trong đơn">
-            <header className={styles.lineTableHeader}><span>STT</span><span>Hàng hóa</span><span>Lẻ/Thùng</span><span>SL</span><span>Đơn giá</span><span>CK</span><span>Thành tiền</span><span /></header>
+            <header className={styles.lineTableHeader}><span>STT</span><span>Hàng hóa</span><span>ĐVT</span><span>SL</span><span>Đơn giá</span><span>CK</span><span>Thành tiền</span><span /></header>
             {lines.map((line, index) => {
               const choiceState = line.productId ? lineVariantChoices[line.productId] : undefined;
               const variantOptions = choiceState?.options ?? [];
@@ -1449,23 +1447,21 @@ export default function SalesOrderCommercialForm(props: Props) {
                   )}
                 </div>
                 <div className={styles.unitCell}>
-                  <span>Đơn vị bán · Lẻ/Thùng</span>
                   <select
                     ref={(node) => {
                       if (node) variantRefs.current.set(line.clientLineId, node);
                       else variantRefs.current.delete(line.clientLineId);
                     }}
+                    className={styles.directPriceInput}
                     data-testid={`sales-line-variant-select-${index + 1}`}
                     aria-label={`Chọn Lẻ hoặc Thùng cho ${line.sku}`}
                     value={line.variantId}
                     disabled={line.resolvingPrice || choiceState?.loading === true}
                     onChange={(event) => void changeLineVariant(line.clientLineId, event.target.value)}
                   >
-                    {!hasCurrentOption && <option value={line.variantId}>{line.unitCode || 'ĐVT'} · {line.sku}</option>}
+                    {!hasCurrentOption && <option value={line.variantId}>{line.unitCode || 'ĐVT'}</option>}
                     {variantOptions.map((variant) => <option key={variant.id} value={variant.id}>{variantBusinessLabel(variant)}</option>)}
                   </select>
-                  <small>Quy đổi kho ×{compactQuantity(line.conversionToBase)}</small>
-                  {choiceState?.loading && <small>Đang tải Lẻ/Thùng…</small>}
                   {lineVariantError && <small className={styles.ineligible}>{lineVariantError}</small>}
                 </div>
                 <div className={styles.quantityCell}>
