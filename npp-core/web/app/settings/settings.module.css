@@ -155,6 +155,80 @@
   color: #49362b;
 }
 
+:global(html[data-hp-theme='green']) .settingsTabs,
+:global(html[data-hp-theme='dark']) .settingsTabs {
+  border-color: var(--hp-border);
+  background: var(--hp-surface-soft);
+}
+
+:global(html[data-hp-theme='green']) .settingsTab,
+:global(html[data-hp-theme='dark']) .settingsTab {
+  color: var(--hp-muted);
+}
+
+:global(html[data-hp-theme='green']) .settingsTab:hover,
+:global(html[data-hp-theme='dark']) .settingsTab:hover {
+  color: var(--hp-primary-strong);
+  background: var(--hp-primary-soft);
+}
+
+:global(html[data-hp-theme='green']) .settingsTabActive,
+:global(html[data-hp-theme='dark']) .settingsTabActive {
+  color: var(--hp-ink);
+  background: var(--hp-surface);
+  box-shadow: var(--hp-shadow);
+}
+
+:global(html[data-hp-theme='green']) .appCard,
+:global(html[data-hp-theme='dark']) .appCard {
+  border-color: var(--hp-border);
+  background: var(--hp-surface);
+  box-shadow: var(--hp-shadow);
+}
+
+:global(html[data-hp-theme='green']) .appIcon,
+:global(html[data-hp-theme='dark']) .appIcon {
+  color: var(--hp-primary-strong);
+  background: var(--hp-primary-soft);
+}
+
+:global(html[data-hp-theme='green']) .eyebrow,
+:global(html[data-hp-theme='dark']) .eyebrow {
+  color: var(--hp-primary);
+}
+
+:global(html[data-hp-theme='green']) .appCopy h2,
+:global(html[data-hp-theme='dark']) .appCopy h2,
+:global(html[data-hp-theme='green']) .noteCard strong,
+:global(html[data-hp-theme='dark']) .noteCard strong {
+  color: var(--hp-ink);
+}
+
+:global(html[data-hp-theme='green']) .appDescription,
+:global(html[data-hp-theme='dark']) .appDescription,
+:global(html[data-hp-theme='green']) .noteCard,
+:global(html[data-hp-theme='dark']) .noteCard {
+  color: var(--hp-muted);
+}
+
+:global(html[data-hp-theme='green']) .releaseMeta span,
+:global(html[data-hp-theme='dark']) .releaseMeta span,
+:global(html[data-hp-theme='green']) .noteCard,
+:global(html[data-hp-theme='dark']) .noteCard {
+  background: var(--hp-surface-soft);
+}
+
+:global(html[data-hp-theme='green']) .releaseMeta span,
+:global(html[data-hp-theme='dark']) .releaseMeta span {
+  color: var(--hp-ink);
+}
+
+:global(html[data-hp-theme='green']) .downloadButton,
+:global(html[data-hp-theme='dark']) .downloadButton {
+  color: var(--hp-primary-contrast);
+  background: var(--hp-primary-strong);
+}
+
 @media (max-width: 760px) {
   .settingsTabs {
     overflow-x: auto;
