@@ -6,8 +6,8 @@ const sales = readFileSync(new URL('../app/sales/sales-orders/SalesOrderCommerci
 const inventory = readFileSync(new URL('../app/inventory/balances/inventory-balances-workspace.tsx', import.meta.url), 'utf8');
 const globals = readFileSync(new URL('../app/globals.css', import.meta.url), 'utf8');
 
-test('Công Ty scales the shared typography to 120 percent', () => {
-  assert.match(globals, /html\s*\{[\s\S]*?font-size:\s*120%/);
+test('Công Ty keeps a 120 percent typography baseline with shared display scaling', () => {
+  assert.match(globals, /html\s*\{[\s\S]*?font-size:\s*calc\(120%\s*\*\s*var\(--hp-ui-scale,\s*1\)\)/);
   assert.match(globals, /body\s*\{[\s\S]*?font-size:\s*0\.875rem/);
 });
 
