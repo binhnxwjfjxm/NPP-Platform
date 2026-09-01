@@ -171,26 +171,30 @@ async function loadSkuMap(client, installationId, skus) {
 async function loadBalanceMap(client, installationId, warehouseId, baseVariantIds) {
   if (baseVariantIds.length === 0) return new Map();
   const result = await client.query(
-    `SELECT balance.base_variant_id,
-            balance.location_id,
+    `WITH requested AS (
+       SELECT unnest($3::uuid[]) AS base_variant_id
+     )
+     SELECT requested.base_variant_id,
+            location.id AS location_id,
             location.code AS location_code,
             location.name AS location_name,
             balance.lot_id,
             lot.lot_code,
             COALESCE(balance.on_hand_quantity, 0)::numeric(30,12) AS on_hand_quantity
-       FROM inventory.inventory_balances balance
+       FROM requested
        JOIN shared.warehouse_locations location
-         ON location.installation_id = balance.installation_id
-        AND location.warehouse_id = balance.warehouse_id
-        AND location.id = balance.location_id
+         ON location.installation_id = $1
+        AND location.warehouse_id = $2
         AND location.is_active = true
-       LEFT JOIN inventory.inventory_lots lot
-         ON lot.installation_id = balance.installation_id
-        AND lot.id = balance.lot_id
-      WHERE balance.installation_id = $1
+       LEFT JOIN inventory.inventory_balances balance
+         ON balance.installation_id = $1
         AND balance.warehouse_id = $2
-        AND balance.base_variant_id = ANY($3::uuid[])
-      ORDER BY balance.base_variant_id, location.code, lot.lot_code NULLS FIRST`,
+        AND balance.base_variant_id = requested.base_variant_id
+        AND balance.location_id = location.id
+       LEFT JOIN inventory.inventory_lots lot
+         ON lot.installation_id = $1
+        AND lot.id = balance.lot_id
+      ORDER BY requested.base_variant_id, location.code, lot.lot_code NULLS FIRST`,
     [installationId, warehouseId, baseVariantIds],
   );
   const map = new Map();
@@ -281,22 +285,8 @@ function resolveScopeSelection(row, source, balanceCandidates = []) {
   let locationAutoFilled = false;
   let lotAutoFilled = false;
 
-  if (lotRequired && !lotCode) {
-    const lotCandidates = locationCode
-      ? candidates.filter((item) => sameCode(item.location_code, locationCode))
-      : candidates;
-    const lotCodes = uniqueCodes(lotCandidates, 'lot_code');
-    if (lotCodes.length === 1) {
-      [lotCode] = lotCodes;
-      lotAutoFilled = true;
-    }
-  }
-
   if (!locationCode) {
-    const locationCandidates = lotCode
-      ? candidates.filter((item) => sameCode(item.lot_code, lotCode))
-      : candidates;
-    const locationCodes = uniqueCodes(locationCandidates, 'location_code');
+    const locationCodes = uniqueCodes(candidates, 'location_code');
     if (locationCodes.length === 1) {
       [locationCode] = locationCodes;
       locationAutoFilled = true;

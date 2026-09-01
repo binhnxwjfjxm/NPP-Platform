@@ -18,7 +18,7 @@ function row(overrides = {}) {
   };
 }
 
-function balance({ locationCode = 'A01', locationName = 'Kệ A', lotCode = null } = {}) {
+function balance({ locationCode = 'A01', locationName = 'Kệ A', lotCode = null, onHandQuantity = '10.000000000000' } = {}) {
   return {
     base_variant_id: 'base-variant',
     location_id: `${locationCode}-id`,
@@ -26,7 +26,7 @@ function balance({ locationCode = 'A01', locationName = 'Kệ A', lotCode = null
     location_name: locationName,
     lot_id: lotCode ? `${lotCode}-id` : null,
     lot_code: lotCode,
-    on_hand_quantity: '10.000000000000',
+    on_hand_quantity: onHandQuantity,
   };
 }
 
@@ -96,6 +96,27 @@ test('bulk scope requires location only when exact scope is still ambiguous', ()
   assert.equal(noLotTracking.requiresLocationSelection, false);
 });
 
+test('bulk scope uses active warehouse locations even when a SKU has no balance there yet', () => {
+  const input = { ...row({ actualQuantity: '8', locationCode: null, lotCode: null }), actualScaled6: 8n };
+  const source = { lot_tracking_mode: 'NONE' };
+
+  const soleLocation = inventoryAdjustmentBulkInternals.resolveScopeSelection(input, source, [
+    balance({ locationCode: 'A01', onHandQuantity: '0.000000000000' }),
+  ]);
+  assert.equal(soleLocation.locationCode, 'A01');
+  assert.equal(soleLocation.locationAutoFilled, true);
+  assert.equal(soleLocation.requiresLocationSelection, false);
+
+  const multipleLocations = inventoryAdjustmentBulkInternals.resolveScopeSelection(input, source, [
+    balance({ locationCode: 'A01', onHandQuantity: '10.000000000000' }),
+    balance({ locationCode: 'B01', locationName: 'Kệ B', onHandQuantity: '0.000000000000' }),
+  ]);
+  assert.equal(multipleLocations.locationCode, null);
+  assert.equal(multipleLocations.locationAutoFilled, false);
+  assert.equal(multipleLocations.requiresLocationSelection, true);
+  assert.deepEqual(multipleLocations.scopeOptions.map((item) => item.locationCode), ['A01', 'B01']);
+});
+
 test('bulk delta uses exact conversion and falls back to base unit for break-pack differences', () => {
   const source = {
     source_variant_id: 'sales-variant',
@@ -111,7 +132,7 @@ test('bulk delta uses exact conversion and falls back to base unit for break-pac
   assert.deepEqual(twoPieces, { sourceVariantId: 'base-variant', quantity: '2', unitCode: 'CHAI' });
 });
 
-test('bulk preview is read-only for inventory and confirm reuses canonical adjustment creation', () => {
+test('bulk preview seeds every active warehouse location and confirm reuses canonical adjustment creation', () => {
   assert.match(routeSource, /bulk-preview/);
   assert.match(routeSource, /bulk-confirm/);
   assert.match(routeSource, /executeRequestWithIdempotency/);
@@ -120,6 +141,7 @@ test('bulk preview is read-only for inventory and confirm reuses canonical adjus
   assert.match(bulkSource, /currentScopeVersions/);
   assert.match(bulkSource, /lock:\s*true/);
   assert.match(bulkSource, /createAdjustment/);
+  assert.match(bulkSource, /WITH requested AS \([\s\S]*?unnest\(\$3::uuid\[\]\) AS base_variant_id[\s\S]*?JOIN shared\.warehouse_locations location[\s\S]*?location\.is_active = true[\s\S]*?LEFT JOIN inventory\.inventory_balances balance/);
   assert.match(bulkSource, /LOT_SELECTION_REQUIRED/);
   assert.match(bulkSource, /LOCATION_SELECTION_REQUIRED/);
   assert.doesNotMatch(bulkSource, /Hãy bổ sung cột Lô/);
