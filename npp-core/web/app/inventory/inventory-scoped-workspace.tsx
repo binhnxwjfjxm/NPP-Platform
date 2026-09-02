@@ -20,6 +20,7 @@ import {
   type InventorySnapshot,
   type InventoryTrackingPolicy,
 } from '../../lib/inventory-types';
+import { collectInventoryPages, withInventoryPage } from '../../lib/inventory-pagination';
 import type { InventoryTrackingPolicyCandidate } from '../../lib/inventory-policy-types';
 
 type InventoryScope = 'balances' | 'tracking-policies' | 'lots';
@@ -101,6 +102,19 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   return payload.data;
 }
 
+async function requestAllInventoryPages<T>(path: string, pageSize: number): Promise<T[]> {
+  const endpoint = new URL(path, 'http://inventory.local');
+  const baseParams = new URLSearchParams(endpoint.search);
+  return collectInventoryPages({
+    pageSize,
+    loadPage: (page) => {
+      const params = withInventoryPage(baseParams, page);
+      const query = params.toString();
+      return requestJson<T[]>(`${endpoint.pathname}${query ? `?${query}` : ''}`);
+    },
+  });
+}
+
 function enrichedPolicy(
   saved: InventoryTrackingPolicy,
   candidate: InventoryTrackingPolicyCandidate | undefined,
@@ -180,13 +194,13 @@ export default function InventoryScopedWorkspace({
     setNotice(null);
     try {
       if (scope === 'balances') {
-        setBalances(await requestJson<InventoryBalance[]>('/api/inventory/balances?limit=500'));
+        setBalances(await requestAllInventoryPages<InventoryBalance>('/api/inventory/balances', 1000));
       } else if (scope === 'lots') {
-        setLots(await requestJson<InventoryLot[]>('/api/inventory/lots?limit=500'));
+        setLots(await requestAllInventoryPages<InventoryLot>('/api/inventory/lots', 1000));
       } else {
         const [nextPolicies, nextCandidates] = await Promise.all([
-          requestJson<InventoryTrackingPolicy[]>('/api/inventory/tracking-policies?limit=500'),
-          requestJson<InventoryTrackingPolicyCandidate[]>('/api/inventory/tracking-policies/candidates?limit=2000'),
+          requestAllInventoryPages<InventoryTrackingPolicy>('/api/inventory/tracking-policies', 1000),
+          requestAllInventoryPages<InventoryTrackingPolicyCandidate>('/api/inventory/tracking-policies/candidates', 2000),
         ]);
         setPolicies(nextPolicies);
         setCandidates(nextCandidates);

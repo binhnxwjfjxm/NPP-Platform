@@ -84,7 +84,8 @@ test('adjustment errors translate self approval and never expose raw backend mes
 
 test('web screen uses a real server gateway and catch-all proxy', () => {
   assert.match(page, /listInventoryAdjustments/);
-  assert.match(page, /loadInventorySnapshot/);
+  assert.match(page, /listAllInventoryBalances/);
+  assert.doesNotMatch(page, /loadInventorySnapshot/);
   assert.match(page, /loadOrganizationSnapshot/);
   assert.match(gateway, /CORE_API_INTERNAL_URL/);
   assert.match(gateway, /requireNppWorkforceSessionToken/);
