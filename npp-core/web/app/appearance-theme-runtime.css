@@ -324,3 +324,262 @@
 :root[data-hp-theme='dark'] body:not([data-printing='true']) [class*='print-templates_paper__'] {
   background: #fff !important;
 }
+
+/* Production regression closure — one shared contract, no screen-by-screen business patching. */
+
+/* Legacy modules still use --surface/--border/--line/--text/--muted. Bridge them to the active Công Ty palette so they never fall back to light-only defaults. */
+:root[data-hp-theme='green'],
+:root[data-hp-theme='dark'] {
+  --surface: var(--hp-surface);
+  --border: var(--hp-border);
+  --line: var(--hp-border);
+  --text: var(--hp-ink);
+  --muted: var(--hp-muted);
+  --shadow: var(--hp-shadow);
+  --bronze: var(--hp-primary);
+  --bronze-strong: var(--hp-primary-strong);
+}
+
+/* Sidebar group buttons are buttons, so the generic dark button baseline must not turn them into cards. */
+[data-testid='app-sidebar'] :where([class*='navItem'], [class*='navGroupButton']) {
+  border: 0 !important;
+  border-radius: 2px !important;
+  background: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+[data-testid='app-sidebar'] :where([class*='navItem'], [class*='navGroupButton']):hover {
+  border: 0 !important;
+  background: color-mix(in srgb, var(--hp-sidebar-fg) 6%, transparent) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+[data-testid='app-sidebar'] :where([class*='navItemActive']:not([class*='subnavItemActive']), [class*='navGroupActive'] > [class*='navGroupButton'], a[aria-current='page']:not([class*='subnavItemActive'])) {
+  border: 0 !important;
+  border-radius: 2px !important;
+  background: color-mix(in srgb, var(--hp-sidebar-accent) 7%, transparent) !important;
+  background-image: none !important;
+  box-shadow: inset 2px 0 0 var(--hp-sidebar-accent) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [data-testid='app-sidebar'] :where([class*='navItem'], [class*='navGroupButton']) {
+  border-color: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [data-testid='app-sidebar'] :where([class*='navItem'], [class*='navGroupButton']):hover {
+  background: color-mix(in srgb, var(--hp-sidebar-fg) 6%, transparent) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [data-testid='app-sidebar'] :where([class*='navItemActive']:not([class*='subnavItemActive']), [class*='navGroupActive'] > [class*='navGroupButton'], a[aria-current='page']:not([class*='subnavItemActive'])) {
+  background: color-mix(in srgb, var(--hp-sidebar-accent) 7%, transparent) !important;
+  box-shadow: inset 2px 0 0 var(--hp-sidebar-accent) !important;
+}
+
+/* Đơn bán hàng uses its own business attributes. Restore their semantic colors after the neutral badge baseline. */
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [data-sales-order-tone='draft'],
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [data-sales-order-tone='waiting'] {
+  border-color: var(--hp-warning-border) !important;
+  background: var(--hp-warning-bg) !important;
+  color: var(--hp-warning-fg) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [data-sales-order-tone='confirmed'] {
+  border-color: var(--hp-success-border) !important;
+  background: var(--hp-success-bg) !important;
+  color: var(--hp-success-fg) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [data-sales-order-tone='cancelled'] {
+  border-color: var(--hp-danger-border) !important;
+  background: var(--hp-danger-bg) !important;
+  color: var(--hp-danger-fg) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [data-sales-order-tone='closed'] {
+  border-color: var(--hp-info-border) !important;
+  background: var(--hp-info-bg) !important;
+  color: var(--hp-info-fg) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [data-sales-order-lane='counter'] {
+  border-color: var(--hp-warning-border) !important;
+  background: var(--hp-warning-bg) !important;
+  color: var(--hp-warning-fg) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [data-sales-order-lane='manual'] {
+  border-color: var(--hp-info-border) !important;
+  background: var(--hp-info-bg) !important;
+  color: var(--hp-info-fg) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [data-sales-order-lane='trip'] {
+  border-color: var(--hp-progress-border) !important;
+  background: var(--hp-progress-bg) !important;
+  color: var(--hp-progress-fg) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where([data-sales-order-tone], [data-sales-order-lane]) :where(span, strong, small, p) {
+  color: inherit !important;
+}
+
+/* Báo cáo tồn kho is representative of older modules using legacy tokens plus pale tab/loading chrome. */
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='inventory-reporting-workspace_filters__'],
+  [class*='inventory-reporting-workspace_linkButton__'],
+  [class*='inventory-reporting-workspace_card__'],
+  [class*='inventory-reporting-workspace_section__'],
+  [class*='inventory-reporting-workspace_tableWrap__']
+) {
+  border-color: var(--hp-border) !important;
+  background: var(--hp-surface) !important;
+  color: var(--hp-ink) !important;
+  box-shadow: none !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='inventory-reporting-workspace_tabList__'],
+  [class*='inventory-reporting-workspace_loading__'],
+  [class*='inventory-reporting-workspace_statusStrip__']
+) {
+  border-color: var(--hp-border) !important;
+  background: var(--hp-surface-soft) !important;
+  color: var(--hp-muted) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [class*='inventory-reporting-workspace_tabButtonActive__'] {
+  border-color: var(--hp-primary-border) !important;
+  background: var(--hp-primary-soft) !important;
+  color: var(--hp-primary-strong) !important;
+  box-shadow: inset 0 -2px 0 var(--hp-sidebar-accent) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='inventory-reporting-workspace_field__'] > span,
+  [class*='inventory-reporting-workspace_cardLabel__'],
+  [class*='inventory-reporting-workspace_cardHint__'],
+  [class*='inventory-reporting-workspace_sectionHeader__'] p,
+  [class*='inventory-reporting-workspace_sourceNote__'],
+  [class*='inventory-reporting-workspace_empty__']
+) {
+  color: var(--hp-muted) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [class*='inventory-reporting-workspace_statusGood__'] {
+  border-color: var(--hp-success-border) !important;
+  background: var(--hp-success-bg) !important;
+  color: var(--hp-success-fg) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [class*='inventory-reporting-workspace_statusWarn__'] {
+  border-color: var(--hp-warning-border) !important;
+  background: var(--hp-warning-bg) !important;
+  color: var(--hp-warning-fg) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [class*='inventory-reporting-workspace_statusBad__'] {
+  border-color: var(--hp-danger-border) !important;
+  background: var(--hp-danger-bg) !important;
+  color: var(--hp-danger-fg) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [class*='inventory-reporting-workspace_statusNeutral__'] {
+  border-color: var(--hp-neutral-border) !important;
+  background: var(--hp-neutral-bg) !important;
+  color: var(--hp-neutral-fg) !important;
+}
+
+/* Tạo đơn: retain business layout, but restore a visible three-level dark hierarchy. */
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [class*='sales-orders_orderEditorModal__'] {
+  border: 1px solid var(--hp-border) !important;
+  background: var(--hp-canvas) !important;
+  color: var(--hp-ink) !important;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, .38) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='sales-orders_modalHeader__'],
+  [class*='sales-orders_orderEditorFooter__']
+) {
+  border-color: var(--hp-border-strong) !important;
+  background: var(--hp-surface-soft) !important;
+  color: var(--hp-ink) !important;
+  box-shadow: none !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='sales-orders_compactHeader__'],
+  [class*='sales-orders_productEntry__'],
+  [class*='sales-orders_orderLines__'],
+  [class*='sales-orders_skuResults__']
+) {
+  border-color: var(--hp-border) !important;
+  background: var(--hp-surface) !important;
+  color: var(--hp-ink) !important;
+  box-shadow: none !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='sales-orders_lineTableHeader__'],
+  [class*='sales-orders_coreTaxPolicy__'],
+  [class*='sales-orders_lineDetails__']
+) {
+  border-color: var(--hp-border) !important;
+  background: var(--hp-surface-muted) !important;
+  color: var(--hp-muted) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [class*='sales-orders_orderLineCard__'] {
+  border-color: var(--hp-border) !important;
+  background: var(--hp-surface) !important;
+  color: var(--hp-ink) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [class*='sales-orders_segmentActive__'] {
+  border-color: var(--hp-primary-border) !important;
+  background: var(--hp-primary-soft) !important;
+  color: var(--hp-primary-strong) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='sales-orders_walkInNotice__'],
+  [class*='sales-orders_walkInFields__']
+) {
+  border-color: var(--hp-info-border) !important;
+  background: var(--hp-info-bg) !important;
+  color: var(--hp-info-fg) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='sales-orders_quickCustomerPanel__'],
+  [class*='sales-orders_manualPriceEditor__']
+) {
+  border-color: var(--hp-warning-border) !important;
+  background: var(--hp-warning-bg) !important;
+  color: var(--hp-warning-fg) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [class*='sales-orders_pricingMismatch__'] {
+  border-color: var(--hp-danger-border) !important;
+  background: var(--hp-danger-bg) !important;
+  color: var(--hp-danger-fg) !important;
+}
+
+/* Submenu keeps its own active treatment; top-level active chrome must never leak into it. */
+[data-testid='app-sidebar'] [class*='subnavItem__'],
+[data-testid='app-sidebar'] [class*='subnavItemActive__'] {
+  border: 0 !important;
+  border-radius: 4px !important;
+  box-shadow: none !important;
+}
+
+[data-testid='app-sidebar'] [class*='subnavItemActive__'] {
+  background: color-mix(in srgb, var(--hp-sidebar-accent) 10%, transparent) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
