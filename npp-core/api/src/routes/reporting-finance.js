@@ -284,7 +284,7 @@ export async function grossMarginReport(adapter, requestContext, filters, wareho
            AND direct_line.movement_id = movement.id
          WHERE movement.installation_id = document.installation_id
            AND movement.source_document_type = 'SALES_ORDER'
-           AND movement.source_document_id = document.sales_order_id
+           AND movement.source_document_id = document.sales_order_id::text
            AND movement.movement_type = 'SALES_DELIVERY_ISSUE'
            AND direct_line.direction = 'OUT'
            AND direct_line.metadata ->> 'salesOrderLineId' = line.sales_order_line_id::text
