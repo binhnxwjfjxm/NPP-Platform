@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { listInventoryTrackingPolicies } from '../../../../lib/inventory-gateway';
-import { listAllInventoryTrackingPolicies } from '../../../../lib/inventory-list-loaders';
 import { errorResponse, requestIdFrom, responseHeaders } from '../_shared';
 
 export const dynamic = 'force-dynamic';
@@ -8,9 +7,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
   const requestId = requestIdFrom(request);
   try {
-    const data = request.nextUrl.searchParams.has('offset')
-      ? await listInventoryTrackingPolicies<unknown[]>(requestId, request.nextUrl.searchParams)
-      : await listAllInventoryTrackingPolicies(requestId, request.nextUrl.searchParams);
+    const data = await listInventoryTrackingPolicies<unknown[]>(requestId, request.nextUrl.searchParams);
     return NextResponse.json({ data, requestId }, { status: 200, headers: responseHeaders(requestId) });
   } catch (error) {
     return errorResponse(error, requestId);

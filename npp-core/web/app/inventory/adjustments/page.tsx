@@ -1,5 +1,5 @@
 import { headers } from 'next/headers';
-import { loadInventorySnapshot } from '../../../lib/inventory-snapshot';
+import { listAllInventoryBalances } from '../../../lib/inventory-list-loaders';
 import { loadOrganizationSnapshot } from '../../../lib/organization-snapshot';
 import {
   listInventoryAdjustmentReasons,
@@ -29,15 +29,15 @@ export default async function InventoryAdjustmentsPage({ searchParams }: { searc
   let locations: WarehouseLocation[] = [];
   let initialError: string | null = null;
   try {
-    const [adjustmentData, reasonData, inventory, organization] = await Promise.all([
+    const [adjustmentData, reasonData, balanceData, organization] = await Promise.all([
       listInventoryAdjustments<InventoryAdjustment[]>(requestId),
       listInventoryAdjustmentReasons<AdjustmentReason[]>(requestId),
-      loadInventorySnapshot(),
+      listAllInventoryBalances(requestId),
       loadOrganizationSnapshot(),
     ]);
     adjustments = adjustmentData;
     reasons = reasonData;
-    balances = inventory.balances;
+    balances = balanceData;
     warehouses = organization.warehouses.filter((item) => item.is_active);
     locations = organization.locations.filter((item) => item.is_active);
   } catch (error) {
