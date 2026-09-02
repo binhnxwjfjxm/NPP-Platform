@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import InitialLoadRetry from '../../components/initial-load-retry';
 import {
-  listInventoryBalances,
   listInventoryTransferInTransit,
   listInventoryTransfers,
 } from '../../../lib/inventory-gateway';
+import { listAllInventoryBalances } from '../../../lib/inventory-list-loaders';
 import { listOrganizationResource } from '../../../lib/organization-gateway';
 import type { InventoryBalance } from '../../../lib/inventory-types';
 import type { WarehouseLocation } from '../../../lib/organization-types';
@@ -32,7 +32,7 @@ export default async function InventoryTransfersPage() {
   const [transfersResult, inTransitResult, balancesResult, locationsResult] = await Promise.allSettled([
     listInventoryTransfers<InventoryTransfer[]>(requestId, new URLSearchParams({ limit: '500' })),
     listInventoryTransferInTransit<InventoryTransferInTransit[]>(requestId, new URLSearchParams({ limit: '1000' })),
-    listInventoryBalances<InventoryBalance[]>(requestId, new URLSearchParams({ limit: '1000' })),
+    listAllInventoryBalances(requestId),
     listOrganizationResource<WarehouseLocation[]>(
       'warehouse-locations',
       requestId,

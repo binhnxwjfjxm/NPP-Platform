@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { listInventoryBalances } from '../../../lib/inventory-gateway';
-import type { InventoryBalance } from '../../../lib/inventory-types';
+import { listAllInventoryBalances } from '../../../lib/inventory-list-loaders';
 import { loadStocktakePermissionKeys } from '../../../lib/stocktake-context';
 import { listStocktakes, listStocktakeWarehouses, normalizeStocktakeGatewayError } from '../../../lib/stocktake-gateway';
 import type { Stocktake } from '../../../lib/stocktake-types';
@@ -14,7 +13,7 @@ export default async function StocktakesPage() {
   const requestId = `web_${randomUUID()}`;
   const [stocktakesResult, balancesResult, warehousesResult, permissionsResult] = await Promise.allSettled([
     listStocktakes<Stocktake[]>(requestId, new URLSearchParams({ limit: '500' })),
-    listInventoryBalances<InventoryBalance[]>(requestId, new URLSearchParams({ limit: '1000' })),
+    listAllInventoryBalances(requestId),
     listStocktakeWarehouses<WarehouseOption[]>(requestId),
     loadStocktakePermissionKeys(requestId),
   ]);

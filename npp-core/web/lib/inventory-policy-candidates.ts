@@ -2,9 +2,13 @@ import 'server-only';
 
 import { requireNppWorkforceSessionToken } from './internal-auth-client';
 import { InventoryGatewayError, resolveInventoryRequestId } from './inventory-gateway';
+import { collectInventoryPages, withInventoryPage } from './inventory-pagination';
 import type { InventoryTrackingPolicyCandidate } from './inventory-policy-types';
 
 export type { InventoryTrackingPolicyCandidate } from './inventory-policy-types';
+
+const POLICY_CANDIDATE_BATCH_SIZE = 2000;
+const POLICY_CANDIDATE_ENDPOINT = '/api/inventory/tracking-policies/candidates?limit=2000';
 
 type CoreEnvelope<T> = {
   data?: T;
@@ -39,13 +43,16 @@ function coreBaseUrl(): string {
   return url.toString().replace(/\/$/, '');
 }
 
-export async function listInventoryTrackingPolicyCandidates(
-  requestId = resolveInventoryRequestId(undefined),
+export async function listInventoryTrackingPolicyCandidatePage(
+  requestId: string,
+  searchParams: URLSearchParams,
 ): Promise<InventoryTrackingPolicyCandidate[]> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 30_000);
   try {
-    const response = await fetch(`${coreBaseUrl()}/api/inventory/tracking-policies/candidates?limit=2000`, {
+    const endpoint = new URL(POLICY_CANDIDATE_ENDPOINT, `${coreBaseUrl()}/`);
+    for (const [key, value] of searchParams.entries()) endpoint.searchParams.set(key, value);
+    const response = await fetch(endpoint.toString(), {
       method: 'GET',
       cache: 'no-store',
       signal: controller.signal,
@@ -80,4 +87,17 @@ export async function listInventoryTrackingPolicyCandidates(
   } finally {
     clearTimeout(timeout);
   }
+}
+
+export function listInventoryTrackingPolicyCandidates(
+  requestId = resolveInventoryRequestId(undefined),
+  searchParams = new URLSearchParams(),
+): Promise<InventoryTrackingPolicyCandidate[]> {
+  return collectInventoryPages({
+    pageSize: POLICY_CANDIDATE_BATCH_SIZE,
+    loadPage: (page) => listInventoryTrackingPolicyCandidatePage(
+      requestId,
+      withInventoryPage(searchParams, page),
+    ),
+  });
 }
