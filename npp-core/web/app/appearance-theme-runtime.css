@@ -356,7 +356,7 @@
   box-shadow: none !important;
 }
 
-[data-testid='app-sidebar'] :where([class*='navItemActive'], [class*='navGroupActive'] > [class*='navGroupButton'], a[aria-current='page']) {
+[data-testid='app-sidebar'] :where([class*='navItemActive']:not([class*='subnavItemActive']), [class*='navGroupActive'] > [class*='navGroupButton'], a[aria-current='page']:not([class*='subnavItemActive'])) {
   border: 0 !important;
   border-radius: 2px !important;
   background: color-mix(in srgb, var(--hp-sidebar-accent) 7%, transparent) !important;
@@ -375,7 +375,7 @@
   background: color-mix(in srgb, var(--hp-sidebar-fg) 6%, transparent) !important;
 }
 
-:root[data-hp-theme='dark'] body:not([data-printing='true']) [data-testid='app-sidebar'] :where([class*='navItemActive'], [class*='navGroupActive'] > [class*='navGroupButton'], a[aria-current='page']) {
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [data-testid='app-sidebar'] :where([class*='navItemActive']:not([class*='subnavItemActive']), [class*='navGroupActive'] > [class*='navGroupButton'], a[aria-current='page']:not([class*='subnavItemActive'])) {
   background: color-mix(in srgb, var(--hp-sidebar-accent) 7%, transparent) !important;
   box-shadow: inset 2px 0 0 var(--hp-sidebar-accent) !important;
 }
@@ -568,4 +568,18 @@
   border-color: var(--hp-danger-border) !important;
   background: var(--hp-danger-bg) !important;
   color: var(--hp-danger-fg) !important;
+}
+
+/* Submenu keeps its own active treatment; top-level active chrome must never leak into it. */
+[data-testid='app-sidebar'] [class*='subnavItem__'],
+[data-testid='app-sidebar'] [class*='subnavItemActive__'] {
+  border: 0 !important;
+  border-radius: 4px !important;
+  box-shadow: none !important;
+}
+
+[data-testid='app-sidebar'] [class*='subnavItemActive__'] {
+  background: color-mix(in srgb, var(--hp-sidebar-accent) 10%, transparent) !important;
+  background-image: none !important;
+  box-shadow: none !important;
 }
