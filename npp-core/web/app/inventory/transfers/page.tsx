@@ -36,7 +36,7 @@ export default async function InventoryTransfersPage() {
     listOrganizationResource<WarehouseLocation[]>(
       'warehouse-locations',
       requestId,
-      new URLSearchParams({ active: 'true', limit: '5000' }),
+      new URLSearchParams({ active: 'true', limit: '1000' }),
     ),
   ]);
 
