@@ -1,5 +1,6 @@
 import InitialLoadRetry from '../components/initial-load-retry';
 import OrganizationWorkspace from './organization-workspace';
+import layoutStyles from './organization-overview-layout.module.css';
 import { loadOrganizationSnapshot } from '../../lib/organization-snapshot';
 import { createEmptyOrganizationSnapshot } from '../../lib/organization-types';
 
@@ -16,7 +17,7 @@ export default async function OrganizationPage() {
   }
 
   return (
-    <>
+    <div className={layoutStyles.scope}>
       <InitialLoadRetry enabled={Boolean(initialError)} retryKey="organization-overview" />
       <OrganizationWorkspace
         scope="overview"
@@ -25,6 +26,6 @@ export default async function OrganizationPage() {
         initialData={initialData}
         initialError={initialError}
       />
-    </>
+    </div>
   );
 }

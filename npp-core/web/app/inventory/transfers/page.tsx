@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import InitialLoadRetry from '../../components/initial-load-retry';
 import {
   listInventoryBalances,
   listInventoryTransferInTransit,
@@ -14,6 +15,12 @@ import TransferWorkspace, {
 
 export const dynamic = 'force-dynamic';
 
+function loadFailure(label: string, result: PromiseSettledResult<unknown>): string | null {
+  if (result.status === 'fulfilled') return null;
+  const message = result.reason instanceof Error ? result.reason.message : 'Dữ liệu tạm thời chưa sẵn sàng';
+  return `${label}: ${message}`;
+}
+
 export default async function InventoryTransfersPage() {
   const requestId = `web_${randomUUID()}`;
   let transfers: InventoryTransfer[] = [];
@@ -22,23 +29,36 @@ export default async function InventoryTransfersPage() {
   let locations: WarehouseLocation[] = [];
   let initialError: string | null = null;
 
-  try {
-    [transfers, inTransit, balances, locations] = await Promise.all([
-      listInventoryTransfers<InventoryTransfer[]>(requestId, new URLSearchParams({ limit: '500' })),
-      listInventoryTransferInTransit<InventoryTransferInTransit[]>(requestId, new URLSearchParams({ limit: '1000' })),
-      listInventoryBalances<InventoryBalance[]>(requestId, new URLSearchParams({ limit: '1000' })),
-      listOrganizationResource<WarehouseLocation[]>(
-        'warehouse-locations',
-        requestId,
-        new URLSearchParams({ active: 'true', limit: '5000' }),
-      ),
-    ]);
-  } catch (error) {
-    initialError = error instanceof Error ? error.message : 'Không tải được dữ liệu chuyển kho';
+  const [transfersResult, inTransitResult, balancesResult, locationsResult] = await Promise.allSettled([
+    listInventoryTransfers<InventoryTransfer[]>(requestId, new URLSearchParams({ limit: '500' })),
+    listInventoryTransferInTransit<InventoryTransferInTransit[]>(requestId, new URLSearchParams({ limit: '1000' })),
+    listInventoryBalances<InventoryBalance[]>(requestId, new URLSearchParams({ limit: '1000' })),
+    listOrganizationResource<WarehouseLocation[]>(
+      'warehouse-locations',
+      requestId,
+      new URLSearchParams({ active: 'true', limit: '5000' }),
+    ),
+  ]);
+
+  if (transfersResult.status === 'fulfilled') transfers = transfersResult.value;
+  if (inTransitResult.status === 'fulfilled') inTransit = inTransitResult.value;
+  if (balancesResult.status === 'fulfilled') balances = balancesResult.value;
+  if (locationsResult.status === 'fulfilled') locations = locationsResult.value;
+
+  const failures = [
+    loadFailure('Danh sách phiếu', transfersResult),
+    loadFailure('Hàng đang đi đường', inTransitResult),
+    loadFailure('Tồn kho khả dụng', balancesResult),
+    loadFailure('Vị trí kho', locationsResult),
+  ].filter((value): value is string => value !== null);
+
+  if (failures.length) {
+    initialError = `Một phần dữ liệu chuyển kho chưa tải được. ${failures.join(' · ')}`;
   }
 
   return (
     <>
+      <InitialLoadRetry enabled={Boolean(initialError)} retryKey="inventory-transfers" />
       <TransferWorkspace
         initialTransfers={transfers}
         initialInTransit={inTransit}
