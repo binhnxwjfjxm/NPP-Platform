@@ -1,0 +1,30 @@
+.scope {
+  display: contents;
+}
+
+.scope :global([data-testid='organization-overview-page']) > :global(section[aria-label='Số liệu tổng quan']) + div {
+  grid-template-columns: minmax(280px, 0.9fr) minmax(0, 1.35fr);
+}
+
+.scope :global([data-testid='organization-overview-page']) > :global(section[aria-label='Số liệu tổng quan']) + div > section:nth-child(2) {
+  grid-column: auto;
+}
+
+.scope :global([data-testid='organization-overview-page']) > :global(section[aria-label='Số liệu tổng quan']) + div > section:nth-child(3) {
+  grid-column: 1 / -1;
+}
+
+.scope :global([data-testid='organization-overview-page']) > :global(section[aria-label='Số liệu tổng quan']) + div > section:nth-child(2) :global([class*='organization_treeGrid__']) {
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+@media (max-width: 1180px) {
+  .scope :global([data-testid='organization-overview-page']) > :global(section[aria-label='Số liệu tổng quan']) + div {
+    grid-template-columns: 1fr;
+  }
+
+  .scope :global([data-testid='organization-overview-page']) > :global(section[aria-label='Số liệu tổng quan']) + div > section:nth-child(2),
+  .scope :global([data-testid='organization-overview-page']) > :global(section[aria-label='Số liệu tổng quan']) + div > section:nth-child(3) {
+    grid-column: auto;
+  }
+}
