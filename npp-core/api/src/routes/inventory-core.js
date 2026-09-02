@@ -85,6 +85,19 @@ function parseInteger(value, fallback, max) {
   return parsed;
 }
 
+function parseOffset(value, fallback = 0) {
+  if (value === null) return fallback;
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+    throw Object.assign(new Error('INVALID_QUERY_PARAMETER'), {
+      code: 'INVALID_QUERY_PARAMETER',
+      publicMessage: 'Query offset must be a non-negative safe integer',
+      statusCode: 400,
+    });
+  }
+  return parsed;
+}
+
 function requireIdempotency(req) {
   try {
     const key = normalizeIdempotencyKey(req.headers['idempotency-key']);
@@ -166,7 +179,7 @@ async function handleTrackingPolicies(req, res, options, pathname, method) {
           try { return parseBoolean(new URL(`http://localhost${req.url}`).searchParams.get('active')); } catch { return null; }
         })(),
         limit: parseInteger(new URL(`http://localhost${req.url}`).searchParams.get('limit'), 200, 1000),
-        offset: parseInteger(new URL(`http://localhost${req.url}`).searchParams.get('offset'), 0, 10000),
+        offset: parseOffset(new URL(`http://localhost${req.url}`).searchParams.get('offset')),
       });
       if (!result.ok) return sendServiceError(res, result, options), true;
       writeSuccess(res, result.policies, options);
@@ -218,7 +231,7 @@ async function handleLots(req, res, options, pathname, method) {
         search: url.searchParams.get('search'),
         baseVariantId: url.searchParams.get('baseVariantId'),
         limit: parseInteger(url.searchParams.get('limit'), 200, 1000),
-        offset: parseInteger(url.searchParams.get('offset'), 0, 10000),
+        offset: parseOffset(url.searchParams.get('offset')),
       });
       if (!result.ok) return sendServiceError(res, result, options), true;
       writeSuccess(res, result.lots, options);
@@ -284,7 +297,7 @@ async function handleBalances(req, res, options, pathname, method) {
       baseVariantId: url.searchParams.get('baseVariantId') || null,
       lotId: url.searchParams.get('lotId') || null,
       limit: parseInteger(url.searchParams.get('limit'), 500, 1000),
-      offset: parseInteger(url.searchParams.get('offset'), 0, 100000),
+      offset: parseOffset(url.searchParams.get('offset')),
     });
     writeSuccess(res, rows, options);
     return true;

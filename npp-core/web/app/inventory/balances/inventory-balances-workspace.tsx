@@ -63,7 +63,6 @@ type InventoryMovementHistoryRow = {
 const QUANTITY_SCALE = 1_000_000_000_000n;
 const QUANTITY_PATTERN = /^(-?)(\d+)(?:\.(\d{1,12}))?$/;
 const INVENTORY_BALANCE_BATCH_SIZE = 1000;
-const INVENTORY_BALANCE_MAX_OFFSET = 100000;
 const INVENTORY_TABLE_PAGE_SIZE = 100;
 const HISTORY_PAGE_SIZE = 50;
 const HISTORY_FETCH_SIZE = HISTORY_PAGE_SIZE + 1;
@@ -200,14 +199,19 @@ async function requestJson<T>(path: string): Promise<T> {
 
 async function loadAllBalances(): Promise<InventoryBalance[]> {
   const balances: InventoryBalance[] = [];
-  for (let offset = 0; offset <= INVENTORY_BALANCE_MAX_OFFSET; offset += INVENTORY_BALANCE_BATCH_SIZE) {
+  let offset = 0;
+  while (true) {
     const batch = await requestJson<InventoryBalance[]>(
       `/api/inventory/balances?limit=${INVENTORY_BALANCE_BATCH_SIZE}&offset=${offset}`,
     );
     balances.push(...batch);
     if (batch.length < INVENTORY_BALANCE_BATCH_SIZE) return balances;
+    const nextOffset = offset + INVENTORY_BALANCE_BATCH_SIZE;
+    if (!Number.isSafeInteger(nextOffset)) {
+      throw new Error('Dữ liệu tồn kho vượt phạm vi đánh số an toàn. Vui lòng liên hệ quản trị hệ thống.');
+    }
+    offset = nextOffset;
   }
-  throw new Error('Dữ liệu tồn kho vượt phạm vi tra cứu an toàn. Vui lòng liên hệ quản trị hệ thống.');
 }
 
 export default function InventoryBalancesWorkspace({ title, subtitle, initialSnapshot, initialError = null }: Props) {

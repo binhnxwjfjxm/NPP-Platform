@@ -91,13 +91,13 @@ test('Vietnamese file headers remain compatible with backend field names', () =>
   assert.match(model, /false[^\n]*Không|return 'Không'/);
 });
 
-test('data exchange uses inventory balance API within supported limit', () => {
+test('data exchange keeps bounded requests while Kho pages load all balance pages', () => {
   const stocktakes = read('app/inventory/stocktakes/page.tsx');
   const transfers = read('app/inventory/transfers/page.tsx');
   assert.match(workspace, /\/api\/inventory\/balances\?limit=1000/);
   assert.doesNotMatch(workspace, /\/api\/inventory\/balances\?limit=2000/);
-  assert.match(stocktakes, /listInventoryBalances[\s\S]*limit: '1000'/);
-  assert.match(transfers, /listInventoryBalances[\s\S]*limit: '1000'/);
+  assert.match(stocktakes, /listAllInventoryBalances/);
+  assert.match(transfers, /listAllInventoryBalances/);
 });
 
 test('central data exchange is persistent navigation and preserves direct tab deep links', () => {

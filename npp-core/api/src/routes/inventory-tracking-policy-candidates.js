@@ -18,6 +18,19 @@ function parseInteger(value, fallback, max) {
   return parsed;
 }
 
+function parseOffset(value, fallback = 0) {
+  if (value === null) return fallback;
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+    throw Object.assign(new Error('INVALID_QUERY_PARAMETER'), {
+      code: 'INVALID_QUERY_PARAMETER',
+      publicMessage: 'Query offset must be a non-negative safe integer',
+      statusCode: 400,
+    });
+  }
+  return parsed;
+}
+
 export async function handleInventoryTrackingPolicyCandidateRoutes(req, res, options) {
   const url = new URL(`http://localhost${req.url}`);
   if (url.pathname !== '/api/inventory/tracking-policies/candidates') return false;
@@ -48,7 +61,7 @@ export async function handleInventoryTrackingPolicyCandidateRoutes(req, res, opt
       requestContext,
       search: url.searchParams.get('search'),
       limit: parseInteger(url.searchParams.get('limit'), 500, 2000),
-      offset: parseInteger(url.searchParams.get('offset'), 0, 10000),
+      offset: parseOffset(url.searchParams.get('offset')),
     });
     if (!result.ok) {
       sendError(res, apiError(result.code, result.message, result.code === 'PERMISSION_DENIED' ? 403 : 400), options.requestId, options.receivedAt);

@@ -2,34 +2,58 @@ import 'server-only';
 
 import { createEmptyInventorySnapshot, type InventorySnapshot } from './inventory-types';
 import {
-  listInventoryBalances,
-  listInventoryLots,
-  listInventoryTrackingPolicies,
+  listInventoryBalances as listInventoryBalancesPage,
+  listInventoryLots as listInventoryLotsPage,
+  listInventoryTrackingPolicies as listInventoryTrackingPoliciesPage,
   listOpeningBalanceImports,
   resolveInventoryRequestId,
 } from './inventory-gateway';
+import { collectInventoryPages } from './inventory-pagination';
 import {
   listInventoryTrackingPolicyCandidates,
   type InventoryTrackingPolicyCandidate,
 } from './inventory-policy-candidates';
 
 const INVENTORY_BALANCE_BATCH_SIZE = 1000;
-const INVENTORY_BALANCE_MAX_OFFSET = 100000;
+const INVENTORY_REFERENCE_BATCH_SIZE = 1000;
 
 async function listAllInventoryBalances(requestId: string): Promise<InventorySnapshot['balances']> {
-  const balances: InventorySnapshot['balances'] = [];
-  for (let offset = 0; offset <= INVENTORY_BALANCE_MAX_OFFSET; offset += INVENTORY_BALANCE_BATCH_SIZE) {
-    const batch = await listInventoryBalances<InventorySnapshot['balances']>(
+  return collectInventoryPages({
+    pageSize: INVENTORY_BALANCE_BATCH_SIZE,
+    loadPage: ({ offset }) => listInventoryBalancesPage<InventorySnapshot['balances']>(
       requestId,
       new URLSearchParams({
         limit: String(INVENTORY_BALANCE_BATCH_SIZE),
         offset: String(offset),
       }),
-    );
-    balances.push(...batch);
-    if (batch.length < INVENTORY_BALANCE_BATCH_SIZE) return balances;
-  }
-  throw new Error('Dữ liệu tồn kho vượt phạm vi tra cứu an toàn. Vui lòng liên hệ quản trị hệ thống.');
+    ),
+  });
+}
+
+async function listInventoryLots(requestId: string): Promise<InventorySnapshot['lots']> {
+  return collectInventoryPages({
+    pageSize: INVENTORY_REFERENCE_BATCH_SIZE,
+    loadPage: ({ offset }) => listInventoryLotsPage<InventorySnapshot['lots']>(
+      requestId,
+      new URLSearchParams({
+        limit: String(INVENTORY_REFERENCE_BATCH_SIZE),
+        offset: String(offset),
+      }),
+    ),
+  });
+}
+
+async function listInventoryTrackingPolicies(requestId: string): Promise<InventorySnapshot['trackingPolicies']> {
+  return collectInventoryPages({
+    pageSize: INVENTORY_REFERENCE_BATCH_SIZE,
+    loadPage: ({ offset }) => listInventoryTrackingPoliciesPage<InventorySnapshot['trackingPolicies']>(
+      requestId,
+      new URLSearchParams({
+        limit: String(INVENTORY_REFERENCE_BATCH_SIZE),
+        offset: String(offset),
+      }),
+    ),
+  });
 }
 
 export async function loadInventoryBalancesSnapshot(): Promise<InventorySnapshot> {
@@ -40,10 +64,7 @@ export async function loadInventoryBalancesSnapshot(): Promise<InventorySnapshot
 
 export async function loadInventoryLotsSnapshot(): Promise<InventorySnapshot> {
   const requestId = resolveInventoryRequestId(undefined);
-  const lots = await listInventoryLots<InventorySnapshot['lots']>(
-    requestId,
-    new URLSearchParams({ limit: '500' }),
-  );
+  const lots = await listInventoryLots(requestId);
   return { ...createEmptyInventorySnapshot(), lots };
 }
 
@@ -53,10 +74,7 @@ export async function loadInventoryTrackingPolicySnapshot(): Promise<{
 }> {
   const requestId = resolveInventoryRequestId(undefined);
   const [trackingPolicies, candidates] = await Promise.all([
-    listInventoryTrackingPolicies<InventorySnapshot['trackingPolicies']>(
-      requestId,
-      new URLSearchParams({ limit: '500' }),
-    ),
+    listInventoryTrackingPolicies(requestId),
     listInventoryTrackingPolicyCandidates(requestId),
   ]);
   return {

@@ -78,7 +78,7 @@ test('stocktake page uses canonical scoped warehouse master independently from b
 
 test('stocktake page uses real Core gateway and is discoverable in Inventory navigation', () => {
   assert.match(page, /listStocktakes/);
-  assert.match(page, /listInventoryBalances/);
+  assert.match(page, /listAllInventoryBalances/);
   assert.match(gateway, /\/api\/inventory\/stocktakes/);
   assert.match(nav, /\/inventory\/stocktakes/);
   assert.match(nav, /nav-inventory-stocktakes/);
