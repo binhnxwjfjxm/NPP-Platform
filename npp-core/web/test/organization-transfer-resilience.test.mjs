@@ -29,3 +29,11 @@ test('inventory transfer initial load keeps successful data when one source is u
   assert.match(transferPage, /Vị trí kho/);
   assert.match(transferPage, /InitialLoadRetry enabled=\{Boolean\(initialError\)\} retryKey="inventory-transfers"/);
 });
+
+test('inventory transfer warehouse-location query stays within API limit contract', () => {
+  assert.match(
+    transferPage,
+    /'warehouse-locations',[\s\S]*new URLSearchParams\(\{ active: 'true', limit: '1000' \}\)/,
+  );
+  assert.doesNotMatch(transferPage, /limit: '5000'/);
+});
