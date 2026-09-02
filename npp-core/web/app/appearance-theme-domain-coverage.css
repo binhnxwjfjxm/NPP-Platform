@@ -1,0 +1,191 @@
+/* Theme domain coverage — Công Ty
+   Final dark-theme coverage for audited legacy domain modules whose local class names
+   fall outside the shared surface suffix contract. Imported after appearance-theme-runtime.css.
+   Visual tokens only: no layout, workflow, permission, or business behavior changes. */
+
+/* Shared surface normalization for the remaining legacy module families. */
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='order-management_'],
+  [class*='trip-reconciliation-workspace_'],
+  [class*='receivables_'],
+  [class*='payables_']
+):is(
+  [class*='Card__'], [class*='card__'],
+  [class*='Panel__'], [class*='panel__'],
+  [class*='Header__'], [class*='header__'],
+  [class*='Toolbar__'], [class*='toolbar__'],
+  [class*='Table__'], [class*='table__'],
+  [class*='TableWrap__'], [class*='tableWrap__'],
+  [class*='Section__'], [class*='section__'],
+  [class*='Filters__'], [class*='filters__'],
+  [class*='Summary__'], [class*='summary__'],
+  [class*='DetailItem__'], [class*='detailItem__'],
+  [class*='SelectionBar__'], [class*='selectionBar__'],
+  [class*='Pagination__'], [class*='pagination__']
+) {
+  border-color: var(--hp-border) !important;
+  background: var(--hp-surface) !important;
+  background-image: none !important;
+  color: var(--hp-ink) !important;
+  box-shadow: none !important;
+}
+
+/* Kho: hero/tab/banner and nested document facts used hard-coded light surfaces. */
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='inventory-workspace_hero__'],
+  [class*='inventory-workspace_compactHero__'],
+  [class*='inventory-workspace_banner__']
+) {
+  border-color: var(--hp-border) !important;
+  background: var(--hp-surface) !important;
+  background-image: none !important;
+  color: var(--hp-ink) !important;
+  box-shadow: none !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='inventory-workspace_tab__'],
+  [class*='inventory-workspace_documentGrid__'] > div
+) {
+  border-color: var(--hp-border) !important;
+  background: var(--hp-surface-muted) !important;
+  background-image: none !important;
+  color: var(--hp-ink) !important;
+}
+
+/* Bán hàng: active summary cards and nested manual-price copy must inherit dark surfaces. */
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='order-management_summaryCard__']:hover,
+  [class*='order-management_summaryCardActive__']
+) {
+  border-color: var(--hp-primary-border) !important;
+  background: var(--hp-row-hover) !important;
+  background-image: none !important;
+  color: var(--hp-ink) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [class*='order-management_notice__'] {
+  border-color: var(--hp-warning-border) !important;
+  background: var(--hp-warning-bg) !important;
+  color: var(--hp-warning-fg) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [class*='sales-orders_manualPriceEditor__'] p {
+  background: transparent !important;
+  color: inherit !important;
+}
+
+/* Giao nhận: this legacy workspace uses an older token vocabulary. Scope the bridge locally. */
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [class*='trip-reconciliation-workspace_workspace__'] {
+  --background: var(--hp-canvas);
+  --foreground: var(--hp-ink);
+  --primary: var(--hp-primary);
+  --shadow-sm: var(--hp-shadow);
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='trip-reconciliation-workspace_tripStateNeeds__'],
+  [class*='trip-reconciliation-workspace_pending__']
+) {
+  border-color: var(--hp-warning-border) !important;
+  background: var(--hp-warning-bg) !important;
+  color: var(--hp-warning-fg) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='trip-reconciliation-workspace_tripStateReady__'],
+  [class*='trip-reconciliation-workspace_ready__'],
+  [class*='trip-reconciliation-workspace_success__']
+) {
+  border-color: var(--hp-success-border) !important;
+  background: var(--hp-success-bg) !important;
+  color: var(--hp-success-fg) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='trip-reconciliation-workspace_tripStateClosed__'],
+  [class*='trip-reconciliation-workspace_closedBadge__']
+) {
+  border-color: var(--hp-neutral-border) !important;
+  background: var(--hp-neutral-bg) !important;
+  color: var(--hp-neutral-fg) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [class*='trip-reconciliation-workspace_error__'] {
+  border-color: var(--hp-danger-border) !important;
+  background: var(--hp-danger-bg) !important;
+  color: var(--hp-danger-fg) !important;
+}
+
+/* Kế toán: shared payment workspaces retain several pale nested surfaces. */
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='supplier-payments_summary__'],
+  [class*='supplier-payments_customerAllocationForm__'],
+  [class*='receivables_detailItem__'],
+  [class*='payables_detailItem__']
+) {
+  border-color: var(--hp-border) !important;
+  background: var(--hp-surface-muted) !important;
+  background-image: none !important;
+  color: var(--hp-ink) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [class*='supplier-payments_selected__'] {
+  border-color: var(--hp-primary-border) !important;
+  background: var(--hp-row-hover) !important;
+  color: var(--hp-ink) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [class*='supplier-payments_notice__'] {
+  border-color: var(--hp-warning-border) !important;
+  background: var(--hp-warning-bg) !important;
+  color: var(--hp-warning-fg) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='receivables_alert__'],
+  [class*='payables_alert__']
+) {
+  border-color: var(--hp-danger-border) !important;
+  background: var(--hp-danger-bg) !important;
+  color: var(--hp-danger-fg) !important;
+}
+
+/* Kế toán đối soát: preserve semantic states while removing hard-coded white panels. */
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='sales-settlement-reconciliation-workspace_headerLink__'],
+  [class*='sales-settlement-reconciliation-workspace_filters__'],
+  [class*='sales-settlement-reconciliation-workspace_summaryGrid__'] > article
+) {
+  border-color: var(--hp-border) !important;
+  background: var(--hp-surface) !important;
+  background-image: none !important;
+  color: var(--hp-ink) !important;
+  box-shadow: none !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) [class*='sales-settlement-reconciliation-workspace_sectionHeading__'] > span {
+  border-color: var(--hp-border) !important;
+  background: var(--hp-surface-muted) !important;
+  color: var(--hp-muted) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='sales-settlement-reconciliation-workspace_mismatch__'],
+  [class*='sales-settlement-reconciliation-workspace_alertCard__'],
+  [class*='sales-settlement-reconciliation-workspace_error__'],
+  [class*='sales-settlement-reconciliation-workspace_anomalyList__'] > article
+) {
+  border-color: var(--hp-danger-border) !important;
+  background: var(--hp-danger-bg) !important;
+  color: var(--hp-danger-fg) !important;
+}
+
+:root[data-hp-theme='dark'] body:not([data-printing='true']) :where(
+  [class*='sales-settlement-reconciliation-workspace_matched__'],
+  [class*='sales-settlement-reconciliation-workspace_cleanState__']
+) {
+  border-color: var(--hp-success-border) !important;
+  background: var(--hp-success-bg) !important;
+  color: var(--hp-success-fg) !important;
+}

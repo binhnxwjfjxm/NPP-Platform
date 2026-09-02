@@ -9,16 +9,19 @@ const root = path.resolve(here, '..');
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
 
 const runtime = read('app/appearance-theme-runtime.css');
+const domainCoverage = read('app/appearance-theme-domain-coverage.css');
 const layout = read('app/layout.tsx');
 const salesWorkspace = read('app/sales/sales-orders/SalesOrderWorkspace.tsx');
 const inventoryReporting = read('app/components/inventory-reporting-workspace.module.css');
 const appShell = read('app/components/app-shell-core.tsx');
 
-test('final appearance runtime remains the last theme layer', () => {
+test('final appearance coverage remains the last theme layer', () => {
   const hardening = layout.indexOf("import './dark-theme-hardening.css';");
   const runtimeIndex = layout.indexOf("import './appearance-theme-runtime.css';");
+  const domainCoverageIndex = layout.indexOf("import './appearance-theme-domain-coverage.css';");
   assert.ok(hardening >= 0);
   assert.ok(runtimeIndex > hardening);
+  assert.ok(domainCoverageIndex > runtimeIndex);
 });
 
 test('legacy Công Ty surface variables bridge to active appearance tokens', () => {
@@ -88,4 +91,40 @@ test('sales order editor has distinct canvas, surface and muted hierarchy in dar
   assert.match(runtime, /sales-orders_modalHeader__[\s\S]*background:\s*var\(--hp-surface-soft\)\s*!important/);
   assert.match(runtime, /sales-orders_compactHeader__[\s\S]*background:\s*var\(--hp-surface\)\s*!important/);
   assert.match(runtime, /sales-orders_lineTableHeader__[\s\S]*background:\s*var\(--hp-surface-muted\)\s*!important/);
+});
+
+test('dark theme closes remaining bright surfaces across Kho, Bán hàng, Giao nhận and Kế toán', () => {
+  for (const selector of [
+    'inventory-workspace_hero__',
+    'inventory-workspace_tab__',
+    'inventory-workspace_banner__',
+    'order-management_summaryCardActive__',
+    'order-management_notice__',
+    'sales-orders_manualPriceEditor__',
+    'trip-reconciliation-workspace_workspace__',
+    'trip-reconciliation-workspace_tripStateReady__',
+    'trip-reconciliation-workspace_tripStateClosed__',
+    'supplier-payments_summary__',
+    'supplier-payments_customerAllocationForm__',
+    'receivables_detailItem__',
+    'payables_detailItem__',
+    'sales-settlement-reconciliation-workspace_filters__',
+    'sales-settlement-reconciliation-workspace_matched__',
+    'sales-settlement-reconciliation-workspace_mismatch__',
+  ]) {
+    assert.ok(domainCoverage.includes(selector), `missing dark domain coverage for ${selector}`);
+  }
+
+  for (const bridge of [
+    '--background: var(--hp-canvas)',
+    '--foreground: var(--hp-ink)',
+    '--primary: var(--hp-primary)',
+    '--shadow-sm: var(--hp-shadow)',
+  ]) {
+    assert.ok(domainCoverage.includes(bridge), `missing trip reconciliation token bridge ${bridge}`);
+  }
+
+  assert.match(domainCoverage, /order-management_summaryCardActive__[\s\S]*background:\s*var\(--hp-row-hover\)\s*!important/);
+  assert.match(domainCoverage, /sales-settlement-reconciliation-workspace_mismatch__[\s\S]*background:\s*var\(--hp-danger-bg\)\s*!important/);
+  assert.match(domainCoverage, /sales-settlement-reconciliation-workspace_matched__[\s\S]*background:\s*var\(--hp-success-bg\)\s*!important/);
 });
