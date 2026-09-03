@@ -94,6 +94,7 @@ export default function SalesOrderPrintSheet({
         showSubtitle={false}
         showNumber={false}
         suppressBrowserHeaders
+        narrowMargins
         number={order.number ?? 'BẢN NHÁP'}
         meta={[
           { key: 'customer', label: 'Khách hàng', value: displayCustomer },
@@ -106,17 +107,17 @@ export default function SalesOrderPrintSheet({
           { key: 'collection_policy', label: 'Thanh toán', value: collectionLabels[version.collectionPolicy] ?? version.collectionPolicy },
           { key: 'requested_delivery_date', label: 'Ngày giao dự kiến', value: dateText(version.requestedDeliveryDate) },
         ]}
-        tableLayout="fixed"
+        tableLayout="auto"
         columns={[
-          { key: 'no', fieldKey: 'line_no', label: 'STT', align: 'center', width: '4%', wrap: 'nowrap' },
-          { key: 'itemName', fieldKey: 'line_item', label: 'Tên sản phẩm', width: '23%', wrap: 'anywhere' },
-          { key: 'sku', fieldKey: 'line_sku', label: 'SKU', width: '12%', wrap: 'anywhere' },
-          { key: 'quantity', fieldKey: 'line_quantity', label: 'Số lượng', align: 'right', width: '8%' },
-          { key: 'unit', fieldKey: 'line_unit', label: 'ĐVT', align: 'center', width: '7%', wrap: 'nowrap' },
-          { key: 'unitPrice', fieldKey: 'line_unit_price', label: 'Đơn giá', align: 'right', width: '13%' },
-          ...(showDiscount ? [{ key: 'discount', fieldKey: 'line_discount', label: 'CK', align: 'right' as const, width: '10%' }] : []),
-          ...(showTax ? [{ key: 'tax', fieldKey: 'line_tax', label: 'Thuế', align: 'right' as const, width: '9%' }] : []),
-          { key: 'total', fieldKey: 'line_total', label: 'Thành tiền', align: 'right', width: '14%' },
+          { key: 'no', fieldKey: 'line_no', label: 'STT', align: 'center', wrap: 'nowrap' },
+          { key: 'itemName', fieldKey: 'line_item', label: 'Tên sản phẩm', wrap: 'anywhere' },
+          { key: 'sku', fieldKey: 'line_sku', label: 'SKU', wrap: 'anywhere' },
+          { key: 'quantity', fieldKey: 'line_quantity', label: 'SL', align: 'right', wrap: 'nowrap' },
+          { key: 'unit', fieldKey: 'line_unit', label: 'ĐVT', align: 'center', wrap: 'nowrap' },
+          { key: 'unitPrice', fieldKey: 'line_unit_price', label: 'Đơn giá', align: 'right', wrap: 'nowrap' },
+          ...(showDiscount ? [{ key: 'discount', fieldKey: 'line_discount', label: 'CK', align: 'right' as const, wrap: 'nowrap' as const }] : []),
+          ...(showTax ? [{ key: 'tax', fieldKey: 'line_tax', label: 'Thuế', align: 'right' as const, wrap: 'nowrap' as const }] : []),
+          { key: 'total', fieldKey: 'line_total', label: 'Thành tiền', align: 'right', wrap: 'nowrap' },
         ]}
         rows={lines.map((line) => ({
           id: line.id,
@@ -125,7 +126,7 @@ export default function SalesOrderPrintSheet({
             itemName: <strong>{line.itemName}</strong>,
             sku: line.sku,
             quantity: formatQuantity(line.quantity),
-            unit: line.unitCode,
+            unit: line.unitName || line.unitCode,
             unitPrice: formatMoney(line.unitPrice),
             discount: formatMoney(line.discountAmount),
             tax: formatMoney(line.taxAmount),
