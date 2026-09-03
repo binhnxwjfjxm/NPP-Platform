@@ -49,7 +49,8 @@ test('canonical form activates product-first commercial entry with walk-in and q
   assert.match(formSource, /Cần giao hàng\? Tạo khách chính thức/);
   assert.match(formSource, /\/api\/customers\?\$\{query\}/);
   assert.match(formSource, /Số điện thoại đã thuộc khách/);
-  assert.match(formSource, /\/api\/customers\/\$\{created\.id\}\/addresses/);
+  assert.doesNotMatch(formSource, /\/api\/customers\/\$\{created\.id\}\/addresses/);
+  assert.match(formSource, /setDeliveryAddressLine1\(quickCustomer\.addressLine1\.trim\(\)\)/);
   assert.match(formSource, /Tìm hàng nhanh/);
   assert.match(formSource, /Tên sản phẩm, mã hàng, SKU hoặc barcode/);
   assert.match(formSource, /ArrowDown/);

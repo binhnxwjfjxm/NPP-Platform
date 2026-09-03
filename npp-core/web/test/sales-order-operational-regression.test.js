@@ -19,20 +19,20 @@ test('Sales Order document discount preview keeps exact BigInt largest-remainder
   assert.doesNotMatch(formSource, /Kiểu CK thêm/);
 });
 
-test('Sales Order effects depend on stable callbacks instead of the whole props object', () => {
+test('Sales Order effects depend on stable values instead of the whole props object', () => {
   assert.match(formSource, /const\s*\{\s*version,\s*onClose,\s*onError\s*\}\s*=\s*props/);
-  assert.doesNotMatch(formSource, /\[[^\]]*\bprops\b[^\]]*\]/);
+  assert.doesNotMatch(formSource, /\[(?:[^\]]*,\s*)?props(?:\s*,[^\]]*)?\]/);
   assert.match(
     formSource,
     /\[customerId,\s*customerMode,\s*onError,\s*pricingAt,\s*salesChannelId,\s*skuTerm,\s*warehouseId\]/,
   );
 });
 
-test('quick customer and address retries keep stable idempotency keys per attempt', () => {
+test('quick customer retry keeps one stable key and an order-only address is never persisted to the customer profile', () => {
   assert.match(formSource, /const\s*\[quickCustomerKey,\s*setQuickCustomerKey\]\s*=\s*useState/);
-  assert.match(formSource, /const\s*\[quickAddressKey,\s*setQuickAddressKey\]\s*=\s*useState/);
   assert.match(formSource, /'Idempotency-Key':\s*quickCustomerKey/);
-  assert.match(formSource, /'Idempotency-Key':\s*quickAddressKey/);
   assert.match(formSource, /setQuickCustomerKey\(mutationKey\('sales-quick-customer'\)\)/);
-  assert.match(formSource, /setQuickAddressKey\(mutationKey\('sales-quick-address'\)\)/);
+  assert.match(formSource, /setDeliveryAddressLine1\(quickCustomer\.addressLine1\.trim\(\)\)/);
+  assert.doesNotMatch(formSource, /quickAddressKey|setQuickAddressKey/);
+  assert.doesNotMatch(formSource, /\/api\/customers\/\$\{created\.id\}\/addresses/);
 });

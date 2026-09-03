@@ -116,7 +116,10 @@ ALTER TABLE sales.delivery_orders
   ADD CONSTRAINT delivery_orders_mode_shape CHECK (
     (
       handover_mode = 'DELIVERY'
-      AND NULLIF(btrim(destination_snapshot ->> 'addressLine1'), '') IS NOT NULL
+      AND (
+        customer_address_id IS NOT NULL
+        OR NULLIF(btrim(destination_snapshot ->> 'addressLine1'), '') IS NOT NULL
+      )
     )
     OR (
       handover_mode = 'PICKUP'
