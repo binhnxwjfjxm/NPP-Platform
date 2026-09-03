@@ -4,15 +4,18 @@ import test from 'node:test';
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
-test('sales order create form exposes account defaults next to warehouse and delivery method', async () => {
+test('sales order create form keeps account defaults compact beside warehouse and delivery method', async () => {
   const [form, types] = await Promise.all([
     read('app/sales/sales-orders/SalesOrderCommercialForm.tsx'),
     read('lib/sales-order-types.ts'),
   ]);
 
-  assert.match(form, /data-testid="sales-entry-default-controls"/);
-  assert.match(form, /Dùng kho này làm mặc định/);
-  assert.match(form, /Dùng cách giao này làm mặc định/);
+  assert.match(form, /data-testid="sales-warehouse-default-field"/);
+  assert.match(form, /data-testid="sales-delivery-default-field"/);
+  assert.match(form, /data-testid="sales-warehouse-default-toggle"/);
+  assert.match(form, /data-testid="sales-delivery-default-toggle"/);
+  assert.match(form, /width: 14, minWidth: 14, height: 14, minHeight: 14/);
+  assert.doesNotMatch(form, /data-testid="sales-entry-default-controls"/);
   assert.match(form, /settings\.defaultDeliveryChoice/);
   assert.match(form, /entryDefaults:/);
   assert.match(form, /entrySettings\?\.savedWarehouseId/);
@@ -21,14 +24,15 @@ test('sales order create form exposes account defaults next to warehouse and del
   assert.match(types, /savedWarehouseId: string \| null/);
 });
 
-test('manual delivery can omit address while trip delivery requires saved or one-off destination', async () => {
+test('delivery address is optional and the form does not invent a one-off address field', async () => {
   const form = await read('app/sales/sales-orders/SalesOrderCommercialForm.tsx');
 
-  assert.match(form, /deliveryExecutionMode === 'TRIP' && !addressId && !deliveryAddressLine1\.trim\(\)/);
-  assert.match(form, /deliveryAddress:\s*\{/);
-  assert.match(form, /Địa chỉ giao riêng của đơn/);
-  assert.match(form, /không lưu vào hồ sơ khách/);
-  assert.doesNotMatch(form, /quickAddressKey/);
+  assert.match(form, /addresses\.length > 0/);
+  assert.match(form, /Địa chỉ giao hàng \(tùy chọn\)/);
+  assert.match(form, /Không chọn địa chỉ/);
+  assert.doesNotMatch(form, /sales-order-direct-delivery-address/);
+  assert.doesNotMatch(form, /Địa chỉ giao riêng của đơn/);
+  assert.doesNotMatch(form, /Hãy chọn hoặc nhập địa chỉ giao hàng/);
   assert.doesNotMatch(form, /api\/customers\/\$\{created\.id\}\/addresses/);
 });
 
