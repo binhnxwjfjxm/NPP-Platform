@@ -1,11 +1,10 @@
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const HASH_PATTERN = /^[0-9a-f]{64}$/i;
 const SECRET_PATTERN = /^[A-Za-z0-9._-]{32,160}$/;
 const PAIRING_CODE_PATTERN = /^[A-Z0-9]{8}$/;
 const PAIRING_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-const PAIRING_TTL_MINUTES = 10;
 const ONLINE_SECONDS = 45;
 const CLAIM_LEASE_SECONDS = 90;
 const MAX_PAYLOAD_BYTES = 128 * 1024;
@@ -27,10 +26,12 @@ function sha256(value) {
   return createHash('sha256').update(String(value)).digest('hex');
 }
 
-function randomPairingCode() {
-  const bytes = randomBytes(8);
+function fixedConnectionCode(deviceId) {
+  const digest = createHash('sha256').update(String(deviceId).trim().toLowerCase()).digest();
   let result = '';
-  for (const byte of bytes) result += PAIRING_ALPHABET[byte % PAIRING_ALPHABET.length];
+  for (let index = 0; index < 8; index += 1) {
+    result += PAIRING_ALPHABET[digest[index] % PAIRING_ALPHABET.length];
+  }
   return result;
 }
 
@@ -97,49 +98,44 @@ export async function startPairing(client, { installationId, payload }) {
   const input = normalizePairingStart(payload);
   if (!input) return failure('INVALID_PAIRING_REQUEST', 'Thông tin Retail Print không hợp lệ');
 
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    const pairingCode = randomPairingCode();
-    try {
-      await client.query('SAVEPOINT retail_print_pairing_code');
-      const result = await client.query(
-        `INSERT INTO shared.retail_print_agents (
-           id, installation_id, device_id, device_name, protocol_version,
-           credential_hash, pairing_code, pairing_proof_hash, pairing_expires_at,
-           paired_at, paired_by, last_seen_at, is_active, created_at, updated_at
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now() + interval '${PAIRING_TTL_MINUTES} minutes',NULL,NULL,now(),true,now(),now())
-         ON CONFLICT (installation_id, device_id)
-         DO UPDATE SET device_name=EXCLUDED.device_name,
-                       protocol_version=EXCLUDED.protocol_version,
-                       pairing_code=EXCLUDED.pairing_code,
-                       pairing_proof_hash=EXCLUDED.pairing_proof_hash,
-                       pairing_expires_at=EXCLUDED.pairing_expires_at,
-                       paired_at=NULL,
-                       paired_by=NULL,
-                       last_seen_at=now(),
-                       is_active=true,
-                       updated_at=now()
-         WHERE shared.retail_print_agents.credential_hash = EXCLUDED.credential_hash
-         RETURNING id, device_name, pairing_code, pairing_expires_at`,
-        [randomUUID(), installationId, input.deviceId, input.deviceName, input.protocolVersion,
-          input.credentialHash, pairingCode, input.pairingProofHash],
-      );
-      await client.query('RELEASE SAVEPOINT retail_print_pairing_code');
-      if (result.rows.length !== 1) return failure('PAIRING_DEVICE_CONFLICT', 'Thiết bị này đã có khóa kết nối khác');
-      const row = result.rows[0];
-      return ok({
-        pairing: Object.freeze({
-          agentId: String(row.id),
-          pairingCode: String(row.pairing_code),
-          expiresAt: row.pairing_expires_at,
-          deviceName: String(row.device_name),
-        }),
-      });
-    } catch (error) {
-      await client.query('ROLLBACK TO SAVEPOINT retail_print_pairing_code').catch(() => {});
-      if (error?.code !== '23505' || attempt === 4) throw error;
+  const pairingCode = fixedConnectionCode(input.deviceId);
+  try {
+    const result = await client.query(
+      `INSERT INTO shared.retail_print_agents (
+         id, installation_id, device_id, device_name, protocol_version,
+         credential_hash, pairing_code, pairing_proof_hash, pairing_expires_at,
+         paired_at, paired_by, last_seen_at, is_active, created_at, updated_at
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'infinity',NULL,NULL,now(),true,now(),now())
+       ON CONFLICT (installation_id, device_id)
+       DO UPDATE SET device_name=EXCLUDED.device_name,
+                     protocol_version=EXCLUDED.protocol_version,
+                     pairing_code=EXCLUDED.pairing_code,
+                     pairing_proof_hash=EXCLUDED.pairing_proof_hash,
+                     pairing_expires_at='infinity',
+                     last_seen_at=now(),
+                     is_active=true,
+                     updated_at=now()
+       WHERE shared.retail_print_agents.credential_hash = EXCLUDED.credential_hash
+       RETURNING id, device_name, pairing_code`,
+      [randomUUID(), installationId, input.deviceId, input.deviceName, input.protocolVersion,
+        input.credentialHash, pairingCode, input.pairingProofHash],
+    );
+    if (result.rows.length !== 1) return failure('PAIRING_DEVICE_CONFLICT', 'Thiết bị này đã có khóa kết nối khác');
+    const row = result.rows[0];
+    return ok({
+      pairing: Object.freeze({
+        agentId: String(row.id),
+        pairingCode: String(row.pairing_code),
+        expiresAt: null,
+        deviceName: String(row.device_name),
+      }),
+    });
+  } catch (error) {
+    if (error?.code === '23505') {
+      return failure('PAIRING_CODE_CONFLICT', 'Mã kết nối của máy này đang trùng với máy Windows khác');
     }
+    throw error;
   }
-  return failure('PAIRING_CODE_UNAVAILABLE', 'Chưa thể tạo mã kết nối mới', true);
 }
 
 export async function pairAgent(client, { installationId, actorId, pairingCode }) {
@@ -147,14 +143,14 @@ export async function pairAgent(client, { installationId, actorId, pairingCode }
   if (!code) return failure('INVALID_PAIRING_CODE', 'Mã kết nối phải gồm 8 ký tự');
   const result = await client.query(
     `UPDATE shared.retail_print_agents
-        SET paired_at=now(), paired_by=$3, pairing_code=NULL, pairing_proof_hash=NULL,
-            pairing_expires_at=NULL, updated_at=now()
+        SET paired_at=COALESCE(paired_at,now()),
+            paired_by=COALESCE(paired_by,$3),
+            updated_at=now()
       WHERE installation_id=$1 AND pairing_code=$2 AND is_active=true
-        AND pairing_expires_at > now()
       RETURNING *`,
     [installationId, code, actorId],
   );
-  if (result.rows.length !== 1) return failure('PAIRING_CODE_NOT_FOUND', 'Mã kết nối không đúng hoặc đã hết hạn');
+  if (result.rows.length !== 1) return failure('PAIRING_CODE_NOT_FOUND', 'Mã kết nối không đúng');
   return ok({ agent: publicAgent(result.rows[0]) });
 }
 
@@ -287,6 +283,6 @@ export const retailPrintAgentInternals = Object.freeze({
   normalizePairingCode,
   normalizeJobPayload,
   normalizeWaitSeconds,
-  randomPairingCode,
+  fixedConnectionCode,
   CLAIM_LEASE_SECONDS,
 });

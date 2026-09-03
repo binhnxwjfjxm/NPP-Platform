@@ -10,32 +10,32 @@ import {
 type Props = {
   onNotice(message: string): void;
   onError(message: string): void;
+  onPaired(agent: RetailPrintAgent): void;
 };
 
 function statusLabel(agent: RetailPrintAgent) {
   return agent.status === 'ONLINE' ? 'Đang trực tuyến' : 'Đang ngoại tuyến';
 }
 
-export function RetailPrintWindowsPairing({ onNotice, onError }: Props) {
+export function RetailPrintWindowsPairing({ onNotice, onError, onPaired }: Props) {
   const [agents, setAgents] = useState<RetailPrintAgent[]>([]);
   const [pairingCode, setPairingCode] = useState('');
   const [loading, setLoading] = useState(true);
   const [pairing, setPairing] = useState(false);
 
-  const refresh = useCallback(async (quiet = false) => {
-    if (!quiet) setLoading(true);
+  const loadAgents = useCallback(async () => {
     try {
       setAgents(await listRetailPrintAgents());
-    } catch (reason) {
-      if (!quiet) onError(reason instanceof Error ? reason.message : 'Chưa thể tải Retail Print trên Windows.');
+    } catch {
+      // Danh sách chỉ để hiển thị; người dùng vẫn có thể nhập mã cố định để kết nối.
     } finally {
-      if (!quiet) setLoading(false);
+      setLoading(false);
     }
-  }, [onError]);
+  }, []);
 
   useEffect(() => {
-    void refresh(true);
-  }, [refresh]);
+    void loadAgents();
+  }, [loadAgents]);
 
   async function pair() {
     const code = pairingCode.trim().toUpperCase();
@@ -48,8 +48,9 @@ export function RetailPrintWindowsPairing({ onNotice, onError }: Props) {
     try {
       const agent = await pairRetailPrintAgent(code);
       setPairingCode('');
-      await refresh(true);
-      onNotice(`${agent.name} đã kết nối với Retail.`);
+      setAgents((current) => [agent, ...current.filter((item) => item.id !== agent.id)]);
+      onPaired(agent);
+      onNotice(`${agent.name} đã kết nối với điện thoại này. Mã vẫn dùng được trên các điện thoại Retail khác.`);
     } catch (reason) {
       onError(reason instanceof Error ? reason.message : 'Không thể kết nối Retail Print.');
     } finally {
@@ -60,7 +61,7 @@ export function RetailPrintWindowsPairing({ onNotice, onError }: Props) {
   return <section className="printer-setting-section">
     <header>
       <strong>Retail Print trên Windows</strong>
-      <small>Máy Windows nhận lệnh in từ Retail và gửi tới máy in đã thiết lập.</small>
+      <small>Nhập mã cố định 8 ký tự của máy Windows.</small>
     </header>
     <div className="printer-advanced">
       <label>Mã kết nối
@@ -73,9 +74,9 @@ export function RetailPrintWindowsPairing({ onNotice, onError }: Props) {
           onChange={(event) => setPairingCode(event.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 8))}
         />
       </label>
-      <p>Mở Retail Print trên Windows → Lấy mã → nhập mã vào đây. Không cần nhập IP máy in trên điện thoại.</p>
+      <p>Mã trên máy Windows là cố định. Điện thoại Retail nào cũng nhập cùng mã này để kết nối đúng máy đó.</p>
       <div className="printer-test-row">
-        <span><strong>{agents.length ? `${agents.length} máy đã kết nối` : 'Chưa có máy Windows'}</strong><small>{loading ? 'Đang kiểm tra…' : 'Mã chỉ dùng một lần và tự hết hạn.'}</small></span>
+        <span><strong>{agents.length ? `${agents.length} máy đã kết nối` : 'Chưa có máy Windows'}</strong><small>{loading ? 'Đang kiểm tra…' : 'Mã không mất sau khi kết nối.'}</small></span>
         <button className="secondary-action" type="button" disabled={pairing} onClick={() => void pair()}>{pairing ? 'Đang kết nối…' : 'Kết nối'}</button>
       </div>
       {agents.length ? <div className="printer-results" aria-label="Retail Print trên Windows">
@@ -84,7 +85,6 @@ export function RetailPrintWindowsPairing({ onNotice, onError }: Props) {
           <div><strong>{agent.name}</strong><small>{statusLabel(agent)}{agent.printerName ? ` · ${agent.printerName}` : ''}</small></div>
         </div>)}
       </div> : null}
-      <button className="advanced-toggle" type="button" onClick={() => void refresh(false)}>Làm mới danh sách</button>
     </div>
   </section>;
 }
