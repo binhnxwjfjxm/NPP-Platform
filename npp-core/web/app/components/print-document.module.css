@@ -85,6 +85,14 @@
     padding: 9mm 8mm 10mm;
   }
 
+  .printSurface[data-print-active='true'][data-print-size='A4'][data-print-suppress-browser-headers='true'][data-print-id^='sales-order-'] {
+    padding: 6mm;
+  }
+
+  .printSurface[data-print-active='true'][data-print-size='A5'][data-print-suppress-browser-headers='true'][data-print-id^='sales-order-'] {
+    padding: 5mm;
+  }
+
   @page document-a4 {
     size: A4 portrait;
     margin: 11mm 10mm 12mm;

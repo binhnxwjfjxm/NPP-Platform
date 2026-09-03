@@ -236,8 +236,11 @@ export async function getSalesOrderVersion(client, {
 
 export async function getSalesOrderVersionLines(client, { installationId, versionId }) {
   return (await client.query(
-    `SELECT ${LINE_COLUMNS}
+    `SELECT ${LINE_COLUMNS}, u.name AS unit_name
      FROM sales.sales_order_version_lines sovl
+     JOIN shared.units_of_measure u
+       ON u.installation_id = sovl.installation_id
+      AND u.id = sovl.unit_id
      WHERE sovl.installation_id = $1 AND sovl.sales_order_version_id = $2
      ORDER BY sovl.line_number`,
     [installationId, versionId],

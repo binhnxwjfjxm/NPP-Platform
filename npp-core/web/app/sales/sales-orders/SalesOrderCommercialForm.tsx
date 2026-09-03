@@ -844,7 +844,7 @@ export default function SalesOrderCommercialForm(props: Props) {
       pricingErrorCode: null,
     };
     setTaxReady(true);
-    setLines((current) => [...current, pending]);
+    setLines((current) => [pending, ...current]);
     setSkuTerm('');
     setSkuResults([]);
     void loadProductVariants(option.productId);
