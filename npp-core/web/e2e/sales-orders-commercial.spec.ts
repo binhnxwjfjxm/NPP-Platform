@@ -273,17 +273,21 @@ test.describe('Sales Order commercial controls', () => {
       await expect(dialog.getByTestId(`sales-order-line-${index}`)).toBeVisible();
     }
 
-    const firstLine = dialog.getByTestId('sales-order-line-1');
-    const directPrice = firstLine.getByLabel('Đơn giá SKU-1');
+    const newestLine = dialog.getByTestId('sales-order-line-1');
+    await expect(newestLine.getByLabel('Đơn giá SKU-18')).toHaveValue('9018');
+
+    const directPrice = dialog.getByLabel('Đơn giá SKU-1');
+    const sku1Line = directPrice.locator('xpath=ancestor::*[starts-with(@data-testid, "sales-order-line-")][1]');
+    await expect(sku1Line).toBeVisible();
     await directPrice.fill('8500');
-    await expect(firstLine.getByText('Giá đã sửa', { exact: true })).toBeHidden();
-    await firstLine.getByRole('button', { name: /^Dùng lại giá hệ thống/ }).click();
+    await expect(sku1Line.getByText('Giá đã sửa', { exact: true })).toBeHidden();
+    await sku1Line.getByRole('button', { name: /^Dùng lại giá hệ thống/ }).click();
     await expect(directPrice).toHaveValue('9001');
     await directPrice.fill('0');
     await expect(directPrice).toHaveValue('0');
 
-    await firstLine.getByLabel('Cách CK SKU-1').selectOption('PERCENT');
-    await firstLine.getByLabel('Chiết khấu SKU-1').fill('5');
+    await sku1Line.getByLabel('Cách CK SKU-1').selectOption('PERCENT');
+    await sku1Line.getByLabel('Chiết khấu SKU-1').fill('5');
     await expect(dialog.getByTestId('document-discount-mode')).toBeDisabled();
 
     const body = dialog.getByTestId('sales-order-scroll-body');
