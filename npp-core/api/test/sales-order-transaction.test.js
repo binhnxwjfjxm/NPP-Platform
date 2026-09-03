@@ -139,7 +139,7 @@ test('Sales Order create, audit and outbox commit atomically', async () => {
           payload: {
             sourceType: 'MANUAL',
             customerId: fixture.customerId,
-            customerAddressId: fixture.addressId,
+            customerAddressId: null,
             warehouseId: fixture.warehouseId,
             salesChannelId: fixture.channelId,
             deliveryMode: 'DELIVERY',
@@ -157,6 +157,7 @@ test('Sales Order create, audit and outbox commit atomically', async () => {
         });
         assert.equal(result.ok, true, JSON.stringify(result));
         const order = result.salesOrder;
+        assert.equal(order.customerAddressId, null);
         const metadata = {
           number: order.number,
           status: order.status,

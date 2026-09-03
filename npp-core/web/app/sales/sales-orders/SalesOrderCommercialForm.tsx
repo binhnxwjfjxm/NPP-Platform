@@ -493,8 +493,10 @@ export default function SalesOrderCommercialForm(props: Props) {
   const markDirty = useCallback(() => {
     setDirty(true);
     setPricingMismatch(null);
+    setSaveKey(mutationKey(`sales-${props.mode}-save`));
+    setConfirmKey(mutationKey(`sales-${props.mode}-confirm`));
     onError('');
-  }, [onError]);
+  }, [onError, props.mode]);
 
   const requestClose = useCallback(() => {
     if (busy) return;
