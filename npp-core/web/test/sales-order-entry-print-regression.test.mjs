@@ -19,8 +19,8 @@ test('SKU vừa thêm đứng đầu danh sách và vẫn focus vào SL của d�
   assert.match(form, /lines: lines\.map\(\(line\) => \(\{/);
 });
 
-test('phiếu bán hàng dùng tên ĐVT canonical và fallback mã ĐVT', () => {
-  assert.match(repository, /u\.name AS unit_name/);
+test('phiếu bán hàng ưu tiên tên ĐVT đã chốt và chỉ dùng tên hiện tại cho dữ liệu cũ', () => {
+  assert.match(repository, /COALESCE\(sovl\.unit_name_snapshot, u\.name\) AS unit_name/);
   assert.match(repository, /LEFT JOIN shared\.units_of_measure u/);
   assert.match(service, /unitName: line\.unit_name \?\? line\.unit_code_snapshot/);
   assert.match(types, /unitName: string \| null;/);
