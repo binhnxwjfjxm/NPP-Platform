@@ -72,11 +72,13 @@ export function PrintSurface({
   id,
   size = 'A4',
   suppressBrowserHeaders = false,
+  narrowMargins = false,
 }: {
   children: ReactNode;
   id?: string;
   size?: PrintPageSize;
   suppressBrowserHeaders?: boolean;
+  narrowMargins?: boolean;
 }) {
   return (
     <section
@@ -85,6 +87,7 @@ export function PrintSurface({
       data-print-id={id}
       data-print-size={size}
       data-print-suppress-browser-headers={suppressBrowserHeaders ? 'true' : undefined}
+      data-print-narrow-margins={narrowMargins ? 'true' : undefined}
     >
       {children}
     </section>
