@@ -1,4 +1,3 @@
-import { buildAuditRecord, insertAuditRecord } from '../audit-outbox.js';
 import * as legacy from './sales-order-entry-legacy.js';
 import * as commercialRepository from '../db/repositories/sales-order-commercial.js';
 import * as systemSalesChannelRepository from '../db/repositories/system-sales-channel.js';
@@ -95,7 +94,7 @@ async function loadEntryDefaults(client, { requestContext, systemDefaultWarehous
 }
 
 async function persistEntryDefaults(client, { requestContext, input }) {
-  if (input === undefined) return Object.freeze({ ok: true });
+  if (input === undefined) return Object.freeze({ ok: true, changed: false });
   const userId = internalUserId(requestContext);
   if (!userId) {
     return failure(
@@ -144,7 +143,7 @@ async function persistEntryDefaults(client, { requestContext, input }) {
     deliveryChoice: normalizedDeliveryChoice(before?.deliveryChoice),
   });
   const nextCanonical = JSON.stringify(next);
-  if (beforeCanonical === nextCanonical) return Object.freeze({ ok: true });
+  if (beforeCanonical === nextCanonical) return Object.freeze({ ok: true, changed: false });
 
   if (!warehouseId && !deliveryChoice) {
     await userPreferenceRepository.deleteUserPreference(client, {
@@ -162,16 +161,10 @@ async function persistEntryDefaults(client, { requestContext, input }) {
     });
   }
 
-  await insertAuditRecord(client, buildAuditRecord({
-    requestContext,
-    action: 'sales.order_entry_defaults.update',
-    resourceType: 'user_preference',
-    resourceId: userId,
-    beforeData: before ?? null,
-    afterData: !warehouseId && !deliveryChoice ? null : next,
-    metadata: { preferenceKey: ENTRY_DEFAULTS_KEY },
-  }));
-  return Object.freeze({ ok: true });
+  // Đây là tùy chọn thao tác của người dùng, không phải một nghiệp vụ độc lập.
+  // Không ghi thêm audit record tại đây vì hàm được gọi bên trong transaction của đơn;
+  // transaction đơn đã có audit/outbox riêng và guard yêu cầu đúng một audit nghiệp vụ.
+  return Object.freeze({ ok: true, changed: true });
 }
 
 export async function getSalesOrderEntrySettings(client, { requestContext }) {
