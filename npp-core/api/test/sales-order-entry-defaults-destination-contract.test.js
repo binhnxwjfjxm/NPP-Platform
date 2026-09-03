@@ -24,23 +24,23 @@ test('user preference migration keeps preferences installation and user scoped',
   assert.match(migration, /preference_key ~ '\^\[A-Za-z0-9\._-\]\+\$'/);
 });
 
-test('sales order confirmation requires destination only for trip delivery', async () => {
-  const migration = await read('sales/122_sales_order_optional_destination.sql');
-  assert.match(migration, /NEW\.delivery_execution_mode = 'TRIP'/);
-  assert.match(migration, /customer_address_snapshot ->> 'addressLine1'/);
-  assert.match(migration, /delivery_orders_mode_shape/);
-  assert.match(migration, /destination_snapshot ->> 'addressLine1'/);
+test('sales order confirmation keeps address optional while validating a supplied saved address', async () => {
+  const migration = await read('sales/124_sales_order_address_optional.sql');
+  assert.match(migration, /NEW\.customer_address_id IS NOT NULL/);
+  assert.match(migration, /sales_order_address_inactive_or_mismatch/);
+  assert.doesNotMatch(migration, /NEW\.delivery_execution_mode = 'TRIP'/);
+  assert.doesNotMatch(migration, /sales_order_delivery_destination_required/);
 });
 
-test('trip stops allow a one-off order destination without inventing a customer address', async () => {
+test('trip stop migration remains compatible with orders that have no canonical customer address', async () => {
   const migration = await read('logistics/123_logistics_order_destination_stop.sql');
   assert.match(migration, /ALTER COLUMN customer_address_id DROP NOT NULL/);
 });
 
-test('sales order service supports a direct order destination and keeps manual delivery address optional', async () => {
+test('sales order service does not require an address for trip delivery', async () => {
   const source = await readSource('services/sales-order-legacy.js');
   assert.match(source, /directDeliveryAddressSnapshot\(payload\?\.deliveryAddress, customer\)/);
-  assert.match(source, /deliveryExecutionMode === 'TRIP'/);
-  assert.match(source, /DELIVERY_DESTINATION_REQUIRED/);
+  assert.doesNotMatch(source, /else if \(deliveryExecutionMode === 'TRIP'\)/);
+  assert.doesNotMatch(source, /Hãy chọn hoặc nhập địa chỉ giao hàng cho đơn giao theo chuyến/);
   assert.match(source, /customerAddressSnapshot: prepared\.header\.customerAddressSnapshot/);
 });
