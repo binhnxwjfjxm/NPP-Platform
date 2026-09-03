@@ -172,6 +172,7 @@ function mapLine(line) {
     itemName: line.item_name_snapshot,
     unitId: line.unit_id,
     unitCode: line.unit_code_snapshot,
+    unitName: line.unit_name ?? line.unit_code_snapshot,
     conversionToBase: String(line.conversion_to_base),
     quantity: String(line.ordered_quantity),
     baseQuantity: String(line.base_quantity),
