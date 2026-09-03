@@ -52,6 +52,7 @@ export default function BusinessDocumentPrint({
   showSubtitle = true,
   showNumber = true,
   suppressBrowserHeaders = false,
+  narrowMargins = false,
   number,
   status,
   meta,
@@ -75,6 +76,7 @@ export default function BusinessDocumentPrint({
   showSubtitle?: boolean;
   showNumber?: boolean;
   suppressBrowserHeaders?: boolean;
+  narrowMargins?: boolean;
   number: ReactNode;
   status?: ReactNode;
   meta: BusinessDocumentMeta[];
@@ -120,7 +122,12 @@ export default function BusinessDocumentPrint({
   return (
     <>
       <PrintAction label={actionLabel} targetId={id} onPrint={onPrint} />
-      <PrintSurface id={id} size={template?.pageSize ?? size} suppressBrowserHeaders={suppressBrowserHeaders}>
+      <PrintSurface
+        id={id}
+        size={template?.pageSize ?? size}
+        suppressBrowserHeaders={suppressBrowserHeaders}
+        narrowMargins={narrowMargins}
+      >
         <article className={styles.sheet} data-testid={testId} data-print-template-ready={templateResolved ? 'true' : 'false'}>
           <header className={styles.header}>
             {displayHeading || displaySubtitle ? <div className={styles.brandBlock}>
