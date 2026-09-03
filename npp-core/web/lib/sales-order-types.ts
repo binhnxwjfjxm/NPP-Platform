@@ -54,6 +54,7 @@ export type SalesOrderLine = {
   itemName: string;
   unitId: string;
   unitCode: string;
+  unitName: string | null;
   conversionToBase: string;
   quantity: string;
   baseQuantity: string;
