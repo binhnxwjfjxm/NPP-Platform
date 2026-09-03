@@ -1133,9 +1133,6 @@ export default function SalesOrderCommercialForm(props: Props) {
       return 'Khách vãng lai không được bán chịu hoặc giao trước thu sau';
     }
     if (deliveryMode === 'DELIVERY' && !deliveryExecutionMode) return 'Hãy chọn hình thức giao nhận';
-    if (deliveryMode === 'DELIVERY' && deliveryExecutionMode === 'TRIP' && !addressId && !deliveryAddressLine1.trim()) {
-      return 'Hãy chọn hoặc nhập địa chỉ giao hàng cho đơn giao theo chuyến';
-    }
     if (lines.length === 0) return 'Đơn bán hàng phải có ít nhất một SKU';
     if (lines.some((line) => !parseScaled(line.quantity, false))) return 'Số lượng hàng hóa chưa hợp lệ';
     if (lines.some((line) => line.resolvingPrice)) return 'Hệ thống đang tính giá, hãy đợi hoàn tất';
@@ -1370,41 +1367,44 @@ export default function SalesOrderCommercialForm(props: Props) {
               </div>
             )}
 
-            <label><span>Kho xuất *</span><select value={warehouseId} onChange={(event) => { setWarehouseId(event.target.value); markDirty(); }}><option value="">Chọn kho</option>{props.warehouses.filter((item) => item.is_active).map((item) => <option key={item.id} value={item.id}>{item.code} — {item.name}</option>)}</select></label>
-            <label><span>Hình thức giao nhận</span><select value={deliveryChoice} disabled={customerMode === 'WALK_IN'} onChange={(event) => {
-              deliveryChoiceTouchedRef.current = true;
-              const value = event.target.value;
-              if (value === 'PICKUP') {
-                setDeliveryMode('PICKUP');
-                setDeliveryExecutionMode(null);
-              } else {
-                setDeliveryMode('DELIVERY');
-                setDeliveryExecutionMode(value as SalesOrderDeliveryExecutionMode);
-              }
-              markDirty();
-            }}><option value="TRIP">Giao theo chuyến</option><option value="MANUAL">Giao thủ công</option><option value="PICKUP">Giao tại quầy</option></select></label>
-            {props.mode === 'create' && (
-              <div className={styles.customerModeRow} data-testid="sales-entry-default-controls">
-                <label><input type="checkbox" checked={rememberWarehouse} onChange={(event) => setRememberWarehouse(event.currentTarget.checked)} /> Dùng kho này làm mặc định</label>
-                <label><input type="checkbox" checked={rememberDeliveryChoice} onChange={(event) => setRememberDeliveryChoice(event.currentTarget.checked)} /> Dùng cách giao này làm mặc định</label>
-              </div>
-            )}
+            <div data-testid="sales-warehouse-default-field" style={{ display: 'grid', gap: '.18rem', minWidth: 0, alignContent: 'start' }}>
+              <label><span>Kho xuất *</span><select value={warehouseId} onChange={(event) => { setWarehouseId(event.target.value); markDirty(); }}><option value="">Chọn kho</option>{props.warehouses.filter((item) => item.is_active).map((item) => <option key={item.id} value={item.id}>{item.code} — {item.name}</option>)}</select></label>
+              {props.mode === 'create' && (
+                <label data-testid="sales-warehouse-default-toggle" style={{ display: 'inline-flex', alignItems: 'center', gap: '.3rem', width: 'max-content', minHeight: 0, fontSize: '.7rem', fontWeight: 650, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={rememberWarehouse} onChange={(event) => setRememberWarehouse(event.currentTarget.checked)} style={{ width: 14, minWidth: 14, height: 14, minHeight: 14, margin: 0, padding: 0 }} />
+                  <span style={{ fontSize: '.7rem', fontWeight: 650 }}>Dùng làm mặc định</span>
+                </label>
+              )}
+            </div>
+            <div data-testid="sales-delivery-default-field" style={{ display: 'grid', gap: '.18rem', minWidth: 0, alignContent: 'start' }}>
+              <label><span>Hình thức giao nhận</span><select value={deliveryChoice} disabled={customerMode === 'WALK_IN'} onChange={(event) => {
+                deliveryChoiceTouchedRef.current = true;
+                const value = event.target.value;
+                if (value === 'PICKUP') {
+                  setDeliveryMode('PICKUP');
+                  setDeliveryExecutionMode(null);
+                } else {
+                  setDeliveryMode('DELIVERY');
+                  setDeliveryExecutionMode(value as SalesOrderDeliveryExecutionMode);
+                }
+                markDirty();
+              }}><option value="TRIP">Giao theo chuyến</option><option value="MANUAL">Giao thủ công</option><option value="PICKUP">Giao tại quầy</option></select></label>
+              {props.mode === 'create' && (
+                <label data-testid="sales-delivery-default-toggle" style={{ display: 'inline-flex', alignItems: 'center', gap: '.3rem', width: 'max-content', minHeight: 0, fontSize: '.7rem', fontWeight: 650, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={rememberDeliveryChoice} onChange={(event) => setRememberDeliveryChoice(event.currentTarget.checked)} style={{ width: 14, minWidth: 14, height: 14, minHeight: 14, margin: 0, padding: 0 }} />
+                  <span style={{ fontSize: '.7rem', fontWeight: 650 }}>Dùng làm mặc định</span>
+                </label>
+              )}
+            </div>
             <label><span>Thu tiền</span><select value={collectionPolicy} onChange={(event) => { setCollectionPolicy(event.target.value as SalesOrderCollectionPolicy); markDirty(); }}><option value="COLLECT_ON_DELIVERY">Thu khi giao/nhận</option><option value="PREPAID">Đã trả trước</option>{customerMode === 'EXISTING' && <><option value="COLLECT_AFTER_DELIVERY">Giao trước, thu sau</option><option value="CREDIT_TERMS">Bán chịu theo hạn mức</option></>}</select></label>
             <label><span>Ngày cần hàng</span><input type="date" value={requestedDeliveryDate} onChange={(event) => { setRequestedDeliveryDate(event.target.value); markDirty(); }} /></label>
-            {deliveryMode === 'DELIVERY' && customerMode === 'EXISTING' && (
+            {deliveryMode === 'DELIVERY' && customerMode === 'EXISTING' && addresses.length > 0 && (
               <label className={styles.addressField}>
-                <span>Địa chỉ giao hàng{deliveryExecutionMode === 'TRIP' ? ' *' : ' (tùy chọn)'}</span>
+                <span>Địa chỉ giao hàng (tùy chọn)</span>
                 <select value={addressId} onChange={(event) => { setAddressId(event.target.value); if (event.target.value) setDeliveryAddressLine1(''); markDirty(); }}>
-                  <option value="">Không dùng địa chỉ đã lưu</option>
+                  <option value="">Không chọn địa chỉ</option>
                   {addresses.map((item) => <option key={item.id} value={item.id}>{item.label} — {item.address_line1}, {item.ward ?? ''}, {item.province ?? ''}</option>)}
                 </select>
-                <small>Hoặc nhập địa chỉ chỉ dùng cho đơn này, không lưu vào hồ sơ khách.</small>
-                <input
-                  value={deliveryAddressLine1}
-                  onChange={(event) => { setDeliveryAddressLine1(event.target.value); if (event.target.value) setAddressId(''); markDirty(); }}
-                  placeholder="Số nhà, tên đường / địa điểm giao"
-                  data-testid="sales-order-direct-delivery-address"
-                />
               </label>
             )}
             <button type="button" className={styles.moreButton} onClick={() => setShowMore((value) => !value)}>{showMore ? 'Ẩn thông tin thêm' : 'Thông tin thêm'}</button>
@@ -1413,11 +1413,10 @@ export default function SalesOrderCommercialForm(props: Props) {
 
           {quickOpen && props.canQuickCreateCustomer && (
             <section className={styles.quickCustomerPanel} aria-label="Tạo nhanh khách hàng">
-              <header><div><strong>Tạo nhanh khách chính thức</strong><span>Kiểm tra trùng điện thoại, tạo và chọn ngay trong đơn. Địa chỉ không bắt buộc lưu vào hồ sơ khách.</span></div><button type="button" onClick={() => setQuickOpen(false)}>Đóng</button></header>
+              <header><div><strong>Tạo nhanh khách chính thức</strong><span>Kiểm tra trùng điện thoại, tạo và chọn ngay trong đơn.</span></div><button type="button" onClick={() => setQuickOpen(false)}>Đóng</button></header>
               <label><span>Mã khách</span><input value={quickCustomer.code} onChange={(event) => setQuickCustomer((current) => ({ ...current, code: event.target.value.toUpperCase() }))} /></label>
               <label><span>Tên khách *</span><input value={quickCustomer.name} onChange={(event) => setQuickCustomer((current) => ({ ...current, name: event.target.value }))} /></label>
               <label><span>Số điện thoại</span><input value={quickCustomer.phone} onChange={(event) => setQuickCustomer((current) => ({ ...current, phone: event.target.value }))} /></label>
-              {deliveryMode === 'DELIVERY' && <label className={styles.quickAddress}><span>Địa chỉ giao riêng của đơn {deliveryExecutionMode === 'TRIP' ? '*' : '(tùy chọn)'}</span><input value={quickCustomer.addressLine1} onChange={(event) => setQuickCustomer((current) => ({ ...current, addressLine1: event.target.value }))} /></label>}
               <button type="button" className={styles.primaryButton} disabled={busy} onClick={() => void createQuickCustomer()}>Tạo và chọn khách</button>
             </section>
           )}

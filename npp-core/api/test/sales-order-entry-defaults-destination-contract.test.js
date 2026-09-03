@@ -24,23 +24,27 @@ test('user preference migration keeps preferences installation and user scoped',
   assert.match(migration, /preference_key ~ '\^\[A-Za-z0-9\._-\]\+\$'/);
 });
 
-test('sales order confirmation requires destination only for trip delivery', async () => {
-  const migration = await read('sales/122_sales_order_optional_destination.sql');
-  assert.match(migration, /NEW\.delivery_execution_mode = 'TRIP'/);
-  assert.match(migration, /customer_address_snapshot ->> 'addressLine1'/);
+test('sales order address is optional after migration 124 while saved addresses remain valid metadata', async () => {
+  const migration = await read('sales/124_sales_order_address_optional.sql');
+  assert.match(migration, /CREATE OR REPLACE FUNCTION sales\.guard_sales_order_version_confirmation/);
+  assert.doesNotMatch(migration, /delivery_execution_mode = 'TRIP'/);
+  assert.match(migration, /NEW\.customer_address_id IS NULL[\s\S]*NEW\.customer_address_snapshot IS NOT NULL/);
   assert.match(migration, /delivery_orders_mode_shape/);
-  assert.match(migration, /destination_snapshot ->> 'addressLine1'/);
+  assert.match(migration, /handover_mode = 'DELIVERY'/);
 });
 
-test('trip stops allow a one-off order destination without inventing a customer address', async () => {
+test('trip stops keep customer address identity optional', async () => {
   const migration = await read('logistics/123_logistics_order_destination_stop.sql');
   assert.match(migration, /ALTER COLUMN customer_address_id DROP NOT NULL/);
 });
 
-test('sales order service supports a direct order destination and keeps manual delivery address optional', async () => {
-  const source = await readSource('services/sales-order-legacy.js');
-  assert.match(source, /directDeliveryAddressSnapshot\(payload\?\.deliveryAddress, customer\)/);
-  assert.match(source, /deliveryExecutionMode === 'TRIP'/);
-  assert.match(source, /DELIVERY_DESTINATION_REQUIRED/);
-  assert.match(source, /customerAddressSnapshot: prepared\.header\.customerAddressSnapshot/);
+test('sales order and delivery order services do not block business flow when address is missing', async () => {
+  const [salesOrderSource, deliveryOrderSource] = await Promise.all([
+    readSource('services/sales-order-legacy.js'),
+    readSource('services/sales-delivery-orders.js'),
+  ]);
+  assert.doesNotMatch(salesOrderSource, /else if \(deliveryExecutionMode === 'TRIP'\)/);
+  assert.match(salesOrderSource, /customerAddressSnapshot: prepared\.header\.customerAddressSnapshot/);
+  assert.doesNotMatch(deliveryOrderSource, /Active confirmed delivery destination snapshot is required/);
+  assert.match(deliveryOrderSource, /first\.customer_address_snapshot \?\? Object\.freeze\(\{\}\)/);
 });

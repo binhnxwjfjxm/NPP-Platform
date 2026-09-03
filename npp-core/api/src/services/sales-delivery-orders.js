@@ -462,14 +462,10 @@ export async function executeCreateDeliveryOrder({
             'One Delivery Order must belong to one Sales Order version, warehouse, customer and handover mode',
           ) };
         }
-        if (first.delivery_mode === 'DELIVERY'
-          && (!first.customer_address_id || !first.customer_address_snapshot)) {
-          return { failed: failure('DELIVERY_DESTINATION_REQUIRED', 'Active confirmed delivery destination snapshot is required') };
-        }
 
         const deliveryOrderId = randomUUID();
         const destinationSnapshot = first.delivery_mode === 'DELIVERY'
-          ? first.customer_address_snapshot
+          ? first.customer_address_snapshot ?? Object.freeze({})
           : Object.freeze({
               type: 'PICKUP',
               warehouseId: first.warehouse_id,
