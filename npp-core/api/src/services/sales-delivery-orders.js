@@ -465,7 +465,7 @@ export async function executeCreateDeliveryOrder({
 
         const deliveryOrderId = randomUUID();
         const destinationSnapshot = first.delivery_mode === 'DELIVERY'
-          ? (first.customer_address_snapshot ?? Object.freeze({}))
+          ? first.customer_address_snapshot ?? Object.freeze({})
           : Object.freeze({
               type: 'PICKUP',
               warehouseId: first.warehouse_id,
