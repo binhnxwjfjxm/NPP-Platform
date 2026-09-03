@@ -57,6 +57,8 @@ async function applyCustomerDeliveryAddressSnapshot(client, {
     `UPDATE sales.sales_order_versions AS version
         SET customer_address_snapshot = CASE
               WHEN version.customer_id IS NULL THEN version.customer_address_snapshot
+              WHEN version.customer_address_snapshot IS NULL
+                AND version.customer_address_id IS NULL THEN NULL
               ELSE COALESCE(version.customer_address_snapshot, '{}'::jsonb)
                 || jsonb_build_object(
                   'customerPhone', (
