@@ -40,7 +40,7 @@ test('sau khi backend nhận job thì mất xác nhận không tự fallback đ�
   assert.doesNotMatch(webBridge, /PRINT_STATUS_UNKNOWN'.*safeToFallback: true/s);
 });
 
-test('Cài đặt Retail có mã kết nối Windows, trạng thái và vẫn giữ luồng iOS hiện có', async () => {
+test('Cài đặt Retail dùng mã Windows cố định, nhập lại được trên nhiều điện thoại và vẫn giữ luồng iOS', async () => {
   const [panel, pairing] = await Promise.all([
     read('app/printer-settings-panel.tsx'),
     read('app/retail-print-windows-pairing.tsx'),
@@ -50,8 +50,9 @@ test('Cài đặt Retail có mã kết nối Windows, trạng thái và vẫn gi
   assert.match(pairing, /Mã kết nối/);
   assert.match(pairing, /8 ký tự trên Retail Print/);
   assert.match(pairing, /pairRetailPrintAgent/);
-  assert.match(pairing, /Làm mới danh sách/);
-  assert.match(pairing, /Không cần nhập IP máy in trên điện thoại/);
+  assert.match(pairing, /Mã trên máy Windows là cố định/);
+  assert.match(pairing, /Mã không mất sau khi kết nối/);
+  assert.doesNotMatch(pairing, /Mã chỉ dùng một lần|tự hết hạn|Làm mới danh sách/);
   assert.match(panel, /In Wi‑Fi trực tiếp/);
   assert.match(panel, /Cài đặt nâng cao/);
 });

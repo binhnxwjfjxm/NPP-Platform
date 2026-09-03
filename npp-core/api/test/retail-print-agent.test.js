@@ -23,10 +23,13 @@ test('Retail Print chỉ nhận thông tin ghép nối hợp lệ và lưu hash 
   assert.doesNotMatch(migration, /agent_token|pairing_proof\s+text/i);
 });
 
-test('mã ghép nối và payload in bị giới hạn đúng contract', () => {
-  for (let index = 0; index < 30; index += 1) {
-    assert.match(retailPrintAgentInternals.randomPairingCode(), /^[A-HJ-NP-Z2-9]{8}$/);
-  }
+test('mã kết nối cố định theo deviceId và payload in bị giới hạn đúng contract', () => {
+  const deviceId = '9f7ad5b0-5641-4a19-9a8f-7b64b2a8ea03';
+  const first = retailPrintAgentInternals.fixedConnectionCode(deviceId);
+  const second = retailPrintAgentInternals.fixedConnectionCode(deviceId);
+  assert.equal(first, second);
+  assert.match(first, /^[A-HJ-NP-Z2-9]{8}$/);
+  assert.notEqual(first, retailPrintAgentInternals.fixedConnectionCode('a41f4bce-83be-4e13-ae28-31bfe89cfa4a'));
   assert.equal(retailPrintAgentInternals.normalizePairingCode(' abcd2345 '), 'ABCD2345');
   assert.equal(retailPrintAgentInternals.normalizePairingCode('ABC'), '');
   assert.ok(retailPrintAgentInternals.normalizeJobPayload({ documentType: 'PRINTER_TEST', paper: '80mm', copies: 1 }));
@@ -49,6 +52,17 @@ test('route Retail Print deny-by-default cho thao tác nhân viên và giới h�
   assert.match(route, /requestBody\(req, res, options, 140 \* 1024\)/);
 });
 
+test('mã cố định không bị xóa sau khi điện thoại nhập và cùng mã có thể ghép lại', async () => {
+  const service = await read('src/services/retail-print-agent.js');
+  assert.match(service, /fixedConnectionCode\(input\.deviceId\)/);
+  assert.match(service, /pairing_expires_at='infinity'/);
+  assert.match(service, /paired_at=COALESCE\(paired_at,now\(\)\)/);
+  assert.match(service, /paired_by=COALESCE\(paired_by,\$3\)/);
+  assert.doesNotMatch(service, /pairing_code=NULL/);
+  assert.doesNotMatch(service, /pairing_expires_at > now\(\)/);
+  assert.doesNotMatch(service, /paired_at=NULL/);
+});
+
 test('job idempotency được tách theo người gửi và retry claim không tạo lệnh mới', async () => {
   const [migration, service] = await Promise.all([
     readRepo('database/migrations/shared/119_retail_print_agent.sql'),
@@ -57,8 +71,6 @@ test('job idempotency được tách theo người gửi và retry claim không 
   assert.match(migration, /UNIQUE \(installation_id, agent_id, queued_by, idempotency_key\)/);
   assert.match(service, /ON CONFLICT \(installation_id, agent_id, queued_by, idempotency_key\)/);
   assert.match(service, /status='claimed' AND claimed_at < now\(\) - interval '\$\{CLAIM_LEASE_SECONDS\} seconds'/);
-  assert.match(service, /SAVEPOINT retail_print_pairing_code/);
-  assert.match(service, /ROLLBACK TO SAVEPOINT retail_print_pairing_code/);
 });
 
 test('migration 119 nằm trong canonical registry', async () => {
