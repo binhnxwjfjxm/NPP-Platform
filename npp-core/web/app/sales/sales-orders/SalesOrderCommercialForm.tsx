@@ -433,6 +433,7 @@ export default function SalesOrderCommercialForm(props: Props) {
   const skuSearchRunRef = useRef(0);
   const lineProductResolveRef = useRef(new Set<string>());
   const variantProductLoadRef = useRef(new Set<string>());
+  const deliveryChoiceTouchedRef = useRef(false);
 
   useEffect(() => {
     linesRef.current = lines;
@@ -668,7 +669,7 @@ export default function SalesOrderCommercialForm(props: Props) {
         setEntrySettings(settings);
         setSalesChannelId((current) => current || settings.defaultSalesChannelId || '');
         setWarehouseId((current) => current || settings.defaultWarehouseId || '');
-        if (props.mode === 'create' && !version) {
+        if (props.mode === 'create' && !version && !deliveryChoiceTouchedRef.current) {
           const next = settings.defaultDeliveryChoice ?? 'TRIP';
           if (next === 'PICKUP') {
             setDeliveryMode('PICKUP');
@@ -846,7 +847,6 @@ export default function SalesOrderCommercialForm(props: Props) {
       return onError('Hàng này đã có trong đơn. Dùng Tách dòng nếu cần thêm dòng riêng.');
     }
     const pending: LineDraft = {
-      clientLineId: crypto.randomUUID(),
       productId: option.productId,
       variantId: option.id,
       sku: option.sku,
@@ -1286,6 +1286,7 @@ export default function SalesOrderCommercialForm(props: Props) {
   }
 
   function openQuickCustomerForDelivery() {
+    deliveryChoiceTouchedRef.current = true;
     setQuickCustomerKey(mutationKey('sales-quick-customer'));
     setCustomerMode('EXISTING');
     setDeliveryMode('DELIVERY');
@@ -1316,7 +1317,7 @@ export default function SalesOrderCommercialForm(props: Props) {
           <section className={styles.compactHeader} aria-label="Thông tin đơn hàng">
             <div className={styles.customerModeRow}>
               <button type="button" className={customerMode === 'EXISTING' ? styles.segmentActive : styles.segment} onClick={() => { setCustomerMode('EXISTING'); markDirty(); }}>Khách đã có</button>
-              <button type="button" className={customerMode === 'WALK_IN' ? styles.segmentActive : styles.segment} onClick={() => { setCustomerMode('WALK_IN'); markDirty(); }}>Khách vãng lai</button>
+              <button type="button" className={customerMode === 'WALK_IN' ? styles.segmentActive : styles.segment} onClick={() => { deliveryChoiceTouchedRef.current = true; setCustomerMode('WALK_IN'); markDirty(); }}>Khách vãng lai</button>
               {props.canQuickCreateCustomer && <button type="button" className={styles.linkButton} onClick={() => setQuickOpen((value) => !value)}>+ Tạo nhanh khách mới</button>}
             </div>
 
@@ -1370,6 +1371,7 @@ export default function SalesOrderCommercialForm(props: Props) {
 
             <label><span>Kho xuất *</span><select value={warehouseId} onChange={(event) => { setWarehouseId(event.target.value); markDirty(); }}><option value="">Chọn kho</option>{props.warehouses.filter((item) => item.is_active).map((item) => <option key={item.id} value={item.id}>{item.code} — {item.name}</option>)}</select></label>
             <label><span>Hình thức giao nhận</span><select value={deliveryChoice} disabled={customerMode === 'WALK_IN'} onChange={(event) => {
+              deliveryChoiceTouchedRef.current = true;
               const value = event.target.value;
               if (value === 'PICKUP') {
                 setDeliveryMode('PICKUP');
