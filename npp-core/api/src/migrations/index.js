@@ -102,6 +102,9 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({ id: '118_sales_order_employee_visibility', sql: sql('shared/118_sales_order_employee_visibility.sql') }),
   Object.freeze({ id: '119_retail_print_agent', sql: sql('shared/119_retail_print_agent.sql') }),
   Object.freeze({ id: '120_reporting_sales_dimension_snapshots', sql: sql('sales/120_reporting_sales_dimension_snapshots.sql') }),
+  migration('121_user_preferences', 'shared/121_user_preferences.sql'),
+  migration('122_sales_order_optional_destination', 'sales/122_sales_order_optional_destination.sql'),
+  migration('123_logistics_order_destination_stop', 'logistics/123_logistics_order_destination_stop.sql'),
 ]);
 
 export { runMigrations };

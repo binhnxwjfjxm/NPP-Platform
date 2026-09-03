@@ -3,6 +3,7 @@ export type SalesOrderVersionStatus = 'draft' | 'confirmed' | 'superseded' | 'ca
 export type SalesOrderCollectionPolicy = 'PREPAID' | 'COLLECT_ON_DELIVERY' | 'COLLECT_AFTER_DELIVERY' | 'CREDIT_TERMS';
 export type SalesOrderDeliveryMode = 'DELIVERY' | 'PICKUP';
 export type SalesOrderDeliveryExecutionMode = 'TRIP' | 'MANUAL';
+export type SalesOrderDeliveryChoice = SalesOrderDeliveryExecutionMode | 'PICKUP';
 export type SalesOrderSourceType = 'MANUAL' | 'IMPORT' | 'API' | 'MCP';
 export type SalesOrderCustomerMode = 'EXISTING' | 'WALK_IN';
 export type SalesOrderTaxMode = 'EXCLUSIVE' | 'INCLUSIVE';
@@ -298,6 +299,24 @@ export type SalesOrderLineDraft = {
   note?: string;
 };
 
+export type SalesOrderDeliveryAddressDraft = {
+  label?: string;
+  recipientName?: string;
+  phone?: string;
+  addressLine1: string;
+  addressLine2?: string;
+  ward?: string;
+  district?: string;
+  province?: string;
+  postalCode?: string;
+  countryCode?: string;
+};
+
+export type SalesOrderEntryDefaultsDraft = {
+  warehouseId: string | null;
+  deliveryChoice: SalesOrderDeliveryChoice | null;
+};
+
 export type SalesOrderDraftPayload = {
   sourceType?: SalesOrderSourceType;
   sourceId?: string;
@@ -307,6 +326,8 @@ export type SalesOrderDraftPayload = {
   walkInDisplayName?: string;
   walkInPhone?: string;
   customerAddressId?: string;
+  deliveryAddress?: SalesOrderDeliveryAddressDraft;
+  entryDefaults?: SalesOrderEntryDefaultsDraft;
   warehouseId: string;
   salesChannelId: string;
   pricingAt?: string;
@@ -332,9 +353,13 @@ export type SalesOrderEntrySettings = {
   salesChannels: SalesOrderChannel[];
   defaultSalesChannelId: string | null;
   defaultWarehouseId: string | null;
+  defaultDeliveryChoice: SalesOrderDeliveryChoice;
+  savedWarehouseId: string | null;
+  savedDeliveryChoice: SalesOrderDeliveryChoice | null;
   permissions: {
     canPriceOverride: boolean;
     canDiscountOverride: boolean;
     canConfirm: boolean;
+    canNegativeStockIssue?: boolean;
   };
 };
