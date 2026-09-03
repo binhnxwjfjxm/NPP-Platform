@@ -847,6 +847,7 @@ export default function SalesOrderCommercialForm(props: Props) {
       return onError('Hàng này đã có trong đơn. Dùng Tách dòng nếu cần thêm dòng riêng.');
     }
     const pending: LineDraft = {
+      clientLineId: crypto.randomUUID(),
       productId: option.productId,
       variantId: option.id,
       sku: option.sku,
