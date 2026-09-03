@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { auditOutboxEffect, combineAuditOutboxEffects } from './audit-outbox-effects.js';
 
 const SECRET_KEY_PATTERN = /(?:secret|token|password|passphrase|db_?url|database_?url|connection_?string|api_?key|auth_?token|private_?key)/i;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -251,6 +252,10 @@ function createTrackedClient(client, writeState) {
       if (normalizedSql.startsWith('insert into shared.core_outbox_events')) writeState.outboxCount += 1;
       return result;
     },
+    registerAuditOutboxEffect: (effect) => {
+      writeState.registeredEffect = combineAuditOutboxEffects(writeState.registeredEffect, effect);
+      return writeState.registeredEffect;
+    },
   });
 }
 
@@ -268,7 +273,12 @@ export async function withAuditOutboxTransaction({ adapter, mutate }) {
   if (typeof mutate !== 'function') throw new Error('invalid_mutation_callback');
 
   const client = await adapter.connect();
-  const writeState = { writeCount: 0, auditCount: 0, outboxCount: 0 };
+  const writeState = {
+    writeCount: 0,
+    auditCount: 0,
+    outboxCount: 0,
+    registeredEffect: auditOutboxEffect(),
+  };
   const trackedClient = createTrackedClient(client, writeState);
   let destroyClient = false;
   const stopObservingClientErrors = observeCheckedOutClientErrors(client, (error) => {
@@ -305,15 +315,27 @@ export async function withAuditOutboxTransaction({ adapter, mutate }) {
         && result?.expectedAuditCount !== null;
       const explicitOutboxCount = result?.expectedOutboxCount !== undefined
         && result?.expectedOutboxCount !== null;
+      const defaultAuditCount = expectedCount(
+        1 + writeState.registeredEffect.auditRecords,
+        1,
+        1,
+        'invalid_expected_audit_count',
+      );
+      const defaultOutboxCount = expectedCount(
+        (expectsOutbox ? 1 : 0) + writeState.registeredEffect.outboxEvents,
+        expectsOutbox ? 1 : 0,
+        0,
+        'invalid_expected_outbox_count',
+      );
       const requiredAuditCount = expectedCount(
         result?.expectedAuditCount,
-        1,
+        defaultAuditCount,
         1,
         'invalid_expected_audit_count',
       );
       const requiredOutboxCount = expectedCount(
         result?.expectedOutboxCount,
-        expectsOutbox ? 1 : 0,
+        defaultOutboxCount,
         0,
         'invalid_expected_outbox_count',
       );

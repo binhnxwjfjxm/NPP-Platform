@@ -1,3 +1,4 @@
+import { auditOutboxEffect } from '../audit-outbox-effects.js';
 import { buildAuditRecord, insertAuditRecord } from '../audit-outbox.js';
 import * as legacy from './sales-order-entry-legacy.js';
 import * as commercialRepository from '../db/repositories/sales-order-commercial.js';
@@ -162,6 +163,9 @@ async function persistEntryDefaults(client, { requestContext, input }) {
     });
   }
 
+  if (typeof client?.registerAuditOutboxEffect === 'function') {
+    client.registerAuditOutboxEffect(auditOutboxEffect(1, 0));
+  }
   await insertAuditRecord(client, buildAuditRecord({
     requestContext,
     action: 'sales.order_entry_defaults.update',
