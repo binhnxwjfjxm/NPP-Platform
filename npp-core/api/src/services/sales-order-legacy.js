@@ -477,8 +477,6 @@ async function validateHeader(client, { requestContext, payload, fixedSource = n
       customerAddressSnapshot = addressSnapshot(address);
     } else if (directAddress.snapshot) {
       customerAddressSnapshot = directAddress.snapshot;
-    } else if (deliveryExecutionMode === 'TRIP') {
-      return failure('DELIVERY_DESTINATION_REQUIRED', 'Hãy chọn hoặc nhập địa chỉ giao hàng cho đơn giao theo chuyến.');
     }
   } else if (payload?.customerAddressId || directAddress.snapshot) {
     return failure('PICKUP_ADDRESS_NOT_ALLOWED', 'Pickup orders do not use a customer delivery address');
