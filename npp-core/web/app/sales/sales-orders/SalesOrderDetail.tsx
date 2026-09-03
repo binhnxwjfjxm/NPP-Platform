@@ -172,14 +172,14 @@ export default function SalesOrderDetail(props: Props) {
           </div>
           <div className={styles.linesTable} data-testid="sales-order-stock-observation">
             <div className={styles.lineHeader} style={lineGrid}>
-              <span>STT</span><span>SKU</span><span>SL</span><span>Tồn thực tế</span><span>Đơn khác đang giữ</span><span>Khả dụng cho đơn này</span><span>Đơn giá</span><span>Thành tiền</span>
+              <span>STT</span><span>Sản phẩm</span><span>SL</span><span>Tồn thực tế</span><span>Đơn khác đang giữ</span><span>Khả dụng cho đơn này</span><span>Đơn giá</span><span>Thành tiền</span>
             </div>
             {(current.lines ?? []).map((line, rowIndex) => {
               const stock = stockBySalesOrderLineId.get(line.id);
               return (
                 <div className={styles.lineRow} style={lineGrid} key={line.id}>
                   <BusinessSequenceNumber rowIndex={rowIndex} className={styles.lineSequence} />
-                  <span><b>{line.sku}</b><small>{line.itemName}</small></span>
+                  <span><b>{line.itemName}</b></span>
                   <span>{formatQuantity(line.quantity)} {line.unitCode}</span>
                   <span>{stockValue(stock, stock?.warehouseOnHandBaseQuantity)}</span>
                   <span>

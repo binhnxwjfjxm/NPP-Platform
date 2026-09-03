@@ -56,7 +56,6 @@
   grid-column: 1 / -1;
 }
 
-
 .formSection {
   display: grid;
   gap: 3px;
@@ -136,7 +135,24 @@
 
 .code {
   font-family: var(--font-mono), monospace;
+  font-weight: 650;
+}
+
+strong.code {
+  order: 2;
+  color: #776e68;
+  font-size: 0.72rem;
+}
+
+strong.code + span {
+  order: 1;
+  color: #302a26;
+  font-size: 0.84rem;
   font-weight: 750;
+}
+
+strong.code + span + span {
+  order: 3;
 }
 
 .modalWide {
@@ -196,7 +212,6 @@
     grid-column: 1 / -1;
   }
 }
-
 
 .addressReferenceError {
   grid-column: 1 / -1;

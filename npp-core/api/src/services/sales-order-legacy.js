@@ -11,6 +11,7 @@ const MONEY_PATTERN = /^(?:0|[1-9]\d{0,18})$/;
 const SOURCE_TYPES = new Set(['MANUAL', 'IMPORT', 'API', 'MCP']);
 const COLLECTION_POLICIES = new Set(['PREPAID', 'COLLECT_ON_DELIVERY', 'COLLECT_AFTER_DELIVERY', 'CREDIT_TERMS']);
 const DELIVERY_MODES = new Set(['DELIVERY', 'PICKUP']);
+const DELIVERY_EXECUTION_MODES = new Set(['TRIP', 'MANUAL']);
 const CUSTOMER_MODES = new Set(['EXISTING', 'WALK_IN']);
 const TAX_MODES = new Set(['EXCLUSIVE', 'INCLUSIVE']);
 const DISCOUNT_MODES = new Set(['TOTAL_AMOUNT', 'PER_UNIT', 'PERCENT']);
@@ -161,6 +162,53 @@ function addressSnapshot(address) {
     postalCode: address.postal_code ?? null,
     countryCode: address.country_code,
   };
+}
+
+function directDeliveryAddressSnapshot(value, customer) {
+  if (value === undefined || value === null) return Object.freeze({ ok: true, snapshot: null });
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return failure('INVALID_DELIVERY_DESTINATION', 'Địa chỉ giao riêng của đơn không hợp lệ.');
+  }
+  const addressLine1 = text(value.addressLine1, 500, true);
+  if (!addressLine1) {
+    return failure('DELIVERY_DESTINATION_REQUIRED', 'Hãy nhập địa chỉ giao hàng cho đơn.');
+  }
+  const optionalFields = [
+    ['label', 128],
+    ['recipientName', 256],
+    ['phone', 64],
+    ['addressLine2', 500],
+    ['ward', 256],
+    ['district', 256],
+    ['province', 256],
+    ['postalCode', 32],
+    ['countryCode', 2],
+  ];
+  for (const [field, maxLength] of optionalFields) {
+    const raw = value[field];
+    if (raw !== undefined && raw !== null && String(raw).trim() && text(raw, maxLength, false) === null) {
+      return failure('INVALID_DELIVERY_DESTINATION', 'Thông tin địa chỉ giao riêng của đơn vượt giới hạn cho phép.', false, { field });
+    }
+  }
+  const countryCode = String(value.countryCode ?? 'VN').trim().toUpperCase() || 'VN';
+  if (!/^[A-Z]{2}$/.test(countryCode)) {
+    return failure('INVALID_DELIVERY_DESTINATION', 'Mã quốc gia của địa chỉ giao hàng không hợp lệ.');
+  }
+  return Object.freeze({
+    ok: true,
+    snapshot: Object.freeze({
+      label: text(value.label, 128, false) ?? 'Địa chỉ giao theo đơn',
+      recipientName: text(value.recipientName, 256, false) ?? customer?.name ?? null,
+      phone: text(value.phone, 64, false) ?? customer?.phone ?? null,
+      addressLine1,
+      addressLine2: text(value.addressLine2, 500, false),
+      ward: text(value.ward, 256, false),
+      district: text(value.district, 256, false),
+      province: text(value.province, 256, false),
+      postalCode: text(value.postalCode, 32, false),
+      countryCode,
+    }),
+  });
 }
 
 function mapLine(line) {
@@ -372,6 +420,12 @@ async function validateHeader(client, { requestContext, payload, fixedSource = n
   if (!CUSTOMER_MODES.has(customerMode)) return failure('INVALID_CUSTOMER_MODE', 'Customer mode is invalid');
   const deliveryMode = String(payload?.deliveryMode ?? 'DELIVERY').trim().toUpperCase();
   if (!DELIVERY_MODES.has(deliveryMode)) return failure('INVALID_DELIVERY_MODE', 'Delivery mode is invalid');
+  const deliveryExecutionMode = deliveryMode === 'DELIVERY'
+    ? String(payload?.deliveryExecutionMode ?? 'TRIP').trim().toUpperCase()
+    : null;
+  if (deliveryMode === 'DELIVERY' && !DELIVERY_EXECUTION_MODES.has(deliveryExecutionMode)) {
+    return failure('INVALID_DELIVERY_EXECUTION_MODE', 'Hình thức giao nhận không hợp lệ.');
+  }
   const collectionPolicy = String(payload?.collectionPolicy ?? 'COLLECT_ON_DELIVERY').trim().toUpperCase();
   if (!COLLECTION_POLICIES.has(collectionPolicy)) return failure('INVALID_COLLECTION_POLICY', 'Collection policy is invalid');
   const currencyCode = String(payload?.currency ?? 'VND').trim().toUpperCase();
@@ -407,13 +461,26 @@ async function validateHeader(client, { requestContext, payload, fixedSource = n
   if (!warehouse.is_active) return failure('WAREHOUSE_INACTIVE', 'Warehouse is inactive');
 
   let address = null;
+  let customerAddressSnapshot = null;
+  const directAddress = directDeliveryAddressSnapshot(payload?.deliveryAddress, customer);
+  if (!directAddress.ok) return directAddress;
   if (deliveryMode === 'DELIVERY') {
-    if (!isUuid(payload?.customerAddressId)) return failure('CUSTOMER_ADDRESS_NOT_FOUND', 'Active customer delivery address is required');
-    address = await repository.getCustomerAddress(client, { installationId: requestContext.installationId, id: payload.customerAddressId });
-    if (!address) return failure('CUSTOMER_ADDRESS_NOT_FOUND', 'Customer address not found');
-    if (!address.is_active) return failure('CUSTOMER_ADDRESS_INACTIVE', 'Customer address is inactive');
-    if (address.customer_id !== customer.id) return failure('CUSTOMER_ADDRESS_MISMATCH', 'Customer address does not belong to the selected customer');
-  } else if (payload?.customerAddressId) {
+    if (payload?.customerAddressId && directAddress.snapshot) {
+      return failure('DELIVERY_DESTINATION_CONFLICT', 'Chỉ chọn địa chỉ đã lưu hoặc nhập địa chỉ riêng cho đơn.');
+    }
+    if (payload?.customerAddressId) {
+      if (!isUuid(payload.customerAddressId)) return failure('CUSTOMER_ADDRESS_NOT_FOUND', 'Customer address not found');
+      address = await repository.getCustomerAddress(client, { installationId: requestContext.installationId, id: payload.customerAddressId });
+      if (!address) return failure('CUSTOMER_ADDRESS_NOT_FOUND', 'Customer address not found');
+      if (!address.is_active) return failure('CUSTOMER_ADDRESS_INACTIVE', 'Customer address is inactive');
+      if (address.customer_id !== customer.id) return failure('CUSTOMER_ADDRESS_MISMATCH', 'Customer address does not belong to the selected customer');
+      customerAddressSnapshot = addressSnapshot(address);
+    } else if (directAddress.snapshot) {
+      customerAddressSnapshot = directAddress.snapshot;
+    } else if (deliveryExecutionMode === 'TRIP') {
+      return failure('DELIVERY_DESTINATION_REQUIRED', 'Hãy chọn hoặc nhập địa chỉ giao hàng cho đơn giao theo chuyến.');
+    }
+  } else if (payload?.customerAddressId || directAddress.snapshot) {
     return failure('PICKUP_ADDRESS_NOT_ALLOWED', 'Pickup orders do not use a customer delivery address');
   }
 
@@ -437,8 +504,10 @@ async function validateHeader(client, { requestContext, payload, fixedSource = n
     walkInDisplayName,
     walkInPhone,
     address,
+    customerAddressSnapshot,
     warehouse,
     deliveryMode,
+    deliveryExecutionMode,
     collectionPolicy,
     currencyCode,
     requestedDeliveryDate,
@@ -632,7 +701,7 @@ function versionData({ requestContext, salesOrderId, versionNumber, prepared, am
     walkInDisplayName: prepared.header.walkInDisplayName,
     walkInPhone: prepared.header.walkInPhone,
     customerAddressId: prepared.header.address?.id ?? null,
-    customerAddressSnapshot: addressSnapshot(prepared.header.address),
+    customerAddressSnapshot: prepared.header.customerAddressSnapshot,
     warehouseId: prepared.header.warehouse.id,
     warehouseCode: prepared.header.warehouse.code,
     warehouseName: prepared.header.warehouse.name,
