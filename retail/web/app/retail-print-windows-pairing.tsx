@@ -10,13 +10,14 @@ import {
 type Props = {
   onNotice(message: string): void;
   onError(message: string): void;
+  onPaired(agent: RetailPrintAgent): void;
 };
 
 function statusLabel(agent: RetailPrintAgent) {
   return agent.status === 'ONLINE' ? 'Đang trực tuyến' : 'Đang ngoại tuyến';
 }
 
-export function RetailPrintWindowsPairing({ onNotice, onError }: Props) {
+export function RetailPrintWindowsPairing({ onNotice, onError, onPaired }: Props) {
   const [agents, setAgents] = useState<RetailPrintAgent[]>([]);
   const [pairingCode, setPairingCode] = useState('');
   const [loading, setLoading] = useState(true);
@@ -48,7 +49,8 @@ export function RetailPrintWindowsPairing({ onNotice, onError }: Props) {
       const agent = await pairRetailPrintAgent(code);
       setPairingCode('');
       setAgents((current) => [agent, ...current.filter((item) => item.id !== agent.id)]);
-      onNotice(`${agent.name} đã kết nối với Retail. Mã này vẫn dùng được trên các điện thoại Retail khác.`);
+      onPaired(agent);
+      onNotice(`${agent.name} đã kết nối với điện thoại này. Mã vẫn dùng được trên các điện thoại Retail khác.`);
     } catch (reason) {
       onError(reason instanceof Error ? reason.message : 'Không thể kết nối Retail Print.');
     } finally {

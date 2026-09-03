@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import '../lib/retail-print-web-bridge';
 import { RetailPrintWindowsPairing } from './retail-print-windows-pairing';
+import type { RetailPrintAgent } from '../lib/retail-print-agent';
 import {
   DEFAULT_PRINTER_SETTINGS,
   buildPrinterTestPayload,
@@ -88,6 +89,27 @@ function manualProfile(host: string, port: number, paper: PrinterPaper): Printer
   };
 }
 
+function windowsProfile(agent: RetailPrintAgent, currentPaper: PrinterPaper): PrinterProfile {
+  const paper: PrinterPaper = agent.paperWidthMm === 58
+    ? '58mm'
+    : agent.paperWidthMm === 80
+      ? '80mm'
+      : currentPaper === '58mm'
+        ? '58mm'
+        : '80mm';
+  return {
+    id: `windows-agent:${agent.id}`,
+    name: agent.printerName ? `${agent.name} · ${agent.printerName}` : agent.name,
+    connectionType: 'LAN',
+    protocol: 'ESC_POS',
+    host: null,
+    port: null,
+    paper,
+    lastVerifiedAt: agent.lastSeenAt ?? null,
+    lastVerifiedStatus: agent.status === 'ONLINE' ? 'READY' : 'OFFLINE',
+  };
+}
+
 export function PrinterSettingsPanel({ initialSettings, onSaved, onClose, onNotice, onError }: Props) {
   const [draft, setDraft] = useState<PrinterSettings>(initialSettings ?? DEFAULT_PRINTER_SETTINGS);
   const [capabilities, setCapabilities] = useState<PrinterBridgeCapabilities>(defaultCapabilities);
@@ -169,6 +191,14 @@ export function PrinterSettingsPanel({ initialSettings, onSaved, onClose, onNoti
     setDraft((current) => ({ ...current, method: 'DIRECT_WIFI', profile: next }));
     setHost('');
     setPort(next.port ?? 9100);
+  }
+
+  function bindWindowsAgent(agent: RetailPrintAgent) {
+    const profile = windowsProfile(agent, draft.paper);
+    setDraft((current) => ({ ...current, method: 'DIRECT_WIFI', paper: profile.paper, profile }));
+    setFound((current) => [profile, ...current.filter((item) => item.id !== profile.id)]);
+    setHost('');
+    setPort(9100);
   }
 
   function useManualHost(value: string) {
@@ -267,7 +297,7 @@ export function PrinterSettingsPanel({ initialSettings, onSaved, onClose, onNoti
       {directHelpOpen && !directReady ? <div className="printer-web-help" role="status"><strong>In Wi‑Fi trực tiếp cần ứng dụng Retail trên điện thoại</strong><p>Bản web không thể kết nối trực tiếp tới máy in trong mạng nội bộ. Vì vậy phần nhập địa chỉ máy in và Tìm máy in chỉ mở trong ứng dụng Retail trên điện thoại. Để test ngay trên bản web, chọn In bằng hệ thống → 80 mm hoặc 58 mm → In thử.</p></div> : null}
     </section>
 
-    {windowsRelay ? <RetailPrintWindowsPairing onNotice={onNotice} onError={onError} /> : null}
+    {windowsRelay ? <RetailPrintWindowsPairing onNotice={onNotice} onError={onError} onPaired={bindWindowsAgent} /> : null}
 
     {draft.method === 'DIRECT_WIFI' ? <section className="printer-setting-section">
       <header><strong>Máy in Wi‑Fi/LAN</strong><small>{windowsRelay ? 'Retail Print trên Windows và máy in cần ở cùng mạng.' : 'Điện thoại và máy in cần ở cùng mạng.'}</small></header>
