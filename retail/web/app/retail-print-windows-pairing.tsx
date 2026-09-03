@@ -60,7 +60,7 @@ export function RetailPrintWindowsPairing({ onNotice, onError }: Props) {
   return <section className="printer-setting-section">
     <header>
       <strong>Retail Print trên Windows</strong>
-      <small>Máy Windows nhận lệnh in từ Retail và gửi tới máy in trong mạng nội bộ.</small>
+      <small>Máy Windows nhận lệnh in từ Retail và gửi tới máy in đã thiết lập.</small>
     </header>
     <div className="printer-advanced">
       <label>Mã kết nối
