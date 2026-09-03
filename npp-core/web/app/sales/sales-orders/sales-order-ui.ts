@@ -167,9 +167,12 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
   if (!response.ok || !payload || !Object.prototype.hasOwnProperty.call(payload, 'data')) {
     const code = payload?.error?.code ?? 'SALES_ORDER_REQUEST_FAILED';
     const priceChangedConfirm = code === 'SALES_PRICE_CHANGED' && isConfirm(path, requestMethod);
+    const message = code === 'IDEMPOTENCY_PAYLOAD_MISMATCH'
+      ? 'Nội dung đơn đã thay đổi. Hãy lưu lại để hệ thống tạo yêu cầu mới.'
+      : payload?.error?.message ?? 'Yêu cầu bán hàng không thành công';
     throw new SalesOrderUiError(
       code,
-      payload?.error?.message ?? 'Yêu cầu bán hàng không thành công',
+      message,
       payload?.error?.retryable === true || response.status >= 500 || priceChangedConfirm,
       payload?.error?.details ?? {},
       response.status,

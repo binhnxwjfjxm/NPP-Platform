@@ -24,13 +24,19 @@ test('user preference migration keeps preferences installation and user scoped',
   assert.match(migration, /preference_key ~ '\^\[A-Za-z0-9\._-\]\+\$'/);
 });
 
-test('sales order address is optional after migration 124 while saved addresses remain valid metadata', async () => {
-  const migration = await read('sales/124_sales_order_address_optional.sql');
-  assert.match(migration, /CREATE OR REPLACE FUNCTION sales\.guard_sales_order_version_confirmation/);
-  assert.doesNotMatch(migration, /delivery_execution_mode = 'TRIP'/);
-  assert.match(migration, /NEW\.customer_address_id IS NULL[\s\S]*NEW\.customer_address_snapshot IS NOT NULL/);
-  assert.match(migration, /delivery_orders_mode_shape/);
-  assert.match(migration, /handover_mode = 'DELIVERY'/);
+test('sales order address is optional while saved addresses remain valid metadata', async () => {
+  const [addressMigration, headerShapeMigration] = await Promise.all([
+    read('sales/124_sales_order_address_optional.sql'),
+    read('sales/125_sales_order_address_optional_shape.sql'),
+  ]);
+  assert.match(addressMigration, /CREATE OR REPLACE FUNCTION sales\.guard_sales_order_version_confirmation/);
+  assert.doesNotMatch(addressMigration, /delivery_execution_mode = 'TRIP'/);
+  assert.match(addressMigration, /NEW\.customer_address_id IS NULL[\s\S]*NEW\.customer_address_snapshot IS NOT NULL/);
+  assert.match(addressMigration, /delivery_orders_mode_shape/);
+  assert.match(addressMigration, /handover_mode = 'DELIVERY'/);
+  assert.match(headerShapeMigration, /DROP CONSTRAINT IF EXISTS sales_orders_delivery_shape_check/);
+  assert.match(headerShapeMigration, /delivery_mode = 'DELIVERY' AND delivery_status <> 'not_required'/);
+  assert.doesNotMatch(headerShapeMigration, /customer_address_id IS NOT NULL/);
 });
 
 test('trip stops keep customer address identity optional', async () => {
