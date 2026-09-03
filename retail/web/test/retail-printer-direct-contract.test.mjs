@@ -26,7 +26,9 @@ test('Retail giữ cấu hình máy in trên thiết bị và thêm Retail Print
   assert.match(webBridge, /host: null/);
   assert.match(webBridge, /port: null/);
   assert.doesNotMatch(webBridge, /profile\?\.host|profile\.host|profile\?\.port|profile\.port|192\.168\./);
-  assert.match(pairing, /Làm mới danh sách/);
+  assert.match(pairing, /Mã trên máy Windows là cố định/);
+  assert.match(pairing, /Mã không mất sau khi kết nối/);
+  assert.doesNotMatch(pairing, /Làm mới danh sách|Mã chỉ dùng một lần|tự hết hạn/);
   assert.match(pairing, /Mã kết nối/);
   assert.match(panel, /Địa chỉ máy in/);
   assert.match(panel, /capabilities\.manualIp/);
@@ -49,7 +51,9 @@ test('thiết lập in web hỗ trợ Retail Print Windows và vẫn cho test h�
   assert.doesNotMatch(directButton, /aria-disabled/);
   assert.doesNotMatch(directButton, /\sdisabled=/);
   assert.match(panel, /Retail Print trên Windows/);
-  assert.match(pairing, /Mở Retail Print trên Windows → Lấy mã → nhập mã vào đây/);
+  assert.match(pairing, /Nhập mã cố định 8 ký tự của máy Windows/);
+  assert.match(pairing, /Điện thoại Retail nào cũng nhập cùng mã này để kết nối đúng máy đó/);
+  assert.doesNotMatch(pairing, /Lấy mã/);
   assert.match(panel, /<option value="A4">A4<\/option><option value="A5">A5<\/option><option value="80mm">80 mm<\/option><option value="58mm">58 mm<\/option>/);
   assert.match(panel, /A4, A5, 80 mm và 58 mm đều dùng được để định dạng phiếu trên bản web/);
   assert.doesNotMatch(panel, /function systemPaper/);
