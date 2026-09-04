@@ -15,11 +15,32 @@ test('sales order create form keeps account defaults compact beside warehouse an
   assert.match(form, /width: 14/);
   assert.match(form, /Dùng làm mặc định/);
   assert.match(form, /settings\.defaultDeliveryChoice/);
-  assert.match(form, /entryDefaults:/);
+  assert.match(form, /entrySettingsUpdatePayload\(\)/);
+  assert.match(form, /apiRequest<SalesOrderEntrySettings>\('\/api\/sales-orders\/entry-settings'/);
+  assert.match(form, /method: 'PUT'/);
+  assert.match(form, /'Idempotency-Key': entrySettingsKey/);
   assert.match(form, /entrySettings\?\.savedWarehouseId/);
   assert.match(form, /entrySettings\?\.savedDeliveryChoice/);
+  assert.doesNotMatch(form, /entryDefaults:/);
+  assert.doesNotMatch(types, /entryDefaults\?:/);
+  assert.match(types, /export type SalesOrderEntrySettingsUpdate/);
   assert.match(types, /defaultDeliveryChoice: SalesOrderDeliveryChoice/);
   assert.match(types, /savedWarehouseId: string \| null/);
+});
+
+test('sales order is persisted before optional entry settings and settings failure cannot fail the order', async () => {
+  const form = await read('app/sales/sales-orders/SalesOrderCommercialForm.tsx');
+  const orderSaveIndex = form.indexOf('savedOrder = await apiRequest<SalesOrder>(path');
+  const confirmIndex = form.indexOf('savedOrder = await apiRequest<SalesOrder>(confirmPath');
+  const settingsIndex = form.indexOf("apiRequest<SalesOrderEntrySettings>('/api/sales-orders/entry-settings'");
+  const savedCallbackIndex = form.indexOf('props.onSaved(savedOrder)');
+
+  assert.ok(orderSaveIndex >= 0);
+  assert.ok(settingsIndex > orderSaveIndex);
+  assert.ok(confirmIndex < 0 || settingsIndex > confirmIndex);
+  assert.ok(savedCallbackIndex > settingsIndex);
+  assert.match(form, /try \{[\s\S]*updatedSettings = await apiRequest<SalesOrderEntrySettings>[\s\S]*\} catch \(settingsError\) \{/);
+  assert.match(form, /Đơn đã lưu thành công nhưng chưa lưu được lựa chọn mặc định/);
 });
 
 test('delivery address is optional and the order form does not add a separate one-off address field', async () => {
