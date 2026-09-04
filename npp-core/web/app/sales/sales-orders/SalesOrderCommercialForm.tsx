@@ -16,6 +16,7 @@ import type {
   SalesOrderDocumentDiscountMode,
   SalesOrderDraftPayload,
   SalesOrderEntrySettings,
+  SalesOrderEntrySettingsUpdate,
   SalesOrderLineDiscountMode,
   SalesOrderSkuSearchOption,
   SalesOrderSkuSearchPreview,
@@ -377,6 +378,7 @@ export default function SalesOrderCommercialForm(props: Props) {
   const initialWalkIn = version?.customerMode === 'WALK_IN';
   const [saveKey, setSaveKey] = useState(() => mutationKey(`sales-${props.mode}-save`));
   const [confirmKey, setConfirmKey] = useState(() => mutationKey(`sales-${props.mode}-confirm`));
+  const [entrySettingsKey, setEntrySettingsKey] = useState(() => mutationKey('sales-entry-settings-update'));
   const [quickCustomerKey, setQuickCustomerKey] = useState(() => mutationKey('sales-quick-customer'));
   const [entrySettings, setEntrySettings] = useState<SalesOrderEntrySettings | null>(null);
   const [pricingAt, setPricingAt] = useState(() => new Date().toISOString());
@@ -495,6 +497,7 @@ export default function SalesOrderCommercialForm(props: Props) {
     setPricingMismatch(null);
     setSaveKey(mutationKey(`sales-${props.mode}-save`));
     setConfirmKey(mutationKey(`sales-${props.mode}-confirm`));
+    setEntrySettingsKey(mutationKey('sales-entry-settings-update'));
     onError('');
   }, [onError, props.mode]);
 
@@ -1156,8 +1159,15 @@ export default function SalesOrderCommercialForm(props: Props) {
     return null;
   }
 
+  function entrySettingsUpdatePayload(): SalesOrderEntrySettingsUpdate | null {
+    if (props.mode !== 'create' || (!rememberWarehouse && !rememberDeliveryChoice)) return null;
+    return {
+      warehouseId: rememberWarehouse ? warehouseId : (entrySettings?.savedWarehouseId ?? null),
+      deliveryChoice: rememberDeliveryChoice ? deliveryChoice : (entrySettings?.savedDeliveryChoice ?? null),
+    };
+  }
+
   function payload(): SalesOrderDraftPayload {
-    const shouldPersistEntryDefaults = props.mode === 'create' && (rememberWarehouse || rememberDeliveryChoice);
     return {
       sourceType: 'MANUAL',
       customerMode,
@@ -1173,12 +1183,6 @@ export default function SalesOrderCommercialForm(props: Props) {
           phone: selectedCustomer?.phone ?? undefined,
           addressLine1: deliveryAddressLine1.trim(),
           countryCode: 'VN',
-        },
-      } : {}),
-      ...(shouldPersistEntryDefaults ? {
-        entryDefaults: {
-          warehouseId: rememberWarehouse ? warehouseId : (entrySettings?.savedWarehouseId ?? null),
-          deliveryChoice: rememberDeliveryChoice ? deliveryChoice : (entrySettings?.savedDeliveryChoice ?? null),
         },
       } : {}),
       warehouseId,
@@ -1217,6 +1221,7 @@ export default function SalesOrderCommercialForm(props: Props) {
     if (issue) return onError(issue);
     setBusy(true);
     let savedOrder: SalesOrder | null = null;
+    let settingsWarning: string | null = null;
     try {
       let path = '/api/sales-orders';
       let method = 'POST';
@@ -1259,7 +1264,28 @@ export default function SalesOrderCommercialForm(props: Props) {
         });
         committedDraftRef.current = null;
       }
+
+      const settingsPayload = entrySettingsUpdatePayload();
+      if (settingsPayload) {
+        try {
+          const updatedSettings = await apiRequest<SalesOrderEntrySettings>('/api/sales-orders/entry-settings', {
+            method: 'PUT',
+            headers: { 'Idempotency-Key': entrySettingsKey },
+            body: JSON.stringify(settingsPayload),
+          });
+          setEntrySettings(updatedSettings);
+          setEntrySettingsKey(mutationKey('sales-entry-settings-update'));
+        } catch (settingsError) {
+          settingsWarning = settingsError instanceof Error
+            ? settingsError.message
+            : 'Chưa lưu được lựa chọn mặc định.';
+        }
+      }
+
       setDirty(false);
+      if (settingsWarning) {
+        onError(`Đơn đã lưu thành công nhưng chưa lưu được lựa chọn mặc định. ${settingsWarning}`);
+      }
       props.onSaved(savedOrder);
     } catch (error) {
       if (error instanceof SalesOrderUiError && error.code === 'SALES_PRICE_CHANGED') {
@@ -1373,7 +1399,7 @@ export default function SalesOrderCommercialForm(props: Props) {
               <label><span>Kho xuất *</span><select value={warehouseId} onChange={(event) => { setWarehouseId(event.target.value); markDirty(); }}><option value="">Chọn kho</option>{props.warehouses.filter((item) => item.is_active).map((item) => <option key={item.id} value={item.id}>{item.code} — {item.name}</option>)}</select></label>
               {props.mode === 'create' && (
                 <label data-testid="sales-warehouse-default-toggle" style={{ display: 'inline-flex', alignItems: 'center', gap: '.3rem', width: 'max-content', minHeight: 0, fontSize: '.7rem', fontWeight: 650, cursor: 'pointer' }}>
-                  <input type="checkbox" checked={rememberWarehouse} onChange={(event) => setRememberWarehouse(event.currentTarget.checked)} style={{ width: 14, minWidth: 14, height: 14, minHeight: 14, margin: 0, padding: 0 }} />
+                  <input type="checkbox" checked={rememberWarehouse} onChange={(event) => { setRememberWarehouse(event.currentTarget.checked); setEntrySettingsKey(mutationKey('sales-entry-settings-update')); }} style={{ width: 14, minWidth: 14, height: 14, minHeight: 14, margin: 0, padding: 0 }} />
                   <span style={{ fontSize: '.7rem', fontWeight: 650 }}>Dùng làm mặc định</span>
                 </label>
               )}
@@ -1393,7 +1419,7 @@ export default function SalesOrderCommercialForm(props: Props) {
               }}><option value="TRIP">Giao theo chuyến</option><option value="MANUAL">Giao thủ công</option><option value="PICKUP">Giao tại quầy</option></select></label>
               {props.mode === 'create' && (
                 <label data-testid="sales-delivery-default-toggle" style={{ display: 'inline-flex', alignItems: 'center', gap: '.3rem', width: 'max-content', minHeight: 0, fontSize: '.7rem', fontWeight: 650, cursor: 'pointer' }}>
-                  <input type="checkbox" checked={rememberDeliveryChoice} onChange={(event) => setRememberDeliveryChoice(event.currentTarget.checked)} style={{ width: 14, minWidth: 14, height: 14, minHeight: 14, margin: 0, padding: 0 }} />
+                  <input type="checkbox" checked={rememberDeliveryChoice} onChange={(event) => { setRememberDeliveryChoice(event.currentTarget.checked); setEntrySettingsKey(mutationKey('sales-entry-settings-update')); }} style={{ width: 14, minWidth: 14, height: 14, minHeight: 14, margin: 0, padding: 0 }} />
                   <span style={{ fontSize: '.7rem', fontWeight: 650 }}>Dùng làm mặc định</span>
                 </label>
               )}

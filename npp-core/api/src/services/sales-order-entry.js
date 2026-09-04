@@ -95,7 +95,6 @@ async function loadEntryDefaults(client, { requestContext, systemDefaultWarehous
 }
 
 async function persistEntryDefaults(client, { requestContext, input }) {
-  if (input === undefined) return Object.freeze({ ok: true });
   const userId = internalUserId(requestContext);
   if (!userId) {
     return failure(
@@ -144,22 +143,24 @@ async function persistEntryDefaults(client, { requestContext, input }) {
     deliveryChoice: normalizedDeliveryChoice(before?.deliveryChoice),
   });
   const nextCanonical = JSON.stringify(next);
-  if (beforeCanonical === nextCanonical) return Object.freeze({ ok: true });
+  const changed = beforeCanonical !== nextCanonical;
 
-  if (!warehouseId && !deliveryChoice) {
-    await userPreferenceRepository.deleteUserPreference(client, {
-      installationId: requestContext.installationId,
-      userId,
-      preferenceKey: ENTRY_DEFAULTS_KEY,
-    });
-  } else {
-    await userPreferenceRepository.upsertUserPreference(client, {
-      installationId: requestContext.installationId,
-      userId,
-      preferenceKey: ENTRY_DEFAULTS_KEY,
-      preferenceValue: next,
-      actorId: requestContext.actorId,
-    });
+  if (changed) {
+    if (!warehouseId && !deliveryChoice) {
+      await userPreferenceRepository.deleteUserPreference(client, {
+        installationId: requestContext.installationId,
+        userId,
+        preferenceKey: ENTRY_DEFAULTS_KEY,
+      });
+    } else {
+      await userPreferenceRepository.upsertUserPreference(client, {
+        installationId: requestContext.installationId,
+        userId,
+        preferenceKey: ENTRY_DEFAULTS_KEY,
+        preferenceValue: next,
+        actorId: requestContext.actorId,
+      });
+    }
   }
 
   await insertAuditRecord(client, buildAuditRecord({
@@ -169,9 +170,9 @@ async function persistEntryDefaults(client, { requestContext, input }) {
     resourceId: userId,
     beforeData: before ?? null,
     afterData: !warehouseId && !deliveryChoice ? null : next,
-    metadata: { preferenceKey: ENTRY_DEFAULTS_KEY },
+    metadata: { preferenceKey: ENTRY_DEFAULTS_KEY, changed },
   }));
-  return Object.freeze({ ok: true });
+  return Object.freeze({ ok: true, changed });
 }
 
 export async function getSalesOrderEntrySettings(client, { requestContext }) {
@@ -223,13 +224,20 @@ export async function getSalesOrderEntrySettings(client, { requestContext }) {
   });
 }
 
+export async function updateSalesOrderEntrySettings(client, { requestContext, input }) {
+  const persisted = await persistEntryDefaults(client, { requestContext, input });
+  if (!persisted.ok) return persisted;
+  const current = await getSalesOrderEntrySettings(client, { requestContext });
+  if (!current.ok) return current;
+  return Object.freeze({ ...current, changed: persisted.changed });
+}
+
 export async function normalizeSalesOrderEntryPayload(client, args) {
   const rawPayload = args.payload && typeof args.payload === 'object' && !Array.isArray(args.payload)
     ? args.payload
     : args.payload;
-  const entryDefaults = rawPayload && typeof rawPayload === 'object'
-    ? rawPayload.entryDefaults
-    : undefined;
+  // Tương thích ngắn hạn với frontend cũ trong lúc rollout: bỏ trường cấu hình người dùng
+  // khỏi nghiệp vụ đơn hàng, tuyệt đối không lưu cấu hình tại transaction của đơn.
   const businessPayload = rawPayload && typeof rawPayload === 'object'
     ? Object.fromEntries(Object.entries(rawPayload).filter(([key]) => key !== 'entryDefaults'))
     : rawPayload;
@@ -289,11 +297,6 @@ export async function normalizeSalesOrderEntryPayload(client, args) {
       'Kênh bán hàng không tồn tại, đã ngưng hoạt động hoặc không thuộc Công Ty',
     );
   }
-  const preferenceResult = await persistEntryDefaults(client, {
-    requestContext: args.requestContext,
-    input: entryDefaults,
-  });
-  if (!preferenceResult.ok) return preferenceResult;
   return Object.freeze({
     ok: true,
     payload: Object.freeze({

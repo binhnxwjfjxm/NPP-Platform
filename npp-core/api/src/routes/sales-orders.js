@@ -303,6 +303,98 @@ async function executeIdempotentMutation(req, res, options, {
   }
 }
 
+async function executeEntrySettingsMutation(req, res, options, { requestContext, payload }) {
+  const keyResult = requireIdempotency(req);
+  if (!keyResult.ok) {
+    sendError(
+      res,
+      apiError(keyResult.code, keyResult.message, {}, false, 400),
+      options.requestId,
+      options.receivedAt,
+    );
+    return;
+  }
+
+  try {
+    const execution = await options.executeRequestWithIdempotency({
+      idempotencyStore: options.idempotencyStore,
+      req,
+      requestContext,
+      requestId: options.requestId,
+      receivedAt: options.receivedAt,
+      route: '/api/sales-orders/entry-settings',
+      payload,
+      onProcess: async () => {
+        const transaction = await withAuditOutboxTransaction({
+          adapter: options.getPool(),
+          mutate: async (client) => {
+            const result = await entryService.updateSalesOrderEntrySettings(client, {
+              requestContext,
+              input: payload,
+            });
+            if (!result.ok) return { failed: true, result };
+            return { settings: result.settings };
+          },
+        });
+
+        if (transaction.failed) {
+          const result = transaction.result;
+          return {
+            statusCode: statusFor(result.code),
+            contentType: 'application/json',
+            requestId: options.requestId,
+            body: {
+              error: {
+                code: result.code,
+                message: result.message,
+                retryable: Boolean(result.retryable),
+                details: result.details ?? {},
+              },
+              requestId: options.requestId,
+              receivedAt: options.receivedAt,
+            },
+          };
+        }
+
+        return {
+          statusCode: 200,
+          contentType: 'application/json',
+          requestId: options.requestId,
+          body: createSuccessEnvelope(transaction.settings, options.requestId, options.receivedAt),
+        };
+      },
+    });
+
+    res.setHeader('Cache-Control', 'no-store');
+    sendJson(
+      res,
+      execution.response.statusCode,
+      execution.response.body,
+      execution.response.requestId ?? options.requestId,
+      execution.response.contentType,
+    );
+  } catch (error) {
+    console.error(JSON.stringify(sanitizedUnexpectedError(error, {
+      requestId: options.requestId,
+      action: 'update_entry_settings',
+      resourceId: null,
+      route: '/api/sales-orders/entry-settings',
+    })));
+    sendError(
+      res,
+      apiError(
+        'SALES_ORDER_ENTRY_SETTINGS_UPDATE_FAILED',
+        'Không lưu được lựa chọn mặc định khi lập đơn',
+        {},
+        true,
+        503,
+      ),
+      options.requestId,
+      options.receivedAt,
+    );
+  }
+}
+
 function sanitizedUnexpectedError(error, { requestId, action, resourceId, route }) {
   const rawMessage = typeof error?.message === 'string'
     ? error.message
@@ -351,6 +443,23 @@ export async function handleSalesOrderRoutes(req, res, options) {
         options.receivedAt,
       );
     }
+    return true;
+  }
+
+  if (pathname === '/api/sales-orders/entry-settings' && method === 'PUT') {
+    const context = await authenticateAndAuthorize(
+      req,
+      res,
+      options,
+      options.PERMISSIONS.coreSalesOrderCreate,
+    );
+    if (!context) return true;
+    const payload = await readPayload(req, res, options);
+    if (payload === null) return true;
+    await executeEntrySettingsMutation(req, res, options, {
+      requestContext: context,
+      payload,
+    });
     return true;
   }
 

@@ -15,11 +15,47 @@ test('sales order create form keeps account defaults compact beside warehouse an
   assert.match(form, /width: 14/);
   assert.match(form, /Dùng làm mặc định/);
   assert.match(form, /settings\.defaultDeliveryChoice/);
-  assert.match(form, /entryDefaults:/);
+  assert.match(form, /entrySettingsUpdatePayload\(\)/);
+  assert.match(form, /apiRequest<SalesOrderEntrySettings>\('\/api\/sales-orders\/entry-settings'/);
+  assert.match(form, /method: 'PUT'/);
+  assert.match(form, /'Idempotency-Key': entrySettingsKey/);
   assert.match(form, /entrySettings\?\.savedWarehouseId/);
   assert.match(form, /entrySettings\?\.savedDeliveryChoice/);
+  assert.doesNotMatch(form, /entryDefaults:/);
+  assert.doesNotMatch(types, /entryDefaults\?:/);
+  assert.match(types, /export type SalesOrderEntrySettingsUpdate/);
   assert.match(types, /defaultDeliveryChoice: SalesOrderDeliveryChoice/);
   assert.match(types, /savedWarehouseId: string \| null/);
+});
+
+test('entry settings PUT is forwarded by the Công Ty web gateway with body and idempotency key', async () => {
+  const [route, gateway] = await Promise.all([
+    read('app/api/sales-orders/entry-settings/route.ts'),
+    read('lib/sales-order-gateway.ts'),
+  ]);
+
+  assert.match(route, /export async function PUT\(request: NextRequest\)/);
+  assert.match(route, /readSalesOrderBody\(request, requestId\)/);
+  assert.match(route, /updateSalesOrderEntrySettings<SalesOrderEntrySettings>/);
+  assert.match(route, /salesOrderIdempotencyKey\(request\)/);
+  assert.match(gateway, /export function updateSalesOrderEntrySettings<T>/);
+  assert.match(gateway, /method:'PUT',path:`\$\{path\(\)\}\/entry-settings`/);
+  assert.match(gateway, /body:b,idempotencyKey:key\(k\)/);
+});
+
+test('sales order is persisted before optional entry settings and settings failure cannot fail the order', async () => {
+  const form = await read('app/sales/sales-orders/SalesOrderCommercialForm.tsx');
+  const orderSaveIndex = form.indexOf('savedOrder = await apiRequest<SalesOrder>(path');
+  const confirmIndex = form.indexOf('savedOrder = await apiRequest<SalesOrder>(confirmPath');
+  const settingsWriteIndex = form.indexOf("const updatedSettings = await apiRequest<SalesOrderEntrySettings>('/api/sales-orders/entry-settings'");
+  const savedCallbackIndex = form.indexOf('props.onSaved(savedOrder)');
+
+  assert.ok(orderSaveIndex >= 0);
+  assert.ok(settingsWriteIndex > orderSaveIndex);
+  assert.ok(confirmIndex < 0 || settingsWriteIndex > confirmIndex);
+  assert.ok(savedCallbackIndex > settingsWriteIndex);
+  assert.match(form, /try \{[\s\S]*updatedSettings = await apiRequest<SalesOrderEntrySettings>[\s\S]*\} catch \(settingsError\) \{/);
+  assert.match(form, /Đơn đã lưu thành công nhưng chưa lưu được lựa chọn mặc định/);
 });
 
 test('delivery address is optional and the order form does not add a separate one-off address field', async () => {
