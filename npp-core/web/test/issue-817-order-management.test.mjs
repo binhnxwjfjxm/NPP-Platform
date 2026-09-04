@@ -80,8 +80,8 @@ test('issue 817 rút gọn số đơn chỉ khi hiển thị và giữ tìm ki�
 });
 
 test('issue 817 chỉ giữ badge màu cho ba luồng giao, các trạng thái khác là chữ màu', () => {
-  assert.match(cssSource, /\.statusBadge\{[^}]*border:0!important;[^}]*background:transparent!important;/s);
-  assert.match(cssSource, /\.deliveryState\{[^}]*border:0!important;[^}]*background:transparent!important;/s);
+  assert.match(cssSource, /\.statusBadge\{[^}]*border:0!important;[^}]*background:transparent!important/s);
+  assert.match(cssSource, /\.deliveryState\{[^}]*border:0!important;[^}]*background:transparent!important/s);
   assert.match(cssSource, /\.statusBadge\[data-tone='waiting'\],\.deliveryState\[data-tone='waiting'\]\{color:#80683a\}/);
   assert.doesNotMatch(cssSource, /\.statusBadge\[data-tone='waiting'\][^}]*background:/);
   assert.match(cssSource, /\.laneBadge\[data-lane='counter'\]\{background:#fff5e8;border-color:#e8b76d;/);
