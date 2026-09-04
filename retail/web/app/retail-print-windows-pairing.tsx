@@ -58,33 +58,38 @@ export function RetailPrintWindowsPairing({ onNotice, onError, onPaired }: Props
     }
   }
 
-  return <section className="printer-setting-section">
+  return <section className="printer-setting-section printer-pairing-section">
     <header>
       <strong>Retail Print trên Windows</strong>
-      <small>Nhập mã cố định 8 ký tự của máy Windows.</small>
+      <small>Nhập mã cố định 8 ký tự của máy Windows để kết nối.</small>
     </header>
-    <div className="printer-advanced">
-      <label>Mã kết nối
-        <input
-          value={pairingCode}
-          maxLength={8}
-          autoCapitalize="characters"
-          autoCorrect="off"
-          placeholder="8 ký tự trên Retail Print"
-          onChange={(event) => setPairingCode(event.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 8))}
-        />
-      </label>
-      <p>Mã trên máy Windows là cố định. Điện thoại Retail nào cũng nhập cùng mã này để kết nối đúng máy đó.</p>
-      <div className="printer-test-row">
-        <span><strong>{agents.length ? `${agents.length} máy đã kết nối` : 'Chưa có máy Windows'}</strong><small>{loading ? 'Đang kiểm tra…' : 'Mã không mất sau khi kết nối.'}</small></span>
-        <button className="secondary-action" type="button" disabled={pairing} onClick={() => void pair()}>{pairing ? 'Đang kết nối…' : 'Kết nối'}</button>
+    <div className="printer-pairing-card">
+      <div className="printer-pairing-entry">
+        <label><span>Mã kết nối</span>
+          <input
+            value={pairingCode}
+            maxLength={8}
+            autoCapitalize="characters"
+            autoCorrect="off"
+            placeholder="8 ký tự trên Retail Print"
+            onChange={(event) => setPairingCode(event.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 8))}
+          />
+        </label>
+        <button className="primary-action printer-pair-button" type="button" disabled={pairing} onClick={() => void pair()}>{pairing ? 'Đang kết nối…' : 'Kết nối'}</button>
       </div>
-      {agents.length ? <div className="printer-results" aria-label="Retail Print trên Windows">
-        {agents.map((agent) => <div className="selected-printer" key={agent.id}>
+      <p className="printer-pairing-note">Mã trên máy Windows là cố định. Điện thoại Retail nào cũng nhập cùng mã này để kết nối đúng máy đó.</p>
+      <div className="printer-pairing-heading">
+        <span><i aria-hidden="true" /> <strong>Thiết bị đã kết nối</strong></span>
+        <small>{loading ? 'Đang kiểm tra…' : `${agents.length} máy`}</small>
+      </div>
+      {agents.length ? <div className="printer-results printer-agent-results" aria-label="Retail Print trên Windows">
+        {agents.map((agent) => <div className="selected-printer printer-agent-card" key={agent.id}>
           <span className={`printer-status ${agent.status === 'ONLINE' ? 'ready' : ''}`} aria-hidden="true">●</span>
-          <div><strong>{agent.name}</strong><small>{statusLabel(agent)}{agent.printerName ? ` · ${agent.printerName}` : ''}</small></div>
+          <div><strong>{agent.name}</strong><small>{agent.printerName || 'Máy in Windows'}</small></div>
+          <span className={`printer-agent-status ${agent.status === 'ONLINE' ? 'ready' : ''}`}>{statusLabel(agent)}</span>
         </div>)}
-      </div> : null}
+      </div> : <p className="printer-empty printer-pairing-empty">Chưa có máy Windows nào được kết nối.</p>}
+      <small className="printer-pairing-footnote">Mã không mất sau khi kết nối.</small>
     </div>
   </section>;
 }
