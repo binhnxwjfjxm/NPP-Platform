@@ -32,13 +32,13 @@ test('sales order is persisted before optional entry settings and settings failu
   const form = await read('app/sales/sales-orders/SalesOrderCommercialForm.tsx');
   const orderSaveIndex = form.indexOf('savedOrder = await apiRequest<SalesOrder>(path');
   const confirmIndex = form.indexOf('savedOrder = await apiRequest<SalesOrder>(confirmPath');
-  const settingsIndex = form.indexOf("apiRequest<SalesOrderEntrySettings>('/api/sales-orders/entry-settings'");
+  const settingsWriteIndex = form.indexOf("const updatedSettings = await apiRequest<SalesOrderEntrySettings>('/api/sales-orders/entry-settings'");
   const savedCallbackIndex = form.indexOf('props.onSaved(savedOrder)');
 
   assert.ok(orderSaveIndex >= 0);
-  assert.ok(settingsIndex > orderSaveIndex);
-  assert.ok(confirmIndex < 0 || settingsIndex > confirmIndex);
-  assert.ok(savedCallbackIndex > settingsIndex);
+  assert.ok(settingsWriteIndex > orderSaveIndex);
+  assert.ok(confirmIndex < 0 || settingsWriteIndex > confirmIndex);
+  assert.ok(savedCallbackIndex > settingsWriteIndex);
   assert.match(form, /try \{[\s\S]*updatedSettings = await apiRequest<SalesOrderEntrySettings>[\s\S]*\} catch \(settingsError\) \{/);
   assert.match(form, /Đơn đã lưu thành công nhưng chưa lưu được lựa chọn mặc định/);
 });
