@@ -312,7 +312,7 @@ export type SalesOrderDeliveryAddressDraft = {
   countryCode?: string;
 };
 
-export type SalesOrderEntryDefaultsDraft = {
+export type SalesOrderEntrySettingsUpdate = {
   warehouseId: string | null;
   deliveryChoice: SalesOrderDeliveryChoice | null;
 };
@@ -327,7 +327,6 @@ export type SalesOrderDraftPayload = {
   walkInPhone?: string;
   customerAddressId?: string;
   deliveryAddress?: SalesOrderDeliveryAddressDraft;
-  entryDefaults?: SalesOrderEntryDefaultsDraft;
   warehouseId: string;
   salesChannelId: string;
   pricingAt?: string;
