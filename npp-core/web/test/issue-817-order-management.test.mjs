@@ -69,3 +69,22 @@ test('issue 817 follows current Công Ty warm-gold and canonical lane tones', ()
   assert.match(workspaceSource, /Giao thủ công/);
   assert.match(workspaceSource, /Giao theo chuyến/);
 });
+
+test('issue 817 rút gọn số đơn chỉ khi hiển thị và giữ tìm kiếm bằng số đầy đủ', () => {
+  assert.match(workspaceSource, /function compactOrderNumber/);
+  assert.match(workspaceSource, /const match = \/\^\(\.\+\-\)\(\\d\{6\}\)\(\-\\d\+\)\$\/\.exec\(normalized\);/);
+  assert.match(workspaceSource, /return match \? `\$\{match\[1\]\}…\$\{match\[3\]\}` : normalized;/);
+  assert.match(workspaceSource, /order\.number \? compactOrderNumber\(order\.number\) : 'Chưa cấp số'/);
+  assert.match(workspaceSource, /return \[\s*order\.number,/s);
+  assert.match(workspaceSource, /aria-label=\{order\.number \? `Mở đơn \$\{order\.number\}`/);
+});
+
+test('issue 817 chỉ giữ badge màu cho ba luồng giao, các trạng thái khác là chữ màu', () => {
+  assert.match(cssSource, /\.statusBadge\{[^}]*border:0!important;[^}]*background:transparent!important;/s);
+  assert.match(cssSource, /\.deliveryState\{[^}]*border:0!important;[^}]*background:transparent!important;/s);
+  assert.match(cssSource, /\.statusBadge\[data-tone='waiting'\],\.deliveryState\[data-tone='waiting'\]\{color:#80683a\}/);
+  assert.doesNotMatch(cssSource, /\.statusBadge\[data-tone='waiting'\][^}]*background:/);
+  assert.match(cssSource, /\.laneBadge\[data-lane='counter'\]\{background:#fff5e8;border-color:#e8b76d;/);
+  assert.match(cssSource, /\.laneBadge\[data-lane='manual'\]\{background:#eef6ff;border-color:#8fb9eb;/);
+  assert.match(cssSource, /\.laneBadge\[data-lane='trip'\]\{background:#f5efff;border-color:#bea5e9;/);
+});
