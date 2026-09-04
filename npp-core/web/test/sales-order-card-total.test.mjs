@@ -19,7 +19,7 @@ test('card đơn hiển thị số đơn và tổng tiền trên cùng dòng mà
   assert.match(workspace, /orderCardNumberDivider/);
   assert.match(workspace, /aria-hidden="true">\|<\/span>/);
   assert.match(workspace, /orderCardTotal\}\>\{formatMoney\(orderCardTotal\(order\)\)\}đ/);
-  assert.match(workspace, /`#\$\{order\.number\.replace\(\/\^#\/, ''\)\}`/);
+  assert.match(workspace, /`#\$\{compactOrderNumber\(order\.number\)\}`/);
   assert.match(css, /\.orderCardNumberDivider\s*\{[^}]*color:\s*#aab3af;/s);
   assert.match(css, /\.orderCardTotal\s*\{[^}]*color:\s*#155c46;[^}]*font-weight:\s*850;[^}]*white-space:\s*nowrap;/s);
 });

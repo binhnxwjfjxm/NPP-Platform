@@ -133,8 +133,7 @@
   min-width: 7.4rem;
 }
 
-.orderLaneBadge,
-.orderStatusBadge {
+.orderLaneBadge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -149,39 +148,39 @@
 }
 
 .orderStatusBadge {
-  background: #f4f6f5;
-  border-color: #d9dfdd;
-  color: #4f5b57;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 23px;
+  padding: .08rem .12rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent !important;
+  color: #65706b;
+  font-size: .68rem;
+  font-weight: 820;
+  line-height: 1.05;
+  white-space: nowrap;
 }
 
 .orderStatusBadge[data-sales-order-tone='draft'] {
-  background: #f5f7f6;
-  border-color: #d9dfdd;
-  color: #53605b;
+  color: #69736f;
 }
 
 .orderStatusBadge[data-sales-order-tone='confirmed'] {
-  background: #edf6f1;
-  border-color: #b9d5c7;
-  color: #2d654c;
+  color: #4a715f;
 }
 
 .orderStatusBadge[data-sales-order-tone='waiting'] {
-  background: #fff7e8;
-  border-color: #ead19b;
-  color: #75531b;
+  color: #80683a;
 }
 
 .orderStatusBadge[data-sales-order-tone='closed'] {
-  background: #edf7f2;
-  border-color: #b6d9c7;
-  color: #256147;
+  color: #3f6e59;
 }
 
 .orderStatusBadge[data-sales-order-tone='cancelled'] {
-  background: #fff0ef;
-  border-color: #efc1bd;
-  color: #8a3e37;
+  color: #95615d;
 }
 
 @media (max-width: 760px) {

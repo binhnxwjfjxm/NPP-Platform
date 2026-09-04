@@ -74,7 +74,10 @@ export default function SalesOrderForm(props: SalesOrderFormProps) {
       <SalesOrderCommercialForm {...props} version={normalizedVersion} onError={handleError} />
       <InlineFormError message={inlineError} />
       <style>{`
+        .${styles.orderEditorModal}{width:min(1520px,calc(100vw - 1rem));height:min(96vh,1020px)}
         .${styles.orderEditorBody}{grid-auto-rows:max-content}
+        .${styles.compactHeader}{align-items:start}
+        .${styles.skuResults}{max-height:min(500px,calc(100dvh - 220px))}
         .salesOrderFormInlineError{grid-column:1/-1;padding:.65rem .8rem;border:1px solid #e2a696;border-radius:10px;background:#fff3ef;color:#8f3528;font-weight:750}
         .${styles.lineTableHeader}>span:nth-child(5),.${styles.lineTableHeader}>span:nth-child(6){text-align:center}
         .${styles.directPriceInput}{text-align:center!important}
