@@ -124,6 +124,12 @@ function orderCardTotal(order: SalesOrder): string {
   return activeVersion(order)?.total ?? String((order as SalesOrderListValue).total ?? '0');
 }
 
+export function compactOrderNumber(value: string | null | undefined): string {
+  const normalized = String(value ?? '').replace(/^#/, '');
+  const match = /^(.+-)(\d{6})(-\d+)$/.exec(normalized);
+  return match ? `${match[1]}…${match[3]}` : normalized;
+}
+
 function matchesSearch(order: SalesOrder, term: string): boolean {
   if (!term) return true;
   return [
@@ -504,7 +510,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
                     <div className={`${styles.orderCardTop} ${polishStyles.orderCardTopCompact}`}>
                       <div className={styles.orderCardNumber}>
                         <BusinessSequenceNumber rowIndex={rowIndex} className={styles.orderSequence} />
-                        <strong>{order.number ? `#${order.number.replace(/^#/, '')}` : 'Đơn đặt hàng chưa cấp số'}</strong>
+                        <strong>{order.number ? `#${compactOrderNumber(order.number)}` : 'Đơn đặt hàng chưa cấp số'}</strong>
                         <span className={polishStyles.orderCardNumberDivider} aria-hidden="true">|</span>
                         <strong className={polishStyles.orderCardTotal}>{formatMoney(orderCardTotal(order))}đ</strong>
                       </div>
