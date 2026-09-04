@@ -28,6 +28,21 @@ test('sales order create form keeps account defaults compact beside warehouse an
   assert.match(types, /savedWarehouseId: string \| null/);
 });
 
+test('entry settings PUT is forwarded by the Công Ty web gateway with body and idempotency key', async () => {
+  const [route, gateway] = await Promise.all([
+    read('app/api/sales-orders/entry-settings/route.ts'),
+    read('lib/sales-order-gateway.ts'),
+  ]);
+
+  assert.match(route, /export async function PUT\(request: NextRequest\)/);
+  assert.match(route, /readSalesOrderBody\(request, requestId\)/);
+  assert.match(route, /updateSalesOrderEntrySettings<SalesOrderEntrySettings>/);
+  assert.match(route, /salesOrderIdempotencyKey\(request\)/);
+  assert.match(gateway, /export function updateSalesOrderEntrySettings<T>/);
+  assert.match(gateway, /method:'PUT',path:`\$\{path\(\)\}\/entry-settings`/);
+  assert.match(gateway, /body:b,idempotencyKey:key\(k\)/);
+});
+
 test('sales order is persisted before optional entry settings and settings failure cannot fail the order', async () => {
   const form = await read('app/sales/sales-orders/SalesOrderCommercialForm.tsx');
   const orderSaveIndex = form.indexOf('savedOrder = await apiRequest<SalesOrder>(path');
