@@ -84,6 +84,12 @@ function normalizedSearch(value: string): string {
   return value.trim().toLocaleLowerCase('vi');
 }
 
+function compactOrderNumber(value: string | null | undefined): string {
+  const normalized = String(value ?? '').replace(/^#/, '');
+  const match = /^(.+-)(\d{6})(-\d+)$/.exec(normalized);
+  return match ? `${match[1]}…${match[3]}` : normalized;
+}
+
 function orderLane(order: SalesOrder): Exclude<DeliveryLane, 'all'> {
   if (order.deliveryMode === 'PICKUP') return 'counter';
   return order.deliveryExecutionMode === 'MANUAL' ? 'manual' : 'trip';
@@ -597,7 +603,7 @@ export default function OrderManagementWorkspace() {
                 {pageOrders.map((order) => (
                   <tr key={order.id}>
                     <td className={styles.checkColumn}><input type="checkbox" aria-label={`Chọn đơn ${order.number ?? order.id}`} checked={selectedIds.has(order.id)} onChange={(event) => toggleOrder(order.id, event.target.checked)} /></td>
-                    <td className={styles.orderColumn}><button type="button" className={styles.orderLink} onClick={() => void openDetail(order)}>{order.number ?? 'Chưa cấp số'}</button></td>
+                    <td className={styles.orderColumn}><button type="button" className={styles.orderLink} title={order.number ?? undefined} aria-label={order.number ? `Mở đơn ${order.number}` : 'Mở đơn chưa cấp số'} onClick={() => void openDetail(order)}>{order.number ? compactOrderNumber(order.number) : 'Chưa cấp số'}</button></td>
                     <td className={styles.dateCell}>{formatVietnamDateTime(order.createdAt)}</td>
                     <td><strong className={styles.customerName}>{order.customerName}</strong><small className={styles.customerMeta}>{order.customerCode}</small></td>
                     <td><span className={styles.statusBadge} data-tone={orderTone(order)}>{orderStatusLabel(order)}</span></td>
