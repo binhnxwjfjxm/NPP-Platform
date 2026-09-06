@@ -151,6 +151,35 @@ export function createSharedProductImageStorage(config, { client, presign = getS
     }
   }
 
+  async function putImage({ productCode, body } = {}) {
+    const key = sharedProductImageKey(productCode);
+    const bytes = Buffer.isBuffer(body)
+      ? body
+      : body instanceof Uint8Array
+        ? Buffer.from(body)
+        : body instanceof ArrayBuffer
+          ? Buffer.from(body)
+          : null;
+    if (!bytes || bytes.length < 1 || bytes.length > config.r2MaxObjectBytes) {
+      throw createStorageError(STORAGE_ERROR_CODES.keyInvalid, 'Product image size is invalid', {
+        retryable: false,
+        statusCode: 400,
+      });
+    }
+    try {
+      await providerClient.send(new PutObjectCommand({
+        Bucket: config.r2Bucket,
+        Key: key,
+        Body: bytes,
+        ContentType: PRODUCT_IMAGE_CONTENT_TYPE,
+        CacheControl: PRODUCT_IMAGE_CACHE_CONTROL,
+      }));
+      return Object.freeze({ key, size: bytes.length });
+    } catch (error) {
+      throw normalizeProviderError(error, STORAGE_ERROR_CODES.uploadFailed, 'Product image upload failed');
+    }
+  }
+
   async function headImage({ productCode } = {}) {
     const key = sharedProductImageKey(productCode);
     try {
@@ -184,6 +213,7 @@ export function createSharedProductImageStorage(config, { client, presign = getS
     imageUrl,
     listImageCodes,
     createUploadUrl,
+    putImage,
     headImage,
     deleteImage,
   });
