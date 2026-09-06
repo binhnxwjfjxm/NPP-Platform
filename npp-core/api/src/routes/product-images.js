@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { createSuccessEnvelope } from '@npp/contracts';
 import { sendJson, sendSuccess, sendError } from '../http-utils.js';
 import { readJsonBody, normalizeIdempotencyKey } from '../idempotency.js';
@@ -41,6 +42,34 @@ async function payload(req, res, context) {
     sendError(res, apiError(error.code, error.publicMessage, {}, false, error.statusCode), context.requestId, context.receivedAt);
     return null;
   }
+}
+
+function readImageBody(req, maxBytes) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    let overflow = false;
+    req.on('data', (chunk) => {
+      const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      size += bytes.length;
+      if (size > maxBytes) {
+        overflow = true;
+        chunks.length = 0;
+        return;
+      }
+      if (!overflow) chunks.push(bytes);
+    });
+    req.on('end', () => {
+      if (overflow || size < 1) {
+        reject(apiError('INVALID_PRODUCT_IMAGE_SIZE', 'Dung lượng ảnh sản phẩm không hợp lệ', { maxBytes }, false, overflow ? 413 : 400));
+        return;
+      }
+      resolve(Buffer.concat(chunks, size));
+    });
+    req.on('error', () => {
+      reject(apiError('INVALID_PRODUCT_IMAGE_REQUEST', 'Không đọc được dữ liệu ảnh sản phẩm', {}, false, 400));
+    });
+  });
 }
 
 async function getProduct(context, productId) {
@@ -209,6 +238,50 @@ async function executeIdempotentImageMutation(req, res, context, {
   }
 }
 
+async function handleUpload(req, res, context, productId) {
+  const contentType = String(req.headers['content-type'] ?? '').split(';', 1)[0].trim().toLowerCase();
+  if (contentType !== PRODUCT_IMAGE_CONTENT_TYPE) {
+    return sendError(res, apiError('INVALID_PRODUCT_IMAGE_TYPE', 'Ảnh sản phẩm phải được chuyển sang WebP trước khi tải lên', {}, false, 400), context.requestId, context.receivedAt);
+  }
+  const found = await getProduct(context, productId);
+  if (!found.ok) {
+    return sendError(res, apiError(found.code, found.message, {}, false, 404), context.requestId, context.receivedAt);
+  }
+  const maxBytes = Math.min(PRODUCT_IMAGE_MAX_BYTES, Number(context.config.r2MaxObjectBytes || PRODUCT_IMAGE_MAX_BYTES));
+  let imageBytes;
+  try {
+    imageBytes = await readImageBody(req, maxBytes);
+  } catch (error) {
+    return sendError(res, error, context.requestId, context.receivedAt);
+  }
+  const contentSha256 = createHash('sha256').update(imageBytes).digest('hex');
+  const storage = createSharedProductImageStorage(context.config);
+  await executeIdempotentImageMutation(req, res, context, {
+    route: `/api/products/${productId}/image/upload`,
+    body: { byteSize: imageBytes.length, contentType: PRODUCT_IMAGE_CONTENT_TYPE, contentSha256 },
+    product: found.product,
+    action: 'update',
+    process: async () => {
+      await storage.putImage({ productCode: found.product.code, body: imageBytes });
+      const head = await storage.headImage({ productCode: found.product.code });
+      if (head.contentType !== PRODUCT_IMAGE_CONTENT_TYPE || head.size !== imageBytes.length) {
+        throw Object.assign(new Error('PRODUCT_IMAGE_UPLOAD_VERIFY_FAILED'), {
+          code: 'PRODUCT_IMAGE_UPLOAD_VERIFY_FAILED',
+          publicMessage: 'Ảnh đã tải lên nhưng chưa xác minh được đầy đủ',
+          statusCode: 503,
+          retryable: true,
+        });
+      }
+      return {
+        productId: found.product.id,
+        productCode: found.product.code,
+        imageUrl: storage.imageUrl(found.product.code),
+        byteSize: head.size,
+      };
+    },
+  });
+}
+
 async function handleCommit(req, res, context, productId) {
   const body = await payload(req, res, context);
   if (body === null) return;
@@ -280,7 +353,7 @@ async function handleDelete(req, res, context, productId) {
 export async function handleProductImageRoutes(req, res, options) {
   const pathname = new URL(`http://localhost${req.url}`).pathname;
   const indexRoute = pathname === '/api/products/images';
-  const match = pathname.match(/^\/api\/products\/([^/]+)\/image(?:\/(prepare|commit))?$/);
+  const match = pathname.match(/^\/api\/products\/([^/]+)\/image(?:\/(prepare|commit|upload))?$/);
   if (!indexRoute && !match) return false;
 
   const auth = options.authenticate(req, options.config);
@@ -306,6 +379,10 @@ export async function handleProductImageRoutes(req, res, options) {
 
   if (indexRoute && method === 'GET') {
     await handleImageIndex(res, context);
+    return true;
+  }
+  if (match?.[2] === 'upload' && method === 'PUT') {
+    await handleUpload(req, res, context, match[1]);
     return true;
   }
   if (match?.[2] === 'prepare' && method === 'POST') {

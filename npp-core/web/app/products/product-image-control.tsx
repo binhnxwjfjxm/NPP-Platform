@@ -7,7 +7,6 @@ import {
   productImageUrl,
   resizeProductImage,
   type ProductImageMutation,
-  type ProductImagePrepare,
 } from '../../lib/product-images';
 import styles from './product-image-control.module.css';
 
@@ -70,35 +69,19 @@ export default function ProductImageControl({
     setError(null);
     try {
       const resized = await resizeProductImage(file);
-      const prepared = await apiJson<ProductImagePrepare>('/api/products/images', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'prepare',
-          productId: product.id,
-          mimeType: resized.mimeType,
-          byteSize: resized.byteSize,
-        }),
-      });
-
-      const uploaded = await fetch(prepared.uploadUrl, {
-        method: 'PUT',
-        headers: prepared.uploadHeaders,
-        body: resized.blob,
-      });
-      if (!uploaded.ok) throw new Error('Không thể tải ảnh lên kho ảnh.');
-
-      const fingerprint = `commit:${product.id}:${resized.byteSize}:${file.name}:${file.lastModified}`;
-      const key = retryKey(fingerprint, 'product-image-commit');
-      await apiJson<ProductImageMutation>('/api/products/images', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': key },
-        body: JSON.stringify({
-          action: 'commit',
-          productId: product.id,
-          expectedByteSize: resized.byteSize,
-        }),
-      });
+      const fingerprint = `upload:${product.id}:${resized.byteSize}:${file.name}:${file.lastModified}`;
+      const key = retryKey(fingerprint, 'product-image-upload');
+      await apiJson<ProductImageMutation>(
+        `/api/products/images?productId=${encodeURIComponent(product.id)}`,
+        {
+          method: 'PUT',
+          headers: {
+            'Content-Type': resized.mimeType,
+            'Idempotency-Key': key,
+          },
+          body: resized.blob,
+        },
+      );
       pendingKeys.current.delete(fingerprint);
       onImageStatusChange(product.code, true);
       setBrokenPreview(false);
@@ -135,13 +118,15 @@ export default function ProductImageControl({
     }
   }
 
+  const actionLabel = !imageStatusKnown ? 'Chọn ảnh' : hasImage ? 'Đổi ảnh' : 'Thêm ảnh';
+
   return (
     <Fragment>
       <div className={styles.preview} data-testid="quick-product-image-preview">
         {showImage ? (
           <img src={imageUrl} alt={product?.name || 'Ảnh sản phẩm'} onError={() => setBrokenPreview(true)} />
         ) : (
-          <span>{imageStatusKnown ? 'Chưa có ảnh' : 'Đang kiểm tra'}</span>
+          <span>{imageStatusKnown ? 'Chưa có ảnh' : 'Chưa kiểm tra ảnh'}</span>
         )}
       </div>
       <div className={styles.meta} data-testid="product-image-control">
@@ -149,10 +134,10 @@ export default function ProductImageControl({
         <span>Thu nhỏ trước khi tải lên R2; các ứng dụng dùng cùng mã ảnh sẽ nhận ảnh mới.</span>
         {product ? (
           <div className={styles.actions}>
-            <button type="button" onClick={() => inputRef.current?.click()} disabled={busy || !imageStatusKnown}>
-              {busy ? 'Đang xử lý…' : hasImage ? 'Đổi ảnh' : 'Thêm ảnh'}
+            <button type="button" onClick={() => inputRef.current?.click()} disabled={busy}>
+              {busy ? 'Đang xử lý…' : actionLabel}
             </button>
-            {hasImage ? <button type="button" onClick={() => void removeImage()} disabled={busy}>Xóa ảnh</button> : null}
+            {imageStatusKnown && hasImage ? <button type="button" onClick={() => void removeImage()} disabled={busy}>Xóa ảnh</button> : null}
           </div>
         ) : null}
         {error ? <small className={styles.error} role="alert">{error}</small> : null}

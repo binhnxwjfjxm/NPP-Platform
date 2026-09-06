@@ -64,7 +64,9 @@
   position: sticky;
   top: 12px;
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 10px;
+  min-height: 0;
   max-height: calc(100vh - 120px);
   padding: 12px;
   border: 1px solid var(--hp-border, #d8e5dc);
@@ -125,7 +127,11 @@
 .productList {
   display: grid;
   gap: 6px;
-  overflow: auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   padding-right: 2px;
 }
 
@@ -561,12 +567,16 @@
 
   .sidebar {
     position: static;
+    grid-template-rows: auto auto;
     max-height: none;
   }
 
   .productList {
     display: flex;
+    min-height: auto;
     overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-gutter: auto;
   }
 
   .productButton,

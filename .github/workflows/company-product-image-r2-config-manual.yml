@@ -1,0 +1,91 @@
+name: Công Ty product image R2 production config
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: company-product-image-r2-production-config
+  cancel-in-progress: false
+
+jobs:
+  configure-company-product-images-r2:
+    if: >-
+      github.event.issue.number == 5 &&
+      github.event.comment.body == '/configure-company-product-images-r2' &&
+      contains(fromJSON('["binhnxwjfjxm","khuongbinhinfo-a11y"]'), github.actor)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DEPLOY_REF: main
+      R2_SOURCE_APP: hung-phat-mcp
+      R2_TARGET_APP: hung-phat
+      COMPANY_PRODUCT_IMAGE_R2_EVIDENCE_FILE: ${{ github.workspace }}/.company-product-image-r2-evidence.md
+
+    steps:
+      - name: Validate exact Issue #5 command
+        shell: bash
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          test "$COMMENT_BODY" = '/configure-company-product-images-r2'
+
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_REF }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact origin/main SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=1
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install locked repository dependencies
+        working-directory: npp-core
+        run: npm --prefix .. ci --ignore-scripts
+
+      - name: Configure shared product image R2 for Công Ty
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          AUDITED_MAIN_SHA: ${{ steps.source.outputs.sha }}
+        run: node npp-core/api/scripts/production-product-image-r2-config.js
+
+      - name: Publish sanitized result to Issue #5
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPERATION_STATUS: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          evidence_file="$(mktemp)"
+          {
+            echo "## Công Ty — cấu hình ảnh sản phẩm R2: ${OPERATION_STATUS}"
+            echo
+            if [ -s "$COMPANY_PRODUCT_IMAGE_R2_EVIDENCE_FILE" ]; then
+              cat "$COMPANY_PRODUCT_IMAGE_R2_EVIDENCE_FILE"
+            else
+              echo "COMPANY_PRODUCT_IMAGE_R2_EVIDENCE_MISSING=true"
+            fi
+            echo "GITHUB_RUN_ID=$GITHUB_RUN_ID"
+          } > "$evidence_file"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/5/comments" \
+            -f body="$(cat "$evidence_file")" >/dev/null
+          rm -f "$evidence_file"
