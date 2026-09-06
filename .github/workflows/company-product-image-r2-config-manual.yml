@@ -56,10 +56,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
 
       - name: Install locked repository dependencies
-        run: npm ci
+        working-directory: npp-core
+        run: npm --prefix .. ci --ignore-scripts
 
       - name: Configure shared product image R2 for Công Ty
         env:
