@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { PERMISSIONS } from '../access/permissions.js';
 import * as repository from '../db/repositories/inventory-adjustment.js';
 import * as ledgerRepository from '../db/repositories/inventory-ledger.js';
 
@@ -14,6 +15,7 @@ const DOCUMENT_KINDS = new Set([
 ]);
 const STATUSES = new Set(['DRAFT', 'SUBMITTED', 'APPROVED', 'POSTED', 'CANCELLED', 'REVERSED']);
 const TRANSFER_KINDS = new Set(['QUARANTINE_TRANSFER', 'DAMAGED_TRANSFER']);
+const OWNER_ROLES = new Set(['system:security-owner', 'system:implementation-owner']);
 const SCALE_6 = 1_000_000n;
 const SCALE_12 = 1_000_000_000_000n;
 
@@ -38,6 +40,20 @@ function isUuid(value) {
 
 function actorId(requestContext) {
   return text(requestContext?.actorId ?? requestContext?.principalId ?? requestContext?.subject, 128) ?? 'system';
+}
+
+function hasPermission(requestContext, permission) {
+  return Array.isArray(requestContext?.permissions) && requestContext.permissions.includes(permission);
+}
+
+function isOwner(requestContext) {
+  return Array.isArray(requestContext?.roles)
+    && requestContext.roles.some((role) => OWNER_ROLES.has(String(role ?? '').trim()));
+}
+
+function canApproveOwnAdjustment(requestContext) {
+  return isOwner(requestContext)
+    || hasPermission(requestContext, PERMISSIONS.coreInventoryAdjustmentSelfApprove);
 }
 
 function warehouseIds(requestContext) {
@@ -808,7 +824,7 @@ export async function approveAdjustment(client, { requestContext, adjustmentId, 
   if (String(row.revision) !== parseRevision(payload?.expectedRevision)) {
     return failure('INVENTORY_ADJUSTMENT_REVISION_CONFLICT', 'Adjustment revision is stale');
   }
-  if (row.created_by === actorId(requestContext)) {
+  if (row.created_by === actorId(requestContext) && !canApproveOwnAdjustment(requestContext)) {
     return failure('INVENTORY_ADJUSTMENT_SELF_APPROVAL_DENIED', 'The creator cannot approve the same adjustment');
   }
   const lines = await repository.listLines(client, {
@@ -1015,4 +1031,5 @@ export const inventoryAdjustmentInternals = Object.freeze({
   scopeRows,
   movementTypeFor,
   childIdempotencyKey,
+  canApproveOwnAdjustment,
 });

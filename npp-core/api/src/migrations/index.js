@@ -107,6 +107,7 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   migration('123_logistics_order_destination_stop', 'logistics/123_logistics_order_destination_stop.sql'),
   migration('124_sales_order_address_optional', 'sales/124_sales_order_address_optional.sql'),
   migration('125_sales_order_address_optional_shape', 'sales/125_sales_order_address_optional_shape.sql'),
+  migration('126_inventory_adjustment_self_approval_permission', 'shared/126_inventory_adjustment_self_approval_permission.sql'),
 ]);
 
 export { runMigrations };
