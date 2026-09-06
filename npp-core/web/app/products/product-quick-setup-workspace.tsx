@@ -13,6 +13,7 @@ import type {
 } from '../../lib/product-types';
 import type { InventoryBalance } from '../../lib/inventory-types';
 import type { PriceList, PriceListItem } from '../../lib/pricing-types';
+import ProductImageControl from './product-image-control';
 import styles from './product-quick-setup.module.css';
 
 type Props = {
@@ -21,6 +22,9 @@ type Props = {
   brands: ProductBrand[];
   units: UnitOfMeasure[];
   onProductsChanged: (products: Product[]) => void;
+  imageBaseUrl: string;
+  imageCodes: Set<string> | null;
+  onImageStatusChange: (productCode: string, hasImage: boolean) => void;
 };
 
 type ProductDraft = {
@@ -47,11 +51,6 @@ type VariantDraft = {
   isActive: boolean;
   weightValue: string;
   weightUomCode: 'G' | 'KG';
-};
-
-type ProductWithPreview = Product & {
-  image_url?: string | null;
-  primary_image_url?: string | null;
 };
 
 const EMPTY_PRODUCT: ProductDraft = {
@@ -203,6 +202,9 @@ export default function ProductQuickSetupWorkspace({
   brands,
   units,
   onProductsChanged,
+  imageBaseUrl,
+  imageCodes,
+  onImageStatusChange,
 }: Props) {
   const pendingPostKeys = useRef(new Map<string, string>());
   const [search, setSearch] = useState('');
@@ -245,9 +247,6 @@ export default function ProductQuickSetupWorkspace({
         .some((value) => normalizeSearch(value).includes(term)),
     );
   }, [products, search]);
-
-  const previewProduct = selectedProduct as ProductWithPreview | null;
-  const previewUrl = previewProduct?.primary_image_url || previewProduct?.image_url || null;
 
   const directPriceItems = priceItems.filter((item) =>
     item.variant_id === variantId
@@ -749,13 +748,13 @@ export default function ProductQuickSetupWorkspace({
             </div>
 
             <div className={styles.productTop}>
-              <div className={styles.imagePreview} data-testid="quick-product-image-preview">
-                {previewUrl ? <img src={previewUrl} alt={selectedProduct?.name || 'Ảnh sản phẩm'} /> : <span>Chưa có ảnh</span>}
-              </div>
-              <div className={styles.imageMeta}>
-                <strong>Ảnh dùng chung</strong>
-                <span>Preview nhỏ; không tạo kho ảnh riêng cho màn này.</span>
-              </div>
+              <ProductImageControl
+                product={selectedProduct}
+                imageBaseUrl={imageBaseUrl}
+                hasImage={Boolean(selectedProduct && imageCodes?.has(selectedProduct.code))}
+                imageStatusKnown={imageCodes !== null}
+                onImageStatusChange={onImageStatusChange}
+              />
               <div className={styles.productFields}>
                 <label>Mã sản phẩm<input value={productDraft.code} disabled={Boolean(selectedProduct) && !creatingProduct} onChange={(event) => setProductDraft({ ...productDraft, code: event.target.value.toUpperCase() })} /></label>
                 <label>Tên sản phẩm<input value={productDraft.name} onChange={(event) => setProductDraft({ ...productDraft, name: event.target.value })} /></label>

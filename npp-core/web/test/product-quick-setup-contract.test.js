@@ -49,14 +49,18 @@ test('price editing stays inside existing price lists and refuses ambiguous dire
   assert.doesNotMatch(quick, /125000[^\n]*amountMinor|amountMinor:\s*'125000'/);
 });
 
-test('inventory is read only and image preview stays compact without inventing media storage', async () => {
-  const quick = await source('../app/products/product-quick-setup-workspace.tsx');
-  const css = await source('../app/products/product-quick-setup.module.css');
+test('inventory stays read only and the shared image control keeps its preview compact', async () => {
+  const [quick, imageControl, imageCss] = await Promise.all([
+    source('../app/products/product-quick-setup-workspace.tsx'),
+    source('../app/products/product-image-control.tsx'),
+    source('../app/products/product-image-control.module.css'),
+  ]);
   assert.match(quick, /href="\/inventory\/balances"/);
   assert.match(quick, /requestJson<InventoryBalance\[]>\(`\/api\/inventory\/balances\?/);
   assert.doesNotMatch(quick, /method:\s*'(?:POST|PATCH|DELETE)'[\s\S]{0,180}\/api\/inventory\/balances/);
-  assert.match(quick, /data-testid="quick-product-image-preview"/);
-  assert.match(css, /\.imagePreview\s*\{[\s\S]*?width:\s*72px;[\s\S]*?height:\s*72px;/);
+  assert.match(quick, /<ProductImageControl/);
+  assert.match(imageControl, /data-testid="quick-product-image-preview"/);
+  assert.match(imageCss, /\.preview\s*\{[\s\S]*?width:\s*72px;[\s\S]*?height:\s*72px;/);
 });
 
 test('quick setup UI uses office language and keeps advanced destinations reachable', async () => {

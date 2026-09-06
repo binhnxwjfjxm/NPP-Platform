@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AppShell } from '../components/app-shell';
 import {
   BusinessTableSequenceCell,
@@ -8,6 +8,7 @@ import {
 } from '../components/business-table-sequence';
 import Modal from '../components/modal';
 import ProductBulkUpdateWorkspace from './product-bulk-update-workspace';
+import ProductImageStatusIcon from './product-image-status-icon';
 import ProductQuickSetupWorkspace from './product-quick-setup-workspace';
 import ProductUnitWorkspace from './product-unit-workspace';
 import type {
@@ -21,6 +22,7 @@ import type {
   UnitOfMeasure,
   VariantForm,
 } from '../../lib/product-types';
+import type { ProductImageIndex } from '../../lib/product-images';
 import styles from './products.module.css';
 
 type Props = {
@@ -187,6 +189,8 @@ export default function ProductWorkspace({
   const [error, setError] = useState<string | null>(initialError);
   const [notice, setNotice] = useState<string | null>(null);
   const [unitSelection, setUnitSelection] = useState<{ productId: string; variantId: string; requestKey: number } | null>(null);
+  const [imageBaseUrl, setImageBaseUrl] = useState('');
+  const [imageCodes, setImageCodes] = useState<Set<string> | null>(null);
 
   const normalizedSearch = normalizeSearch(search);
   const visibleProducts = useMemo(() => products.filter((product) => {
@@ -203,6 +207,29 @@ export default function ProductWorkspace({
 
   const activeSellableVariantExists = variants.some((variant) => variant.is_active && variant.is_sellable);
   const editorOpen = showProductForm || showCategoryForm || showBrandForm || showVariantForm || showVariantManager;
+
+  useEffect(() => {
+    let cancelled = false;
+    requestJson<ProductImageIndex>('/api/products/images')
+      .then((index) => {
+        if (cancelled) return;
+        setImageBaseUrl(index.baseUrl);
+        setImageCodes(new Set(index.codes));
+      })
+      .catch(() => {
+        if (!cancelled) setImageCodes(null);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  function setProductImageStatus(productCode: string, hasImage: boolean) {
+    setImageCodes((current) => {
+      const next = new Set(current ?? []);
+      if (hasImage) next.add(productCode);
+      else next.delete(productCode);
+      return next;
+    });
+  }
 
   function closeEditors() {
     if (busy) return;
@@ -241,14 +268,19 @@ export default function ProductWorkspace({
   async function reloadAll() {
     startWork();
     try {
-      const [nextProducts, nextCategories, nextBrands] = await Promise.all([
+      const [nextProducts, nextCategories, nextBrands, nextImages] = await Promise.all([
         requestJson<Product[]>('/api/products?limit=1000'),
         requestJson<ProductCategory[]>('/api/product-categories?limit=1000'),
         requestJson<ProductBrand[]>('/api/product-brands?limit=1000'),
+        requestJson<ProductImageIndex>('/api/products/images').catch(() => null),
       ]);
       setProducts(nextProducts);
       setCategories(nextCategories);
       setBrands(nextBrands);
+      if (nextImages) {
+        setImageBaseUrl(nextImages.baseUrl);
+        setImageCodes(new Set(nextImages.codes));
+      }
       setNotice('Đã làm mới danh mục');
     } catch (errorValue) {
       fail(errorValue);
@@ -597,14 +629,16 @@ export default function ProductWorkspace({
               <select value={orderableFilter} onChange={(event) => setOrderableFilter(event.target.value as 'all' | 'yes' | 'no')}><option value="all">Tất cả đặt hàng</option><option value="yes">Có thể đặt</option><option value="no">Chưa thể đặt</option></select>
             </div>
 
-            <div className={styles.tableWrapper}><table className={styles.table}><thead><tr><BusinessTableSequenceHeader /><th>Mã</th><th>Tên</th><th>Loại</th><th>Nhãn hàng</th><th>Hiển thị bán hàng</th><th>Đặt hàng</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>
+            <div className={styles.tableWrapper}><table className={styles.table}><thead><tr><BusinessTableSequenceHeader /><th>Mã</th><th aria-label="Ảnh">Ảnh</th><th>Tên</th><th>Loại</th><th>Nhãn hàng</th><th>Hiển thị bán hàng</th><th>Đặt hàng</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>
               {visibleProducts.map((product, rowIndex) => <tr key={product.id} data-testid={`product-row-${product.code}`}>
                 <BusinessTableSequenceCell rowIndex={rowIndex} />
-                <td><strong>{product.code}</strong></td><td>{product.name}</td><td>{product.category_name || '—'}</td><td>{product.brand_name || '—'}</td>
+                <td><strong>{product.code}</strong></td>
+                <td><ProductImageStatusIcon known={imageCodes !== null} hasImage={imageCodes?.has(product.code) === true} /></td>
+                <td>{product.name}</td><td>{product.category_name || '—'}</td><td>{product.brand_name || '—'}</td>
                 <td>{product.is_catalog_visible ? 'Có' : 'Không'}</td><td>{product.is_orderable ? 'Có' : 'Không'}</td><td>{product.is_active ? 'Đang sử dụng' : 'Ngừng sử dụng'}</td>
                 <td className={styles.rowActions}><button type="button" onClick={() => void openProductEdit(product)} data-testid={`edit-product-${product.code}`}>Sửa</button><button type="button" onClick={() => void openVariantManager(product)} data-testid={`manage-variants-${product.code}`}>SKU</button><button type="button" disabled={busy} onClick={() => void patchProductStatus(product, !product.is_active)}>{product.is_active ? 'Ngừng sử dụng' : 'Đưa vào sử dụng'}</button></td>
               </tr>)}
-              {visibleProducts.length === 0 ? <tr><td colSpan={9} className={styles.empty}>Không có sản phẩm phù hợp</td></tr> : null}
+              {visibleProducts.length === 0 ? <tr><td colSpan={10} className={styles.empty}>Không có sản phẩm phù hợp</td></tr> : null}
             </tbody></table></div>
           </section>
         ) : null}
@@ -616,6 +650,9 @@ export default function ProductWorkspace({
             brands={brands}
             units={initialUnits}
             onProductsChanged={setProducts}
+            imageBaseUrl={imageBaseUrl}
+            imageCodes={imageCodes}
+            onImageStatusChange={setProductImageStatus}
           />
         ) : null}
 
