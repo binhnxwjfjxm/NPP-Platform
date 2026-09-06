@@ -8,6 +8,7 @@ import {
 } from '../components/business-table-sequence';
 import Modal from '../components/modal';
 import ProductBulkUpdateWorkspace from './product-bulk-update-workspace';
+import ProductQuickSetupWorkspace from './product-quick-setup-workspace';
 import ProductUnitWorkspace from './product-unit-workspace';
 import type {
   BrandForm,
@@ -30,7 +31,7 @@ type Props = {
   initialError?: string | null;
 };
 
-type Tab = 'products' | 'updates' | 'categories' | 'brands' | 'units';
+type Tab = 'products' | 'quick' | 'updates' | 'categories' | 'brands' | 'units';
 type StatusFilter = 'all' | 'active' | 'inactive';
 
 const EMPTY_PRODUCT: ProductForm = {
@@ -570,12 +571,13 @@ export default function ProductWorkspace({
         <div className={styles.toolbar}>
           <div className={styles.tabs} role="tablist" aria-label="Khu vực danh mục sản phẩm">
             <button type="button" className={tab === 'products' ? styles.tabActive : styles.tab} onClick={() => selectTab('products')} data-testid="products-tab">Sản phẩm</button>
+            <button type="button" className={tab === 'quick' ? styles.tabActive : styles.tab} onClick={() => selectTab('quick')} data-testid="product-quick-setup-tab">Thiết lập nhanh</button>
             <button type="button" className={tab === 'updates' ? styles.tabActive : styles.tab} onClick={() => selectTab('updates')} data-testid="product-updates-tab">Cập nhật SP</button>
             <button type="button" className={tab === 'categories' ? styles.tabActive : styles.tab} onClick={() => selectTab('categories')} data-testid="categories-tab">Loại sản phẩm</button>
             <button type="button" className={tab === 'brands' ? styles.tabActive : styles.tab} onClick={() => selectTab('brands')} data-testid="brands-tab">Nhãn hàng</button>
             <button type="button" className={tab === 'units' ? styles.tabActive : styles.tab} onClick={() => { setUnitSelection(null); selectTab('units'); }} data-testid="units-tab">Đơn vị và quy đổi</button>
           </div>
-          {tab !== 'units' && tab !== 'updates' ? <button type="button" className={styles.secondaryButton} onClick={() => void reloadAll()} disabled={busy}>Làm mới</button> : null}
+          {tab !== 'units' && tab !== 'updates' && tab !== 'quick' ? <button type="button" className={styles.secondaryButton} onClick={() => void reloadAll()} disabled={busy}>Làm mới</button> : null}
         </div>
 
         {error && !editorOpen ? <div className={styles.errorBanner} role="alert">{error}</div> : null}
@@ -605,6 +607,16 @@ export default function ProductWorkspace({
               {visibleProducts.length === 0 ? <tr><td colSpan={9} className={styles.empty}>Không có sản phẩm phù hợp</td></tr> : null}
             </tbody></table></div>
           </section>
+        ) : null}
+
+        {tab === 'quick' ? (
+          <ProductQuickSetupWorkspace
+            products={products}
+            categories={categories}
+            brands={brands}
+            units={initialUnits}
+            onProductsChanged={setProducts}
+          />
         ) : null}
 
         {tab === 'updates' ? <ProductBulkUpdateWorkspace /> : null}
