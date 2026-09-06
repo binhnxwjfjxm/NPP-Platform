@@ -495,10 +495,6 @@ export async function previewManualInbound(client, { requestContext, payload }) 
       resolvedCost = await currentCost(client, requestContext.installationId, body.warehouseId, variant.base_variant_id);
       if (resolvedCost) costSource = 'CURRENT';
     }
-    if (!resolvedCost) {
-      display.requiredFields.push('COST');
-      rowErrors.push({ lineNumber: row.lineNumber, code: 'UNIT_COST_REQUIRED', message: `SKU ${row.sku}: Cần nhập giá vốn.` });
-    }
     Object.assign(display, { unitCost: resolvedCost, costSource });
 
     const multiplication = inventoryLedgerInternals.multiplyToBase(

@@ -74,17 +74,17 @@ function deterministicDocumentId(installationId, idempotencyKey) {
 }
 
 function normalizeUnitCost(value, lineNumber) {
+  if (value === undefined || value === null || String(value).trim() === '') {
+    return Object.freeze({ ok: true, value: null });
+  }
   const normalized = text(value, 48);
   if (!normalized || !COST_PATTERN.test(normalized)) {
-    return failure(
-      'MANUAL_INBOUND_COST_REQUIRED',
-      `Dòng ${lineNumber}: Lô 1 yêu cầu giá vốn dương trước khi ghi sổ.`,
-    );
+    return failure('INVALID_UNIT_COST', `Dòng ${lineNumber}: Giá vốn không hợp lệ.`);
   }
   const [whole, fraction = ''] = normalized.split('.');
   const scaled = BigInt(whole) * 1_000_000_000_000n + BigInt(fraction.padEnd(12, '0'));
   if (scaled <= 0n) {
-    return failure('MANUAL_INBOUND_COST_REQUIRED', `Dòng ${lineNumber}: Giá vốn phải lớn hơn 0.`);
+    return failure('INVALID_UNIT_COST', `Dòng ${lineNumber}: Giá vốn phải lớn hơn 0 khi có nhập.`);
   }
   return Object.freeze({ ok: true, value: `${whole}.${fraction.padEnd(12, '0')}` });
 }
@@ -248,9 +248,15 @@ export async function postManualInbound({ adapter, requestContext, idempotencyKe
           sourceLineReference: row.sourceLineReference,
           metadata: {
             ...row.metadata,
-            unitCost: row.unitCost,
-            currencyCode: 'VND',
-            costSource: 'MANUAL_INBOUND_EXPLICIT',
+            ...(row.unitCost
+              ? {
+                unitCost: row.unitCost,
+                currencyCode: 'VND',
+                costSource: row.metadata?.manualInboundCostSource === 'CURRENT'
+                  ? 'MANUAL_INBOUND_CURRENT'
+                  : 'MANUAL_INBOUND_EXPLICIT',
+              }
+              : { costSource: 'MANUAL_INBOUND_UNSPECIFIED' }),
           },
         })),
       };
@@ -309,7 +315,7 @@ export async function postManualInbound({ adapter, requestContext, idempotencyKe
         lotCode: line.lot_code,
         expiryDate: line.expiry_date,
         enteredUnitCost: normalized.value.rows[index].unitCost,
-        currencyCode: 'VND',
+        currencyCode: normalized.value.rows[index].unitCost ? 'VND' : null,
         sourceLineReference: line.source_line_reference,
         metadata: line.metadata ?? {},
       })));
