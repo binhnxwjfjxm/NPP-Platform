@@ -56,6 +56,14 @@ function stockValue(
   return `${formatQuantity(value)} ${line.baseUnitCode}`;
 }
 
+export function salesOrderCopyHref(orderId: string): string {
+  const query = new URLSearchParams({
+    quickAction: 'create',
+    copyFrom: orderId,
+  });
+  return `/sales/sales-orders?${query.toString()}`;
+}
+
 export default function SalesOrderDetail(props: Props) {
   const { order } = props;
   if (!order) {
@@ -96,6 +104,17 @@ export default function SalesOrderDetail(props: Props) {
           <p>{order.customerCode} · Kho {order.warehouseName}</p>
         </div>
         <div className={styles.inlineActions}>
+          {order.status === 'cancelled' ? (
+            <a
+              href={salesOrderCopyHref(order.id)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={styles.primaryButton}
+              data-testid="sales-order-copy"
+            >
+              Sao chép đơn
+            </a>
+          ) : null}
           {current && order.number && ['confirmed', 'closed', 'cancelled'].includes(order.status)
             ? <SalesOrderPrintSheet order={order} version={current} />
             : null}
