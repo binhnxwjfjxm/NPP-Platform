@@ -37,9 +37,12 @@ function isZeroAmount(value: string | number | null | undefined) {
 function formatWeightKg(value: string | null | undefined): string {
   const match = /^(\d+)(?:\.(\d+))?$/.exec(String(value ?? '').trim());
   if (!match) return 'Chưa đủ dữ liệu';
-  const whole = match[1].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-  const fraction = (match[2] ?? '').replace(/0+$/, '');
-  return `${whole}${fraction ? `,${fraction}` : ''} kg`;
+  const fraction = (match[2] ?? '').padEnd(3, '0');
+  let roundedHundredths = BigInt(match[1]) * 100n + BigInt(fraction.slice(0, 2) || '0');
+  if ((fraction[2] ?? '0') >= '5') roundedHundredths += 1n;
+  const whole = (roundedHundredths / 100n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  const roundedFraction = (roundedHundredths % 100n).toString().padStart(2, '0').replace(/0+$/, '');
+  return `${whole}${roundedFraction ? `,${roundedFraction}` : ''} kg`;
 }
 
 export default function SalesOrderPrintSheet({
@@ -98,9 +101,10 @@ export default function SalesOrderPrintSheet({
         number={order.number ?? 'BẢN NHÁP'}
         meta={[
           { key: 'customer', label: 'Khách hàng', value: displayCustomer },
+          { key: 'document_date', label: 'Ngày đơn', value: dateText(version.confirmedAt ?? version.createdAt) },
+          { key: 'total_weight', label: 'Khối lượng', value: version.missingWeightLineCount > 0 ? 'Chưa đủ dữ liệu' : formatWeightKg(version.totalWeightKg), full: true },
           { key: 'customer_code', label: 'Mã khách', value: version.customerCode },
           { key: 'phone', label: 'Điện thoại', value: displayPhone || '—' },
-          { key: 'document_date', label: 'Ngày đơn', value: dateText(version.confirmedAt ?? version.createdAt) },
           { key: 'address', label: 'Địa chỉ', value: addressText(version.customerAddress), full: true },
           { key: 'warehouse', label: 'Kho', value: `${version.warehouseCode} — ${version.warehouseName}` },
           { key: 'delivery_method', label: 'Hình thức giao nhận', value: deliveryMethodLabel(version) },
@@ -137,7 +141,6 @@ export default function SalesOrderPrintSheet({
           { key: 'total_subtotal', label: 'Tạm tính', value: `${formatMoney(version.subtotal)} ₫` },
           ...(showDiscount ? [{ key: 'total_discount', label: 'Chiết khấu', value: `${formatMoney(version.discountTotal)} ₫` }] : []),
           ...(showTax ? [{ key: 'total_tax', label: 'Thuế', value: `${formatMoney(version.taxTotal)} ₫` }] : []),
-          { key: 'total_weight', label: 'Tổng khối lượng', value: version.missingWeightLineCount > 0 ? 'Chưa đủ dữ liệu' : formatWeightKg(version.totalWeightKg) },
           { key: 'total_total', label: 'TỔNG CỘNG', value: `${formatMoney(version.total)} ₫`, emphasis: true },
         ]}
         note={version.note || undefined}
