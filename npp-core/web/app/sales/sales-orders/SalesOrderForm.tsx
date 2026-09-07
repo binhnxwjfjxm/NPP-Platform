@@ -1,8 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useState, type ComponentProps } from 'react';
+import { useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
 import { createPortal } from 'react-dom';
+import type { SalesOrder, SalesOrderVersion } from '../../../lib/sales-order-types';
 import SalesOrderCommercialForm from './SalesOrderCommercialForm';
+import { activeVersion, apiRequest } from './sales-order-ui';
 import styles from './sales-orders.module.css';
 
 export { type SalesOrderFormMode } from './SalesOrderCommercialForm';
@@ -41,6 +43,20 @@ export function normalizeVersionForEditing(
   };
 }
 
+export function prepareSalesOrderCopyVersion(version: SalesOrderVersion): SalesOrderVersion {
+  return {
+    ...version,
+    requestedDeliveryDate: null,
+    priceOverrideReason: null,
+    lines: version.lines?.map((line) => ({
+      ...line,
+      priceSource: 'PRICE_ENGINE' as const,
+      manualOverrideReason: null,
+      pricingTrace: [],
+    })),
+  };
+}
+
 function InlineFormError({ message }: { message: string | null }) {
   const [target, setTarget] = useState<HTMLElement | null>(null);
 
@@ -62,16 +78,106 @@ function InlineFormError({ message }: { message: string | null }) {
 
 export default function SalesOrderForm(props: SalesOrderFormProps) {
   const [inlineError, setInlineError] = useState<string | null>(null);
-  const normalizedVersion = useMemo(() => normalizeVersionForEditing(props.version), [props.version]);
+  const [copyVersion, setCopyVersion] = useState<SalesOrderVersion | null>(null);
+  const [copyLoading, setCopyLoading] = useState(false);
+  const copyHandledRef = useRef(false);
+  const onCloseRef = useRef(props.onClose);
+  const onErrorRef = useRef(props.onError);
+
+  useEffect(() => {
+    onCloseRef.current = props.onClose;
+  }, [props.onClose]);
+
+  useEffect(() => {
+    onErrorRef.current = props.onError;
+  }, [props.onError]);
+
+  useEffect(() => {
+    if (copyHandledRef.current || props.mode !== 'create' || props.version) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const copyFrom = params.get('copyFrom')?.trim();
+    if (!copyFrom) return;
+    copyHandledRef.current = true;
+
+    const nextUrl = new URL(window.location.href);
+    nextUrl.searchParams.delete('copyFrom');
+    window.history.replaceState(
+      window.history.state,
+      '',
+      `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`,
+    );
+
+    let disposed = false;
+    setCopyLoading(true);
+    onErrorRef.current('');
+
+    void apiRequest<SalesOrder>(`/api/sales-orders/${encodeURIComponent(copyFrom)}`)
+      .then((source) => {
+        if (disposed) return;
+        if (source.status !== 'cancelled') {
+          throw new Error('Chỉ sao chép đơn đã hủy sang đơn bán hàng mới.');
+        }
+        const sourceVersion = activeVersion(source);
+        if (!sourceVersion) {
+          throw new Error('Đơn đã hủy không còn dữ liệu phiên bản để sao chép.');
+        }
+        setCopyVersion(prepareSalesOrderCopyVersion(sourceVersion));
+        setCopyLoading(false);
+      })
+      .catch((error) => {
+        if (disposed) return;
+        setCopyLoading(false);
+        onErrorRef.current(error instanceof Error ? error.message : 'Không nạp được đơn đã hủy để sao chép.');
+        onCloseRef.current();
+      });
+
+    return () => {
+      disposed = true;
+    };
+  }, [props.mode, props.version]);
+
+  const normalizedVersion = useMemo(
+    () => normalizeVersionForEditing(props.version ?? copyVersion),
+    [copyVersion, props.version],
+  );
 
   const handleError = (message: string) => {
     setInlineError(message || null);
     props.onError(message);
   };
 
+  if (copyLoading) {
+    return (
+      <div className={styles.modalBackdrop} role="presentation">
+        <section
+          className={styles.orderEditorModal}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Đang chuẩn bị đơn bán hàng mới"
+        >
+          <header className={styles.modalHeader}>
+            <div>
+              <p className={styles.eyebrow}>Bán hàng</p>
+              <h2>Đang chuẩn bị đơn mới</h2>
+            </div>
+          </header>
+          <div className={styles.orderEditorBody}>
+            <p>Đang nạp dữ liệu từ đơn đã hủy…</p>
+          </div>
+        </section>
+      </div>
+    );
+  }
+
   return (
     <>
-      <SalesOrderCommercialForm {...props} version={normalizedVersion} onError={handleError} />
+      <SalesOrderCommercialForm
+        key={normalizedVersion?.id ?? 'new-sales-order'}
+        {...props}
+        version={normalizedVersion}
+        onError={handleError}
+      />
       <InlineFormError message={inlineError} />
       <style>{`
         .${styles.orderEditorModal}{width:min(1520px,calc(100vw - 1rem));height:min(96vh,1020px)}
