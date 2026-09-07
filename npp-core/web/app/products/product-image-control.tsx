@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createIdempotencyKey } from '@npp/contracts';
 import type { Product } from '../../lib/product-types';
 import {
@@ -121,7 +121,7 @@ export default function ProductImageControl({
   const actionLabel = !imageStatusKnown ? 'Chọn ảnh' : hasImage ? 'Đổi ảnh' : 'Thêm ảnh';
 
   return (
-    <Fragment>
+    <div className={styles.control} data-testid="product-image-control">
       <div className={styles.preview} data-testid="quick-product-image-preview">
         {showImage ? (
           <img src={imageUrl} alt={product?.name || 'Ảnh sản phẩm'} onError={() => setBrokenPreview(true)} />
@@ -129,29 +129,25 @@ export default function ProductImageControl({
           <span>{imageStatusKnown ? 'Chưa có ảnh' : 'Chưa kiểm tra ảnh'}</span>
         )}
       </div>
-      <div className={styles.meta} data-testid="product-image-control">
-        <strong>Ảnh dùng chung</strong>
-        <span>Thu nhỏ trước khi tải lên R2; các ứng dụng dùng cùng mã ảnh sẽ nhận ảnh mới.</span>
-        {product ? (
-          <div className={styles.actions}>
-            <button type="button" onClick={() => inputRef.current?.click()} disabled={busy}>
-              {busy ? 'Đang xử lý…' : actionLabel}
-            </button>
-            {imageStatusKnown && hasImage ? <button type="button" onClick={() => void removeImage()} disabled={busy}>Xóa ảnh</button> : null}
-          </div>
-        ) : null}
-        {error ? <small className={styles.error} role="alert">{error}</small> : null}
-        <input
-          ref={inputRef}
-          className={styles.fileInput}
-          type="file"
-          accept="image/jpeg,image/png,image/webp"
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (file) void upload(file);
-          }}
-        />
-      </div>
-    </Fragment>
+      {product ? (
+        <div className={styles.actions}>
+          <button type="button" onClick={() => inputRef.current?.click()} disabled={busy}>
+            {busy ? 'Đang xử lý…' : actionLabel}
+          </button>
+          {imageStatusKnown && hasImage ? <button type="button" onClick={() => void removeImage()} disabled={busy}>Xóa ảnh</button> : null}
+        </div>
+      ) : null}
+      {error ? <small className={styles.error} role="alert">{error}</small> : null}
+      <input
+        ref={inputRef}
+        className={styles.fileInput}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) void upload(file);
+        }}
+      />
+    </div>
   );
 }
