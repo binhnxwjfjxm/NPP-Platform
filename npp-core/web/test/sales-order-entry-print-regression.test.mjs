@@ -27,7 +27,7 @@ test('phiếu bán hàng ưu tiên tên ĐVT đã chốt và chỉ dùng tên hi
   assert.match(salesPrint, /unit: line\.unitName \|\| line\.unitCode/);
 });
 
-test('thiết lập mẫu in bán hàng có tùy chọn Tổng khối lượng', () => {
+test('thiết lập mẫu in giữ tùy chọn Tổng khối lượng và phiếu đặt Khối lượng ở phần thông tin', () => {
   assert.match(templates, /\['total_weight', 'Tổng khối lượng'\]/);
-  assert.match(salesPrint, /key: 'total_weight', label: 'Tổng khối lượng'/);
+  assert.match(salesPrint, /key: 'total_weight', label: 'Khối lượng'/);
 });

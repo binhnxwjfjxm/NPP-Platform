@@ -9,10 +9,9 @@ test('SKU form exposes shipment weight in office language', () => {
   assert.match(source, /variant-weight-uom-select/);
 });
 
-test('sales print shows only total weight and no per-line weight column', () => {
+test('sales print shows order weight in header and no per-line weight column', () => {
   const source = readFileSync(new URL('../app/sales/sales-orders/SalesOrderPrintSheet.tsx', import.meta.url), 'utf8');
-  assert.match(source, /label: 'Tổng khối lượng'/);
+  assert.match(source, /key: 'total_weight', label: 'Khối lượng'/);
   assert.match(source, /Chưa đủ dữ liệu/);
   assert.doesNotMatch(source, /fieldKey: 'line_weight'/);
-  assert.doesNotMatch(source, /label: 'Khối lượng'/);
 });

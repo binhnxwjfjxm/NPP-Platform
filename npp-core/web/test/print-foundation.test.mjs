@@ -16,10 +16,10 @@ test('shared print foundation uses browser print and print-only surface', () => 
   assert.match(css, /size: A4 portrait/);
 });
 
-test('Sales Order print is only exposed from an immutable numbered confirmed version', () => {
+test('Sales Order print is exposed for numbered immutable confirmed, closed or cancelled orders', () => {
   const detail = read('../app/sales/sales-orders/SalesOrderDetail.tsx');
   const sheet = read('../app/sales/sales-orders/SalesOrderPrintSheet.tsx');
-  assert.match(detail, /order\.number && \['confirmed', 'closed'\]\.includes\(order\.status\)/);
+  assert.match(detail, /order\.number && \['confirmed', 'closed', 'cancelled'\]\.includes\(order\.status\)/);
   assert.match(detail, /SalesOrderPrintSheet order=\{order\} version=\{current\}/);
   assert.match(sheet, /ĐƠN BÁN HÀNG/);
   assert.match(sheet, /customerAddress/);
