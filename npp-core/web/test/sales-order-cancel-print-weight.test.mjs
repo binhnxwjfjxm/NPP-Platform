@@ -9,8 +9,8 @@ function read(relativePath) {
 const detail = read('../app/sales/sales-orders/SalesOrderDetail.tsx');
 const print = read('../app/sales/sales-orders/SalesOrderPrintSheet.tsx');
 
-test('đơn bán hàng đã huỷ vẫn hiển thị hành động in mà không cần hồi sinh chứng từ', () => {
-  assert.match(detail, /current && \['confirmed', 'closed', 'cancelled'\]\.includes\(order\.status\)/);
+test('đơn bán hàng đã huỷ có số đơn vẫn hiển thị hành động in mà không hồi sinh chứng từ', () => {
+  assert.match(detail, /current && order\.number && \['confirmed', 'closed', 'cancelled'\]\.includes\(order\.status\)/);
   assert.doesNotMatch(detail, /current && order\.number && \['confirmed', 'closed'\]\.includes\(order\.status\)/);
 });
 

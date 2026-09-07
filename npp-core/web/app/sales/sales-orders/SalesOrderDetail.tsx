@@ -96,7 +96,7 @@ export default function SalesOrderDetail(props: Props) {
           <p>{order.customerCode} · Kho {order.warehouseName}</p>
         </div>
         <div className={styles.inlineActions}>
-          {current && ['confirmed', 'closed', 'cancelled'].includes(order.status)
+          {current && order.number && ['confirmed', 'closed', 'cancelled'].includes(order.status)
             ? <SalesOrderPrintSheet order={order} version={current} />
             : null}
           <span className={styles.statusPill} data-sales-order-tone={order.status}>{orderLabels[order.status] ?? order.status}</span>
