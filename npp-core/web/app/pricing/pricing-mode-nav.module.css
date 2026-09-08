@@ -1,0 +1,28 @@
+.nav {
+  position: fixed;
+  top: calc(4.25rem * var(--hp-ui-scale, 1));
+  right: 1.5rem;
+  z-index: 70;
+  display: flex;
+  gap: .3rem;
+  padding: .3rem;
+  border: 1px solid var(--hp-border, #d8e5dc);
+  border-radius: .75rem;
+  background: var(--hp-surface, #fff);
+  box-shadow: var(--hp-shadow, 0 8px 22px rgba(15, 23, 42, .08));
+}
+.link, .active {
+  border-radius: .55rem;
+  color: var(--hp-ink, #172033);
+  font-size: .88rem;
+  font-weight: 650;
+  line-height: 1;
+  padding: .62rem .78rem;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.link:hover { background: var(--hp-surface-soft, #f4f9f5); }
+.active { background: var(--hp-primary, #172033); color: var(--hp-primary-contrast, #fff); }
+@media (max-width: 900px) {
+  .nav { position: sticky; top: .5rem; right: auto; margin: .65rem; justify-content: center; }
+}

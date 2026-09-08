@@ -1,5 +1,6 @@
 'use client';
 
+import { createIdempotencyKey } from '@npp/contracts';
 import { useEffect } from 'react';
 import { normalizePricingResolutionResponse } from '../../lib/pricing-resolution-error';
 
@@ -54,7 +55,7 @@ export default function PricingIdempotencyBoundary({ children }: { children: Rea
         if (body === null) return originalFetch(input, init);
 
         const fingerprint = `${method}\n${url.pathname}${url.search}\n${body}`;
-        const key = pendingKeys.get(fingerprint) ?? `web-pricing-${crypto.randomUUID()}`;
+        const key = pendingKeys.get(fingerprint) ?? createIdempotencyKey('pricing_write');
         pendingKeys.set(fingerprint, key);
 
         const headers = new Headers(input instanceof Request ? input.headers : undefined);
