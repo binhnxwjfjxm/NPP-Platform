@@ -118,6 +118,10 @@ function listKey(code: string) {
   return code.trim().toUpperCase();
 }
 
+function listSelectionValue(list: Pick<PriceList, 'id'>) {
+  return `PRICE_LIST:${list.id}`;
+}
+
 function fromItem(item: PriceListItem, list: PriceList): RuleView {
   return {
     priceListCode: list.code,
@@ -355,11 +359,12 @@ export default function PricingOverview() {
     .slice()
     .sort((a, b) => Number(b.is_active) - Number(a.is_active) || b.priority - a.priority || a.code.localeCompare(b.code)), [lists]);
   const loadedListCodes = useMemo(() => new Set(Object.keys(rulesByListCode)), [rulesByListCode]);
+  const selectedList = useMemo(() => listColumns.find((list) => listSelectionValue(list) === selectedListCode) ?? null, [listColumns, selectedListCode]);
   const visibleListColumns = useMemo(() => {
     if (selectedListCode === BASE_ONLY) return [];
     if (selectedListCode === ALL_LISTS) return listColumns.filter((list) => loadedListCodes.has(listKey(list.code)));
-    return listColumns.filter((list) => list.code.toUpperCase() === selectedListCode.toUpperCase() && loadedListCodes.has(listKey(list.code)));
-  }, [listColumns, loadedListCodes, selectedListCode]);
+    return selectedList && loadedListCodes.has(listKey(selectedList.code)) ? [selectedList] : [];
+  }, [listColumns, loadedListCodes, selectedList, selectedListCode]);
   const rules = useMemo(() => Object.values(rulesByListCode).flat(), [rulesByListCode]);
   const ruleIndexes = useMemo(() => indexRules(rules), [rules]);
   const visibleRows = useMemo(() => {
@@ -407,7 +412,7 @@ export default function PricingOverview() {
     if (nextCode === BASE_ONLY) return;
     const targetLists = nextCode === ALL_LISTS
       ? listColumns
-      : listColumns.filter((list) => list.code.toUpperCase() === nextCode.toUpperCase());
+      : listColumns.filter((list) => listSelectionValue(list) === nextCode);
     void ensureRulesLoaded(targetLists);
   }
 
@@ -460,7 +465,7 @@ export default function PricingOverview() {
 
   async function exportSelectedList() {
     if (selectedListCode === BASE_ONLY || selectedListCode === ALL_LISTS) { setError('Chọn một bảng giá cụ thể để xuất.'); return; }
-    const list = listByCode.get(selectedListCode.toUpperCase());
+    const list = selectedList;
     if (!list) { setError('Bảng giá đã chọn không còn tồn tại.'); return; }
     setBusy(true); setError(''); setMessage('');
     const intent = `list:${list.code}`;
@@ -497,7 +502,7 @@ export default function PricingOverview() {
   const progressText = loadProgress
     ? selectedListCode === ALL_LISTS
       ? `Đang tải ${loadProgress.completed}/${loadProgress.total} bảng giá…`
-      : `Đang tải bảng giá ${selectedListCode}…`
+      : `Đang tải bảng giá ${selectedList?.code ?? 'đã chọn'}…`
     : '';
 
   return (
@@ -521,7 +526,7 @@ export default function PricingOverview() {
               <select value={selectedListCode} onChange={(event) => changeDisplayedPriceList(event.target.value)} disabled={busy || loading || loadingPrices}>
                 <option value={BASE_ONLY}>Giá nền</option>
                 <option value={ALL_LISTS}>Tất cả bảng giá</option>
-                {listColumns.map((list) => <option key={list.id} value={list.code}>{list.code} · {list.name}{list.is_active ? '' : ' · Ngừng'}</option>)}
+                {listColumns.map((list) => <option key={list.id} value={listSelectionValue(list)}>{list.code} · {list.name}{list.is_active ? '' : ' · Ngừng'}</option>)}
               </select>
             </label>
             <button type="button" className={styles.secondaryButton} onClick={() => void exportSelectedList()} disabled={busy || loading || loadingPrices || selectedListCode === BASE_ONLY || selectedListCode === ALL_LISTS}>Xuất bảng giá đang chọn</button>
