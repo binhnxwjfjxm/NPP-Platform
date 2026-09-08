@@ -36,11 +36,15 @@ type SkuView = {
 };
 type ExportIntent = { intent: string; key: string };
 type ApiEnvelope<T> = { data?: T; error?: { message?: string; code?: string } };
+type RuleCache = Record<string, RuleView[]>;
+type LoadProgress = { completed: number; total: number };
 
 const PRODUCT_PAGE_SIZE = 1000;
 const PRICE_ITEM_PAGE_SIZE = 2000;
 const MAX_OFFSET = 10000;
+const BASE_ONLY = '__BASE__';
 const ALL_LISTS = '__ALL__';
+const PRICE_LIST_LOAD_CONCURRENCY = 4;
 const ADJUSTMENT_LABELS: Record<string, string> = {
   FIXED_PRICE: 'Đặt giá trực tiếp',
   PERCENT_DISCOUNT: 'Giảm phần trăm',
@@ -108,6 +112,14 @@ function summarizeRules(rules: RuleView[]) {
 
 function activeValue(value: unknown) {
   return value === true || String(value ?? '').toLowerCase() === 'true';
+}
+
+function listKey(code: string) {
+  return code.trim().toUpperCase();
+}
+
+function listSelectionValue(list: Pick<PriceList, 'id'>) {
+  return `PRICE_LIST:${list.id}`;
 }
 
 function fromItem(item: PriceListItem, list: PriceList): RuleView {
@@ -180,14 +192,14 @@ async function listVariants(products: PricingProduct[]): Promise<PricingVariant[
   return rows;
 }
 
-async function listRules(lists: PriceList[]): Promise<RuleView[]> {
-  const result: RuleView[] = [];
-  for (let index = 0; index < lists.length; index += 8) {
-    const chunk = lists.slice(index, index + 8);
-    const pages = await Promise.all(chunk.map(async (list) => ({ list, items: await listAllPriceItems(list.id) })));
-    for (const page of pages) result.push(...page.items.map((item) => fromItem(item, page.list)));
-  }
-  return result;
+async function listRulesForPriceList(list: PriceList): Promise<RuleView[]> {
+  const items = await listAllPriceItems(list.id);
+  return items.map((item) => fromItem(item, list));
+}
+
+async function listRulesForPriceLists(lists: PriceList[]): Promise<RuleCache> {
+  const entries = await Promise.all(lists.map(async (list) => [listKey(list.code), await listRulesForPriceList(list)] as const));
+  return Object.fromEntries(entries) as RuleCache;
 }
 
 function ruleKey(priceListCode: string, sku: string) {
@@ -279,14 +291,17 @@ export default function PricingOverview() {
   const [variants, setVariants] = useState<PricingVariant[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
   const [lists, setLists] = useState<PriceList[]>([]);
-  const [rules, setRules] = useState<RuleView[]>([]);
-  const [selectedListCode, setSelectedListCode] = useState(ALL_LISTS);
+  const [rulesByListCode, setRulesByListCode] = useState<RuleCache>({});
+  const [selectedListCode, setSelectedListCode] = useState(BASE_ONLY);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loadingPrices, setLoadingPrices] = useState(false);
+  const [loadProgress, setLoadProgress] = useState<LoadProgress | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const exportKeyRef = useRef<ExportIntent | null>(null);
+  const loadedListCodesRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -299,11 +314,20 @@ export default function PricingOverview() {
           requestJson<PriceList[]>('/api/price-lists?limit=1000'),
         ]);
         const activeProducts = nextProducts.filter((product) => product.is_active);
-        const [nextVariants, nextRules] = await Promise.all([listVariants(activeProducts), listRules(nextLists)]);
+        const baseLists = nextLists.filter((list) => list.list_type === 'BASE');
+        const [nextVariants, baseRuleCache] = await Promise.all([
+          listVariants(activeProducts),
+          listRulesForPriceLists(baseLists),
+        ]);
         if (cancelled) return;
-        setProducts(nextProducts); setUnits(nextUnits); setLists(nextLists); setVariants(nextVariants); setRules(nextRules);
+        loadedListCodesRef.current = new Set(Object.keys(baseRuleCache));
+        setProducts(nextProducts);
+        setUnits(nextUnits);
+        setLists(nextLists);
+        setVariants(nextVariants);
+        setRulesByListCode(baseRuleCache);
       } catch (cause) {
-        if (!cancelled) setError(cause instanceof Error ? cause.message : 'Không tải được bảng giá tổng hợp.');
+        if (!cancelled) setError(cause instanceof Error ? cause.message : 'Không tải được Giá nền.');
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -334,15 +358,63 @@ export default function PricingOverview() {
     .filter((list) => list.list_type !== 'BASE')
     .slice()
     .sort((a, b) => Number(b.is_active) - Number(a.is_active) || b.priority - a.priority || a.code.localeCompare(b.code)), [lists]);
-  const visibleListColumns = useMemo(() => selectedListCode === ALL_LISTS
-    ? listColumns
-    : listColumns.filter((list) => list.code.toUpperCase() === selectedListCode.toUpperCase()), [listColumns, selectedListCode]);
+  const loadedListCodes = useMemo(() => new Set(Object.keys(rulesByListCode)), [rulesByListCode]);
+  const selectedList = useMemo(() => listColumns.find((list) => listSelectionValue(list) === selectedListCode) ?? null, [listColumns, selectedListCode]);
+  const visibleListColumns = useMemo(() => {
+    if (selectedListCode === BASE_ONLY) return [];
+    if (selectedListCode === ALL_LISTS) return listColumns.filter((list) => loadedListCodes.has(listKey(list.code)));
+    return selectedList && loadedListCodes.has(listKey(selectedList.code)) ? [selectedList] : [];
+  }, [listColumns, loadedListCodes, selectedList, selectedListCode]);
+  const rules = useMemo(() => Object.values(rulesByListCode).flat(), [rulesByListCode]);
   const ruleIndexes = useMemo(() => indexRules(rules), [rules]);
   const visibleRows = useMemo(() => {
     const term = search.trim().toLocaleLowerCase('vi');
     if (!term) return skuRows;
     return skuRows.filter((row) => `${row.productCode} ${row.productName} ${row.sku} ${row.variantName} ${row.unitName}`.toLocaleLowerCase('vi').includes(term));
   }, [search, skuRows]);
+
+  async function ensureRulesLoaded(targetLists: PriceList[]) {
+    const uniqueTargets = targetLists.filter((list, index, array) => array.findIndex((candidate) => listKey(candidate.code) === listKey(list.code)) === index);
+    const total = uniqueTargets.length;
+    let completed = uniqueTargets.filter((list) => loadedListCodesRef.current.has(listKey(list.code))).length;
+    const missing = uniqueTargets.filter((list) => !loadedListCodesRef.current.has(listKey(list.code)));
+    if (!missing.length) return;
+
+    setLoadingPrices(true);
+    setLoadProgress({ completed, total });
+    setError('');
+    setMessage('');
+    try {
+      for (let index = 0; index < missing.length; index += PRICE_LIST_LOAD_CONCURRENCY) {
+        const chunk = missing.slice(index, index + PRICE_LIST_LOAD_CONCURRENCY);
+        const entries = await Promise.all(chunk.map(async (list) => [listKey(list.code), await listRulesForPriceList(list)] as const));
+        const patch: RuleCache = {};
+        for (const [key, rows] of entries) {
+          patch[key] = rows;
+          loadedListCodesRef.current.add(key);
+          completed += 1;
+        }
+        setRulesByListCode((current) => ({ ...current, ...patch }));
+        setLoadProgress({ completed, total });
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Không tải được bảng giá đã chọn.');
+    } finally {
+      setLoadingPrices(false);
+      setLoadProgress(null);
+    }
+  }
+
+  function changeDisplayedPriceList(nextCode: string) {
+    setSelectedListCode(nextCode);
+    setError('');
+    setMessage('');
+    if (nextCode === BASE_ONLY) return;
+    const targetLists = nextCode === ALL_LISTS
+      ? listColumns
+      : listColumns.filter((list) => listSelectionValue(list) === nextCode);
+    void ensureRulesLoaded(targetLists);
+  }
 
   function currentExportKey(intent: string) {
     if (exportKeyRef.current?.intent === intent) return exportKeyRef.current.key;
@@ -392,8 +464,8 @@ export default function PricingOverview() {
   }
 
   async function exportSelectedList() {
-    if (selectedListCode === ALL_LISTS) { setError('Chọn một bảng giá để xuất.'); return; }
-    const list = listByCode.get(selectedListCode.toUpperCase());
+    if (selectedListCode === BASE_ONLY || selectedListCode === ALL_LISTS) { setError('Chọn một bảng giá cụ thể để xuất.'); return; }
+    const list = selectedList;
     if (!list) { setError('Bảng giá đã chọn không còn tồn tại.'); return; }
     setBusy(true); setError(''); setMessage('');
     const intent = `list:${list.code}`;
@@ -427,6 +499,12 @@ export default function PricingOverview() {
     } finally { setBusy(false); }
   }
 
+  const progressText = loadProgress
+    ? selectedListCode === ALL_LISTS
+      ? `Đang tải ${loadProgress.completed}/${loadProgress.total} bảng giá…`
+      : `Đang tải bảng giá ${selectedList?.code ?? 'đã chọn'}…`
+    : '';
+
   return (
     <AppShell title="Bảng giá tổng hợp" subtitle="Xem và đối chiếu giá bán của từng sản phẩm theo từng bảng giá.">
       <div className={styles.page} data-testid="pricing-overview-page">
@@ -445,28 +523,31 @@ export default function PricingOverview() {
           </div>
           <div className={styles.exportGroup}>
             <label>Bảng giá hiển thị
-              <select value={selectedListCode} onChange={(event) => setSelectedListCode(event.target.value)} disabled={busy || loading}>
+              <select value={selectedListCode} onChange={(event) => changeDisplayedPriceList(event.target.value)} disabled={busy || loading || loadingPrices}>
+                <option value={BASE_ONLY}>Giá nền</option>
                 <option value={ALL_LISTS}>Tất cả bảng giá</option>
-                {listColumns.map((list) => <option key={list.id} value={list.code}>{list.code} · {list.name}{list.is_active ? '' : ' · Ngừng'}</option>)}
+                {listColumns.map((list) => <option key={list.id} value={listSelectionValue(list)}>{list.code} · {list.name}{list.is_active ? '' : ' · Ngừng'}</option>)}
               </select>
             </label>
-            <button type="button" className={styles.secondaryButton} onClick={() => void exportSelectedList()} disabled={busy || loading || selectedListCode === ALL_LISTS}>Xuất bảng giá đang chọn</button>
-            <button type="button" className={styles.primaryButton} onClick={() => void exportAll()} disabled={busy || loading || !skuRows.length}>Xuất toàn bộ bảng giá</button>
+            <button type="button" className={styles.secondaryButton} onClick={() => void exportSelectedList()} disabled={busy || loading || loadingPrices || selectedListCode === BASE_ONLY || selectedListCode === ALL_LISTS}>Xuất bảng giá đang chọn</button>
+            <button type="button" className={styles.primaryButton} onClick={() => void exportAll()} disabled={busy || loading || loadingPrices || !skuRows.length}>Xuất toàn bộ bảng giá</button>
           </div>
         </div>
 
         {error ? <div className={styles.error} role="alert">{error}</div> : null}
         {message ? <div className={styles.notice} role="status">{message}</div> : null}
+        {progressText ? <div className={styles.notice} role="status">{progressText}</div> : null}
+
         <div className={styles.summaryBar}>
           <span>SKU đang bán <strong>{skuRows.length}</strong></span>
           <span>Bảng giá <strong>{listColumns.length}</strong></span>
-          <span>Điều kiện áp dụng <strong>{rules.length}</strong></span>
+          <span>Điều kiện đã tải <strong>{rules.length}</strong></span>
         </div>
         <label className={styles.search}>Tìm sản phẩm hoặc SKU
           <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Nhập mã SP, tên SP, SKU hoặc quy cách" />
         </label>
 
-        {loading ? <div className={styles.empty}>Đang tải bảng giá…</div> : null}
+        {loading ? <div className={styles.empty}>Đang tải Giá nền…</div> : null}
         {!loading && !visibleRows.length ? <div className={styles.empty}>Không có SKU phù hợp.</div> : null}
         {!loading && visibleRows.length ? (
           <div className={styles.tableWrap}>
