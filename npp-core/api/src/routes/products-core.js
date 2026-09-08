@@ -5,6 +5,7 @@ import { buildAuditRecord, insertAuditRecord, withAuditOutboxTransaction } from 
 import * as productService from '../services/product.js';
 import * as productCrudService from '../services/product-with-inventory-policy.js';
 import * as productBulkUpdateService from '../services/product-bulk-update.js';
+import * as productVariantBulkReadService from '../services/product-variant-bulk-read.js';
 
 const RESOURCES = Object.freeze({
   category: Object.freeze({
@@ -259,6 +260,22 @@ async function handleMasterResource(req, res, context, descriptor, id) {
 
 async function handleProducts(req, res, context, pathname) {
   const method = String(req.method || 'GET').toUpperCase();
+  if (pathname === '/api/products/variants/query' && method === 'POST') {
+    const body = await payload(req, res, context);
+    if (body === null) return true;
+    try {
+      const result = await productVariantBulkReadService.listProductVariantsForProducts(context.getPool(), {
+        installationId: context.requestContext.installationId,
+        payload: body,
+      });
+      if (!result.ok) return sendServiceError(res, result, context), true;
+      sendSuccess(res, result.variants, context.requestId, context.receivedAt);
+    } catch {
+      sendError(res, apiError('PRODUCT_STORAGE_UNAVAILABLE', 'Product data is temporarily unavailable', {}, true, 503), context.requestId, context.receivedAt);
+    }
+    return true;
+  }
+
   if (pathname === '/api/products/variants/identify' && method === 'POST') {
     const body = await payload(req, res, context);
     if (body === null) return true;
@@ -444,7 +461,8 @@ export async function handleProductRoutes(req, res, options) {
   }
   const requestContext = options.createContext({ config: options.config, principal: auth.principal, requestId: options.requestId, receivedAt: options.receivedAt });
   const method = String(req.method || 'GET').toUpperCase();
-  const isReadOperation = method === 'GET' || (method === 'POST' && pathname === '/api/products/variants/identify');
+  const readPostPaths = new Set(['/api/products/variants/identify', '/api/products/variants/query']);
+  const isReadOperation = method === 'GET' || (method === 'POST' && readPostPaths.has(pathname));
   const permission = options.authorize(requestContext, isReadOperation ? options.PERMISSIONS.coreProductRead : options.PERMISSIONS.coreProductWrite);
   if (!permission.ok) {
     sendError(res, apiError('FORBIDDEN', 'Permission denied', {}, false, 403), options.requestId, options.receivedAt);
