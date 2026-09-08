@@ -8,15 +8,15 @@ import { parseTabularXlsx, TABULAR_XLSX_LIMITS } from '../lib/tabular-xlsx.js';
 const root = path.resolve(process.cwd());
 function read(relativePath) { return fs.readFileSync(path.join(root, relativePath), 'utf8'); }
 
-test('pricing workbook keeps summary and detailed rules in separate sheets', () => {
+test('pricing workbook keeps summary and detailed conditions in separate sheets', () => {
   const workbook = createTabularWorkbookXlsx([
     {
       sheetName: 'Bảng giá tổng hợp',
       headers: ['Mã SP', 'Tên SP', 'SKU', 'Quy cách', 'ĐVT', 'Giá nền', 'SỈ · Giá sỉ'],
-      rows: [['SP01', 'Trà đào', 'SP01-THUNG', 'Thùng 24 chai', 'Thùng', '120.000 ₫', 'Nhiều mức']],
+      rows: [['SP01', 'Trà đào', 'SP01-THUNG', 'Thùng 24 chai', 'Thùng', '120.000 ₫', 'Nhiều mức giá']],
     },
     {
-      sheetName: 'Chi tiết chính sách giá',
+      sheetName: 'Điều kiện áp dụng',
       headers: ['Mã bảng giá', 'Tên bảng giá', 'SKU', 'Cách áp dụng', 'Giá trị', 'SL từ', 'SL đến'],
       rows: [['SỈ', 'Giá sỉ', 'SP01-THUNG', 'Giảm phần trăm', '5%', '10', '49']],
     },
@@ -25,26 +25,30 @@ test('pricing workbook keeps summary and detailed rules in separate sheets', () 
   const summary = parseTabularXlsx(workbook, limits, ['Mã SP', 'Giá nền']);
   const details = parseTabularXlsx(workbook, limits, ['Mã bảng giá', 'Cách áp dụng']);
   assert.deepEqual(summary[0], ['Mã SP', 'Tên SP', 'SKU', 'Quy cách', 'ĐVT', 'Giá nền', 'SỈ · Giá sỉ']);
-  assert.equal(summary[1][6], 'Nhiều mức');
+  assert.equal(summary[1][6], 'Nhiều mức giá');
   assert.deepEqual(details[0].slice(0, 3), ['Mã bảng giá', 'Tên bảng giá', 'SKU']);
   assert.equal(details[1][4], '5%');
 });
 
-test('pricing overview exposes the required office-language actions and columns', () => {
+test('pricing overview uses one business navigation level and filters price-list columns', () => {
   const overview = read('app/pricing/pricing-overview.tsx');
-  const nav = read('app/pricing/pricing-mode-nav.tsx');
+  const workspace = read('app/pricing/pricing-workspace.tsx');
   const page = read('app/pricing/page.tsx');
-  assert.match(page, /PricingOverview/);
-  assert.match(nav, /Toàn bộ bảng giá/);
-  assert.match(overview, /Mã SP/);
-  assert.match(overview, /Tên SP/);
-  assert.match(overview, /Quy cách/);
-  assert.match(overview, /ĐVT/);
-  assert.match(overview, /Giá nền/);
-  assert.match(overview, /Xuất bảng đang chọn/);
-  assert.match(overview, /Xuất toàn bộ Excel/);
-  assert.match(overview, /Chi tiết chính sách giá/);
-  assert.match(overview, /Nhiều mức/);
+  assert.doesNotMatch(page, /PricingModeNav/);
+  assert.match(page, /PricingWorkspaceTab/);
+  assert.match(workspace, /Danh mục giá/);
+  assert.match(workspace, /Giá sản phẩm/);
+  assert.match(workspace, /Bảng giá tổng hợp/);
+  assert.match(workspace, /Kiểm tra giá áp dụng/);
+  assert.match(overview, /Bảng giá hiển thị/);
+  assert.match(overview, /Tất cả bảng giá/);
+  assert.match(overview, /visibleListColumns/);
+  assert.match(overview, /Xuất bảng giá đang chọn/);
+  assert.match(overview, /Xuất toàn bộ bảng giá/);
+  assert.match(overview, /Cập nhật giá từ Excel/);
+  assert.match(overview, /Lịch sử cập nhật giá/);
+  assert.match(overview, /Điều kiện áp dụng/);
+  assert.match(overview, /Nhiều mức giá/);
   assert.doesNotMatch(overview, /sourceKey/);
 });
 

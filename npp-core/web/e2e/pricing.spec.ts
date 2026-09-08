@@ -30,7 +30,7 @@ async function createFixture(request: APIRequestContext, suffix: string) {
   return { product, variant: (await assignment.json()).data };
 }
 
-test.describe('Giá bán và khuyến mãi', () => {
+test.describe('Giá bán', () => {
   test('quản trị giá nền, giá kênh, kiểm tra giá và điều chỉnh thủ công', async ({ page, request }) => {
     const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`.toUpperCase();
     const fixture = await createFixture(request, suffix);
@@ -40,7 +40,7 @@ test.describe('Giá bán và khuyến mãi', () => {
 
     await page.goto('/pricing');
     await expect(page.getByTestId('pricing-page')).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Giá bán và khuyến mãi', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Giá bán', exact: true })).toBeVisible();
 
     await page.getByTestId('add-sales-channel-button').click();
     await expect(page.getByTestId('pricing-channel-modal')).toBeVisible();

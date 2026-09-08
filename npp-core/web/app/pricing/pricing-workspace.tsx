@@ -1,5 +1,6 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { AppShell } from '../components/app-shell';
 import Modal from '../components/modal';
@@ -19,7 +20,7 @@ import type {
 } from '../../lib/pricing-types';
 import styles from './pricing.module.css';
 
-type Tab = 'channels' | 'lists' | 'items' | 'resolver';
+export type PricingWorkspaceTab = 'channels' | 'lists' | 'items' | 'resolver';
 type EditorModal = 'channel' | 'list' | 'item' | null;
 
 type ChannelForm = { code: string; name: string; description: string; isActive: boolean };
@@ -65,7 +66,7 @@ const EMPTY_ITEM: ItemForm = {
 
 const LIST_LABELS: Record<PriceListType, string> = {
   BASE: 'Giá nền', CHANNEL: 'Theo kênh', CUSTOMER_GROUP: 'Theo nhóm khách', CUSTOMER: 'Theo khách hàng',
-  PROMOTION: 'Khuyến mãi', CUSTOM: 'Quy tắc khác',
+  PROMOTION: 'Khuyến mãi', CUSTOM: 'Điều kiện khác',
 };
 const LIST_PRIORITIES: Record<PriceListType, number> = {
   BASE: 100, CHANNEL: 200, CUSTOMER_GROUP: 300, PROMOTION: 400, CUSTOMER: 500, CUSTOM: 600,
@@ -128,8 +129,9 @@ function adjustmentValue(item: PriceListItem) {
   return item.rate_bps === null ? money(item.amount_minor) : `${bpsToPercent(item.rate_bps)}%`;
 }
 
-export default function PricingWorkspace() {
-  const [tab, setTab] = useState<Tab>('channels');
+export default function PricingWorkspace({ initialTab = 'channels' }: { initialTab?: PricingWorkspaceTab }) {
+  const router = useRouter();
+  const [tab, setTab] = useState<PricingWorkspaceTab>(initialTab);
   const [editorModal, setEditorModal] = useState<EditorModal>(null);
   const [channels, setChannels] = useState<SalesChannel[]>([]);
   const [lists, setLists] = useState<PriceList[]>([]);
@@ -184,12 +186,13 @@ export default function PricingWorkspace() {
     }
     requestJson<PriceListItem[]>(`/api/price-lists/${selectedListId}/items?limit=2000`)
       .then(setItems)
-      .catch((error) => setMessage(error instanceof Error ? error.message : 'Không thể tải quy tắc giá'));
+      .catch((error) => setMessage(error instanceof Error ? error.message : 'Không thể tải điều kiện giá'));
   }, [selectedListId]);
 
-  function changeTab(nextTab: Tab) {
+  function changeTab(nextTab: PricingWorkspaceTab) {
     setTab(nextTab);
     setEditorModal(null);
+    router.replace(`/pricing?tab=${nextTab}`, { scroll: false });
   }
 
   async function loadVariants(productId: string, target: 'item' | 'resolver') {
@@ -327,7 +330,7 @@ export default function PricingWorkspace() {
         ? current.map((row) => row.id === saved.id ? saved : row)
         : [...current, saved].sort((a, b) => b.priority - a.priority));
       setSelectedListId(saved.id);
-      setMessage(editingList ? 'Đã cập nhật bảng giá/chương trình' : 'Đã tạo bảng giá/chương trình');
+      setMessage(editingList ? 'Đã cập nhật bảng giá' : 'Đã tạo bảng giá');
       resetList(saved.list_type);
       setEditorModal(null);
     } catch (error) {
@@ -428,11 +431,11 @@ export default function PricingWorkspace() {
       setItems((current) => editingItem
         ? current.map((row) => row.id === saved.id ? saved : row)
         : [...current, saved]);
-      setMessage(editingItem ? 'Đã cập nhật quy tắc giá' : 'Đã thêm giá/quy tắc cho SKU');
+      setMessage(editingItem ? 'Đã cập nhật giá sản phẩm' : 'Đã thêm giá sản phẩm');
       resetItem();
       setEditorModal(null);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Không thể lưu quy tắc giá');
+      setMessage(error instanceof Error ? error.message : 'Không thể lưu giá sản phẩm');
     } finally {
       setBusy(false);
     }
@@ -449,7 +452,7 @@ export default function PricingWorkspace() {
       });
       setItems((current) => current.map((row) => row.id === saved.id ? saved : row));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Không thể đổi trạng thái quy tắc');
+      setMessage(error instanceof Error ? error.message : 'Không thể đổi trạng thái giá sản phẩm');
     } finally {
       setBusy(false);
     }
@@ -490,14 +493,16 @@ export default function PricingWorkspace() {
   }, [listForm.listType]);
 
   return (
-    <AppShell title="Giá bán và khuyến mãi" subtitle="Quản lý giá bán theo hàng hóa, kênh bán, nhóm khách hàng, khách hàng và chương trình áp dụng.">
+    <AppShell title="Giá bán" subtitle="Quản lý danh mục giá, giá sản phẩm và điều kiện áp dụng cho từng hình thức bán hàng.">
       <div className={styles.workspace} data-testid="pricing-page">
-        <div className={styles.tabs} role="tablist">
-          {([['channels', 'Kênh bán'], ['lists', 'Bảng giá và chương trình'], ['items', 'Giá theo SKU'], ['resolver', 'Kiểm tra giá áp dụng']] as const).map(([value, label]) => (
+        <div className={styles.tabs} role="tablist" aria-label="Giá bán">
+          {([['channels', 'Kênh bán'], ['lists', 'Danh mục giá'], ['items', 'Giá sản phẩm']] as const).map(([value, label]) => (
             <button key={value} type="button" className={tab === value ? styles.tabActive : styles.tab} onClick={() => changeTab(value)} data-testid={`pricing-${value}-tab`}>
               {label}
             </button>
           ))}
+          <button type="button" className={styles.tab} onClick={() => router.push('/pricing?view=all')} data-testid="pricing-overview-tab">Bảng giá tổng hợp</button>
+          <button type="button" className={tab === 'resolver' ? styles.tabActive : styles.tab} onClick={() => changeTab('resolver')} data-testid="pricing-resolver-tab">Kiểm tra giá áp dụng</button>
         </div>
 
         {message ? <div className={styles.notice}>{message}</div> : null}
@@ -533,7 +538,7 @@ export default function PricingWorkspace() {
         {tab === 'lists' ? (
           <section>
             <div className={styles.sectionHeader}>
-              <div><h2>Bảng giá và chương trình</h2><p>Thứ tự ưu tiên lớn hơn được xét trước. Mọi mức giá được quản lý trực tiếp trên hệ thống.</p></div>
+              <div><h2>Danh mục giá</h2><p>Tạo và quản lý bảng giá, chương trình, phạm vi và thứ tự áp dụng.</p></div>
               <button className={styles.secondaryButton} type="button" onClick={() => openListCreate()} data-testid="add-price-list-button">Tạo mới</button>
             </div>
             <div className={styles.tableWrapper}>
@@ -550,7 +555,7 @@ export default function PricingWorkspace() {
                       <td>{list.is_active ? 'Hoạt động' : 'Ngừng'}</td>
                       <td className={styles.actions}>
                         <button type="button" onClick={() => editList(list)}>Sửa</button>
-                        <button type="button" onClick={() => { setSelectedListId(list.id); changeTab('items'); }}>Giá SKU</button>
+                        <button type="button" onClick={() => { setSelectedListId(list.id); changeTab('items'); }}>Giá sản phẩm</button>
                         <button type="button" disabled={busy} onClick={() => void toggleList(list)}>{list.is_active ? 'Ngừng sử dụng' : 'Đưa vào sử dụng'}</button>
                       </td>
                     </tr>
@@ -565,7 +570,7 @@ export default function PricingWorkspace() {
         {tab === 'items' ? (
           <section>
             <div className={styles.sectionHeader}>
-              <div><h2>Mức giá theo SKU</h2><p>Giá lẻ và giá thùng được nhập riêng cho từng SKU.</p></div>
+              <div><h2>Giá sản phẩm</h2><p>Thiết lập mức giá và điều kiện áp dụng cho từng SKU.</p></div>
               <button className={styles.secondaryButton} type="button" disabled={!selectedList} onClick={openItemCreate} data-testid="add-price-item-button">Tạo mới</button>
             </div>
             <label className={styles.listPicker}>
@@ -583,7 +588,7 @@ export default function PricingWorkspace() {
                 {lists.map((list) => <option key={list.id} value={list.id}>{list.code} — {list.name}</option>)}
               </select>
             </label>
-            {!selectedList ? <p className={styles.empty}>Chọn bảng giá để quản lý giá SKU.</p> : null}
+            {!selectedList ? <p className={styles.empty}>Chọn bảng giá để quản lý giá sản phẩm.</p> : null}
             <div className={styles.tableWrapper}>
               <table className={styles.table}>
                 <thead><tr><th>SKU</th><th>Cách áp dụng</th><th>Giá trị</th><th>Khoảng số lượng</th><th>Nguồn thiết lập</th><th>Trạng thái</th><th></th></tr></thead>
@@ -602,7 +607,7 @@ export default function PricingWorkspace() {
                       </td>
                     </tr>
                   ))}
-                  {items.length === 0 ? <tr><td colSpan={7} className={styles.empty}>Chưa có giá/quy tắc trong bảng này</td></tr> : null}
+                  {items.length === 0 ? <tr><td colSpan={7} className={styles.empty}>Chưa có giá hoặc điều kiện áp dụng trong bảng này</td></tr> : null}
                 </tbody>
               </table>
             </div>
@@ -674,7 +679,7 @@ export default function PricingWorkspace() {
 
         <Modal
           open={editorModal === 'list'}
-          title={editingList ? `Sửa ${editingList.code}` : 'Tạo bảng giá / chương trình'}
+          title={editingList ? `Sửa ${editingList.code}` : 'Tạo bảng giá hoặc chương trình'}
           description="Thiết lập phạm vi áp dụng, thứ tự ưu tiên và thời gian hiệu lực."
           onClose={() => { if (!busy) setEditorModal(null); }}
           testId="pricing-list-modal"
@@ -711,8 +716,8 @@ export default function PricingWorkspace() {
 
         <Modal
           open={editorModal === 'item'}
-          title={editingItem ? `Sửa giá ${editingItem.sku}` : 'Thêm giá theo SKU'}
-          description={selectedList ? `Bảng giá: ${selectedList.code} — ${selectedList.name}` : 'Chọn bảng giá trước khi thêm giá theo SKU.'}
+          title={editingItem ? `Sửa giá ${editingItem.sku}` : 'Thêm giá sản phẩm'}
+          description={selectedList ? `Bảng giá: ${selectedList.code} — ${selectedList.name}` : 'Chọn bảng giá trước khi thêm giá sản phẩm.'}
           onClose={() => { if (!busy) setEditorModal(null); }}
           testId="pricing-item-modal"
           size="large"
@@ -720,7 +725,7 @@ export default function PricingWorkspace() {
             <>
               <button type="button" className={styles.secondaryButton} disabled={busy} onClick={() => setEditorModal(null)}>Hủy</button>
               <button type="button" className={styles.primaryButton} disabled={busy || !itemForm.variantId} onClick={() => void saveItem()} data-testid="save-price-item-button">
-                {editingItem ? 'Cập nhật quy tắc' : 'Thêm giá/quy tắc'}
+                {editingItem ? 'Cập nhật giá' : 'Thêm giá'}
               </button>
             </>
           )}
@@ -729,7 +734,7 @@ export default function PricingWorkspace() {
           <div className={styles.formGrid}>
             <label>Sản phẩm<select disabled={Boolean(editingItem)} value={itemForm.productId} onChange={(event) => void loadVariants(event.target.value, 'item')} data-testid="item-product-select"><option value="">Chọn sản phẩm</option>{products.filter((row) => row.is_active).map((row) => <option key={row.id} value={row.id}>{row.code} — {row.name}</option>)}</select></label>
             <label>SKU<select disabled={Boolean(editingItem) || !itemForm.productId} value={itemForm.variantId} onChange={(event) => setItemForm({ ...itemForm, variantId: event.target.value })} data-testid="item-variant-select"><option value="">Chọn SKU</option>{variants.map((row) => <option key={row.id} value={row.id}>{row.sku} — {row.name}</option>)}</select></label>
-            <label>Loại điều chỉnh<select disabled={Boolean(editingItem)} value={itemForm.adjustmentType} onChange={(event) => setItemForm({ ...itemForm, adjustmentType: event.target.value as PriceAdjustmentType })} data-testid="item-adjustment-select">{Object.entries(ADJUSTMENT_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+            <label>Cách áp dụng<select disabled={Boolean(editingItem)} value={itemForm.adjustmentType} onChange={(event) => setItemForm({ ...itemForm, adjustmentType: event.target.value as PriceAdjustmentType })} data-testid="item-adjustment-select">{Object.entries(ADJUSTMENT_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
             {usesAmount ? <label>Số tiền (₫)<input inputMode="numeric" value={itemForm.amount} onChange={(event) => setItemForm({ ...itemForm, amount: event.target.value.replace(/\D/g, '') })} data-testid="item-amount-input" /></label> : <label>Phần trăm (%)<input inputMode="decimal" value={itemForm.percent} onChange={(event) => setItemForm({ ...itemForm, percent: event.target.value })} data-testid="item-percent-input" /></label>}
             <label>Số lượng từ<input value={itemForm.minQuantity} onChange={(event) => setItemForm({ ...itemForm, minQuantity: event.target.value })} /></label>
             <label>Số lượng đến<input value={itemForm.maxQuantity} onChange={(event) => setItemForm({ ...itemForm, maxQuantity: event.target.value })} placeholder="Không giới hạn" /></label>
