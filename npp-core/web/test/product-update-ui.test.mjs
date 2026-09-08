@@ -53,5 +53,6 @@ test('Cập nhật SP — chọn tệp là hiện dữ liệu và nhận diện 
   assert.match(gateway, /method: 'POST', path: '\/api\/products\/variants\/identify'/);
   assert.match(identifyRoute, /identifyProductVariants/);
   assert.match(coreRoute, /pathname === '\/api\/products\/variants\/identify' && method === 'POST'/);
-  assert.match(coreRoute, /isReadOperation = method === 'GET' \|\| \(method === 'POST' && pathname === '\/api\/products\/variants\/identify'\)/);
+  assert.match(coreRoute, /const readPostPaths = new Set\(\['\/api\/products\/variants\/identify', '\/api\/products\/variants\/query'\]\)/);
+  assert.match(coreRoute, /const isReadOperation = method === 'GET' \|\| \(method === 'POST' && readPostPaths\.has\(pathname\)\)/);
 });
