@@ -373,6 +373,12 @@ function variantBusinessLabel(variant: ProductVariant): string {
   return variant.variant_kind === 'CARTON' ? 'Thùng' : 'Lẻ';
 }
 
+function customerGroupLabel(customer: Customer): string {
+  const group = customer.group_name?.trim();
+  if (!group) return 'Chưa phân nhóm';
+  return /^khách hàng\b/i.test(group) ? group : `Khách hàng ${group}`;
+}
+
 export default function SalesOrderCommercialForm(props: Props) {
   const { version, onClose, onError } = props;
   const initialWalkIn = version?.customerMode === 'WALK_IN';
@@ -1365,6 +1371,7 @@ export default function SalesOrderCommercialForm(props: Props) {
                           type="button"
                           key={item.id}
                           className={styles.skuResult}
+                          aria-label={`Chọn ${item.name} · ${customerGroupLabel(item)}`}
                           onMouseDown={(event) => event.preventDefault()}
                           onClick={() => {
                             setCustomerId(item.id);
@@ -1373,7 +1380,7 @@ export default function SalesOrderCommercialForm(props: Props) {
                           }}
                         >
                           <div><span>{item.name}</span><strong>{item.code}</strong><small>{item.phone || 'Không có số điện thoại'}</small></div>
-                          <div><b>Chọn khách</b><small>{item.email || 'Khách Công Ty đang hoạt động'}</small></div>
+                          <div><span style={{ color: '#66766f', opacity: 0.72, fontSize: '.74rem', fontWeight: 700 }}>{customerGroupLabel(item)}</span></div>
                         </button>
                       ))}
                     </div>

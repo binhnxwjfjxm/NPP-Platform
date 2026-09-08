@@ -100,11 +100,12 @@
   grid-template-columns: minmax(0, 1fr) auto !important;
   align-items: center;
   column-gap: .62rem !important;
+  padding: .5rem .75rem !important;
 }
 
 .orderCardMain {
   display: grid;
-  gap: .28rem;
+  gap: .18rem;
   min-width: 0;
 }
 

@@ -6,13 +6,11 @@ import { BusinessSequenceNumber } from '../../components/business-table-sequence
 import type { SalesOrderBootstrap } from '../../../lib/sales-order-bootstrap';
 import type { SalesOrder, SalesOrderVersion } from '../../../lib/sales-order-types';
 import { SALES_ORDER_PERMISSION_KEYS } from '../../../lib/sales-order-permissions';
-import { salesOrderSourceLabel } from '../../../lib/business-language';
 import SalesOrderDetail from './SalesOrderDetail';
 import SalesOrderForm, { type SalesOrderFormMode } from './SalesOrderForm';
 import {
   activeVersion,
   apiRequest,
-  collectionLabels,
   formatMoney,
   formatVietnamDateTime,
   mutationKey,
@@ -515,10 +513,8 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
                         <strong className={polishStyles.orderCardTotal}>{formatMoney(orderCardTotal(order))}đ</strong>
                       </div>
                     </div>
-                    <b>{order.customerCode} — {order.customerName}</b>
+                    <b>{order.customerName}</b>
                     <div className={styles.orderCardMeta}>
-                      <small>Nguồn {salesOrderSourceLabel(order.sourceType, order.sourceId)}</small>
-                      <small>Kho {order.warehouseCode} · {collectionLabels[order.collectionPolicy] ?? 'Theo thỏa thuận thanh toán'}</small>
                       <small>Kênh {order.salesChannelCode ?? 'chưa xác định'}{order.salesChannelName ? ` — ${order.salesChannelName}` : ''}</small>
                       <small>Cập nhật {formatVietnamDateTime(order.updatedAt)}</small>
                     </div>
