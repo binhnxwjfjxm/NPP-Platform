@@ -66,11 +66,11 @@ test('P1 business language uses Công Ty for company-facing NPP/Core wording', (
   assert.doesNotMatch(userFacing, /Hệ thống điều hành NPP|NPP Operations|NPP Core|Hưng Phát Company|Đơn Core|Khách hàng Core|Giá Core|Sales Admin|Nguồn: Core|MCP hiện trường|mã khách trên Core|chứng từ canonical/);
 });
 
-test('P1 sales and field reporting map technical sources and labels before rendering', () => {
+test('P1 field reporting maps technical sources while sales cards keep source metadata hidden', () => {
   assert.match(language, /salesOrderSourceLabel/);
   assert.match(language, /Nhân viên thị trường/);
   assert.match(language, /Khách hàng/);
-  assert.match(salesOrders, /salesOrderSourceLabel\(order\.sourceType, order\.sourceId\)/);
+  assert.doesNotMatch(salesOrders, /salesOrderSourceLabel\(order\.sourceType, order\.sourceId\)/);
   assert.match(management, /salesOrderSourceLabel\(order\.sourceType, order\.sourceId\)/);
   assert.doesNotMatch(management, /Sales Admin|CS và kế toán|Admin/);
   assert.doesNotMatch(employeePerformance, /MCP canonical|Field actor|Order intent|Admin control/);
