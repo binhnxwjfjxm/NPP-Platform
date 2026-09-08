@@ -27,6 +27,7 @@ export default function DataExchangeWorkspace() {
   const [quotationRows, setQuotationRows] = useState<QuotationRow[]>([]); const [selectedBalanceKey, setSelectedBalanceKey] = useState(''); const [movementRows, setMovementRows] = useState<MovementView[]>([]);
   const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const importOperationKeyRef = useRef<string | null>(null);
 
   useEffect(() => { if (TABS.includes(requestedTab as Tab)) setTab(requestedTab as Tab); }, [requestedTab]);
 
@@ -52,8 +53,8 @@ export default function DataExchangeWorkspace() {
   function fail(cause: unknown) { setError(cause instanceof Error ? humanizeMessage(cause.message) : 'Thao tác không thành công.'); }
   function toggleColumn(setter: (value: Set<string>) => void, current: Set<string>, column: string) { const next = new Set(current); if (next.has(column)) next.delete(column); else next.add(column); setter(next); }
 
-  const { productTemplate, productExport, pricingExport, stocktakeExport, prepareImport, confirmPendingImport, updatePendingRow } = buildDataExchangeImportActions({
-    units, productColumns, pendingImport, setPendingImport, refreshReferenceData, setMessage, setBusy, fail, begin, priceLists, pricingPriceListId, warehouses, stocktakeWarehouse,
+  const { productTemplate, productExport, pricingTemplate, pricingExport, stocktakeExport, prepareImport, confirmPendingImport, updatePendingRow } = buildDataExchangeImportActions({
+    units, productColumns, pendingImport, importOperationKeyRef, setPendingImport, refreshReferenceData, setMessage, setBusy, fail, begin, priceLists, pricingPriceListId, warehouses, stocktakeWarehouse,
   });
 
   async function buildQuotation() {
@@ -93,5 +94,5 @@ export default function DataExchangeWorkspace() {
   }
   function previewTable() { return <DataExchangeImportPreview ctx={{ pendingImport, tab, setPendingImport, busy, confirmPendingImport, units, updatePendingRow }} />; }
 
-  return <DataExchangeView ctx={{ tab, setTab, setError, setMessage, setPendingImport, busy, setBusy, error, message, fileRefs, fileInput, productTemplate, productExport, columnChooser, productColumns, setProductColumns, previewTable, pricingExport, priceLists, pricingPriceListId, setPricingPriceListId, stocktakeExport, stocktakeWarehouse, setStocktakeWarehouse, warehouses, buildQuotation, quotationExport, quotationRows, quotationScope, setQuotationScope, quotationCategory, setQuotationCategory, categories, quotationSkus, setQuotationSkus, quotationContext, setQuotationContext, channels, groups, customers, loadMovements, selectedBalanceKey, setSelectedBalanceKey, setMovementRows, balances, selectedBalance, movementRows, refreshReferenceData, begin, fail }} />;
+  return <DataExchangeView ctx={{ tab, setTab, setError, setMessage, setPendingImport, busy, setBusy, error, message, fileRefs, fileInput, productTemplate, productExport, columnChooser, productColumns, setProductColumns, previewTable, pricingTemplate, pricingExport, priceLists, pricingPriceListId, setPricingPriceListId, stocktakeExport, stocktakeWarehouse, setStocktakeWarehouse, warehouses, buildQuotation, quotationExport, quotationRows, quotationScope, setQuotationScope, quotationCategory, setQuotationCategory, categories, quotationSkus, setQuotationSkus, quotationContext, setQuotationContext, channels, groups, customers, loadMovements, selectedBalanceKey, setSelectedBalanceKey, setMovementRows, balances, selectedBalance, movementRows, refreshReferenceData, begin, fail }} />;
 }

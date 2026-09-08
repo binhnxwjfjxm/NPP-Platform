@@ -14,8 +14,17 @@ function xmlEscape(value) {
   return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
 }
 
+function codePointEntity(value, radix) {
+  const codePoint = Number.parseInt(value, radix);
+  if (!Number.isInteger(codePoint) || codePoint < 0 || codePoint > 0x10ffff || (codePoint >= 0xd800 && codePoint <= 0xdfff)) return '\uFFFD';
+  return String.fromCodePoint(codePoint);
+}
+
 function xmlUnescape(value) {
-  return String(value ?? '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&');
+  return String(value ?? '')
+    .replace(/&#x([0-9a-f]+);/gi, (_match, code) => codePointEntity(code, 16))
+    .replace(/&#([0-9]+);/g, (_match, code) => codePointEntity(code, 10))
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&');
 }
 
 function crc32(buffer) {
@@ -188,8 +197,9 @@ function readZipEntries(buffer, limits) {
 }
 
 function attr(tag, name) {
-  const match = new RegExp(`\\b${name}="([^"]*)"`).exec(tag);
-  return match ? xmlUnescape(match[1]) : '';
+  const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = new RegExp(`(?:^|\\s)${escapedName}=(?:"([^"]*)"|'([^']*)')`).exec(tag);
+  return match ? xmlUnescape(match[1] ?? match[2] ?? '') : '';
 }
 
 function cellColumnIndex(ref) {
@@ -208,21 +218,29 @@ function sharedStrings(entries) {
   return values;
 }
 
-function firstWorksheetPath(entries) {
+function worksheetPaths(entries) {
   const workbook = entries.get('xl/workbook.xml')?.toString('utf8');
   const rels = entries.get('xl/_rels/workbook.xml.rels')?.toString('utf8');
   if (!workbook || !rels) throw new Error('XLSX_WORKBOOK_MISSING');
-  const firstSheet = workbook.match(/<sheet\b[^>]*\br:id="([^"]+)"[^>]*\/?\s*>/);
-  if (!firstSheet) throw new Error('XLSX_WORKSHEET_MISSING');
+  const relationshipTargets = new Map();
   for (const match of rels.matchAll(/<Relationship\b[^>]*\/?\s*>/g)) {
-    if (attr(match[0], 'Id') !== firstSheet[1]) continue;
-    const target = attr(match[0], 'Target').replace(/^\//, '');
-    if (!target || target.includes('..') || target.includes('\\')) throw new Error('XLSX_WORKSHEET_INVALID');
-    const path = target.startsWith('xl/') ? target : `xl/${target}`;
-    if (!entries.has(path)) throw new Error('XLSX_WORKSHEET_MISSING');
-    return path;
+    const type = attr(match[0], 'Type');
+    if (!type.endsWith('/worksheet')) continue;
+    const id = attr(match[0], 'Id');
+    const target = attr(match[0], 'Target').replace(/^\/+/, '');
+    if (!id || !target || target.includes('\\')) continue;
+    const segments = target.split('/').filter((segment) => segment && segment !== '.');
+    if (!segments.length || segments.includes('..')) continue;
+    const path = segments[0] === 'xl' ? segments.join('/') : `xl/${segments.join('/')}`;
+    if (entries.has(path)) relationshipTargets.set(id, path);
   }
-  throw new Error('XLSX_WORKSHEET_MISSING');
+  const paths = [];
+  for (const match of workbook.matchAll(/<sheet\b[^>]*\/?\s*>/g)) {
+    const path = relationshipTargets.get(attr(match[0], 'r:id'));
+    if (path && !paths.includes(path)) paths.push(path);
+  }
+  if (!paths.length) throw new Error('XLSX_WORKSHEET_MISSING');
+  return paths;
 }
 
 function parseCellValue(cellTag, body, strings) {
@@ -237,11 +255,7 @@ function parseCellValue(cellTag, body, strings) {
   return xmlUnescape(raw);
 }
 
-export function parseTabularXlsx(buffer, limits = TABULAR_XLSX_LIMITS) {
-  const entries = readZipEntries(Buffer.from(buffer), limits);
-  const sheet = entries.get(firstWorksheetPath(entries))?.toString('utf8');
-  if (!sheet) throw new Error('XLSX_WORKSHEET_MISSING');
-  const strings = sharedStrings(entries);
+function parseWorksheetRows(sheet, strings, limits) {
   const rows = [];
   for (const rowMatch of sheet.matchAll(/<row\b[^>]*>([\s\S]*?)<\/row>/g)) {
     if (rows.length >= limits.maxRows) throw new Error('XLSX_ROW_LIMIT_EXCEEDED');
@@ -256,8 +270,50 @@ export function parseTabularXlsx(buffer, limits = TABULAR_XLSX_LIMITS) {
     }
     if (highest >= 0) rows.push(cells.slice(0, highest + 1));
   }
-  if (rows.length === 0) throw new Error('XLSX_EMPTY');
   return rows;
+}
+
+function comparable(value) {
+  return String(value ?? '').trim().toLocaleLowerCase('vi-VN');
+}
+
+function selectTableCandidate(rows, expectedHeaders) {
+  if (!rows.length) return null;
+  const expected = new Set(expectedHeaders.map(comparable).filter(Boolean));
+  let bestIndex = 0;
+  let bestMatched = -1;
+  let bestWidth = -1;
+  const scanLimit = Math.min(rows.length, 25);
+  for (let index = 0; index < scanLimit; index += 1) {
+    const cells = rows[index].map((value) => String(value ?? '').trim());
+    const nonEmpty = cells.filter(Boolean);
+    if (!nonEmpty.length) continue;
+    const matched = expected.size ? nonEmpty.filter((value) => expected.has(comparable(value))).length : 0;
+    const width = nonEmpty.length;
+    if (matched > bestMatched || (matched === bestMatched && width > bestWidth)) {
+      bestIndex = index;
+      bestMatched = matched;
+      bestWidth = width;
+    }
+  }
+  const selected = rows.slice(bestIndex).filter((row) => row.some((value) => String(value ?? '').trim()));
+  if (!selected.length) return null;
+  return { rows: selected, matched: Math.max(0, bestMatched), width: Math.max(0, bestWidth) };
+}
+
+export function parseTabularXlsx(buffer, limits = TABULAR_XLSX_LIMITS, expectedHeaders = []) {
+  const entries = readZipEntries(Buffer.from(buffer), limits);
+  const strings = sharedStrings(entries);
+  let best = null;
+  for (const path of worksheetPaths(entries)) {
+    const sheet = entries.get(path)?.toString('utf8');
+    if (!sheet) continue;
+    const candidate = selectTableCandidate(parseWorksheetRows(sheet, strings, limits), expectedHeaders);
+    if (!candidate) continue;
+    if (!best || candidate.matched > best.matched || (candidate.matched === best.matched && candidate.width > best.width) || (candidate.matched === best.matched && candidate.width === best.width && candidate.rows.length > best.rows.length)) best = candidate;
+  }
+  if (!best?.rows.length) throw new Error('XLSX_EMPTY');
+  return best.rows;
 }
 
 export function tabularXlsxErrorMessage(error) {
@@ -267,5 +323,6 @@ export function tabularXlsxErrorMessage(error) {
   if (code === 'XLSX_COLUMN_LIMIT_EXCEEDED') return 'Tệp XLSX vượt quá 24 cột dữ liệu.';
   if (code === 'XLSX_HEADER_INVALID' || code === 'XLSX_HEADER_DUPLICATE') return 'Tên cột XLSX không hợp lệ hoặc bị trùng.';
   if (['XLSX_ENTRY_COUNT_INVALID', 'XLSX_ENTRY_SIZE_INVALID', 'XLSX_UNCOMPRESSED_SIZE_INVALID'].includes(code)) return 'Tệp XLSX quá phức tạp hoặc có kích thước giải nén không an toàn.';
-  return 'Tệp XLSX không hợp lệ hoặc không đọc được worksheet đầu tiên.';
+  if (code === 'XLSX_WORKSHEET_MISSING' || code === 'XLSX_EMPTY') return 'Tệp XLSX không có trang dữ liệu có thể đọc.';
+  return 'Tệp XLSX không hợp lệ hoặc chưa được hỗ trợ.';
 }

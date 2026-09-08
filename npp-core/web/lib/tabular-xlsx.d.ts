@@ -1,5 +1,4 @@
-export const TABULAR_XLSX_MIME: string;
-export const TABULAR_XLSX_LIMITS: Readonly<{
+export type TabularXlsxLimits = Readonly<{
   maxFileBytes: number;
   maxEntries: number;
   maxEntryBytes: number;
@@ -7,6 +6,25 @@ export const TABULAR_XLSX_LIMITS: Readonly<{
   maxRows: number;
   maxColumns: number;
 }>;
-export function createTabularXlsx(input: { sheetName?: string; headers: string[]; rows: Array<Array<string | number | boolean | null | undefined>> }, limits?: typeof TABULAR_XLSX_LIMITS): Buffer;
-export function parseTabularXlsx(buffer: Buffer | Uint8Array | ArrayBuffer, limits?: typeof TABULAR_XLSX_LIMITS): string[][];
+
+export type TabularXlsxInput = {
+  sheetName?: string;
+  headers: Array<string | number | boolean | null | undefined>;
+  rows: Array<Array<string | number | boolean | null | undefined>>;
+};
+
+export const TABULAR_XLSX_MIME: string;
+export const TABULAR_XLSX_LIMITS: TabularXlsxLimits;
+
+export function createTabularXlsx(
+  input: TabularXlsxInput,
+  limits?: TabularXlsxLimits,
+): Buffer;
+
+export function parseTabularXlsx(
+  buffer: Buffer | Uint8Array,
+  limits?: TabularXlsxLimits,
+  expectedHeaders?: readonly string[],
+): string[][];
+
 export function tabularXlsxErrorMessage(error: unknown): string;
