@@ -51,7 +51,7 @@ test('routine fixed-price file is exactly SKU plus selling price for active pric
   assert.match(actions, /SKU \$\{sku\} bị lặp trong file/);
   assert.match(actions, /if \(!list\.is_active\) throw new Error\('Bảng giá\/chương trình đã ngừng sử dụng\.'\)/);
   assert.doesNotMatch(actions, /chỉ áp dụng cho bảng giá nền/);
-  assert.match(view, /File chỉ cần 2 cột/);
+  assert.match(view, /Tệp chỉ cần Mã hàng \(SKU\) và Giá bán/);
   assert.match(view, /Bảng giá hoặc chương trình cần cập nhật/);
   assert.match(view, /priceLists\.filter\(\(list\) => list\.is_active\)/);
   assert.doesNotMatch(view, /list\.is_active && list\.list_type === 'BASE'/);
@@ -61,9 +61,11 @@ test('routine fixed-price file is exactly SKU plus selling price for active pric
 
 test('SKU-keyed price updates preserve quotation lineage', () => {
   assert.match(actions, /matchBySku:\s*true/);
-  assert.match(actions, /const sourceBatchId = `price-file-\$\{crypto\.randomUUID\(\)\}`/);
-  assert.match(actions, /'Idempotency-Key': sourceBatchId/);
+  assert.match(actions, /const key = importOperationKeyRef\.current \?\? idempotency\(importOperation\(kind\)\)/);
+  assert.match(actions, /const sourceBatchId = operationKey/);
+  assert.match(actions, /'Idempotency-Key': operationKey/);
   assert.match(actions, /JSON\.stringify\(\{ matchBySku: true, sourceBatchId, items \}\)/);
+  assert.doesNotMatch(actions, /price-file-\$\{crypto\.randomUUID\(\)\}/);
   assert.match(workspace, /lineTotal: String\(row\.lineTotalMinor/);
   assert.match(workspace, /priceListCode: String\(row\.priceListCode/);
   assert.match(workspace, /row\.lineTotal, row\.priceListCode/);
