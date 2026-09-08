@@ -38,9 +38,15 @@ export async function POST(request: NextRequest) {
       { status: 400, headers: responseHeaders(requestId) },
     );
   }
+  if (!Array.isArray(body?.productIds)) {
+    return NextResponse.json(
+      { error: { code: 'INVALID_PRODUCT_VARIANT_QUERY', message: 'Danh sách sản phẩm cần đọc SKU không hợp lệ', retryable: false }, requestId },
+      { status: 400, headers: responseHeaders(requestId) },
+    );
+  }
 
   try {
-    const productIds = Array.isArray(body?.productIds) ? body.productIds.map((value) => String(value ?? '')) : [];
+    const productIds = body.productIds.map((value) => String(value ?? ''));
     const data = await listProductVariantsForProducts<unknown>(requestId, productIds);
     return NextResponse.json({ data, requestId }, { status: 200, headers: responseHeaders(requestId) });
   } catch (error) {

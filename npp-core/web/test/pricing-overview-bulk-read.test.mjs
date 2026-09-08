@@ -16,11 +16,12 @@ test('Bảng giá tổng hợp đọc SKU theo lô thay vì gọi từng sản p
 
   assert.match(overview, /PRODUCT_VARIANT_BATCH_SIZE = 500/);
   assert.match(overview, /\/api\/products\/variants\/query/);
-  assert.match(overview, /productIds: chunk\.map\(\(product\) => product\.id\)/);
+  assert.match(overview, /const productIds = chunk\.map\(\(product\) => product\.id\)/);
   assert.doesNotMatch(overview, /\/api\/products\/\$\{product\.id\}\/variants/);
   assert.match(gateway, /listProductVariantsForProducts/);
   assert.match(gateway, /path: '\/api\/products\/variants\/query'/);
   assert.match(route, /listProductVariantsForProducts/);
+  assert.match(route, /INVALID_PRODUCT_VARIANT_QUERY/);
   assert.match(coreRoute, /pathname === '\/api\/products\/variants\/query'/);
   assert.match(coreRoute, /readPostPaths\.has\(pathname\)/);
   assert.match(service, /MAX_PRODUCT_IDS = 500/);
