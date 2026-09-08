@@ -41,6 +41,7 @@ test('pricing overview uses one business navigation level and filters price-list
   assert.match(workspace, /Bảng giá tổng hợp/);
   assert.match(workspace, /Kiểm tra giá áp dụng/);
   assert.match(overview, /Bảng giá hiển thị/);
+  assert.match(overview, /Giá nền/);
   assert.match(overview, /Tất cả bảng giá/);
   assert.match(overview, /visibleListColumns/);
   assert.match(overview, /Xuất bảng giá đang chọn/);
@@ -50,6 +51,21 @@ test('pricing overview uses one business navigation level and filters price-list
   assert.match(overview, /Điều kiện áp dụng/);
   assert.match(overview, /Nhiều mức giá/);
   assert.doesNotMatch(overview, /sourceKey/);
+});
+
+test('pricing overview lazy-loads price lists and defaults to base price', () => {
+  const overview = read('app/pricing/pricing-overview.tsx');
+  assert.match(overview, /const BASE_ONLY = '__BASE__'/);
+  assert.match(overview, /useState\(BASE_ONLY\)/);
+  assert.match(overview, /nextLists\.filter\(\(list\) => list\.list_type === 'BASE'\)/);
+  assert.match(overview, /listRulesForPriceLists\(baseLists\)/);
+  assert.doesNotMatch(overview, /listRules\(nextLists\)/);
+  assert.match(overview, /PRICE_LIST_LOAD_CONCURRENCY = 4/);
+  assert.match(overview, /ensureRulesLoaded/);
+  assert.match(overview, /loadedListCodesRef/);
+  assert.match(overview, /Đang tải Giá nền/);
+  assert.match(overview, /Đang tải \$\{loadProgress\.completed\}\/\$\{loadProgress\.total\} bảng giá/);
+  assert.match(overview, /Điều kiện đã tải/);
 });
 
 test('pricing writes use the shared canonical idempotency generator', () => {
