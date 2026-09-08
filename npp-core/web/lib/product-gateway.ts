@@ -204,6 +204,9 @@ export function patchProduct<T>(id: string, requestId: string, body: unknown): P
 export function listProductVariants<T>(productId: string, requestId: string): Promise<T[]> {
   return req<T[]>({ method: 'GET', path: variantPath(productId), requestId });
 }
+export function listProductVariantsForProducts<T>(requestId: string, productIds: string[]): Promise<T[]> {
+  return req<T[]>({ method: 'POST', path: '/api/products/variants/query', requestId, body: { productIds } });
+}
 export function createProductVariant<T>(productId: string, requestId: string, body: unknown, key?: string): Promise<T> {
   return req<T>({ method: 'POST', path: variantPath(productId), requestId, body, idempotencyKey: mutationKey(key, 'product-variant-create') });
 }

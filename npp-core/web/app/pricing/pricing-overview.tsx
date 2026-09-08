@@ -40,6 +40,7 @@ type RuleCache = Record<string, RuleView[]>;
 type LoadProgress = { completed: number; total: number };
 
 const PRODUCT_PAGE_SIZE = 1000;
+const PRODUCT_VARIANT_BATCH_SIZE = 500;
 const PRICE_ITEM_PAGE_SIZE = 2000;
 const MAX_OFFSET = 10000;
 const BASE_ONLY = '__BASE__';
@@ -184,10 +185,16 @@ async function listAllPriceItems(priceListId: string): Promise<PriceListItem[]> 
 
 async function listVariants(products: PricingProduct[]): Promise<PricingVariant[]> {
   const rows: PricingVariant[] = [];
-  for (let index = 0; index < products.length; index += 16) {
-    const chunk = products.slice(index, index + 16);
-    const pages = await Promise.all(chunk.map((product) => requestJson<PricingVariant[]>(`/api/products/${product.id}/variants`)));
-    for (const page of pages) rows.push(...page);
+  for (let index = 0; index < products.length; index += PRODUCT_VARIANT_BATCH_SIZE) {
+    const chunk = products.slice(index, index + PRODUCT_VARIANT_BATCH_SIZE);
+    const productIds = chunk.map((product) => product.id);
+    if (!productIds.length) continue;
+    const page = await requestJson<PricingVariant[]>('/api/products/variants/query', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ productIds }),
+    });
+    rows.push(...page);
   }
   return rows;
 }
