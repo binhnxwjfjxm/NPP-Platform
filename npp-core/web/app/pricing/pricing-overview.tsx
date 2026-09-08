@@ -2,10 +2,12 @@
 
 import { createIdempotencyKey } from '@npp/contracts';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../components/app-shell';
 import type { PriceList, PriceListItem, PriceListType, PricingProduct, PricingVariant } from '../../lib/pricing-types';
 import styles from './pricing-overview.module.css';
+import workspaceStyles from './pricing.module.css';
 
 type Unit = { id: string; code: string; name: string; symbol?: string | null; is_active: boolean };
 type OfficialRows = { rows: Record<string, unknown>[] };
@@ -38,6 +40,7 @@ type ApiEnvelope<T> = { data?: T; error?: { message?: string; code?: string } };
 const PRODUCT_PAGE_SIZE = 1000;
 const PRICE_ITEM_PAGE_SIZE = 2000;
 const MAX_OFFSET = 10000;
+const ALL_LISTS = '__ALL__';
 const ADJUSTMENT_LABELS: Record<string, string> = {
   FIXED_PRICE: 'Đặt giá trực tiếp',
   PERCENT_DISCOUNT: 'Giảm phần trăm',
@@ -47,7 +50,7 @@ const ADJUSTMENT_LABELS: Record<string, string> = {
 };
 const LIST_TYPE_LABELS: Record<PriceListType, string> = {
   BASE: 'Giá nền', CHANNEL: 'Theo kênh', CUSTOMER_GROUP: 'Theo nhóm khách', CUSTOMER: 'Theo khách hàng',
-  PROMOTION: 'Khuyến mãi', CUSTOM: 'Quy tắc khác',
+  PROMOTION: 'Khuyến mãi', CUSTOM: 'Điều kiện khác',
 };
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -93,13 +96,13 @@ function ruleValue(rule: RuleView) {
 function summarizeRules(rules: RuleView[]) {
   const active = rules.filter((rule) => rule.isActive);
   if (!active.length) return '—';
-  if (active.length !== 1) return 'Nhiều mức';
+  if (active.length !== 1) return 'Nhiều mức giá';
   const rule = active[0];
   if (rule.adjustmentType !== 'FIXED_PRICE'
     || decimalKey(rule.minQuantity || '0') !== '0'
     || decimalKey(rule.maxQuantity)
     || rule.effectiveFrom
-    || rule.effectiveTo) return 'Nhiều mức';
+    || rule.effectiveTo) return 'Nhiều mức giá';
   return money(rule.amountMinor);
 }
 
@@ -154,7 +157,7 @@ async function listAllProducts(): Promise<PricingProduct[]> {
     rows.push(...page);
     if (page.length < PRODUCT_PAGE_SIZE) return rows;
   }
-  throw new Error('Danh mục sản phẩm vượt giới hạn đọc 11.000 dòng. Hãy xử lý giới hạn dữ liệu trước khi xem toàn bộ bảng giá.');
+  throw new Error('Danh mục sản phẩm vượt giới hạn đọc 11.000 dòng. Hãy xử lý giới hạn dữ liệu trước khi xem bảng giá tổng hợp.');
 }
 
 async function listAllPriceItems(priceListId: string): Promise<PriceListItem[]> {
@@ -232,7 +235,7 @@ async function downloadWorkbook(filename: string, sheets: Array<{ sheetName: str
 }
 
 function detailHeaders() {
-  return ['Mã bảng giá', 'Tên bảng giá', 'Loại', 'Kênh bán', 'Nhóm khách', 'Khách hàng', 'Ưu tiên', 'Cách kết hợp', 'Dừng xét tiếp', 'Mã SP', 'Tên SP', 'SKU', 'Quy cách', 'ĐVT', 'Cách áp dụng', 'Giá trị', 'SL từ', 'SL đến', 'Hiệu lực từ', 'Hiệu lực đến', 'Mã quy tắc', 'Ghi chú', 'Trạng thái'];
+  return ['Mã bảng giá', 'Tên bảng giá', 'Loại', 'Kênh bán', 'Nhóm khách', 'Khách hàng', 'Ưu tiên', 'Cách kết hợp', 'Không xét tiếp', 'Mã SP', 'Tên SP', 'SKU', 'Quy cách', 'ĐVT', 'Cách áp dụng', 'Giá trị', 'SL từ', 'SL đến', 'Hiệu lực từ', 'Hiệu lực đến', 'Mã tham chiếu', 'Ghi chú', 'Trạng thái'];
 }
 
 function detailRows(rules: RuleView[], listByCode: Map<string, PriceList>, skuByCode: Map<string, SkuView>) {
@@ -271,12 +274,13 @@ function detailRows(rules: RuleView[], listByCode: Map<string, PriceList>, skuBy
 }
 
 export default function PricingOverview() {
+  const router = useRouter();
   const [products, setProducts] = useState<PricingProduct[]>([]);
   const [variants, setVariants] = useState<PricingVariant[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
   const [lists, setLists] = useState<PriceList[]>([]);
   const [rules, setRules] = useState<RuleView[]>([]);
-  const [selectedListCode, setSelectedListCode] = useState('');
+  const [selectedListCode, setSelectedListCode] = useState(ALL_LISTS);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -298,9 +302,8 @@ export default function PricingOverview() {
         const [nextVariants, nextRules] = await Promise.all([listVariants(activeProducts), listRules(nextLists)]);
         if (cancelled) return;
         setProducts(nextProducts); setUnits(nextUnits); setLists(nextLists); setVariants(nextVariants); setRules(nextRules);
-        setSelectedListCode((current) => current || nextLists.find((list) => list.is_active && list.list_type !== 'BASE')?.code || nextLists[0]?.code || '');
       } catch (cause) {
-        if (!cancelled) setError(cause instanceof Error ? cause.message : 'Không tải được toàn bộ bảng giá.');
+        if (!cancelled) setError(cause instanceof Error ? cause.message : 'Không tải được bảng giá tổng hợp.');
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -331,6 +334,9 @@ export default function PricingOverview() {
     .filter((list) => list.list_type !== 'BASE')
     .slice()
     .sort((a, b) => Number(b.is_active) - Number(a.is_active) || b.priority - a.priority || a.code.localeCompare(b.code)), [lists]);
+  const visibleListColumns = useMemo(() => selectedListCode === ALL_LISTS
+    ? listColumns
+    : listColumns.filter((list) => list.code.toUpperCase() === selectedListCode.toUpperCase()), [listColumns, selectedListCode]);
   const ruleIndexes = useMemo(() => indexRules(rules), [rules]);
   const visibleRows = useMemo(() => {
     const term = search.trim().toLocaleLowerCase('vi');
@@ -386,8 +392,9 @@ export default function PricingOverview() {
   }
 
   async function exportSelectedList() {
+    if (selectedListCode === ALL_LISTS) { setError('Chọn một bảng giá để xuất.'); return; }
     const list = listByCode.get(selectedListCode.toUpperCase());
-    if (!list) { setError('Chọn bảng giá cần xuất.'); return; }
+    if (!list) { setError('Bảng giá đã chọn không còn tồn tại.'); return; }
     setBusy(true); setError(''); setMessage('');
     const intent = `list:${list.code}`;
     try {
@@ -395,10 +402,10 @@ export default function PricingOverview() {
       const selectedRules = snapshot.filter((rule) => rule.priceListCode.toUpperCase() === list.code.toUpperCase());
       await downloadWorkbook(`bang-gia-${list.code}.xlsx`, [
         selectedListSummarySheet(list, snapshot),
-        { sheetName: 'Chi tiết chính sách giá', headers: detailHeaders(), rows: detailRows(selectedRules, listByCode, skuByCode) },
+        { sheetName: 'Điều kiện áp dụng', headers: detailHeaders(), rows: detailRows(selectedRules, listByCode, skuByCode) },
       ]);
       exportKeyRef.current = null;
-      setMessage(`Đã xuất ${skuRows.length} SKU để đối chiếu và ${selectedRules.length} dòng chính sách của ${list.code} · ${list.name}.`);
+      setMessage(`Đã xuất ${skuRows.length} SKU và ${selectedRules.length} dòng điều kiện của ${list.code} · ${list.name}.`);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Không xuất được bảng giá.');
     } finally { setBusy(false); }
@@ -411,32 +418,40 @@ export default function PricingOverview() {
       const snapshot = await officialRules(intent);
       await downloadWorkbook('toan-bo-bang-gia.xlsx', [
         summarySheet(snapshot),
-        { sheetName: 'Chi tiết chính sách giá', headers: detailHeaders(), rows: detailRows(snapshot, listByCode, skuByCode) },
+        { sheetName: 'Điều kiện áp dụng', headers: detailHeaders(), rows: detailRows(snapshot, listByCode, skuByCode) },
       ]);
       exportKeyRef.current = null;
-      setMessage(`Đã xuất ${skuRows.length} SKU và ${snapshot.length} dòng chính sách giá.`);
+      setMessage(`Đã xuất ${skuRows.length} SKU và ${snapshot.length} dòng điều kiện áp dụng.`);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Không xuất được toàn bộ bảng giá.');
     } finally { setBusy(false); }
   }
 
   return (
-    <AppShell title="Toàn bộ bảng giá" subtitle="Đối chiếu giá theo từng SKU trên một màn; các chính sách nhiều điều kiện vẫn được giữ nguyên ở phần chi tiết.">
+    <AppShell title="Bảng giá tổng hợp" subtitle="Xem và đối chiếu giá bán của từng sản phẩm theo từng bảng giá.">
       <div className={styles.page} data-testid="pricing-overview-page">
+        <div className={workspaceStyles.tabs} role="tablist" aria-label="Giá bán">
+          <button type="button" className={workspaceStyles.tab} onClick={() => router.push('/pricing?tab=channels')}>Kênh bán</button>
+          <button type="button" className={workspaceStyles.tab} onClick={() => router.push('/pricing?tab=lists')}>Danh mục giá</button>
+          <button type="button" className={workspaceStyles.tab} onClick={() => router.push('/pricing?tab=items')}>Giá sản phẩm</button>
+          <button type="button" className={workspaceStyles.tabActive} aria-selected="true" disabled>Bảng giá tổng hợp</button>
+          <button type="button" className={workspaceStyles.tab} onClick={() => router.push('/pricing?tab=resolver')}>Kiểm tra giá áp dụng</button>
+        </div>
+
         <div className={styles.toolbar}>
           <div className={styles.actions}>
-            <Link className={styles.secondaryButton} href="/operations/data-exchange?tab=pricing">Nhập/cập nhật giá</Link>
-            <Link className={styles.secondaryButton} href="/operations/import-export-history?definitionKey=pricing-items">Lịch sử nhập/xuất</Link>
+            <Link className={styles.secondaryButton} href="/operations/data-exchange?tab=pricing">Cập nhật giá từ Excel</Link>
+            <Link className={styles.secondaryButton} href="/operations/import-export-history?definitionKey=pricing-items">Lịch sử cập nhật giá</Link>
           </div>
           <div className={styles.exportGroup}>
-            <label>Bảng giá cần xuất
+            <label>Bảng giá hiển thị
               <select value={selectedListCode} onChange={(event) => setSelectedListCode(event.target.value)} disabled={busy || loading}>
-                <option value="">Chọn bảng giá</option>
-                {lists.map((list) => <option key={list.id} value={list.code}>{list.code} · {list.name}{list.is_active ? '' : ' · Ngừng'}</option>)}
+                <option value={ALL_LISTS}>Tất cả bảng giá</option>
+                {listColumns.map((list) => <option key={list.id} value={list.code}>{list.code} · {list.name}{list.is_active ? '' : ' · Ngừng'}</option>)}
               </select>
             </label>
-            <button type="button" className={styles.secondaryButton} onClick={() => void exportSelectedList()} disabled={busy || loading || !selectedListCode}>Xuất bảng đang chọn</button>
-            <button type="button" className={styles.primaryButton} onClick={() => void exportAll()} disabled={busy || loading || !skuRows.length}>Xuất toàn bộ Excel</button>
+            <button type="button" className={styles.secondaryButton} onClick={() => void exportSelectedList()} disabled={busy || loading || selectedListCode === ALL_LISTS}>Xuất bảng giá đang chọn</button>
+            <button type="button" className={styles.primaryButton} onClick={() => void exportAll()} disabled={busy || loading || !skuRows.length}>Xuất toàn bộ bảng giá</button>
           </div>
         </div>
 
@@ -444,19 +459,19 @@ export default function PricingOverview() {
         {message ? <div className={styles.notice} role="status">{message}</div> : null}
         <div className={styles.summaryBar}>
           <span>SKU đang bán <strong>{skuRows.length}</strong></span>
-          <span>Bảng giá/chương trình <strong>{lists.length}</strong></span>
-          <span>Dòng chính sách <strong>{rules.length}</strong></span>
+          <span>Bảng giá <strong>{listColumns.length}</strong></span>
+          <span>Điều kiện áp dụng <strong>{rules.length}</strong></span>
         </div>
         <label className={styles.search}>Tìm sản phẩm hoặc SKU
           <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Nhập mã SP, tên SP, SKU hoặc quy cách" />
         </label>
 
-        {loading ? <div className={styles.empty}>Đang tải toàn bộ bảng giá…</div> : null}
+        {loading ? <div className={styles.empty}>Đang tải bảng giá…</div> : null}
         {!loading && !visibleRows.length ? <div className={styles.empty}>Không có SKU phù hợp.</div> : null}
         {!loading && visibleRows.length ? (
           <div className={styles.tableWrap}>
             <table className={styles.table}>
-              <thead><tr><th>Mã SP</th><th>Tên SP</th><th>SKU</th><th>Quy cách</th><th>ĐVT</th><th>Giá nền</th>{listColumns.map((list) => <th key={list.id}>{list.code}<small>{list.name}{list.is_active ? '' : ' · Ngừng'}</small></th>)}</tr></thead>
+              <thead><tr><th>Mã SP</th><th>Tên SP</th><th>SKU</th><th>Quy cách</th><th>ĐVT</th><th>Giá nền</th>{visibleListColumns.map((list) => <th key={list.id}>{list.code}<small>{list.name}{list.is_active ? '' : ' · Ngừng'}</small></th>)}</tr></thead>
               <tbody>{visibleRows.map((row) => (
                 <tr key={row.sku}>
                   <td><strong>{row.productCode}</strong></td>
@@ -465,13 +480,13 @@ export default function PricingOverview() {
                   <td>{row.variantName}</td>
                   <td>{row.unitName || '—'}</td>
                   <td>{summarizeRules(ruleIndexes.baseBySku.get(row.sku.toUpperCase()) ?? [])}</td>
-                  {listColumns.map((list) => <td key={`${row.sku}:${list.id}`}>{summarizeRules(ruleIndexes.byListSku.get(ruleKey(list.code, row.sku)) ?? [])}</td>)}
+                  {visibleListColumns.map((list) => <td key={`${row.sku}:${list.id}`}>{summarizeRules(ruleIndexes.byListSku.get(ruleKey(list.code, row.sku)) ?? [])}</td>)}
                 </tr>
               ))}</tbody>
             </table>
           </div>
         ) : null}
-        <p className={styles.note}><strong>Nhiều mức</strong> nghĩa là SKU có nhiều quy tắc hoặc có điều kiện số lượng/thời gian. File “Xuất toàn bộ Excel” luôn kèm sheet <strong>Chi tiết chính sách giá</strong> để không làm mất rule.</p>
+        <p className={styles.note}><strong>Nhiều mức giá</strong> nghĩa là sản phẩm có nhiều mức hoặc có điều kiện theo số lượng/thời gian. Tệp Excel luôn kèm sheet <strong>Điều kiện áp dụng</strong> để giữ đầy đủ thông tin.</p>
       </div>
     </AppShell>
   );
