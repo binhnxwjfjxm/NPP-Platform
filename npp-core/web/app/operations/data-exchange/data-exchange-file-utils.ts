@@ -1,3 +1,4 @@
+import { createIdempotencyKey } from '@npp/contracts';
 import { type ApiEnvelope, type RowMap, labelFor, normalizeHeader, humanizeMessage } from './data-exchange-model';
 
 export function optional(value: string | undefined) { const text = String(value ?? '').trim(); return text || null; }
@@ -42,7 +43,7 @@ export async function requestJson<T>(url: string, init?: RequestInit): Promise<T
   if (!response.ok || !payload || !Object.prototype.hasOwnProperty.call(payload, 'data')) throw new Error(humanizeMessage(payload?.error?.message || payload?.error?.code || 'Yêu cầu không thành công'));
   return payload.data as T;
 }
-export function idempotency(prefix: string) { return `${prefix}_${crypto.randomUUID()}`; }
+export function idempotency(prefix: string) { return createIdempotencyKey(prefix); }
 export function downloadBlob(blob: Blob, filename: string) {
   const href = URL.createObjectURL(blob); const link = document.createElement('a');
   link.href = href; link.download = filename; document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(href);
@@ -53,14 +54,24 @@ export async function exportTable(filename: string, sheetName: string, headers: 
   if (!response.ok) { const payload = await response.json().catch(() => null) as { error?: { message?: string } } | null; throw new Error(payload?.error?.message || 'Không tạo được tệp Excel.'); }
   downloadBlob(await response.blob(), filename);
 }
-export async function readTable(file: File) {
-  if (file.name.toLowerCase().endsWith('.xlsx')) {
-    const response = await fetch('/api/data-exchange/xlsx', { method: 'PUT', headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }, body: await file.arrayBuffer() });
+export async function readTable(file: File, requiredColumns: readonly string[] = []) {
+  const fileName = file.name.trim().toLowerCase();
+  if (fileName.endsWith('.xlsx')) {
+    const query = new URLSearchParams();
+    for (const column of requiredColumns) {
+      query.append('header', column);
+      const label = labelFor(column);
+      if (label !== column) query.append('header', label);
+    }
+    const queryString = query.toString();
+    const suffix = queryString ? `?${queryString}` : '';
+    const response = await fetch(`/api/data-exchange/xlsx${suffix}`, { method: 'PUT', headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }, body: await file.arrayBuffer() });
     const payload = await response.json().catch(() => null) as { data?: { rows?: string[][] }; error?: { message?: string } } | null;
     if (!response.ok || !payload?.data?.rows) throw new Error(payload?.error?.message || 'Không đọc được tệp Excel.');
     return mapRows(payload.data.rows);
   }
-  return mapRows(parseCsv(await file.text()));
+  if (fileName.endsWith('.csv')) return mapRows(parseCsv(await file.text()));
+  throw new Error('Chỉ hỗ trợ tệp Excel .xlsx hoặc CSV .csv. Tệp Excel .xls cũ cần lưu lại thành .xlsx trước khi nhập.');
 }
 export function trimDecimal(value: string) {
   const normalized = String(value ?? '0').trim(); if (!normalized.includes('.')) return normalized;

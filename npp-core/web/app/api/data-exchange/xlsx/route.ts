@@ -50,7 +50,11 @@ export async function PUT(request: NextRequest) {
   try {
     const bytes = Buffer.from(await request.arrayBuffer());
     if (bytes.length > TABULAR_XLSX_LIMITS.maxFileBytes) return errorResponse(new Error('XLSX_FILE_SIZE_INVALID'), 413);
-    return Response.json({ data: { rows: parseTabularXlsx(bytes) } }, {
+    const expectedHeaders = request.nextUrl.searchParams.getAll('header')
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .slice(0, TABULAR_XLSX_LIMITS.maxColumns * 2);
+    return Response.json({ data: { rows: parseTabularXlsx(bytes, TABULAR_XLSX_LIMITS, expectedHeaders) } }, {
       status: 200,
       headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' },
     });

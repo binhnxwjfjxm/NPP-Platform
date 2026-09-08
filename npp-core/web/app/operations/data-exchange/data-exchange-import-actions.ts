@@ -11,14 +11,29 @@ type ImportActionsContext = Record<string, any> & {
   priceLists: PriceList[];
   warehouses: WarehouseOption[];
   pendingImport: PendingImport | null;
+  importOperationKeyRef: { current: string | null };
   setPendingImport: (value: PendingImport | null | ((current: PendingImport | null) => PendingImport | null)) => void;
 };
 
 export function buildDataExchangeImportActions(ctx: ImportActionsContext) {
   const {
-    units, productColumns, pendingImport, setPendingImport, refreshReferenceData, setMessage, setBusy, fail, begin,
+    units, productColumns, pendingImport, importOperationKeyRef, setPendingImport, refreshReferenceData, setMessage, setBusy, fail, begin,
     priceLists, pricingPriceListId, warehouses, stocktakeWarehouse,
   } = ctx;
+  function importOperation(kind: ImportKind) {
+    if (kind === 'pricing') return 'price-file';
+    if (kind === 'products') return 'product-file';
+    return 'stocktake-file';
+  }
+  function currentImportKey(kind: ImportKind) {
+    const key = importOperationKeyRef.current ?? idempotency(importOperation(kind));
+    importOperationKeyRef.current = key;
+    return key;
+  }
+  function completeImport() {
+    importOperationKeyRef.current = null;
+    setPendingImport(null);
+  }
   async function productTemplate(format: 'xlsx' | 'csv') {
     begin();
     try { await exportTable('mau-san-pham-sku.xlsx', 'Sản phẩm SKU', [...PRODUCT_COLUMNS], [], format); setMessage(`Đã tải mẫu ${format.toUpperCase()} cho sản phẩm/SKU.`); }
@@ -70,17 +85,17 @@ export function buildDataExchangeImportActions(ctx: ImportActionsContext) {
       }
     }
   }
-  async function submitProductImport(rows: RowMap[], fileName: string) {
+  async function submitProductImport(rows: RowMap[], fileName: string, operationKey: string) {
     begin();
     try {
       const [categories, brands] = await Promise.all([requestJson<Category[]>('/api/product-categories?limit=1000'), requestJson<Brand[]>('/api/product-brands?limit=1000')]);
       validateProductRows(rows, categories, brands);
       const result = await requestJson<{ import?: { imported?: number }; onboarding?: { variantsConfigured?: number; policiesConfigured?: number } }>('/api/file-operations/products/import', {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotency('p10_product_import') },
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': operationKey },
         body: JSON.stringify({ format: fileName.toLowerCase().endsWith('.xlsx') ? 'xlsx' : 'csv', rows }),
       });
       await refreshReferenceData(); const info = result.import ?? {}; const onboarding = result.onboarding ?? {};
-      setPendingImport(null);
+      completeImport();
       setMessage(`Đã nhập ${info.imported ?? rows.length} sản phẩm/SKU; đã gắn đơn vị cho ${onboarding.variantsConfigured ?? 0} SKU và thiết lập chính sách kho cho ${onboarding.policiesConfigured ?? 0} SKU.`);
     } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
@@ -90,6 +105,13 @@ export function buildDataExchangeImportActions(ctx: ImportActionsContext) {
     if (!list) throw new Error('Chọn bảng giá/chương trình cần cập nhật.');
     if (!list.is_active) throw new Error('Bảng giá/chương trình đã ngừng sử dụng.');
     return list;
+  }
+  async function pricingTemplate(format: 'xlsx' | 'csv') {
+    begin();
+    try {
+      await exportTable('mau-cap-nhat-gia.xlsx', 'Mẫu cập nhật giá', [...PRICE_UPDATE_COLUMNS], [], format);
+      setMessage(`Đã tải mẫu ${format.toUpperCase()} gồm đúng 2 cột: SKU và Giá bán (VND).`);
+    } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
   async function pricingExport(format: 'xlsx' | 'csv') {
     begin();
@@ -103,10 +125,10 @@ export function buildDataExchangeImportActions(ctx: ImportActionsContext) {
         && (row.isActive === true || String(row.isActive ?? '').toLowerCase() === 'true'));
       const rows = sourceRows.map((row) => [String(row.sku ?? ''), String(row.amountMinor ?? '')]);
       await exportTable(`cap-nhat-gia-${list.code}.xlsx`, 'Cập nhật giá', [...PRICE_UPDATE_COLUMNS], rows, format);
-      setMessage(`Đã xuất ${rows.length} SKU của ${list.code}. File chỉ gồm SKU và Giá bán; file rỗng vẫn dùng làm mẫu để thêm giá mới.`);
+      setMessage(`Đã xuất ${rows.length} SKU đang có giá trong ${list.code}.`);
     } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
-  async function submitPricingImport(rows: RowMap[]) {
+  async function submitPricingImport(rows: RowMap[], operationKey: string) {
     begin();
     try {
       if (rows.length > 2000) throw new Error('Mỗi lần chỉ nhập tối đa 2.000 dòng giá.');
@@ -121,12 +143,12 @@ export function buildDataExchangeImportActions(ctx: ImportActionsContext) {
         if (!/^(?:0|[1-9]\d{0,18})$/.test(amountMinor)) throw new Error(`Dòng ${index + 2} · SKU ${sku}: Giá bán phải là số nguyên không âm.`);
         return { priceListCode: list.code, sku, adjustmentType: 'FIXED_PRICE', amountMinor, minQuantity: '0', maxQuantity: null, effectiveFrom: null, effectiveTo: null, sourceKind: 'IMPORT', note: null, isActive: true };
       });
-      const sourceBatchId = `price-file-${crypto.randomUUID()}`;
+      const sourceBatchId = operationKey;
       const result = await requestJson<{ itemsCreated?: number; itemsUpdated?: number; totalItems?: number }>('/api/pricing/import', {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': sourceBatchId },
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': operationKey },
         body: JSON.stringify({ matchBySku: true, sourceBatchId, items }),
       });
-      setPendingImport(null);
+      completeImport();
       setMessage(`Đã cập nhật ${result.itemsUpdated ?? 0} SKU, tạo mới ${result.itemsCreated ?? 0} dòng giá theo SKU trong ${list.code}.`);
     } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
@@ -140,33 +162,39 @@ export function buildDataExchangeImportActions(ctx: ImportActionsContext) {
       await exportTable(`kiem-ke-${warehouse.code}.xlsx`, 'Kiểm kê thực tế', selected, rows, format); setMessage(`Đã tạo file kiểm kê gồm ${rows.length} dòng; file không hiển thị số tồn hệ thống để bảo đảm kiểm kê độc lập.`);
     } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
-  async function submitStocktakeImport(rows: RowMap[], fileName: string) {
+  async function submitStocktakeImport(rows: RowMap[], fileName: string, operationKey: string) {
     if (rows.length > 500) throw new Error('Mỗi đợt kiểm kê tối đa 500 dòng.');
     for (const [index, row] of rows.entries()) exactQuantity(String(row.actualCount ?? ''), `Dòng ${index + 2} actualCount`, 12); begin();
     try {
-      const result = await requestJson<{ stocktake: Stocktake }>('/api/file-operations/stocktake/import', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotency('p10_stocktake_import') }, body: JSON.stringify({ format: fileName.toLowerCase().endsWith('.xlsx') ? 'xlsx' : 'csv', rows }) });
-      setPendingImport(null); setMessage(`Đã tạo phiếu kiểm kê ${result.stocktake.stocktakeNumber} và ghi số đếm. Chưa gửi duyệt, chưa ghi sổ tồn.`);
+      const result = await requestJson<{ stocktake: Stocktake }>('/api/file-operations/stocktake/import', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': operationKey }, body: JSON.stringify({ format: fileName.toLowerCase().endsWith('.xlsx') ? 'xlsx' : 'csv', rows }) });
+      completeImport(); setMessage(`Đã tạo phiếu kiểm kê ${result.stocktake.stocktakeNumber} và ghi số đếm. Chưa gửi duyệt, chưa ghi sổ tồn.`);
     } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
 
   async function prepareImport(kind: ImportKind, file: File) {
     begin();
+    importOperationKeyRef.current = null;
+    setPendingImport(null);
     try {
-      let rows = await readTable(file);
+      const requiredColumns = kind === 'products' ? PRODUCT_REQUIRED_COLUMNS : kind === 'pricing' ? PRICE_UPDATE_COLUMNS : STOCKTAKE_COLUMNS;
+      let rows = await readTable(file, requiredColumns);
       if (kind === 'products') { requireColumns(rows, PRODUCT_REQUIRED_COLUMNS); rows = normalizeProductChoices(rows); }
       if (kind === 'pricing') requireColumns(rows, PRICE_UPDATE_COLUMNS);
       if (kind === 'stocktake') requireColumns(rows, STOCKTAKE_COLUMNS);
+      importOperationKeyRef.current = idempotency(importOperation(kind));
       setPendingImport({ kind, fileName: file.name, rows }); setMessage(`Đã đọc ${rows.length} dòng từ “${file.name}”. Kiểm tra bảng xem trước rồi bấm Xác nhận nhập.`);
     } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
   async function confirmPendingImport() {
     if (!pendingImport) return;
-    if (pendingImport.kind === 'products') return submitProductImport(pendingImport.rows, pendingImport.fileName);
-    if (pendingImport.kind === 'pricing') return submitPricingImport(pendingImport.rows);
-    return submitStocktakeImport(pendingImport.rows, pendingImport.fileName);
+    const operationKey = currentImportKey(pendingImport.kind);
+    if (pendingImport.kind === 'products') return submitProductImport(pendingImport.rows, pendingImport.fileName, operationKey);
+    if (pendingImport.kind === 'pricing') return submitPricingImport(pendingImport.rows, operationKey);
+    return submitStocktakeImport(pendingImport.rows, pendingImport.fileName, operationKey);
   }
   function updatePendingRow(index: number, key: string, value: string) {
+    if (pendingImport) importOperationKeyRef.current = idempotency(importOperation(pendingImport.kind));
     setPendingImport((current) => current ? { ...current, rows: current.rows.map((row, rowIndex) => rowIndex === index ? { ...row, [key]: value } : row) } : current);
   }
-  return { productTemplate, productExport, pricingExport, stocktakeExport, prepareImport, confirmPendingImport, updatePendingRow };
+  return { productTemplate, productExport, pricingTemplate, pricingExport, stocktakeExport, prepareImport, confirmPendingImport, updatePendingRow };
 }
