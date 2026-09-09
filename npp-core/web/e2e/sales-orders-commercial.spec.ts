@@ -274,16 +274,16 @@ test.describe('Sales Order commercial controls', () => {
     }
 
     const newestLine = dialog.getByTestId('sales-order-line-1');
-    await expect(newestLine.getByLabel('Đơn giá SKU-18', { exact: true })).toHaveValue('9018');
+    await expect(newestLine.getByLabel('Đơn giá SKU-18', { exact: true })).toHaveValue('9.018');
 
     const sku1Line = dialog.getByTestId('sales-order-line-18');
     const directPrice = sku1Line.getByLabel('Đơn giá SKU-1', { exact: true });
     await expect(sku1Line).toBeVisible();
-    await expect(directPrice).toHaveValue('9001');
+    await expect(directPrice).toHaveValue('9.001');
     await directPrice.fill('8500');
     await expect(sku1Line.getByText('Giá đã sửa', { exact: true })).toBeHidden();
     await sku1Line.getByRole('button', { name: /^Dùng lại giá hệ thống/ }).click();
-    await expect(directPrice).toHaveValue('9001');
+    await expect(directPrice).toHaveValue('9.001');
     await directPrice.fill('0');
     await expect(directPrice).toHaveValue('0');
 
