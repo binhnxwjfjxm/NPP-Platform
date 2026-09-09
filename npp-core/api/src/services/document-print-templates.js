@@ -14,7 +14,7 @@ function template(documentType, templateCode, name, pageSize, fields) {
 }
 
 const CATALOG = Object.freeze([
-  template('SALES_ORDER', 'standard', 'Đơn bán hàng', 'A4', [
+  template('SALES_ORDER', 'standard', 'PHIẾU XUẤT KHO', 'A4', [
     ['customer', 'Khách hàng'], ['customer_code', 'Mã khách'], ['phone', 'Điện thoại'], ['document_date', 'Ngày đơn'], ['address', 'Địa chỉ'], ['warehouse', 'Kho'], ['delivery_method', 'Hình thức giao nhận'], ['collection_policy', 'Thanh toán'], ['requested_delivery_date', 'Ngày giao dự kiến'], ['line_no', 'STT hàng hóa'], ['line_item', 'Tên sản phẩm', true, true], ['line_sku', 'SKU', false], ['line_quantity', 'Số lượng', true, true], ['line_unit', 'Đơn vị tính', true, true], ['line_unit_price', 'Đơn giá', true, true], ['line_discount', 'Chiết khấu'], ['line_tax', 'Thuế'], ['line_total', 'Thành tiền', true, true], ['total_subtotal', 'Tạm tính'], ['total_discount', 'Tổng chiết khấu'], ['total_tax', 'Tổng thuế'], ['total_weight', 'Tổng khối lượng'], ['total_total', 'Tổng cộng'], ['note', 'Ghi chú'], ['signatures', 'Ký xác nhận'],
   ]),
   template('PURCHASE_ORDER', 'standard', 'Đơn mua hàng', 'A4', [
