@@ -1,4 +1,5 @@
 export type PrintPageSize = 'A4' | 'A5';
+export type PrintHeaderAlignment = 'left' | 'center' | 'right';
 
 export type DocumentPrintTemplateField = {
   key: string;
@@ -17,6 +18,9 @@ export type DocumentPrintTemplate = {
   heading?: string | null;
   title?: string | null;
   subtitle?: string | null;
+  headingVisible: boolean;
+  headingAlign: PrintHeaderAlignment;
+  titleAlign: PrintHeaderAlignment;
   isCustomized: boolean;
   updatedAt: string | null;
 };

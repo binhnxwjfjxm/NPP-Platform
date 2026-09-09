@@ -103,8 +103,8 @@ function normalizedSearch(value: string): string {
 
 function compactOrderNumber(value: string | null | undefined): string {
   const normalized = String(value ?? '').replace(/^#/, '');
-  const match = /^(.+-)(\d{6})(-\d+)$/.exec(normalized);
-  return match ? `${match[1]}…${match[3]}` : normalized;
+  const match = /^SO-\d{6}-(\d{6})$/i.exec(normalized);
+  return match ? `SO${match[1]}` : normalized;
 }
 
 function sortOrdersByCreatedAt<T extends SalesOrder>(items: T[]): T[] {
@@ -847,10 +847,10 @@ export default function OrderManagementWorkspace({ permissionKeys }: { permissio
               <thead><tr>
                 <th className={styles.checkColumn}><span className={styles.srOnly}>Chọn</span></th>
                 <th className={styles.orderColumn}>Số đơn</th>
-                <th>Ngày tạo</th>
-                <th>Khách hàng</th>
+                <th className={styles.dateColumn}>Ngày tạo</th>
+                <th className={styles.customerColumn}>Khách hàng</th>
                 <th>Trạng thái đơn</th>
-                <th>Thanh toán</th>
+                <th className={styles.paymentColumn}>Thanh toán</th>
                 <th className={styles.moneyColumn}>Giá trị đơn</th>
                 <th>Xuất/chuẩn bị hàng</th>
                 <th>Giao hàng</th>
@@ -867,9 +867,9 @@ export default function OrderManagementWorkspace({ permissionKeys }: { permissio
                         <td className={styles.checkColumn}><input type="checkbox" aria-label={`Chọn đơn ${order.number ?? order.id}`} checked={selectedIds.has(order.id)} onChange={(event) => toggleOrder(order.id, event.target.checked)} /></td>
                         <td className={styles.orderColumn}><button type="button" className={styles.orderLink} title={order.number ?? undefined} aria-label={order.number ? `Mở đơn ${order.number}` : 'Mở đơn chưa cấp số'} onClick={() => void openDetail(order)}>{order.number ? compactOrderNumber(order.number) : 'Chưa cấp số'}</button></td>
                         <td className={styles.dateCell}>{formatVietnamDateTime(order.createdAt)}</td>
-                        <td><strong className={styles.customerName}>{order.customerName}</strong><small className={styles.customerMeta}>{order.customerCode}</small></td>
+                        <td className={styles.customerColumn}><strong className={styles.customerName}>{order.customerName}</strong><small className={styles.customerMeta}>{order.customerCode}</small></td>
                         <td><span className={styles.statusBadge} data-tone={orderTone(order)}>{orderStatusLabel(order)}</span></td>
-                        <td><span className={styles.statusBadge} data-tone={paymentTone(order)}>{paymentLabel(order)}</span></td>
+                        <td className={styles.paymentColumn}><span className={styles.statusBadge} data-tone={paymentTone(order)}>{paymentLabel(order)}</span></td>
                         <td className={styles.moneyColumn}>{formatMoney(orderTotal(order))} ₫</td>
                         <td><span className={styles.statusBadge} data-tone={fulfillmentTone(order)}>{fulfillmentLabel(order)}</span></td>
                         <td><span className={styles.laneBadge} data-lane={orderLane(order)}>{laneLabel(order)}</span><small className={styles.deliveryState} data-tone={deliveryTone(order)}>{deliveryLabels[order.deliveryStatus] ?? order.deliveryStatus}</small></td>
