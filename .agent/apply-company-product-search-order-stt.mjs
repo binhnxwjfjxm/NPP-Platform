@@ -9,10 +9,11 @@ function replaceOnce(source, before, after, label) {
   return source.slice(0, first) + after + source.slice(first + before.length);
 }
 
-function replaceRegexOnce(source, pattern, after, label) {
-  const matches = [...source.matchAll(new RegExp(pattern.source, pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`))];
+function replaceRegexOnce(source, patternSource, flags, after, label) {
+  const matchFlags = flags.includes('g') ? flags : `${flags}g`;
+  const matches = [...source.matchAll(new RegExp(patternSource, matchFlags))];
   if (matches.length !== 1) throw new Error(`Cần đúng 1 match cho ${label}, thực tế ${matches.length}`);
-  return source.replace(pattern, after);
+  return source.replace(new RegExp(patternSource, flags), after);
 }
 
 function edit(path, transform) {
@@ -27,595 +28,88 @@ function writeNew(path, content) {
   writeFileSync(path, content);
 }
 
-// 1) Shared product search contract.
-writeFileSync('npp-core/web/lib/product-search-contract.js', `export const MIN_PRODUCT_SEARCH_LENGTH = 1;
+writeFileSync("npp-core/web/lib/product-search-contract.js", "export const MIN_PRODUCT_SEARCH_LENGTH = 1;\n\nexport function normalizedProductSearchTerm(value) {\n  const term = String(value ?? '').trim();\n  return term.length >= MIN_PRODUCT_SEARCH_LENGTH ? term : '';\n}\n\nexport function normalizeProductSearchText(value) {\n  return String(value ?? '')\n    .normalize('NFD')\n    .replace(/[\\u0300-\\u036f]/g, '')\n    .toLowerCase()\n    .replace(/đ/g, 'd')\n    .replace(/\\s+/g, ' ')\n    .trim();\n}\n\nexport function productSearchTokens(value) {\n  const normalized = normalizeProductSearchText(value);\n  return normalized ? normalized.split(' ').filter(Boolean) : [];\n}\n\nexport function productSearchMatches(values, query) {\n  const tokens = productSearchTokens(query);\n  if (tokens.length === 0) return true;\n  const haystack = (Array.isArray(values) ? values : [values])\n    .map(normalizeProductSearchText)\n    .filter(Boolean)\n    .join(' ');\n  return tokens.every((token) => haystack.includes(token));\n}\n");
 
-export function normalizedProductSearchTerm(value) {
-  const term = String(value ?? '').trim();
-  return term.length >= MIN_PRODUCT_SEARCH_LENGTH ? term : '';
-}
+writeFileSync("npp-core/web/lib/product-search-contract.d.ts", "export const MIN_PRODUCT_SEARCH_LENGTH: number;\nexport function normalizedProductSearchTerm(value: unknown): string;\nexport function normalizeProductSearchText(value: unknown): string;\nexport function productSearchTokens(value: unknown): string[];\nexport function productSearchMatches(values: readonly unknown[] | unknown, query: unknown): boolean;\n");
 
-export function normalizeProductSearchText(value) {
-  return String(value ?? '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/đ/g, 'd')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
+writeNew("npp-core/web/lib/product-list-order.js", "function createdAtMillis(product) {\n  const parsed = Date.parse(String(product?.created_at ?? ''));\n  return Number.isFinite(parsed) ? parsed : 0;\n}\n\nfunction compareProductCreation(left, right) {\n  const timeDifference = createdAtMillis(left) - createdAtMillis(right);\n  if (timeDifference !== 0) return timeDifference;\n  return String(left?.id ?? '').localeCompare(String(right?.id ?? ''));\n}\n\nexport function productCreationSequence(products) {\n  const ordered = [...(Array.isArray(products) ? products : [])].sort(compareProductCreation);\n  return new Map(ordered.map((product, index) => [product.id, index + 1]));\n}\n\nexport function sortProductsNewestFirst(products) {\n  return [...(Array.isArray(products) ? products : [])]\n    .sort((left, right) => compareProductCreation(right, left));\n}\n");
 
-export function productSearchTokens(value) {
-  const normalized = normalizeProductSearchText(value);
-  return normalized ? normalized.split(' ').filter(Boolean) : [];
-}
+writeNew("npp-core/web/lib/product-list-order.d.ts", "type ProductCreationItem = {\n  id: string;\n  created_at?: string | null;\n};\n\nexport function productCreationSequence<T extends ProductCreationItem>(products: readonly T[]): Map<string, number>;\nexport function sortProductsNewestFirst<T extends ProductCreationItem>(products: readonly T[]): T[];\n");
 
-export function productSearchMatches(values, query) {
-  const tokens = productSearchTokens(query);
-  if (tokens.length === 0) return true;
-  const haystack = (Array.isArray(values) ? values : [values])
-    .map(normalizeProductSearchText)
-    .filter(Boolean)
-    .join(' ');
-  return tokens.every((token) => haystack.includes(token));
-}
-`);
+writeNew("npp-core/web/lib/product-catalog-client-pagination.js", "export const PRODUCT_CATALOG_PAGE_SIZE = 1000;\nexport const PRODUCT_CATALOG_MAX_OFFSET = 10000;\n\nexport async function collectAllProductPages(loadPage) {\n  const products = [];\n  for (let offset = 0; offset <= PRODUCT_CATALOG_MAX_OFFSET; offset += PRODUCT_CATALOG_PAGE_SIZE) {\n    const page = await loadPage({ limit: PRODUCT_CATALOG_PAGE_SIZE, offset });\n    if (!Array.isArray(page)) throw new Error('Phản hồi danh mục sản phẩm không hợp lệ');\n    products.push(...page);\n    if (page.length < PRODUCT_CATALOG_PAGE_SIZE) return products;\n  }\n  throw new Error('Danh mục sản phẩm vượt phạm vi tải an toàn');\n}\n");
 
-writeFileSync('npp-core/web/lib/product-search-contract.d.ts', `export const MIN_PRODUCT_SEARCH_LENGTH: number;
-export function normalizedProductSearchTerm(value: unknown): string;
-export function normalizeProductSearchText(value: unknown): string;
-export function productSearchTokens(value: unknown): string[];
-export function productSearchMatches(values: readonly unknown[] | unknown, query: unknown): boolean;
-`);
+writeNew("npp-core/web/lib/product-catalog-client-pagination.d.ts", "export const PRODUCT_CATALOG_PAGE_SIZE: number;\nexport const PRODUCT_CATALOG_MAX_OFFSET: number;\nexport function collectAllProductPages<T>(\n  loadPage: (page: { limit: number; offset: number }) => Promise<T[]>,\n): Promise<T[]>;\n");
 
-// 2) Stable product creation sequence and newest-first display.
-writeNew('npp-core/web/lib/product-list-order.js', `function createdAtMillis(product) {
-  const parsed = Date.parse(String(product?.created_at ?? ''));
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function compareProductCreation(left, right) {
-  const timeDifference = createdAtMillis(left) - createdAtMillis(right);
-  if (timeDifference !== 0) return timeDifference;
-  const codeDifference = String(left?.code ?? '').localeCompare(String(right?.code ?? ''), 'vi');
-  if (codeDifference !== 0) return codeDifference;
-  return String(left?.id ?? '').localeCompare(String(right?.id ?? ''));
-}
-
-export function productCreationSequence(products) {
-  const ordered = [...(Array.isArray(products) ? products : [])].sort(compareProductCreation);
-  return new Map(ordered.map((product, index) => [product.id, index + 1]));
-}
-
-export function sortProductsNewestFirst(products) {
-  return [...(Array.isArray(products) ? products : [])]
-    .sort((left, right) => compareProductCreation(right, left));
-}
-`);
-
-writeNew('npp-core/web/lib/product-list-order.d.ts', `type ProductCreationItem = {
-  id: string;
-  code?: string | null;
-  created_at?: string | null;
-};
-
-export function productCreationSequence<T extends ProductCreationItem>(products: readonly T[]): Map<string, number>;
-export function sortProductsNewestFirst<T extends ProductCreationItem>(products: readonly T[]): T[];
-`);
-
-// 3) Browser-safe full product reload.
-writeNew('npp-core/web/lib/product-catalog-client-pagination.js', `export const PRODUCT_CATALOG_PAGE_SIZE = 1000;
-export const PRODUCT_CATALOG_MAX_OFFSET = 10000;
-
-export async function collectAllProductPages(loadPage) {
-  const products = [];
-  for (let offset = 0; offset <= PRODUCT_CATALOG_MAX_OFFSET; offset += PRODUCT_CATALOG_PAGE_SIZE) {
-    const page = await loadPage({ limit: PRODUCT_CATALOG_PAGE_SIZE, offset });
-    if (!Array.isArray(page)) throw new Error('Phản hồi danh mục sản phẩm không hợp lệ');
-    products.push(...page);
-    if (page.length < PRODUCT_CATALOG_PAGE_SIZE) return products;
-  }
-  throw new Error('Danh mục sản phẩm vượt phạm vi tải an toàn');
-}
-`);
-
-writeNew('npp-core/web/lib/product-catalog-client-pagination.d.ts', `export const PRODUCT_CATALOG_PAGE_SIZE: number;
-export const PRODUCT_CATALOG_MAX_OFFSET: number;
-export function collectAllProductPages<T>(
-  loadPage: (page: { limit: number; offset: number }) => Promise<T[]>,
-): Promise<T[]>;
-`);
-
-// 4) Generic sequence component accepts a business-stable value without changing default behavior.
 edit('npp-core/web/app/components/business-table-sequence.tsx', (source) => {
-  let next = replaceOnce(source,
-`type SequenceCellProps = {
-  rowIndex: number;
-  offset?: number;
-  className?: string;
-};
-
-type SequenceNumberProps = {
-  rowIndex: number;
-  offset?: number;
-  className?: string;
-};`,
-`type SequenceCellProps = {
-  rowIndex: number;
-  offset?: number;
-  value?: number;
-  className?: string;
-};
-
-type SequenceNumberProps = {
-  rowIndex: number;
-  offset?: number;
-  value?: number;
-  className?: string;
-};
-
-function resolvedSequenceNumber(rowIndex: number, offset: number, value?: number) {
-  return Number.isInteger(value) && Number(value) > 0
-    ? Number(value)
-    : businessTableRowNumber(rowIndex, offset);
-}`,
-'sequence props');
-  next = replaceOnce(next,
-`export function BusinessTableSequenceCell({ rowIndex, offset = 0, className }: SequenceCellProps) {
-  return (
-    <td className={className} data-business-table-sequence>
-      {businessTableRowNumber(rowIndex, offset)}
-    </td>
-  );
-}
-
-/** Dùng cho danh sách dạng thẻ hoặc lưới, nơi không có cột bảng HTML. */
-export function BusinessSequenceNumber({ rowIndex, offset = 0, className }: SequenceNumberProps) {
-  return (
-    <span className={className} data-business-sequence aria-label={`Số thứ tự ${businessTableRowNumber(rowIndex, offset)}`}>
-      {businessTableRowNumber(rowIndex, offset)}
-    </span>
-  );
-}`,
-`export function BusinessTableSequenceCell({ rowIndex, offset = 0, value, className }: SequenceCellProps) {
-  return (
-    <td className={className} data-business-table-sequence>
-      {resolvedSequenceNumber(rowIndex, offset, value)}
-    </td>
-  );
-}
-
-/** Dùng cho danh sách dạng thẻ hoặc lưới, nơi không có cột bảng HTML. */
-export function BusinessSequenceNumber({ rowIndex, offset = 0, value, className }: SequenceNumberProps) {
-  const number = resolvedSequenceNumber(rowIndex, offset, value);
-  return (
-    <span className={className} data-business-sequence aria-label={`Số thứ tự ${number}`}>
-      {number}
-    </span>
-  );
-}`,
-'sequence render');
+  let next = source;
+  next = replaceOnce(next, "type SequenceCellProps = {\n  rowIndex: number;\n  offset?: number;\n  className?: string;\n};\n\ntype SequenceNumberProps = {\n  rowIndex: number;\n  offset?: number;\n  className?: string;\n};", "type SequenceCellProps = {\n  rowIndex: number;\n  offset?: number;\n  value?: number;\n  className?: string;\n};\n\ntype SequenceNumberProps = {\n  rowIndex: number;\n  offset?: number;\n  value?: number;\n  className?: string;\n};\n\nfunction resolvedSequenceNumber(rowIndex: number, offset: number, value?: number) {\n  return Number.isInteger(value) && Number(value) > 0\n    ? Number(value)\n    : businessTableRowNumber(rowIndex, offset);\n}", "sequence props");
+  next = replaceOnce(next, "export function BusinessTableSequenceCell({ rowIndex, offset = 0, className }: SequenceCellProps) {\n  return (\n    <td className={className} data-business-table-sequence>\n      {businessTableRowNumber(rowIndex, offset)}\n    </td>\n  );\n}\n\n/** Dùng cho danh sách dạng thẻ hoặc lưới, nơi không có cột bảng HTML. */\nexport function BusinessSequenceNumber({ rowIndex, offset = 0, className }: SequenceNumberProps) {\n  return (\n    <span className={className} data-business-sequence aria-label={`Số thứ tự ${businessTableRowNumber(rowIndex, offset)}`}>\n      {businessTableRowNumber(rowIndex, offset)}\n    </span>\n  );\n}", "export function BusinessTableSequenceCell({ rowIndex, offset = 0, value, className }: SequenceCellProps) {\n  return (\n    <td className={className} data-business-table-sequence>\n      {resolvedSequenceNumber(rowIndex, offset, value)}\n    </td>\n  );\n}\n\n/** Dùng cho danh sách dạng thẻ hoặc lưới, nơi không có cột bảng HTML. */\nexport function BusinessSequenceNumber({ rowIndex, offset = 0, value, className }: SequenceNumberProps) {\n  const number = resolvedSequenceNumber(rowIndex, offset, value);\n  return (\n    <span className={className} data-business-sequence aria-label={`Số thứ tự ${number}`}>\n      {number}\n    </span>\n  );\n}", "sequence render");
   return next;
 });
 
-// 5) Product catalog: stable STT, flexible matching, full refresh.
 edit('npp-core/web/app/products/product-workspace.tsx', (source) => {
-  let next = replaceOnce(source,
-`import type { ProductImageIndex } from '../../lib/product-images';
-import styles from './products.module.css';`,
-`import type { ProductImageIndex } from '../../lib/product-images';
-import { productSearchMatches } from '../../lib/product-search-contract';
-import { productCreationSequence, sortProductsNewestFirst } from '../../lib/product-list-order';
-import { collectAllProductPages } from '../../lib/product-catalog-client-pagination';
-import styles from './products.module.css';`,
-'product imports');
-
-  next = replaceRegexOnce(next,
-`function normalizeSearch\(value: string \| null \| undefined\) \{[\s\S]*?\n\}\n\nfunction managementScreenLabel`,
-`function managementScreenLabel`,
-'remove product local search normalizer');
-
-  next = replaceOnce(next,
-`  return payload.data as T;
-}
-
-function productToForm`,
-`  return payload.data as T;
-}
-
-async function requestAllProducts(): Promise<Product[]> {
-  return collectAllProductPages(({ limit, offset }) =>
-    requestJson<Product[]>(`/api/products?limit=${limit}&offset=${offset}`));
-}
-
-function productToForm`,
-'product full reload helper');
-
-  next = replaceRegexOnce(next,
-`  const normalizedSearch = normalizeSearch\(search\);\n  const visibleProducts = useMemo\(\(\) => products\.filter\(\(product\) => \{[\s\S]*?\n  \}\), \[products, normalizedSearch, statusFilter, catalogFilter, orderableFilter\]\);`,
-`  const productSequence = useMemo(() => productCreationSequence(products), [products]);
-  const visibleProducts = useMemo(() => sortProductsNewestFirst(products.filter((product) => {
-    if (statusFilter === 'active' && !product.is_active) return false;
-    if (statusFilter === 'inactive' && product.is_active) return false;
-    if (catalogFilter === 'visible' && !product.is_catalog_visible) return false;
-    if (catalogFilter === 'hidden' && product.is_catalog_visible) return false;
-    if (orderableFilter === 'yes' && !product.is_orderable) return false;
-    if (orderableFilter === 'no' && product.is_orderable) return false;
-    return productSearchMatches(
-      [product.code, product.name, product.catalog_name, product.category_name, product.brand_name],
-      search,
-    );
-  })), [products, search, statusFilter, catalogFilter, orderableFilter]);`,
-'product visible filter');
-
-  next = replaceOnce(next,
-`        requestJson<Product[]>('/api/products?limit=1000'),`,
-`        requestAllProducts(),`,
-'product reload all pages');
-
-  next = replaceOnce(next,
-`                <BusinessTableSequenceCell rowIndex={rowIndex} />`,
-`                <BusinessTableSequenceCell rowIndex={rowIndex} value={productSequence.get(product.id)} />`,
-'product stable sequence cell');
+  let next = source;
+  next = replaceOnce(next, "import type { ProductImageIndex } from '../../lib/product-images';\nimport styles from './products.module.css';", "import type { ProductImageIndex } from '../../lib/product-images';\nimport { productSearchMatches } from '../../lib/product-search-contract';\nimport { productCreationSequence, sortProductsNewestFirst } from '../../lib/product-list-order';\nimport { collectAllProductPages } from '../../lib/product-catalog-client-pagination';\nimport styles from './products.module.css';", "product imports");
+  next = replaceRegexOnce(next, "function normalizeSearch\\(value: string \\| null \\| undefined\\) \\{[\\s\\S]*?\\n\\}\\n\\n", "", "", "remove product local search normalizer");
+  next = replaceOnce(next, "  return payload.data as T;\n}\n\nfunction productToForm", "  return payload.data as T;\n}\n\nasync function requestAllProducts(): Promise<Product[]> {\n  return collectAllProductPages(({ limit, offset }) =>\n    requestJson<Product[]>(`/api/products?limit=${limit}&offset=${offset}`));\n}\n\nfunction productToForm", "product full reload helper");
+  next = replaceOnce(next, "  const normalizedSearch = normalizeSearch(search);\n  const visibleProducts = useMemo(() => products.filter((product) => {\n    if (statusFilter === 'active' && !product.is_active) return false;\n    if (statusFilter === 'inactive' && product.is_active) return false;\n    if (catalogFilter === 'visible' && !product.is_catalog_visible) return false;\n    if (catalogFilter === 'hidden' && product.is_catalog_visible) return false;\n    if (orderableFilter === 'yes' && !product.is_orderable) return false;\n    if (orderableFilter === 'no' && product.is_orderable) return false;\n    if (!normalizedSearch) return true;\n    return [product.code, product.name, product.catalog_name, product.category_name, product.brand_name]\n      .some((value) => normalizeSearch(value).includes(normalizedSearch));\n  }), [products, normalizedSearch, statusFilter, catalogFilter, orderableFilter]);", "  const productSequence = useMemo(() => productCreationSequence(products), [products]);\n  const visibleProducts = useMemo(() => sortProductsNewestFirst(products.filter((product) => {\n    if (statusFilter === 'active' && !product.is_active) return false;\n    if (statusFilter === 'inactive' && product.is_active) return false;\n    if (catalogFilter === 'visible' && !product.is_catalog_visible) return false;\n    if (catalogFilter === 'hidden' && product.is_catalog_visible) return false;\n    if (orderableFilter === 'yes' && !product.is_orderable) return false;\n    if (orderableFilter === 'no' && product.is_orderable) return false;\n    return productSearchMatches(\n      [product.code, product.name, product.catalog_name, product.category_name, product.brand_name],\n      search,\n    );\n  })), [products, search, statusFilter, catalogFilter, orderableFilter]);", "product visible filter");
+  next = replaceOnce(next, "        requestJson<Product[]>('/api/products?limit=1000'),", "        requestAllProducts(),", "product reload all pages");
+  next = replaceOnce(next, "                <BusinessTableSequenceCell rowIndex={rowIndex} />", "                <BusinessTableSequenceCell rowIndex={rowIndex} value={productSequence.get(product.id)} />", "product stable sequence cell");
   return next;
 });
 
-// 6) Quick Setup shares the same flexible matching contract.
 edit('npp-core/web/app/products/product-quick-setup-workspace.tsx', (source) => {
-  let next = replaceOnce(source,
-`import type { PriceList, PriceListItem } from '../../lib/pricing-types';
-import ProductImageControl`,
-`import type { PriceList, PriceListItem } from '../../lib/pricing-types';
-import { productSearchMatches } from '../../lib/product-search-contract';
-import ProductImageControl`,
-'quick setup shared search import');
-
-  next = replaceRegexOnce(next,
-`function normalizeSearch\(value: string \| null \| undefined\) \{[\s\S]*?\n\}\n\nfunction isZeroQuantity`,
-`function isZeroQuantity`,
-'remove quick setup local normalizer');
-
-  next = replaceOnce(next,
-`  const visibleProducts = useMemo(() => {
-    const term = normalizeSearch(search);
-    if (!term) return products;
-    return products.filter((item) =>
-      [item.code, item.name, item.catalog_name, item.category_name, item.brand_name]
-        .some((value) => normalizeSearch(value).includes(term)),
-    );
-  }, [products, search]);`,
-`  const visibleProducts = useMemo(() =>
-    products.filter((item) => productSearchMatches(
-      [item.code, item.name, item.catalog_name, item.category_name, item.brand_name],
-      search,
-    )), [products, search]);`,
-'quick setup visible filter');
+  let next = source;
+  next = replaceOnce(next, "import type { PriceList, PriceListItem } from '../../lib/pricing-types';\nimport ProductImageControl", "import type { PriceList, PriceListItem } from '../../lib/pricing-types';\nimport { productSearchMatches } from '../../lib/product-search-contract';\nimport ProductImageControl", "quick setup shared search import");
+  next = replaceRegexOnce(next, "function normalizeSearch\\(value: string \\| null \\| undefined\\) \\{[\\s\\S]*?\\n\\}\\n\\n", "", "", "remove quick setup local search normalizer");
+  next = replaceOnce(next, "  const visibleProducts = useMemo(() => {\n    const term = normalizeSearch(search);\n    if (!term) return products;\n    return products.filter((item) =>\n      [item.code, item.name, item.catalog_name, item.category_name, item.brand_name]\n        .some((value) => normalizeSearch(value).includes(term)),\n    );\n  }, [products, search]);", "  const visibleProducts = useMemo(() =>\n    products.filter((item) => productSearchMatches(\n      [item.code, item.name, item.catalog_name, item.category_name, item.brand_name],\n      search,\n    )), [products, search]);", "quick setup visible filter");
   return next;
 });
 
-// 7) Sales order: newest line stays on top for work, but official STT/persistence/print follow entry order.
 edit('npp-core/web/app/sales/sales-orders/SalesOrderCommercialForm.tsx', (source) => {
-  let next = replaceOnce(source,
-`  return (version?.lines ?? []).map((line) => ({`,
-`  return [...(version?.lines ?? [])].reverse().map((line) => ({`,
-'reopen newest-first');
-
-  next = replaceRegexOnce(next,
-`  const estimate = useMemo\(\(\) => \{\n    const gross = lines\.map\(grossMinor\);[\s\S]*?\n  \}, \[documentDiscountMode, documentDiscountValue, lines\]\);`,
-`  const estimate = useMemo(() => {
-    const canonicalLines = [...lines].reverse();
-    const gross = canonicalLines.map(grossMinor);
-    const grossTotal = gross.reduce((sum, value) => sum + value, 0n);
-    const lineDiscounts = canonicalLines.map(lineDiscountMinor);
-    const lineDiscountValid = lineDiscounts.every((value) => value !== null);
-    const lineDiscountValues = lineDiscounts.map((value) => value ?? 0n);
-    const lineDiscountTotal = lineDiscountValues.reduce((sum, value) => sum + value, 0n);
-    const target = documentDiscountTarget(documentDiscountMode, documentDiscountValue, grossTotal);
-    const documentAllocations = target === null ? null : largestRemainder(gross, target);
-    const documentDiscountTotal = documentAllocations?.reduce((sum, value) => sum + value, 0n) ?? 0n;
-    const mixedScope = lineDiscountTotal > 0n && documentDiscountTotal > 0n;
-    const effectiveDiscounts = documentDiscountTotal > 0n
-      ? (documentAllocations ?? gross.map(() => 0n))
-      : lineDiscountValues;
-    const canonicalDetails = canonicalLines.map((line, index) =>
-      estimateLine(line, effectiveDiscounts[index] ?? 0n));
-    return {
-      valid: target !== null && documentAllocations !== null && lineDiscountValid && !mixedScope,
-      gross: grossTotal,
-      discount: effectiveDiscounts.reduce((sum, value) => sum + value, 0n),
-      tax: canonicalDetails.reduce((sum, value) => sum + value.tax, 0n),
-      total: canonicalDetails.reduce((sum, value) => sum + value.total, 0n),
-      lineDiscountTotal,
-      documentDiscountTotal,
-      mixedScope,
-      details: [...canonicalDetails].reverse(),
-    };
-  }, [documentDiscountMode, documentDiscountValue, lines]);`,
-'canonical sales estimate');
-
-  next = replaceOnce(next,
-`      return [...current.slice(0, sourceIndex + 1), split, ...current.slice(sourceIndex + 1)];`,
-`      return [...current.slice(0, sourceIndex), split, ...current.slice(sourceIndex)];`,
-'split official order');
-
-  next = replaceOnce(next,
-`      lines: lines.map((line) => ({`,
-`      lines: [...lines].reverse().map((line) => ({`,
-'persist official entry order');
-
-  next = replaceOnce(next,
-`                <BusinessSequenceNumber rowIndex={index} className={styles.lineSequence} />`,
-`                <BusinessSequenceNumber rowIndex={index} value={lines.length - index} className={styles.lineSequence} />`,
-'sales stable entry STT');
+  let next = source;
+  next = replaceOnce(next, "  return (version?.lines ?? []).map((line) => ({", "  return [...(version?.lines ?? [])].reverse().map((line) => ({", "reopen newest-first");
+  next = replaceOnce(next, "  const estimate = useMemo(() => {\n    const gross = lines.map(grossMinor);\n    const grossTotal = gross.reduce((sum, value) => sum + value, 0n);\n    const lineDiscounts = lines.map(lineDiscountMinor);\n    const lineDiscountValid = lineDiscounts.every((value) => value !== null);\n    const lineDiscountValues = lineDiscounts.map((value) => value ?? 0n);\n    const lineDiscountTotal = lineDiscountValues.reduce((sum, value) => sum + value, 0n);\n    const target = documentDiscountTarget(documentDiscountMode, documentDiscountValue, grossTotal);\n    const documentAllocations = target === null ? null : largestRemainder(gross, target);\n    const documentDiscountTotal = documentAllocations?.reduce((sum, value) => sum + value, 0n) ?? 0n;\n    const mixedScope = lineDiscountTotal > 0n && documentDiscountTotal > 0n;\n    const effectiveDiscounts = documentDiscountTotal > 0n\n      ? (documentAllocations ?? gross.map(() => 0n))\n      : lineDiscountValues;\n    const details = lines.map((line, index) => estimateLine(line, effectiveDiscounts[index] ?? 0n));\n    return {\n      valid: target !== null && documentAllocations !== null && lineDiscountValid && !mixedScope,\n      gross: grossTotal,\n      discount: effectiveDiscounts.reduce((sum, value) => sum + value, 0n),\n      tax: details.reduce((sum, value) => sum + value.tax, 0n),\n      total: details.reduce((sum, value) => sum + value.total, 0n),\n      lineDiscountTotal,\n      documentDiscountTotal,\n      mixedScope,\n      details,\n    };\n  }, [documentDiscountMode, documentDiscountValue, lines]);", "  const estimate = useMemo(() => {\n    const canonicalLines = [...lines].reverse();\n    const gross = canonicalLines.map(grossMinor);\n    const grossTotal = gross.reduce((sum, value) => sum + value, 0n);\n    const lineDiscounts = canonicalLines.map(lineDiscountMinor);\n    const lineDiscountValid = lineDiscounts.every((value) => value !== null);\n    const lineDiscountValues = lineDiscounts.map((value) => value ?? 0n);\n    const lineDiscountTotal = lineDiscountValues.reduce((sum, value) => sum + value, 0n);\n    const target = documentDiscountTarget(documentDiscountMode, documentDiscountValue, grossTotal);\n    const documentAllocations = target === null ? null : largestRemainder(gross, target);\n    const documentDiscountTotal = documentAllocations?.reduce((sum, value) => sum + value, 0n) ?? 0n;\n    const mixedScope = lineDiscountTotal > 0n && documentDiscountTotal > 0n;\n    const effectiveDiscounts = documentDiscountTotal > 0n\n      ? (documentAllocations ?? gross.map(() => 0n))\n      : lineDiscountValues;\n    const canonicalDetails = canonicalLines.map((line, index) =>\n      estimateLine(line, effectiveDiscounts[index] ?? 0n));\n    return {\n      valid: target !== null && documentAllocations !== null && lineDiscountValid && !mixedScope,\n      gross: grossTotal,\n      discount: effectiveDiscounts.reduce((sum, value) => sum + value, 0n),\n      tax: canonicalDetails.reduce((sum, value) => sum + value.tax, 0n),\n      total: canonicalDetails.reduce((sum, value) => sum + value.total, 0n),\n      lineDiscountTotal,\n      documentDiscountTotal,\n      mixedScope,\n      details: [...canonicalDetails].reverse(),\n    };\n  }, [documentDiscountMode, documentDiscountValue, lines]);", "canonical sales estimate");
+  next = replaceOnce(next, "      return [...current.slice(0, sourceIndex + 1), split, ...current.slice(sourceIndex + 1)];", "      return [...current.slice(0, sourceIndex), split, ...current.slice(sourceIndex)];", "split official order");
+  next = replaceOnce(next, "      lines: lines.map((line) => ({", "      lines: [...lines].reverse().map((line) => ({", "persist official entry order");
+  next = replaceOnce(next, "                <BusinessSequenceNumber rowIndex={index} className={styles.lineSequence} />", "                <BusinessSequenceNumber rowIndex={index} value={lines.length - index} className={styles.lineSequence} />", "sales stable entry STT");
   return next;
 });
 
-// 8) Canonical backend SKU search: accent-insensitive, token containment, preserved exact/prefix priority.
 edit('npp-core/api/src/db/repositories/sales-order.js', (source) => {
-  return replaceRegexOnce(source,
-`export async function searchSalesOrderSkuOptions\(client, \{[\s\S]*?\n\}\n\nexport async function listOrderableSalesVariantIds`,
-`export async function searchSalesOrderSkuOptions(client, {
-  installationId, search, categoryId = null, retailSearch = false, limit = 20, offset = 0,
-}) {
-  const term = String(search ?? '').trim();
-  const normalizedExact = term.toUpperCase();
-  const normalizedSearch = term
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/đ/g, 'd')
-    .replace(/\s+/g, ' ')
-    .trim();
-  const searchTokens = normalizedSearch ? normalizedSearch.split(' ').filter(Boolean) : [];
-  const vietnameseSearchCharacters = 'àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ';
-  const asciiSearchCharacters = 'aaaaaaaaaaaaaaaaaeeeeeeeeeeeiiiiiooooooooooooooooouuuuuuuuuuuyyyyyd';
-  const result = await client.query(
-    `SELECT ${SKU_OPTION_COLUMNS}
-     FROM shared.product_variants pv
-     JOIN shared.products p
-       ON p.installation_id = pv.installation_id AND p.id = pv.product_id
-     LEFT JOIN shared.units_of_measure u
-       ON u.installation_id = pv.installation_id AND u.id = pv.unit_id
-     LEFT JOIN LATERAL (
-       SELECT pb.barcode
-       FROM shared.product_barcodes pb
-       WHERE pb.installation_id = pv.installation_id
-         AND pb.variant_id = pv.id
-         AND pb.is_active = true
-       ORDER BY pb.is_primary DESC, pb.created_at ASC, pb.id ASC
-       LIMIT 1
-     ) primary_barcode ON true
-     WHERE pv.installation_id = $1
-       AND p.is_active = true
-       AND p.is_orderable = true
-       AND pv.is_active = true
-       AND pv.is_sellable = true
-       AND pv.unit_id IS NOT NULL
-       AND u.is_active = true
-       AND pv.conversion_to_base IS NOT NULL
-       AND pv.conversion_to_base > 0
-       AND ($5::uuid IS NULL OR p.category_id = $5::uuid)
-       AND (
-         $3 = ''
-         OR NOT EXISTS (
-           SELECT 1
-           FROM unnest($4::text[]) AS search_token(value)
-           WHERE NOT (
-             strpos(translate(lower(COALESCE(pv.sku, '')), $7, $8), search_token.value) > 0
-             OR strpos(translate(lower(COALESCE(pv.name, '')), $7, $8), search_token.value) > 0
-             OR strpos(translate(lower(COALESCE(p.code, '')), $7, $8), search_token.value) > 0
-             OR strpos(translate(lower(COALESCE(p.name, '')), $7, $8), search_token.value) > 0
-             OR EXISTS (
-               SELECT 1
-               FROM shared.product_barcodes matching_barcode
-               WHERE matching_barcode.installation_id = pv.installation_id
-                 AND matching_barcode.variant_id = pv.id
-                 AND matching_barcode.is_active = true
-                 AND strpos(
-                   translate(lower(COALESCE(matching_barcode.normalized_barcode, '')), $7, $8),
-                   search_token.value
-                 ) > 0
-             )
-           )
-         )
-       )
-     ORDER BY
-       CASE
-         WHEN upper(pv.sku) = $2 THEN 0
-         WHEN upper(p.code) = $2 THEN 1
-         WHEN EXISTS (
-           SELECT 1
-           FROM shared.product_barcodes exact_barcode
-           WHERE exact_barcode.installation_id = pv.installation_id
-             AND exact_barcode.variant_id = pv.id
-             AND exact_barcode.is_active = true
-             AND exact_barcode.normalized_barcode = $2
-         ) THEN 2
-         WHEN $6::boolean AND upper(pv.sku) LIKE $2 || '%' THEN 3
-         WHEN $6::boolean AND upper(p.code) LIKE $2 || '%' THEN 4
-         WHEN $3 <> '' AND translate(lower(COALESCE(p.name, '')), $7, $8) = $3 THEN 5
-         WHEN $3 <> '' AND translate(lower(COALESCE(pv.name, '')), $7, $8) = $3 THEN 6
-         WHEN $3 <> '' AND strpos(translate(lower(COALESCE(p.name, '')), $7, $8), $3) = 1 THEN 7
-         WHEN $3 <> '' AND strpos(translate(lower(COALESCE(pv.name, '')), $7, $8), $3) = 1 THEN 8
-         ELSE 9
-       END,
-       p.code ASC,
-       pv.sku ASC,
-       pv.id ASC
-     LIMIT $9 OFFSET $10`,
-    [
-      installationId,
-      normalizedExact,
-      normalizedSearch,
-      searchTokens,
-      categoryId,
-      retailSearch,
-      vietnameseSearchCharacters,
-      asciiSearchCharacters,
-      limit,
-      offset,
-    ],
-  );
-  return result.rows;
-}
-
-export async function listOrderableSalesVariantIds`,
-'sales SKU search function');
+  let next = source;
+  next = replaceRegexOnce(next, "export async function searchSalesOrderSkuOptions\\(client, \\{[\\s\\S]*?\\n\\}\\n\\nexport async function listOrderableSalesVariantIds", "", "export async function searchSalesOrderSkuOptions(client, {\n  installationId, search, categoryId = null, retailSearch = false, limit = 20, offset = 0,\n}) {\n  const term = String(search ?? '').trim();\n  const normalizedExact = term.toUpperCase();\n  const normalizedSearch = term\n    .normalize('NFD')\n    .replace(/[\\u0300-\\u036f]/g, '')\n    .toLowerCase()\n    .replace(/đ/g, 'd')\n    .replace(/\\s+/g, ' ')\n    .trim();\n  const searchTokens = normalizedSearch ? normalizedSearch.split(' ').filter(Boolean) : [];\n  const vietnameseSearchCharacters = 'àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ';\n  const asciiSearchCharacters = 'aaaaaaaaaaaaaaaaaeeeeeeeeeeeiiiiiooooooooooooooooouuuuuuuuuuuyyyyyd';\n  const result = await client.query(\n    `SELECT ${SKU_OPTION_COLUMNS}\n     FROM shared.product_variants pv\n     JOIN shared.products p\n       ON p.installation_id = pv.installation_id AND p.id = pv.product_id\n     LEFT JOIN shared.units_of_measure u\n       ON u.installation_id = pv.installation_id AND u.id = pv.unit_id\n     LEFT JOIN LATERAL (\n       SELECT pb.barcode\n       FROM shared.product_barcodes pb\n       WHERE pb.installation_id = pv.installation_id\n         AND pb.variant_id = pv.id\n         AND pb.is_active = true\n       ORDER BY pb.is_primary DESC, pb.created_at ASC, pb.id ASC\n       LIMIT 1\n     ) primary_barcode ON true\n     WHERE pv.installation_id = $1\n       AND p.is_active = true\n       AND p.is_orderable = true\n       AND pv.is_active = true\n       AND pv.is_sellable = true\n       AND pv.unit_id IS NOT NULL\n       AND u.is_active = true\n       AND pv.conversion_to_base IS NOT NULL\n       AND pv.conversion_to_base > 0\n       AND ($5::uuid IS NULL OR p.category_id = $5::uuid)\n       AND (\n         $3 = ''\n         OR NOT EXISTS (\n           SELECT 1\n           FROM unnest($4::text[]) AS search_token(value)\n           WHERE NOT (\n             strpos(translate(lower(COALESCE(pv.sku, '')), $7, $8), search_token.value) > 0\n             OR strpos(translate(lower(COALESCE(pv.name, '')), $7, $8), search_token.value) > 0\n             OR strpos(translate(lower(COALESCE(p.code, '')), $7, $8), search_token.value) > 0\n             OR strpos(translate(lower(COALESCE(p.name, '')), $7, $8), search_token.value) > 0\n             OR EXISTS (\n               SELECT 1\n               FROM shared.product_barcodes matching_barcode\n               WHERE matching_barcode.installation_id = pv.installation_id\n                 AND matching_barcode.variant_id = pv.id\n                 AND matching_barcode.is_active = true\n                 AND strpos(\n                   translate(lower(COALESCE(matching_barcode.normalized_barcode, '')), $7, $8),\n                   search_token.value\n                 ) > 0\n             )\n           )\n         )\n       )\n     ORDER BY\n       CASE\n         WHEN upper(pv.sku) = $2 THEN 0\n         WHEN upper(p.code) = $2 THEN 1\n         WHEN EXISTS (\n           SELECT 1\n           FROM shared.product_barcodes exact_barcode\n           WHERE exact_barcode.installation_id = pv.installation_id\n             AND exact_barcode.variant_id = pv.id\n             AND exact_barcode.is_active = true\n             AND exact_barcode.normalized_barcode = $2\n         ) THEN 2\n         WHEN $6::boolean AND upper(pv.sku) LIKE $2 || '%' THEN 3\n         WHEN $6::boolean AND upper(p.code) LIKE $2 || '%' THEN 4\n         WHEN $3 <> '' AND translate(lower(COALESCE(p.name, '')), $7, $8) = $3 THEN 5\n         WHEN $3 <> '' AND translate(lower(COALESCE(pv.name, '')), $7, $8) = $3 THEN 6\n         WHEN $3 <> '' AND strpos(translate(lower(COALESCE(p.name, '')), $7, $8), $3) = 1 THEN 7\n         WHEN $3 <> '' AND strpos(translate(lower(COALESCE(pv.name, '')), $7, $8), $3) = 1 THEN 8\n         ELSE 9\n       END,\n       p.code ASC,\n       pv.sku ASC,\n       pv.id ASC\n     LIMIT $9 OFFSET $10`,\n    [\n      installationId,\n      normalizedExact,\n      normalizedSearch,\n      searchTokens,\n      categoryId,\n      retailSearch,\n      vietnameseSearchCharacters,\n      asciiSearchCharacters,\n      limit,\n      offset,\n    ],\n  );\n  return result.rows;\n}\n\nexport async function listOrderableSalesVariantIds", "sales SKU search function");
+  return next;
 });
 
-// 9) Update and extend contracts.
 edit('npp-core/web/test/product-search-contract.test.js', (source) => {
-  let next = replaceOnce(source,
-`  MIN_PRODUCT_SEARCH_LENGTH,
-  normalizedProductSearchTerm,`,
-`  MIN_PRODUCT_SEARCH_LENGTH,
-  normalizedProductSearchTerm,
-  normalizeProductSearchText,
-  productSearchMatches,
-  productSearchTokens,`,
-'product search test imports');
-  next = replaceOnce(next,
-`test('all Company SKU entry surfaces use the shared first-character contract', () => {`,
-`test('product search accepts Vietnamese text by tokens instead of requiring one contiguous phrase', () => {
-  assert.equal(normalizeProductSearchText(' Thạch ĐỎ '), 'thach do');
-  assert.deepEqual(productSearchTokens('thạch dừa vải'), ['thach', 'dua', 'vai']);
-  assert.equal(productSearchMatches(['Thạch DX Dừa Vải'], 'thạch dừa vải'), true);
-  assert.equal(productSearchMatches(['Thạch DX Dừa Vải'], 'dua vai'), true);
-  assert.equal(productSearchMatches(['Mama Lựu'], 'ma lựu'), true);
-  assert.equal(productSearchMatches(['Mama Lựu'], 'ma xoài'), false);
-});
-
-test('all Company SKU entry surfaces use the shared first-character contract', () => {`,
-'staff search examples');
+  let next = source;
+  next = replaceOnce(next, "  MIN_PRODUCT_SEARCH_LENGTH,\n  normalizedProductSearchTerm,", "  MIN_PRODUCT_SEARCH_LENGTH,\n  normalizedProductSearchTerm,\n  normalizeProductSearchText,\n  productSearchMatches,\n  productSearchTokens,", "product search test imports");
+  next = replaceOnce(next, "test('all Company SKU entry surfaces use the shared first-character contract', () => {", "test('product search accepts Vietnamese text by tokens instead of requiring one contiguous phrase', () => {\n  assert.equal(normalizeProductSearchText(' Thạch ĐỎ '), 'thach do');\n  assert.deepEqual(productSearchTokens('thạch dừa vải'), ['thach', 'dua', 'vai']);\n  assert.equal(productSearchMatches(['Thạch DX Dừa Vải'], 'thạch dừa vải'), true);\n  assert.equal(productSearchMatches(['Thạch DX Dừa Vải'], 'dua vai'), true);\n  assert.equal(productSearchMatches(['Mama Lựu'], 'ma lựu'), true);\n  assert.equal(productSearchMatches(['Mama Lựu'], 'ma xoài'), false);\n});\n\ntest('all Company SKU entry surfaces use the shared first-character contract', () => {", "staff search examples");
   return next;
 });
 
 edit('npp-core/api/test/retail-catalog-security-contract.test.js', (source) => {
-  let next = replaceOnce(source, `/p\.category_id = \$4::uuid/`, `/p\.category_id = \$5::uuid/`, 'retail category param');
-  next = replaceOnce(next, `/\$5::boolean AND upper\(pv\.sku\) LIKE \$2 \|\| '%'/`, `/\$6::boolean AND upper\(pv\.sku\) LIKE \$2 \|\| '%'/`, 'retail prefix filter param');
-  next = replaceOnce(next, `/WHEN \$5::boolean AND upper\(pv\.sku\) LIKE \$2 \|\| '%' THEN 3/`, `/WHEN \$6::boolean AND upper\(pv\.sku\) LIKE \$2 \|\| '%' THEN 3/`, 'retail prefix rank param');
-  next = replaceOnce(next, `assert.equal(calls[0].params[4], false);`, `assert.equal(calls[0].params[5], false);`, 'retail false param');
-  next = replaceOnce(next, `assert.equal(calls[1].params[4], true);`, `assert.equal(calls[1].params[5], true);`, 'retail true param');
-  next = replaceOnce(next, `assert.match(calls[0].statement, /ELSE 3/);`, `assert.match(calls[0].statement, /ELSE 9/);`, 'retail fallback rank');
+  let next = source;
+  next = replaceOnce(next, "/p\\.category_id = \\$4::uuid/", "/p\\.category_id = \\$5::uuid/", "retail category param");
+  next = replaceOnce(next, "/\\$5::boolean AND upper\\(pv\\.sku\\) LIKE \\$2 \\|\\| '%'/", "/\\$6::boolean AND upper\\(pv\\.sku\\) LIKE \\$2 \\|\\| '%'/", "retail prefix filter param");
+  next = replaceOnce(next, "/WHEN \\$5::boolean AND upper\\(pv\\.sku\\) LIKE \\$2 \\|\\| '%' THEN 3/", "/WHEN \\$6::boolean AND upper\\(pv\\.sku\\) LIKE \\$2 \\|\\| '%' THEN 3/", "retail prefix rank param");
+  next = replaceOnce(next, "assert.equal(calls[0].params[4], false);", "assert.equal(calls[0].params[5], false);", "retail false param");
+  next = replaceOnce(next, "assert.equal(calls[1].params[4], true);", "assert.equal(calls[1].params[5], true);", "retail true param");
+  next = replaceOnce(next, "assert.match(calls[0].statement, /ELSE 3/);", "assert.match(calls[0].statement, /ELSE 9/);", "retail fallback rank");
   return next;
 });
 
-edit('npp-core/api/test/sales-order-entry-pagination.test.js', (source) =>
-  replaceOnce(source,
-    `const limitIndex = statement.indexOf('LIMIT $6 OFFSET $7');`,
-    `const limitIndex = statement.indexOf('LIMIT $9 OFFSET $10');`,
-    'sales pagination placeholders'));
-
-// 10) New focused regression tests.
-writeNew('npp-core/web/test/company-product-order-stt.test.mjs', `import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import test from 'node:test';
-import { productCreationSequence, sortProductsNewestFirst } from '../lib/product-list-order.js';
-import { collectAllProductPages } from '../lib/product-catalog-client-pagination.js';
-
-function product(id, code, createdAt) {
-  return { id, code, created_at: createdAt };
-}
-
-test('STT sản phẩm giữ theo thứ tự tạo và không bị đánh lại khi lọc', () => {
-  const rows = [
-    product('p2', 'SP002', '2026-01-02T00:00:00.000Z'),
-    product('p1', 'SP001', '2026-01-01T00:00:00.000Z'),
-    product('p3', 'SP003', '2026-01-03T00:00:00.000Z'),
-  ];
-  const sequence = productCreationSequence(rows);
-  assert.equal(sequence.get('p1'), 1);
-  assert.equal(sequence.get('p2'), 2);
-  assert.equal(sequence.get('p3'), 3);
-  assert.deepEqual(sortProductsNewestFirst(rows).map((item) => item.id), ['p3', 'p2', 'p1']);
-
-  const filtered = rows.filter((item) => item.id === 'p2');
-  assert.equal(sequence.get(filtered[0].id), 2);
+edit('npp-core/api/test/sales-order-entry-pagination.test.js', (source) => {
+  let next = source;
+  next = replaceOnce(next, "const limitIndex = statement.indexOf('LIMIT $6 OFFSET $7');", "const limitIndex = statement.indexOf('LIMIT $9 OFFSET $10');", "sales pagination placeholders");
+  return next;
 });
 
-test('Làm mới danh mục tải tiếp sau 1.000 sản phẩm', async () => {
-  const calls = [];
-  const rows = await collectAllProductPages(async ({ limit, offset }) => {
-    calls.push({ limit, offset });
-    if (offset === 0) return Array.from({ length: 1000 }, (_, index) => ({ id: `p-${index}` }));
-    if (offset === 1000) return [{ id: 'p-1000' }, { id: 'p-1001' }];
-    return [];
-  });
-  assert.equal(rows.length, 1002);
-  assert.deepEqual(calls, [{ limit: 1000, offset: 0 }, { limit: 1000, offset: 1000 }]);
-});
+writeNew("npp-core/web/test/company-product-order-stt.test.mjs", "import assert from 'node:assert/strict';\nimport { readFileSync } from 'node:fs';\nimport test from 'node:test';\nimport { productCreationSequence, sortProductsNewestFirst } from '../lib/product-list-order.js';\nimport { collectAllProductPages } from '../lib/product-catalog-client-pagination.js';\n\nfunction product(id, code, createdAt) {\n  return { id, code, created_at: createdAt };\n}\n\ntest('STT sản phẩm giữ theo thứ tự tạo và không bị đánh lại khi lọc', () => {\n  const rows = [\n    product('p2', 'SP002', '2026-01-02T00:00:00.000Z'),\n    product('p1', 'SP001', '2026-01-01T00:00:00.000Z'),\n    product('p3', 'SP003', '2026-01-03T00:00:00.000Z'),\n  ];\n  const sequence = productCreationSequence(rows);\n  assert.equal(sequence.get('p1'), 1);\n  assert.equal(sequence.get('p2'), 2);\n  assert.equal(sequence.get('p3'), 3);\n  assert.deepEqual(sortProductsNewestFirst(rows).map((item) => item.id), ['p3', 'p2', 'p1']);\n\n  const filtered = rows.filter((item) => item.id === 'p2');\n  assert.equal(sequence.get(filtered[0].id), 2);\n});\n\ntest('STT sản phẩm có cùng thời điểm tạo vẫn ổn định theo id, không phụ thuộc mã có thể sửa', () => {\n  const rows = [\n    product('b-id', 'AAA', '2026-01-01T00:00:00.000Z'),\n    product('a-id', 'ZZZ', '2026-01-01T00:00:00.000Z'),\n  ];\n  const sequence = productCreationSequence(rows);\n  assert.equal(sequence.get('a-id'), 1);\n  assert.equal(sequence.get('b-id'), 2);\n});\n\ntest('Làm mới danh mục tải tiếp sau 1.000 sản phẩm', async () => {\n  const calls = [];\n  const rows = await collectAllProductPages(async ({ limit, offset }) => {\n    calls.push({ limit, offset });\n    if (offset === 0) return Array.from({ length: 1000 }, (_, index) => ({ id: `p-${index}` }));\n    if (offset === 1000) return [{ id: 'p-1000' }, { id: 'p-1001' }];\n    return [];\n  });\n  assert.equal(rows.length, 1002);\n  assert.deepEqual(calls, [{ limit: 1000, offset: 0 }, { limit: 1000, offset: 1000 }]);\n});\n\ntest('Danh mục và Thiết lập nhanh dùng chung hợp đồng tìm hàng linh hoạt', () => {\n  const productWorkspace = readFileSync(new URL('../app/products/product-workspace.tsx', import.meta.url), 'utf8');\n  const quickSetup = readFileSync(new URL('../app/products/product-quick-setup-workspace.tsx', import.meta.url), 'utf8');\n  assert.match(productWorkspace, /productSearchMatches/);\n  assert.match(productWorkspace, /productCreationSequence/);\n  assert.match(productWorkspace, /sortProductsNewestFirst/);\n  assert.match(productWorkspace, /collectAllProductPages/);\n  assert.match(productWorkspace, /value=\\{productSequence\\.get\\(product\\.id\\)\\}/);\n  assert.match(quickSetup, /productSearchMatches/);\n  assert.doesNotMatch(productWorkspace, /function normalizeSearch/);\n  assert.doesNotMatch(quickSetup, /function normalizeSearch/);\n});\n\ntest('Đơn bán giữ hàng mới trên cùng nhưng lưu và in theo thứ tự nhập', () => {\n  const form = readFileSync(new URL('../app/sales/sales-orders/SalesOrderCommercialForm.tsx', import.meta.url), 'utf8');\n  const print = readFileSync(new URL('../app/sales/sales-orders/SalesOrderPrintSheet.tsx', import.meta.url), 'utf8');\n  assert.match(form, /setLines\\(\\(current\\) => \\[pending, \\.\\.\\.current\\]\\)/);\n  assert.match(form, /value=\\{lines\\.length - index\\}/);\n  assert.match(form, /lines: \\[\\.\\.\\.lines\\]\\.reverse\\(\\)\\.map/);\n  assert.match(form, /return \\[\\.\\.\\.\\(version\\?\\.lines \\?\\? \\[\\]\\)\\]\\.reverse\\(\\)\\.map/);\n  assert.match(form, /const canonicalLines = \\[\\.\\.\\.lines\\]\\.reverse\\(\\)/);\n  assert.match(form, /details: \\[\\.\\.\\.canonicalDetails\\]\\.reverse\\(\\)/);\n  assert.match(form, /current\\.slice\\(0, sourceIndex\\), split, \\.\\.\\.current\\.slice\\(sourceIndex\\)/);\n  assert.match(print, /no: line\\.lineNumber/);\n});\n");
 
-test('Danh mục và Thiết lập nhanh dùng chung hợp đồng tìm hàng linh hoạt', () => {
-  const productWorkspace = readFileSync(new URL('../app/products/product-workspace.tsx', import.meta.url), 'utf8');
-  const quickSetup = readFileSync(new URL('../app/products/product-quick-setup-workspace.tsx', import.meta.url), 'utf8');
-  assert.match(productWorkspace, /productSearchMatches/);
-  assert.match(productWorkspace, /productCreationSequence/);
-  assert.match(productWorkspace, /sortProductsNewestFirst/);
-  assert.match(productWorkspace, /collectAllProductPages/);
-  assert.match(productWorkspace, /value=\{productSequence\.get\(product\.id\)\}/);
-  assert.match(quickSetup, /productSearchMatches/);
-  assert.doesNotMatch(productWorkspace, /function normalizeSearch/);
-  assert.doesNotMatch(quickSetup, /function normalizeSearch/);
-});
+writeNew("npp-core/api/test/company-product-search.test.js", "import assert from 'node:assert/strict';\nimport test from 'node:test';\nimport * as repository from '../src/db/repositories/sales-order.js';\n\ntest('Tìm hàng bán hỗ trợ tiếng Việt theo từng từ và giữ ưu tiên mã chính xác', async () => {\n  const calls = [];\n  const client = {\n    async query(statement, params) {\n      calls.push({ statement, params });\n      return { rows: [] };\n    },\n  };\n\n  await repository.searchSalesOrderSkuOptions(client, {\n    installationId: '66666666-6666-4666-8666-666666666666',\n    search: 'thạch dừa vải',\n    limit: 30,\n    offset: 0,\n  });\n\n  assert.equal(calls.length, 1);\n  const first = calls[0];\n  assert.equal(first.params[2], 'thach dua vai');\n  assert.deepEqual(first.params[3], ['thach', 'dua', 'vai']);\n  assert.equal(first.params[5], false);\n  assert.equal(first.params.at(-2), 30);\n  assert.equal(first.params.at(-1), 0);\n  assert.match(first.statement, /FROM unnest\\(\\$4::text\\[\\]\\) AS search_token/);\n  assert.match(first.statement, /p\\.category_id = \\$5::uuid/);\n  assert.match(first.statement, /translate\\(lower\\(COALESCE\\(p\\.name, ''\\)\\), \\$7, \\$8\\)/);\n  assert.match(first.statement, /WHEN upper\\(pv\\.sku\\) = \\$2 THEN 0/);\n  assert.match(first.statement, /WHEN \\$6::boolean AND upper\\(pv\\.sku\\) LIKE \\$2 \\|\\| '%' THEN 3/);\n  assert.match(first.statement, /LIMIT \\$9 OFFSET \\$10/);\n\n  await repository.searchSalesOrderSkuOptions(client, {\n    installationId: '66666666-6666-4666-8666-666666666666',\n    search: 'ma lựu',\n  });\n  assert.equal(calls[1].params[2], 'ma luu');\n  assert.deepEqual(calls[1].params[3], ['ma', 'luu']);\n});\n");
 
-test('Đơn bán giữ hàng mới trên cùng nhưng lưu và in theo thứ tự nhập', () => {
-  const form = readFileSync(new URL('../app/sales/sales-orders/SalesOrderCommercialForm.tsx', import.meta.url), 'utf8');
-  const print = readFileSync(new URL('../app/sales/sales-orders/SalesOrderPrintSheet.tsx', import.meta.url), 'utf8');
-  assert.match(form, /setLines\(\(current\) => \[pending, \.\.\.current\]\)/);
-  assert.match(form, /value=\{lines\.length - index\}/);
-  assert.match(form, /lines: \[\.\.\.lines\]\.reverse\(\)\.map/);
-  assert.match(form, /return \[\.\.\.\(version\?\.lines \?\? \[\]\)\]\.reverse\(\)\.map/);
-  assert.match(form, /const canonicalLines = \[\.\.\.lines\]\.reverse\(\)/);
-  assert.match(form, /details: \[\.\.\.canonicalDetails\]\.reverse\(\)/);
-  assert.match(form, /current\.slice\(0, sourceIndex\), split, \.\.\.current\.slice\(sourceIndex\)/);
-  assert.match(print, /no: line\.lineNumber/);
-});
-`);
-
-writeNew('npp-core/api/test/company-product-search.test.js', `import assert from 'node:assert/strict';
-import test from 'node:test';
-import * as repository from '../src/db/repositories/sales-order.js';
-
-test('Tìm hàng bán hỗ trợ tiếng Việt theo từng từ và giữ ưu tiên mã chính xác', async () => {
-  const calls = [];
-  const client = {
-    async query(statement, params) {
-      calls.push({ statement, params });
-      return { rows: [] };
-    },
-  };
-
-  await repository.searchSalesOrderSkuOptions(client, {
-    installationId: '66666666-6666-4666-8666-666666666666',
-    search: 'thạch dừa vải',
-    limit: 30,
-    offset: 0,
-  });
-
-  assert.equal(calls.length, 1);
-  const first = calls[0];
-  assert.equal(first.params[2], 'thach dua vai');
-  assert.deepEqual(first.params[3], ['thach', 'dua', 'vai']);
-  assert.equal(first.params[5], false);
-  assert.equal(first.params.at(-2), 30);
-  assert.equal(first.params.at(-1), 0);
-  assert.match(first.statement, /FROM unnest\(\$4::text\[\]\) AS search_token/);
-  assert.match(first.statement, /p\.category_id = \$5::uuid/);
-  assert.match(first.statement, /translate\(lower\(COALESCE\(p\.name, ''\)\), \$7, \$8\)/);
-  assert.match(first.statement, /WHEN upper\(pv\.sku\) = \$2 THEN 0/);
-  assert.match(first.statement, /WHEN \$6::boolean AND upper\(pv\.sku\) LIKE \$2 \|\| '%' THEN 3/);
-  assert.match(first.statement, /LIMIT \$9 OFFSET \$10/);
-
-  await repository.searchSalesOrderSkuOptions(client, {
-    installationId: '66666666-6666-4666-8666-666666666666',
-    search: 'ma lựu',
-  });
-  assert.equal(calls[1].params[2], 'ma luu');
-  assert.deepEqual(calls[1].params[3], ['ma', 'luu']);
-});
-`);
-
-// 11) Self-delete the one-shot tooling so the branch contains only the product changes.
 for (const path of [
   '.agent/apply-company-product-search-order-stt.mjs',
   '.github/workflows/one-shot-company-product-search-order-stt.yml',
