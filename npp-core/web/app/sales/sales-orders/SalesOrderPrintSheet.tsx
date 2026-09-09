@@ -59,13 +59,7 @@ function sumKnownWeightKg(lines: SalesOrderVersion['lines']): string {
 }
 
 function orderWeightText(lines: SalesOrderVersion['lines']): string {
-  const resolvedLines = lines ?? [];
-  const missingWeightLineCount = resolvedLines.filter((line) => !String(line.lineWeightKg ?? '').trim()).length;
-  const total = formatWeightKg(sumKnownWeightKg(resolvedLines));
-  if (missingWeightLineCount > 0 && missingWeightLineCount < resolvedLines.length) {
-    return `${total} (chưa tính ${missingWeightLineCount} dòng thiếu khối lượng)`;
-  }
-  return total;
+  return formatWeightKg(sumKnownWeightKg(lines ?? []));
 }
 
 export default function SalesOrderPrintSheet({

@@ -40,7 +40,7 @@ test('phiếu xuất kho dùng tên Công Ty ngắn và khối lượng nằm tr
   assert.doesNotMatch(totalsBlock, /total_weight|Tổng khối lượng/);
 });
 
-test('khối lượng in cộng phần có dữ liệu, cảnh báo phần thiếu và tất cả thiếu trả 0 kg', () => {
+test('khối lượng in chỉ hiện tổng phần có dữ liệu; tất cả thiếu trả 0 kg', () => {
   const formatWeightKg = new Function('value', extractBody(print, 'formatWeightKg'));
   const sumKnownWeightKg = new Function('lines', extractBody(print, 'sumKnownWeightKg'));
   const orderWeightText = new Function('formatWeightKg', 'sumKnownWeightKg', 'lines', extractBody(print, 'orderWeightText'));
@@ -53,8 +53,9 @@ test('khối lượng in cộng phần có dữ liệu, cảnh báo phần thi�
   assert.equal(sumKnownWeightKg(mixed), '3.75');
   assert.equal(sumKnownWeightKg(missing), '0');
   assert.equal(orderWeightText(formatWeightKg, sumKnownWeightKg, known), '3,75 kg');
-  assert.equal(orderWeightText(formatWeightKg, sumKnownWeightKg, mixed), '3,75 kg (chưa tính 1 dòng thiếu khối lượng)');
+  assert.equal(orderWeightText(formatWeightKg, sumKnownWeightKg, mixed), '3,75 kg');
   assert.equal(orderWeightText(formatWeightKg, sumKnownWeightKg, missing), '0 kg');
+  assert.doesNotMatch(print, /chưa tính .*dòng thiếu khối lượng/);
 });
 
 test('khối lượng in làm tròn half-up tối đa 2 số lẻ và bỏ số 0 dư', () => {
