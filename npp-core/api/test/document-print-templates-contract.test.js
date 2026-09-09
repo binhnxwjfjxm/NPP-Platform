@@ -17,7 +17,7 @@ function responseRecorder() {
   };
 }
 
-test('print template migrations keep installation scope and add configurable headings', () => {
+test('print template migrations keep installation scope and add configurable headings plus header layout', () => {
   const migration = CORE_API_MIGRATIONS.find((entry) => entry.id === '098_document_print_template_settings');
   assert.ok(migration);
   assert.match(migration.sql, /shared\.document_print_template_settings/);
@@ -30,6 +30,12 @@ test('print template migrations keep installation scope and add configurable hea
   assert.match(headingMigration.sql, /ADD COLUMN IF NOT EXISTS heading/);
   assert.match(headingMigration.sql, /ADD COLUMN IF NOT EXISTS title/);
   assert.match(headingMigration.sql, /ADD COLUMN IF NOT EXISTS subtitle/);
+  const layoutMigration = CORE_API_MIGRATIONS.find((entry) => entry.id === '127_document_print_template_header_layout');
+  assert.ok(layoutMigration);
+  assert.match(layoutMigration.sql, /ADD COLUMN IF NOT EXISTS heading_visible boolean NOT NULL DEFAULT true/);
+  assert.match(layoutMigration.sql, /ADD COLUMN IF NOT EXISTS heading_align text NOT NULL DEFAULT 'left'/);
+  assert.match(layoutMigration.sql, /ADD COLUMN IF NOT EXISTS title_align text NOT NULL DEFAULT 'right'/);
+  assert.match(layoutMigration.sql, /left', 'center', 'right/);
   assert.ok(PERMISSION_REGISTRY.has(PERMISSIONS.corePrintTemplateRead));
   assert.ok(PERMISSION_REGISTRY.has(PERMISSIONS.corePrintTemplateManage));
 });
@@ -40,7 +46,11 @@ test('print template catalog keeps Sales Order core columns and separates option
   const sales = documentPrintTemplateInternals.lookup('sales_order', 'standard');
   assert.ok(sales);
   assert.equal(sales.name, 'PHIẾU XUẤT KHO');
-  assert.equal(documentPrintTemplateInternals.present(sales, null).title, 'PHIẾU XUẤT KHO');
+  const defaults = documentPrintTemplateInternals.present(sales, null);
+  assert.equal(defaults.title, 'PHIẾU XUẤT KHO');
+  assert.equal(defaults.headingVisible, true);
+  assert.equal(defaults.headingAlign, 'left');
+  assert.equal(defaults.titleAlign, 'right');
   assert.equal(sales.fields.find((field) => field.key === 'line_item')?.label, 'Tên sản phẩm');
   assert.equal(sales.fields.find((field) => field.key === 'line_item')?.required, true);
   assert.equal(sales.fields.find((field) => field.key === 'line_sku')?.defaultSelected, false);
@@ -50,17 +60,46 @@ test('print template catalog keeps Sales Order core columns and separates option
   assert.equal(sales.fields.find((field) => field.key === 'line_unit_price')?.required, true);
   assert.equal(sales.fields.find((field) => field.key === 'line_total')?.required, true);
 
-  const valid = documentPrintTemplateInternals.normalizePayload(sales, { pageSize: 'A4', visibleFieldKeys: ['customer', 'line_sku', 'total_total'], heading: 'NGUYÊN LIỆU TRÀ SỮA', title: 'PHIẾU XUẤT KHO', subtitle: 'Bán tại quầy' });
+  const valid = documentPrintTemplateInternals.normalizePayload(sales, {
+    pageSize: 'A4',
+    visibleFieldKeys: ['customer', 'line_sku', 'total_total'],
+    heading: 'NGUYÊN LIỆU TRÀ SỮA',
+    title: 'PHIẾU XUẤT KHO',
+    subtitle: 'Bán tại quầy',
+    headingVisible: false,
+    headingAlign: 'center',
+    titleAlign: 'left',
+  });
   assert.deepEqual(valid.visibleFieldKeys, ['customer', 'line_item', 'line_sku', 'line_quantity', 'line_unit', 'line_unit_price', 'line_total', 'total_total']);
   assert.equal(valid.heading, 'NGUYÊN LIỆU TRÀ SỮA');
   assert.equal(valid.title, 'PHIẾU XUẤT KHO');
   assert.equal(valid.subtitle, 'Bán tại quầy');
+  assert.equal(valid.headingVisible, false);
+  assert.equal(valid.headingAlign, 'center');
+  assert.equal(valid.titleAlign, 'left');
 
-  const presented = documentPrintTemplateInternals.present(sales, { visible_field_keys: ['customer', 'line_sku'], page_size: 'A4' });
+  const omittedHeader = documentPrintTemplateInternals.normalizePayload(sales, { pageSize: 'A4', visibleFieldKeys: ['customer'] });
+  assert.equal(omittedHeader.heading, undefined);
+  assert.equal(omittedHeader.headingVisible, undefined);
+  assert.equal(omittedHeader.headingAlign, undefined);
+  assert.equal(omittedHeader.titleAlign, undefined);
+
+  const presented = documentPrintTemplateInternals.present(sales, {
+    visible_field_keys: ['customer', 'line_sku'],
+    page_size: 'A4',
+    heading_visible: false,
+    heading_align: 'right',
+    title_align: 'center',
+  });
   assert.deepEqual(presented.visibleFieldKeys, ['customer', 'line_item', 'line_sku', 'line_quantity', 'line_unit', 'line_unit_price', 'line_total']);
+  assert.equal(presented.headingVisible, false);
+  assert.equal(presented.headingAlign, 'right');
+  assert.equal(presented.titleAlign, 'center');
   assert.equal(documentPrintTemplateInternals.normalizePayload(sales, { pageSize: 'A3', visibleFieldKeys: ['customer'] }).code, 'INVALID_PAGE_SIZE');
   assert.equal(documentPrintTemplateInternals.normalizePayload(sales, { pageSize: 'A4', visibleFieldKeys: ['customer', 'not_allowed'] }).code, 'INVALID_PRINT_FIELDS');
   assert.equal(documentPrintTemplateInternals.normalizePayload(sales, { pageSize: 'A4', visibleFieldKeys: ['customer'], heading: 'x'.repeat(161) }).code, 'INVALID_PRINT_HEADING');
+  assert.equal(documentPrintTemplateInternals.normalizePayload(sales, { pageSize: 'A4', visibleFieldKeys: ['customer'], headingAlign: 'top' }).code, 'INVALID_PRINT_HEADING_ALIGN');
+  assert.equal(documentPrintTemplateInternals.normalizePayload(sales, { pageSize: 'A4', visibleFieldKeys: ['customer'], titleAlign: 'bottom' }).code, 'INVALID_PRINT_TITLE_ALIGN');
   assert.equal(documentPrintTemplateInternals.normalizePayload(sales, { resetToDefault: true, expectedUpdatedAt: 'not-a-date' }).code, 'INVALID_TEMPLATE_VERSION');
 });
 

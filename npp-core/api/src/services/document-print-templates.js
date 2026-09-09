@@ -1,6 +1,7 @@
 import * as repository from '../db/repositories/document-print-templates.js';
 
 const PAGE_SIZES = new Set(['A4', 'A5']);
+const HEADER_ALIGNMENTS = new Set(['left', 'center', 'right']);
 const FIELD_KEY_PATTERN = /^[a-z0-9._-]{1,64}$/;
 
 function template(documentType, templateCode, name, pageSize, fields) {
@@ -50,10 +51,16 @@ const CATALOG_BY_KEY = new Map(CATALOG.map((item) => [`${item.documentType}:${it
 function failure(code, message) { return Object.freeze({ ok: false, code, message, retryable: false }); }
 function lookup(documentType, templateCode) { return CATALOG_BY_KEY.get(`${String(documentType ?? '').trim().toUpperCase()}:${String(templateCode ?? '').trim().toLowerCase()}`) ?? null; }
 function cleanOptionalText(value, maxLength) {
-  if (value === null || value === undefined) return null;
+  if (value === undefined) return undefined;
+  if (value === null) return null;
   const text = String(value).trim();
   if (!text) return null;
   return text.length <= maxLength ? text : undefined;
+}
+function normalizeAlignment(value) {
+  if (value === undefined) return undefined;
+  const normalized = String(value ?? '').trim().toLowerCase();
+  return HEADER_ALIGNMENTS.has(normalized) ? normalized : null;
 }
 
 function selectVisibleFields(catalog, keys) {
@@ -77,6 +84,9 @@ function present(catalog, setting) {
     heading: setting?.heading ?? null,
     title: setting?.title ?? catalog.name,
     subtitle: setting?.subtitle ?? null,
+    headingVisible: setting?.heading_visible ?? true,
+    headingAlign: HEADER_ALIGNMENTS.has(setting?.heading_align) ? setting.heading_align : 'left',
+    titleAlign: HEADER_ALIGNMENTS.has(setting?.title_align) ? setting.title_align : 'right',
     isCustomized: Boolean(setting),
     updatedAt: setting?.updated_at ?? null,
   });
@@ -96,10 +106,27 @@ function normalizePayload(catalog, payload) {
   const heading = cleanOptionalText(payload?.heading, 160);
   const title = cleanOptionalText(payload?.title, 160);
   const subtitle = cleanOptionalText(payload?.subtitle, 240);
-  if (heading === undefined) return failure('INVALID_PRINT_HEADING', 'Tiêu đề đầu phiếu không được vượt quá 160 ký tự');
-  if (title === undefined) return failure('INVALID_PRINT_TITLE', 'Tên chứng từ không được vượt quá 160 ký tự');
-  if (subtitle === undefined) return failure('INVALID_PRINT_SUBTITLE', 'Dòng phụ không được vượt quá 240 ký tự');
-  return Object.freeze({ pageSize, visibleFieldKeys, heading, title, subtitle, expectedUpdatedAt: expectedUpdatedAt?.toISOString() ?? null, resetToDefault: false });
+  const headingVisible = payload?.headingVisible;
+  const headingAlign = normalizeAlignment(payload?.headingAlign);
+  const titleAlign = normalizeAlignment(payload?.titleAlign);
+  if (heading === undefined && payload?.heading !== undefined) return failure('INVALID_PRINT_HEADING', 'Tên Công Ty không được vượt quá 160 ký tự');
+  if (title === undefined && payload?.title !== undefined) return failure('INVALID_PRINT_TITLE', 'Tên chứng từ không được vượt quá 160 ký tự');
+  if (subtitle === undefined && payload?.subtitle !== undefined) return failure('INVALID_PRINT_SUBTITLE', 'Dòng phụ không được vượt quá 240 ký tự');
+  if (headingVisible !== undefined && typeof headingVisible !== 'boolean') return failure('INVALID_PRINT_HEADING_VISIBILITY', 'Tùy chọn hiển thị Tên Công Ty không hợp lệ');
+  if (payload?.headingAlign !== undefined && headingAlign === null) return failure('INVALID_PRINT_HEADING_ALIGN', 'Vị trí Tên Công Ty chỉ có thể là trái, giữa hoặc phải');
+  if (payload?.titleAlign !== undefined && titleAlign === null) return failure('INVALID_PRINT_TITLE_ALIGN', 'Vị trí loại đơn chỉ có thể là trái, giữa hoặc phải');
+  return Object.freeze({
+    pageSize,
+    visibleFieldKeys,
+    heading,
+    title,
+    subtitle,
+    headingVisible,
+    headingAlign,
+    titleAlign,
+    expectedUpdatedAt: expectedUpdatedAt?.toISOString() ?? null,
+    resetToDefault: false,
+  });
 }
 
 export function listDocumentPrintTemplates(client, { installationId }) {
@@ -130,9 +157,12 @@ export async function updateDocumentPrintTemplate(client, { installationId, docu
     templateCode: catalog.templateCode,
     pageSize: normalized.pageSize,
     visibleFieldKeys: normalized.visibleFieldKeys,
-    heading: normalized.heading,
-    title: normalized.title,
-    subtitle: normalized.subtitle,
+    heading: normalized.heading !== undefined ? normalized.heading : before?.heading ?? null,
+    title: normalized.title !== undefined ? normalized.title : before?.title ?? null,
+    subtitle: normalized.subtitle !== undefined ? normalized.subtitle : before?.subtitle ?? null,
+    headingVisible: normalized.headingVisible !== undefined ? normalized.headingVisible : before?.heading_visible ?? true,
+    headingAlign: normalized.headingAlign ?? before?.heading_align ?? 'left',
+    titleAlign: normalized.titleAlign ?? before?.title_align ?? 'right',
     actorId,
   };
   const stored = before

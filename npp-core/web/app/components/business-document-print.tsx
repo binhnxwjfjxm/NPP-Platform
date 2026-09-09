@@ -120,6 +120,9 @@ export default function BusinessDocumentPrint({
   const displayTitle = template?.title?.trim() || title;
   const displayHeading = template?.heading?.trim() || headingFallback || null;
   const displaySubtitle = showSubtitle ? (template?.subtitle?.trim() || subtitle) : null;
+  const headingVisible = template?.headingVisible ?? true;
+  const headingAlign = template?.headingAlign ?? 'left';
+  const titleAlign = template?.titleAlign ?? 'right';
 
   return (
     <>
@@ -133,11 +136,11 @@ export default function BusinessDocumentPrint({
       >
         <article className={styles.sheet} data-testid={testId} data-print-template-ready={templateResolved ? 'true' : 'false'}>
           <header className={styles.header}>
-            {displayHeading || displaySubtitle ? <div className={styles.brandBlock}>
-              {displayHeading ? <strong className={styles.brand}>{displayHeading}</strong> : null}
+            {(headingVisible && displayHeading) || displaySubtitle ? <div className={styles.brandBlock} style={{ textAlign: headingAlign }}>
+              {headingVisible && displayHeading ? <strong className={styles.brand}>{displayHeading}</strong> : null}
               {displaySubtitle ? <p>{displaySubtitle}</p> : null}
             </div> : null}
-            <div className={styles.titleBlock}>
+            <div className={styles.titleBlock} style={{ textAlign: titleAlign }}>
               <h1>{displayTitle}</h1>
               {showNumber ? <p>Số: <strong>{number}</strong></p> : null}
               {status && visibleKeys.has('status') ? <span className={styles.status}>{status}</span> : null}

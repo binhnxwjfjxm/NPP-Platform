@@ -70,13 +70,26 @@ test('issue 817 follows current Công Ty warm-gold and canonical lane tones', ()
   assert.match(workspaceSource, /Giao theo chuyến/);
 });
 
-test('issue 817 rút gọn số đơn chỉ khi hiển thị và giữ tìm kiếm bằng số đầy đủ', () => {
+test('issue 817 rút gọn số đơn thành SOxxxxxx chỉ ở danh sách và giữ số đầy đủ cho tìm kiếm', () => {
   assert.match(workspaceSource, /function compactOrderNumber/);
-  assert.match(workspaceSource, /const match = \/\^\(\.\+\-\)\(\\d\{6\}\)\(\-\\d\+\)\$\/\.exec\(normalized\);/);
-  assert.match(workspaceSource, /return match \? `\$\{match\[1\]\}…\$\{match\[3\]\}` : normalized;/);
+  assert.ok(workspaceSource.includes("const match = /^SO-\\d{6}-(\\d{6})$/i.exec(normalized);"));
+  assert.ok(workspaceSource.includes('return match ? `SO${match[1]}` : normalized;'));
   assert.match(workspaceSource, /order\.number \? compactOrderNumber\(order\.number\) : 'Chưa cấp số'/);
   assert.match(workspaceSource, /return \[\s*order\.number,/s);
   assert.match(workspaceSource, /aria-label=\{order\.number \? `Mở đơn \$\{order\.number\}`/);
+});
+
+test('issue 817 cân lại độ rộng Số đơn, Ngày tạo, Khách hàng và Thanh toán để không đè nội dung', () => {
+  assert.ok(cssSource.includes('.orderColumn{width:84px}'));
+  assert.ok(cssSource.includes('.dateColumn,.dateCell{width:136px;white-space:nowrap}'));
+  assert.ok(cssSource.includes('.customerColumn{width:260px}'));
+  assert.ok(cssSource.includes('.paymentColumn{width:88px}'));
+  assert.ok(cssSource.includes('.customerName{display:block;max-width:100%'));
+  assert.match(workspaceSource, /className=\{styles\.dateColumn\}>Ngày tạo/);
+  assert.match(workspaceSource, /className=\{styles\.customerColumn\}>Khách hàng/);
+  assert.match(workspaceSource, /className=\{styles\.paymentColumn\}>Thanh toán/);
+  assert.match(workspaceSource, /<td className=\{styles\.customerColumn\}><strong className=\{styles\.customerName\}>/);
+  assert.match(workspaceSource, /<td className=\{styles\.paymentColumn\}><span className=\{styles\.statusBadge\}/);
 });
 
 test('issue 817 chỉ giữ badge màu cho ba luồng giao, các trạng thái khác là chữ màu', () => {

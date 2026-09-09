@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 
 const COLUMNS = `id, installation_id, document_type, template_code, page_size,
-  visible_field_keys, heading, title, subtitle, created_at, updated_at, created_by, updated_by`;
+  visible_field_keys, heading, title, subtitle, heading_visible, heading_align, title_align,
+  created_at, updated_at, created_by, updated_by`;
 
 export async function listDocumentPrintTemplateSettings(client, { installationId }) {
   const result = await client.query(
@@ -34,8 +35,9 @@ export async function insertDocumentPrintTemplateSetting(client, data) {
   const result = await client.query(
     `INSERT INTO shared.document_print_template_settings (
       id, installation_id, document_type, template_code, page_size,
-      visible_field_keys, heading, title, subtitle, created_by, updated_by
-    ) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$10)
+      visible_field_keys, heading, title, subtitle, heading_visible, heading_align, title_align,
+      created_by, updated_by
+    ) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11,$12,$13,$13)
     RETURNING ${COLUMNS}`,
     [
       id,
@@ -47,6 +49,9 @@ export async function insertDocumentPrintTemplateSetting(client, data) {
       data.heading,
       data.title,
       data.subtitle,
+      data.headingVisible,
+      data.headingAlign,
+      data.titleAlign,
       data.actorId,
     ],
   );
@@ -61,12 +66,15 @@ export async function updateDocumentPrintTemplateSetting(client, data) {
             heading = $3,
             title = $4,
             subtitle = $5,
+            heading_visible = $6,
+            heading_align = $7,
+            title_align = $8,
             updated_at = GREATEST(date_trunc('milliseconds', clock_timestamp()), updated_at + interval '1 millisecond'),
-            updated_by = $6
-      WHERE installation_id = $7
-        AND document_type = $8
-        AND template_code = $9
-        AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $10::timestamptz)
+            updated_by = $9
+      WHERE installation_id = $10
+        AND document_type = $11
+        AND template_code = $12
+        AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $13::timestamptz)
     RETURNING ${COLUMNS}`,
     [
       data.pageSize,
@@ -74,6 +82,9 @@ export async function updateDocumentPrintTemplateSetting(client, data) {
       data.heading,
       data.title,
       data.subtitle,
+      data.headingVisible,
+      data.headingAlign,
+      data.titleAlign,
       data.actorId,
       data.installationId,
       data.documentType,
