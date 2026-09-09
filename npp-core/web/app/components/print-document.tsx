@@ -28,13 +28,23 @@ function dynamicPageStyle(printable: HTMLElement, suffix: string): HTMLStyleElem
   const margin = suppressBrowserHeaders
     ? '0 0 7mm 0'
     : size === 'A5' ? '9mm 8mm 10mm' : '11mm 10mm 12mm';
-  const footerContent = JSON.stringify(`${footerText} - `);
 
   printable.style.setProperty('page', pageName);
   const style = document.createElement('style');
   style.setAttribute('data-print-page-style', pageName);
-  style.textContent = `@media print { @page ${pageName} { size: ${size} portrait; margin: ${margin}; @bottom-center { content: ${footerContent} counter(page) "/" counter(pages); font-family: Arial, Helvetica, sans-serif; font-size: 8px; font-weight: 400; line-height: 1; color: #555; } } }`;
+  style.textContent = `@media print { @page ${pageName} { size: ${size} portrait; margin: ${margin}; @bottom-right { content: counter(page) "/" counter(pages); font-family: Arial, Helvetica, sans-serif; font-size: 8px; font-weight: 400; line-height: 1; color: #555; } } }`;
   return style;
+}
+
+function appendFixedFooterFallback(printRoot: HTMLElement, footerText: string | undefined) {
+  const normalizedFooter = footerText?.trim();
+  if (!normalizedFooter) return;
+  const footer = document.createElement('div');
+  footer.className = styles.printFooterFallback;
+  footer.setAttribute('data-print-footer-fallback', 'true');
+  footer.setAttribute('aria-hidden', 'true');
+  footer.textContent = normalizedFooter;
+  printRoot.appendChild(footer);
 }
 
 export function clonePrintSurfaceForOutput(target: HTMLElement, suffix = crypto.randomUUID()): HTMLElement {
@@ -66,6 +76,7 @@ export function PrintAction({
     printRoot.setAttribute('data-print-root', 'true');
     const printable = clonePrintSurfaceForOutput(target);
     printRoot.appendChild(printable);
+    appendFixedFooterFallback(printRoot, target.dataset.printFooter);
     document.body.appendChild(printRoot);
     document.body.setAttribute('data-printing', 'true');
 

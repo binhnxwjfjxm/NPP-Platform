@@ -8,6 +8,7 @@ const formPath = fileURLToPath(new URL('../app/sales/sales-orders/SalesOrderComm
 const managementPath = fileURLToPath(new URL('../app/sales/order-management/OrderManagementWorkspace.tsx', import.meta.url));
 const managementPagePath = fileURLToPath(new URL('../app/sales/order-management/page.tsx', import.meta.url));
 const printDocumentPath = fileURLToPath(new URL('../app/components/print-document.tsx', import.meta.url));
+const printCssPath = fileURLToPath(new URL('../app/components/print-document.module.css', import.meta.url));
 const printSheetPath = fileURLToPath(new URL('../app/sales/sales-orders/SalesOrderPrintSheet.tsx', import.meta.url));
 
 test('danh sách đơn giữ thứ tự ngày tạo khi đơn cũ thay đổi trạng thái', async () => {
@@ -57,20 +58,27 @@ test('thu đủ là thao tác nhanh còn thu mới bung hàng nhập nhỏ', asy
   assert.match(source, /partialSettlement\.amount\.trim\(\) === ''/);
 });
 
-test('phiếu bán hàng truyền tên khách và ngày đơn vào chân trang động có số trang', async () => {
-  const [documentSource, sheetSource, managementSource] = await Promise.all([
+test('phiếu bán hàng có chân phiếu DOM thật và giữ số trang native khi trình duyệt hỗ trợ', async () => {
+  const [documentSource, printCss, sheetSource, managementSource] = await Promise.all([
     readFile(printDocumentPath, 'utf8'),
+    readFile(printCssPath, 'utf8'),
     readFile(printSheetPath, 'utf8'),
     readFile(managementPath, 'utf8'),
   ]);
   assert.match(documentSource, /data-print-footer/);
-  assert.match(documentSource, /clonePrintSurfaceForOutput/);
-  assert.match(documentSource, /@bottom-center/);
+  assert.match(documentSource, /appendFixedFooterFallback/);
+  assert.match(documentSource, /data-print-footer-fallback/);
+  assert.match(documentSource, /styles\.printFooterFallback/);
+  assert.match(documentSource, /appendFixedFooterFallback\(printRoot, target\.dataset\.printFooter\)/);
+  assert.match(documentSource, /@bottom-right/);
   assert.match(documentSource, /counter\(page\)/);
   assert.match(documentSource, /counter\(pages\)/);
   assert.match(documentSource, /document\.head\.appendChild\(pageStyle\)/);
   assert.match(documentSource, /style\[data-print-page-style\]/);
-  assert.match(documentSource, /0 0 7mm 0/);
+  assert.match(printCss, /\[data-print-root='true'\] > \.printFooterFallback/);
+  assert.match(printCss, /position: fixed !important/);
+  assert.match(printCss, /bottom: 1\.5mm/);
+  assert.match(printCss, /padding: 5mm 5mm 8mm/);
   assert.match(sheetSource, /footerText=\{`\$\{displayCustomer\} - \$\{dateText\(version\.confirmedAt \?\? version\.createdAt\)\}`\}/);
   assert.match(managementSource, /document\.querySelectorAll\('style\[data-print-page-style\]'\)/);
   assert.match(managementSource, /const printable = clonePrintSurfaceForOutput\(target, `bulk-/);
