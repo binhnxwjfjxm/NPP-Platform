@@ -39,6 +39,8 @@ test('print template catalog keeps Sales Order core columns and separates option
   for (const expected of ['SALES_ORDER:standard', 'PURCHASE_ORDER:standard', 'GOODS_RECEIPT:standard', 'CUSTOMER_PAYMENT:standard', 'DELIVERY_ORDER:standard', 'DELIVERY_ORDER:packing-list', 'INVENTORY_TRANSFER:standard', 'STOCKTAKE:standard']) assert.ok(keys.includes(expected), expected);
   const sales = documentPrintTemplateInternals.lookup('sales_order', 'standard');
   assert.ok(sales);
+  assert.equal(sales.name, 'PHIẾU XUẤT KHO');
+  assert.equal(documentPrintTemplateInternals.present(sales, null).title, 'PHIẾU XUẤT KHO');
   assert.equal(sales.fields.find((field) => field.key === 'line_item')?.label, 'Tên sản phẩm');
   assert.equal(sales.fields.find((field) => field.key === 'line_item')?.required, true);
   assert.equal(sales.fields.find((field) => field.key === 'line_sku')?.defaultSelected, false);

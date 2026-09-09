@@ -6,6 +6,12 @@ function read(relativePath) {
   return readFileSync(new URL(relativePath, import.meta.url), 'utf8');
 }
 
+function extractBody(source, name) {
+  const match = new RegExp(`function ${name}\\([^)]*\\): string \\{([\\s\\S]*?)\\n\\}`).exec(source);
+  assert.ok(match, `Không tìm thấy hàm ${name}`);
+  return match[1];
+}
+
 const detail = read('../app/sales/sales-orders/SalesOrderDetail.tsx');
 const print = read('../app/sales/sales-orders/SalesOrderPrintSheet.tsx');
 
@@ -14,7 +20,7 @@ test('đơn bán hàng đã huỷ có số đơn vẫn hiển thị hành độn
   assert.doesNotMatch(detail, /current && order\.number && \['confirmed', 'closed'\]\.includes\(order\.status\)/);
 });
 
-test('khối lượng nằm trong vùng thông tin đầu phiếu và không còn trong khu vực tổng tiền', () => {
+test('phiếu xuất kho dùng tên Công Ty ngắn và khối lượng nằm trong vùng thông tin đầu phiếu', () => {
   const metaStart = print.indexOf('meta={[');
   const columnsStart = print.indexOf('columns={[', metaStart);
   const totalsStart = print.indexOf('totals={[', columnsStart);
@@ -24,18 +30,35 @@ test('khối lượng nằm trong vùng thông tin đầu phiếu và không cò
   const metaBlock = print.slice(metaStart, columnsStart);
   const totalsBlock = print.slice(totalsStart, noteStart);
 
+  assert.match(print, /title="PHIẾU XUẤT KHO"/);
+  assert.match(print, /headingFallback="Hưng Phát"/);
   assert.match(metaBlock, /key: 'customer', label: 'Khách hàng'/);
   assert.match(metaBlock, /key: 'document_date', label: 'Ngày đơn'/);
-  assert.match(metaBlock, /key: 'total_weight', label: 'Khối lượng'[\s\S]*missingWeightLineCount > 0 \? 'Chưa đủ dữ liệu' : formatWeightKg\(version\.totalWeightKg\)[\s\S]*full: true/);
+  assert.match(metaBlock, /key: 'total_weight', label: 'Khối lượng', value: orderWeightText\(lines\), full: true/);
   assert.ok(metaBlock.indexOf("key: 'customer'") < metaBlock.indexOf("key: 'document_date'"));
   assert.ok(metaBlock.indexOf("key: 'document_date'") < metaBlock.indexOf("key: 'total_weight'"));
   assert.doesNotMatch(totalsBlock, /total_weight|Tổng khối lượng/);
 });
 
+test('khối lượng in cộng phần có dữ liệu, cảnh báo phần thiếu và tất cả thiếu trả 0 kg', () => {
+  const formatWeightKg = new Function('value', extractBody(print, 'formatWeightKg'));
+  const sumKnownWeightKg = new Function('lines', extractBody(print, 'sumKnownWeightKg'));
+  const orderWeightText = new Function('formatWeightKg', 'sumKnownWeightKg', 'lines', extractBody(print, 'orderWeightText'));
+
+  const known = [{ lineWeightKg: '1.5' }, { lineWeightKg: '2.25' }];
+  const mixed = [{ lineWeightKg: '1.5' }, { lineWeightKg: null }, { lineWeightKg: '2.25' }];
+  const missing = [{ lineWeightKg: null }, { lineWeightKg: null }];
+
+  assert.equal(sumKnownWeightKg(known), '3.75');
+  assert.equal(sumKnownWeightKg(mixed), '3.75');
+  assert.equal(sumKnownWeightKg(missing), '0');
+  assert.equal(orderWeightText(formatWeightKg, sumKnownWeightKg, known), '3,75 kg');
+  assert.equal(orderWeightText(formatWeightKg, sumKnownWeightKg, mixed), '3,75 kg (chưa tính 1 dòng thiếu khối lượng)');
+  assert.equal(orderWeightText(formatWeightKg, sumKnownWeightKg, missing), '0 kg');
+});
+
 test('khối lượng in làm tròn half-up tối đa 2 số lẻ và bỏ số 0 dư', () => {
-  const formatter = /function formatWeightKg\(value: string \| null \| undefined\): string \{([\s\S]*?)\n\}/.exec(print);
-  assert.ok(formatter, 'Không tìm thấy formatter khối lượng');
-  const formatWeightKg = new Function('value', formatter[1]);
+  const formatWeightKg = new Function('value', extractBody(print, 'formatWeightKg'));
 
   assert.equal(formatWeightKg('25'), '25 kg');
   assert.equal(formatWeightKg('25.5'), '25,5 kg');

@@ -21,7 +21,7 @@ test('Sales Order print is exposed for numbered immutable confirmed, closed or c
   const sheet = read('../app/sales/sales-orders/SalesOrderPrintSheet.tsx');
   assert.match(detail, /order\.number && \['confirmed', 'closed', 'cancelled'\]\.includes\(order\.status\)/);
   assert.match(detail, /SalesOrderPrintSheet order=\{order\} version=\{current\}/);
-  assert.match(sheet, /ĐƠN BÁN HÀNG/);
+  assert.match(sheet, /PHIẾU XUẤT KHO/);
   assert.match(sheet, /customerAddress/);
   assert.match(sheet, /collectionLabels/);
   assert.match(sheet, /version\.lines/);

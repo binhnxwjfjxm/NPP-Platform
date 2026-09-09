@@ -24,7 +24,8 @@ test('Issue #791 Lô E keeps product, SKU, quantity and unit independent on Sale
 });
 
 test('Issue #791 Lô E uses clean browser headers and a safe narrow app margin', () => {
-  assert.match(salesPrint, /headingFallback="Hưng Phát Company"/);
+  assert.match(salesPrint, /headingFallback="Hưng Phát"/);
+  assert.match(salesPrint, /title="PHIẾU XUẤT KHO"/);
   assert.match(salesPrint, /showSubtitle=\{false\}/);
   assert.match(salesPrint, /showNumber=\{false\}/);
   assert.match(salesPrint, /suppressBrowserHeaders/);

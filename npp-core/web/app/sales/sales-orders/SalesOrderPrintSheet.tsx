@@ -45,6 +45,29 @@ function formatWeightKg(value: string | null | undefined): string {
   return `${whole}${roundedFraction ? `,${roundedFraction}` : ''} kg`;
 }
 
+function sumKnownWeightKg(lines: SalesOrderVersion['lines']): string {
+  const scale = 1_000_000_000n;
+  let totalScaled = 0n;
+  for (const line of lines ?? []) {
+    const match = /^(\d+)(?:\.(\d{1,9}))?$/.exec(String(line.lineWeightKg ?? '').trim());
+    if (!match) continue;
+    totalScaled += BigInt(match[1]) * scale + BigInt((match[2] ?? '').padEnd(9, '0'));
+  }
+  const whole = totalScaled / scale;
+  const fraction = (totalScaled % scale).toString().padStart(9, '0').replace(/0+$/, '');
+  return fraction ? `${whole}.${fraction}` : whole.toString();
+}
+
+function orderWeightText(lines: SalesOrderVersion['lines']): string {
+  const resolvedLines = lines ?? [];
+  const missingWeightLineCount = resolvedLines.filter((line) => !String(line.lineWeightKg ?? '').trim()).length;
+  const total = formatWeightKg(sumKnownWeightKg(resolvedLines));
+  if (missingWeightLineCount > 0 && missingWeightLineCount < resolvedLines.length) {
+    return `${total} (chưa tính ${missingWeightLineCount} dòng thiếu khối lượng)`;
+  }
+  return total;
+}
+
 export default function SalesOrderPrintSheet({
   order,
   version,
@@ -92,8 +115,8 @@ export default function SalesOrderPrintSheet({
         documentType="SALES_ORDER"
         actionLabel="In đơn"
         onPrint={recordPrint}
-        title="ĐƠN BÁN HÀNG"
-        headingFallback="Hưng Phát Company"
+        title="PHIẾU XUẤT KHO"
+        headingFallback="Hưng Phát"
         showSubtitle={false}
         showNumber={false}
         suppressBrowserHeaders
@@ -102,7 +125,7 @@ export default function SalesOrderPrintSheet({
         meta={[
           { key: 'customer', label: 'Khách hàng', value: displayCustomer },
           { key: 'document_date', label: 'Ngày đơn', value: dateText(version.confirmedAt ?? version.createdAt) },
-          { key: 'total_weight', label: 'Khối lượng', value: version.missingWeightLineCount > 0 ? 'Chưa đủ dữ liệu' : formatWeightKg(version.totalWeightKg), full: true },
+          { key: 'total_weight', label: 'Khối lượng', value: orderWeightText(lines), full: true },
           { key: 'customer_code', label: 'Mã khách', value: version.customerCode },
           { key: 'phone', label: 'Điện thoại', value: displayPhone || '—' },
           { key: 'address', label: 'Địa chỉ', value: addressText(version.customerAddress), full: true },

@@ -43,7 +43,7 @@ test('purchase and sales documents omit zero discount and tax sections', () => {
 });
 
 test('canonical print surfaces remain available', () => {
-  assert.match(poPrint, /ĐƠN MUA HÀNG/); assert.match(salesPrint, /ĐƠN BÁN HÀNG/); assert.match(grPrint, /PHIẾU NHẬN HÀNG/); assert.match(paymentPrint, /PHIẾU THU/); assert.match(paymentPrint, /size="A5"/); assert.match(deliveryPrint, /PHIẾU GIAO HÀNG/); assert.match(deliveryPrint, /PHIẾU ĐÓNG GÓI/); assert.match(transferPrint, /PHIẾU CHUYỂN KHO/); assert.match(stocktakePrint, /PHIẾU KIỂM KÊ/); assert.match(tripPrint, /PHIẾU CHUYẾN GIAO HÀNG/); assert.match(reconciliationPrint, /BIÊN BẢN ĐỐI SOÁT CHUYẾN/);
+  assert.match(poPrint, /ĐƠN MUA HÀNG/); assert.match(salesPrint, /PHIẾU XUẤT KHO/); assert.match(grPrint, /PHIẾU NHẬN HÀNG/); assert.match(paymentPrint, /PHIẾU THU/); assert.match(paymentPrint, /size="A5"/); assert.match(deliveryPrint, /PHIẾU GIAO HÀNG/); assert.match(deliveryPrint, /PHIẾU ĐÓNG GÓI/); assert.match(transferPrint, /PHIẾU CHUYỂN KHO/); assert.match(stocktakePrint, /PHIẾU KIỂM KÊ/); assert.match(tripPrint, /PHIẾU CHUYẾN GIAO HÀNG/); assert.match(reconciliationPrint, /BIÊN BẢN ĐỐI SOÁT CHUYẾN/);
   for (const source of [poPrint, salesPrint, grPrint, paymentPrint, deliveryPrint, transferPrint, stocktakePrint, tripPrint, reconciliationPrint]) assert.match(source, /documentType=/);
 });
 
