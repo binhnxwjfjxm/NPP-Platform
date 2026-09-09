@@ -16,6 +16,16 @@ test('shared print foundation uses browser print and print-only surface', () => 
   assert.match(css, /size: A4 portrait/);
 });
 
+test('shared print footer stays compact and counts every page in one document', () => {
+  const css = read('../app/components/print-document.module.css');
+  assert.match(css, /@bottom-right\s*\{/);
+  assert.match(css, /content:\s*counter\(page\)\s*"\/"\s*counter\(pages\)/);
+  assert.match(css, /font-size:\s*8px/);
+  assert.match(css, /line-height:\s*1/);
+  assert.match(css, /@page document-a4-clean\s*\{[\s\S]*?margin:\s*0 0 3mm 0/);
+  assert.doesNotMatch(css, /content:\s*["']Trang/);
+});
+
 test('Sales Order print is exposed for numbered immutable confirmed, closed or cancelled orders', () => {
   const detail = read('../app/sales/sales-orders/SalesOrderDetail.tsx');
   const sheet = read('../app/sales/sales-orders/SalesOrderPrintSheet.tsx');

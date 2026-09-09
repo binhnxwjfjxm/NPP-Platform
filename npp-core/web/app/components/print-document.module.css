@@ -78,38 +78,74 @@
   }
 
   .printSurface[data-print-active='true'][data-print-size='A4'][data-print-suppress-browser-headers='true'] {
-    padding: 11mm 10mm 12mm;
+    padding: 11mm 10mm 9mm;
   }
 
   .printSurface[data-print-active='true'][data-print-size='A5'][data-print-suppress-browser-headers='true'] {
-    padding: 9mm 8mm 10mm;
+    padding: 9mm 8mm 7mm;
   }
 
   .printSurface[data-print-active='true'][data-print-size='A4'][data-print-suppress-browser-headers='true'][data-print-narrow-margins='true'] {
-    padding: 5mm;
+    padding: 5mm 5mm 2mm;
   }
 
   .printSurface[data-print-active='true'][data-print-size='A5'][data-print-suppress-browser-headers='true'][data-print-narrow-margins='true'] {
-    padding: 5mm;
+    padding: 5mm 5mm 2mm;
   }
 
   @page document-a4 {
     size: A4 portrait;
     margin: 11mm 10mm 12mm;
+
+    @bottom-right {
+      content: counter(page) "/" counter(pages);
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 8px;
+      font-weight: 400;
+      line-height: 1;
+      color: #555;
+    }
   }
 
   @page document-a5 {
     size: A5 portrait;
     margin: 9mm 8mm 10mm;
+
+    @bottom-right {
+      content: counter(page) "/" counter(pages);
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 8px;
+      font-weight: 400;
+      line-height: 1;
+      color: #555;
+    }
   }
 
   @page document-a4-clean {
     size: A4 portrait;
-    margin: 0;
+    margin: 0 0 3mm 0;
+
+    @bottom-right {
+      content: counter(page) "/" counter(pages);
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 8px;
+      font-weight: 400;
+      line-height: 1;
+      color: #555;
+    }
   }
 
   @page document-a5-clean {
     size: A5 portrait;
-    margin: 0;
+    margin: 0 0 3mm 0;
+
+    @bottom-right {
+      content: counter(page) "/" counter(pages);
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 8px;
+      font-weight: 400;
+      line-height: 1;
+      color: #555;
+    }
   }
 }
