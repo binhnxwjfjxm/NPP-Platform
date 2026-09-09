@@ -12,17 +12,18 @@ test('Lô B frontend hiện SKU trước rồi gửi đúng context để cập 
     read('lib/sales-order-gateway.ts'),
     read('lib/sales-order-preview-gateway.ts'),
   ]);
-  for (const field of ['warehouseId', 'salesChannelId', 'pricingAt', "previewQuery.set('customerId'"]) {
+  for (const field of ['warehouseId', 'salesChannelId', 'priceSelectionMode', 'pricingAt', "previewQuery.set('customerId'"]) {
     assert.match(form, new RegExp(field.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
   assert.match(form, /\/api\/sales-orders\/sku-previews/);
+  assert.match(form, /new URLSearchParams\(\{ warehouseId, salesChannelId, priceSelectionMode, pricingAt \}\)/);
   assert.match(form, /skuSearchRunRef/);
   assert.match(form, /current\.flatMap\(\(option\)/);
   assert.match(form, /if \(!preview\) return \[\]/);
-  for (const field of ['warehouseId', 'salesChannelId', 'customerId', 'pricingAt']) {
+  for (const field of ['warehouseId', 'salesChannelId', 'customerId', 'priceSelectionMode', 'pricingAt']) {
     assert.match(previewGateway, new RegExp(`searchParams\\.get\\('${field}'`));
   }
-  assert.match(previewGateway, /new URLSearchParams\(\{ warehouseId, salesChannelId, pricingAt/);
+  assert.match(previewGateway, /new URLSearchParams\(\{\s*warehouseId,\s*salesChannelId,\s*priceSelectionMode: mode,\s*pricingAt:/);
   assert.match(previewGateway, /query\.set\('customerId'/);
   assert.match(gateway, /INVALID_SALES_CHANNEL_ID/);
   assert.match(gateway, /INVALID_PRICING_AT/);
