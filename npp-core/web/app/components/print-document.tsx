@@ -11,6 +11,7 @@ function clearPrintState() {
   document.querySelectorAll('[data-print-active="true"]').forEach((element) => {
     element.removeAttribute('data-print-active');
   });
+  document.querySelectorAll('style[data-print-page-style]').forEach((element) => element.remove());
 }
 
 function safePageSuffix(value: string): string {
@@ -25,7 +26,7 @@ function dynamicPageStyle(printable: HTMLElement, suffix: string): HTMLStyleElem
   const suppressBrowserHeaders = printable.dataset.printSuppressBrowserHeaders === 'true';
   const pageName = `document-${size.toLowerCase()}-${safePageSuffix(suffix)}`;
   const margin = suppressBrowserHeaders
-    ? '0 0 3mm 0'
+    ? '0 0 7mm 0'
     : size === 'A5' ? '9mm 8mm 10mm' : '11mm 10mm 12mm';
   const footerContent = JSON.stringify(`${footerText} - `);
 
@@ -36,16 +37,12 @@ function dynamicPageStyle(printable: HTMLElement, suffix: string): HTMLStyleElem
   return style;
 }
 
-export function clonePrintSurfaceForOutput(target: HTMLElement, suffix = crypto.randomUUID()): {
-  printable: HTMLElement;
-  pageStyle: HTMLStyleElement | null;
-} {
+export function clonePrintSurfaceForOutput(target: HTMLElement, suffix = crypto.randomUUID()): HTMLElement {
   const printable = target.cloneNode(true) as HTMLElement;
   printable.setAttribute('data-print-active', 'true');
-  return {
-    printable,
-    pageStyle: dynamicPageStyle(printable, suffix),
-  };
+  const pageStyle = dynamicPageStyle(printable, suffix);
+  if (pageStyle) document.head.appendChild(pageStyle);
+  return printable;
 }
 
 export function PrintAction({
@@ -67,8 +64,7 @@ export function PrintAction({
 
     const printRoot = document.createElement('div');
     printRoot.setAttribute('data-print-root', 'true');
-    const { printable, pageStyle } = clonePrintSurfaceForOutput(target);
-    if (pageStyle) printRoot.appendChild(pageStyle);
+    const printable = clonePrintSurfaceForOutput(target);
     printRoot.appendChild(printable);
     document.body.appendChild(printRoot);
     document.body.setAttribute('data-printing', 'true');

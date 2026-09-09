@@ -340,6 +340,7 @@ function clearPrintState() {
   document.body.removeAttribute('data-printing');
   document.querySelectorAll('[data-print-root="true"]').forEach((element) => element.remove());
   document.querySelectorAll('[data-print-active="true"]').forEach((element) => element.removeAttribute('data-print-active'));
+  document.querySelectorAll('style[data-print-page-style]').forEach((element) => element.remove());
 }
 
 function printTargets(targetIds: string[]) {
@@ -352,8 +353,7 @@ function printTargets(targetIds: string[]) {
   for (const targetId of targetIds) {
     const target = byId.get(targetId);
     if (!target) continue;
-    const { printable, pageStyle } = clonePrintSurfaceForOutput(target, `bulk-${appended}-${targetId}`);
-    if (pageStyle) printRoot.appendChild(pageStyle);
+    const printable = clonePrintSurfaceForOutput(target, `bulk-${appended}-${targetId}`);
     if (appended > 0) {
       printable.style.breakBefore = 'page';
       printable.style.pageBreakBefore = 'always';
@@ -895,7 +895,7 @@ export default function OrderManagementWorkspace({ permissionKeys }: { permissio
                                     amount: '',
                                     paymentMethod: 'CASH',
                                   })}
-                                >Thu khác</button>
+                                >Thu</button>
                               ) : null}
                             </div>
                           ) : <span className={styles.actionDone}>—</span>}

@@ -42,12 +42,13 @@ test('quản lý đơn chỉ nối thao tác kế tiếp và tái dùng API hi�
   assert.match(source, /\/api\/manual-sales-orders\/\$\{fresh\.id\}\/complete/);
   assert.match(source, /\/api\/manual-sales-orders\/\$\{fresh\.id\}\/settlement/);
   assert.match(source, /mutationKey\(prefix\)/);
-  assert.match(source, /Thu khác/);
+  assert.match(source, />Thu<\/button>/);
+  assert.doesNotMatch(source, /Thu khác/);
   assert.match(source, /bulkAction/);
   assert.match(source, /QUICK_ACTION_LABELS\[bulkAction\]/);
 });
 
-test('thu đủ là thao tác nhanh còn thu khác mới bung hàng nhập nhỏ', async () => {
+test('thu đủ là thao tác nhanh còn thu mới bung hàng nhập nhỏ', async () => {
   const source = await readFile(managementPath, 'utf8');
   assert.match(source, /paymentMethod: 'CASH'/);
   assert.match(source, /className=\{styles\.quickSettlementRow\}/);
@@ -67,6 +68,11 @@ test('phiếu bán hàng truyền tên khách và ngày đơn vào chân trang �
   assert.match(documentSource, /@bottom-center/);
   assert.match(documentSource, /counter\(page\)/);
   assert.match(documentSource, /counter\(pages\)/);
+  assert.match(documentSource, /document\.head\.appendChild\(pageStyle\)/);
+  assert.match(documentSource, /style\[data-print-page-style\]/);
+  assert.match(documentSource, /0 0 7mm 0/);
   assert.match(sheetSource, /footerText=\{`\$\{displayCustomer\} - \$\{dateText\(version\.confirmedAt \?\? version\.createdAt\)\}`\}/);
-  assert.match(managementSource, /clonePrintSurfaceForOutput\(target, `bulk-/);
+  assert.match(managementSource, /document\.querySelectorAll\('style\[data-print-page-style\]'\)/);
+  assert.match(managementSource, /const printable = clonePrintSurfaceForOutput\(target, `bulk-/);
+  assert.doesNotMatch(managementSource, /printRoot\.appendChild\(pageStyle\)/);
 });
