@@ -36,8 +36,11 @@ test('Issue #791 Lô E uses clean browser headers and a safe narrow app margin',
   assert.match(businessPrint, /narrowMargins=\{narrowMargins\}/);
   assert.match(printSource, /data-print-suppress-browser-headers/);
   assert.match(printSource, /data-print-narrow-margins/);
+  assert.match(printSource, /appendFixedFooterFallback/);
+  assert.match(printSource, /data-print-footer-fallback/);
   assert.match(printCss, /@page document-a4-clean\s*\{[\s\S]*margin:\s*0 0 3mm 0/);
-  assert.match(printCss, /data-print-size='A4'\]\[data-print-suppress-browser-headers='true'\]\[data-print-narrow-margins='true'\][\s\S]*padding:\s*5mm 5mm 2mm/);
+  assert.match(printCss, /data-print-size='A4'\]\[data-print-suppress-browser-headers='true'\]\[data-print-narrow-margins='true'\][\s\S]*padding:\s*5mm 5mm 8mm/);
+  assert.match(printCss, /\[data-print-root='true'\] > \.printFooterFallback[\s\S]*position:\s*fixed !important/);
 });
 
 test('Issue #791 Lô E lets A4 sales columns size to actual content instead of stale fixed percentages', () => {
