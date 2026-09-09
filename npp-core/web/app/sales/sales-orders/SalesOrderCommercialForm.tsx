@@ -163,7 +163,7 @@ function versionDeliveryAddressLine1(version?: SalesOrderVersion | null): string
 function versionLines(version?: SalesOrderVersion | null): LineDraft[] {
   const documentDiscountActive = version?.documentDiscountMode !== 'NONE'
     && (parseScaled(version?.documentDiscountValue ?? '0', true) ?? 0n) > 0n;
-  return (version?.lines ?? []).map((line) => ({
+  return [...(version?.lines ?? [])].reverse().map((line) => ({
     clientLineId: line.id,
     productId: null,
     variantId: line.variantId,
@@ -467,9 +467,10 @@ export default function SalesOrderCommercialForm(props: Props) {
   );
 
   const estimate = useMemo(() => {
-    const gross = lines.map(grossMinor);
+    const canonicalLines = [...lines].reverse();
+    const gross = canonicalLines.map(grossMinor);
     const grossTotal = gross.reduce((sum, value) => sum + value, 0n);
-    const lineDiscounts = lines.map(lineDiscountMinor);
+    const lineDiscounts = canonicalLines.map(lineDiscountMinor);
     const lineDiscountValid = lineDiscounts.every((value) => value !== null);
     const lineDiscountValues = lineDiscounts.map((value) => value ?? 0n);
     const lineDiscountTotal = lineDiscountValues.reduce((sum, value) => sum + value, 0n);
@@ -480,17 +481,18 @@ export default function SalesOrderCommercialForm(props: Props) {
     const effectiveDiscounts = documentDiscountTotal > 0n
       ? (documentAllocations ?? gross.map(() => 0n))
       : lineDiscountValues;
-    const details = lines.map((line, index) => estimateLine(line, effectiveDiscounts[index] ?? 0n));
+    const canonicalDetails = canonicalLines.map((line, index) =>
+      estimateLine(line, effectiveDiscounts[index] ?? 0n));
     return {
       valid: target !== null && documentAllocations !== null && lineDiscountValid && !mixedScope,
       gross: grossTotal,
       discount: effectiveDiscounts.reduce((sum, value) => sum + value, 0n),
-      tax: details.reduce((sum, value) => sum + value.tax, 0n),
-      total: details.reduce((sum, value) => sum + value.total, 0n),
+      tax: canonicalDetails.reduce((sum, value) => sum + value.tax, 0n),
+      total: canonicalDetails.reduce((sum, value) => sum + value.total, 0n),
       lineDiscountTotal,
       documentDiscountTotal,
       mixedScope,
-      details,
+      details: [...canonicalDetails].reverse(),
     };
   }, [documentDiscountMode, documentDiscountValue, lines]);
 
@@ -1002,7 +1004,7 @@ export default function SalesOrderCommercialForm(props: Props) {
     setLines((current) => {
       const sourceIndex = current.findIndex((line) => line.clientLineId === sourceClientLineId);
       if (sourceIndex < 0) return current;
-      return [...current.slice(0, sourceIndex + 1), split, ...current.slice(sourceIndex + 1)];
+      return [...current.slice(0, sourceIndex), split, ...current.slice(sourceIndex)];
     });
     markDirty();
     focusLineVariant(split.clientLineId);
@@ -1204,7 +1206,7 @@ export default function SalesOrderCommercialForm(props: Props) {
       documentDiscountMode,
       documentDiscountValue: documentDiscountMode === 'NONE' ? '0' : documentDiscountValue,
       ...(estimate.discount > 0n ? { documentDiscountReason: documentDiscountReason.trim() } : {}),
-      lines: lines.map((line) => ({
+      lines: [...lines].reverse().map((line) => ({
         variantId: line.variantId,
         quantity: compactQuantity(line.quantity),
         taxMode: line.taxMode,
@@ -1487,7 +1489,7 @@ export default function SalesOrderCommercialForm(props: Props) {
               const lineVariantError = lineVariantErrors[line.clientLineId] ?? choiceState?.error ?? null;
               return (
               <article className={styles.orderLineCard} key={line.clientLineId} data-testid={`sales-order-line-${index + 1}`}>
-                <BusinessSequenceNumber rowIndex={index} className={styles.lineSequence} />
+                <BusinessSequenceNumber rowIndex={index} value={lines.length - index} className={styles.lineSequence} />
                 <div className={styles.lineIdentity}>
                   <strong>{line.name}</strong>
                   <div className={styles.inlineActions}>

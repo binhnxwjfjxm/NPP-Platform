@@ -23,6 +23,9 @@ import type {
   VariantForm,
 } from '../../lib/product-types';
 import type { ProductImageIndex } from '../../lib/product-images';
+import { productSearchMatches } from '../../lib/product-search-contract';
+import { productCreationSequence, sortProductsNewestFirst } from '../../lib/product-list-order';
+import { collectAllProductPages } from '../../lib/product-catalog-client-pagination';
 import styles from './products.module.css';
 
 type Props = {
@@ -58,15 +61,6 @@ const VARIANT_KIND_LABELS: Record<ProductVariant['variant_kind'], string> = {
   OTHER: 'Quy cách khác',
 };
 
-function normalizeSearch(value: string | null | undefined) {
-  return String(value ?? '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/đ/g, 'd')
-    .trim();
-}
-
 function managementScreenLabel(path?: string): string {
   if (!path) return 'màn hình nghiệp vụ liên quan';
   if (path.startsWith('/products')) return 'Danh mục sản phẩm';
@@ -101,6 +95,11 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
     throw new Error(dependencyAwareErrorMessage(payload.error, 'Yêu cầu không thành công'));
   }
   return payload.data as T;
+}
+
+async function requestAllProducts(): Promise<Product[]> {
+  return collectAllProductPages(({ limit, offset }) =>
+    requestJson<Product[]>(`/api/products?limit=${limit}&offset=${offset}`));
 }
 
 function productToForm(product: Product): ProductForm {
@@ -192,18 +191,19 @@ export default function ProductWorkspace({
   const [imageBaseUrl, setImageBaseUrl] = useState('');
   const [imageCodes, setImageCodes] = useState<Set<string> | null>(null);
 
-  const normalizedSearch = normalizeSearch(search);
-  const visibleProducts = useMemo(() => products.filter((product) => {
+  const productSequence = useMemo(() => productCreationSequence(products), [products]);
+  const visibleProducts = useMemo(() => sortProductsNewestFirst(products.filter((product) => {
     if (statusFilter === 'active' && !product.is_active) return false;
     if (statusFilter === 'inactive' && product.is_active) return false;
     if (catalogFilter === 'visible' && !product.is_catalog_visible) return false;
     if (catalogFilter === 'hidden' && product.is_catalog_visible) return false;
     if (orderableFilter === 'yes' && !product.is_orderable) return false;
     if (orderableFilter === 'no' && product.is_orderable) return false;
-    if (!normalizedSearch) return true;
-    return [product.code, product.name, product.catalog_name, product.category_name, product.brand_name]
-      .some((value) => normalizeSearch(value).includes(normalizedSearch));
-  }), [products, normalizedSearch, statusFilter, catalogFilter, orderableFilter]);
+    return productSearchMatches(
+      [product.code, product.name, product.catalog_name, product.category_name, product.brand_name],
+      search,
+    );
+  })), [products, search, statusFilter, catalogFilter, orderableFilter]);
 
   const activeSellableVariantExists = variants.some((variant) => variant.is_active && variant.is_sellable);
   const editorOpen = showProductForm || showCategoryForm || showBrandForm || showVariantForm || showVariantManager;
@@ -269,7 +269,7 @@ export default function ProductWorkspace({
     startWork();
     try {
       const [nextProducts, nextCategories, nextBrands, nextImages] = await Promise.all([
-        requestJson<Product[]>('/api/products?limit=1000'),
+        requestAllProducts(),
         requestJson<ProductCategory[]>('/api/product-categories?limit=1000'),
         requestJson<ProductBrand[]>('/api/product-brands?limit=1000'),
         requestJson<ProductImageIndex>('/api/products/images').catch(() => null),
@@ -631,7 +631,7 @@ export default function ProductWorkspace({
 
             <div className={styles.tableWrapper}><table className={styles.table}><thead><tr><BusinessTableSequenceHeader /><th>Mã</th><th aria-label="Ảnh">Ảnh</th><th>Tên</th><th>Loại</th><th>Nhãn hàng</th><th>Hiển thị bán hàng</th><th>Đặt hàng</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>
               {visibleProducts.map((product, rowIndex) => <tr key={product.id} data-testid={`product-row-${product.code}`}>
-                <BusinessTableSequenceCell rowIndex={rowIndex} />
+                <BusinessTableSequenceCell rowIndex={rowIndex} value={productSequence.get(product.id)} />
                 <td><strong>{product.code}</strong></td>
                 <td><ProductImageStatusIcon known={imageCodes !== null} hasImage={imageCodes?.has(product.code) === true} /></td>
                 <td>{product.name}</td><td>{product.category_name || '—'}</td><td>{product.brand_name || '—'}</td>

@@ -4,6 +4,9 @@ import test from 'node:test';
 import {
   MIN_PRODUCT_SEARCH_LENGTH,
   normalizedProductSearchTerm,
+  normalizeProductSearchText,
+  productSearchMatches,
+  productSearchTokens,
 } from '../lib/product-search-contract.js';
 import { MIN_PURCHASE_ORDER_SKU_SEARCH_LENGTH } from '../lib/purchase-order-sku-entry.js';
 
@@ -33,6 +36,15 @@ test('product search contract starts from the first character', () => {
   assert.equal(MIN_PURCHASE_ORDER_SKU_SEARCH_LENGTH, MIN_PRODUCT_SEARCH_LENGTH);
   assert.equal(normalizedProductSearchTerm(' D '), 'D');
   assert.equal(normalizedProductSearchTerm('   '), '');
+});
+
+test('product search accepts Vietnamese text by tokens instead of requiring one contiguous phrase', () => {
+  assert.equal(normalizeProductSearchText(' Thạch ĐỎ '), 'thach do');
+  assert.deepEqual(productSearchTokens('thạch dừa vải'), ['thach', 'dua', 'vai']);
+  assert.equal(productSearchMatches(['Thạch DX Dừa Vải'], 'thạch dừa vải'), true);
+  assert.equal(productSearchMatches(['Thạch DX Dừa Vải'], 'dua vai'), true);
+  assert.equal(productSearchMatches(['Mama Lựu'], 'ma lựu'), true);
+  assert.equal(productSearchMatches(['Mama Lựu'], 'ma xoài'), false);
 });
 
 test('all Company SKU entry surfaces use the shared first-character contract', () => {

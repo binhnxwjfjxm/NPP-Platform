@@ -384,8 +384,17 @@ export async function searchSalesOrderSkuOptions(client, {
   installationId, search, categoryId = null, retailSearch = false, limit = 20, offset = 0,
 }) {
   const term = String(search ?? '').trim();
-  const pattern = `%${term}%`;
-  const normalized = term.toUpperCase();
+  const normalizedExact = term.toUpperCase();
+  const normalizedSearch = term
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/đ/g, 'd')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const searchTokens = normalizedSearch ? normalizedSearch.split(' ').filter(Boolean) : [];
+  const vietnameseSearchCharacters = 'àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ';
+  const asciiSearchCharacters = 'aaaaaaaaaaaaaaaaaeeeeeeeeeeeiiiiiooooooooooooooooouuuuuuuuuuuyyyyyd';
   const result = await client.query(
     `SELECT ${SKU_OPTION_COLUMNS}
      FROM shared.product_variants pv
@@ -411,20 +420,29 @@ export async function searchSalesOrderSkuOptions(client, {
        AND u.is_active = true
        AND pv.conversion_to_base IS NOT NULL
        AND pv.conversion_to_base > 0
-       AND ($4::uuid IS NULL OR p.category_id = $4::uuid)
+       AND ($5::uuid IS NULL OR p.category_id = $5::uuid)
        AND (
-         $2 = ''
-         OR pv.sku ILIKE $3
-         OR pv.name ILIKE $3
-         OR p.code ILIKE $3
-         OR p.name ILIKE $3
-         OR EXISTS (
+         $3 = ''
+         OR NOT EXISTS (
            SELECT 1
-           FROM shared.product_barcodes matching_barcode
-           WHERE matching_barcode.installation_id = pv.installation_id
-             AND matching_barcode.variant_id = pv.id
-             AND matching_barcode.is_active = true
-             AND matching_barcode.normalized_barcode ILIKE upper($3)
+           FROM unnest($4::text[]) AS search_token(value)
+           WHERE NOT (
+             strpos(translate(lower(COALESCE(pv.sku, '')), $7, $8), search_token.value) > 0
+             OR strpos(translate(lower(COALESCE(pv.name, '')), $7, $8), search_token.value) > 0
+             OR strpos(translate(lower(COALESCE(p.code, '')), $7, $8), search_token.value) > 0
+             OR strpos(translate(lower(COALESCE(p.name, '')), $7, $8), search_token.value) > 0
+             OR EXISTS (
+               SELECT 1
+               FROM shared.product_barcodes matching_barcode
+               WHERE matching_barcode.installation_id = pv.installation_id
+                 AND matching_barcode.variant_id = pv.id
+                 AND matching_barcode.is_active = true
+                 AND strpos(
+                   translate(lower(COALESCE(matching_barcode.normalized_barcode, '')), $7, $8),
+                   search_token.value
+                 ) > 0
+             )
+           )
          )
        )
      ORDER BY
@@ -439,15 +457,30 @@ export async function searchSalesOrderSkuOptions(client, {
              AND exact_barcode.is_active = true
              AND exact_barcode.normalized_barcode = $2
          ) THEN 2
-         WHEN $5::boolean AND upper(pv.sku) LIKE $2 || '%' THEN 3
-         WHEN $5::boolean AND upper(p.code) LIKE $2 || '%' THEN 4
-         ELSE 3
+         WHEN $6::boolean AND upper(pv.sku) LIKE $2 || '%' THEN 3
+         WHEN $6::boolean AND upper(p.code) LIKE $2 || '%' THEN 4
+         WHEN $3 <> '' AND translate(lower(COALESCE(p.name, '')), $7, $8) = $3 THEN 5
+         WHEN $3 <> '' AND translate(lower(COALESCE(pv.name, '')), $7, $8) = $3 THEN 6
+         WHEN $3 <> '' AND strpos(translate(lower(COALESCE(p.name, '')), $7, $8), $3) = 1 THEN 7
+         WHEN $3 <> '' AND strpos(translate(lower(COALESCE(pv.name, '')), $7, $8), $3) = 1 THEN 8
+         ELSE 9
        END,
        p.code ASC,
        pv.sku ASC,
        pv.id ASC
-     LIMIT $6 OFFSET $7`,
-    [installationId, normalized, pattern, categoryId, retailSearch, limit, offset],
+     LIMIT $9 OFFSET $10`,
+    [
+      installationId,
+      normalizedExact,
+      normalizedSearch,
+      searchTokens,
+      categoryId,
+      retailSearch,
+      vietnameseSearchCharacters,
+      asciiSearchCharacters,
+      limit,
+      offset,
+    ],
   );
   return result.rows;
 }
