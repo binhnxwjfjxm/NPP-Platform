@@ -53,6 +53,7 @@ export default function BusinessDocumentPrint({
   showNumber = true,
   suppressBrowserHeaders = false,
   narrowMargins = false,
+  footerText,
   number,
   status,
   meta,
@@ -77,6 +78,7 @@ export default function BusinessDocumentPrint({
   showNumber?: boolean;
   suppressBrowserHeaders?: boolean;
   narrowMargins?: boolean;
+  footerText?: string;
   number: ReactNode;
   status?: ReactNode;
   meta: BusinessDocumentMeta[];
@@ -127,6 +129,7 @@ export default function BusinessDocumentPrint({
         size={template?.pageSize ?? size}
         suppressBrowserHeaders={suppressBrowserHeaders}
         narrowMargins={narrowMargins}
+        footerText={footerText}
       >
         <article className={styles.sheet} data-testid={testId} data-print-template-ready={templateResolved ? 'true' : 'false'}>
           <header className={styles.header}>

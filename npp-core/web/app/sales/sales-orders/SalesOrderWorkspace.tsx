@@ -122,6 +122,12 @@ function orderCardTotal(order: SalesOrder): string {
   return activeVersion(order)?.total ?? String((order as SalesOrderListValue).total ?? '0');
 }
 
+export function sortOrdersByCreatedAt(items: SalesOrder[]): SalesOrder[] {
+  return [...items].sort((left, right) => (
+    right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id)
+  ));
+}
+
 export function compactOrderNumber(value: string | null | undefined): string {
   const normalized = String(value ?? '').replace(/^#/, '');
   const match = /^(.+-)(\d{6})(-\d+)$/.exec(normalized);
@@ -168,7 +174,7 @@ export function orderBusinessStateKey(order: SalesOrder): string {
 }
 
 export default function SalesOrderWorkspace({ initialBootstrap }: { initialBootstrap: SalesOrderBootstrap }) {
-  const [orders, setOrders] = useState(initialBootstrap.salesOrders);
+  const [orders, setOrders] = useState(() => sortOrdersByCreatedAt(initialBootstrap.salesOrders));
   const [selected, setSelected] = useState<SalesOrder | null>(null);
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -254,7 +260,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
     }
     try {
       const next = await apiRequest<SalesOrder[]>('/api/sales-orders?limit=1000');
-      const sorted = [...next].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+      const sorted = sortOrdersByCreatedAt(next);
       setOrders(sorted);
       setSelected((current) => current ? sorted.find((item) => item.id === current.id) ?? null : null);
       setError(null);
@@ -313,7 +319,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
       const next = current.some((item) => item.id === order.id)
         ? current.map((item) => item.id === order.id ? order : item)
         : [order, ...current];
-      return [...next].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+      return sortOrdersByCreatedAt(next);
     });
     setSelected(order);
   }
@@ -448,7 +454,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
           <div className={polishStyles.filterControlRow}>
             <div className={`${styles.filterGroup} ${polishStyles.filterGroupInline}`}>
               <span className={styles.filterLabel}>Luồng bán</span>
-              <div className={styles.filterChips} aria-label="Luồng bán">
+              <div className={polishStyles.filterChips} aria-label="Luồng bán">
                 {LANE_OPTIONS.map((option) => (
                   <button
                     key={option.value}

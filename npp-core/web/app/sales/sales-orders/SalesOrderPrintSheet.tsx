@@ -26,7 +26,12 @@ function dateText(value: string | null | undefined): string {
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime())
     ? value
-    : new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }).format(parsed);
+    : new Intl.DateTimeFormat('vi-VN', {
+      timeZone: 'Asia/Ho_Chi_Minh',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    }).format(parsed);
 }
 
 function isZeroAmount(value: string | number | null | undefined) {
@@ -115,6 +120,7 @@ export default function SalesOrderPrintSheet({
         showNumber={false}
         suppressBrowserHeaders
         narrowMargins
+        footerText={`${displayCustomer} - ${dateText(version.confirmedAt ?? version.createdAt)}`}
         number={order.number ?? 'BẢN NHÁP'}
         meta={[
           { key: 'customer', label: 'Khách hàng', value: displayCustomer },
