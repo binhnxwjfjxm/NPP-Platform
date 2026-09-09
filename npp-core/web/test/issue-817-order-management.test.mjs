@@ -79,11 +79,12 @@ test('issue 817 rút gọn số đơn thành SOxxxxxx chỉ ở danh sách và g
   assert.match(workspaceSource, /aria-label=\{order\.number \? `Mở đơn \$\{order\.number\}`/);
 });
 
-test('issue 817 cân lại độ rộng Số đơn, Ngày tạo, Khách hàng và Thanh toán để không đè nội dung', () => {
-  assert.ok(cssSource.includes('.orderColumn{width:84px}'));
-  assert.ok(cssSource.includes('.dateColumn,.dateCell{width:136px;white-space:nowrap}'));
-  assert.ok(cssSource.includes('.customerColumn{width:260px}'));
-  assert.ok(cssSource.includes('.paymentColumn{width:88px}'));
+test('issue 817 ưu tiên độ rộng tên khách và tạo khoảng thở cho cụm Số đơn - Ngày tạo - Khách hàng', () => {
+  assert.ok(cssSource.includes('.orderColumn{width:92px;padding-left:.68rem!important;padding-right:.68rem!important}'));
+  assert.ok(cssSource.includes('.dateColumn,.dateCell{width:148px;white-space:nowrap;padding-left:.72rem!important;padding-right:.72rem!important}'));
+  assert.ok(cssSource.includes('.customerColumn{width:350px;padding-left:.76rem!important;padding-right:.76rem!important}'));
+  assert.ok(cssSource.includes('.table th:nth-child(5),.table td:nth-child(5){width:130px}'));
+  assert.ok(cssSource.includes('.paymentColumn{width:82px}'));
   assert.ok(cssSource.includes('.customerName{display:block;max-width:100%'));
   assert.match(workspaceSource, /className=\{styles\.dateColumn\}>Ngày tạo/);
   assert.match(workspaceSource, /className=\{styles\.customerColumn\}>Khách hàng/);
