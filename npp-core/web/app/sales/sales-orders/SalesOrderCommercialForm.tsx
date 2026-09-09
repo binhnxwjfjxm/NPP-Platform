@@ -18,6 +18,7 @@ import type {
   SalesOrderEntrySettings,
   SalesOrderEntrySettingsUpdate,
   SalesOrderLineDiscountMode,
+  SalesOrderPriceSelectionMode,
   SalesOrderSkuSearchOption,
   SalesOrderSkuSearchPreview,
   SalesOrderTaxMode,
@@ -312,6 +313,7 @@ function estimateLine(line: LineDraft, discount: bigint): EstimatedLine {
 function pricingLabel(step: SalesPriceStep): string {
   if (step.kind === 'RESOLUTION') return 'Chi tiết hình thành giá';
   if (step.kind === 'BASE') return step.priceListCode ? `Giá nền · ${step.priceListCode}` : 'Giá nền';
+  if (step.kind === 'HISTORY_REFERENCE') return 'Giá lần mua trước';
   if (step.kind === 'MANUAL_OVERRIDE') return 'Giá điều chỉnh thủ công';
   if (step.kind === 'SKIPPED') {
     const reason = pricingResolutionReasonLabel(step.reason);
@@ -364,6 +366,7 @@ function withPendingSearchPreview(option: Omit<SalesOrderSkuSearchOption, 'price
 
 function pricingSummary(line: LineDraft): string {
   if (!line.pricingFingerprint) return 'Chưa có giá Công Ty';
+  if (line.priceSteps.some((step) => step.kind === 'HISTORY_REFERENCE')) return 'Giá lần mua trước';
   const applied = line.priceSteps.filter((step) => step.kind === 'RULE');
   if (applied.length === 0) return 'Giá nền';
   const labels = applied
@@ -403,6 +406,7 @@ export default function SalesOrderCommercialForm(props: Props) {
   const [deliveryAddressLine1, setDeliveryAddressLine1] = useState(() => versionDeliveryAddressLine1(version));
   const [warehouseId, setWarehouseId] = useState(version?.warehouseId ?? '');
   const [salesChannelId, setSalesChannelId] = useState(version?.salesChannelId ?? '');
+  const [priceSelectionMode, setPriceSelectionMode] = useState<SalesOrderPriceSelectionMode>(version?.priceSelectionMode ?? 'STANDARD');
   const [deliveryMode, setDeliveryMode] = useState(version?.deliveryMode ?? 'DELIVERY');
   const [deliveryExecutionMode, setDeliveryExecutionMode] = useState<SalesOrderDeliveryExecutionMode | null>(
     version?.deliveryMode === 'PICKUP' ? null : (version?.deliveryExecutionMode ?? 'TRIP'),
@@ -504,6 +508,7 @@ export default function SalesOrderCommercialForm(props: Props) {
   const hasLineDiscount = lines.some((line) => (parseScaled(line.discountValue || '0', true) ?? 0n) > 0n);
   const deliveryChoice: SalesOrderDeliveryChoice = deliveryMode === 'PICKUP' ? 'PICKUP' : (deliveryExecutionMode ?? 'TRIP');
   const hasVersionDirectDestination = Boolean(version && !version.customerAddressId && versionDeliveryAddressLine1(version));
+  const priceSelectionValue = priceSelectionMode === 'LAST_PURCHASE' ? 'LAST_PURCHASE' : salesChannelId;
 
   const markDirty = useCallback(() => {
     setDirty(true);
@@ -526,6 +531,7 @@ export default function SalesOrderCommercialForm(props: Props) {
     mode,
     selectedCustomerId,
     channelId,
+    appliedPriceMode,
     effectiveAt,
   }: {
     variantId: string;
@@ -533,17 +539,18 @@ export default function SalesOrderCommercialForm(props: Props) {
     mode: SalesOrderCustomerMode;
     selectedCustomerId: string;
     channelId: string;
+    appliedPriceMode: SalesOrderPriceSelectionMode;
     effectiveAt: string;
   }): Promise<SalesPriceResolution> => {
-    if (!channelId) throw new Error('Hãy chọn kênh bán trước khi tính giá');
-    return apiRequest<SalesPriceResolution>('/api/pricing/resolve', {
+    if (!channelId) throw new Error('Hãy chọn giá áp dụng trước khi tính giá');
+    return apiRequest<SalesPriceResolution>('/api/sales-orders/price-preview', {
       method: 'POST',
       body: JSON.stringify({
         variantId,
         quantity,
-        currencyCode: 'VND',
-        priceAt: effectiveAt,
-        channelId,
+        salesChannelId: channelId,
+        priceSelectionMode: appliedPriceMode,
+        pricingAt: effectiveAt,
         ...(mode === 'EXISTING' && selectedCustomerId ? { customerId: selectedCustomerId } : {}),
       }),
     });
@@ -554,6 +561,7 @@ export default function SalesOrderCommercialForm(props: Props) {
     mode = customerMode,
     selectedCustomerId = customerId,
     channelId = salesChannelId,
+    appliedPriceMode = priceSelectionMode,
   ) => {
     const snapshot = [...linesRef.current];
     if (snapshot.length === 0 || !channelId) return;
@@ -567,6 +575,7 @@ export default function SalesOrderCommercialForm(props: Props) {
           mode,
           selectedCustomerId,
           channelId,
+          appliedPriceMode,
           effectiveAt,
         });
         return {
@@ -597,7 +606,7 @@ export default function SalesOrderCommercialForm(props: Props) {
       const result = byLineId.get(line.clientLineId);
       return result ? { ...line, ...result, resolvingPrice: false } : line;
     }));
-  }, [customerId, customerMode, priceFor, salesChannelId]);
+  }, [customerId, customerMode, priceFor, priceSelectionMode, salesChannelId]);
 
   const loadProductVariants = useCallback(async (productId: string) => {
     if (variantProductLoadRef.current.has(productId)) return;
@@ -718,6 +727,7 @@ export default function SalesOrderCommercialForm(props: Props) {
 
   useEffect(() => {
     if (customerMode === 'WALK_IN') {
+      setPriceSelectionMode('STANDARD');
       setCustomerId('');
       setAddressId('');
       setDeliveryAddressLine1('');
@@ -730,6 +740,7 @@ export default function SalesOrderCommercialForm(props: Props) {
       return;
     }
     if (!customerId) {
+      if (priceSelectionMode === 'LAST_PURCHASE') setPriceSelectionMode('STANDARD');
       setAddresses([]);
       setAddressId('');
       return;
@@ -745,7 +756,7 @@ export default function SalesOrderCommercialForm(props: Props) {
             : active.find((item) => item.is_default)?.id ?? active[0]?.id ?? '');
       })
       .catch((error) => onError(error instanceof Error ? error.message : 'Không tải được địa chỉ khách hàng'));
-  }, [collectionPolicy, customerId, customerMode, hasVersionDirectDestination, onError]);
+  }, [collectionPolicy, customerId, customerMode, hasVersionDirectDestination, onError, priceSelectionMode]);
 
   useEffect(() => {
     const term = skuTerm.trim();
@@ -775,7 +786,7 @@ export default function SalesOrderCommercialForm(props: Props) {
         if (rows.length === 0) return;
 
         setSkuPreviewLoading(true);
-        const previewQuery = new URLSearchParams({ warehouseId, salesChannelId, pricingAt });
+        const previewQuery = new URLSearchParams({ warehouseId, salesChannelId, priceSelectionMode, pricingAt });
         if (customerMode === 'EXISTING' && customerId) previewQuery.set('customerId', customerId);
         for (const row of rows) previewQuery.append('variantId', row.id);
         try {
@@ -807,17 +818,17 @@ export default function SalesOrderCommercialForm(props: Props) {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [customerId, customerMode, onError, pricingAt, salesChannelId, skuTerm, warehouseId]);
+  }, [customerId, customerMode, onError, priceSelectionMode, pricingAt, salesChannelId, skuTerm, warehouseId]);
 
   useEffect(() => {
     if (!entrySettings || !salesChannelId) return;
-    const signature = `${customerMode}:${customerId}:${salesChannelId}`;
+    const signature = `${customerMode}:${customerId}:${salesChannelId}:${priceSelectionMode}`;
     if (pricingContextRef.current === signature) return;
     pricingContextRef.current = signature;
     const effectiveAt = new Date().toISOString();
     setPricingAt(effectiveAt);
-    void repriceAll(effectiveAt, customerMode, customerId, salesChannelId);
-  }, [customerId, customerMode, entrySettings, repriceAll, salesChannelId]);
+    void repriceAll(effectiveAt, customerMode, customerId, salesChannelId, priceSelectionMode);
+  }, [customerId, customerMode, entrySettings, priceSelectionMode, repriceAll, salesChannelId]);
 
   const quantitySignature = lines.map((line) => `${line.clientLineId}:${line.quantity}`).join('|');
   useEffect(() => {
@@ -860,7 +871,7 @@ export default function SalesOrderCommercialForm(props: Props) {
 
   async function addSku(option: SalesOrderSkuSearchOption) {
     if (!option.eligibility.selectable) return onError(option.eligibility.message);
-    if (!salesChannelId) return onError('Hãy chọn kênh bán trước khi thêm hàng');
+    if (!salesChannelId) return onError('Hãy chọn giá áp dụng trước khi thêm hàng');
     if (linesRef.current.some((line) => line.variantId === option.id)) {
       return onError('Hàng này đã có trong đơn. Dùng Tách dòng nếu cần thêm dòng riêng.');
     }
@@ -900,6 +911,7 @@ export default function SalesOrderCommercialForm(props: Props) {
         mode: customerMode,
         selectedCustomerId: customerId,
         channelId: salesChannelId,
+        appliedPriceMode: priceSelectionMode,
         effectiveAt: pricingAt,
       });
       setLines((current) => current.map((line) => line.clientLineId === pending.clientLineId ? {
@@ -962,6 +974,7 @@ export default function SalesOrderCommercialForm(props: Props) {
         mode: customerMode,
         selectedCustomerId: customerId,
         channelId: salesChannelId,
+        appliedPriceMode: priceSelectionMode,
         effectiveAt: pricingAt,
       });
       setLines((current) => current.map((line) => line.clientLineId === clientLineId && line.variantId === option.id ? {
@@ -1020,6 +1033,7 @@ export default function SalesOrderCommercialForm(props: Props) {
         mode: customerMode,
         selectedCustomerId: customerId,
         channelId: salesChannelId,
+        appliedPriceMode: priceSelectionMode,
         effectiveAt: pricingAt,
       });
       setLines((current) => current.map((line) => line.clientLineId === split.clientLineId ? {
@@ -1142,9 +1156,10 @@ export default function SalesOrderCommercialForm(props: Props) {
 
   function validate(): string | null {
     if (!entrySettings) return 'Chưa tải được cấu hình lập đơn';
-    if (!salesChannelId) return 'Hãy chọn kênh bán';
-    if (!entrySettings.salesChannels.some((channel) => channel.id === salesChannelId)) return 'Kênh bán không còn hoạt động';
+    if (!salesChannelId) return 'Hãy chọn giá áp dụng';
+    if (!entrySettings.salesChannels.some((channel) => channel.id === salesChannelId)) return 'Lựa chọn giá không còn hoạt động';
     if (customerMode === 'EXISTING' && !customerId) return 'Hãy chọn khách hàng';
+    if (priceSelectionMode === 'LAST_PURCHASE' && (customerMode !== 'EXISTING' || !customerId)) return 'Giá lần mua trước chỉ dùng khi đã chọn khách hàng';
     if (!warehouseId) return 'Hãy chọn kho xuất';
     if (customerMode === 'WALK_IN' && deliveryMode !== 'PICKUP') return 'Khách vãng lai chỉ dùng Giao tại quầy';
     if (customerMode === 'WALK_IN' && !['PREPAID', 'COLLECT_ON_DELIVERY'].includes(collectionPolicy)) {
@@ -1200,6 +1215,7 @@ export default function SalesOrderCommercialForm(props: Props) {
       } : {}),
       warehouseId,
       salesChannelId,
+      priceSelectionMode,
       pricingAt,
       deliveryMode,
       ...(deliveryMode === 'DELIVERY' ? { deliveryExecutionMode: deliveryExecutionMode ?? 'TRIP' } : {}),
@@ -1404,7 +1420,7 @@ export default function SalesOrderCommercialForm(props: Props) {
               <div className={styles.walkInFields}>
                 <label><span>Tên khách (tùy chọn)</span><input value={walkInDisplayName} onChange={(event) => { setWalkInDisplayName(event.target.value); markDirty(); }} placeholder="Ví dụ: Anh Nam" /></label>
                 <label><span>Số điện thoại (tùy chọn)</span><input value={walkInPhone} onChange={(event) => { setWalkInPhone(event.target.value); markDirty(); }} placeholder="Dùng tra cứu lại đơn" /></label>
-                <span>Giao tại quầy; vẫn áp giá theo kênh/chương trình, không áp giá nhóm hoặc riêng khách.</span>
+                <span>Giao tại quầy; vẫn áp giá theo lựa chọn hiện có, không áp giá nhóm hoặc riêng khách.</span>
                 {props.canQuickCreateCustomer && <button type="button" className={styles.linkButton} onClick={openQuickCustomerForDelivery}>Cần giao hàng? Tạo khách chính thức</button>}
               </div>
             )}
@@ -1466,7 +1482,16 @@ export default function SalesOrderCommercialForm(props: Props) {
           <section className={styles.productEntry} aria-label="Nhập hàng hóa">
             <div className={styles.productSearchBox}>
               <div className={styles.productSearchControls}>
-                <label className={styles.salesChannelField}><span>Kênh bán / nguồn giá *</span><select data-testid="sales-channel-select" value={salesChannelId} onChange={(event) => { setSalesChannelId(event.target.value); markDirty(); }}><option value="">Chọn kênh bán</option>{entrySettings?.salesChannels.map((channel) => <option key={channel.id} value={channel.id}>{channel.code} — {channel.name}</option>)}</select></label>
+                <label className={styles.salesChannelField}><span>Giá áp dụng *</span><select data-testid="sales-channel-select" value={priceSelectionValue} onChange={(event) => {
+                  const value = event.target.value;
+                  if (value === 'LAST_PURCHASE') {
+                    setPriceSelectionMode('LAST_PURCHASE');
+                  } else {
+                    setPriceSelectionMode('STANDARD');
+                    setSalesChannelId(value);
+                  }
+                  markDirty();
+                }}><option value="">Chọn giá áp dụng</option><option value="LAST_PURCHASE" disabled={customerMode !== 'EXISTING' || !customerId || !salesChannelId}>Giá lần mua trước</option>{entrySettings?.salesChannels.map((channel) => <option key={channel.id} value={channel.id}>{channel.code} — {channel.name}</option>)}</select></label>
                 <label><span>Tìm hàng nhanh</span><input ref={searchRef} value={skuTerm} onChange={(event) => setSkuTerm(event.target.value)} onKeyDown={handleSkuKeyDown} placeholder="Tên sản phẩm, mã hàng, SKU hoặc barcode" autoComplete="off" /></label>
               </div>
               {skuLoading && <span className={styles.searchStatus}>Đang tìm…</span>}
@@ -1482,7 +1507,7 @@ export default function SalesOrderCommercialForm(props: Props) {
                 </div>
               )}
             </div>
-            <p className={styles.keyboardHint}>Gõ để tìm, ↑↓ để chọn, Enter để thêm. Công Ty tự chọn bảng giá theo khách, kênh, SKU, số lượng và hiệu lực.</p>
+            <p className={styles.keyboardHint}>Gõ để tìm, ↑↓ để chọn, Enter để thêm. Giá được tính theo lựa chọn áp dụng, khách hàng, SKU, số lượng và thời điểm.</p>
           </section>
 
           <section className={styles.orderLines} aria-label="Hàng hóa trong đơn">
@@ -1669,7 +1694,7 @@ export default function SalesOrderCommercialForm(props: Props) {
                     <div><span>Giá hệ thống</span><b>{automaticPriceText(line, line.systemUnitPriceMinor)}</b></div>
                     {line.priceSteps.length === 0 && <span>{line.pricingErrorCode === 'BASE_PRICE_NOT_FOUND' ? 'Dòng này đang chờ giá nhập tay.' : 'Công Ty sẽ tính lại giá khi lưu.'}</span>}
                     {line.priceSteps.filter((step) => step.kind !== 'RESOLUTION').map((step, stepIndex) => <div key={`${step.kind}-${stepIndex}`}><span>{pricingLabel(step)}</span><b>{step.afterUnitPriceMinor ? vnd(step.afterUnitPriceMinor) : '—'}</b></div>)}
-                    <div><span>Ngữ cảnh</span><b>{customerMode === 'WALK_IN' ? 'Khách vãng lai' : 'Khách/nhóm khách'} · {entrySettings?.salesChannels.find((channel) => channel.id === salesChannelId)?.code ?? 'Chưa chọn kênh'}</b></div>
+                    <div><span>Ngữ cảnh</span><b>{priceSelectionMode === 'LAST_PURCHASE' ? 'Giá lần mua trước' : (entrySettings?.salesChannels.find((channel) => channel.id === salesChannelId)?.name ?? 'Chưa chọn giá')}</b></div>
                     <div><span>Thuế Công Ty · {line.taxMode === 'INCLUSIVE' ? 'Giá đã gồm thuế' : 'Giá chưa gồm thuế'} · {line.taxRate}%</span><b>Tính lại sau phân bổ chiết khấu đơn</b></div>
                   </div>
                 </div>

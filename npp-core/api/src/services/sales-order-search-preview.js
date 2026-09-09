@@ -1,5 +1,5 @@
 import * as legacy from './sales-order-entry-legacy.js';
-import * as searchPricingService from './sales-order-search-pricing.js';
+import * as appliedPriceService from './sales-order-applied-price.js';
 import * as commercialRepository from '../db/repositories/sales-order-commercial.js';
 import * as salesOrderRepository from '../db/repositories/sales-order.js';
 import * as warehouseRepository from '../db/repositories/warehouse.js';
@@ -142,19 +142,22 @@ async function resolvePreviewContext(client, {
   warehouseId,
   salesChannelId,
   customerId = null,
+  priceSelectionMode = 'STANDARD',
   pricingAt,
 }) {
   const normalizedWarehouseId = String(warehouseId ?? '').trim();
   const normalizedChannelId = String(salesChannelId ?? '').trim();
   const normalizedCustomerId = String(customerId ?? '').trim() || null;
+  const normalizedPriceSelectionMode = appliedPriceService.normalizePriceSelectionMode(priceSelectionMode);
   const rawPricingAt = String(pricingAt ?? '').trim();
   const normalizedPricingAt = normalizePricingAt(rawPricingAt, requestContext.receivedAt);
   if (!UUID_PATTERN.test(normalizedWarehouseId)
     || !UUID_PATTERN.test(normalizedChannelId)
-    || !normalizedPricingAt) {
+    || !normalizedPricingAt
+    || !normalizedPriceSelectionMode) {
     return failure(
       'SALES_ORDER_SEARCH_CONTEXT_REQUIRED',
-      'Hãy chọn kho và kênh bán trước khi tìm hàng',
+      'Hãy chọn kho và giá áp dụng trước khi tìm hàng',
     );
   }
   const scoped = scopedWarehouseIds(requestContext);
@@ -174,7 +177,7 @@ async function resolvePreviewContext(client, {
   if (!warehouse || warehouse.is_active !== true) {
     return failure('WAREHOUSE_NOT_FOUND', 'Kho đã chọn không còn hoạt động');
   }
-  if (!channel) return failure('SALES_CHANNEL_NOT_FOUND', 'Kênh bán không còn hoạt động');
+  if (!channel) return failure('SALES_CHANNEL_NOT_FOUND', 'Lựa chọn giá không còn hoạt động');
 
   let normalizedCustomerGroupId = null;
   if (normalizedCustomerId) {
@@ -188,6 +191,12 @@ async function resolvePreviewContext(client, {
     if (!customer?.is_active) return failure('CUSTOMER_NOT_FOUND', 'Khách hàng không còn hoạt động');
     normalizedCustomerGroupId = customer.group_id ?? null;
   }
+  if (normalizedPriceSelectionMode === 'LAST_PURCHASE' && !normalizedCustomerId) {
+    return failure(
+      'LAST_PURCHASE_CUSTOMER_REQUIRED',
+      'Giá lần mua trước chỉ dùng khi đã chọn khách hàng.',
+    );
+  }
 
   return Object.freeze({
     ok: true,
@@ -196,6 +205,7 @@ async function resolvePreviewContext(client, {
       salesChannelId: normalizedChannelId,
       customerId: normalizedCustomerId,
       customerGroupId: normalizedCustomerGroupId,
+      priceSelectionMode: normalizedPriceSelectionMode,
       pricingAt: normalizedPricingAt,
     }),
   });
@@ -208,13 +218,14 @@ async function previewByVariantId(client, { requestContext, previewContext, vari
       warehouseId: previewContext.warehouseId,
       variantIds,
     }),
-    searchPricingService.resolveSalesOrderSearchPrices(client, {
+    appliedPriceService.resolveSalesOrderAppliedPricePreviews(client, {
       installationId: requestContext.installationId,
       variantIds,
       priceAt: previewContext.pricingAt,
       channelId: previewContext.salesChannelId,
       customerGroupId: previewContext.customerGroupId,
       customerId: previewContext.customerId,
+      priceSelectionMode: previewContext.priceSelectionMode,
     }),
   ]);
   const inventoryByVariantId = new Map(inventoryRows.map((row) => [row.sales_variant_id, row]));
@@ -235,6 +246,7 @@ export async function searchSalesOrderSkuOptions(client, {
   warehouseId,
   salesChannelId,
   customerId = null,
+  priceSelectionMode = 'STANDARD',
   pricingAt,
   limit = 20,
   offset = 0,
@@ -250,7 +262,7 @@ export async function searchSalesOrderSkuOptions(client, {
   }
 
   const resolvedContext = await resolvePreviewContext(client, {
-    requestContext, warehouseId, salesChannelId, customerId, pricingAt,
+    requestContext, warehouseId, salesChannelId, customerId, priceSelectionMode, pricingAt,
   });
   if (!resolvedContext.ok) return resolvedContext;
 
@@ -289,12 +301,13 @@ export async function getSalesOrderSkuPreviews(client, {
   warehouseId,
   salesChannelId,
   customerId = null,
+  priceSelectionMode = 'STANDARD',
   pricingAt,
 }) {
   const ids = normalizeVariantIds(variantIds);
   if (!ids || ids.length === 0) return failure('INVALID_SALES_ORDER_SEARCH_VARIANTS', 'Danh sách hàng hóa không hợp lệ');
   const resolvedContext = await resolvePreviewContext(client, {
-    requestContext, warehouseId, salesChannelId, customerId, pricingAt,
+    requestContext, warehouseId, salesChannelId, customerId, priceSelectionMode, pricingAt,
   });
   if (!resolvedContext.ok) return resolvedContext;
   const orderableIds = await salesOrderRepository.listOrderableSalesVariantIds(client, {
