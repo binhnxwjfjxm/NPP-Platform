@@ -1,5 +1,6 @@
 name: One-shot Company product search and order STT
 
+# Triggered once through the contents API; the apply script removes this workflow from the final diff.
 on:
   push:
     branches:
