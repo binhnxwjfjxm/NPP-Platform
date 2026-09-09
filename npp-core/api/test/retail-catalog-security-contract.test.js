@@ -24,11 +24,11 @@ test('Retail catalog tái sử dụng SKU search chuẩn nhưng không trả d�
 test('Retail product search có lọc nhóm và ưu tiên SKU chính xác/prefix', () => {
   const repository = source('../src/db/repositories/sales-order.js');
   assert.match(repository, /categoryId = null/);
-  assert.match(repository, /p\.category_id = \$4::uuid/);
+  assert.match(repository, /p\.category_id = \$5::uuid/);
   assert.match(repository, /retailSearch = false/);
-  assert.match(repository, /\$5::boolean AND upper\(pv\.sku\) LIKE \$2 \|\| '%'/);
+  assert.match(repository, /\$6::boolean AND upper\(pv\.sku\) LIKE \$2 \|\| '%'/);
   assert.match(repository, /WHEN upper\(pv\.sku\) = \$2 THEN 0/);
-  assert.match(repository, /WHEN \$5::boolean AND upper\(pv\.sku\) LIKE \$2 \|\| '%' THEN 3/);
+  assert.match(repository, /WHEN \$6::boolean AND upper\(pv\.sku\) LIKE \$2 \|\| '%' THEN 3/);
 });
 
 test('Tìm SKU cũ giữ nguyên thứ tự, chỉ Retail mới bật thứ tự prefix', async () => {
@@ -48,9 +48,9 @@ test('Tìm SKU cũ giữ nguyên thứ tự, chỉ Retail mới bật thứ tự
     search: 'SKU',
     retailSearch: true,
   });
-  assert.equal(calls[0].params[4], false);
-  assert.equal(calls[1].params[4], true);
-  assert.match(calls[0].statement, /ELSE 3/);
+  assert.equal(calls[0].params[5], false);
+  assert.equal(calls[1].params[5], true);
+  assert.match(calls[0].statement, /ELSE 9/);
 });
 
 test('Khả dụng Retail chỉ được tính theo đúng đơn, scope kho và đơn vị bán', () => {

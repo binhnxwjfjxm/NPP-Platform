@@ -10,14 +10,22 @@ type SequenceHeaderProps = {
 type SequenceCellProps = {
   rowIndex: number;
   offset?: number;
+  value?: number;
   className?: string;
 };
 
 type SequenceNumberProps = {
   rowIndex: number;
   offset?: number;
+  value?: number;
   className?: string;
 };
+
+function resolvedSequenceNumber(rowIndex: number, offset: number, value?: number) {
+  return Number.isInteger(value) && Number(value) > 0
+    ? Number(value)
+    : businessTableRowNumber(rowIndex, offset);
+}
 
 export function BusinessTableSequenceHeader({ className }: SequenceHeaderProps) {
   return (
@@ -27,19 +35,20 @@ export function BusinessTableSequenceHeader({ className }: SequenceHeaderProps) 
   );
 }
 
-export function BusinessTableSequenceCell({ rowIndex, offset = 0, className }: SequenceCellProps) {
+export function BusinessTableSequenceCell({ rowIndex, offset = 0, value, className }: SequenceCellProps) {
   return (
     <td className={className} data-business-table-sequence>
-      {businessTableRowNumber(rowIndex, offset)}
+      {resolvedSequenceNumber(rowIndex, offset, value)}
     </td>
   );
 }
 
 /** Dùng cho danh sách dạng thẻ hoặc lưới, nơi không có cột bảng HTML. */
-export function BusinessSequenceNumber({ rowIndex, offset = 0, className }: SequenceNumberProps) {
+export function BusinessSequenceNumber({ rowIndex, offset = 0, value, className }: SequenceNumberProps) {
+  const number = resolvedSequenceNumber(rowIndex, offset, value);
   return (
-    <span className={className} data-business-sequence aria-label={`Số thứ tự ${businessTableRowNumber(rowIndex, offset)}`}>
-      {businessTableRowNumber(rowIndex, offset)}
+    <span className={className} data-business-sequence aria-label={`Số thứ tự ${number}`}>
+      {number}
     </span>
   );
 }

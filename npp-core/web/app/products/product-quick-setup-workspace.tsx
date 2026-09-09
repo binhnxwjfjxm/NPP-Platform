@@ -13,6 +13,7 @@ import type {
 } from '../../lib/product-types';
 import type { InventoryBalance } from '../../lib/inventory-types';
 import type { PriceList, PriceListItem } from '../../lib/pricing-types';
+import { productSearchMatches } from '../../lib/product-search-contract';
 import ProductImageControl from './product-image-control';
 import styles from './product-quick-setup.module.css';
 
@@ -146,15 +147,6 @@ function variantToUnitDraft(variant: ProductVariant): VariantUnitForm {
   };
 }
 
-function normalizeSearch(value: string | null | undefined) {
-  return String(value ?? '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/đ/g, 'd')
-    .trim();
-}
-
 function isZeroQuantity(value: string | null | undefined) {
   return /^0+(?:\.0+)?$/.test(String(value ?? '').trim());
 }
@@ -239,14 +231,11 @@ export default function ProductQuickSetupWorkspace({
     ?? variants.find((item) => item.is_inventory_base)
     ?? null;
 
-  const visibleProducts = useMemo(() => {
-    const term = normalizeSearch(search);
-    if (!term) return products;
-    return products.filter((item) =>
-      [item.code, item.name, item.catalog_name, item.category_name, item.brand_name]
-        .some((value) => normalizeSearch(value).includes(term)),
-    );
-  }, [products, search]);
+  const visibleProducts = useMemo(() =>
+    products.filter((item) => productSearchMatches(
+      [item.code, item.name, item.catalog_name, item.category_name, item.brand_name],
+      search,
+    )), [products, search]);
 
   const directPriceItems = priceItems.filter((item) =>
     item.variant_id === variantId

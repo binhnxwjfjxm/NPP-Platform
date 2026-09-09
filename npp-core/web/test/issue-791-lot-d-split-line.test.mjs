@@ -22,7 +22,7 @@ test('Issue #791 Lô D keeps Add unique-only and Tách dòng creates an independ
   assert.match(splitBlock, /priceSteps: \[\]/);
   assert.match(splitBlock, /resolvingPrice: true/);
   assert.doesNotMatch(splitBlock, /resolvingPrice: false/);
-  assert.match(form, /\.\.\.current\.slice\(0, sourceIndex \+ 1\), split, \.\.\.current\.slice\(sourceIndex \+ 1\)/);
+  assert.match(form, /return \[\.\.\.current\.slice\(0, sourceIndex\), split, \.\.\.current\.slice\(sourceIndex\)\];/);
   assert.match(form, /focusLineVariant\(split\.clientLineId\)/);
   assert.match(form, /variantId: split\.variantId,[\s\S]*?quantity: '1'/);
   assert.match(form, />↳ Tách dòng<\/button>/);
@@ -63,5 +63,5 @@ test('Lô 2 switches the real sellable ĐVT variant on every line and reprices f
   assert.match(form, /aria-label=\{`Chọn ĐVT cho \$\{line\.sku\}`\}/);
   assert.doesNotMatch(form, /Đơn vị bán · Lẻ\/Thùng/);
   assert.doesNotMatch(form, /Quy đổi kho/);
-  assert.match(form, /lines: lines\.map\(\(line\) => \(\{[\s\S]*?variantId: line\.variantId/);
+  assert.match(form, /lines: \[\.\.\.lines\]\.reverse\(\)\.map\(\(line\) => \(\{[\s\S]*?variantId: line\.variantId/);
 });

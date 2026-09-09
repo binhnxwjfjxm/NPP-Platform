@@ -47,7 +47,7 @@ test('SQL loại SKU chưa đủ điều kiện bán trước LIMIT/OFFSET', asy
 
   assert.ok(captured);
   const statement = captured.statement;
-  const limitIndex = statement.indexOf('LIMIT $6 OFFSET $7');
+  const limitIndex = statement.indexOf('LIMIT $9 OFFSET $10');
   assert.ok(limitIndex > 0);
   for (const condition of [
     'p.is_active = true',

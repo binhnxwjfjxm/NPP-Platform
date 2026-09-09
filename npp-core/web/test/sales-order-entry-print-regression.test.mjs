@@ -16,7 +16,7 @@ test('SKU vừa thêm đứng đầu danh sách và vẫn focus vào SL của d�
   assert.match(form, /setLines\(\(current\) => \[pending, \.\.\.current\]\);/);
   assert.doesNotMatch(form, /setLines\(\(current\) => \[\.\.\.current, pending\]\);/);
   assert.match(form, /focusLineQuantity\(pending\.clientLineId\);/);
-  assert.match(form, /lines: lines\.map\(\(line\) => \(\{/);
+  assert.match(form, /lines: \[\.\.\.lines\]\.reverse\(\)\.map\(\(line\) => \(\{/);
 });
 
 test('phiếu bán hàng ưu tiên tên ĐVT đã chốt và chỉ dùng tên hiện tại cho dữ liệu cũ', () => {
