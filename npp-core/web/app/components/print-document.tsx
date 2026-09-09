@@ -13,6 +13,41 @@ function clearPrintState() {
   });
 }
 
+function safePageSuffix(value: string): string {
+  return value.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 80) || 'print';
+}
+
+function dynamicPageStyle(printable: HTMLElement, suffix: string): HTMLStyleElement | null {
+  const footerText = printable.dataset.printFooter?.trim();
+  if (!footerText) return null;
+
+  const size: PrintPageSize = printable.dataset.printSize === 'A5' ? 'A5' : 'A4';
+  const suppressBrowserHeaders = printable.dataset.printSuppressBrowserHeaders === 'true';
+  const pageName = `document-${size.toLowerCase()}-${safePageSuffix(suffix)}`;
+  const margin = suppressBrowserHeaders
+    ? '0 0 3mm 0'
+    : size === 'A5' ? '9mm 8mm 10mm' : '11mm 10mm 12mm';
+  const footerContent = JSON.stringify(`${footerText} - `);
+
+  printable.style.setProperty('page', pageName);
+  const style = document.createElement('style');
+  style.setAttribute('data-print-page-style', pageName);
+  style.textContent = `@media print { @page ${pageName} { size: ${size} portrait; margin: ${margin}; @bottom-center { content: ${footerContent} counter(page) "/" counter(pages); font-family: Arial, Helvetica, sans-serif; font-size: 8px; font-weight: 400; line-height: 1; color: #555; } } }`;
+  return style;
+}
+
+export function clonePrintSurfaceForOutput(target: HTMLElement, suffix = crypto.randomUUID()): {
+  printable: HTMLElement;
+  pageStyle: HTMLStyleElement | null;
+} {
+  const printable = target.cloneNode(true) as HTMLElement;
+  printable.setAttribute('data-print-active', 'true');
+  return {
+    printable,
+    pageStyle: dynamicPageStyle(printable, suffix),
+  };
+}
+
 export function PrintAction({
   label = 'In',
   targetId,
@@ -32,8 +67,8 @@ export function PrintAction({
 
     const printRoot = document.createElement('div');
     printRoot.setAttribute('data-print-root', 'true');
-    const printable = target.cloneNode(true) as HTMLElement;
-    printable.setAttribute('data-print-active', 'true');
+    const { printable, pageStyle } = clonePrintSurfaceForOutput(target);
+    if (pageStyle) printRoot.appendChild(pageStyle);
     printRoot.appendChild(printable);
     document.body.appendChild(printRoot);
     document.body.setAttribute('data-printing', 'true');
@@ -73,12 +108,14 @@ export function PrintSurface({
   size = 'A4',
   suppressBrowserHeaders = false,
   narrowMargins = false,
+  footerText,
 }: {
   children: ReactNode;
   id?: string;
   size?: PrintPageSize;
   suppressBrowserHeaders?: boolean;
   narrowMargins?: boolean;
+  footerText?: string;
 }) {
   return (
     <section
@@ -88,6 +125,7 @@ export function PrintSurface({
       data-print-size={size}
       data-print-suppress-browser-headers={suppressBrowserHeaders ? 'true' : undefined}
       data-print-narrow-margins={narrowMargins ? 'true' : undefined}
+      data-print-footer={footerText?.trim() || undefined}
     >
       {children}
     </section>

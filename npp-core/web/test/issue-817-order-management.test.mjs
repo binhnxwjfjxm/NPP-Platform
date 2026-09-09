@@ -24,7 +24,7 @@ test('issue 817 filters by date and exact time and clears prior selection when f
 
 test('issue 817 select-all targets the entire filtered set rather than only the current page', () => {
   assert.match(workspaceSource, /new Set\(filteredOrders\.map\(\(order\) => order\.id\)\)/);
-  assert.match(workspaceSource, /Đã chọn \$\{selectedIds\.size\.toLocaleString\('vi-VN'\)\} đơn theo bộ lọc hiện tại/);
+  assert.match(workspaceSource, /Đã chọn \$\{selectedIds\.size\.toLocaleString\('vi-VN'\)\} đơn/);
   assert.doesNotMatch(workspaceSource, /new Set\(pageOrders\.map/);
 });
 

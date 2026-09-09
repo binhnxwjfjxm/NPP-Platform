@@ -142,6 +142,11 @@ function vnd(value: string | bigint): string {
   }
 }
 
+export function formatVndInput(value: string | null | undefined): string {
+  const digits = String(value ?? '').replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+  return digits ? digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.') : '';
+}
+
 function normalizedPhone(value: string | null | undefined): string {
   return String(value ?? '').replace(/[^0-9+]/g, '').trim();
 }
@@ -1592,7 +1597,7 @@ export default function SalesOrderCommercialForm(props: Props) {
                       className={styles.directPriceInput}
                       aria-label={`Đơn giá ${line.sku}`}
                       inputMode="numeric"
-                      value={line.manualUnitPriceMinor || (line.pricingFingerprint ? line.systemUnitPriceMinor : '')}
+                      value={formatVndInput(line.manualUnitPriceMinor || (line.pricingFingerprint ? line.systemUnitPriceMinor : ''))}
                       placeholder={line.pricingErrorCode === 'BASE_PRICE_NOT_FOUND' ? 'Nhập giá' : undefined}
                       onFocus={(event) => event.currentTarget.select()}
                       onClick={(event) => event.currentTarget.select()}

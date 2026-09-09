@@ -1,17 +1,21 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell-core';
+import { clonePrintSurfaceForOutput } from '../../components/print-document';
 import type { Customer } from '../../../lib/customer-types';
 import type { SalesOrder, SalesOrderVersion } from '../../../lib/sales-order-types';
+import { SALES_ORDER_PERMISSION_KEYS } from '../../../lib/sales-order-permissions';
 import SalesOrderPrintSheet from '../sales-orders/SalesOrderPrintSheet';
 import {
   activeVersion,
+  apiRequest,
   deliveryLabels,
   formatMoney,
   formatQuantity,
   formatVietnamDateTime,
+  mutationKey,
 } from '../sales-orders/sales-order-ui';
 import styles from './order-management.module.css';
 
@@ -22,6 +26,7 @@ type DeliveryLane = 'all' | 'counter' | 'manual' | 'trip';
 type SourceFilter = 'all' | 'internal' | 'mcp' | 'customer';
 type PaymentFilter = 'all' | 'unpaid' | 'partial' | 'paid' | 'other';
 type Tone = 'draft' | 'confirmed' | 'waiting' | 'cancelled' | 'closed';
+type QuickAction = 'issue-stock' | 'complete' | 'settle-full';
 type Envelope<T> = { data?: T; error?: { message?: string } };
 type Filters = Readonly<{
   search: string;
@@ -33,6 +38,12 @@ type Filters = Readonly<{
   payment: PaymentFilter;
   lane: DeliveryLane;
   source: SourceFilter;
+}>;
+type QuickMutationCache = Readonly<{ fingerprint: string; key: string }>;
+type PartialSettlementDraft = Readonly<{
+  orderId: string;
+  amount: string;
+  paymentMethod: 'CASH' | 'BANK_TRANSFER';
 }>;
 
 const FETCH_PAGE_SIZE = 1000;
@@ -76,9 +87,15 @@ const LANE_OPTIONS: ReadonlyArray<Readonly<{ value: DeliveryLane; label: string 
 const SOURCE_OPTIONS: ReadonlyArray<Readonly<{ value: SourceFilter; label: string }>> = [
   { value: 'all', label: 'Tất cả' },
   { value: 'internal', label: 'Công Ty' },
-  { value: 'mcp', label: 'MCP' },
+  { value: 'mcp', label: 'Nhân viên thị trường' },
   { value: 'customer', label: 'Khách đặt hàng' },
 ];
+
+const QUICK_ACTION_LABELS: Readonly<Record<QuickAction, string>> = Object.freeze({
+  'issue-stock': 'Xuất kho',
+  complete: 'Hoàn thành',
+  'settle-full': 'Thu đủ',
+});
 
 function normalizedSearch(value: string): string {
   return value.trim().toLocaleLowerCase('vi');
@@ -88,6 +105,12 @@ function compactOrderNumber(value: string | null | undefined): string {
   const normalized = String(value ?? '').replace(/^#/, '');
   const match = /^(.+-)(\d{6})(-\d+)$/.exec(normalized);
   return match ? `${match[1]}…${match[3]}` : normalized;
+}
+
+function sortOrdersByCreatedAt<T extends SalesOrder>(items: T[]): T[] {
+  return [...items].sort((left, right) => (
+    right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id)
+  ));
 }
 
 function orderLane(order: SalesOrder): Exclude<DeliveryLane, 'all'> {
@@ -209,6 +232,49 @@ function isPrintable(order: SalesOrder): boolean {
   return Boolean(order.number) && ['confirmed', 'closed'].includes(order.status);
 }
 
+function isManualOrder(order: SalesOrder): boolean {
+  return order.deliveryMode === 'DELIVERY' && order.deliveryExecutionMode === 'MANUAL';
+}
+
+function directStockIssueCompleted(order: SalesOrder): boolean {
+  return ['issued', 'fulfilled'].includes(String(order.fulfillmentStatus));
+}
+
+function isZeroMoney(value: string | number | null | undefined): boolean {
+  const normalized = String(value ?? '').trim();
+  return normalized === '' || /^[-+]?0+(?:\.0+)?$/.test(normalized);
+}
+
+function remainingAmount(order: SalesOrder): string {
+  return order.receivableRemainingAmount || activeVersion(order)?.total || '0';
+}
+
+function nextQuickAction(
+  order: SalesOrder,
+  permissions: Readonly<{ issue: boolean; complete: boolean; settle: boolean }>,
+): QuickAction | null {
+  if (!isManualOrder(order)) return null;
+  if (order.status === 'confirmed' && !directStockIssueCompleted(order) && permissions.issue) return 'issue-stock';
+  if (order.status === 'confirmed' && directStockIssueCompleted(order) && permissions.complete) return 'complete';
+  if (
+    order.status === 'closed'
+    && ['pending', 'partially_paid'].includes(order.settlementStatus)
+    && !isZeroMoney(remainingAmount(order))
+    && permissions.settle
+  ) return 'settle-full';
+  return null;
+}
+
+function canonicalPartialAmount(value: string): string {
+  const digits = value.replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+  return digits || '0';
+}
+
+function formatVndInput(value: string): string {
+  const digits = value.replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+  return digits ? digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.') : '';
+}
+
 function rangeTimestamp(date: string, time: string, end: boolean): number | null {
   if (!date) return null;
   const resolvedTime = time || (end ? '23:59' : '00:00');
@@ -286,8 +352,8 @@ function printTargets(targetIds: string[]) {
   for (const targetId of targetIds) {
     const target = byId.get(targetId);
     if (!target) continue;
-    const printable = target.cloneNode(true) as HTMLElement;
-    printable.setAttribute('data-print-active', 'true');
+    const { printable, pageStyle } = clonePrintSurfaceForOutput(target, `bulk-${appended}-${targetId}`);
+    if (pageStyle) printRoot.appendChild(pageStyle);
     if (appended > 0) {
       printable.style.breakBefore = 'page';
       printable.style.pageBreakBefore = 'always';
@@ -325,7 +391,7 @@ function PrintPreparation({ orders }: { orders: SalesOrder[] }) {
   );
 }
 
-export default function OrderManagementWorkspace() {
+export default function OrderManagementWorkspace({ permissionKeys }: { permissionKeys: string[] }) {
   const [orders, setOrders] = useState<ListOrder[]>([]);
   const [customerPhones, setCustomerPhones] = useState<Map<string, string>>(new Map());
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
@@ -340,8 +406,19 @@ export default function OrderManagementWorkspace() {
   const [detail, setDetail] = useState<SalesOrder | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [bulkBusy, setBulkBusy] = useState<QuickAction | null>(null);
+  const [partialSettlement, setPartialSettlement] = useState<PartialSettlementDraft | null>(null);
   const selectAllRef = useRef<HTMLInputElement>(null);
   const detailCacheRef = useRef(new Map<string, SalesOrder>());
+  const quickMutationKeysRef = useRef(new Map<string, QuickMutationCache>());
+
+  const permissions = useMemo(() => new Set(permissionKeys), [permissionKeys]);
+  const quickPermissions = useMemo(() => ({
+    issue: permissions.has(SALES_ORDER_PERMISSION_KEYS.issueInventory),
+    complete: permissions.has(SALES_ORDER_PERMISSION_KEYS.confirm),
+    settle: permissions.has(SALES_ORDER_PERMISSION_KEYS.recordCustomerPayment),
+  }), [permissions]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -351,7 +428,7 @@ export default function OrderManagementWorkspace() {
     setPage(1);
     try {
       const loadedOrders = await loadAllPages<ListOrder>('/api/sales-orders');
-      setOrders(loadedOrders);
+      setOrders(sortOrdersByCreatedAt(loadedOrders));
       void loadAllPages<Customer>('/api/customers?active=true')
         .then((customers) => {
           setCustomerPhones(new Map(customers.flatMap((customer) => customer.phone ? [[customer.id, customer.phone] as const] : [])));
@@ -416,10 +493,20 @@ export default function OrderManagementWorkspace() {
   const pageCount = Math.max(1, Math.ceil(filteredOrders.length / pageSize));
   const currentPage = Math.min(page, pageCount);
   const pageOrders = useMemo(() => filteredOrders.slice((currentPage - 1) * pageSize, currentPage * pageSize), [currentPage, filteredOrders, pageSize]);
-  const selectedOrders = useMemo(() => filteredOrders.filter((order) => selectedIds.has(order.id)), [filteredOrders, selectedIds]);
+  const selectedOrders = useMemo(() => orders.filter((order) => selectedIds.has(order.id)), [orders, selectedIds]);
   const printableSelectedCount = useMemo(() => selectedOrders.filter(isPrintable).length, [selectedOrders]);
   const allFilteredSelected = filteredOrders.length > 0 && filteredOrders.every((order) => selectedIds.has(order.id));
   const someFilteredSelected = filteredOrders.some((order) => selectedIds.has(order.id));
+  const selectedQuickActions = useMemo(
+    () => selectedOrders.map((order) => nextQuickAction(order, quickPermissions)),
+    [quickPermissions, selectedOrders],
+  );
+  const bulkAction = useMemo<QuickAction | null>(() => {
+    if (selectedOrders.length === 0) return null;
+    const first = selectedQuickActions[0];
+    if (!first) return null;
+    return selectedQuickActions.every((action) => action === first) ? first : null;
+  }, [selectedOrders.length, selectedQuickActions]);
 
   useEffect(() => {
     if (selectAllRef.current) selectAllRef.current.indeterminate = someFilteredSelected && !allFilteredSelected;
@@ -428,6 +515,7 @@ export default function OrderManagementWorkspace() {
   function updateFilter<K extends keyof Filters>(key: K, value: Filters[K]) {
     setFilters((current) => ({ ...current, [key]: value }));
     setSelectedIds(new Set());
+    setPartialSettlement(null);
     setPage(1);
     setNotice(null);
   }
@@ -435,6 +523,7 @@ export default function OrderManagementWorkspace() {
   function resetFilters() {
     setFilters(DEFAULT_FILTERS);
     setSelectedIds(new Set());
+    setPartialSettlement(null);
     setPage(1);
     setNotice(null);
   }
@@ -453,6 +542,161 @@ export default function OrderManagementWorkspace() {
       if (checked) next.add(id); else next.delete(id);
       return next;
     });
+  }
+
+  function applyOrderUpdate(updated: SalesOrder) {
+    setOrders((current) => current.map((item) => item.id === updated.id ? updated : item));
+    detailCacheRef.current.set(updated.id, updated);
+    setDetail((current) => current?.id === updated.id ? updated : current);
+  }
+
+  function stableMutationKey(action: QuickAction | 'settle-partial', orderId: string, fingerprint: string, prefix: string): string {
+    const cacheId = `${action}:${orderId}`;
+    const current = quickMutationKeysRef.current.get(cacheId);
+    if (current?.fingerprint === fingerprint) return current.key;
+    const key = mutationKey(prefix);
+    quickMutationKeysRef.current.set(cacheId, { fingerprint, key });
+    return key;
+  }
+
+  function clearMutationKey(action: QuickAction | 'settle-partial', orderId: string) {
+    quickMutationKeysRef.current.delete(`${action}:${orderId}`);
+  }
+
+  async function executeQuickAction(source: SalesOrder, action: QuickAction): Promise<SalesOrder> {
+    const fresh = await fetchOrderDetail(source.id);
+    const currentAction = nextQuickAction(fresh, quickPermissions);
+    if (currentAction !== action) {
+      throw new Error(`Đơn ${fresh.number ?? fresh.id} đã đổi trạng thái; thao tác ${QUICK_ACTION_LABELS[action]} không còn phù hợp.`);
+    }
+
+    if (action === 'issue-stock') {
+      const version = activeVersion(fresh);
+      if (!version) throw new Error('Không tìm thấy phiên bản đơn đang hiệu lực.');
+      const fingerprint = `${fresh.revision}|${version.revision}|${String(fresh.fulfillmentStatus)}`;
+      const key = stableMutationKey(action, fresh.id, fingerprint, 'sales-manual-stock-issue');
+      const updated = await apiRequest<SalesOrder>(`/api/sales-orders/${fresh.id}/issue-stock`, {
+        method: 'POST',
+        headers: { 'Idempotency-Key': key },
+        body: JSON.stringify({ expectedRevision: version.revision }),
+      });
+      clearMutationKey(action, fresh.id);
+      return updated;
+    }
+
+    if (action === 'complete') {
+      const fingerprint = String(fresh.revision);
+      const key = stableMutationKey(action, fresh.id, fingerprint, 'manual-order-complete');
+      const updated = await apiRequest<SalesOrder>(`/api/manual-sales-orders/${fresh.id}/complete`, {
+        method: 'POST',
+        headers: { 'Idempotency-Key': key },
+        body: JSON.stringify({ expectedRevision: fresh.revision }),
+      });
+      clearMutationKey(action, fresh.id);
+      return updated;
+    }
+
+    const paidAmount = remainingAmount(fresh);
+    if (isZeroMoney(paidAmount)) throw new Error('Đơn không còn số tiền phải thu.');
+    const fingerprint = `${fresh.revision}|${paidAmount}|CASH`;
+    const key = stableMutationKey(action, fresh.id, fingerprint, 'manual-order-settlement');
+    const updated = await apiRequest<SalesOrder>(`/api/manual-sales-orders/${fresh.id}/settlement`, {
+      method: 'POST',
+      headers: { 'Idempotency-Key': key },
+      body: JSON.stringify({
+        expectedRevision: fresh.revision,
+        paidAmount,
+        paymentMethod: 'CASH',
+      }),
+    });
+    clearMutationKey(action, fresh.id);
+    return updated;
+  }
+
+  async function runRowQuickAction(order: SalesOrder, action: QuickAction) {
+    if (busyAction || bulkBusy) return;
+    setBusyAction(`${action}:${order.id}`);
+    setNotice(null);
+    try {
+      const updated = await executeQuickAction(order, action);
+      applyOrderUpdate(updated);
+      setNotice(`Đã ${QUICK_ACTION_LABELS[action].toLocaleLowerCase('vi')} đơn ${updated.number ?? ''}.`.trim());
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Không thực hiện được thao tác đơn hàng.');
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function runBulkQuickAction(action: QuickAction) {
+    if (bulkBusy || busyAction || bulkAction !== action) return;
+    const targets = selectedOrders.filter((order) => nextQuickAction(order, quickPermissions) === action);
+    if (targets.length === 0) return;
+    setBulkBusy(action);
+    setNotice(null);
+    let successCount = 0;
+    const failures: string[] = [];
+    try {
+      for (let index = 0; index < targets.length; index += 4) {
+        const chunk = targets.slice(index, index + 4);
+        const results = await Promise.all(chunk.map(async (order) => {
+          try {
+            return { updated: await executeQuickAction(order, action), error: null as string | null };
+          } catch (error) {
+            return { updated: null, error: error instanceof Error ? error.message : 'Không thực hiện được thao tác.' };
+          }
+        }));
+        for (const result of results) {
+          if (result.updated) {
+            successCount += 1;
+            applyOrderUpdate(result.updated);
+          } else if (result.error) {
+            failures.push(result.error);
+          }
+        }
+      }
+      const label = QUICK_ACTION_LABELS[action];
+      setNotice(failures.length
+        ? `Đã ${label.toLocaleLowerCase('vi')} ${successCount} đơn; ${failures.length} đơn chưa thực hiện được. ${failures[0]}`
+        : `Đã ${label.toLocaleLowerCase('vi')} ${successCount} đơn.`);
+    } finally {
+      setBulkBusy(null);
+    }
+  }
+
+  async function recordPartialSettlement(draft: PartialSettlementDraft) {
+    if (busyAction || bulkBusy) return;
+    const source = orders.find((order) => order.id === draft.orderId);
+    if (!source) return;
+    const normalizedAmount = canonicalPartialAmount(draft.amount);
+    setBusyAction(`settle-partial:${source.id}`);
+    setNotice(null);
+    try {
+      const fresh = await fetchOrderDetail(source.id);
+      if (nextQuickAction(fresh, quickPermissions) !== 'settle-full') {
+        throw new Error('Đơn đã đổi trạng thái và hiện không còn ở bước thu tiền.');
+      }
+      const debtOnly = isZeroMoney(normalizedAmount);
+      const fingerprint = `${fresh.revision}|${normalizedAmount}|${debtOnly ? 'DEBT' : draft.paymentMethod}`;
+      const key = stableMutationKey('settle-partial', fresh.id, fingerprint, 'manual-order-settlement');
+      const updated = await apiRequest<SalesOrder>(`/api/manual-sales-orders/${fresh.id}/settlement`, {
+        method: 'POST',
+        headers: { 'Idempotency-Key': key },
+        body: JSON.stringify({
+          expectedRevision: fresh.revision,
+          paidAmount: normalizedAmount,
+          ...(debtOnly ? {} : { paymentMethod: draft.paymentMethod }),
+        }),
+      });
+      clearMutationKey('settle-partial', fresh.id);
+      applyOrderUpdate(updated);
+      setPartialSettlement(null);
+      setNotice(debtOnly ? 'Đã ghi nhận nợ toàn bộ.' : `Đã ghi nhận ${formatMoney(normalizedAmount)} ₫ tiền thu.`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Không ghi nhận được tiền thu.');
+    } finally {
+      setBusyAction(null);
+    }
   }
 
   async function openDetail(order: ListOrder) {
@@ -523,11 +767,12 @@ export default function OrderManagementWorkspace() {
   }
 
   const detailVersion = activeVersion(detail);
+  const anyMutationBusy = Boolean(busyAction || bulkBusy);
 
   return (
     <AppShell
       title="Quản lý đơn hàng"
-      subtitle="Theo dõi, lọc, chọn và in đơn bán hàng"
+      subtitle="Theo dõi, lọc và thao tác nhanh trên đơn bán hàng"
       kicker="Bán hàng"
       actions={<Link className={styles.createButton} href="/sales/sales-orders">Tạo đơn bán hàng</Link>}
     >
@@ -565,7 +810,7 @@ export default function OrderManagementWorkspace() {
             <label><span>Luồng giao</span><select value={filters.lane} onChange={(event) => updateFilter('lane', event.target.value as DeliveryLane)}>{LANE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
             <label><span>Nguồn đơn</span><select value={filters.source} onChange={(event) => updateFilter('source', event.target.value as SourceFilter)}>{SOURCE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
             <div className={styles.filterActions}>
-              <button type="button" className={styles.printButton} disabled={printing || printableSelectedCount === 0 || Boolean(rangeError)} onClick={() => void printSelected()}>{printing ? 'Đang chuẩn bị in…' : `In đơn${selectedIds.size ? ` (${printableSelectedCount})` : ''}`}</button>
+              <button type="button" className={styles.printButton} disabled={printing || printableSelectedCount === 0 || Boolean(rangeError) || anyMutationBusy} onClick={() => void printSelected()}>{printing ? 'Đang chuẩn bị in…' : `In đơn${selectedIds.size ? ` (${printableSelectedCount})` : ''}`}</button>
               <button type="button" className={styles.secondaryButton} onClick={resetFilters}>Xóa bộ lọc</button>
             </div>
           </div>
@@ -582,7 +827,19 @@ export default function OrderManagementWorkspace() {
               <span>Chọn tất cả</span>
             </label>
             <span className={styles.resultCount}>{loading ? 'Đang tải đơn hàng…' : `${filteredOrders.length.toLocaleString('vi-VN')} đơn theo bộ lọc`}</span>
-            {selectedIds.size > 0 ? <strong className={styles.selectedCount}>{allFilteredSelected ? `Đã chọn ${selectedIds.size.toLocaleString('vi-VN')} đơn theo bộ lọc hiện tại` : `Đã chọn ${selectedIds.size.toLocaleString('vi-VN')} đơn`}</strong> : null}
+            {selectedIds.size > 0 ? <strong className={styles.selectedCount}>{`Đã chọn ${selectedIds.size.toLocaleString('vi-VN')} đơn`}</strong> : null}
+            {bulkAction ? (
+              <button
+                type="button"
+                className={styles.bulkButton}
+                disabled={anyMutationBusy}
+                onClick={() => void runBulkQuickAction(bulkAction)}
+              >
+                {bulkBusy === bulkAction ? 'Đang thực hiện…' : `${QUICK_ACTION_LABELS[bulkAction]} (${selectedOrders.length})`}
+              </button>
+            ) : selectedIds.size > 1 ? (
+              <small className={styles.bulkHint}>Chọn các đơn đang cùng một bước để thao tác hàng loạt.</small>
+            ) : null}
           </div>
 
           <div className={styles.tableScroll}>
@@ -597,22 +854,93 @@ export default function OrderManagementWorkspace() {
                 <th className={styles.moneyColumn}>Giá trị đơn</th>
                 <th>Xuất/chuẩn bị hàng</th>
                 <th>Giao hàng</th>
+                <th className={styles.actionColumn}>Thao tác</th>
               </tr></thead>
               <tbody>
-                {!loading && pageOrders.length === 0 ? <tr><td colSpan={9} className={styles.empty}>Không có đơn phù hợp với bộ lọc.</td></tr> : null}
-                {pageOrders.map((order) => (
-                  <tr key={order.id}>
-                    <td className={styles.checkColumn}><input type="checkbox" aria-label={`Chọn đơn ${order.number ?? order.id}`} checked={selectedIds.has(order.id)} onChange={(event) => toggleOrder(order.id, event.target.checked)} /></td>
-                    <td className={styles.orderColumn}><button type="button" className={styles.orderLink} title={order.number ?? undefined} aria-label={order.number ? `Mở đơn ${order.number}` : 'Mở đơn chưa cấp số'} onClick={() => void openDetail(order)}>{order.number ? compactOrderNumber(order.number) : 'Chưa cấp số'}</button></td>
-                    <td className={styles.dateCell}>{formatVietnamDateTime(order.createdAt)}</td>
-                    <td><strong className={styles.customerName}>{order.customerName}</strong><small className={styles.customerMeta}>{order.customerCode}</small></td>
-                    <td><span className={styles.statusBadge} data-tone={orderTone(order)}>{orderStatusLabel(order)}</span></td>
-                    <td><span className={styles.statusBadge} data-tone={paymentTone(order)}>{paymentLabel(order)}</span></td>
-                    <td className={styles.moneyColumn}>{formatMoney(orderTotal(order))} ₫</td>
-                    <td><span className={styles.statusBadge} data-tone={fulfillmentTone(order)}>{fulfillmentLabel(order)}</span></td>
-                    <td><span className={styles.laneBadge} data-lane={orderLane(order)}>{laneLabel(order)}</span><small className={styles.deliveryState} data-tone={deliveryTone(order)}>{deliveryLabels[order.deliveryStatus] ?? order.deliveryStatus}</small></td>
-                  </tr>
-                ))}
+                {!loading && pageOrders.length === 0 ? <tr><td colSpan={10} className={styles.empty}>Không có đơn phù hợp với bộ lọc.</td></tr> : null}
+                {pageOrders.map((order) => {
+                  const rowAction = nextQuickAction(order, quickPermissions);
+                  const rowBusy = busyAction?.endsWith(`:${order.id}`) === true;
+                  return (
+                    <Fragment key={order.id}>
+                      <tr>
+                        <td className={styles.checkColumn}><input type="checkbox" aria-label={`Chọn đơn ${order.number ?? order.id}`} checked={selectedIds.has(order.id)} onChange={(event) => toggleOrder(order.id, event.target.checked)} /></td>
+                        <td className={styles.orderColumn}><button type="button" className={styles.orderLink} title={order.number ?? undefined} aria-label={order.number ? `Mở đơn ${order.number}` : 'Mở đơn chưa cấp số'} onClick={() => void openDetail(order)}>{order.number ? compactOrderNumber(order.number) : 'Chưa cấp số'}</button></td>
+                        <td className={styles.dateCell}>{formatVietnamDateTime(order.createdAt)}</td>
+                        <td><strong className={styles.customerName}>{order.customerName}</strong><small className={styles.customerMeta}>{order.customerCode}</small></td>
+                        <td><span className={styles.statusBadge} data-tone={orderTone(order)}>{orderStatusLabel(order)}</span></td>
+                        <td><span className={styles.statusBadge} data-tone={paymentTone(order)}>{paymentLabel(order)}</span></td>
+                        <td className={styles.moneyColumn}>{formatMoney(orderTotal(order))} ₫</td>
+                        <td><span className={styles.statusBadge} data-tone={fulfillmentTone(order)}>{fulfillmentLabel(order)}</span></td>
+                        <td><span className={styles.laneBadge} data-lane={orderLane(order)}>{laneLabel(order)}</span><small className={styles.deliveryState} data-tone={deliveryTone(order)}>{deliveryLabels[order.deliveryStatus] ?? order.deliveryStatus}</small></td>
+                        <td className={styles.actionColumn}>
+                          {rowAction ? (
+                            <div className={styles.quickActionCell}>
+                              <button
+                                type="button"
+                                className={styles.quickPrimaryButton}
+                                disabled={anyMutationBusy}
+                                title={rowAction === 'settle-full' ? 'Ghi nhận toàn bộ số còn phải thu bằng tiền mặt' : undefined}
+                                onClick={() => void runRowQuickAction(order, rowAction)}
+                              >
+                                {rowBusy ? 'Đang xử lý…' : QUICK_ACTION_LABELS[rowAction]}
+                              </button>
+                              {rowAction === 'settle-full' ? (
+                                <button
+                                  type="button"
+                                  className={styles.quickSecondaryButton}
+                                  disabled={anyMutationBusy}
+                                  onClick={() => setPartialSettlement((current) => current?.orderId === order.id ? null : {
+                                    orderId: order.id,
+                                    amount: '',
+                                    paymentMethod: 'CASH',
+                                  })}
+                                >Thu khác</button>
+                              ) : null}
+                            </div>
+                          ) : <span className={styles.actionDone}>—</span>}
+                        </td>
+                      </tr>
+                      {partialSettlement?.orderId === order.id ? (
+                        <tr className={styles.quickSettlementRow}>
+                          <td colSpan={10}>
+                            <div className={styles.quickSettlementPanel}>
+                              <span>Còn phải thu <strong>{formatMoney(remainingAmount(order))} ₫</strong></span>
+                              <label>
+                                <span>Số tiền thực thu</span>
+                                <input
+                                  inputMode="numeric"
+                                  value={formatVndInput(partialSettlement.amount)}
+                                  placeholder="Nhập 0 nếu ghi nợ toàn bộ"
+                                  onChange={(event) => setPartialSettlement({
+                                    ...partialSettlement,
+                                    amount: event.target.value.replace(/\D/g, ''),
+                                  })}
+                                />
+                              </label>
+                              <label>
+                                <span>Hình thức nhận tiền</span>
+                                <select
+                                  value={partialSettlement.paymentMethod}
+                                  disabled={isZeroMoney(canonicalPartialAmount(partialSettlement.amount))}
+                                  onChange={(event) => setPartialSettlement({
+                                    ...partialSettlement,
+                                    paymentMethod: event.target.value as 'CASH' | 'BANK_TRANSFER',
+                                  })}
+                                >
+                                  <option value="CASH">Tiền mặt</option>
+                                  <option value="BANK_TRANSFER">Chuyển khoản</option>
+                                </select>
+                              </label>
+                              <button type="button" className={styles.quickPrimaryButton} disabled={anyMutationBusy || partialSettlement.amount.trim() === ''} onClick={() => void recordPartialSettlement(partialSettlement)}>Xác nhận</button>
+                              <button type="button" className={styles.quickSecondaryButton} disabled={anyMutationBusy} onClick={() => setPartialSettlement(null)}>Đóng</button>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : null}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
