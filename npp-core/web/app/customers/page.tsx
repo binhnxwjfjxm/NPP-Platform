@@ -1,6 +1,7 @@
 import CustomerWorkspace from './customer-workspace';
 import CustomerBulkTabsLauncher from './customer-bulk-tabs-launcher';
 import CustomerMediaLauncher from './customer-media-launcher';
+import CustomerDetailLinkLayer from './customer-detail-link-layer';
 import type { Customer, CustomerGroup } from '../../lib/customer-types';
 import { listVietnamProvinces } from '../../lib/vietnam-administrative-data';
 import {
@@ -16,7 +17,7 @@ export default async function CustomersPage() {
   const requestId = resolveCustomerRequestId(null);
   let initialCustomers: Customer[] = [];
   let initialGroups: CustomerGroup[] = [];
-  let initialProvinces = listVietnamProvinces();
+  const initialProvinces = listVietnamProvinces();
   let initialError: string | null = null;
 
   try {
@@ -36,6 +37,7 @@ export default async function CustomersPage() {
         initialProvinces={initialProvinces}
         initialError={initialError}
       />
+      <CustomerDetailLinkLayer customers={initialCustomers} />
       <CustomerBulkTabsLauncher />
       <CustomerMediaLauncher customers={initialCustomers} />
     </>
