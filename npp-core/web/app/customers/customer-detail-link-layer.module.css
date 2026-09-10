@@ -1,0 +1,39 @@
+:global([data-testid^='customer-row-'] td:nth-child(2) > div) {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+:global([data-testid^='customer-row-'] td:nth-child(2) > div > span:first-of-type) {
+  position: relative;
+  order: -2;
+  display: inline-block;
+  width: fit-content;
+  color: var(--hp-primary-strong, #213f7d);
+  font-size: 0.88rem;
+  font-weight: 760;
+}
+
+:global([data-testid^='customer-row-'] td:nth-child(2) > div > strong:first-child) {
+  order: -1;
+  color: var(--hp-muted, #7a8492);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.overlayLink {
+  position: absolute;
+  inset: -3px -5px;
+  z-index: 1;
+  border-radius: 6px;
+  text-decoration: none;
+}
+
+.overlayLink:hover {
+  background: rgba(37, 99, 235, 0.06);
+}
+
+.overlayLink:focus-visible {
+  outline: 2px solid var(--hp-primary, #2563eb);
+  outline-offset: 2px;
+}
