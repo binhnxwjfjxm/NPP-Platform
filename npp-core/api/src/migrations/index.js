@@ -110,6 +110,7 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   migration('126_inventory_adjustment_self_approval_permission', 'shared/126_inventory_adjustment_self_approval_permission.sql'),
   migration('127_document_print_template_header_layout', 'shared/127_document_print_template_header_layout.sql'),
   migration('128_inventory_adjustment_unassigned_location', 'inventory/128_inventory_adjustment_unassigned_location.sql'),
+  migration('129_inventory_adjustment_self_approval_contract', 'inventory/129_inventory_adjustment_self_approval_contract.sql'),
 ]);
 
 export { runMigrations };
