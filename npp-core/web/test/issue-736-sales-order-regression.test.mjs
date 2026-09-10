@@ -7,21 +7,28 @@ const wrapperPath = fileURLToPath(new URL('../app/sales/sales-orders/SalesOrderF
 const formPath = fileURLToPath(new URL('../app/sales/sales-orders/SalesOrderCommercialForm.tsx', import.meta.url));
 const uiPath = fileURLToPath(new URL('../app/sales/sales-orders/sales-order-ui.ts', import.meta.url));
 
-test('Issue #736 restores VND manual prices from decimal API strings without dropping commercial metadata', async () => {
-  const [wrapper, form] = await Promise.all([
+test('Issue #736 restores VND manual prices through the canonical decimal contract', async () => {
+  const [wrapper, form, ui] = await Promise.all([
     readFile(wrapperPath, 'utf8'),
     readFile(formPath, 'utf8'),
+    readFile(uiPath, 'utf8'),
   ]);
 
-  assert.match(wrapper, /export function normalizeVndMinor/);
+  assert.match(wrapper, /canonicalVndMinorString/);
+  assert.match(wrapper, /canonicalDecimalString/);
   assert.match(wrapper, /baseUnitPrice: normalizeVndMinor\(line\.baseUnitPrice\)/);
   assert.match(wrapper, /systemUnitPrice: normalizeVndMinor\(line\.systemUnitPrice\)/);
   assert.match(wrapper, /unitPrice: normalizeVndMinor\(line\.unitPrice\)/);
-  assert.match(wrapper, /fraction && \/\[1-9\]\//);
   assert.match(form, /manualUnitPriceMinor: line\.priceSource === 'MANUAL_OVERRIDE' \? line\.unitPrice : ''/);
   assert.match(form, /discountMode: documentDiscountActive \? 'TOTAL_AMOUNT' : line\.discountMode/);
   assert.match(form, /pricingFingerprint: resolutionFingerprint\(line\.pricingTrace \?\? \[\]\)/);
   assert.match(form, /const price = \/\^\\d\+\$\/\.test\(finalUnitPrice\(line\)\) \? BigInt\(finalUnitPrice\(line\)\) : 0n/);
+  assert.match(ui, /export function withCanonicalSalesOrderNumbers/);
+  assert.match(ui, /'manualUnitPriceMinor'/);
+  assert.match(ui, /'expectedSystemUnitPriceMinor'/);
+  assert.match(ui, /canonicalVndMinorString\(value\)/);
+  assert.match(ui, /canonicalDecimalString\(value, \{ allowNegative: false \}\)/);
+  assert.match(ui, /const requestInit = withCanonicalSalesOrderNumbers\(path, previewInit\)/);
 });
 
 test('Issue #736 makes missing Công Ty price a preview business state while preserving save price guards', async () => {

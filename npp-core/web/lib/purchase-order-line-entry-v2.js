@@ -1,3 +1,5 @@
+import { canonicalDecimalString } from '@npp/contracts';
+
 const SCALE = 1_000_000n;
 const ONE_HUNDRED_PERCENT = 100n * SCALE;
 const DECIMAL_PATTERN = /^\d{1,14}(?:\.(\d{1,6}))?$/;
@@ -17,10 +19,7 @@ export function normalizeDecimalForApi(value) {
   const normalized = raw.replace(',', '.');
   if (normalized === '.' || normalized.endsWith('.')) return null;
   if (!DECIMAL_PATTERN.test(normalized)) return null;
-  const [integer, fraction = ''] = normalized.split('.');
-  const cleanInteger = integer.replace(/^0+(?=\d)/, '') || '0';
-  const cleanFraction = fraction.replace(/0+$/, '');
-  return cleanFraction ? `${cleanInteger}.${cleanFraction}` : cleanInteger;
+  return canonicalDecimalString(normalized, { allowNegative: false });
 }
 
 export function isSafeDecimalIntermediate(value) {

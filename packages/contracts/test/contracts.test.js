@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  canonicalDecimalString,
+  canonicalVndMinorString,
   createErrorEnvelope,
   createIdempotencyKey,
   createSuccessEnvelope,
@@ -40,6 +42,25 @@ test('creates an error envelope', () => {
     details: { field: 'authorization' },
     retryable: false,
   });
+});
+
+test('canonical decimal contract removes storage padding without using float conversion', () => {
+  assert.equal(canonicalDecimalString('0.000000'), '0');
+  assert.equal(canonicalDecimalString('00018.000000'), '18');
+  assert.equal(canonicalDecimalString('1.250000'), '1.25');
+  assert.equal(canonicalDecimalString('-0.000000'), '0');
+  assert.equal(canonicalDecimalString('-12.340000'), '-12.34');
+  assert.equal(canonicalDecimalString('12345678901234567890.000000000001'), '12345678901234567890.000000000001');
+  assert.equal(canonicalDecimalString('-1', { allowNegative: false }), null);
+  assert.equal(canonicalDecimalString('1,25'), null);
+});
+
+test('canonical VND contract accepts whole đồng even when PostgreSQL pads decimal zeroes', () => {
+  assert.equal(canonicalVndMinorString('0.000000'), '0');
+  assert.equal(canonicalVndMinorString('035027.000000'), '35027');
+  assert.equal(canonicalVndMinorString('35027'), '35027');
+  assert.equal(canonicalVndMinorString('35027.100000'), null);
+  assert.equal(canonicalVndMinorString('-1.000000'), null);
 });
 
 test('idempotency contract accepts only the canonical 1..128 key language', () => {

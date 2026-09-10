@@ -1,5 +1,6 @@
 'use client';
 
+import { canonicalDecimalString, canonicalVndMinorString } from '@npp/contracts';
 import { useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
 import { createPortal } from 'react-dom';
 import type { SalesOrder, SalesOrderVersion } from '../../../lib/sales-order-types';
@@ -13,18 +14,12 @@ type SalesOrderFormProps = ComponentProps<typeof SalesOrderCommercialForm>;
 
 export function normalizeVndMinor(value: string | number | null | undefined): string {
   const normalized = String(value ?? '').trim();
-  const match = /^(0|[1-9]\d{0,18})(?:\.(\d{1,6}))?$/.exec(normalized);
-  if (!match) return normalized;
-  const fraction = match[2] ?? '';
-  return fraction && /[1-9]/.test(fraction) ? normalized : match[1];
+  return canonicalVndMinorString(normalized) ?? normalized;
 }
 
 export function normalizeEditableDecimal(value: string | number | null | undefined): string {
   const normalized = String(value ?? '').trim();
-  const match = /^(0|[1-9]\d{0,18})(?:\.(\d{1,6}))?$/.exec(normalized);
-  if (!match) return normalized;
-  const fraction = (match[2] ?? '').replace(/0+$/, '');
-  return fraction ? `${match[1]}.${fraction}` : match[1];
+  return canonicalDecimalString(normalized, { allowNegative: false }) ?? normalized;
 }
 
 export function normalizeVersionForEditing(

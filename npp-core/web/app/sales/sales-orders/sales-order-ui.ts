@@ -1,4 +1,8 @@
-import { createIdempotencyKey } from '@npp/contracts';
+import {
+  canonicalDecimalString,
+  canonicalVndMinorString,
+  createIdempotencyKey,
+} from '@npp/contracts';
 import { formatExactDecimal } from '../../../lib/decimal-display.js';
 import type { SalesOrder, SalesOrderVersion } from '../../../lib/sales-order-types';
 
@@ -84,6 +88,58 @@ function isConfirm(path: string, method: string): boolean {
     || /^\/api\/sales-orders\/[^/]+\/amendments\/[^/]+\/confirm$/.test(path);
 }
 
+const SALES_ORDER_VND_FIELDS = new Set([
+  'manualUnitPriceMinor',
+  'expectedSystemUnitPriceMinor',
+  'baseUnitPriceMinor',
+  'systemUnitPriceMinor',
+  'finalUnitPriceMinor',
+]);
+
+const SALES_ORDER_DECIMAL_FIELDS = new Set([
+  'quantity',
+  'taxRate',
+  'discountValue',
+  'documentDiscountValue',
+  'conversionToBase',
+]);
+
+function canonicalizeSalesOrderNumber(value: unknown, fieldName?: string): unknown {
+  if (fieldName && SALES_ORDER_VND_FIELDS.has(fieldName)) {
+    return canonicalVndMinorString(value) ?? value;
+  }
+  if (fieldName && SALES_ORDER_DECIMAL_FIELDS.has(fieldName)) {
+    return canonicalDecimalString(value, { allowNegative: false }) ?? value;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => canonicalizeSalesOrderNumber(item));
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .map(([key, item]) => [key, canonicalizeSalesOrderNumber(item, key)]),
+    );
+  }
+  return value;
+}
+
+export function withCanonicalSalesOrderNumbers(path: string, init: RequestInit): RequestInit {
+  const method = methodOf(init);
+  const isPricingPreview = path === '/api/pricing/resolve' && method === 'POST';
+  if ((!isDraftSave(path, method) && !isPricingPreview) || typeof init.body !== 'string') {
+    return init;
+  }
+  try {
+    const body = JSON.parse(init.body) as Record<string, unknown>;
+    return {
+      ...init,
+      body: JSON.stringify(canonicalizeSalesOrderNumber(body)),
+    };
+  } catch {
+    return init;
+  }
+}
+
 function withMissingBasePricePreview(path: string, init: RequestInit): RequestInit {
   if (path !== '/api/pricing/resolve' || methodOf(init) !== 'POST' || typeof init.body !== 'string') {
     return init;
@@ -135,8 +191,9 @@ export function draftRecoveryTarget(
 }
 
 export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
-  validateDraftDiscountIntent(path, init);
-  const requestInit = withMissingBasePricePreview(path, init);
+  const previewInit = withMissingBasePricePreview(path, init);
+  const requestInit = withCanonicalSalesOrderNumbers(path, previewInit);
+  validateDraftDiscountIntent(path, requestInit);
   const requestMethod = methodOf(requestInit);
   const response = await fetch(path, {
     ...requestInit,
