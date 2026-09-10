@@ -298,7 +298,12 @@ function normalizeCreatePayload(payload) {
     const destinationLocationId = text(input.destinationLocationId, 64);
     const sourceVariantId = text(input.sourceVariantId, 64);
     const lotId = text(input.lotId, 64);
-    if (!isUuid(sourceLocationId)) return failure('INVALID_SOURCE_LOCATION_ID', `Line ${index + 1} sourceLocationId is invalid`);
+    if (sourceLocationId && !isUuid(sourceLocationId)) {
+      return failure('INVALID_SOURCE_LOCATION_ID', `Line ${index + 1} sourceLocationId is invalid`);
+    }
+    if (!sourceLocationId && !(documentKind === 'MANUAL_ADJUSTMENT' && adjustmentDirection === 'OUT')) {
+      return failure('SOURCE_LOCATION_REQUIRED', `Dòng ${index + 1}: Cần chọn Vị trí cho điều chỉnh này.`);
+    }
     if (destinationLocationId && !isUuid(destinationLocationId)) {
       return failure('INVALID_DESTINATION_LOCATION_ID', `Line ${index + 1} destinationLocationId is invalid`);
     }
@@ -310,7 +315,7 @@ function normalizeCreatePayload(payload) {
     if (!TRANSFER_KINDS.has(documentKind) && destinationLocationId) {
       return failure('DESTINATION_LOCATION_NOT_ALLOWED', `Line ${index + 1} destinationLocationId is not allowed`);
     }
-    if (destinationLocationId === sourceLocationId) {
+    if (destinationLocationId && destinationLocationId === sourceLocationId) {
       return failure('SAME_LOCATION_TRANSFER_DENIED', `Line ${index + 1} source and destination must differ`);
     }
     const quantity = parsePositiveQuantity(input.quantity, `lines[${index}].quantity`);

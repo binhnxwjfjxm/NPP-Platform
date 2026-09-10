@@ -6,6 +6,7 @@ const QUANTITY_PATTERN = /^(?:0|[1-9]\d{0,13})(?:\.\d{1,6})?$/;
 const SCALE_6 = 1_000_000n;
 const SCALE_12 = 1_000_000_000_000n;
 const MAX_ROWS = 200;
+const UNASSIGNED_LOCATION_CODE = 'KHÔNG VỊ TRÍ';
 
 function failure(code, message, details = {}, retryable = false) {
   return Object.freeze({ ok: false, code, message, details, retryable });
@@ -173,28 +174,49 @@ async function loadBalanceMap(client, installationId, warehouseId, baseVariantId
   const result = await client.query(
     `WITH requested AS (
        SELECT unnest($3::uuid[]) AS base_variant_id
+     ), location_scopes AS (
+       SELECT requested.base_variant_id,
+              location.id AS location_id,
+              location.code AS location_code,
+              location.name AS location_name,
+              balance.lot_id,
+              lot.lot_code,
+              COALESCE(balance.on_hand_quantity, 0)::numeric(30,12) AS on_hand_quantity
+         FROM requested
+         JOIN shared.warehouse_locations location
+           ON location.installation_id = $1
+          AND location.warehouse_id = $2
+          AND location.is_active = true
+         LEFT JOIN inventory.inventory_balances balance
+           ON balance.installation_id = $1
+          AND balance.warehouse_id = $2
+          AND balance.base_variant_id = requested.base_variant_id
+          AND balance.location_id = location.id
+         LEFT JOIN inventory.inventory_lots lot
+           ON lot.installation_id = $1
+          AND lot.id = balance.lot_id
+     ), unassigned_scopes AS (
+       SELECT requested.base_variant_id,
+              NULL::uuid AS location_id,
+              NULL::text AS location_code,
+              NULL::text AS location_name,
+              balance.lot_id,
+              lot.lot_code,
+              balance.on_hand_quantity::numeric(30,12) AS on_hand_quantity
+         FROM requested
+         JOIN inventory.inventory_balances balance
+           ON balance.installation_id = $1
+          AND balance.warehouse_id = $2
+          AND balance.base_variant_id = requested.base_variant_id
+          AND balance.location_id IS NULL
+         LEFT JOIN inventory.inventory_lots lot
+           ON lot.installation_id = $1
+          AND lot.id = balance.lot_id
      )
-     SELECT requested.base_variant_id,
-            location.id AS location_id,
-            location.code AS location_code,
-            location.name AS location_name,
-            balance.lot_id,
-            lot.lot_code,
-            COALESCE(balance.on_hand_quantity, 0)::numeric(30,12) AS on_hand_quantity
-       FROM requested
-       JOIN shared.warehouse_locations location
-         ON location.installation_id = $1
-        AND location.warehouse_id = $2
-        AND location.is_active = true
-       LEFT JOIN inventory.inventory_balances balance
-         ON balance.installation_id = $1
-        AND balance.warehouse_id = $2
-        AND balance.base_variant_id = requested.base_variant_id
-        AND balance.location_id = location.id
-       LEFT JOIN inventory.inventory_lots lot
-         ON lot.installation_id = $1
-        AND lot.id = balance.lot_id
-      ORDER BY requested.base_variant_id, location.code, lot.lot_code NULLS FIRST`,
+     SELECT * FROM location_scopes
+     UNION ALL
+     SELECT * FROM unassigned_scopes
+     ORDER BY base_variant_id, location_code NULLS FIRST, lot_code NULLS FIRST`,
     [installationId, warehouseId, baseVariantIds],
   );
   const map = new Map();
@@ -243,11 +265,33 @@ function sameCode(left, right) {
   return String(left ?? '').trim().toUpperCase() === String(right ?? '').trim().toUpperCase();
 }
 
+function candidateLocationCode(candidate) {
+  const locationCode = String(candidate?.location_code ?? '').trim().toUpperCase();
+  if (locationCode) return locationCode;
+  return candidate?.location_id === null ? UNASSIGNED_LOCATION_CODE : null;
+}
+
+function matchesLocation(candidate, locationCode) {
+  return sameCode(candidateLocationCode(candidate), locationCode);
+}
+
+function uniqueLocationCodes(candidates) {
+  const seen = new Set();
+  const values = [];
+  for (const candidate of candidates ?? []) {
+    const value = candidateLocationCode(candidate);
+    if (!value || seen.has(value)) continue;
+    seen.add(value);
+    values.push(value);
+  }
+  return values;
+}
+
 function scopeOptions(candidates) {
   const seen = new Set();
   const options = [];
   for (const candidate of candidates ?? []) {
-    const locationCode = String(candidate.location_code ?? '').trim().toUpperCase();
+    const locationCode = candidateLocationCode(candidate);
     if (!locationCode) continue;
     const lotCode = candidate.lot_code ? String(candidate.lot_code).trim().toUpperCase() : null;
     const key = `${locationCode}\u001f${lotCode ?? ''}`;
@@ -286,7 +330,7 @@ function resolveScopeSelection(row, source, balanceCandidates = []) {
   let lotAutoFilled = false;
 
   if (!locationCode) {
-    const locationCodes = uniqueCodes(candidates, 'location_code');
+    const locationCodes = uniqueLocationCodes(candidates);
     if (locationCodes.length === 1) {
       [locationCode] = locationCodes;
       locationAutoFilled = true;
@@ -295,7 +339,7 @@ function resolveScopeSelection(row, source, balanceCandidates = []) {
 
   if (lotRequired && !lotCode) {
     const lotCandidates = locationCode
-      ? candidates.filter((item) => sameCode(item.location_code, locationCode))
+      ? candidates.filter((item) => matchesLocation(item, locationCode))
       : candidates;
     const lotCodes = uniqueCodes(lotCandidates, 'lot_code');
     if (lotCodes.length === 1) {
@@ -305,7 +349,7 @@ function resolveScopeSelection(row, source, balanceCandidates = []) {
   }
 
   let filteredCandidates = candidates;
-  if (locationCode) filteredCandidates = filteredCandidates.filter((item) => sameCode(item.location_code, locationCode));
+  if (locationCode) filteredCandidates = filteredCandidates.filter((item) => matchesLocation(item, locationCode));
   if (lotCode) filteredCandidates = filteredCandidates.filter((item) => sameCode(item.lot_code, lotCode));
 
   return Object.freeze({
@@ -441,7 +485,9 @@ async function prepareBulkAdjustment(client, { requestContext, payload, lockScop
       client,
       requestContext.installationId,
       normalized.warehouseId,
-      [...new Set(normalized.rows.map((row) => row.locationCode).filter(Boolean))],
+      [...new Set(normalized.rows
+        .map((row) => row.locationCode)
+        .filter((code) => code && code !== UNASSIGNED_LOCATION_CODE))],
     ),
     loadLotMap(
       client,
@@ -506,7 +552,7 @@ async function prepareBulkAdjustment(client, { requestContext, payload, lockScop
         });
       }
 
-      if (!scope && row.locationCode && !locationMap.get(row.locationCode)) {
+      if (!scope && row.locationCode && row.locationCode !== UNASSIGNED_LOCATION_CODE && !locationMap.get(row.locationCode)) {
         rowErrors.push({ code: 'LOCATION_NOT_FOUND', message: `Dòng ${row.lineNumber}: Không tìm thấy Vị trí ${row.locationCode} trong kho đã chọn.` });
       }
       if (!scope && row.lotCode && !lotMap.get(`${source.base_variant_id}\u001f${row.lotCode}`)) {
@@ -516,7 +562,8 @@ async function prepareBulkAdjustment(client, { requestContext, payload, lockScop
       if (!scope
           && !selection.requiresLotSelection
           && !selection.requiresLocationSelection
-          && selection.locationCode) {
+          && selection.locationCode
+          && selection.locationCode !== UNASSIGNED_LOCATION_CODE) {
         const location = locationMap.get(selection.locationCode) ?? null;
         const lot = selection.lotCode
           ? (lotMap.get(`${source.base_variant_id}\u001f${selection.lotCode}`) ?? null)
@@ -569,13 +616,13 @@ async function prepareBulkAdjustment(client, { requestContext, payload, lockScop
 
   const scopeCounts = new Map();
   for (const row of resolved) {
-    if (!row.source?.base_variant_id || !row.scope?.location_id) continue;
-    const key = [row.source.base_variant_id, row.scope.location_id, row.scope.lot_id ?? ''].join('\u001f');
+    if (!row.source?.base_variant_id || !row.scope) continue;
+    const key = [row.source.base_variant_id, row.scope.location_id ?? '<UNASSIGNED>', row.scope.lot_id ?? ''].join('\u001f');
     scopeCounts.set(key, (scopeCounts.get(key) ?? 0) + 1);
   }
   for (const row of resolved) {
-    if (!row.source?.base_variant_id || !row.scope?.location_id) continue;
-    const key = [row.source.base_variant_id, row.scope.location_id, row.scope.lot_id ?? ''].join('\u001f');
+    if (!row.source?.base_variant_id || !row.scope) continue;
+    const key = [row.source.base_variant_id, row.scope.location_id ?? '<UNASSIGNED>', row.scope.lot_id ?? ''].join('\u001f');
     if ((scopeCounts.get(key) ?? 0) > 1) {
       row.errors.push({
         code: 'DUPLICATE_STOCK_SCOPE',
@@ -587,10 +634,10 @@ async function prepareBulkAdjustment(client, { requestContext, payload, lockScop
   let lockedByLine = new Map();
   if (lockScopes) {
     const scopes = resolved
-      .filter((row) => row.errors.length === 0 && row.scope?.location_id && row.source?.base_variant_id)
+      .filter((row) => row.errors.length === 0 && row.scope && row.source?.base_variant_id)
       .map((row) => ({
         scope_key: `bulk_${row.lineNumber}`,
-        location_id: row.scope.location_id,
+        location_id: row.scope.location_id ?? null,
         base_variant_id: row.source.base_variant_id,
         lot_id: row.scope.lot_id ?? null,
       }));
@@ -608,7 +655,7 @@ async function prepareBulkAdjustment(client, { requestContext, payload, lockScop
   const previewRows = resolved.map((row) => {
     let currentScaled12 = row.scope ? parseScaled(row.scope.on_hand_quantity ?? '0', 12) : 0n;
     if (row.errors.length > 0) currentScaled12 = row.scope ? currentScaled12 : null;
-    if (lockScopes && row.scope?.location_id && row.errors.length === 0) {
+    if (lockScopes && row.scope && row.errors.length === 0) {
       const locked = lockedByLine.get(row.lineNumber);
       if (!locked) {
         row.errors.push({ code: 'STOCK_SCOPE_CHANGED', message: `Dòng ${row.lineNumber}: Phạm vi tồn vừa thay đổi. Hãy kiểm tra lại file.` });
@@ -619,6 +666,13 @@ async function prepareBulkAdjustment(client, { requestContext, payload, lockScop
     }
     const source = row.source;
     const mapped = previewRow(row, source, row.scope, currentScaled12);
+    if (row.scope && row.scope.location_id === null && mapped.direction === 'IN' && mapped.status === 'READY') {
+      mapped.errors.push({
+        code: 'UNASSIGNED_LOCATION_INCREASE_DENIED',
+        message: `Dòng ${row.lineNumber}: “Không vị trí” chỉ dùng để giảm hoặc đưa tồn cũ về 0. Muốn tăng tồn, hãy chọn một Vị trí cụ thể.`,
+      });
+      mapped.status = 'NEEDS_ATTENTION';
+    }
     if (!row.scope && mapped.direction !== 'NONE' && mapped.status === 'READY') {
       mapped.errors.push({ code: 'STOCK_SCOPE_NOT_FOUND', message: `Dòng ${row.lineNumber}: Chưa xác định được Lô/Vị trí để lập phiếu.` });
       mapped.status = 'NEEDS_ATTENTION';
@@ -708,9 +762,11 @@ export async function confirmBulkAdjustment(client, { requestContext, payload })
 
 export const inventoryAdjustmentBulkInternals = Object.freeze({
   MAX_ROWS,
+  UNASSIGNED_LOCATION_CODE,
   parseScaled,
   formatScaled,
   normalizeBulkRows,
+  candidateLocationCode,
   resolveScopeSelection,
   canonicalQuantityForDelta,
 });
