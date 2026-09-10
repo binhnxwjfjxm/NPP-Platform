@@ -139,3 +139,18 @@ test('phiếu điều chỉnh chỉ tự duyệt khi Role có quyền, riêng Ow
   assert.equal(canApproveOwn({ roles: ['system:security-owner'], permissions: [] }), true);
   assert.equal(canApproveOwn({ roles: ['system:implementation-owner'], permissions: [] }), true);
 });
+
+test('migration 129 gỡ luật DB cũ chặn Owner tự duyệt nhưng không mở quyền ở service', () => {
+  const migration = CORE_API_MIGRATIONS.find(
+    ({ id }) => id === '129_inventory_adjustment_owner_self_approval',
+  );
+  assert.ok(migration);
+  assert.match(
+    migration.sql,
+    /DROP CONSTRAINT IF EXISTS inventory_adjustments_creator_approver_separation_ck/,
+  );
+
+  const canApproveOwn = inventoryAdjustmentInternals.canApproveOwnAdjustment;
+  assert.equal(canApproveOwn({ roles: [], permissions: [] }), false);
+  assert.equal(canApproveOwn({ roles: ['system:implementation-owner'], permissions: [] }), true);
+});
