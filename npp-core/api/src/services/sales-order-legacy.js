@@ -532,6 +532,62 @@ function priceProvenance(resolution) {
   };
 }
 
+function commercialAppliedPrice(requestContext, input, lineNumber) {
+  if (requestContext?.commercialPricingBoundary !== true) {
+    return { ok: true, supplied: false, unitPriceMinor: null, source: null, manualReason: null };
+  }
+  const applied = input?.commercialAppliedPrice;
+  if (!applied || typeof applied !== 'object' || Array.isArray(applied)) {
+    return failure(
+      'SALES_ORDER_APPLIED_PRICE_REQUIRED',
+      'Không xác định được giá đã áp dụng cho dòng hàng.',
+      false,
+      { line: lineNumber },
+    );
+  }
+  const unitPriceMinor = String(applied.unitPriceMinor ?? '').trim();
+  if (!MONEY_PATTERN.test(unitPriceMinor)) {
+    return failure(
+      'SALES_ORDER_APPLIED_PRICE_INVALID',
+      'Giá đã áp dụng cho dòng hàng không hợp lệ.',
+      false,
+      { line: lineNumber },
+    );
+  }
+  const source = String(applied.source ?? '').trim().toUpperCase();
+  if (source !== 'PRICE_ENGINE' && source !== 'MANUAL_OVERRIDE') {
+    return failure(
+      'SALES_ORDER_APPLIED_PRICE_SOURCE_INVALID',
+      'Nguồn giá đã áp dụng cho dòng hàng không hợp lệ.',
+      false,
+      { line: lineNumber },
+    );
+  }
+  const rawReason = String(applied.manualReason ?? '').trim();
+  if (rawReason.length > 500) {
+    return failure(
+      'PRICE_OVERRIDE_REASON_INVALID',
+      'Lý do điều chỉnh giá không được vượt quá 500 ký tự.',
+      false,
+      { line: lineNumber },
+    );
+  }
+  if (source === 'PRICE_ENGINE' && rawReason) {
+    return failure(
+      'SALES_ORDER_APPLIED_PRICE_REASON_INVALID',
+      'Giá hệ thống không được mang lý do điều chỉnh giá.',
+      false,
+      { line: lineNumber },
+    );
+  }
+  return {
+    ok: true,
+    supplied: true,
+    unitPriceMinor,
+    source,
+    manualReason: source === 'MANUAL_OVERRIDE' ? (rawReason || null) : null,
+  };
+}
 async function prepareLines(client, { requestContext, header, payload }) {
   if (!Array.isArray(payload?.lines) || payload.lines.length < 1 || payload.lines.length > 1000) {
     return failure('INVALID_LINES', 'Sales order must contain between 1 and 1000 lines');
@@ -559,7 +615,16 @@ async function prepareLines(client, { requestContext, header, payload }) {
     if (!weightSnapshot.ok) return failure('SKU_WEIGHT_INVALID', 'Khối lượng SKU không hợp lệ; hãy cập nhật Danh mục sản phẩm.', false, { line: index + 1 });
     if (!variant.allows_fractional && quantity % SCALE !== 0n) return failure('FRACTIONAL_QUANTITY_NOT_ALLOWED', 'Selected unit does not allow fractional quantity', false, { line: index + 1 });
 
-    const manualPrice = input.manualUnitPriceMinor === undefined || input.manualUnitPriceMinor === null || input.manualUnitPriceMinor === ''
+    const appliedPrice = commercialAppliedPrice(requestContext, input, index + 1);
+  if (!appliedPrice.ok) return appliedPrice;
+
+  let manualPrice;
+  if (appliedPrice.supplied) {
+    manualPrice = appliedPrice.source === 'MANUAL_OVERRIDE'
+      ? appliedPrice.unitPriceMinor
+      : null;
+  } else {
+    manualPrice = input.manualUnitPriceMinor === undefined || input.manualUnitPriceMinor === null || input.manualUnitPriceMinor === ''
       ? null
       : String(input.manualUnitPriceMinor).trim();
     if (manualPrice !== null && !hasPermission(requestContext, 'core.sales-order.price.override')) {
@@ -568,11 +633,27 @@ async function prepareLines(client, { requestContext, header, payload }) {
     if (manualPrice !== null && !MONEY_PATTERN.test(manualPrice)) {
       return failure('INVALID_MONEY', 'Manual unit price must be a non-negative VND amount', false, { line: index + 1 });
     }
-    const manualReason = manualPrice === null ? null : text(input.manualReason, 500, true);
-    if (manualPrice !== null && !manualReason) return failure('PRICE_OVERRIDE_REASON_REQUIRED', 'Price override reason is required', false, { line: index + 1 });
-    if (manualReason) priceOverrideReason = priceOverrideReason ? `${priceOverrideReason}; ${manualReason}` : manualReason;
+  }
 
-    let price = await pricingService.resolvePrice(client, {
+  const manualReason = appliedPrice.supplied
+    ? appliedPrice.manualReason
+    : (manualPrice === null ? null : text(input.manualReason, 500, true));
+  if (!appliedPrice.supplied && manualPrice !== null && !manualReason) {
+    return failure('PRICE_OVERRIDE_REASON_REQUIRED', 'Price override reason is required', false, { line: index + 1 });
+  }
+  if (manualReason) priceOverrideReason = priceOverrideReason ? `${priceOverrideReason}; ${manualReason}` : manualReason;
+
+  let price;
+  if (appliedPrice.supplied) {
+    price = {
+      ok: true,
+      resolution: {
+        finalUnitPriceMinor: appliedPrice.unitPriceMinor,
+        steps: [],
+      },
+    };
+  } else {
+    price = await pricingService.resolvePrice(client, {
       installationId: requestContext.installationId,
       payload: {
         variantId: input.variantId,
@@ -589,15 +670,16 @@ async function prepareLines(client, { requestContext, header, payload }) {
       price = {
         ok: true,
         resolution: {
-          finalUnitPriceMinor: manualPrice,
-          steps: [
-            { kind: 'SKIPPED', reason: 'BASE_PRICE_NOT_FOUND' },
-            { kind: 'MANUAL_OVERRIDE', reason: manualReason, afterUnitPriceMinor: manualPrice },
-          ],
+finalUnitPriceMinor: manualPrice,
+steps: [
+  { kind: 'SKIPPED', reason: 'BASE_PRICE_NOT_FOUND' },
+  { kind: 'MANUAL_OVERRIDE', reason: manualReason, afterUnitPriceMinor: manualPrice },
+],
         },
       };
     }
     if (!price.ok) return failure(price.code, price.message, price.retryable, { line: index + 1 });
+  }
     const unitPriceMinor = BigInt(price.resolution.finalUnitPriceMinor);
     const grossMinor = halfUp(quantity * unitPriceMinor, SCALE);
 
@@ -635,7 +717,9 @@ async function prepareLines(client, { requestContext, header, payload }) {
       lineSubtotalMinor = grossMinor - taxMinor;
       lineTotalMinor = discountedMinor;
     }
-    const provenance = priceProvenance(price.resolution);
+    const provenance = appliedPrice.supplied
+      ? { priceListId: null, priceRuleId: null }
+      : priceProvenance(price.resolution);
     const baseQuantity = halfUp(quantity * conversion, SCALE);
     lines.push({
       lineNumber: index + 1,
@@ -649,9 +733,9 @@ async function prepareLines(client, { requestContext, header, payload }) {
       baseQuantity: formatScaled(baseQuantity),
       unitWeightKg: weightSnapshot.unitWeightKg,
       lineWeightKg: weightSnapshot.lineWeightKg,
-      priceListId: manualPrice === null ? provenance.priceListId : null,
-      priceRuleId: manualPrice === null ? provenance.priceRuleId : null,
-      priceSource: manualPrice === null ? 'PRICE_ENGINE' : 'MANUAL_OVERRIDE',
+      priceListId: appliedPrice.supplied ? null : (manualPrice === null ? provenance.priceListId : null),
+      priceRuleId: appliedPrice.supplied ? null : (manualPrice === null ? provenance.priceRuleId : null),
+      priceSource: appliedPrice.supplied ? appliedPrice.source : (manualPrice === null ? 'PRICE_ENGINE' : 'MANUAL_OVERRIDE'),
       unitPrice: unitPriceMinor.toString(),
       discountMode: mode,
       discountValue: mode === 'PERCENT' ? formatScaled(normalizedDiscountValue) : normalizedDiscountValue.toString(),

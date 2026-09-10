@@ -40,7 +40,7 @@ test('Sales Order print is exposed for numbered immutable confirmed, closed or c
 
 test('Sales Order mutation keys use the shared canonical generator', () => {
   const source = read('../app/sales/sales-orders/sales-order-ui.ts');
-  assert.match(source, /import \{ createIdempotencyKey \} from '@npp\/contracts'/);
+  assert.match(source, /import \{[\s\S]*?\bcreateIdempotencyKey\b[\s\S]*?\} from '@npp\/contracts'/);
   assert.match(source, /return createIdempotencyKey\(prefix\)/);
   assert.doesNotMatch(source, /`\$\{prefix\}-\$\{crypto\.randomUUID\(\)\}`/);
 });

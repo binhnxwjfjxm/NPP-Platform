@@ -1,4 +1,4 @@
-import { createIdempotencyKey } from '@npp/contracts';
+import { canonicalDecimalString, createIdempotencyKey } from '@npp/contracts';
 import { type ApiEnvelope, type RowMap, labelFor, normalizeHeader, humanizeMessage } from './data-exchange-model';
 
 export function optional(value: string | undefined) { const text = String(value ?? '').trim(); return text || null; }
@@ -6,7 +6,7 @@ export function exactQuantity(value: string, field: string, scale = 12) {
   const normalized = value.trim();
   const pattern = new RegExp(`^(0|[1-9]\\d{0,13})(?:\\.\\d{1,${scale}})?$`);
   if (!pattern.test(normalized)) throw new Error(`${labelFor(field)} phải là số không âm, tối đa ${scale} số lẻ.`);
-  return normalized;
+  return canonicalDecimalString(normalized, { allowNegative: false }) ?? normalized;
 }
 export function csvEscape(value: unknown) { const text = String(value ?? ''); return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text; }
 export function toCsv(headers: string[], rows: string[][]) { return `\uFEFF${[headers.map(labelFor), ...rows].map((row) => row.map(csvEscape).join(',')).join('\r\n')}`; }
@@ -74,8 +74,8 @@ export async function readTable(file: File, requiredColumns: readonly string[] =
   throw new Error('Chỉ hỗ trợ tệp Excel .xlsx hoặc CSV .csv. Tệp Excel .xls cũ cần lưu lại thành .xlsx trước khi nhập.');
 }
 export function trimDecimal(value: string) {
-  const normalized = String(value ?? '0').trim(); if (!normalized.includes('.')) return normalized;
-  const next = normalized.replace(/0+$/, '').replace(/\.$/, ''); return next === '-0' ? '0' : next;
+  const normalized = String(value ?? '0').trim();
+  return canonicalDecimalString(normalized) ?? normalized;
 }
 export function scaled12(value: string) {
   const match = /^(-?)(\d+)(?:\.(\d{1,12}))?$/.exec(String(value ?? '').trim());

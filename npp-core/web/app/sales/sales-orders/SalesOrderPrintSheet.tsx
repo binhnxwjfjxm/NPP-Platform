@@ -113,6 +113,7 @@ export default function SalesOrderPrintSheet({
         id={`sales-order-${order.id}-${version.id}`}
         documentType="SALES_ORDER"
         actionLabel="In đơn"
+        actionVariant="text"
         onPrint={recordPrint}
         title="PHIẾU XUẤT KHO"
         headingFallback="Hưng Phát"

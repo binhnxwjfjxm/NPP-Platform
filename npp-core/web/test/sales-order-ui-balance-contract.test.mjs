@@ -29,17 +29,19 @@ test('số đơn chỉ rút gọn khi hiển thị, tìm kiếm vẫn dùng số
   const workspace = await readFile(workspacePath, 'utf8');
 
   assert.ok(workspace.includes('export function compactOrderNumber'));
-  assert.ok(workspace.includes('const match = /^(.+-)(\\d{6})(-\\d+)$/.exec(normalized);'));
-  assert.ok(workspace.includes('return match ? `${match[1]}…${match[3]}` : normalized;'));
+  assert.ok(workspace.includes('const match = /^SO-\\d{6}-(\\d{6})$/i.exec(normalized);'));
+  assert.ok(workspace.includes('return match ? `SO${match[1]}` : normalized;'));
   assert.ok(workspace.includes('compactOrderNumber(order.number)'));
   assert.match(workspace, /function matchesSearch[\s\S]*?order\.number,/);
 });
 
-test('card danh sách đơn chỉ giữ thông tin vận hành cần nhìn và thu gọn chiều cao', async () => {
+test('card danh sách đơn ưu tiên tên khách và giá trị, số đơn nằm dòng phụ', async () => {
   const workspace = await readFile(workspacePath, 'utf8');
   const polishCss = await readFile(polishCssPath, 'utf8');
 
-  assert.ok(workspace.includes('<b>{order.customerName}</b>'));
+  assert.ok(workspace.includes('<strong className={polishStyles.orderCardCustomerName}>{order.customerName}</strong>'));
+  assert.ok(workspace.includes('<small className={polishStyles.orderCardCompactNumber}>'));
+  assert.ok(workspace.includes("{order.number ? compactOrderNumber(order.number) : 'Đơn đặt hàng chưa cấp số'}"));
   assert.doesNotMatch(workspace, /<b>\{order\.customerCode\}\s*—\s*\{order\.customerName\}<\/b>/);
   assert.doesNotMatch(workspace, /<small>Nguồn \{salesOrderSourceLabel/);
   assert.doesNotMatch(workspace, /<small>Kho \{order\.warehouseCode\}/);
@@ -47,6 +49,7 @@ test('card danh sách đơn chỉ giữ thông tin vận hành cần nhìn và t
   assert.ok(workspace.includes('<small>Cập nhật {formatVietnamDateTime(order.updatedAt)}</small>'));
   assert.match(polishCss, /\.orderCardGrid\s*\{[\s\S]*?padding:\s*\.5rem \.75rem !important;/);
   assert.match(polishCss, /\.orderCardMain\s*\{[\s\S]*?gap:\s*\.18rem;/);
+  assert.match(polishCss, /\.orderCardCompactNumber\s*\{[\s\S]*?font-size:\s*\.67rem;[\s\S]*?opacity:\s*\.78;/);
 });
 
 test('tìm khách dùng toàn bộ card để chọn và nhóm khách chỉ là text dịu', async () => {

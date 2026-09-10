@@ -236,3 +236,103 @@ test('Sales Order idempotency stores and replays the committed audit/outbox resp
     await closePool();
   }
 });
+
+test('long Sales Orders keep system pricing separate from manual override semantics', async () => {
+  const config = loadConfig(env());
+  const pool = getPool(config);
+  try {
+    const fixture = await fixtures(pool, config.installationId);
+
+    const createLongOrder = async (lines, permissions = []) => {
+      const requestContext = Object.freeze({
+        installationId: config.installationId,
+        actorId: `test:long-order-${randomUUID()}`,
+        employeeId: null,
+        roles: Object.freeze(['test']),
+        permissions: Object.freeze([...permissions]),
+        scopes: Object.freeze({
+branchIds: Object.freeze([]),
+warehouseIds: Object.freeze([fixture.warehouseId]),
+territoryIds: Object.freeze([]),
+        }),
+        requestId: `req_${randomUUID()}`,
+        sourceApp: 'test',
+        receivedAt: new Date().toISOString(),
+      });
+      const payload = {
+        sourceType: 'MANUAL',
+        customerId: fixture.customerId,
+        customerAddressId: fixture.addressId,
+        warehouseId: fixture.warehouseId,
+        salesChannelId: fixture.channelId,
+        deliveryMode: 'DELIVERY',
+        collectionPolicy: 'COLLECT_ON_DELIVERY',
+        currency: 'VND',
+        lines,
+      };
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const result = await service.createSalesOrder(client, { requestContext, payload });
+        assert.equal(result.ok, true, JSON.stringify(result));
+        await client.query('COMMIT');
+        return result;
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw error;
+      } finally {
+        client.release();
+      }
+    };
+
+    const systemLines = (count) => Array.from({ length: count }, () => ({
+      variantId: fixture.variantId,
+      quantity: '1',
+      discountMode: 'TOTAL_AMOUNT',
+      discountValue: '0',
+      taxMode: 'EXCLUSIVE',
+      taxRate: '0',
+    }));
+    const versionOne = (result) => result.salesOrder.versions.find(
+      (version) => String(version.versionNumber) === '1',
+    );
+
+    const order32 = await createLongOrder(systemLines(32));
+    const version32 = versionOne(order32);
+    assert.equal(version32.lines.length, 32);
+    assert.equal(version32.priceOverrideReason, null);
+    assert.equal(version32.lines.every((line) => line.priceSource === 'PRICE_ENGINE'), true);
+    assert.equal(version32.lines.every((line) => Array.isArray(line.pricingTrace) && line.pricingTrace.length > 0), true);
+    assert.equal(JSON.stringify(version32).includes('system-price:'), false);
+
+    const order100 = await createLongOrder(systemLines(100));
+    const version100 = versionOne(order100);
+    assert.equal(version100.lines.length, 100);
+    assert.equal(version100.priceOverrideReason, null);
+    assert.equal(version100.lines.every((line) => line.priceSource === 'PRICE_ENGINE'), true);
+    assert.equal(version100.lines.every((line) => Array.isArray(line.pricingTrace) && line.pricingTrace.length > 0), true);
+    assert.equal(JSON.stringify(version100).includes('system-price:'), false);
+
+    const mixedLines = systemLines(40);
+    mixedLines[3] = {
+      ...mixedLines[3],
+      manualUnitPriceMinor: '9000',
+      manualReason: 'Giá theo thỏa thuận',
+    };
+    mixedLines[17] = {
+      ...mixedLines[17],
+      manualUnitPriceMinor: '0',
+    };
+    const mixed = await createLongOrder(mixedLines, ['core.sales-order.price.override']);
+    const mixedVersion = versionOne(mixed);
+    const manualLines = mixedVersion.lines.filter((line) => line.priceSource === 'MANUAL_OVERRIDE');
+    assert.equal(mixedVersion.lines.length, 40);
+    assert.equal(manualLines.length, 2);
+    assert.equal(manualLines.every((line) => line.pricingTrace.some((step) => step.kind === 'MANUAL_OVERRIDE')), true);
+    assert.equal(mixedVersion.priceOverrideReason, 'Dòng 4: Giá theo thỏa thuận');
+    assert.equal(mixedVersion.priceOverrideReason.length < 1000, true);
+    assert.equal(JSON.stringify(mixedVersion).includes('system-price:'), false);
+  } finally {
+    await closePool();
+  }
+});

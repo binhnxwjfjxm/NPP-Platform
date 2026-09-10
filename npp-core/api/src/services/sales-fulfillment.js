@@ -62,6 +62,7 @@ function mapProjection(projection, availabilityByDemand = new Map()) {
       baseVariantId: line.base_variant_id,
       sku: line.sku_snapshot,
       baseUnitCode: line.base_unit_code,
+      baseUnitName: line.base_unit_name ?? null,
       orderedBaseQuantity: String(line.ordered_base_quantity),
       reservedBaseQuantity: String(line.reserved_base_quantity),
       backorderedBaseQuantity: String(line.backordered_base_quantity),
@@ -187,7 +188,6 @@ export function allocateWarehouseDemand(lines, availableQuantity, allowBackorder
       },
     );
   }
-
   return Object.freeze({
     ok: true,
     allocations: Object.freeze(lines.map((line) => {
@@ -241,9 +241,6 @@ export async function replaceSalesOrderFulfillmentDemand(client, {
   });
   const normalized = normalizeInputRows(rows, requestContext);
   if (!normalized.ok) return normalized;
-
-  // Allocation operations lock the active demand row before taking fulfillment-scope locks.
-  // Keep the same lock order here so confirm/amendment cannot race an allocation or deadlock it.
   await lockActiveSalesOrderDemands(client, requestContext.installationId, salesOrderId);
   if (await repository.hasActiveAllocationFacts(client, {
     installationId: requestContext.installationId,
@@ -285,8 +282,6 @@ export async function replaceSalesOrderFulfillmentDemand(client, {
       actorId: requestContext.actorId,
     });
   } catch (error) {
-    // The DB trigger is the authoritative last guard if an older/nonstandard writer
-    // manages to create execution facts outside the normal demand-row lock protocol.
     if (!allocationTransitionBlocked(error)) throw error;
     return failure(
       'SALES_ORDER_HAS_EXECUTION_FACTS',

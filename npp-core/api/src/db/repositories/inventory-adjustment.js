@@ -98,7 +98,7 @@ export async function listLines(client, { installationId, adjustmentId, forUpdat
             destination_location.name AS destination_location_name,
             destination_location.location_type AS destination_location_type
        FROM inventory.inventory_adjustment_lines line
-       JOIN shared.warehouse_locations source_location
+       LEFT JOIN shared.warehouse_locations source_location
          ON source_location.installation_id = line.installation_id
         AND source_location.warehouse_id = line.warehouse_id
         AND source_location.id = line.source_location_id
@@ -196,7 +196,7 @@ export async function loadLineSnapshots(client, {
             CASE WHEN requested.destination_location_id IS NULL THEN NULL
                  ELSE COALESCE(destination_version.version, 0)::bigint END AS destination_snapshot_scope_version
        FROM requested
-       JOIN shared.warehouse_locations source_location
+       LEFT JOIN shared.warehouse_locations source_location
          ON source_location.installation_id = $1
         AND source_location.warehouse_id = $2
         AND source_location.id = requested.source_location_id
@@ -229,16 +229,17 @@ export async function loadLineSnapshots(client, {
        LEFT JOIN inventory.inventory_scope_versions source_version
          ON source_version.installation_id = $1
         AND source_version.warehouse_id = $2
-        AND source_version.location_id = requested.source_location_id
+        AND source_version.location_id IS NOT DISTINCT FROM requested.source_location_id
         AND source_version.base_variant_id = base.id
         AND source_version.lot_id IS NOT DISTINCT FROM requested.lot_id
        LEFT JOIN inventory.inventory_scope_versions destination_version
          ON destination_version.installation_id = $1
         AND destination_version.warehouse_id = $2
-        AND destination_version.location_id = requested.destination_location_id
+        AND destination_version.location_id IS NOT DISTINCT FROM requested.destination_location_id
         AND destination_version.base_variant_id = base.id
         AND destination_version.lot_id IS NOT DISTINCT FROM requested.lot_id
-      WHERE (requested.destination_location_id IS NULL OR destination_location.id IS NOT NULL)
+      WHERE (requested.source_location_id IS NULL OR source_location.id IS NOT NULL)
+        AND (requested.destination_location_id IS NULL OR destination_location.id IS NOT NULL)
         AND (requested.lot_id IS NULL OR lot.id IS NOT NULL)
         AND (COALESCE(policy.lot_tracking_mode, 'NONE') = 'NONE' OR requested.lot_id IS NOT NULL)
         AND (COALESCE(policy.expiry_tracking_mode, 'NONE') <> 'REQUIRED' OR lot.expiry_date IS NOT NULL)
@@ -350,13 +351,13 @@ export async function currentScopeVersions(client, {
        JOIN inventory.inventory_scope_versions version
          ON version.installation_id = $1
         AND version.warehouse_id = $2
-        AND version.location_id = requested.location_id
+        AND version.location_id IS NOT DISTINCT FROM requested.location_id
         AND version.base_variant_id = requested.base_variant_id
         AND version.lot_id IS NOT DISTINCT FROM requested.lot_id
        LEFT JOIN inventory.inventory_balances balance
          ON balance.installation_id = $1
         AND balance.warehouse_id = $2
-        AND balance.location_id = requested.location_id
+        AND balance.location_id IS NOT DISTINCT FROM requested.location_id
         AND balance.base_variant_id = requested.base_variant_id
         AND balance.lot_id IS NOT DISTINCT FROM requested.lot_id
       ORDER BY requested.scope_key

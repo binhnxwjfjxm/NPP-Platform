@@ -53,7 +53,7 @@ function stockValue(
   value: string | null | undefined,
 ): string {
   if (!line || value === null || value === undefined) return '—';
-  return `${formatQuantity(value)} ${line.baseUnitCode}`;
+  return `${formatQuantity(value)} ${line.baseUnitName || line.baseUnitCode}`;
 }
 
 export function salesOrderCopyHref(orderId: string): string {
@@ -115,12 +115,26 @@ export default function SalesOrderDetail(props: Props) {
               Sao chép đơn
             </a>
           ) : null}
+          {order.status === 'confirmed' && isManual && !amendment && props.canAmend ? (
+            <button type="button" disabled={props.busy || hasIssued} onClick={props.onEditManual}>Sửa đơn</button>
+          ) : null}
+          {order.status === 'confirmed' && isManual && !amendment && props.canIssueStock ? (
+            <button
+              type="button"
+              className={styles.primaryButton}
+              disabled={props.busy || hasIssued}
+              onClick={props.onIssueStock}
+            >
+              {hasIssued ? 'Đã xuất kho' : 'Xuất kho'}
+            </button>
+          ) : null}
           {current && order.number && ['confirmed', 'closed', 'cancelled'].includes(order.status)
             ? <SalesOrderPrintSheet order={order} version={current} />
             : null}
           <span className={styles.statusPill} data-sales-order-tone={order.status}>{orderLabels[order.status] ?? order.status}</span>
         </div>
       </header>
+      {isManual && hasIssued ? <small>Đơn đã Xuất kho nên không thể sửa hoặc xuất lại.</small> : null}
 
       {isManual ? (
         <div className={styles.statusGrid}>
@@ -199,7 +213,7 @@ export default function SalesOrderDetail(props: Props) {
                 <div className={styles.lineRow} style={lineGrid} key={line.id}>
                   <BusinessSequenceNumber rowIndex={rowIndex} className={styles.lineSequence} />
                   <span><b>{line.itemName}</b></span>
-                  <span>{formatQuantity(line.quantity)} {line.unitCode}</span>
+                  <span>{formatQuantity(line.quantity)} {line.unitName || line.unitCode}</span>
                   <span>{stockValue(stock, stock?.warehouseOnHandBaseQuantity)}</span>
                   <span>
                     {stockValue(stock, stock?.warehouseHeldByOthersBaseQuantity)}
@@ -210,6 +224,7 @@ export default function SalesOrderDetail(props: Props) {
                         excludeSalesOrderId={order.id}
                         displayedHeldQuantity={stock.warehouseHeldByOthersBaseQuantity}
                         baseUnitCode={stock.baseUnitCode}
+                        baseUnitName={stock.baseUnitName}
                         title="Xem các đơn khác đang giữ hàng"
                       />
                     ) : null}
@@ -239,26 +254,6 @@ export default function SalesOrderDetail(props: Props) {
           <div className={styles.inlineActions}>
             {props.canUpdate && <button type="button" onClick={props.onEditDraft}>Sửa đơn nháp</button>}
             {props.canConfirm && <button type="button" className={styles.primaryButton} disabled={props.busy} onClick={props.onConfirm}>Xác nhận &amp; cấp số</button>}
-          </div>
-        )}
-        {order.status === 'confirmed' && isManual && !amendment && (props.canAmend || props.canIssueStock) && (
-          <div>
-            <div className={styles.inlineActions}>
-              {props.canAmend && (
-                <button type="button" disabled={props.busy || hasIssued} onClick={props.onEditManual}>Sửa đơn</button>
-              )}
-              {props.canIssueStock && (
-                <button
-                  type="button"
-                  className={styles.primaryButton}
-                  disabled={props.busy || hasIssued}
-                  onClick={props.onIssueStock}
-                >
-                  {hasIssued ? 'Đã xuất kho' : 'Xuất kho'}
-                </button>
-              )}
-            </div>
-            {hasIssued ? <small>Đơn đã Xuất kho nên không thể sửa hoặc xuất lại.</small> : null}
           </div>
         )}
         {isManual && hasIssued && ['confirmed', 'closed'].includes(order.status) && (

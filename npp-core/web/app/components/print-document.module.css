@@ -20,9 +20,49 @@
   background: linear-gradient(180deg, #fff9ec 0%, #ead7b8 100%);
 }
 
-.printAction:focus-visible {
+.printAction:focus-visible,
+.printActionText:focus-visible {
   outline: 2px solid #98600f;
   outline-offset: 2px;
+}
+
+.printActionText {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 2.1rem;
+  padding: 0.34rem 0.62rem;
+  border: 1px solid rgba(152, 96, 15, 0.32);
+  border-radius: 0.55rem;
+  background: linear-gradient(180deg, rgba(255, 253, 248, 0.94) 0%, rgba(243, 230, 207, 0.7) 100%);
+  color: #754706;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.84),
+    0 1px 2px rgba(117, 71, 6, 0.12),
+    0 4px 10px rgba(117, 71, 6, 0.08);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+
+.printActionText:hover {
+  border-color: rgba(152, 96, 15, 0.5);
+  background: linear-gradient(180deg, #fffaf0 0%, #ead7b8 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.88),
+    0 2px 4px rgba(117, 71, 6, 0.14),
+    0 6px 14px rgba(117, 71, 6, 0.1);
+  transform: translateY(-1px);
+  text-decoration: none;
+}
+
+.printActionText:active {
+  transform: translateY(1px);
+  box-shadow:
+    inset 0 1px 2px rgba(117, 71, 6, 0.16),
+    0 1px 2px rgba(117, 71, 6, 0.08);
 }
 
 .printSurface,
@@ -31,7 +71,8 @@
 }
 
 @media print {
-  .printAction {
+  .printAction,
+  .printActionText {
     display: none !important;
   }
 

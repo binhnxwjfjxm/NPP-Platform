@@ -4,6 +4,28 @@ export const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._-]{1,128}$/;
 const IDEMPOTENCY_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const IDEMPOTENCY_UUID_LENGTH = 36;
 const IDEMPOTENCY_OPERATION_MAX_LENGTH = IDEMPOTENCY_KEY_MAX_LENGTH - IDEMPOTENCY_UUID_LENGTH - 1;
+const DECIMAL_STRING_PATTERN = /^(-?)(\d+)(?:\.(\d+))?$/;
+
+export function canonicalDecimalString(value, { allowNegative = true } = {}) {
+  if (value === undefined || value === null) return null;
+  const normalized = String(value).trim();
+  if (!normalized) return null;
+  const match = DECIMAL_STRING_PATTERN.exec(normalized);
+  if (!match) return null;
+  const negative = match[1] === '-';
+  if (negative && !allowNegative) return null;
+  const integer = match[2].replace(/^0+(?=\d)/, '') || '0';
+  const fraction = (match[3] ?? '').replace(/0+$/, '');
+  const isZero = integer === '0' && fraction === '';
+  const sign = negative && !isZero ? '-' : '';
+  return `${sign}${integer}${fraction ? `.${fraction}` : ''}`;
+}
+
+export function canonicalVndMinorString(value, { allowNegative = false } = {}) {
+  const canonical = canonicalDecimalString(value, { allowNegative });
+  if (canonical === null || canonical.includes('.')) return null;
+  return canonical;
+}
 
 export function normalizeIdempotencyKey(value) {
   if (value === undefined || value === null) return null;

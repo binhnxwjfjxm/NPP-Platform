@@ -64,6 +64,7 @@ function inventoryPreview(row) {
       availableQuantity: null,
       heldQuantity: null,
       unitCode: null,
+      unitName: null,
     });
   }
   if (row.is_inventory_managed === false) {
@@ -73,6 +74,7 @@ function inventoryPreview(row) {
       availableQuantity: null,
       heldQuantity: null,
       unitCode: null,
+      unitName: null,
     });
   }
   if (row.is_inventory_managed !== true || Number(row.base_variant_count) !== 1 || !row.base_variant_id) {
@@ -82,6 +84,7 @@ function inventoryPreview(row) {
       availableQuantity: null,
       heldQuantity: null,
       unitCode: row.base_unit_code ?? null,
+      unitName: row.base_unit_name ?? null,
     });
   }
   return Object.freeze({
@@ -90,12 +93,14 @@ function inventoryPreview(row) {
     availableQuantity: String(row.available_quantity ?? '0'),
     heldQuantity: String(row.held_quantity ?? '0'),
     unitCode: row.base_unit_code ?? null,
+    unitName: row.base_unit_name ?? null,
   });
 }
 
 function inventoryHeldMessage(preview) {
   if (preview?.status !== 'TRACKED') return '';
-  const unit = preview.unitCode ? ` ${preview.unitCode}` : '';
+  const unitLabel = preview.unitName || preview.unitCode;
+  const unit = unitLabel ? ` ${unitLabel}` : '';
   return `Đang giữ ${compactDecimal(preview.heldQuantity)}${unit}`;
 }
 

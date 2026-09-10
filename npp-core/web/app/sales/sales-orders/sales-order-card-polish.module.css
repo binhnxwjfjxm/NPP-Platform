@@ -114,6 +114,33 @@
   align-items: baseline !important;
 }
 
+.orderCardCustomerRow {
+  display: flex;
+  align-items: baseline;
+  gap: .38rem;
+  min-width: 0;
+}
+
+.orderCardCustomerName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #1f2d28;
+  font-size: .9rem;
+  font-weight: 850;
+}
+
+.orderCardCompactNumber {
+  margin-left: 2rem;
+  color: #7a8580;
+  font-size: .67rem;
+  font-weight: 650;
+  letter-spacing: .01em;
+  line-height: 1.15;
+  opacity: .78;
+}
+
 .orderCardNumberDivider {
   color: #aab3af;
   font-weight: 650;
@@ -195,5 +222,9 @@
 
   .orderCardStateStack {
     min-width: 6.8rem;
+  }
+
+  .orderCardCompactNumber {
+    margin-left: 0;
   }
 }

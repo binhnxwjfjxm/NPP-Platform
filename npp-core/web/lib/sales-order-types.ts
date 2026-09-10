@@ -145,6 +145,7 @@ export type SalesOrderFulfillmentLine = {
   baseVariantId: string;
   sku: string;
   baseUnitCode: string;
+  baseUnitName?: string | null;
   orderedBaseQuantity: string;
   reservedBaseQuantity: string;
   backorderedBaseQuantity: string;
@@ -249,6 +250,7 @@ export type SalesOrderSkuInventoryPreview = {
   onHandQuantity: string | null;
   availableQuantity: string | null;
   unitCode: string | null;
+  unitName?: string | null;
 };
 
 export type SalesOrderSkuSearchOption = {
