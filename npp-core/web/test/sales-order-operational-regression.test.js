@@ -24,7 +24,7 @@ test('Sales Order effects depend on stable values instead of the whole props obj
   assert.doesNotMatch(formSource, /\[(?:[^\]]*,\s*)?props(?:\s*,[^\]]*)?\]/);
   assert.match(
     formSource,
-    /\[customerId,\s*customerMode,\s*onError,\s*pricingAt,\s*salesChannelId,\s*skuTerm,\s*warehouseId\]/,
+    /\[customerId,\s*customerMode,\s*onError,\s*priceSelectionMode,\s*pricingAt,\s*salesChannelId,\s*skuTerm,\s*warehouseId\]/,
   );
 });
 

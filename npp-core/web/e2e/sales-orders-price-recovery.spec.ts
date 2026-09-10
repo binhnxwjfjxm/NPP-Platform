@@ -206,8 +206,14 @@ async function mockRecoveryApis(page: Page) {
     });
   });
 
-  await page.route('**/api/pricing/resolve', async (route) => {
-    const body = route.request().postDataJSON() as { quantity: string; channelId: string };
+  await page.route('**/api/sales-orders/price-preview', async (route) => {
+    const body = route.request().postDataJSON() as {
+      quantity: string;
+      salesChannelId: string;
+      priceSelectionMode: string;
+      pricingAt: string;
+    };
+    expect(body.priceSelectionMode).toBe('STANDARD');
     await route.fulfill({
       status: 200,
       json: {
@@ -215,8 +221,8 @@ async function mockRecoveryApis(page: Page) {
           variant: { id: VARIANT_ID, sku: 'SKU-RECOVERY' },
           currencyCode: 'VND',
           quantity: body.quantity,
-          priceAt: '2026-08-01T00:00:00.000Z',
-          channelId: body.channelId,
+          priceAt: body.pricingAt,
+          channelId: body.salesChannelId,
           customerId: null,
           customerGroupId: null,
           baseUnitPriceMinor: '10000',

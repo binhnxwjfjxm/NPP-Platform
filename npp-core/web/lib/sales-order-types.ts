@@ -6,6 +6,7 @@ export type SalesOrderDeliveryExecutionMode = 'TRIP' | 'MANUAL';
 export type SalesOrderDeliveryChoice = SalesOrderDeliveryExecutionMode | 'PICKUP';
 export type SalesOrderSourceType = 'MANUAL' | 'IMPORT' | 'API' | 'MCP';
 export type SalesOrderCustomerMode = 'EXISTING' | 'WALK_IN';
+export type SalesOrderPriceSelectionMode = 'STANDARD' | 'LAST_PURCHASE';
 export type SalesOrderTaxMode = 'EXCLUSIVE' | 'INCLUSIVE';
 export type SalesOrderDocumentDiscountMode = 'NONE' | 'PERCENT' | 'TOTAL_AMOUNT';
 export type SalesOrderLineDiscountMode = 'TOTAL_AMOUNT' | 'PER_UNIT' | 'PERCENT';
@@ -27,7 +28,7 @@ export type SalesOrderChannel = {
 };
 
 export type SalesPriceStep = {
-  kind: 'RESOLUTION' | 'BASE' | 'RULE' | 'SKIPPED' | 'MANUAL_OVERRIDE';
+  kind: 'RESOLUTION' | 'BASE' | 'RULE' | 'SKIPPED' | 'MANUAL_OVERRIDE' | 'HISTORY_REFERENCE';
   reason?: string;
   resolutionFingerprint?: string;
   channelId?: string | null;
@@ -45,6 +46,12 @@ export type SalesPriceStep = {
   sourceKind?: string;
   sourceKey?: string | null;
   externalRuleCode?: string | null;
+  sourceSalesOrderId?: string;
+  sourceSalesOrderNumber?: string | null;
+  sourceVersionNumber?: string;
+  sourceLineId?: string;
+  sourceConfirmedAt?: string;
+  sourceUnitPriceMinor?: string;
 };
 
 export type SalesOrderLine = {
@@ -63,7 +70,7 @@ export type SalesOrderLine = {
   lineWeightKg: string | null;
   priceListId: string | null;
   priceRuleId: string | null;
-  priceSource: 'PRICE_ENGINE' | 'MANUAL_OVERRIDE';
+  priceSource: 'PRICE_ENGINE' | 'MANUAL_OVERRIDE' | 'HISTORY_REFERENCE';
   baseUnitPrice: string;
   systemUnitPrice: string;
   unitPrice: string;
@@ -98,6 +105,7 @@ export type SalesOrderVersion = {
   salesChannelId: string | null;
   salesChannelCode: string | null;
   salesChannelName: string | null;
+  priceSelectionMode: SalesOrderPriceSelectionMode;
   deliveryMode: SalesOrderDeliveryMode;
   deliveryExecutionMode?: SalesOrderDeliveryExecutionMode | null;
   sourceType: SalesOrderSourceType;
@@ -191,6 +199,7 @@ export type SalesOrder = {
   salesChannelId: string | null;
   salesChannelCode: string | null;
   salesChannelName: string | null;
+  priceSelectionMode: SalesOrderPriceSelectionMode;
   deliveryMode: SalesOrderDeliveryMode;
   deliveryExecutionMode?: SalesOrderDeliveryExecutionMode | null;
   collectionPolicy: SalesOrderCollectionPolicy;
@@ -284,6 +293,7 @@ export type SalesPriceResolution = {
   finalUnitPriceMinor: string;
   lineTotalMinor: string;
   resolutionFingerprint: string;
+  priceSource?: 'PRICE_ENGINE' | 'HISTORY_REFERENCE';
   steps: SalesPriceStep[];
 };
 
@@ -331,6 +341,7 @@ export type SalesOrderDraftPayload = {
   deliveryAddress?: SalesOrderDeliveryAddressDraft;
   warehouseId: string;
   salesChannelId: string;
+  priceSelectionMode: SalesOrderPriceSelectionMode;
   pricingAt?: string;
   deliveryMode: SalesOrderDeliveryMode;
   deliveryExecutionMode?: SalesOrderDeliveryExecutionMode;

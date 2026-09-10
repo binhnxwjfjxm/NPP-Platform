@@ -11,6 +11,7 @@ import {
 import * as warehouseRepository from '../db/repositories/warehouse.js';
 import * as service from '../services/sales-order.js';
 import * as entryService from '../services/sales-order-entry.js';
+import * as appliedPriceService from '../services/sales-order-applied-price.js';
 import * as searchPreviewService from '../services/sales-order-search-preview.js';
 import * as manualStockIssueService from '../services/sales-manual-stock-issue.js';
 import * as pickupStockIssueService from '../services/sales-pickup-stock-issue.js';
@@ -463,6 +464,39 @@ export async function handleSalesOrderRoutes(req, res, options) {
     return true;
   }
 
+  if (pathname === '/api/sales-orders/price-preview' && method === 'POST') {
+    const context = await authenticateAndAuthorize(
+      req,
+      res,
+      options,
+      options.PERMISSIONS.coreSalesOrderRead,
+    );
+    if (!context) return true;
+    const payload = await readPayload(req, res, options);
+    if (payload === null) return true;
+    try {
+      const result = await appliedPriceService.resolveSalesOrderAppliedPricePreview(options.getPool(), {
+        installationId: context.installationId,
+        payload: {
+          ...payload,
+          channelId: payload.salesChannelId,
+          priceAt: payload.pricingAt,
+          currencyCode: 'VND',
+        },
+      });
+      if (!result.ok) sendServiceError(res, result, options);
+      else sendSuccess(res, result.resolution, options.requestId, options.receivedAt);
+    } catch {
+      sendError(
+        res,
+        apiError('SALES_ORDER_PRICE_PREVIEW_UNAVAILABLE', 'Chưa tính được giá bán', {}, true, 503),
+        options.requestId,
+        options.receivedAt,
+      );
+    }
+    return true;
+  }
+
   if (pathname === '/api/sales-orders/sku-search' && method === 'GET') {
     const context = await authenticateAndAuthorize(
       req,
@@ -479,6 +513,7 @@ export async function handleSalesOrderRoutes(req, res, options) {
         warehouseId: url.searchParams.get('warehouseId'),
         salesChannelId: url.searchParams.get('salesChannelId'),
         customerId: url.searchParams.get('customerId'),
+        priceSelectionMode: url.searchParams.get('priceSelectionMode'),
         pricingAt: url.searchParams.get('pricingAt'),
         limit: parseInteger(url.searchParams.get('limit'), 20, 50),
         offset: parseInteger(url.searchParams.get('offset'), 0, 100000),
@@ -512,6 +547,7 @@ export async function handleSalesOrderRoutes(req, res, options) {
         warehouseId: url.searchParams.get('warehouseId'),
         salesChannelId: url.searchParams.get('salesChannelId'),
         customerId: url.searchParams.get('customerId'),
+        priceSelectionMode: url.searchParams.get('priceSelectionMode'),
         pricingAt: url.searchParams.get('pricingAt'),
       });
       if (!result.ok) sendServiceError(res, result, options);

@@ -28,10 +28,11 @@ test('Lô B search backend nhận đủ context, batch giá và không đẩy ph
     read('src/db/repositories/sales-order-search-preview.js'),
     read('src/services/sales-order-entry.js'),
   ]);
-  for (const field of ['warehouseId', 'salesChannelId', 'customerId', 'pricingAt']) {
+  for (const field of ['warehouseId', 'salesChannelId', 'customerId', 'priceSelectionMode', 'pricingAt']) {
     assert.match(route, new RegExp(field));
   }
-  assert.match(service, /searchPricingService\.resolveSalesOrderSearchPrices/);
+  assert.match(service, /appliedPriceService\.resolveSalesOrderAppliedPricePreviews/);
+  assert.match(service, /priceSelectionMode: previewContext\.priceSelectionMode/);
   assert.match(service, /const \[inventoryRows, pricingByVariantId\] = await Promise\.all/);
   assert.match(pricing, /quantity: '1'/);
   assert.match(repository, /inventory\.inventory_balances/);

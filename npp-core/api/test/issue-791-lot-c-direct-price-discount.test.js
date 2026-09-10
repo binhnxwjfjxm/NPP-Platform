@@ -15,7 +15,8 @@ test('Issue #791 Lô C keeps price override permission, allows zero/no-reason an
   assert.doesNotMatch(service, /PRICE_OVERRIDE_REASON_REQUIRED/);
   assert.match(service, /reason: reason \|\| null/);
   assert.match(service, /manualOverride: manual\.value !== null/);
-  assert.match(repository, /const source = line\.manualOverride \? 'MANUAL_OVERRIDE' : 'PRICE_ENGINE'/);
+  assert.match(repository, /const source = line\.manualOverride\s*\? 'MANUAL_OVERRIDE'/);
+  assert.match(repository, /line\.priceSource === 'HISTORY_REFERENCE' \? 'HISTORY_REFERENCE' : 'PRICE_ENGINE'/);
   assert.match(repository, /beforeUnitPriceMinor: line\.systemUnitPriceMinor/);
   assert.match(repository, /afterUnitPriceMinor: line\.finalUnitPriceMinor/);
   assert.match(permissions, /'Sửa giá bán trên đơn'/);

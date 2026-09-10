@@ -1,6 +1,6 @@
 import { IDEMPOTENCY_KEY_PATTERN } from '@npp/contracts';
 import * as legacy from './sales-order-legacy.js';
-import * as pricingService from './pricing.js';
+import * as appliedPriceService from './sales-order-applied-price.js';
 import * as fulfillmentService from './sales-fulfillment.js';
 import * as manualEditReleaseService from './sales-fulfillment-allocation-release.js';
 import * as salesOrderRepository from '../db/repositories/sales-order.js';
@@ -209,6 +209,8 @@ function priceContext(payload, line) {
     currencyCode: payload.currency ?? 'VND',
     priceAt: new Date().toISOString(),
     channelId: payload.salesChannelId,
+    salesChannelId: payload.salesChannelId,
+    priceSelectionMode: payload.priceSelectionMode ?? 'STANDARD',
     ...(String(payload.customerMode ?? 'EXISTING').toUpperCase() === 'WALK_IN'
       ? {}
       : { customerId: payload.customerId }),
@@ -275,7 +277,21 @@ async function prepareCommercialPayload(client, { requestContext, payload }) {
   const channelResult = await resolveChannel(client, { requestContext, payload });
   if (!channelResult.ok) return channelResult;
   const salesChannelId = channelResult.channel.id;
-  const normalizedPayload = { ...payload, salesChannelId };
+  const priceSelectionMode = appliedPriceService.normalizePriceSelectionMode(payload.priceSelectionMode);
+  if (!priceSelectionMode) {
+    return failure('INVALID_PRICE_SELECTION_MODE', 'Cách áp dụng giá không hợp lệ.');
+  }
+  if (
+    priceSelectionMode === 'LAST_PURCHASE'
+    && (String(payload.customerMode ?? 'EXISTING').toUpperCase() !== 'EXISTING'
+      || !UUID_PATTERN.test(String(payload.customerId ?? '').trim()))
+  ) {
+    return failure(
+      'LAST_PURCHASE_CUSTOMER_REQUIRED',
+      'Giá lần mua trước chỉ dùng khi đã chọn khách hàng.',
+    );
+  }
+  const normalizedPayload = { ...payload, salesChannelId, priceSelectionMode };
   const documentDiscount = normalizeDocumentDiscount(payload, requestContext);
   if (!documentDiscount.ok) return documentDiscount;
   const hasLineDiscount = payload.lines.some(nonZeroLegacyLineDiscount);
@@ -303,19 +319,16 @@ async function prepareCommercialPayload(client, { requestContext, payload }) {
     const manual = manualOverride(input, requestContext, index + 1);
     if (!manual.ok) return manual;
 
-    const resolutionResult = await pricingService.resolvePrice(client, {
+    const resolutionResult = await appliedPriceService.resolveSalesOrderAppliedPrice(client, {
       installationId: requestContext.installationId,
-      payload: {
-        ...priceContext(normalizedPayload, input),
-        salesChannelId,
-        channelId: salesChannelId,
-      },
+      payload: priceContext(normalizedPayload, input),
     });
 
     let baseUnitPriceMinor;
     let systemUnitPriceMinor;
     let fingerprint;
     let systemTrace;
+    let priceSource = 'PRICE_ENGINE';
     if (!resolutionResult.ok) {
       if (resolutionResult.code !== 'BASE_PRICE_NOT_FOUND' || manual.value === null) {
         return failure(
@@ -359,6 +372,9 @@ async function prepareCommercialPayload(client, { requestContext, payload }) {
       fingerprint = resolution.resolutionFingerprint
         ?? canonicalPricingFingerprint({ ...resolution, systemUnitPriceMinor });
       systemTrace = Object.freeze([...(resolution.steps ?? [])]);
+      priceSource = resolution.priceSource === 'HISTORY_REFERENCE'
+        ? 'HISTORY_REFERENCE'
+        : 'PRICE_ENGINE';
     }
 
     if (
@@ -408,6 +424,7 @@ async function prepareCommercialPayload(client, { requestContext, payload }) {
       finalUnitPriceMinor,
       systemTrace,
       fingerprint,
+      priceSource,
       manualOverride: manual.value !== null,
       manualReason: manual.reason,
     }));
@@ -423,25 +440,26 @@ async function prepareCommercialPayload(client, { requestContext, payload }) {
   if (!allocated.ok) return allocated;
 
   const legacyLines = commercialLines.map((line, index) => ({
-  ...line.input,
-  manualUnitPriceMinor: undefined,
-  manualReason: undefined,
-  commercialAppliedPrice: Object.freeze({
-    unitPriceMinor: line.finalUnitPriceMinor,
-    source: line.manualOverride ? 'MANUAL_OVERRIDE' : 'PRICE_ENGINE',
-    manualReason: line.manualReason,
-  }),
-  ...(documentDiscount.positive
-    ? {
-        discountMode: 'TOTAL_AMOUNT',
-        discountValue: allocated.allocations[index].toString(),
-      }
-    : {}),
-}));
+    ...line.input,
+    manualUnitPriceMinor: undefined,
+    manualReason: undefined,
+    commercialAppliedPrice: Object.freeze({
+      unitPriceMinor: line.finalUnitPriceMinor,
+      source: line.manualOverride ? 'MANUAL_OVERRIDE' : 'PRICE_ENGINE',
+      manualReason: line.manualReason,
+    }),
+    ...(documentDiscount.positive
+      ? {
+          discountMode: 'TOTAL_AMOUNT',
+          discountValue: allocated.allocations[index].toString(),
+        }
+      : {}),
+  }));
 
   return Object.freeze({
     ok: true,
     channel: channelResult.channel,
+    priceSelectionMode,
     documentDiscount,
     commercialLines,
     legacyPayload: Object.freeze({
@@ -471,6 +489,7 @@ function mergeCommercialFacts(salesOrder, facts) {
             ...line,
             baseUnitPrice: fact.base_unit_price === null ? null : String(fact.base_unit_price),
             systemUnitPrice: fact.system_unit_price === null ? null : String(fact.system_unit_price),
+            priceSource: fact.price_source ?? line.priceSource,
             manualOverrideReason: fact.manual_override_reason ?? null,
             pricingTrace: Array.isArray(fact.pricing_trace_snapshot)
               ? fact.pricing_trace_snapshot
@@ -483,6 +502,7 @@ function mergeCommercialFacts(salesOrder, facts) {
       salesChannelId: commercial.sales_channel_id ?? null,
       salesChannelCode: commercial.sales_channel_code_snapshot ?? null,
       salesChannelName: commercial.sales_channel_name_snapshot ?? null,
+      priceSelectionMode: commercial.price_selection_mode ?? 'STANDARD',
       documentDiscountMode: commercial.document_discount_mode ?? 'NONE',
       documentDiscountValue: String(commercial.document_discount_value ?? 0),
       documentDiscountReason: commercial.document_discount_reason ?? null,
@@ -497,6 +517,7 @@ function mergeCommercialFacts(salesOrder, facts) {
     salesChannelId: current?.salesChannelId ?? null,
     salesChannelCode: current?.salesChannelCode ?? null,
     salesChannelName: current?.salesChannelName ?? null,
+    priceSelectionMode: current?.priceSelectionMode ?? 'STANDARD',
     versions: Object.freeze(versions),
   });
 }
@@ -573,6 +594,7 @@ async function applySnapshotAndReload(client, {
     salesOrderId: result.salesOrder.id,
     versionNumber,
     channel: prepared.channel,
+    priceSelectionMode: prepared.priceSelectionMode,
     documentDiscount: prepared.documentDiscount,
     lines: prepared.commercialLines,
   });
@@ -887,16 +909,22 @@ async function verifyDraftPricing(client, {
     id: snapshot.version.sales_channel_id,
   });
   if (!channel) return failure('SALES_CHANNEL_NOT_FOUND', 'Active Sales channel not found');
+  const priceSelectionMode = appliedPriceService.normalizePriceSelectionMode(
+    snapshot.version.price_selection_mode,
+  );
+  if (!priceSelectionMode) return failure('INVALID_PRICE_SELECTION_MODE', 'Cách áp dụng giá không hợp lệ.');
 
   const changed = [];
   for (const line of snapshot.lines) {
-    const automatic = await pricingService.resolvePrice(client, {
+    const automatic = await appliedPriceService.resolveSalesOrderAppliedPrice(client, {
       installationId: requestContext.installationId,
       payload: {
         variantId: line.variant_id,
         quantity: String(line.ordered_quantity),
         currencyCode: snapshot.version.currency_code,
         channelId: channel.id,
+        salesChannelId: channel.id,
+        priceSelectionMode,
         ...(snapshot.version.customer_mode_snapshot === 'WALK_IN'
           ? {}
           : { customerId: snapshot.version.customer_id }),

@@ -99,6 +99,7 @@ export async function applyCommercialSnapshot(client, {
   salesOrderId,
   versionNumber,
   channel,
+  priceSelectionMode,
   documentDiscount,
   lines,
 }) {
@@ -124,6 +125,7 @@ export async function applyCommercialSnapshot(client, {
             document_discount_value = $8,
             document_discount_reason = $9,
             price_override_reason = $10,
+            price_selection_mode = $11,
             updated_at = now()
       WHERE installation_id = $1
         AND sales_order_id = $2
@@ -141,6 +143,7 @@ export async function applyCommercialSnapshot(client, {
       documentDiscount.value,
       documentDiscount.reason,
       manualReasons,
+      priceSelectionMode,
     ],
   );
   const versionId = rows(versionResult)[0]?.id;
@@ -153,7 +156,9 @@ export async function applyCommercialSnapshot(client, {
   if (!addressSnapshotApplied) return false;
 
   for (const line of lines) {
-    const source = line.manualOverride ? 'MANUAL_OVERRIDE' : 'PRICE_ENGINE';
+    const source = line.manualOverride
+      ? 'MANUAL_OVERRIDE'
+      : (line.priceSource === 'HISTORY_REFERENCE' ? 'HISTORY_REFERENCE' : 'PRICE_ENGINE');
     const trace = [
       {
         kind: 'RESOLUTION',
@@ -216,6 +221,7 @@ export async function getDraftCommercialSnapshot(client, {
             version.customer_id,
             version.currency_code,
             version.sales_channel_id,
+            version.price_selection_mode,
             version.document_discount_mode,
             version.document_discount_value,
             version.document_discount_reason
@@ -232,6 +238,7 @@ export async function getDraftCommercialSnapshot(client, {
   const lineResult = await client.query(
     `SELECT line.line_number,
             line.variant_id,
+            line.unit_id,
             line.ordered_quantity,
             trim_scale(line.base_unit_price)::text AS base_unit_price,
             trim_scale(line.system_unit_price)::text AS system_unit_price,
@@ -259,6 +266,7 @@ export async function copyCommercialSnapshotToDraft(client, {
         SET sales_channel_id = source.sales_channel_id,
             sales_channel_code_snapshot = source.sales_channel_code_snapshot,
             sales_channel_name_snapshot = source.sales_channel_name_snapshot,
+            price_selection_mode = source.price_selection_mode,
             document_discount_mode = source.document_discount_mode,
             document_discount_value = source.document_discount_value,
             document_discount_reason = source.document_discount_reason,
@@ -317,6 +325,7 @@ export async function loadCommercialFacts(client, { installationId, salesOrderId
             version.sales_channel_id,
             version.sales_channel_code_snapshot,
             version.sales_channel_name_snapshot,
+            version.price_selection_mode,
             version.document_discount_mode,
             version.document_discount_value,
             version.document_discount_reason
@@ -330,6 +339,7 @@ export async function loadCommercialFacts(client, { installationId, salesOrderId
             line.line_number,
             trim_scale(line.base_unit_price)::text AS base_unit_price,
             trim_scale(line.system_unit_price)::text AS system_unit_price,
+            line.price_source,
             line.manual_override_reason,
             line.pricing_trace_snapshot
        FROM sales.sales_order_versions AS version
