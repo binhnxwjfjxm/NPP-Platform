@@ -14,7 +14,10 @@ const workspace = readFileSync(
 test('positive document discount intent is rejected client-side without a reason', () => {
   assert.match(ui, /function validateDraftDiscountIntent/);
   assert.match(ui, /DOCUMENT_DISCOUNT_REASON_REQUIRED/);
-  assert.match(ui, /validateDraftDiscountIntent\(path, init\)/);
+  assert.match(
+    ui,
+    /const requestInit = withCanonicalSalesOrderNumbers\(path, previewInit\);[\s\S]*validateDraftDiscountIntent\(path, requestInit\);/,
+  );
 });
 
 test('successful recovery clears a stale pricing error before showing success', () => {

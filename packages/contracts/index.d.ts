@@ -1,6 +1,19 @@
 export const IDEMPOTENCY_KEY_MAX_LENGTH: 128;
 export const IDEMPOTENCY_KEY_PATTERN: RegExp;
 
+export type CanonicalDecimalOptions = {
+  allowNegative?: boolean;
+};
+
+export function canonicalDecimalString(
+  value: unknown,
+  options?: CanonicalDecimalOptions,
+): string | null;
+export function canonicalVndMinorString(
+  value: unknown,
+  options?: CanonicalDecimalOptions,
+): string | null;
+
 export function normalizeIdempotencyKey(value: unknown): string | null;
 export function isValidIdempotencyKey(value: unknown): boolean;
 export function normalizeIdempotencyOperation(value: unknown): string;
