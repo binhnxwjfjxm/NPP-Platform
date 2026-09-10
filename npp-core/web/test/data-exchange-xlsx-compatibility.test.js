@@ -39,7 +39,7 @@ test('XLSX reader receives required headers and rejects unsupported spreadsheet 
 test('file imports use the shared canonical idempotency generator and reuse the same key on retry', () => {
   const fileUtils = read('app/operations/data-exchange/data-exchange-file-utils.ts');
   const actions = read('app/operations/data-exchange/data-exchange-import-actions.ts');
-  assert.match(fileUtils, /import \{ createIdempotencyKey \} from '@npp\/contracts'/);
+  assert.match(fileUtils, /import \{[\s\S]*?\bcreateIdempotencyKey\b[\s\S]*?\} from '@npp\/contracts'/);
   assert.match(fileUtils, /return createIdempotencyKey\(prefix\)/);
   assert.match(actions, /const operationKey = currentImportKey\(pendingImport\.kind\)/);
   assert.match(actions, /'Idempotency-Key': operationKey/);
