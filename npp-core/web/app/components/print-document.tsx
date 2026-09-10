@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import styles from './print-document.module.css';
 
 export type PrintPageSize = 'A4' | 'A5';
+export type PrintActionVariant = 'button' | 'text';
 
 function clearPrintState() {
   document.body.removeAttribute('data-printing');
@@ -59,10 +60,12 @@ export function PrintAction({
   label = 'In',
   targetId,
   onPrint,
+  variant = 'button',
 }: {
   label?: string;
   targetId?: string;
   onPrint?: () => void;
+  variant?: PrintActionVariant;
 }) {
   function print() {
     clearPrintState();
@@ -98,7 +101,7 @@ export function PrintAction({
   return (
     <button
       type="button"
-      className={styles.printAction}
+      className={variant === 'text' ? styles.printActionText : styles.printAction}
       onClick={print}
       data-testid="print-document-action"
       aria-label={label}

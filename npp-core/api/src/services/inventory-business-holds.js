@@ -14,6 +14,7 @@ function mapBreakdownRow(row) {
     salesSku: row.sales_sku,
     baseSku: row.base_sku,
     baseUnitCode: row.base_unit_code,
+    baseUnitName: row.base_unit_name ?? null,
     deliveryMode: row.delivery_mode,
     deliveryExecutionMode: row.delivery_execution_mode,
     fulfillmentStatus: row.fulfillment_status,
@@ -221,6 +222,7 @@ export async function loadWarehouseBusinessHoldBreakdown(client, {
          demand.sku_snapshot AS sales_sku,
          base_variant.sku AS base_sku,
          base_unit.code AS base_unit_code,
+         base_unit.name AS base_unit_name,
          demand.state AS demand_state,
          COALESCE(exact_by_demand.exact_held_quantity, 0)::numeric(30,12) AS exact_held_base_quantity,
          greatest(
