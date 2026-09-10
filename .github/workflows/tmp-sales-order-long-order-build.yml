@@ -1,0 +1,547 @@
+name: Temporary Sales Order long-order root-fix builder
+
+on:
+  push:
+    branches:
+      - agent/tmp-sales-order-long-order-build
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/npp_long_order_fix
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/npp_long_order_fix
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: npp_long_order_fix
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d npp_long_order_fix"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    steps:
+      - name: Checkout temporary builder branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Apply root fix and regression tests
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected exactly one replacement target, found {count}')
+              p.write_text(text.replace(old, new, 1))
+
+          sales = 'npp-core/api/src/services/sales-order.js'
+          replace_once(
+              sales,
+              """function withInternalPricePermission(requestContext) {
+            const permissions = new Set(Array.isArray(requestContext?.permissions)
+              ? requestContext.permissions
+              : []);
+            permissions.add('core.sales-order.price.override');
+            return Object.freeze({
+              ...requestContext,
+              permissions: Object.freeze([...permissions]),
+              authContext: requestContext?.authContext
+                ? Object.freeze({
+                    ...requestContext.authContext,
+                    permissions: Object.freeze([...permissions]),
+                  })
+                : requestContext?.authContext,
+            });
+          }
+          """,
+              """function withCommercialPricingBoundary(requestContext) {
+            return Object.freeze({
+              ...requestContext,
+              commercialPricingBoundary: true,
+            });
+          }
+          """,
+          )
+          replace_once(
+              sales,
+              """  const legacyLines = commercialLines.map((line, index) => ({
+            ...line.input,
+            manualUnitPriceMinor: line.finalUnitPriceMinor,
+            manualReason: line.manualReason ?? (line.manualOverride
+              ? 'permission-price-override'
+              : `system-price:${line.fingerprint}`),
+            ...(documentDiscount.positive
+              ? {
+                  discountMode: 'TOTAL_AMOUNT',
+                  discountValue: allocated.allocations[index].toString(),
+                }
+              : {}),
+          }));
+          """,
+              """  const legacyLines = commercialLines.map((line, index) => ({
+            ...line.input,
+            manualUnitPriceMinor: undefined,
+            manualReason: undefined,
+            commercialAppliedPrice: Object.freeze({
+              unitPriceMinor: line.finalUnitPriceMinor,
+              source: line.manualOverride ? 'MANUAL_OVERRIDE' : 'PRICE_ENGINE',
+              manualReason: line.manualReason,
+            }),
+            ...(documentDiscount.positive
+              ? {
+                  discountMode: 'TOTAL_AMOUNT',
+                  discountValue: allocated.allocations[index].toString(),
+                }
+              : {}),
+          }));
+          """,
+          )
+          replace_once(
+              sales,
+              '    legacyRequestContext: withInternalPricePermission(requestContext),',
+              '    legacyRequestContext: withCommercialPricingBoundary(requestContext),',
+          )
+
+          legacy = Path('npp-core/api/src/services/sales-order-legacy.js')
+          legacy_text = legacy.read_text()
+          prepare_marker = '\nasync function prepareLines(client, { requestContext, header, payload }) {'
+          if legacy_text.count(prepare_marker) != 1:
+              raise SystemExit('sales-order-legacy.js: prepareLines marker mismatch')
+          applied_helper = r'''
+          function commercialAppliedPrice(requestContext, input, lineNumber) {
+            if (requestContext?.commercialPricingBoundary !== true) {
+              return { ok: true, supplied: false, unitPriceMinor: null, source: null, manualReason: null };
+            }
+            const applied = input?.commercialAppliedPrice;
+            if (!applied || typeof applied !== 'object' || Array.isArray(applied)) {
+              return failure(
+                'SALES_ORDER_APPLIED_PRICE_REQUIRED',
+                'Không xác định được giá đã áp dụng cho dòng hàng.',
+                false,
+                { line: lineNumber },
+              );
+            }
+            const unitPriceMinor = String(applied.unitPriceMinor ?? '').trim();
+            if (!MONEY_PATTERN.test(unitPriceMinor)) {
+              return failure(
+                'SALES_ORDER_APPLIED_PRICE_INVALID',
+                'Giá đã áp dụng cho dòng hàng không hợp lệ.',
+                false,
+                { line: lineNumber },
+              );
+            }
+            const source = String(applied.source ?? '').trim().toUpperCase();
+            if (source !== 'PRICE_ENGINE' && source !== 'MANUAL_OVERRIDE') {
+              return failure(
+                'SALES_ORDER_APPLIED_PRICE_SOURCE_INVALID',
+                'Nguồn giá đã áp dụng cho dòng hàng không hợp lệ.',
+                false,
+                { line: lineNumber },
+              );
+            }
+            const rawReason = String(applied.manualReason ?? '').trim();
+            if (rawReason.length > 500) {
+              return failure(
+                'PRICE_OVERRIDE_REASON_INVALID',
+                'Lý do điều chỉnh giá không được vượt quá 500 ký tự.',
+                false,
+                { line: lineNumber },
+              );
+            }
+            if (source === 'PRICE_ENGINE' && rawReason) {
+              return failure(
+                'SALES_ORDER_APPLIED_PRICE_REASON_INVALID',
+                'Giá hệ thống không được mang lý do điều chỉnh giá.',
+                false,
+                { line: lineNumber },
+              );
+            }
+            return {
+              ok: true,
+              supplied: true,
+              unitPriceMinor,
+              source,
+              manualReason: source === 'MANUAL_OVERRIDE' ? (rawReason || null) : null,
+            };
+          }
+          '''
+          legacy_text = legacy_text.replace(prepare_marker, '\n' + applied_helper.strip('\n') + prepare_marker, 1)
+
+          start_marker = '    const manualPrice = input.manualUnitPriceMinor === undefined || input.manualUnitPriceMinor === null || input.manualUnitPriceMinor === \'\''
+          start = legacy_text.find(start_marker)
+          if start < 0:
+              raise SystemExit('sales-order-legacy.js: manual price block start not found')
+          end_marker = "    if (!price.ok) return failure(price.code, price.message, price.retryable, { line: index + 1 });\n"
+          end_start = legacy_text.find(end_marker, start)
+          if end_start < 0:
+              raise SystemExit('sales-order-legacy.js: manual price block end not found')
+          end = end_start + len(end_marker)
+          new_price_block = r'''    const appliedPrice = commercialAppliedPrice(requestContext, input, index + 1);
+            if (!appliedPrice.ok) return appliedPrice;
+
+            let manualPrice;
+            if (appliedPrice.supplied) {
+              manualPrice = appliedPrice.source === 'MANUAL_OVERRIDE'
+                ? appliedPrice.unitPriceMinor
+                : null;
+            } else {
+              manualPrice = input.manualUnitPriceMinor === undefined || input.manualUnitPriceMinor === null || input.manualUnitPriceMinor === ''
+                ? null
+                : String(input.manualUnitPriceMinor).trim();
+              if (manualPrice !== null && !hasPermission(requestContext, 'core.sales-order.price.override')) {
+                return failure('PRICE_OVERRIDE_FORBIDDEN', 'Price override permission is required', false, { line: index + 1 });
+              }
+              if (manualPrice !== null && !MONEY_PATTERN.test(manualPrice)) {
+                return failure('INVALID_MONEY', 'Manual unit price must be a non-negative VND amount', false, { line: index + 1 });
+              }
+            }
+
+            const manualReason = appliedPrice.supplied
+              ? appliedPrice.manualReason
+              : (manualPrice === null ? null : text(input.manualReason, 500, true));
+            if (!appliedPrice.supplied && manualPrice !== null && !manualReason) {
+              return failure('PRICE_OVERRIDE_REASON_REQUIRED', 'Price override reason is required', false, { line: index + 1 });
+            }
+            if (manualReason) priceOverrideReason = priceOverrideReason ? `${priceOverrideReason}; ${manualReason}` : manualReason;
+
+            let price;
+            if (appliedPrice.supplied) {
+              price = {
+                ok: true,
+                resolution: {
+                  finalUnitPriceMinor: appliedPrice.unitPriceMinor,
+                  steps: [],
+                },
+              };
+            } else {
+              price = await pricingService.resolvePrice(client, {
+                installationId: requestContext.installationId,
+                payload: {
+                  variantId: input.variantId,
+                  quantity: formatScaled(quantity),
+                  currencyCode: header.currencyCode,
+                  customerId: header.customerMode === 'WALK_IN' ? null : header.customer.id,
+                  customerGroupId: header.customerMode === 'WALK_IN' ? null : (header.customer.group_id ?? null),
+                  priceAt: new Date().toISOString(),
+                  manualUnitPriceMinor: manualPrice,
+                  manualReason,
+                },
+              });
+              if (!price.ok && price.code === 'BASE_PRICE_NOT_FOUND' && manualPrice !== null) {
+                price = {
+                  ok: true,
+                  resolution: {
+                    finalUnitPriceMinor: manualPrice,
+                    steps: [
+                      { kind: 'SKIPPED', reason: 'BASE_PRICE_NOT_FOUND' },
+                      { kind: 'MANUAL_OVERRIDE', reason: manualReason, afterUnitPriceMinor: manualPrice },
+                    ],
+                  },
+                };
+              }
+              if (!price.ok) return failure(price.code, price.message, price.retryable, { line: index + 1 });
+            }
+          '''
+          legacy_text = legacy_text[:start] + new_price_block + legacy_text[end:]
+          old_provenance = '    const provenance = priceProvenance(price.resolution);'
+          new_provenance = """    const provenance = appliedPrice.supplied
+              ? { priceListId: null, priceRuleId: null }
+              : priceProvenance(price.resolution);"""
+          if legacy_text.count(old_provenance) != 1:
+              raise SystemExit('sales-order-legacy.js: provenance target mismatch')
+          legacy_text = legacy_text.replace(old_provenance, new_provenance, 1)
+          old_source = """      priceListId: manualPrice === null ? provenance.priceListId : null,
+            priceRuleId: manualPrice === null ? provenance.priceRuleId : null,
+            priceSource: manualPrice === null ? 'PRICE_ENGINE' : 'MANUAL_OVERRIDE',"""
+          new_source = """      priceListId: appliedPrice.supplied
+                ? null
+                : (manualPrice === null ? provenance.priceListId : null),
+              priceRuleId: appliedPrice.supplied
+                ? null
+                : (manualPrice === null ? provenance.priceRuleId : null),
+              priceSource: appliedPrice.supplied
+                ? appliedPrice.source
+                : (manualPrice === null ? 'PRICE_ENGINE' : 'MANUAL_OVERRIDE'),"""
+          if legacy_text.count(old_source) != 1:
+              raise SystemExit('sales-order-legacy.js: price source target mismatch')
+          legacy_text = legacy_text.replace(old_source, new_source, 1)
+          legacy.write_text(legacy_text)
+
+          idempotency = Path('npp-core/api/src/idempotency.js')
+          idem_text = idempotency.read_text()
+          execute_marker = '\nexport async function executeRequestWithIdempotency({'
+          if idem_text.count(execute_marker) != 1:
+              raise SystemExit('idempotency.js: execute marker mismatch')
+          idem_helpers = r'''
+          function logField(value, maxLength) {
+            return typeof value === 'string' && value.trim()
+              ? value.trim().replace(/[\r\n\t]+/g, ' ').slice(0, maxLength)
+              : null;
+          }
+
+          function sanitizedProcessingError(error, { requestId, route }) {
+            return Object.freeze({
+              event: 'idempotent_request_processing_error',
+              requestId,
+              route,
+              name: logField(error?.name, 80) ?? 'Error',
+              postgresCode: logField(error?.code, 32),
+              constraint: logField(error?.constraint, 160),
+              schema: logField(error?.schema, 128),
+              table: logField(error?.table, 128),
+            });
+          }
+
+          function classifyProcessingError(error) {
+            if (String(error?.code ?? '') === '23514') {
+              return Object.freeze({
+                code: 'DATA_CONSTRAINT_VIOLATION',
+                message: 'Dữ liệu chưa phù hợp với quy tắc Công Ty. Vui lòng kiểm tra thông tin và lưu lại.',
+                statusCode: 422,
+                retryable: false,
+                details: {},
+              });
+            }
+            const statusCode = Number.isInteger(error?.statusCode) ? error.statusCode : 503;
+            return Object.freeze({
+              code: error?.code ?? 'INTERNAL_ERROR',
+              message: error?.publicMessage ?? 'Request failed',
+              statusCode,
+              retryable: typeof error?.retryable === 'boolean' ? error.retryable : statusCode >= 500,
+              details: error?.details ?? {},
+            });
+          }
+          '''
+          idem_text = idem_text.replace(execute_marker, '\n' + idem_helpers.strip('\n') + execute_marker, 1)
+          old_catch = r'''  } catch (error) {
+            const statusCode = Number.isInteger(error?.statusCode) ? error.statusCode : 503;
+            const retryable = typeof error?.retryable === 'boolean' ? error.retryable : statusCode >= 500;
+            const failureResponse = errorResponse({
+              code: error?.code ?? 'INTERNAL_ERROR',
+              message: error?.publicMessage ?? 'Request failed',
+              statusCode,
+              requestId,
+              receivedAt,
+              details: error?.details ?? {},
+              retryable,
+            });
+            await idempotencyStore.markFailed(scope, requestId, failureResponse);
+            return { response: failureResponse, replayed: false };
+          }
+          '''
+          new_catch = r'''  } catch (error) {
+            console.error(JSON.stringify(sanitizedProcessingError(error, { requestId, route })));
+            const classified = classifyProcessingError(error);
+            const failureResponse = errorResponse({
+              ...classified,
+              requestId,
+              receivedAt,
+            });
+            await idempotencyStore.markFailed(scope, requestId, failureResponse);
+            return { response: failureResponse, replayed: false };
+          }
+          '''
+          if idem_text.count(old_catch) != 1:
+              raise SystemExit(f'idempotency.js: catch target mismatch: {idem_text.count(old_catch)}')
+          idempotency.write_text(idem_text.replace(old_catch, new_catch, 1))
+
+          idem_test = Path('npp-core/api/test/idempotency-retryable-internal-error.test.js')
+          idem_test_text = idem_test.read_text()
+          idem_marker = "test('PostgreSQL CHECK 23514 is a non-retryable business-data response instead of a fake 503'"
+          if idem_marker not in idem_test_text:
+              idem_test_text += r'''
+
+          test('PostgreSQL CHECK 23514 is a non-retryable business-data response instead of a fake 503', async () => {
+            let failedResponse = null;
+            const store = {
+              async reserve() { return { created: true, record: {} }; },
+              async markCompleted() { assert.fail('markCompleted must not run after a thrown CHECK violation'); },
+              async markFailed(_scope, _requestId, response) { failedResponse = response; },
+            };
+            const pgError = Object.assign(new Error('check constraint failed'), {
+              code: '23514',
+              constraint: 'sales_order_versions_price_override_reason_check',
+              schema: 'sales',
+              table: 'sales_order_versions',
+            });
+            const result = await executeRequestWithIdempotency(baseArgs(store, 'request-check-23514', async () => {
+              throw pgError;
+            }));
+            assert.equal(result.replayed, false);
+            assert.equal(result.response.statusCode, 422);
+            assert.equal(result.response.body.error.code, 'DATA_CONSTRAINT_VIOLATION');
+            assert.equal(result.response.body.error.retryable, false);
+            assert.equal(result.response.body.error.message, 'Dữ liệu chưa phù hợp với quy tắc Công Ty. Vui lòng kiểm tra thông tin và lưu lại.');
+            assert.deepEqual(result.response.body.error.details, {});
+            assert.equal(JSON.stringify(result.response.body).includes('sales_order_versions_price_override_reason_check'), false);
+            assert.equal(failedResponse.statusCode, 422);
+            assert.equal(failedResponse.body.error.retryable, false);
+          });
+          '''
+          idem_test.write_text(idem_test_text)
+
+          sales_test = Path('npp-core/api/test/sales-order-idempotency-transaction.test.js')
+          sales_test_text = sales_test.read_text()
+          sales_marker = "test('long Sales Orders keep system pricing separate from manual override semantics'"
+          if sales_marker not in sales_test_text:
+              sales_test_text += r'''
+
+          test('long Sales Orders keep system pricing separate from manual override semantics', async () => {
+            const config = loadConfig(env());
+            const pool = getPool(config);
+            try {
+              const fixture = await fixtures(pool, config.installationId);
+
+              const createLongOrder = async (lines, permissions = []) => {
+                const requestContext = Object.freeze({
+                  installationId: config.installationId,
+                  actorId: `test:long-order-${randomUUID()}`,
+                  employeeId: null,
+                  roles: Object.freeze(['test']),
+                  permissions: Object.freeze([...permissions]),
+                  scopes: Object.freeze({
+                    branchIds: Object.freeze([]),
+                    warehouseIds: Object.freeze([fixture.warehouseId]),
+                    territoryIds: Object.freeze([]),
+                  }),
+                  requestId: `req_${randomUUID()}`,
+                  sourceApp: 'test',
+                  receivedAt: new Date().toISOString(),
+                });
+                const payload = {
+                  sourceType: 'MANUAL',
+                  customerId: fixture.customerId,
+                  customerAddressId: fixture.addressId,
+                  warehouseId: fixture.warehouseId,
+                  salesChannelId: fixture.channelId,
+                  deliveryMode: 'DELIVERY',
+                  collectionPolicy: 'COLLECT_ON_DELIVERY',
+                  currency: 'VND',
+                  lines,
+                };
+                const client = await pool.connect();
+                try {
+                  await client.query('BEGIN');
+                  const result = await service.createSalesOrder(client, { requestContext, payload });
+                  assert.equal(result.ok, true, JSON.stringify(result));
+                  await client.query('COMMIT');
+                  return result;
+                } catch (error) {
+                  await client.query('ROLLBACK').catch(() => {});
+                  throw error;
+                } finally {
+                  client.release();
+                }
+              };
+
+              const systemLines = (count) => Array.from({ length: count }, () => ({
+                variantId: fixture.variantId,
+                quantity: '1',
+                discountMode: 'TOTAL_AMOUNT',
+                discountValue: '0',
+                taxMode: 'EXCLUSIVE',
+                taxRate: '0',
+              }));
+              const versionOne = (result) => result.salesOrder.versions.find(
+                (version) => String(version.versionNumber) === '1',
+              );
+
+              const order32 = await createLongOrder(systemLines(32));
+              const version32 = versionOne(order32);
+              assert.equal(version32.lines.length, 32);
+              assert.equal(version32.priceOverrideReason, null);
+              assert.equal(version32.lines.every((line) => line.priceSource === 'PRICE_ENGINE'), true);
+              assert.equal(version32.lines.every((line) => Array.isArray(line.pricingTrace) && line.pricingTrace.length > 0), true);
+              assert.equal(JSON.stringify(version32).includes('system-price:'), false);
+
+              const order100 = await createLongOrder(systemLines(100));
+              const version100 = versionOne(order100);
+              assert.equal(version100.lines.length, 100);
+              assert.equal(version100.priceOverrideReason, null);
+              assert.equal(version100.lines.every((line) => line.priceSource === 'PRICE_ENGINE'), true);
+              assert.equal(version100.lines.every((line) => Array.isArray(line.pricingTrace) && line.pricingTrace.length > 0), true);
+              assert.equal(JSON.stringify(version100).includes('system-price:'), false);
+
+              const mixedLines = systemLines(40);
+              mixedLines[3] = {
+                ...mixedLines[3],
+                manualUnitPriceMinor: '9000',
+                manualReason: 'Giá theo thỏa thuận',
+              };
+              mixedLines[17] = {
+                ...mixedLines[17],
+                manualUnitPriceMinor: '0',
+              };
+              const mixed = await createLongOrder(mixedLines, ['core.sales-order.price.override']);
+              const mixedVersion = versionOne(mixed);
+              const manualLines = mixedVersion.lines.filter((line) => line.priceSource === 'MANUAL_OVERRIDE');
+              assert.equal(mixedVersion.lines.length, 40);
+              assert.equal(manualLines.length, 2);
+              assert.equal(manualLines.every((line) => line.pricingTrace.some((step) => step.kind === 'MANUAL_OVERRIDE')), true);
+              assert.equal(mixedVersion.priceOverrideReason, 'Dòng 4: Giá theo thỏa thuận');
+              assert.equal(mixedVersion.priceOverrideReason.length < 1000, true);
+              assert.equal(JSON.stringify(mixedVersion).includes('system-price:'), false);
+            } finally {
+              await closePool();
+            }
+          });
+          '''
+          sales_test.write_text(sales_test_text)
+          PY
+
+      - name: Install workspaces
+        run: npm ci
+
+      - name: Apply migrations on PostgreSQL 17
+        run: npm --workspace npp-core-api run migration:migrate
+        env:
+          NODE_ENV: test
+
+      - name: Verify Công Ty API including long-order regression
+        run: npm --workspace npp-core-api run verify
+        env:
+          NODE_ENV: test
+
+      - name: Verify patch shape
+        run: |
+          git diff --check
+          node --check npp-core/api/src/services/sales-order.js
+          node --check npp-core/api/src/services/sales-order-legacy.js
+          node --check npp-core/api/src/idempotency.js
+          git diff -- npp-core/api/src/services/sales-order.js npp-core/api/src/services/sales-order-legacy.js npp-core/api/src/idempotency.js npp-core/api/test/idempotency-retryable-internal-error.test.js npp-core/api/test/sales-order-idempotency-transaction.test.js
+
+      - name: Commit verified source only
+        run: |
+          rm .github/workflows/tmp-sales-order-long-order-build.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add npp-core/api/src/services/sales-order.js \
+                  npp-core/api/src/services/sales-order-legacy.js \
+                  npp-core/api/src/idempotency.js \
+                  npp-core/api/test/idempotency-retryable-internal-error.test.js \
+                  npp-core/api/test/sales-order-idempotency-transaction.test.js \
+                  .github/workflows/tmp-sales-order-long-order-build.yml
+          git commit -m "fix(company): tách đúng giá hệ thống khi lưu đơn dài"
+          git push origin HEAD:agent/tmp-sales-order-long-order-build
