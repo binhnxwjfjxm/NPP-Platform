@@ -58,6 +58,7 @@ test('Lô B phân biệt không quản lý tồn với hết hàng và trả đ�
       availableQuantity: null,
       heldQuantity: null,
       unitCode: null,
+      unitName: null,
     },
   );
   const tracked = salesOrderSearchPreviewInternals.inventoryPreview({
@@ -65,6 +66,7 @@ test('Lô B phân biệt không quản lý tồn với hết hàng và trả đ�
     base_variant_count: 1,
     base_variant_id: 'base-1',
     base_unit_code: 'THUNG',
+    base_unit_name: 'Thùng',
     on_hand_quantity: '12.000000000000',
     available_quantity: '10.000000000000',
     held_quantity: '2.000000000000',
@@ -73,7 +75,8 @@ test('Lô B phân biệt không quản lý tồn với hết hàng và trả đ�
   assert.equal(tracked.onHandQuantity, '12.000000000000');
   assert.equal(tracked.availableQuantity, '10.000000000000');
   assert.equal(tracked.heldQuantity, '2.000000000000');
-  assert.equal(salesOrderSearchPreviewInternals.inventoryHeldMessage(tracked), 'Đang giữ 2 THUNG');
+  assert.equal(tracked.unitName, 'Thùng');
+  assert.equal(salesOrderSearchPreviewInternals.inventoryHeldMessage(tracked), 'Đang giữ 2 Thùng');
 });
 
 test('Lô B không còn trả thông báo chọn được dư thừa', async () => {
