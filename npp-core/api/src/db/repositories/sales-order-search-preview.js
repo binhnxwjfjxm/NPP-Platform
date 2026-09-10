@@ -11,7 +11,8 @@ export async function listSalesOrderSkuInventoryPreviews(client, {
               product.is_inventory_managed,
               base_scope.base_variant_count,
               base_scope.base_variant_id,
-              base_scope.base_unit_code
+              base_scope.base_unit_code,
+              base_scope.base_unit_name
          FROM shared.product_variants pv
          JOIN shared.products product
            ON product.installation_id = pv.installation_id
@@ -19,7 +20,8 @@ export async function listSalesOrderSkuInventoryPreviews(client, {
          LEFT JOIN LATERAL (
            SELECT count(*)::int AS base_variant_count,
                   (array_agg(base_variant.id ORDER BY base_variant.id))[1] AS base_variant_id,
-                  (array_agg(base_unit.code ORDER BY base_variant.id))[1] AS base_unit_code
+                  (array_agg(base_unit.code ORDER BY base_variant.id))[1] AS base_unit_code,
+                  (array_agg(base_unit.name ORDER BY base_variant.id))[1] AS base_unit_name
              FROM shared.product_variants base_variant
              LEFT JOIN shared.units_of_measure base_unit
                ON base_unit.installation_id = base_variant.installation_id
@@ -62,6 +64,7 @@ export async function listSalesOrderSkuInventoryPreviews(client, {
             selected.base_variant_count,
             selected.base_variant_id,
             selected.base_unit_code,
+            selected.base_unit_name,
             COALESCE(balance.on_hand_quantity, 0)::numeric(30,12)::text AS on_hand_quantity,
             (
               COALESCE(balance.exact_reserved_quantity, 0)

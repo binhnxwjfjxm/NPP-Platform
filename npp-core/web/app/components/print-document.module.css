@@ -20,9 +20,33 @@
   background: linear-gradient(180deg, #fff9ec 0%, #ead7b8 100%);
 }
 
-.printAction:focus-visible {
+.printAction:focus-visible,
+.printActionText:focus-visible {
   outline: 2px solid #98600f;
   outline-offset: 2px;
+}
+
+.printActionText {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 2rem;
+  padding: 0.25rem 0.2rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  box-shadow: none;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.printActionText:hover {
+  background: transparent;
+  text-decoration: underline;
+  text-underline-offset: 0.18rem;
 }
 
 .printSurface,
@@ -31,7 +55,8 @@
 }
 
 @media print {
-  .printAction {
+  .printAction,
+  .printActionText {
     display: none !important;
   }
 

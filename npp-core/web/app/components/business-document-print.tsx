@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, type ReactNode } from 'react';
-import { PrintAction, PrintSurface, type PrintPageSize } from './print-document';
+import { PrintAction, PrintSurface, type PrintActionVariant, type PrintPageSize } from './print-document';
 import type { DocumentPrintTemplate } from '../../lib/document-print-template-types';
 import styles from './business-document-print.module.css';
 
@@ -46,6 +46,7 @@ export default function BusinessDocumentPrint({
   documentType,
   templateCode = 'standard',
   actionLabel = 'In',
+  actionVariant = 'button',
   title,
   subtitle = 'Chứng từ nghiệp vụ',
   headingFallback,
@@ -71,6 +72,7 @@ export default function BusinessDocumentPrint({
   documentType?: string;
   templateCode?: string;
   actionLabel?: string;
+  actionVariant?: PrintActionVariant;
   title: string;
   subtitle?: string;
   headingFallback?: ReactNode;
@@ -126,7 +128,7 @@ export default function BusinessDocumentPrint({
 
   return (
     <>
-      <PrintAction label={actionLabel} targetId={id} onPrint={onPrint} />
+      <PrintAction label={actionLabel} targetId={id} onPrint={onPrint} variant={actionVariant} />
       <PrintSurface
         id={id}
         size={template?.pageSize ?? size}

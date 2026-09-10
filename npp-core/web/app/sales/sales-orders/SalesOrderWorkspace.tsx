@@ -130,8 +130,8 @@ export function sortOrdersByCreatedAt(items: SalesOrder[]): SalesOrder[] {
 
 export function compactOrderNumber(value: string | null | undefined): string {
   const normalized = String(value ?? '').replace(/^#/, '');
-  const match = /^(.+-)(\d{6})(-\d+)$/.exec(normalized);
-  return match ? `${match[1]}…${match[3]}` : normalized;
+  const match = /^SO-\d{6}-(\d{6})$/i.exec(normalized);
+  return match ? `SO${match[1]}` : normalized;
 }
 
 function matchesSearch(order: SalesOrder, term: string): boolean {
@@ -511,15 +511,15 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
                   onClick={() => loadOrder(order.id)}
                 >
                   <div className={polishStyles.orderCardMain}>
-                    <div className={`${styles.orderCardTop} ${polishStyles.orderCardTopCompact}`}>
-                      <div className={styles.orderCardNumber}>
-                        <BusinessSequenceNumber rowIndex={rowIndex} className={styles.orderSequence} />
-                        <strong>{order.number ? `#${compactOrderNumber(order.number)}` : 'Đơn đặt hàng chưa cấp số'}</strong>
-                        <span className={polishStyles.orderCardNumberDivider} aria-hidden="true">|</span>
-                        <strong className={polishStyles.orderCardTotal}>{formatMoney(orderCardTotal(order))}đ</strong>
-                      </div>
+                    <div className={polishStyles.orderCardCustomerRow}>
+                      <BusinessSequenceNumber rowIndex={rowIndex} className={styles.orderSequence} />
+                      <strong className={polishStyles.orderCardCustomerName}>{order.customerName}</strong>
+                      <span className={polishStyles.orderCardNumberDivider} aria-hidden="true">|</span>
+                      <strong className={polishStyles.orderCardTotal}>{formatMoney(orderCardTotal(order))}đ</strong>
                     </div>
-                    <b>{order.customerName}</b>
+                    <small className={polishStyles.orderCardCompactNumber}>
+                      {order.number ? compactOrderNumber(order.number) : 'Đơn đặt hàng chưa cấp số'}
+                    </small>
                     <div className={styles.orderCardMeta}>
                       <small>Kênh {order.salesChannelCode ?? 'chưa xác định'}{order.salesChannelName ? ` — ${order.salesChannelName}` : ''}</small>
                       <small>Cập nhật {formatVietnamDateTime(order.updatedAt)}</small>

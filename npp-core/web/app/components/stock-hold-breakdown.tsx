@@ -12,6 +12,7 @@ type HoldOrder = Readonly<{
   salesSku: string;
   baseSku: string;
   baseUnitCode: string;
+  baseUnitName: string | null;
   deliveryMode: string | null;
   deliveryExecutionMode: string | null;
   fulfillmentStatus: string | null;
@@ -51,6 +52,7 @@ export function StockHoldBreakdown({
   excludeSalesOrderId = null,
   displayedHeldQuantity,
   baseUnitCode = '',
+  baseUnitName = '',
   title = 'Đơn đang giữ hàng',
 }: {
   warehouseId: string;
@@ -58,6 +60,7 @@ export function StockHoldBreakdown({
   excludeSalesOrderId?: string | null;
   displayedHeldQuantity?: string | null;
   baseUnitCode?: string | null;
+  baseUnitName?: string | null;
   title?: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -88,7 +91,7 @@ export function StockHoldBreakdown({
     }
   }
 
-  const unit = String(baseUnitCode ?? '').trim();
+  const unit = String(baseUnitName || baseUnitCode || '').trim();
   return (
     <>
       <button
@@ -160,7 +163,7 @@ export function StockHoldBreakdown({
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                         <strong><BusinessSequenceNumber rowIndex={index} /> {order.orderNumber}</strong>
-                        <strong>{formatQuantity(order.heldBaseQuantity)} {order.baseUnitCode || unit}</strong>
+                        <strong>{formatQuantity(order.heldBaseQuantity)} {order.baseUnitName || order.baseUnitCode || unit}</strong>
                       </div>
                       <div style={{ marginTop: 4 }}>{order.customerName || 'Khách hàng'}</div>
                       <div style={{ marginTop: 4, fontSize: 13, opacity: .76 }}>

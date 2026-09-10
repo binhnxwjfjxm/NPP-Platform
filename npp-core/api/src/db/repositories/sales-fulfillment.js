@@ -242,7 +242,8 @@ export async function loadFulfillmentProjection(client, {
          demand.backordered_base_quantity, demand.allocated_base_quantity,
          demand.picked_base_quantity, demand.packed_base_quantity, demand.issued_base_quantity,
          demand.cancelled_base_quantity, demand.state, demand.created_at, demand.updated_at,
-         base_unit.code AS base_unit_code
+         base_unit.code AS base_unit_code,
+         base_unit.name AS base_unit_name
        FROM sales.sales_order_fulfillment_demands demand
        JOIN shared.product_variants base_variant
          ON base_variant.installation_id = demand.installation_id
