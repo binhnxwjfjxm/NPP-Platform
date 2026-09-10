@@ -373,7 +373,7 @@ function scopeRows(lines, { posted = false } = {}) {
   return scopes;
 }
 
-async function verifySnapshotWatermarks(client, row, lines, { lock = false } = {}) {
+async function loadCurrentScopeState(client, row, lines, { lock = false } = {}) {
   const scopes = scopeRows(lines);
   const current = await repository.currentScopeVersions(client, {
     installationId: row.installation_id,
@@ -381,8 +381,18 @@ async function verifySnapshotWatermarks(client, row, lines, { lock = false } = {
     scopes,
     lock,
   });
-  const byKey = new Map(current.map((entry) => [entry.scope_key, entry]));
-  const stale = scopes.filter((scope) => String(byKey.get(scope.scope_key)?.version ?? 0) !== scope.expected_version);
+  return Object.freeze({
+    ok: true,
+    scopes,
+    currentByKey: new Map(current.map((entry) => [entry.scope_key, entry])),
+  });
+}
+
+async function verifySnapshotWatermarks(client, row, lines, { lock = false } = {}) {
+  const state = await loadCurrentScopeState(client, row, lines, { lock });
+  const stale = state.scopes.filter(
+    (scope) => String(state.currentByKey.get(scope.scope_key)?.version ?? 0) !== scope.expected_version,
+  );
   if (stale.length > 0) {
     return failure(
       'INVENTORY_ADJUSTMENT_SCOPE_CHANGED',
@@ -393,12 +403,16 @@ async function verifySnapshotWatermarks(client, row, lines, { lock = false } = {
           lineId: scope.line_id,
           side: scope.side,
           expectedScopeVersion: scope.expected_version,
-          currentScopeVersion: String(byKey.get(scope.scope_key)?.version ?? 0),
+          currentScopeVersion: String(state.currentByKey.get(scope.scope_key)?.version ?? 0),
         })),
       },
     );
   }
-  return Object.freeze({ ok: true, scopes, currentByKey: byKey });
+  return state;
+}
+
+function shouldVerifySnapshotAtPost(documentKind) {
+  return documentKind !== 'MANUAL_ADJUSTMENT';
 }
 
 function movementTypeFor(row, reversal = false) {
@@ -832,13 +846,6 @@ export async function approveAdjustment(client, { requestContext, adjustmentId, 
   if (row.created_by === actorId(requestContext) && !canApproveOwnAdjustment(requestContext)) {
     return failure('INVENTORY_ADJUSTMENT_SELF_APPROVAL_DENIED', 'The creator cannot approve the same adjustment');
   }
-  const lines = await repository.listLines(client, {
-    installationId: row.installation_id,
-    adjustmentId: row.id,
-    forUpdate: true,
-  });
-  const watermark = await verifySnapshotWatermarks(client, row, lines, { lock: true });
-  if (!watermark.ok) return watermark;
   const next = await repository.markApproved(client, {
     installationId: row.installation_id,
     adjustmentId: row.id,
@@ -871,7 +878,9 @@ export async function postAdjustment(client, {
     adjustmentId: row.id,
     forUpdate: true,
   });
-  const watermark = await verifySnapshotWatermarks(client, row, lines, { lock: true });
+  const watermark = shouldVerifySnapshotAtPost(row.document_kind)
+    ? await verifySnapshotWatermarks(client, row, lines, { lock: true })
+    : await loadCurrentScopeState(client, row, lines, { lock: true });
   if (!watermark.ok) return watermark;
   const posted = await insertMovement(client, {
     requestContext,
@@ -1037,4 +1046,5 @@ export const inventoryAdjustmentInternals = Object.freeze({
   movementTypeFor,
   childIdempotencyKey,
   canApproveOwnAdjustment,
+  shouldVerifySnapshotAtPost,
 });
