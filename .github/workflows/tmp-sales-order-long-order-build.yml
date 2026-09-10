@@ -48,59 +48,33 @@ jobs:
           python3 <<'PY'
           from pathlib import Path
 
-          def replace_once(path, old, new):
-              p = Path(path)
-              text = p.read_text()
-              count = text.count(old)
+          def one(text, marker, label):
+              count = text.count(marker)
               if count != 1:
-                  raise SystemExit(f'{path}: expected exactly one replacement target, found {count}')
-              p.write_text(text.replace(old, new, 1))
+                  raise SystemExit(f'{label}: expected one marker, found {count}')
+              return text.index(marker)
 
-          sales = 'npp-core/api/src/services/sales-order.js'
-          replace_once(
-              sales,
-              """function withInternalPricePermission(requestContext) {
-            const permissions = new Set(Array.isArray(requestContext?.permissions)
-              ? requestContext.permissions
-              : []);
-            permissions.add('core.sales-order.price.override');
-            return Object.freeze({
-              ...requestContext,
-              permissions: Object.freeze([...permissions]),
-              authContext: requestContext?.authContext
-                ? Object.freeze({
-                    ...requestContext.authContext,
-                    permissions: Object.freeze([...permissions]),
-                  })
-                : requestContext?.authContext,
-            });
-          }
-          """,
-              """function withCommercialPricingBoundary(requestContext) {
+          def replace_one(text, old, new, label):
+              one(text, old, label)
+              return text.replace(old, new, 1)
+
+          sales_path = Path('npp-core/api/src/services/sales-order.js')
+          sales = sales_path.read_text()
+          start = one(sales, 'function withInternalPricePermission(requestContext) {', 'sales helper start')
+          end_marker = '\nfunction nonZeroLegacyLineDiscount'
+          end = sales.index(end_marker, start)
+          sales = sales[:start] + '''function withCommercialPricingBoundary(requestContext) {
             return Object.freeze({
               ...requestContext,
               commercialPricingBoundary: true,
             });
           }
-          """,
-          )
-          replace_once(
-              sales,
-              """  const legacyLines = commercialLines.map((line, index) => ({
-            ...line.input,
-            manualUnitPriceMinor: line.finalUnitPriceMinor,
-            manualReason: line.manualReason ?? (line.manualOverride
-              ? 'permission-price-override'
-              : `system-price:${line.fingerprint}`),
-            ...(documentDiscount.positive
-              ? {
-                  discountMode: 'TOTAL_AMOUNT',
-                  discountValue: allocated.allocations[index].toString(),
-                }
-              : {}),
-          }));
-          """,
-              """  const legacyLines = commercialLines.map((line, index) => ({
+          '''.replace('          ', '') + sales[end:]
+
+          start_marker = '  const legacyLines = commercialLines.map((line, index) => ({'
+          start = one(sales, start_marker, 'legacy lines start')
+          end = sales.index('\n\n  return Object.freeze({', start)
+          replacement = '''  const legacyLines = commercialLines.map((line, index) => ({
             ...line.input,
             manualUnitPriceMinor: undefined,
             manualReason: undefined,
@@ -115,21 +89,25 @@ jobs:
                   discountValue: allocated.allocations[index].toString(),
                 }
               : {}),
-          }));
-          """,
-          )
-          replace_once(
+          }));'''.replace('          ', '')
+          sales = sales[:start] + replacement + sales[end:]
+          sales = replace_one(
               sales,
               '    legacyRequestContext: withInternalPricePermission(requestContext),',
               '    legacyRequestContext: withCommercialPricingBoundary(requestContext),',
+              'legacy request context',
           )
+          if 'system-price:' in sales:
+              raise SystemExit('sales facade still contains system-price pseudo reason')
+          if "permissions.add('core.sales-order.price.override')" in sales:
+              raise SystemExit('sales facade still grants synthetic price override permission')
+          sales_path.write_text(sales)
 
-          legacy = Path('npp-core/api/src/services/sales-order-legacy.js')
-          legacy_text = legacy.read_text()
+          legacy_path = Path('npp-core/api/src/services/sales-order-legacy.js')
+          legacy = legacy_path.read_text()
           prepare_marker = '\nasync function prepareLines(client, { requestContext, header, payload }) {'
-          if legacy_text.count(prepare_marker) != 1:
-              raise SystemExit('sales-order-legacy.js: prepareLines marker mismatch')
-          applied_helper = r'''
+          one(legacy, prepare_marker, 'legacy prepareLines')
+          helper = r'''
           function commercialAppliedPrice(requestContext, input, lineNumber) {
             if (requestContext?.commercialPricingBoundary !== true) {
               return { ok: true, supplied: false, unitPriceMinor: null, source: null, manualReason: null };
@@ -186,19 +164,15 @@ jobs:
               manualReason: source === 'MANUAL_OVERRIDE' ? (rawReason || null) : null,
             };
           }
-          '''
-          legacy_text = legacy_text.replace(prepare_marker, '\n' + applied_helper.strip('\n') + prepare_marker, 1)
+          '''.replace('          ', '')
+          legacy = legacy.replace(prepare_marker, '\n' + helper.strip('\n') + prepare_marker, 1)
 
-          start_marker = '    const manualPrice = input.manualUnitPriceMinor === undefined || input.manualUnitPriceMinor === null || input.manualUnitPriceMinor === \'\''
-          start = legacy_text.find(start_marker)
-          if start < 0:
-              raise SystemExit('sales-order-legacy.js: manual price block start not found')
+          start_marker = '    const manualPrice = input.manualUnitPriceMinor'
+          start = one(legacy, start_marker, 'legacy manual price start')
           end_marker = "    if (!price.ok) return failure(price.code, price.message, price.retryable, { line: index + 1 });\n"
-          end_start = legacy_text.find(end_marker, start)
-          if end_start < 0:
-              raise SystemExit('sales-order-legacy.js: manual price block end not found')
+          end_start = legacy.index(end_marker, start)
           end = end_start + len(end_marker)
-          new_price_block = r'''    const appliedPrice = commercialAppliedPrice(requestContext, input, index + 1);
+          price_block = r'''    const appliedPrice = commercialAppliedPrice(requestContext, input, index + 1);
             if (!appliedPrice.ok) return appliedPrice;
 
             let manualPrice;
@@ -263,38 +237,39 @@ jobs:
               }
               if (!price.ok) return failure(price.code, price.message, price.retryable, { line: index + 1 });
             }
-          '''
-          legacy_text = legacy_text[:start] + new_price_block + legacy_text[end:]
-          old_provenance = '    const provenance = priceProvenance(price.resolution);'
-          new_provenance = """    const provenance = appliedPrice.supplied
-              ? { priceListId: null, priceRuleId: null }
-              : priceProvenance(price.resolution);"""
-          if legacy_text.count(old_provenance) != 1:
-              raise SystemExit('sales-order-legacy.js: provenance target mismatch')
-          legacy_text = legacy_text.replace(old_provenance, new_provenance, 1)
-          old_source = """      priceListId: manualPrice === null ? provenance.priceListId : null,
-            priceRuleId: manualPrice === null ? provenance.priceRuleId : null,
-            priceSource: manualPrice === null ? 'PRICE_ENGINE' : 'MANUAL_OVERRIDE',"""
-          new_source = """      priceListId: appliedPrice.supplied
-                ? null
-                : (manualPrice === null ? provenance.priceListId : null),
-              priceRuleId: appliedPrice.supplied
-                ? null
-                : (manualPrice === null ? provenance.priceRuleId : null),
-              priceSource: appliedPrice.supplied
-                ? appliedPrice.source
-                : (manualPrice === null ? 'PRICE_ENGINE' : 'MANUAL_OVERRIDE'),"""
-          if legacy_text.count(old_source) != 1:
-              raise SystemExit('sales-order-legacy.js: price source target mismatch')
-          legacy_text = legacy_text.replace(old_source, new_source, 1)
-          legacy.write_text(legacy_text)
+          '''.replace('          ', '')
+          legacy = legacy[:start] + price_block + legacy[end:]
+          legacy = replace_one(
+              legacy,
+              '    const provenance = priceProvenance(price.resolution);',
+              "    const provenance = appliedPrice.supplied\n      ? { priceListId: null, priceRuleId: null }\n      : priceProvenance(price.resolution);",
+              'legacy provenance',
+          )
+          legacy = replace_one(
+              legacy,
+              '      priceListId: manualPrice === null ? provenance.priceListId : null,',
+              '      priceListId: appliedPrice.supplied ? null : (manualPrice === null ? provenance.priceListId : null),',
+              'legacy price list source',
+          )
+          legacy = replace_one(
+              legacy,
+              '      priceRuleId: manualPrice === null ? provenance.priceRuleId : null,',
+              '      priceRuleId: appliedPrice.supplied ? null : (manualPrice === null ? provenance.priceRuleId : null),',
+              'legacy price rule source',
+          )
+          legacy = replace_one(
+              legacy,
+              "      priceSource: manualPrice === null ? 'PRICE_ENGINE' : 'MANUAL_OVERRIDE',",
+              "      priceSource: appliedPrice.supplied ? appliedPrice.source : (manualPrice === null ? 'PRICE_ENGINE' : 'MANUAL_OVERRIDE'),",
+              'legacy semantic price source',
+          )
+          legacy_path.write_text(legacy)
 
-          idempotency = Path('npp-core/api/src/idempotency.js')
-          idem_text = idempotency.read_text()
+          idem_path = Path('npp-core/api/src/idempotency.js')
+          idem = idem_path.read_text()
           execute_marker = '\nexport async function executeRequestWithIdempotency({'
-          if idem_text.count(execute_marker) != 1:
-              raise SystemExit('idempotency.js: execute marker mismatch')
-          idem_helpers = r'''
+          one(idem, execute_marker, 'idempotency execute')
+          helpers = r'''
           function logField(value, maxLength) {
             return typeof value === 'string' && value.trim()
               ? value.trim().replace(/[\r\n\t]+/g, ' ').slice(0, maxLength)
@@ -333,24 +308,13 @@ jobs:
               details: error?.details ?? {},
             });
           }
-          '''
-          idem_text = idem_text.replace(execute_marker, '\n' + idem_helpers.strip('\n') + execute_marker, 1)
-          old_catch = r'''  } catch (error) {
-            const statusCode = Number.isInteger(error?.statusCode) ? error.statusCode : 503;
-            const retryable = typeof error?.retryable === 'boolean' ? error.retryable : statusCode >= 500;
-            const failureResponse = errorResponse({
-              code: error?.code ?? 'INTERNAL_ERROR',
-              message: error?.publicMessage ?? 'Request failed',
-              statusCode,
-              requestId,
-              receivedAt,
-              details: error?.details ?? {},
-              retryable,
-            });
-            await idempotencyStore.markFailed(scope, requestId, failureResponse);
-            return { response: failureResponse, replayed: false };
-          }
-          '''
+          '''.replace('          ', '')
+          idem = idem.replace(execute_marker, '\n' + helpers.strip('\n') + execute_marker, 1)
+          execute_pos = idem.index(execute_marker)
+          try_pos = idem.index('  try {\n    const response = await onProcess();', execute_pos)
+          catch_start = idem.index('  } catch (error) {', try_pos)
+          catch_end_marker = '    return { response: failureResponse, replayed: false };\n  }\n'
+          catch_end = idem.index(catch_end_marker, catch_start) + len(catch_end_marker)
           new_catch = r'''  } catch (error) {
             console.error(JSON.stringify(sanitizedProcessingError(error, { requestId, route })));
             const classified = classifyProcessingError(error);
@@ -362,16 +326,15 @@ jobs:
             await idempotencyStore.markFailed(scope, requestId, failureResponse);
             return { response: failureResponse, replayed: false };
           }
-          '''
-          if idem_text.count(old_catch) != 1:
-              raise SystemExit(f'idempotency.js: catch target mismatch: {idem_text.count(old_catch)}')
-          idempotency.write_text(idem_text.replace(old_catch, new_catch, 1))
+          '''.replace('          ', '')
+          idem = idem[:catch_start] + new_catch + idem[catch_end:]
+          idem_path.write_text(idem)
 
-          idem_test = Path('npp-core/api/test/idempotency-retryable-internal-error.test.js')
-          idem_test_text = idem_test.read_text()
-          idem_marker = "test('PostgreSQL CHECK 23514 is a non-retryable business-data response instead of a fake 503'"
-          if idem_marker not in idem_test_text:
-              idem_test_text += r'''
+          idem_test_path = Path('npp-core/api/test/idempotency-retryable-internal-error.test.js')
+          idem_test = idem_test_path.read_text()
+          marker = "test('PostgreSQL CHECK 23514 is a non-retryable business-data response instead of a fake 503'"
+          if marker not in idem_test:
+              idem_test += r'''
 
           test('PostgreSQL CHECK 23514 is a non-retryable business-data response instead of a fake 503', async () => {
             let failedResponse = null;
@@ -399,14 +362,14 @@ jobs:
             assert.equal(failedResponse.statusCode, 422);
             assert.equal(failedResponse.body.error.retryable, false);
           });
-          '''
-          idem_test.write_text(idem_test_text)
+          '''.replace('          ', '')
+          idem_test_path.write_text(idem_test)
 
-          sales_test = Path('npp-core/api/test/sales-order-idempotency-transaction.test.js')
-          sales_test_text = sales_test.read_text()
-          sales_marker = "test('long Sales Orders keep system pricing separate from manual override semantics'"
-          if sales_marker not in sales_test_text:
-              sales_test_text += r'''
+          sales_test_path = Path('npp-core/api/test/sales-order-idempotency-transaction.test.js')
+          sales_test = sales_test_path.read_text()
+          marker = "test('long Sales Orders keep system pricing separate from manual override semantics'"
+          if marker not in sales_test:
+              sales_test += r'''
 
           test('long Sales Orders keep system pricing separate from manual override semantics', async () => {
             const config = loadConfig(env());
@@ -507,8 +470,8 @@ jobs:
               await closePool();
             }
           });
-          '''
-          sales_test.write_text(sales_test_text)
+          '''.replace('          ', '')
+          sales_test_path.write_text(sales_test)
           PY
 
       - name: Install workspaces
@@ -530,7 +493,7 @@ jobs:
           node --check npp-core/api/src/services/sales-order.js
           node --check npp-core/api/src/services/sales-order-legacy.js
           node --check npp-core/api/src/idempotency.js
-          git diff -- npp-core/api/src/services/sales-order.js npp-core/api/src/services/sales-order-legacy.js npp-core/api/src/idempotency.js npp-core/api/test/idempotency-retryable-internal-error.test.js npp-core/api/test/sales-order-idempotency-transaction.test.js
+          test -z "$(git diff --name-only | grep -vE '^(npp-core/api/src/services/sales-order.js|npp-core/api/src/services/sales-order-legacy.js|npp-core/api/src/idempotency.js|npp-core/api/test/idempotency-retryable-internal-error.test.js|npp-core/api/test/sales-order-idempotency-transaction.test.js)$')"
 
       - name: Commit verified source only
         run: |
