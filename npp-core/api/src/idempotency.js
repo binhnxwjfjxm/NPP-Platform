@@ -233,6 +233,44 @@ function responseForExistingRecord(record, requestFingerprint, requestId, receiv
   throw new Error('invalid_idempotency_record_status');
 }
 
+function logField(value, maxLength) {
+  return typeof value === 'string' && value.trim()
+    ? value.trim().replace(/[\r\n\t]+/g, ' ').slice(0, maxLength)
+    : null;
+}
+
+function sanitizedProcessingError(error, { requestId, route }) {
+  return Object.freeze({
+    event: 'idempotent_request_processing_error',
+    requestId,
+    route,
+    name: logField(error?.name, 80) ?? 'Error',
+    postgresCode: logField(error?.code, 32),
+    constraint: logField(error?.constraint, 160),
+    schema: logField(error?.schema, 128),
+    table: logField(error?.table, 128),
+  });
+}
+
+function classifyProcessingError(error) {
+  if (String(error?.code ?? '') === '23514') {
+    return Object.freeze({
+      code: 'DATA_CONSTRAINT_VIOLATION',
+      message: 'Dữ liệu chưa phù hợp với quy tắc Công Ty. Vui lòng kiểm tra thông tin và lưu lại.',
+      statusCode: 422,
+      retryable: false,
+      details: {},
+    });
+  }
+  const statusCode = Number.isInteger(error?.statusCode) ? error.statusCode : 503;
+  return Object.freeze({
+    code: error?.code ?? 'INTERNAL_ERROR',
+    message: error?.publicMessage ?? 'Request failed',
+    statusCode,
+    retryable: typeof error?.retryable === 'boolean' ? error.retryable : statusCode >= 500,
+    details: error?.details ?? {},
+  });
+}
 export async function executeRequestWithIdempotency({
   idempotencyStore,
   req,
@@ -305,18 +343,14 @@ export async function executeRequestWithIdempotency({
     }
     return { response, replayed: false };
   } catch (error) {
-    const statusCode = Number.isInteger(error?.statusCode) ? error.statusCode : 503;
-    const retryable = typeof error?.retryable === 'boolean' ? error.retryable : statusCode >= 500;
-    const failureResponse = errorResponse({
-      code: error?.code ?? 'INTERNAL_ERROR',
-      message: error?.publicMessage ?? 'Request failed',
-      statusCode,
-      requestId,
-      receivedAt,
-      details: error?.details ?? {},
-      retryable,
-    });
-    await idempotencyStore.markFailed(scope, requestId, failureResponse);
-    return { response: failureResponse, replayed: false };
-  }
+  console.error(JSON.stringify(sanitizedProcessingError(error, { requestId, route })));
+  const classified = classifyProcessingError(error);
+  const failureResponse = errorResponse({
+    ...classified,
+    requestId,
+    receivedAt,
+  });
+  await idempotencyStore.markFailed(scope, requestId, failureResponse);
+  return { response: failureResponse, replayed: false };
+}
 }

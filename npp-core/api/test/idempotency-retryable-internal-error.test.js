@@ -166,3 +166,30 @@ test('returned retryable 503 is stored as failed and the same key can process ag
   assert.equal(record.status, 'completed');
   assert.equal(processCount, 2);
 });
+
+test('PostgreSQL CHECK 23514 is a non-retryable business-data response instead of a fake 503', async () => {
+  let failedResponse = null;
+  const store = {
+    async reserve() { return { created: true, record: {} }; },
+    async markCompleted() { assert.fail('markCompleted must not run after a thrown CHECK violation'); },
+    async markFailed(_scope, _requestId, response) { failedResponse = response; },
+  };
+  const pgError = Object.assign(new Error('check constraint failed'), {
+    code: '23514',
+    constraint: 'sales_order_versions_price_override_reason_check',
+    schema: 'sales',
+    table: 'sales_order_versions',
+  });
+  const result = await executeRequestWithIdempotency(baseArgs(store, 'request-check-23514', async () => {
+    throw pgError;
+  }));
+  assert.equal(result.replayed, false);
+  assert.equal(result.response.statusCode, 422);
+  assert.equal(result.response.body.error.code, 'DATA_CONSTRAINT_VIOLATION');
+  assert.equal(result.response.body.error.retryable, false);
+  assert.equal(result.response.body.error.message, 'Dữ liệu chưa phù hợp với quy tắc Công Ty. Vui lòng kiểm tra thông tin và lưu lại.');
+  assert.deepEqual(result.response.body.error.details, {});
+  assert.equal(JSON.stringify(result.response.body).includes('sales_order_versions_price_override_reason_check'), false);
+  assert.equal(failedResponse.statusCode, 422);
+  assert.equal(failedResponse.body.error.retryable, false);
+});

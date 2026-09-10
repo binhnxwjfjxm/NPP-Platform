@@ -190,20 +190,10 @@ function hasPermission(requestContext, permission) {
     && requestContext.permissions.includes(permission);
 }
 
-function withInternalPricePermission(requestContext) {
-  const permissions = new Set(Array.isArray(requestContext?.permissions)
-    ? requestContext.permissions
-    : []);
-  permissions.add('core.sales-order.price.override');
+function withCommercialPricingBoundary(requestContext) {
   return Object.freeze({
     ...requestContext,
-    permissions: Object.freeze([...permissions]),
-    authContext: requestContext?.authContext
-      ? Object.freeze({
-          ...requestContext.authContext,
-          permissions: Object.freeze([...permissions]),
-        })
-      : requestContext?.authContext,
+    commercialPricingBoundary: true,
   });
 }
 
@@ -433,18 +423,21 @@ async function prepareCommercialPayload(client, { requestContext, payload }) {
   if (!allocated.ok) return allocated;
 
   const legacyLines = commercialLines.map((line, index) => ({
-    ...line.input,
-    manualUnitPriceMinor: line.finalUnitPriceMinor,
-    manualReason: line.manualReason ?? (line.manualOverride
-      ? 'permission-price-override'
-      : `system-price:${line.fingerprint}`),
-    ...(documentDiscount.positive
-      ? {
-          discountMode: 'TOTAL_AMOUNT',
-          discountValue: allocated.allocations[index].toString(),
-        }
-      : {}),
-  }));
+  ...line.input,
+  manualUnitPriceMinor: undefined,
+  manualReason: undefined,
+  commercialAppliedPrice: Object.freeze({
+    unitPriceMinor: line.finalUnitPriceMinor,
+    source: line.manualOverride ? 'MANUAL_OVERRIDE' : 'PRICE_ENGINE',
+    manualReason: line.manualReason,
+  }),
+  ...(documentDiscount.positive
+    ? {
+        discountMode: 'TOTAL_AMOUNT',
+        discountValue: allocated.allocations[index].toString(),
+      }
+    : {}),
+}));
 
   return Object.freeze({
     ok: true,
@@ -455,7 +448,7 @@ async function prepareCommercialPayload(client, { requestContext, payload }) {
       ...normalizedPayload,
       lines: Object.freeze(legacyLines),
     }),
-    legacyRequestContext: withInternalPricePermission(requestContext),
+    legacyRequestContext: withCommercialPricingBoundary(requestContext),
   });
 }
 
