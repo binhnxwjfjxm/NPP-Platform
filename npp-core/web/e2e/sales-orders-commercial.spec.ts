@@ -207,12 +207,15 @@ async function mockCommercialApis(page: Page) {
     });
   });
 
-  await page.route('**/api/pricing/resolve', async (route) => {
+  await page.route('**/api/sales-orders/price-preview', async (route) => {
     const body = route.request().postDataJSON() as {
       variantId: string;
       quantity: string;
-      channelId: string;
+      salesChannelId: string;
+      priceSelectionMode: string;
+      pricingAt: string;
     };
+    expect(body.priceSelectionMode).toBe('STANDARD');
     const systemPrice = String(9_000 + Number(body.variantId.slice(-2)));
     await route.fulfill({
       status: 200,
@@ -221,15 +224,15 @@ async function mockCommercialApis(page: Page) {
           variant: { id: body.variantId, sku: body.variantId },
           currencyCode: 'VND',
           quantity: body.quantity,
-          priceAt: '2026-07-31T00:00:00.000Z',
-          channelId: body.channelId,
+          priceAt: body.pricingAt,
+          channelId: body.salesChannelId,
           customerId: null,
           customerGroupId: null,
           baseUnitPriceMinor: '10000',
           systemUnitPriceMinor: systemPrice,
           finalUnitPriceMinor: systemPrice,
           lineTotalMinor: systemPrice,
-          resolutionFingerprint: `pricing-${body.variantId}-${body.quantity}-${body.channelId}`,
+          resolutionFingerprint: `pricing-${body.variantId}-${body.quantity}-${body.salesChannelId}`,
           steps: [
             { kind: 'BASE', priceListCode: 'BASE-VND', priceListType: 'BASE', afterUnitPriceMinor: '10000' },
             { kind: 'RULE', priceListCode: 'FIELD', priceListType: 'CHANNEL', beforeUnitPriceMinor: '10000', afterUnitPriceMinor: systemPrice, priority: 200, stackingMode: 'EXCLUSIVE' },
