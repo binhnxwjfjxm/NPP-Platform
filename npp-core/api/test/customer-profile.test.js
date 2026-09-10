@@ -55,6 +55,7 @@ test('sales summary uses customer, warehouse, effective orders and latest confir
   assert.match(captured.sql, /so\.status IN \('confirmed', 'closed'\)/);
   assert.match(captured.sql, /version\.version_status IN \('confirmed', 'superseded'\)/);
   assert.match(captured.sql, /sum\(current_version\.total\)/);
+  assert.match(captured.sql, /current_version\.currency_code = 'VND'/);
   assert.equal(captured.params[0], 'test-installation');
   assert.equal(captured.params[1], customerId);
   assert.deepEqual(captured.params[2], [warehouseId]);
@@ -80,7 +81,7 @@ test('sales summary keeps employee visibility when read-all is absent', async ()
   assert.equal(params[3], null);
 });
 
-test('receivable summary reads the canonical ledger and open documents for the customer scope', async () => {
+test('receivable summary reads only VND from the canonical ledger and open documents for the customer scope', async () => {
   let sql = '';
   const client = {
     async query(nextSql, params) {
@@ -97,6 +98,8 @@ test('receivable summary reads the canonical ledger and open documents for the c
   assert.match(sql, /accounting\.receivable_documents/);
   assert.match(sql, /document\.customer_id = \$2::uuid/);
   assert.match(sql, /document\.warehouse_id = ANY\(\$3::uuid\[\]\)/);
+  assert.match(sql, /entry\.currency_code = 'VND'/);
+  assert.equal((sql.match(/document\.currency_code = 'VND'/g) ?? []).length, 2);
 });
 
 test('invalid customer or period is rejected before querying', async () => {

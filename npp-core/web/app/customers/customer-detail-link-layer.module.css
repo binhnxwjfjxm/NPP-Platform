@@ -1,10 +1,10 @@
-:global([data-testid^='customer-row-'] td:nth-child(2) > div) {
+:global([data-testid^='customer-row-'] td:nth-child(2) > div):has(.overlayLink) {
   display: flex;
   flex-direction: column;
   gap: 3px;
 }
 
-:global([data-testid^='customer-row-'] td:nth-child(2) > div > span:first-of-type) {
+:global([data-testid^='customer-row-'] td:nth-child(2) > div > span:first-of-type):has(.overlayLink) {
   position: relative;
   order: -2;
   display: inline-block;
@@ -14,7 +14,7 @@
   font-weight: 760;
 }
 
-:global([data-testid^='customer-row-'] td:nth-child(2) > div > strong:first-child) {
+:global([data-testid^='customer-row-'] td:nth-child(2) > div):has(.overlayLink) > strong:first-child {
   order: -1;
   color: var(--hp-muted, #7a8492);
   font-size: 0.72rem;

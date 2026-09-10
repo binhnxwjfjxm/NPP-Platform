@@ -51,12 +51,13 @@ export async function getCustomerSalesSummary(client, {
          WHERE $4::timestamptz IS NULL OR so.confirmed_at >= $4::timestamptz
        )::text AS order_count,
        COALESCE(sum(current_version.total) FILTER (
-         WHERE $4::timestamptz IS NULL OR so.confirmed_at >= $4::timestamptz
+         WHERE ($4::timestamptz IS NULL OR so.confirmed_at >= $4::timestamptz)
+           AND current_version.currency_code = 'VND'
        ), 0)::numeric(20,6)::text AS revenue,
        max(so.confirmed_at) AS last_purchase_at
      FROM sales.sales_orders so
      JOIN LATERAL (
-       SELECT version.total
+       SELECT version.total, version.currency_code
          FROM sales.sales_order_versions version
         WHERE version.installation_id = so.installation_id
           AND version.sales_order_id = so.id
@@ -94,6 +95,8 @@ export async function getCustomerReceivableSummary(client, {
         WHERE document.installation_id = $1
           AND document.customer_id = $2::uuid
           AND document.warehouse_id = ANY($3::uuid[])
+          AND document.currency_code = 'VND'
+          AND entry.currency_code = 'VND'
      ), open_documents AS (
        SELECT COALESCE(sum(document.remaining_amount), 0)::numeric(20,6) AS open_amount,
               count(*)::text AS open_document_count
@@ -101,6 +104,7 @@ export async function getCustomerReceivableSummary(client, {
         WHERE document.installation_id = $1
           AND document.customer_id = $2::uuid
           AND document.warehouse_id = ANY($3::uuid[])
+          AND document.currency_code = 'VND'
           AND document.status IN ('open', 'partially_allocated')
      )
      SELECT ledger.balance::text AS balance,
