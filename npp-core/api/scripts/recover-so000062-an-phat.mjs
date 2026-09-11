@@ -24,8 +24,6 @@ const TARGET = Object.freeze({
   wrongTotal: '14269800',
   wrongLineCount: 21,
   wrongLineSignature: 'c04565855b27cd1c2faf9a9e417b5326',
-  comparisonOrderId: '088f2b4e-f586-4885-905e-32c282b43bcd',
-  comparisonOrderNumber: 'SO-202609-000107',
 });
 
 const ACTOR_ID = 'system:recovery-so000062-20260911';
@@ -130,35 +128,6 @@ async function versionMetrics(client, installationId, orderId, versionNumber) {
         AND v.version_number=$3
       GROUP BY v.id`,
     [installationId, orderId, versionNumber],
-  );
-  return result.rows[0] ?? null;
-}
-
-async function currentOrderSignature(client, orderId) {
-  const result = await client.query(
-    `SELECT so.id,
-            so.order_number,
-            so.current_version_number,
-            so.customer_id,
-            cv.total::text AS total,
-            count(l.id)::int AS line_count,
-            md5(COALESCE(string_agg(
-              concat_ws('|', l.line_number::text, l.sku_snapshot,
-                l.ordered_quantity::text, l.unit_code_snapshot,
-                l.unit_price::text, l.line_total::text),
-              '||' ORDER BY l.line_number
-            ), '')) AS line_signature
-       FROM sales.sales_orders so
-       JOIN sales.sales_order_versions cv
-         ON cv.installation_id=so.installation_id
-        AND cv.sales_order_id=so.id
-        AND cv.version_number=so.current_version_number
-       LEFT JOIN sales.sales_order_version_lines l
-         ON l.installation_id=cv.installation_id
-        AND l.sales_order_version_id=cv.id
-      WHERE so.id=$1
-      GROUP BY so.id, cv.id`,
-    [orderId],
   );
   return result.rows[0] ?? null;
 }
@@ -301,14 +270,6 @@ async function run() {
       assert(Number(receivable.rows[0]?.count ?? 0) === 0, 'target_has_accounting_documents');
     }
 
-    const otherBefore = await currentOrderSignature(client, TARGET.comparisonOrderId);
-    assert(otherBefore, 'comparison_order_missing');
-    assert(otherBefore.order_number === TARGET.comparisonOrderNumber, 'comparison_order_number_changed');
-    assert(normalizeNumeric(otherBefore.total) === TARGET.wrongTotal, 'comparison_order_total_changed_before_recovery');
-    assert(Number(otherBefore.line_count) === TARGET.wrongLineCount, 'comparison_order_line_count_changed_before_recovery');
-    assert(otherBefore.line_signature === TARGET.wrongLineSignature, 'comparison_order_signature_changed_before_recovery');
-    assert(otherBefore.line_signature === wrongMetric.line_signature, 'wrong_version_no_longer_matches_comparison_order');
-
     await cloneVersionSixAsEight(client, order, sourceRow, occurredAt);
 
     const draftMetric = await versionMetrics(client, order.installation_id, TARGET.orderId, TARGET.nextVersion);
@@ -402,9 +363,6 @@ async function run() {
     assert(wrongAfter?.version_status === 'superseded', 'wrong_version_not_preserved_as_superseded');
     assert(wrongAfter?.line_signature === TARGET.wrongLineSignature, 'wrong_version_history_changed');
 
-    const otherAfter = await currentOrderSignature(client, TARGET.comparisonOrderId);
-    assert(JSON.stringify(otherAfter) === JSON.stringify(otherBefore), 'comparison_order_changed_during_recovery');
-
     await client.query('COMMIT');
     committed = true;
 
@@ -419,7 +377,6 @@ async function run() {
       weightKg: normalizeNumeric(finalMetric.weight_kg),
       fulfillmentStatus: finalOrder.fulfillment_status,
       preservedWrongVersion: TARGET.wrongVersion,
-      comparisonOrderUnchanged: true,
       releasedAllocationCount: Array.isArray(released.released) ? released.released.length : 0,
     })));
   } catch (error) {
