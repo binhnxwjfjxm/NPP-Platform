@@ -9,6 +9,7 @@ import {
 } from '../services/manual-inbound.js';
 import { confirmManualInbound } from '../services/manual-inbound-confirmation.js';
 import { readManualInboundHistoryDetail, searchManualInboundHistory } from '../services/manual-inbound-history.js';
+import { searchManualInboundProducts } from '../services/manual-inbound-product-search.js';
 import {
   listManualInboundLocationOptions,
   listManualInboundWarehouseOptions,
@@ -103,6 +104,21 @@ export async function handleManualInboundRoutes(req, res, options) {
         return true;
       }
       writeSuccess(res, { warehouse: result.warehouse, locations: result.locations }, options);
+      return true;
+    }
+
+    if (url.pathname === '/api/inventory/manual-inbounds/operator/products' && method === 'GET') {
+      const result = await searchManualInboundProducts(options.getPool(), {
+        requestContext,
+        warehouseId: url.searchParams.get('warehouseId'),
+        search: url.searchParams.get('search'),
+        limit: url.searchParams.get('limit') ?? 30,
+      });
+      if (!result.ok) {
+        sendError(res, apiError(result.code, result.message, result.details ?? {}, result.retryable, statusFor(result)), options.requestId, options.receivedAt);
+        return true;
+      }
+      writeSuccess(res, result.products, options);
       return true;
     }
 

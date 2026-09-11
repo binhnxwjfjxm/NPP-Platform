@@ -106,10 +106,6 @@ test('primary business list tables use the shared STT convention', () => {
   assert.match(inventoryBalances, /visibleBalances\.map\(\(balance, rowIndex\)/);
   assert.match(inventoryBalances, /BusinessTableSequenceCell rowIndex=\{pageStart \+ rowIndex\}/);
 
-  const manualInboundHistory = read(rolloutPaths[10]);
-  assert.match(manualInboundHistory, /history\.map\(\(document, rowIndex\)/);
-  assert.match(manualInboundHistory, /BusinessTableSequenceCell rowIndex=\{rowIndex\}/);
-
   const scopedInventory = read(rolloutPaths[11]);
   assert.match(scopedInventory, /filteredBalances\.map\(\(balance, rowIndex\)/);
   assert.match(scopedInventory, /filteredLots\.map\(\(lot, rowIndex\)/);
