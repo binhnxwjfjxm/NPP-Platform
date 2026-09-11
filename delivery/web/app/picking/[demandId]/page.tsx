@@ -20,6 +20,11 @@ function quantity(value: string) {
   return Number.isFinite(parsed) ? new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 3 }).format(parsed) : value;
 }
 
+function locationLabel(scope: Readonly<{ locationId: string | null; locationCode: string | null; locationName: string | null }>) {
+  if (scope.locationId === null) return 'Tồn chung';
+  return scope.locationCode || scope.locationName || 'Chưa xác định vị trí';
+}
+
 function sameScope(
   left: Readonly<{ locationId: string | null; lotId: string | null }>,
   right: Readonly<{ locationId: string | null; lotId: string | null }>,
@@ -43,7 +48,7 @@ function alternativeSources(
     .filter((allocation) => allocation.id !== current.id && remainingAllocation(allocation) > 0)
     .map((allocation) => ({
       key: `allocation:${allocation.id}`,
-      locationLabel: allocation.locationCode || allocation.locationName || 'Không bắt buộc vị trí',
+      locationLabel: locationLabel(allocation),
       lotLabel: allocation.lotCode,
       availableBaseQuantity: String(remainingAllocation(allocation)),
     }));
@@ -53,7 +58,7 @@ function alternativeSources(
     .filter((candidate) => !allocations.some((allocation) => sameScope(candidate, allocation)))
     .map((candidate) => ({
       key: `stock:${candidate.locationId ?? 'none'}:${candidate.lotId ?? 'none'}`,
-      locationLabel: candidate.locationCode || candidate.locationName || 'Không bắt buộc vị trí',
+      locationLabel: locationLabel(candidate),
       lotLabel: candidate.lotCode,
       availableBaseQuantity: candidate.availableBaseQuantity,
     }));
@@ -71,7 +76,7 @@ export default async function PickingDetailPage({ params }: Readonly<{ params: {
     return <main className="pageShell"><section className="stateCard errorCard"><strong>Không xác định được nhân viên</strong><p>Vui lòng đăng nhập lại.</p></section></main>;
   }
   if (!capabilities.canPickWithWarehouse) {
-    return <main className="pageShell"><section className="stateCard errorCard"><strong>Không có quyền soạn hàng</strong><p>Phạm vi kho và quyền pick do NPP Core kiểm soát.</p></section></main>;
+    return <main className="pageShell"><section className="stateCard errorCard"><strong>Không có quyền soạn hàng</strong><p>Bạn chưa được cấp quyền hoặc phạm vi Kho để soạn hàng.</p></section></main>;
   }
 
   try {
@@ -99,14 +104,14 @@ export default async function PickingDetailPage({ params }: Readonly<{ params: {
         </section>
 
         {fullyPicked ? (
-          <section className={styles.readyBanner}><strong>Đã soạn đủ mã này</strong><p>Dữ liệu pick đã nằm trong Core Fulfillment. Bước đóng gói/hoàn tất tiếp tục theo state machine canonical, Delivery không tạo trạng thái riêng.</p></section>
+          <section className={styles.readyBanner}><strong>Đã soạn đủ mã này</strong><p>Số lượng đã soạn đã được ghi nhận. Tiếp tục đóng gói hoặc hoàn tất theo quy trình giao hàng.</p></section>
         ) : null}
 
         {allocations.length ? (
           <div className={styles.allocationList}>
             {allocations.map((allocation) => (
               <PickAllocationPanel
-                allocation={allocation}
+                allocation={allocation.locationId === null ? { ...allocation, locationCode: 'Tồn chung' } : allocation}
                 demandId={demand.fulfillmentDemandId}
                 unitCode={demand.unitCode}
                 alternativeSources={alternativeSources(allocation, allocations, candidates)}
@@ -115,7 +120,7 @@ export default async function PickingDetailPage({ params }: Readonly<{ params: {
             ))}
           </div>
         ) : (
-          <section className="stateCard"><strong>Chưa có phân bổ kho để soạn</strong><p>NPP Core cần tạo Fulfillment allocation trước. Delivery không tự tạo bảng, trạng thái hoặc phân bổ thay Core.</p></section>
+          <section className="stateCard"><strong>Chưa có phân bổ kho để soạn</strong><p>Đơn chưa có phần hàng được phân bổ để soạn. Hãy kiểm tra lại trạng thái chuẩn bị hàng tại Công Ty.</p></section>
         )}
 
         <PickingClosePanel salesOrderId={demand.salesOrderId} state={closeState} />
