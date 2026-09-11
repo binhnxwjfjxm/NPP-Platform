@@ -53,7 +53,6 @@ export type PickingCandidate = Readonly<{
   allocationPolicy: string;
   lotTrackingMode: string;
   expiryTrackingMode: string;
-  locationRequired: boolean;
 }>;
 
 export type PickingAllocation = Readonly<{
