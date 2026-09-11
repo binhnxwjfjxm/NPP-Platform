@@ -1,4 +1,4 @@
-name: Temporary inventory duplicate-scope read-only audit
+name: Temporary inventory duplicate-scope historical read-only audit
 
 on:
   pull_request:
@@ -13,7 +13,7 @@ jobs:
   audit:
     if: github.head_ref == 'agent/audit-inventory-duplicate-scopes'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       HEROKU_APP_NAME: hung-phat
     steps:
@@ -23,58 +23,245 @@ jobs:
           set -euo pipefail
           curl -fsSL https://cli-assets.heroku.com/install.sh | sh >/dev/null
 
-      - name: Run production read-only inventory query
+      - name: Run production read-only historical audit
         shell: bash
         env:
           HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
         run: |
           set -euo pipefail
           test -n "${HEROKU_API_KEY:-}"
-          raw="$RUNNER_TEMP/inventory-duplicate-scope-audit.csv"
+          raw="$RUNNER_TEMP/inventory-duplicate-scope-history-audit.csv"
           sql=$(cat <<'SQL'
           COPY (
-            WITH grouped AS (
+            WITH candidates AS (
               SELECT balance.installation_id,
                      balance.warehouse_id,
-                     balance.base_variant_id,
-                     bool_or(balance.location_id IS NULL) AS has_unassigned_scope,
-                     bool_or(balance.location_id IS NOT NULL) AS has_assigned_scope,
-                     count(*) FILTER (WHERE balance.location_id IS NOT NULL) AS assigned_scope_rows,
-                     sum(CASE WHEN balance.location_id IS NULL THEN balance.on_hand_quantity ELSE 0 END)::numeric(30,12) AS unassigned_on_hand,
-                     sum(CASE WHEN balance.location_id IS NOT NULL THEN balance.on_hand_quantity ELSE 0 END)::numeric(30,12) AS assigned_on_hand
+                     balance.base_variant_id
                 FROM inventory.inventory_balances balance
                GROUP BY balance.installation_id, balance.warehouse_id, balance.base_variant_id
+              HAVING bool_or(balance.location_id IS NULL)
+                 AND bool_or(balance.location_id IS NOT NULL)
+                 AND sum(CASE WHEN balance.location_id IS NULL THEN balance.on_hand_quantity ELSE 0 END) > 0
+            ), bulk_audits AS (
+              SELECT audit.installation_id,
+                     audit.resource_id::uuid AS adjustment_id,
+                     audit.audit_id,
+                     audit.actor_id,
+                     audit.employee_id,
+                     audit.source_app,
+                     audit.request_id,
+                     audit.after_data,
+                     audit.metadata,
+                     audit.occurred_at
+                FROM shared.core_audit_records audit
+               WHERE audit.resource_type = 'inventory_adjustment'
+                 AND audit.action = 'create'
+                 AND audit.metadata->>'source' = 'bulk_actual_stock_file'
+                 AND audit.resource_id IS NOT NULL
             )
-            SELECT warehouse.code AS "Kho",
-                   warehouse.name AS "Tên kho",
-                   base.sku AS "SKU tồn",
-                   product.name AS "Sản phẩm",
-                   COALESCE(base_unit.name, base_unit.code, '') AS "Đơn vị tồn",
-                   grouped.unassigned_on_hand AS "Tồn Không vị trí",
-                   grouped.assigned_on_hand AS "Tồn ở vị trí thật",
-                   (grouped.unassigned_on_hand + grouped.assigned_on_hand)::numeric(30,12) AS "Tổng tồn",
-                   grouped.assigned_scope_rows AS "Số phạm vi vị trí thật",
-                   CASE
-                     WHEN grouped.assigned_on_hand > 0 THEN 'ĐANG CÓ TỒN Ở CẢ HAI PHẠM VI'
-                     ELSE 'CÒN TỒN KHÔNG VỊ TRÍ, VỊ TRÍ THẬT ĐANG 0'
-                   END AS "Phân loại"
-              FROM grouped
+            SELECT 'MIGRATION'::text AS record_type,
+                   jsonb_build_object(
+                     'id', migration.id,
+                     'applied_at', migration.applied_at
+                   )::text AS payload
+              FROM shared.schema_migrations migration
+             WHERE migration.id LIKE '128%' OR migration.id LIKE '129%'
+
+            UNION ALL
+
+            SELECT 'BULK_IDEMPOTENCY',
+                   jsonb_build_object(
+                     'id', idem.id,
+                     'installation_id', idem.installation_id,
+                     'actor_id', idem.actor_id,
+                     'route', idem.route,
+                     'idempotency_key', idem.idempotency_key,
+                     'request_id', idem.request_id,
+                     'status', idem.status,
+                     'response_status', idem.response_status,
+                     'created_at', idem.created_at,
+                     'finished_at', idem.finished_at,
+                     'response_body', idem.response_body
+                   )::text
+              FROM shared.core_idempotency_records idem
+             WHERE idem.http_method = 'POST'
+               AND idem.route = 'POST /api/inventory/adjustments/bulk-confirm'
+               AND idem.status = 'completed'
+               AND idem.response_body IS NOT NULL
+
+            UNION ALL
+
+            SELECT 'BULK_AUDIT',
+                   jsonb_build_object(
+                     'installation_id', audit.installation_id,
+                     'adjustment_id', audit.adjustment_id,
+                     'audit_id', audit.audit_id,
+                     'actor_id', audit.actor_id,
+                     'employee_id', audit.employee_id,
+                     'source_app', audit.source_app,
+                     'request_id', audit.request_id,
+                     'after_data', audit.after_data,
+                     'metadata', audit.metadata,
+                     'occurred_at', audit.occurred_at
+                   )::text
+              FROM bulk_audits audit
+
+            UNION ALL
+
+            SELECT 'ADJUSTMENT',
+                   jsonb_build_object(
+                     'installation_id', adjustment.installation_id,
+                     'id', adjustment.id,
+                     'adjustment_number', adjustment.adjustment_number,
+                     'warehouse_id', adjustment.warehouse_id,
+                     'document_kind', adjustment.document_kind,
+                     'adjustment_direction', adjustment.adjustment_direction,
+                     'reason_code', adjustment.reason_code,
+                     'reason_note', adjustment.reason_note,
+                     'status', adjustment.status,
+                     'inventory_movement_id', adjustment.inventory_movement_id,
+                     'created_at', adjustment.created_at,
+                     'posted_at', adjustment.posted_at,
+                     'created_by', adjustment.created_by,
+                     'posted_by', adjustment.posted_by,
+                     'audit_request_id', audit.request_id,
+                     'audit_occurred_at', audit.occurred_at
+                   )::text
+              FROM inventory.inventory_adjustments adjustment
+              JOIN bulk_audits audit
+                ON audit.installation_id = adjustment.installation_id
+               AND audit.adjustment_id = adjustment.id
+
+            UNION ALL
+
+            SELECT 'ADJUSTMENT_LINE',
+                   jsonb_build_object(
+                     'installation_id', line.installation_id,
+                     'adjustment_id', line.adjustment_id,
+                     'line_id', line.id,
+                     'line_number', line.line_number,
+                     'warehouse_id', line.warehouse_id,
+                     'source_location_id', line.source_location_id,
+                     'destination_location_id', line.destination_location_id,
+                     'source_variant_id', line.source_variant_id,
+                     'source_sku', line.source_sku,
+                     'source_quantity', line.source_quantity::text,
+                     'conversion_to_base', line.conversion_to_base::text,
+                     'base_variant_id', line.base_variant_id,
+                     'base_sku', line.base_sku,
+                     'base_quantity', line.base_quantity::text,
+                     'lot_id', line.lot_id,
+                     'lot_code', line.lot_code,
+                     'created_at', line.created_at
+                   )::text
+              FROM inventory.inventory_adjustment_lines line
+              JOIN bulk_audits audit
+                ON audit.installation_id = line.installation_id
+               AND audit.adjustment_id = line.adjustment_id
+
+            UNION ALL
+
+            SELECT 'BALANCE',
+                   jsonb_build_object(
+                     'installation_id', balance.installation_id,
+                     'warehouse_id', balance.warehouse_id,
+                     'warehouse_code', warehouse.code,
+                     'warehouse_name', warehouse.name,
+                     'location_id', balance.location_id,
+                     'location_code', location.code,
+                     'location_name', location.name,
+                     'base_variant_id', balance.base_variant_id,
+                     'base_sku', base.sku,
+                     'product_name', product.name,
+                     'base_unit_code', base_unit.code,
+                     'base_unit_name', base_unit.name,
+                     'lot_id', balance.lot_id,
+                     'on_hand_quantity', balance.on_hand_quantity::text,
+                     'reserved_quantity', balance.reserved_quantity::text,
+                     'available_quantity', balance.available_quantity::text,
+                     'updated_at', balance.updated_at
+                   )::text
+              FROM inventory.inventory_balances balance
+              JOIN candidates candidate
+                ON candidate.installation_id = balance.installation_id
+               AND candidate.warehouse_id = balance.warehouse_id
+               AND candidate.base_variant_id = balance.base_variant_id
               JOIN shared.warehouses warehouse
-                ON warehouse.installation_id = grouped.installation_id
-               AND warehouse.id = grouped.warehouse_id
+                ON warehouse.installation_id = balance.installation_id
+               AND warehouse.id = balance.warehouse_id
+              LEFT JOIN shared.warehouse_locations location
+                ON location.installation_id = balance.installation_id
+               AND location.warehouse_id = balance.warehouse_id
+               AND location.id = balance.location_id
               JOIN shared.product_variants base
-                ON base.installation_id = grouped.installation_id
-               AND base.id = grouped.base_variant_id
+                ON base.installation_id = balance.installation_id
+               AND base.id = balance.base_variant_id
               JOIN shared.products product
                 ON product.installation_id = base.installation_id
                AND product.id = base.product_id
               LEFT JOIN shared.units_of_measure base_unit
                 ON base_unit.installation_id = base.installation_id
                AND base_unit.id = base.unit_id
-             WHERE grouped.has_unassigned_scope = true
-               AND grouped.has_assigned_scope = true
-               AND grouped.unassigned_on_hand > 0
-             ORDER BY warehouse.code, product.name, base.sku
+
+            UNION ALL
+
+            SELECT 'LOCATION_SUMMARY',
+                   jsonb_build_object(
+                     'installation_id', candidate.installation_id,
+                     'warehouse_id', candidate.warehouse_id,
+                     'base_variant_id', candidate.base_variant_id,
+                     'active_storage_location_count', (
+                       SELECT count(*)
+                         FROM shared.warehouse_locations location
+                        WHERE location.installation_id = candidate.installation_id
+                          AND location.warehouse_id = candidate.warehouse_id
+                          AND location.is_active = true
+                          AND location.location_type = 'storage'
+                     )
+                   )::text
+              FROM candidates candidate
+
+            UNION ALL
+
+            SELECT 'MOVEMENT',
+                   jsonb_build_object(
+                     'installation_id', line.installation_id,
+                     'movement_id', movement.id,
+                     'movement_type', movement.movement_type,
+                     'source_domain', movement.source_domain,
+                     'source_document_type', movement.source_document_type,
+                     'source_document_id', movement.source_document_id,
+                     'source_document_number', movement.source_document_number,
+                     'document_number', movement.document_number,
+                     'document_date', movement.document_date,
+                     'posted_at', movement.posted_at,
+                     'posted_by', movement.posted_by,
+                     'reversal_of_movement_id', movement.reversal_of_movement_id,
+                     'line_id', line.id,
+                     'line_number', line.line_number,
+                     'warehouse_id', line.warehouse_id,
+                     'location_id', line.location_id,
+                     'source_variant_id', line.source_variant_id,
+                     'source_sku', line.source_sku,
+                     'source_quantity', line.source_quantity::text,
+                     'conversion_to_base', line.conversion_to_base::text,
+                     'base_variant_id', line.base_variant_id,
+                     'base_sku', line.base_sku,
+                     'direction', line.direction,
+                     'base_quantity_delta', line.base_quantity_delta::text,
+                     'lot_id', line.lot_id,
+                     'lot_code', line.lot_code,
+                     'source_line_reference', line.source_line_reference,
+                     'metadata', line.metadata
+                   )::text
+              FROM inventory.inventory_movement_lines line
+              JOIN inventory.inventory_movements movement
+                ON movement.installation_id = line.installation_id
+               AND movement.id = line.movement_id
+              JOIN candidates candidate
+                ON candidate.installation_id = line.installation_id
+               AND candidate.warehouse_id = line.warehouse_id
+               AND candidate.base_variant_id = line.base_variant_id
           ) TO STDOUT WITH CSV HEADER;
           SQL
           )
@@ -86,7 +273,7 @@ jobs:
         run: |
           set -euo pipefail
           cert="$RUNNER_TEMP/audit-cert.pem"
-          encrypted="$RUNNER_TEMP/inventory-duplicate-scope-audit.csv.cms"
+          encrypted="$RUNNER_TEMP/inventory-duplicate-scope-history-audit.csv.cms"
           cat > "$cert" <<'CERT'
           -----BEGIN CERTIFICATE-----
           MIIEKTCCApGgAwIBAgIUAcxfbzJgA9yQE/Sc1cPvYpGXdxkwDQYJKoZIhvcNAQEL
@@ -114,14 +301,14 @@ jobs:
           tfh8LPUHVBEfVzglSA==
           -----END CERTIFICATE-----
           CERT
-          openssl cms -encrypt -aes256 -binary -in "$RUNNER_TEMP/inventory-duplicate-scope-audit.csv" -out "$encrypted" -outform DER "$cert"
-          rm -f "$RUNNER_TEMP/inventory-duplicate-scope-audit.csv" "$cert"
+          openssl cms -encrypt -aes256 -binary -in "$RUNNER_TEMP/inventory-duplicate-scope-history-audit.csv" -out "$encrypted" -outform DER "$cert"
+          rm -f "$RUNNER_TEMP/inventory-duplicate-scope-history-audit.csv" "$cert"
           test -s "$encrypted"
 
       - name: Upload encrypted audit result
         uses: actions/upload-artifact@v4
         with:
-          name: inventory-duplicate-scope-audit-encrypted
-          path: ${{ runner.temp }}/inventory-duplicate-scope-audit.csv.cms
+          name: inventory-duplicate-scope-history-audit-encrypted
+          path: ${{ runner.temp }}/inventory-duplicate-scope-history-audit.csv.cms
           retention-days: 1
           if-no-files-found: error
