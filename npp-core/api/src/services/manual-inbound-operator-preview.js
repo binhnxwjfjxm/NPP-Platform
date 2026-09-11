@@ -89,17 +89,67 @@ export async function listManualInboundSupplierOptions(client, { requestContext 
   });
 }
 
-async function loadBalanceContext(client, { installationId, warehouseId, baseVariantIds }) {
-  if (baseVariantIds.length === 0) return [];
+function stockScope(row, warehouse) {
+  if (!row.baseVariantId || !row.baseQuantity) return null;
+  if (warehouse.locationRequired && !row.locationId) return null;
+  if (row.lotTrackingMode !== 'NONE' && row.lotTrackingMode !== 'REQUIRED') return null;
+  if (row.lotTrackingMode === 'REQUIRED' && !row.lotCode) return null;
+  return Object.freeze({
+    baseVariantId: row.baseVariantId,
+    locationId: warehouse.locationRequired ? row.locationId : null,
+    normalizedLotCode: row.lotTrackingMode === 'REQUIRED' ? String(row.lotCode) : null,
+  });
+}
+
+function stockScopeKey(scope) {
+  return JSON.stringify([scope.baseVariantId, scope.locationId ?? null, scope.normalizedLotCode ?? null]);
+}
+
+function requestedStockScopes(rows, warehouse) {
+  const scopes = new Map();
+  for (const row of rows) {
+    const scope = stockScope(row, warehouse);
+    if (scope) scopes.set(stockScopeKey(scope), scope);
+  }
+  return [...scopes.values()];
+}
+
+function incomingQuantitiesByStockScope(rows, warehouse) {
+  const quantities = new Map();
+  for (const row of rows) {
+    const scope = stockScope(row, warehouse);
+    if (!scope) continue;
+    const key = stockScopeKey(scope);
+    const current = quantities.get(key);
+    const next = current === undefined
+      ? String(row.baseQuantity)
+      : current === null
+        ? null
+        : addExactDecimal(current, String(row.baseQuantity));
+    quantities.set(key, next);
+  }
+  return quantities;
+}
+
+async function loadBalanceContext(client, { installationId, warehouseId, scopes }) {
+  if (scopes.length === 0) return [];
   const result = await client.query(
-    `SELECT base.id AS base_variant_id,
+    `WITH requested_scopes AS (
+       SELECT DISTINCT base_variant_id, location_id, normalized_lot_code
+         FROM jsonb_to_recordset($3::jsonb)
+           AS requested(base_variant_id uuid, location_id uuid, normalized_lot_code text)
+     )
+     SELECT base.id AS base_variant_id,
             base_unit.code AS base_unit_code,
             balance.base_variant_id AS balance_base_variant_id,
             balance.location_id,
             balance.lot_id,
             balance.on_hand_quantity,
             lot.normalized_lot_code
-       FROM shared.product_variants base
+       FROM requested_scopes scope
+       JOIN shared.product_variants base
+         ON base.installation_id = $1
+        AND base.id = scope.base_variant_id
        JOIN shared.units_of_measure base_unit
          ON base_unit.installation_id = base.installation_id
         AND base_unit.id = base.unit_id
@@ -107,40 +157,42 @@ async function loadBalanceContext(client, { installationId, warehouseId, baseVar
          ON balance.installation_id = base.installation_id
         AND balance.warehouse_id = $2
         AND balance.base_variant_id = base.id
+        AND balance.location_id IS NOT DISTINCT FROM scope.location_id
+        AND (
+          (scope.normalized_lot_code IS NULL AND balance.lot_id IS NULL)
+          OR (
+            scope.normalized_lot_code IS NOT NULL
+            AND EXISTS (
+              SELECT 1
+                FROM inventory.inventory_lots requested_lot
+               WHERE requested_lot.installation_id = balance.installation_id
+                 AND requested_lot.id = balance.lot_id
+                 AND requested_lot.normalized_lot_code = scope.normalized_lot_code
+            )
+          )
+        )
        LEFT JOIN inventory.inventory_lots lot
          ON lot.installation_id = balance.installation_id
         AND lot.id = balance.lot_id
-      WHERE base.installation_id = $1
-        AND base.id = ANY($3::uuid[])
       ORDER BY base.id ASC, balance.location_id ASC NULLS FIRST, balance.lot_id ASC NULLS FIRST`,
-    [installationId, warehouseId, baseVariantIds],
+    [installationId, warehouseId, JSON.stringify(scopes)],
   );
   return result.rows ?? [];
 }
 
-function enrichStock(row, warehouse, balanceContext) {
+function enrichStock(row, warehouse, balanceContext, incomingQuantities) {
   const contexts = balanceContext.filter((item) => item.base_variant_id === row.baseVariantId);
   const baseUnitCode = contexts.find((item) => item.base_unit_code)?.base_unit_code ?? null;
-  if (!row.baseVariantId || !row.baseQuantity) {
-    return Object.freeze({ ...row, baseUnitCode, currentOnHand: null, afterOnHand: null });
-  }
-  if (warehouse.locationRequired && !row.locationId) {
-    return Object.freeze({ ...row, baseUnitCode, currentOnHand: null, afterOnHand: null });
-  }
-  if (row.lotTrackingMode !== 'NONE' && row.lotTrackingMode !== 'REQUIRED') {
-    return Object.freeze({ ...row, baseUnitCode, currentOnHand: null, afterOnHand: null });
-  }
-  if (row.lotTrackingMode === 'REQUIRED' && !row.lotCode) {
+  const scope = stockScope(row, warehouse);
+  if (!scope) {
     return Object.freeze({ ...row, baseUnitCode, currentOnHand: null, afterOnHand: null });
   }
 
-  const locationId = warehouse.locationRequired ? row.locationId : null;
-  const lotCode = row.lotTrackingMode === 'REQUIRED' ? row.lotCode : null;
   const matching = contexts.filter((item) => {
     if (!item.balance_base_variant_id) return false;
-    if ((item.location_id ?? null) !== (locationId ?? null)) return false;
-    if (lotCode === null) return item.lot_id === null;
-    return String(item.normalized_lot_code ?? '') === String(lotCode);
+    if ((item.location_id ?? null) !== (scope.locationId ?? null)) return false;
+    if (scope.normalizedLotCode === null) return item.lot_id === null;
+    return String(item.normalized_lot_code ?? '') === scope.normalizedLotCode;
   });
 
   let currentOnHand = '0';
@@ -151,7 +203,10 @@ function enrichStock(row, warehouse, balanceContext) {
     }
     currentOnHand = next;
   }
-  const afterOnHand = addExactDecimal(currentOnHand, row.baseQuantity);
+  const incomingQuantity = incomingQuantities.get(stockScopeKey(scope));
+  const afterOnHand = incomingQuantity === null || incomingQuantity === undefined
+    ? null
+    : addExactDecimal(currentOnHand, incomingQuantity);
   return Object.freeze({
     ...row,
     baseUnitCode,
@@ -161,6 +216,9 @@ function enrichStock(row, warehouse, balanceContext) {
 }
 
 export async function previewManualInboundOperator(client, { requestContext, payload }) {
+  if (!hasPermission(requestContext, PERMISSIONS.coreInventoryManualInboundPrepare)) {
+    return failure('PERMISSION_DENIED', 'Không có quyền chuẩn bị Nhập kho thủ công.', 403);
+  }
   const supplierId = normalizedSupplierId(payload?.supplierId);
   if (supplierId === false) {
     return failure('INVALID_SUPPLIER_ID', 'Nhà cung cấp không hợp lệ.');
@@ -175,17 +233,19 @@ export async function previewManualInboundOperator(client, { requestContext, pay
   const prepared = await previewManualInbound(client, { requestContext, payload });
   if (!prepared.ok) return prepared;
 
-  const baseVariantIds = [...new Set(
-    prepared.preview.rows
-      .map((row) => String(row.baseVariantId ?? '').trim())
-      .filter((id) => UUID_PATTERN.test(id)),
-  )];
+  const scopes = requestedStockScopes(prepared.preview.rows, prepared.preview.warehouse);
   const balanceContext = await loadBalanceContext(client, {
     installationId: requestContext.installationId,
     warehouseId: prepared.preview.warehouse.id,
-    baseVariantIds,
+    scopes,
   });
-  const rows = prepared.preview.rows.map((row) => enrichStock(row, prepared.preview.warehouse, balanceContext));
+  const incomingQuantities = incomingQuantitiesByStockScope(prepared.preview.rows, prepared.preview.warehouse);
+  const rows = prepared.preview.rows.map((row) => enrichStock(
+    row,
+    prepared.preview.warehouse,
+    balanceContext,
+    incomingQuantities,
+  ));
 
   return Object.freeze({
     ok: true,
@@ -206,4 +266,7 @@ export const manualInboundOperatorPreviewInternals = Object.freeze({
   addExactDecimal,
   normalizedSupplierId,
   enrichStock,
+  incomingQuantitiesByStockScope,
+  requestedStockScopes,
+  stockScope,
 });
