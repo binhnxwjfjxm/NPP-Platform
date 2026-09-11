@@ -32,6 +32,26 @@ export type CustomerProfileOverview = Readonly<{
   receivable: CustomerReceivableSummary | null;
   permissions: Readonly<{ sales: boolean; receivable: boolean }>;
 }>;
+export type CustomerPurchasedItem = Readonly<{
+  variantId: string;
+  sku: string;
+  productName: string;
+  unitCode: string;
+  totalQuantity: string;
+  revenue: string;
+  purchaseCount: string;
+  lastUnitPrice: string;
+  lastPurchaseAt: string | null;
+}>;
+export type CustomerPurchasedItemsPage = Readonly<{
+  period: CustomerProfilePeriod;
+  currencyCode: 'VND';
+  search: string;
+  limit: number;
+  offset: number;
+  total: string;
+  items: readonly CustomerPurchasedItem[];
+}>;
 
 export class CustomerProfileGatewayError extends Error {
   constructor(
@@ -71,19 +91,19 @@ export function normalizeCustomerProfilePeriod(value?: string | null): CustomerP
   return PERIODS.has(normalized) ? normalized as CustomerProfilePeriod : '90d';
 }
 
-export async function getCustomerProfileOverview(
-  customerId: string,
-  requestId: string,
-  period: CustomerProfilePeriod = '90d',
-): Promise<CustomerProfileOverview> {
+function validateCustomerId(customerId: string) {
   const id = customerId.trim();
   if (!UUID_PATTERN.test(id)) {
     throw new CustomerProfileGatewayError('INVALID_CUSTOMER_ID', 'Mã khách hàng không hợp lệ', 400, false);
   }
+  return id;
+}
+
+async function getCustomerProfileData<T>(path: string, requestId: string): Promise<T> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    const response = await fetch(`${baseUrl()}/api/customers/${id}/overview?period=${encodeURIComponent(period)}`, {
+    const response = await fetch(`${baseUrl()}${path}`, {
       method: 'GET',
       cache: 'no-store',
       signal: controller.signal,
@@ -93,7 +113,7 @@ export async function getCustomerProfileOverview(
         'x-request-id': requestId,
       },
     });
-    const payload = await response.json().catch(() => ({})) as CoreEnvelope<CustomerProfileOverview>;
+    const payload = await response.json().catch(() => ({})) as CoreEnvelope<T>;
     if (!response.ok || payload.data === undefined) {
       throw new CustomerProfileGatewayError(
         payload.error?.code || 'CUSTOMER_PROFILE_REQUEST_FAILED',
@@ -109,4 +129,40 @@ export async function getCustomerProfileOverview(
   } finally {
     clearTimeout(timeout);
   }
+}
+
+export async function getCustomerProfileOverview(
+  customerId: string,
+  requestId: string,
+  period: CustomerProfilePeriod = '90d',
+): Promise<CustomerProfileOverview> {
+  const id = validateCustomerId(customerId);
+  return getCustomerProfileData<CustomerProfileOverview>(
+    `/api/customers/${id}/overview?period=${encodeURIComponent(period)}`,
+    requestId,
+  );
+}
+
+export async function getCustomerPurchasedItems(
+  customerId: string,
+  requestId: string,
+  options: Readonly<{
+    period?: CustomerProfilePeriod;
+    search?: string;
+    limit?: number;
+    offset?: number;
+  }> = {},
+): Promise<CustomerPurchasedItemsPage> {
+  const id = validateCustomerId(customerId);
+  const query = new URLSearchParams({
+    period: options.period ?? '90d',
+    limit: String(options.limit ?? 50),
+    offset: String(options.offset ?? 0),
+  });
+  const search = String(options.search ?? '').trim();
+  if (search) query.set('search', search);
+  return getCustomerProfileData<CustomerPurchasedItemsPage>(
+    `/api/customers/${id}/purchased-items?${query.toString()}`,
+    requestId,
+  );
 }
