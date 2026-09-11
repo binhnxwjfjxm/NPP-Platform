@@ -7,8 +7,8 @@ import {
   withAuditOutboxTransaction,
 } from '../audit-outbox.js';
 import * as warehouseRepository from '../db/repositories/warehouse.js';
-import * as service from '../services/file-operations.js';
-import * as productOnboardingService from '../services/product-onboarding-file.js';
+import * as service from '../services/file-operations-warehouse-location.js';
+import * as productOnboardingService from '../services/product-onboarding-warehouse-location.js';
 
 const STOCKTAKE_PERMISSIONS = Object.freeze({
   read: 'core.stocktake.read',
