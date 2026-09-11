@@ -1,14 +1,14 @@
-.workspaceGrid{display:grid;grid-template-columns:minmax(0,7fr) minmax(300px,3fr);gap:18px;max-width:1540px;margin:0 auto;align-items:start}
-.entryColumn{display:grid;gap:16px;min-width:0}
-.historyColumn{min-width:0;position:sticky;top:16px}
-.card{background:#fff;border:1px solid #e2e8f0;border-radius:15px;padding:18px;box-shadow:0 1px 2px rgba(15,23,42,.04)}
-.documentCard{padding:15px 16px}
-.itemsCard{min-height:520px}
-.compactHeading{margin-bottom:10px}
+.workspaceGrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,360px);gap:14px;width:100%;max-width:none;margin:0;align-items:start}
+.entryColumn{display:grid;gap:14px;min-width:0}
+.historyColumn{min-width:0;width:100%;position:static}
+.card{min-width:0;background:#fff;border:1px solid #e2e8f0;border-radius:15px;padding:18px;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+.documentCard{padding:14px 15px}
+.itemsCard{min-height:0}
+.compactHeading{margin-bottom:9px}
 .compactHeading h2,.sectionHeading h2{margin:0;font-size:18px;color:#0f172a}
 .sectionHeading{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;margin-bottom:14px}
 .sectionHeading p{margin:4px 0 0;color:#64748b;font-size:13px}
-.headerGrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px 11px}
+.headerGrid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px 10px}
 .headerGrid label,.historyFilters label,.reversePanel label{display:grid;gap:4px;color:#475569;font-size:12px;font-weight:650}
 .headerGrid input,.headerGrid select,.table input,.historyFilters input,.historyFilters select,.reversePanel input,.inlineEditor input,.inlineEditor select,.searchInputWrap input{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;background:#fff;padding:8px 10px;color:#0f172a;font:inherit;min-height:36px}
 .headerGrid input:focus,.headerGrid select:focus,.table input:focus,.historyFilters input:focus,.historyFilters select:focus,.reversePanel input:focus,.inlineEditor input:focus,.inlineEditor select:focus,.searchInputWrap input:focus{outline:2px solid rgba(30,64,175,.12);border-color:#64748b}
@@ -49,18 +49,21 @@
 .table,.previewTable,.historyTable{width:100%;border-collapse:collapse}
 .table{min-width:860px}
 .directTable{min-width:820px}
-.previewTable{min-width:1180px}
+.previewTable{min-width:1420px}
 .historyTable{min-width:760px}
 .table th,.previewTable th,.historyTable th{background:#f1f7f3;color:#475569;text-align:left;font-size:12px;font-weight:700;padding:9px;border-bottom:1px solid #dbe7df;white-space:nowrap}
 .table td,.previewTable td,.historyTable td{padding:8px 9px;border-bottom:1px solid #f1f5f9;vertical-align:middle}
 .table tr:last-child td,.previewTable tr:last-child td,.historyTable tr:last-child td{border-bottom:0}
 .table th:first-child,.table td:first-child{width:42px;color:#64748b}
 .table th:last-child,.table td:last-child{width:48px}
-.productColumn{min-width:280px;width:38%}
-.productNameCell{min-width:280px;color:#0f172a;font-weight:650}
+.productColumn{min-width:300px;width:40%}
+.productNameCell{min-width:300px;color:#0f172a;font-weight:650}
 .productNameCell small{display:block;margin-top:3px;color:#64748b;font-size:11px;font-weight:500}
 .skuCell{width:120px;max-width:150px;color:#334155;font-weight:650;white-space:nowrap}
 .unitCell{width:72px;color:#334155;font-weight:700;white-space:nowrap}
+.stockCell{min-width:104px;white-space:nowrap}
+.stockCell strong{display:block}
+.stockCell small{display:block;margin-top:2px;color:#64748b;font-size:10px}
 .directTable td:nth-child(5){width:118px}
 .directTable td:nth-child(6){width:150px}
 .bottomActions{justify-content:space-between;margin-top:13px}
@@ -81,7 +84,7 @@
 .requiredMark{flex:0 0 auto;color:#dc2626;font-size:16px;font-weight:800;line-height:1}
 .previewFooter{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px solid #e2e8f0;color:#475569;font-size:12px}
 .previewFooter strong{color:#166534}
-.historyCard{padding:16px}
+.historyCard{padding:16px;overflow:hidden}
 .historyFilters{display:grid;grid-template-columns:1fr;gap:9px;margin-bottom:12px}
 .historyFilters .primary{width:100%}
 .historyMessage{margin:0 0 10px;padding:9px 10px;border-radius:8px;background:#f8fafc;color:#475569;font-size:12px}
@@ -99,6 +102,6 @@
 .reversePanel p{margin:0;color:#64748b;font-size:11px}
 .dialogBackdrop{position:fixed;inset:0;z-index:80;display:grid;place-items:center;padding:20px;background:rgba(24,20,17,.38)}
 .dialogCard{width:min(920px,96vw);max-height:82vh;overflow:auto;border-radius:14px;border:1px solid #ded8d2;background:#fff;box-shadow:0 24px 70px rgba(32,24,19,.2);padding:18px}
-@media(max-width:1180px){.workspaceGrid{grid-template-columns:minmax(0,1fr)}.historyColumn{position:static}.historyFilters{grid-template-columns:minmax(180px,260px) minmax(220px,1fr) auto;align-items:end}.historyFilters .primary{width:auto}.historyList{grid-template-columns:repeat(2,minmax(0,1fr));gap:0 16px}}
+@media(max-width:1180px){.workspaceGrid{grid-template-columns:minmax(0,1fr)}.historyColumn{position:static}.headerGrid{grid-template-columns:repeat(5,minmax(0,1fr))}.historyFilters{grid-template-columns:minmax(180px,260px) minmax(220px,1fr) auto;align-items:end}.historyFilters .primary{width:auto}.historyList{grid-template-columns:repeat(2,minmax(0,1fr));gap:0 16px}}
 @media(max-width:900px){.headerGrid{grid-template-columns:repeat(2,minmax(0,1fr))}.sectionHeading{flex-direction:column}.fileToolbar{align-items:flex-start;flex-direction:column}.historyFilters{grid-template-columns:1fr}.historyFilters .primary{width:100%}.historyList{grid-template-columns:1fr}}
 @media(max-width:600px){.card{padding:14px}.headerGrid{grid-template-columns:1fr}.noteField{grid-column:auto}.bottomActions,.previewFooter{align-items:stretch}.bottomActions button,.previewFooter .actions,.previewFooter .actions button,.reversePanel .actions,.reversePanel .actions button{width:100%}.entryTabs{display:flex}.tab,.tabActive{flex:1}.productResult{align-items:flex-start;flex-direction:column}.productMeta{text-align:left}}

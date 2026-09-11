@@ -25,7 +25,10 @@ test('bảng hàng tách Tên sản phẩm, ĐVT và Số lượng thành các c
 });
 
 test('preview dùng bảng nghiệp vụ rõ cột và phân biệt dữ liệu cần bổ sung với lỗi cấu hình', () => {
-  assert.match(workspace, /<th>SKU<\/th><th>Tên sản phẩm<\/th><th>ĐVT<\/th><th>Số lượng<\/th><th>Kho<\/th><th>Vị trí<\/th><th>Lô<\/th><th>HSD<\/th><th>Giá vốn<\/th><th>Trạng thái<\/th>/);
+  assert.match(
+    workspace,
+    /<BusinessTableSequenceHeader\s*\/><th>SKU<\/th><th>Tên sản phẩm<\/th><th>ĐVT<\/th><th>Số lượng<\/th><th>Tồn hiện tại<\/th><th>Tồn sau nhập<\/th><th>Kho<\/th><th>Vị trí<\/th><th>Lô<\/th><th>HSD<\/th><th>Giá vốn<\/th><th>Trạng thái<\/th>/,
+  );
   assert.match(workspace, /Cần quản trị/);
   assert.match(workspace, /Cần bổ sung/);
   assert.match(workspace, /Cần chỉnh/);

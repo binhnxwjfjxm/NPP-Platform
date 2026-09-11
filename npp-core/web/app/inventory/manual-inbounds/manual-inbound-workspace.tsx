@@ -20,6 +20,7 @@ type WarehouseOption = {
   locationRequired?: boolean;
 };
 type LocationOption = { id: string; code: string; name: string; locationType: string };
+type SupplierOption = { id: string; code: string; name: string };
 type EntryMode = 'direct' | 'file';
 type DraftRow = {
   sku: string;
@@ -60,6 +61,9 @@ type PreviewRow = DraftRow & {
   sourceUnitCode?: string;
   baseSku?: string;
   baseQuantity?: string;
+  baseUnitCode?: string | null;
+  currentOnHand?: string | null;
+  afterOnHand?: string | null;
   locationName?: string;
   lotTrackingMode?: 'NONE' | 'REQUIRED' | null;
   expiryTrackingMode?: 'NONE' | 'OPTIONAL' | 'REQUIRED' | null;
@@ -223,10 +227,14 @@ function formatCost(value: string | null | undefined) {
   return new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 2 }).format(number);
 }
 
-function formatQuantity(value: string | undefined) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return value || '0';
-  return new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 6 }).format(number);
+function formatQuantity(value: string | null | undefined) {
+  const normalized = String(value ?? '').trim();
+  const match = /^(-?)(\d+)(?:\.(\d+))?$/.exec(normalized);
+  if (!match) return normalized || '0';
+  const whole = match[2].replace(/^0+(?=\d)/, '');
+  const groupedWhole = whole.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  const fraction = (match[3] ?? '').replace(/0+$/, '');
+  return `${match[1]}${groupedWhole}${fraction ? `,${fraction}` : ''}`;
 }
 
 function inboundTypeLabel(value: InboundType) {
@@ -241,7 +249,9 @@ function displayDate(value: string | null | undefined) {
 export default function ManualInboundWorkspace() {
   const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
   const [locations, setLocations] = useState<LocationOption[]>([]);
+  const [suppliers, setSuppliers] = useState<SupplierOption[]>([]);
   const [warehouseId, setWarehouseId] = useState('');
+  const [supplierId, setSupplierId] = useState('');
   const [inboundType, setInboundType] = useState<InboundType>('MANUAL_RECEIPT');
   const [documentDate, setDocumentDate] = useState('');
   const [referenceNumber, setReferenceNumber] = useState('');
@@ -286,6 +296,7 @@ export default function ManualInboundWorkspace() {
   function operatorPayload(sourceRows = rows) {
     return {
       warehouseId,
+      supplierId: supplierId || null,
       inboundType,
       documentDate,
       referenceNumber: referenceNumber.trim() || null,
@@ -420,6 +431,9 @@ export default function ManualInboundWorkspace() {
       })
       .catch((error) => { if (active) setMessage({ kind: 'error', text: error instanceof Error ? error.message : 'Không tải được danh sách kho.' }); })
       .finally(() => { if (active) setBusy(null); });
+    requestJson<SupplierOption[]>('/api/inventory/manual-inbounds/operator/suppliers')
+      .then((data) => { if (active) setSuppliers(data); })
+      .catch((error) => { if (active) setMessage({ kind: 'error', text: error instanceof Error ? error.message : 'Không tải được danh sách nhà cung cấp.' }); });
     void loadHistory('', '');
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -569,6 +583,7 @@ export default function ManualInboundWorkspace() {
       setRows([emptyRow()]);
       setResolvedItems({});
       setFilename('');
+      setSupplierId('');
       setReferenceNumber('');
       setNote('');
       setPreview(null);
@@ -636,6 +651,7 @@ export default function ManualInboundWorkspace() {
           <div className={styles.compactHeading}><h2>Thông tin chứng từ</h2></div>
           <div className={styles.headerGrid}>
             <label><span>Kho nhập *</span><select value={warehouseId} onChange={(event) => setWarehouseId(event.target.value)} disabled={busy === 'warehouses'}><option value="">Chọn kho</option>{warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.code} — {warehouse.name}</option>)}</select></label>
+            <label><span>Nhà cung cấp</span><select value={supplierId} onChange={(event) => { setSupplierId(event.target.value); invalidate(); }}><option value="">Không chọn</option>{suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.code} — {supplier.name}</option>)}</select></label>
             <label><span>Loại nhập *</span><select value={inboundType} onChange={(event) => { setInboundType(event.target.value as InboundType); invalidate(); }}>{INBOUND_TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
             <label><span>Ngày chứng từ *</span><input type="date" value={documentDate} onChange={(event) => { setDocumentDate(event.target.value); invalidate(); }} /></label>
             <label><span>Số chứng từ / hóa đơn tham chiếu</span><input value={referenceNumber} maxLength={160} onChange={(event) => { setReferenceNumber(event.target.value); invalidate(); }} placeholder="Không bắt buộc" /></label>
@@ -746,7 +762,7 @@ export default function ManualInboundWorkspace() {
           {preview.totals.mergedDuplicateCount > 0 ? <p className={styles.mergeNote}>Đã gộp {preview.totals.mergedDuplicateCount} dòng trùng cùng SKU, vị trí, lô và giá vốn để kiểm tra dễ hơn.</p> : null}
           <div className={styles.previewTableWrap}>
             <table className={styles.previewTable}>
-              <thead><tr><BusinessTableSequenceHeader /><th>SKU</th><th>Tên sản phẩm</th><th>ĐVT</th><th>Số lượng</th><th>Kho</th><th>Vị trí</th><th>Lô</th><th>HSD</th><th>Giá vốn</th><th>Trạng thái</th></tr></thead>
+              <thead><tr><BusinessTableSequenceHeader /><th>SKU</th><th>Tên sản phẩm</th><th>ĐVT</th><th>Số lượng</th><th>Tồn hiện tại</th><th>Tồn sau nhập</th><th>Kho</th><th>Vị trí</th><th>Lô</th><th>HSD</th><th>Giá vốn</th><th>Trạng thái</th></tr></thead>
               <tbody>{preview.rows.map((row, rowIndex) => {
                 const rowErrors = errorsByLine.get(row.lineNumber) ?? [];
                 const errorCodes = new Set(rowErrors.map((error) => error.code));
@@ -763,6 +779,8 @@ export default function ManualInboundWorkspace() {
                   <td>{row.productName || '—'}</td>
                   <td>{row.sourceUnitCode || '—'}</td>
                   <td>{row.sourceQuantity}</td>
+                  <td className={styles.stockCell}>{row.currentOnHand === null || row.currentOnHand === undefined ? '—' : <><strong>{formatQuantity(row.currentOnHand)}</strong><small>{row.baseUnitCode || 'ĐVT tồn'}</small></>}</td>
+                  <td className={styles.stockCell}>{row.afterOnHand === null || row.afterOnHand === undefined ? '—' : <><strong>{formatQuantity(row.afterOnHand)}</strong><small>{row.baseUnitCode || 'ĐVT tồn'}</small></>}</td>
                   <td>{row.warehouseCode || '—'}</td>
                   <td>{showLocation ? <div className={styles.inlineEditor}><span className={styles.requiredMark} aria-label="Bắt buộc">*</span><select aria-label={`Vị trí ${row.sku}`} value={selectedLocation} onChange={(event) => updateSourceLines(row.sourceLineNumbers, { locationCode: event.target.value })}><option value="">Chọn vị trí</option>{locations.map((location) => <option key={location.id} value={location.code}>{location.code} — {location.name}</option>)}</select></div> : (row.locationCode || (row.locationRequired ? '—' : 'Tồn chung'))}</td>
                   <td>{errorCodes.has('LOT_NOT_ALLOWED') ? <button type="button" className={styles.inlineAction} onClick={() => updateSourceLines(row.sourceLineNumbers, { lotCode: '', expiryDate: '', manufacturedDate: '', supplierLotReference: '' })}>Bỏ mã lô</button> : showLot ? <div className={styles.inlineEditor}><span className={styles.requiredMark} aria-label="Bắt buộc">*</span><input aria-label={`Mã lô ${row.sku}`} value={row.lotCode || ''} onChange={(event) => updateSourceLines(row.sourceLineNumbers, { lotCode: event.target.value })} placeholder="Nhập mã lô" /></div> : row.lotTrackingMode === 'REQUIRED' ? (row.lotCode || '—') : 'Không quản lý'}</td>

@@ -10,10 +10,10 @@ import {
 import { confirmManualInbound } from '../services/manual-inbound-confirmation.js';
 import { readManualInboundHistoryDetail, searchManualInboundHistory } from '../services/manual-inbound-history.js';
 import { searchManualInboundProducts } from '../services/manual-inbound-product-search.js';
+import { listManualInboundSupplierOptions, previewManualInboundOperator } from '../services/manual-inbound-operator-preview.js';
 import {
   listManualInboundLocationOptions,
   listManualInboundWarehouseOptions,
-  previewManualInbound,
   validateManualInboundPostInventoryPolicy,
 } from '../services/manual-inbound-preparation.js';
 
@@ -107,6 +107,16 @@ export async function handleManualInboundRoutes(req, res, options) {
       return true;
     }
 
+    if (url.pathname === '/api/inventory/manual-inbounds/operator/suppliers' && method === 'GET') {
+      const result = await listManualInboundSupplierOptions(options.getPool(), { requestContext });
+      if (!result.ok) {
+        sendError(res, apiError(result.code, result.message, result.details ?? {}, result.retryable, statusFor(result)), options.requestId, options.receivedAt);
+        return true;
+      }
+      writeSuccess(res, result.suppliers, options);
+      return true;
+    }
+
     if (url.pathname === '/api/inventory/manual-inbounds/operator/products' && method === 'GET') {
       const result = await searchManualInboundProducts(options.getPool(), {
         requestContext,
@@ -154,7 +164,7 @@ export async function handleManualInboundRoutes(req, res, options) {
     if (url.pathname === '/api/inventory/manual-inbounds/operator/preview' && method === 'POST') {
       const payload = await readPayload(req, res, options);
       if (payload === null) return true;
-      const result = await previewManualInbound(options.getPool(), { requestContext, payload });
+      const result = await previewManualInboundOperator(options.getPool(), { requestContext, payload });
       if (!result.ok) {
         sendError(res, apiError(result.code, result.message, result.details ?? {}, result.retryable, statusFor(result)), options.requestId, options.receivedAt);
         return true;
