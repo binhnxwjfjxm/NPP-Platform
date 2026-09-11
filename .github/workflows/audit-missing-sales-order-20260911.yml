@@ -16,43 +16,23 @@ jobs:
     timeout-minutes: 10
     env:
       CORE_APP_NAME: hung-phat
-      MCP_APP_NAME: hung-phat-mcp
       ORDER_ID: d45487fa-a62f-4c66-ad10-0684150b51fe
     steps:
-      - name: Read production config safely
+      - name: Read production database config safely
         shell: bash
         env:
           HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
         run: |
           set -euo pipefail
           test -n "$HEROKU_API_KEY"
-          core_app_json="$(curl --fail --silent --show-error \
-            -H 'Accept: application/vnd.heroku+json; version=3' \
-            -H "Authorization: Bearer $HEROKU_API_KEY" \
-            "https://api.heroku.com/apps/$CORE_APP_NAME")"
           core_config_json="$(curl --fail --silent --show-error \
             -H 'Accept: application/vnd.heroku+json; version=3' \
             -H "Authorization: Bearer $HEROKU_API_KEY" \
             "https://api.heroku.com/apps/$CORE_APP_NAME/config-vars")"
-          mcp_config_json="$(curl --fail --silent --show-error \
-            -H 'Accept: application/vnd.heroku+json; version=3' \
-            -H "Authorization: Bearer $HEROKU_API_KEY" \
-            "https://api.heroku.com/apps/$MCP_APP_NAME/config-vars")"
-
           database_url="$(jq -r '.DATABASE_URL // empty' <<<"$core_config_json")"
-          core_url="$(jq -r '.web_url // empty' <<<"$core_app_json" | sed 's:/*$::')"
-          sales_token="$(jq -r '.CORE_SALES_API_TOKEN // empty' <<<"$mcp_config_json")"
-
           test -n "$database_url"
-          test -n "$core_url"
-          test -n "$sales_token"
           echo "::add-mask::$database_url"
-          echo "::add-mask::$sales_token"
-          {
-            echo "DATABASE_URL=$database_url"
-            echo "CORE_URL=$core_url"
-            echo "CORE_SALES_API_TOKEN=$sales_token"
-          } >> "$GITHUB_ENV"
+          echo "DATABASE_URL=$database_url" >> "$GITHUB_ENV"
 
       - name: Install PostgreSQL client
         shell: bash
@@ -63,7 +43,7 @@ jobs:
             sudo apt-get install -y -qq postgresql-client
           fi
 
-      - name: Read exact order from shared production PostgreSQL
+      - name: Audit target aggregate and all versions
         shell: bash
         run: |
           set -euo pipefail
@@ -74,35 +54,18 @@ jobs:
             so.order_number,
             so.status,
             so.current_version_number,
-            so.source_type,
-            so.source_id,
-            so.source_employee_id,
             so.customer_id,
             c.code AS current_customer_code,
             c.name AS current_customer_name,
-            cv.customer_code_snapshot,
-            cv.customer_name_snapshot,
             so.warehouse_id,
             w.code AS current_warehouse_code,
             w.name AS current_warehouse_name,
-            cv.warehouse_code_snapshot,
-            cv.warehouse_name_snapshot,
             so.fulfillment_status,
             so.delivery_status,
             so.settlement_status,
             so.created_at,
             so.updated_at,
             so.confirmed_at,
-            cv.created_at AS current_version_created_at,
-            cv.updated_at AS current_version_updated_at,
-            cv.confirmed_at AS current_version_confirmed_at,
-            cv.total AS current_version_total,
-            (SELECT count(*) FROM sales.sales_order_version_lines l
-              WHERE l.installation_id = so.installation_id
-                AND l.sales_order_version_id = cv.id) AS current_version_line_count,
-            (SELECT COALESCE(sum(l.line_weight_kg), 0) FROM sales.sales_order_version_lines l
-              WHERE l.installation_id = so.installation_id
-                AND l.sales_order_version_id = cv.id) AS current_version_weight_kg,
             so.created_by,
             so.updated_by
           FROM sales.sales_orders so
@@ -110,76 +73,166 @@ jobs:
             ON c.installation_id = so.installation_id AND c.id = so.customer_id
           JOIN shared.warehouses w
             ON w.installation_id = so.installation_id AND w.id = so.warehouse_id
-          LEFT JOIN sales.sales_order_versions cv
-            ON cv.installation_id = so.installation_id
-           AND cv.sales_order_id = so.id
-           AND cv.version_number = so.current_version_number
           WHERE so.id = :'order_id'::uuid;
           SQL
 
           psql "$DATABASE_URL" --no-psqlrc --set ON_ERROR_STOP=1 --set order_id="$ORDER_ID" \
-            --csv <<'SQL' | tee version-history.csv
+            --csv <<'SQL' | tee version-history-enriched.csv
           SELECT
-            version_number,
-            version_status,
-            customer_code_snapshot,
-            customer_name_snapshot,
-            warehouse_code_snapshot,
-            warehouse_name_snapshot,
-            source_type,
-            source_id,
-            source_employee_id,
-            amendment_reason,
-            total,
-            created_at,
-            updated_at,
-            confirmed_at,
-            created_by,
-            updated_by
-          FROM sales.sales_order_versions
-          WHERE sales_order_id = :'order_id'::uuid
-          ORDER BY version_number;
+            sov.version_number,
+            sov.version_status,
+            sov.customer_id,
+            sov.customer_code_snapshot,
+            sov.customer_name_snapshot,
+            sov.warehouse_code_snapshot,
+            sov.warehouse_name_snapshot,
+            sov.amendment_reason,
+            sov.total,
+            count(l.id) AS line_count,
+            COALESCE(sum(l.line_weight_kg), 0) AS weight_kg,
+            md5(COALESCE(string_agg(
+              concat_ws('|',
+                l.line_number::text,
+                l.sku_snapshot,
+                l.ordered_quantity::text,
+                l.unit_code_snapshot,
+                l.unit_price::text,
+                l.line_total::text
+              ), '||' ORDER BY l.line_number
+            ), '')) AS line_signature,
+            sov.created_at,
+            sov.updated_at,
+            sov.confirmed_at,
+            sov.created_by,
+            sov.updated_by
+          FROM sales.sales_order_versions sov
+          LEFT JOIN sales.sales_order_version_lines l
+            ON l.installation_id = sov.installation_id
+           AND l.sales_order_version_id = sov.id
+          WHERE sov.sales_order_id = :'order_id'::uuid
+          GROUP BY sov.id
+          ORDER BY sov.version_number;
           SQL
 
-          psql "$DATABASE_URL" --no-psqlrc --set ON_ERROR_STOP=1 --set order_id="$ORDER_ID" \
-            --csv <<'SQL' | tee relation-audit.csv
-          SELECT
-            EXISTS(SELECT 1 FROM sales.sales_orders WHERE id = :'order_id'::uuid) AS order_exists,
-            EXISTS(
-              SELECT 1
-              FROM sales.sales_orders so
-              JOIN shared.customers c ON c.installation_id=so.installation_id AND c.id=so.customer_id
-              JOIN shared.warehouses w ON w.installation_id=so.installation_id AND w.id=so.warehouse_id
-              WHERE so.id = :'order_id'::uuid
-            ) AS survives_list_inner_joins,
-            (SELECT count(*) FROM shared.security_owner_bindings) AS owner_binding_count;
-          SQL
-
-      - name: Compare production Sales Order API
+      - name: Find whether version 7 was copied from another order
         shell: bash
         run: |
           set -euo pipefail
-          auth=(-H "Authorization: Bearer $CORE_SALES_API_TOKEN" -H 'Accept: application/json')
+          psql "$DATABASE_URL" --no-psqlrc --set ON_ERROR_STOP=1 --set order_id="$ORDER_ID" \
+            --csv <<'SQL' | tee collision-audit.csv
+          WITH target_version AS (
+            SELECT sov.id, sov.installation_id, sov.customer_id, sov.customer_name_snapshot, sov.total
+            FROM sales.sales_order_versions sov
+            JOIN sales.sales_orders so
+              ON so.installation_id=sov.installation_id
+             AND so.id=sov.sales_order_id
+             AND so.current_version_number=sov.version_number
+            WHERE so.id = :'order_id'::uuid
+          ),
+          target_signature AS (
+            SELECT
+              tv.*,
+              count(l.id) AS line_count,
+              COALESCE(sum(l.line_weight_kg),0) AS weight_kg,
+              md5(COALESCE(string_agg(
+                concat_ws('|', l.line_number::text, l.sku_snapshot, l.ordered_quantity::text,
+                  l.unit_code_snapshot, l.unit_price::text, l.line_total::text),
+                '||' ORDER BY l.line_number
+              ), '')) AS line_signature
+            FROM target_version tv
+            LEFT JOIN sales.sales_order_version_lines l
+              ON l.installation_id=tv.installation_id
+             AND l.sales_order_version_id=tv.id
+            GROUP BY tv.id,tv.installation_id,tv.customer_id,tv.customer_name_snapshot,tv.total
+          ),
+          candidates AS (
+            SELECT
+              sov.id AS version_id,
+              sov.sales_order_id,
+              so.order_number,
+              sov.version_number,
+              sov.version_status,
+              sov.customer_id,
+              sov.customer_code_snapshot,
+              sov.customer_name_snapshot,
+              sov.total,
+              count(l.id) AS line_count,
+              COALESCE(sum(l.line_weight_kg),0) AS weight_kg,
+              md5(COALESCE(string_agg(
+                concat_ws('|', l.line_number::text, l.sku_snapshot, l.ordered_quantity::text,
+                  l.unit_code_snapshot, l.unit_price::text, l.line_total::text),
+                '||' ORDER BY l.line_number
+              ), '')) AS line_signature,
+              sov.created_at,
+              sov.confirmed_at
+            FROM sales.sales_order_versions sov
+            JOIN sales.sales_orders so
+              ON so.installation_id=sov.installation_id
+             AND so.id=sov.sales_order_id
+            LEFT JOIN sales.sales_order_version_lines l
+              ON l.installation_id=sov.installation_id
+             AND l.sales_order_version_id=sov.id
+            WHERE sov.sales_order_id <> :'order_id'::uuid
+            GROUP BY sov.id,so.order_number
+          )
+          SELECT
+            c.sales_order_id,
+            c.order_number,
+            c.version_number,
+            c.version_status,
+            c.customer_code_snapshot,
+            c.customer_name_snapshot,
+            c.total,
+            c.line_count,
+            c.weight_kg,
+            c.line_signature,
+            ts.line_signature AS target_line_signature,
+            (c.line_signature = ts.line_signature) AS exact_line_match,
+            c.created_at,
+            c.confirmed_at
+          FROM candidates c
+          CROSS JOIN target_signature ts
+          WHERE c.line_signature = ts.line_signature
+             OR (c.customer_name_snapshot = ts.customer_name_snapshot AND c.total = ts.total)
+          ORDER BY exact_line_match DESC, c.created_at DESC;
+          SQL
 
-          curl --fail --silent --show-error "${auth[@]}" \
-            "$CORE_URL/api/sales-orders/$ORDER_ID" > api-direct.json
-          curl --fail --silent --show-error "${auth[@]}" \
-            "$CORE_URL/api/sales-orders?limit=1000&offset=0" > api-list.json
-          curl --fail --silent --show-error --get "${auth[@]}" \
-            --data-urlencode 'search=AN PHÁT' --data-urlencode 'limit=1000' --data-urlencode 'offset=0' \
-            "$CORE_URL/api/sales-orders" > api-search-accent.json
-          curl --fail --silent --show-error --get "${auth[@]}" \
-            --data-urlencode 'search=AN PHAT' --data-urlencode 'limit=1000' --data-urlencode 'offset=0' \
-            "$CORE_URL/api/sales-orders" > api-search-no-accent.json
-
-          jq --arg id "$ORDER_ID" '{
-            direct: (.data | {id, number, status, customerId, customerCode, customerName, warehouseId, warehouseCode, createdAt, updatedAt, currentVersionNumber}),
-            directVersions: [.data.versions[]? | {versionNumber, status, customerCode, customerName, warehouseCode, total, createdAt, updatedAt, confirmedAt, lineCount:(.lines|length)}]
-          }' api-direct.json | tee api-direct-audit.json
-
-          jq --arg id "$ORDER_ID" '{listCount:(.data|length), target:[.data[]? | select(.id==$id) | {id,number,status,customerCode,customerName,warehouseCode,createdAt,updatedAt,currentVersionNumber}]}' api-list.json | tee api-list-audit.json
-          jq --arg id "$ORDER_ID" '{search:"AN PHÁT", count:(.data|length), target:[.data[]? | select(.id==$id) | {id,number,customerCode,customerName,createdAt,updatedAt}]}' api-search-accent.json | tee api-search-accent-audit.json
-          jq --arg id "$ORDER_ID" '{search:"AN PHAT", count:(.data|length), target:[.data[]? | select(.id==$id) | {id,number,customerCode,customerName,createdAt,updatedAt}]}' api-search-no-accent.json | tee api-search-no-accent-audit.json
+      - name: Compare every current order for the two customer identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql "$DATABASE_URL" --no-psqlrc --set ON_ERROR_STOP=1 --set order_id="$ORDER_ID" \
+            --csv <<'SQL' | tee customer-orders-audit.csv
+          WITH target_customers AS (
+            SELECT DISTINCT customer_id
+            FROM sales.sales_order_versions
+            WHERE sales_order_id = :'order_id'::uuid
+          )
+          SELECT
+            so.id,
+            so.order_number,
+            c.code AS current_customer_code,
+            c.name AS current_customer_name,
+            so.current_version_number,
+            cv.total AS current_total,
+            (SELECT count(*) FROM sales.sales_order_version_lines l
+              WHERE l.installation_id=cv.installation_id AND l.sales_order_version_id=cv.id) AS current_line_count,
+            (SELECT COALESCE(sum(l.line_weight_kg),0) FROM sales.sales_order_version_lines l
+              WHERE l.installation_id=cv.installation_id AND l.sales_order_version_id=cv.id) AS current_weight_kg,
+            so.status,
+            so.created_at,
+            so.updated_at,
+            so.created_by,
+            so.updated_by
+          FROM sales.sales_orders so
+          JOIN target_customers tc ON tc.customer_id=so.customer_id
+          JOIN shared.customers c ON c.installation_id=so.installation_id AND c.id=so.customer_id
+          JOIN sales.sales_order_versions cv
+            ON cv.installation_id=so.installation_id
+           AND cv.sales_order_id=so.id
+           AND cv.version_number=so.current_version_number
+          ORDER BY so.updated_at DESC, so.created_at DESC;
+          SQL
 
       - name: Publish sanitized audit summary
         if: always()
@@ -188,24 +241,11 @@ jobs:
           {
             echo '## Missing sales order production audit'
             echo
-            echo '### DB order'
-            if [ -f order-audit.csv ]; then sed -n '1,4p' order-audit.csv; else echo 'order-audit unavailable'; fi
-            echo
-            echo '### Version history'
-            if [ -f version-history.csv ]; then cat version-history.csv; else echo 'version-history unavailable'; fi
-            echo
-            echo '### Relation checks'
-            if [ -f relation-audit.csv ]; then cat relation-audit.csv; else echo 'relation-audit unavailable'; fi
-            echo
-            echo '### API direct'
-            if [ -f api-direct-audit.json ]; then cat api-direct-audit.json; else echo 'api-direct unavailable'; fi
-            echo
-            echo '### API list'
-            if [ -f api-list-audit.json ]; then cat api-list-audit.json; else echo 'api-list unavailable'; fi
-            echo
-            echo '### API searches'
-            if [ -f api-search-accent-audit.json ]; then cat api-search-accent-audit.json; fi
-            if [ -f api-search-no-accent-audit.json ]; then cat api-search-no-accent-audit.json; fi
+            for file in order-audit.csv version-history-enriched.csv collision-audit.csv customer-orders-audit.csv; do
+              echo "### $file"
+              if [ -f "$file" ]; then cat "$file"; else echo unavailable; fi
+              echo
+            done
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload sanitized evidence
@@ -215,11 +255,8 @@ jobs:
           name: missing-sales-order-audit-${{ github.run_id }}
           path: |
             order-audit.csv
-            version-history.csv
-            relation-audit.csv
-            api-direct-audit.json
-            api-list-audit.json
-            api-search-accent-audit.json
-            api-search-no-accent-audit.json
+            version-history-enriched.csv
+            collision-audit.csv
+            customer-orders-audit.csv
           if-no-files-found: ignore
           retention-days: 1
