@@ -46,6 +46,23 @@ test('Hàng đã mua khóa query theo đúng customerId, kho và current version
   assert.equal(call.params[4], 'tra');
 });
 
+test('Số lần mua đếm theo số đơn, không đếm số dòng khi một SKU bị tách nhiều dòng', async () => {
+  const client = clientWithRows([]);
+  await getCustomerPurchasedItems(client, {
+    installationId,
+    customerId,
+    warehouseIds: [warehouseId],
+    allowAllEmployees: true,
+    limit: 50,
+    offset: 0,
+  });
+
+  const call = client.calls.at(-1);
+  assert.match(call.sql, /count\(DISTINCT sales_order_id\)::text AS purchase_count/);
+  assert.match(call.sql, /sum\(ordered_quantity\)::numeric\(20,6\)::text AS total_quantity/);
+  assert.match(call.sql, /sum\(line_total\)::numeric\(20,6\)::text AS revenue/);
+});
+
 test('Hàng đã mua giữ scope nhân viên như danh sách đơn bán', async () => {
   const client = clientWithRows([]);
   await getCustomerPurchasedItems(client, {

@@ -135,7 +135,7 @@ export async function getCustomerPurchasedItems(client, {
        SELECT variant_id,
               sum(ordered_quantity)::numeric(20,6)::text AS total_quantity,
               sum(line_total)::numeric(20,6)::text AS revenue,
-              count(*)::text AS purchase_count,
+              count(DISTINCT sales_order_id)::text AS purchase_count,
               max(confirmed_at) AS last_purchase_at
          FROM ranked
         GROUP BY variant_id
