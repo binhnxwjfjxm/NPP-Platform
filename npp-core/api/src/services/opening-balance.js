@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { IDEMPOTENCY_KEY_PATTERN } from '@npp/contracts';
 import {
   buildAuditRecord,
   buildOutboxEvent,
@@ -238,15 +239,17 @@ async function validateRows(client, requestContext, normalizedBody) {
 
   for (const row of normalizedBody.rows) {
     if (!scope.has(row.warehouseId)) {
-      rowErrors.push({ lineNumber: row.lineNumber, code: 'WAREHOUSE_SCOPE_DENIED', message: 'Warehouse is outside the server-owned request scope' });
+      rowErrors.push({ lineNumber: row.lineNumber, code: 'WAREHOUSE_SCOPE_DENIED', message: 'Kho nằm ngoài phạm vi được cấp quyền.' });
       continue;
     }
 
     const warehouse = await client.query(
       `SELECT warehouse.id AS warehouse_id,
               warehouse.is_active AS warehouse_active,
+              warehouse.location_management_mode,
               location.id AS location_id,
-              location.is_active AS location_active
+              location.is_active AS location_active,
+              location.location_type
          FROM shared.warehouses warehouse
          LEFT JOIN shared.warehouse_locations location
            ON location.installation_id = warehouse.installation_id
@@ -258,11 +261,23 @@ async function validateRows(client, requestContext, normalizedBody) {
     );
     const warehouseRow = warehouse.rows?.[0] ?? null;
     if (!warehouseRow || !warehouseRow.warehouse_active) {
-      rowErrors.push({ lineNumber: row.lineNumber, code: 'WAREHOUSE_NOT_AVAILABLE', message: 'Warehouse is missing or inactive' });
+      rowErrors.push({ lineNumber: row.lineNumber, code: 'WAREHOUSE_NOT_AVAILABLE', message: 'Kho không tồn tại hoặc đã ngừng sử dụng.' });
       continue;
     }
-    if (row.locationId && (!warehouseRow.location_id || !warehouseRow.location_active)) {
-      rowErrors.push({ lineNumber: row.lineNumber, code: 'LOCATION_NOT_AVAILABLE', message: 'Location is missing, inactive or belongs to another warehouse' });
+    if (!['MANAGED', 'UNMANAGED'].includes(warehouseRow.location_management_mode)) {
+      rowErrors.push({ lineNumber: row.lineNumber, code: 'WAREHOUSE_LOCATION_MODE_REQUIRED', message: 'Kho chưa thiết lập chế độ quản lý vị trí.' });
+      continue;
+    }
+    if (warehouseRow.location_management_mode === 'MANAGED' && !row.locationId) {
+      rowErrors.push({ lineNumber: row.lineNumber, code: 'LOCATION_REQUIRED', message: 'Kho này có quản lý vị trí. Cần chọn Vị trí.' });
+      continue;
+    }
+    if (warehouseRow.location_management_mode === 'UNMANAGED' && row.locationId) {
+      rowErrors.push({ lineNumber: row.lineNumber, code: 'LOCATION_NOT_ALLOWED', message: 'Kho này dùng tồn chung. Hãy để trống Vị trí.' });
+      continue;
+    }
+    if (row.locationId && (!warehouseRow.location_id || !warehouseRow.location_active || warehouseRow.location_type !== 'storage')) {
+      rowErrors.push({ lineNumber: row.lineNumber, code: 'LOCATION_NOT_AVAILABLE', message: 'Vị trí không hoạt động, không phải vị trí lưu trữ hoặc không thuộc kho đã chọn.' });
       continue;
     }
 
@@ -320,10 +335,6 @@ async function validateRows(client, requestContext, normalizedBody) {
       continue;
     }
 
-    if (policyResult.location_required && !row.locationId) {
-      rowErrors.push({ lineNumber: row.lineNumber, code: 'LOCATION_REQUIRED', message: 'Location is required by the active tracking policy' });
-      continue;
-    }
     if (policyResult.lot_tracking_mode === 'NONE') {
       if (row.lotId || row.lotCode || row.expiryDate || row.manufacturedDate || row.supplierLotReference) {
         rowErrors.push({ lineNumber: row.lineNumber, code: 'LOT_NOT_ALLOWED', message: 'Lot data is not allowed by the active tracking policy' });
@@ -400,7 +411,8 @@ async function validateRows(client, requestContext, normalizedBody) {
       baseQuantity: multiplication.baseQuantityDelta,
       lotTrackingMode: policyResult.lot_tracking_mode,
       expiryTrackingMode: policyResult.expiry_tracking_mode,
-      locationRequired: policyResult.location_required,
+      locationManagementMode: warehouseRow.location_management_mode,
+      locationRequired: warehouseRow.location_management_mode === 'MANAGED',
       sourceQuantity: multiplication.sourceQuantity,
       lotCode: row.lotCode ?? null,
       normalizedLotCode: row.normalizedLotCode ?? null,
@@ -466,7 +478,9 @@ export async function postOpeningBalanceImport({ adapter, requestContext, idempo
     return failure('PERMISSION_DENIED', 'Permission core.inventory.opening-balance.import is required');
   }
   const idempotency = text(idempotencyKey, 128);
-  if (!idempotency) return failure('INVALID_IDEMPOTENCY_KEY', 'idempotencyKey must contain 1-128 safe characters');
+  if (!idempotency || !IDEMPOTENCY_KEY_PATTERN.test(idempotency)) {
+    return failure('INVALID_IDEMPOTENCY_KEY', 'Idempotency-Key phải dùng 1-128 ký tự an toàn.');
+  }
 
   const normalized = normalizeRequestBody(payload);
   if (!normalized.ok) return normalized;
