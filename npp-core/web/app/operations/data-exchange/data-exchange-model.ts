@@ -46,7 +46,7 @@ export const PRODUCT_COLUMNS = [
   'productCode', 'productName', 'catalogName', 'categoryCode', 'brandCode', 'description', 'notes',
   'productIsCatalogVisible', 'productIsOrderable', 'productIsActive', 'sku', 'skuName', 'variantKind',
   'isInventoryBase', 'isSellable', 'isCatalogVisible', 'isActive',
-  'unitCode', 'conversionToBase', 'lotTrackingMode', 'expiryTrackingMode', 'locationRequired',
+  'unitCode', 'conversionToBase', 'lotTrackingMode', 'expiryTrackingMode',
 ] as const;
 export const PRODUCT_REQUIRED_COLUMNS = [
   'productCode', 'productName', 'productIsCatalogVisible', 'productIsOrderable', 'productIsActive',
@@ -62,7 +62,7 @@ export const COLUMN_LABELS: Record<string, string> = {
   description: 'Mô tả', notes: 'Ghi chú', productIsCatalogVisible: 'Hiển thị sản phẩm khi bán hàng', productIsOrderable: 'Cho phép đặt hàng', productIsActive: 'Sản phẩm đang sử dụng',
   sku: 'SKU', skuName: 'Tên SKU / quy cách', variantKind: 'Loại SKU', isInventoryBase: 'SKU dùng làm đơn vị tồn chuẩn', isSellable: 'Cho phép bán SKU',
   isCatalogVisible: 'Hiển thị SKU khi bán hàng', isActive: 'SKU đang sử dụng', unitCode: 'Đơn vị tính', conversionToBase: 'Hệ số quy đổi về đơn vị tồn chuẩn',
-  lotTrackingMode: 'Quản lý theo lô', expiryTrackingMode: 'Quản lý hạn sử dụng', locationRequired: 'Bắt buộc chọn vị trí kho',
+  lotTrackingMode: 'Quản lý theo lô', expiryTrackingMode: 'Quản lý hạn sử dụng',
   priceListCode: 'Mã bảng giá', priceListName: 'Tên bảng giá', listType: 'Loại bảng giá', currencyCode: 'Tiền tệ', sourceKey: 'Mã nguồn dòng giá',
   adjustmentType: 'Cách tính giá', amountMinor: 'Giá bán (VND)', rateBps: 'Tỷ lệ', minQuantity: 'Số lượng từ', maxQuantity: 'Số lượng đến', effectiveFrom: 'Hiệu lực từ',
   effectiveTo: 'Hiệu lực đến', externalRuleCode: 'Mã quy tắc ngoài', note: 'Ghi chú', warehouseCode: 'Mã kho', locationCode: 'Mã vị trí', lotCode: 'Mã lô',
@@ -70,7 +70,7 @@ export const COLUMN_LABELS: Record<string, string> = {
 };
 export const LABEL_TO_COLUMN = new Map(Object.entries(COLUMN_LABELS).map(([key, label]) => [label.trim().toLocaleLowerCase('vi-VN'), key]));
 export const TABS: Tab[] = ['products', 'pricing', 'stocktake', 'quotation', 'movements'];
-export const BOOLEAN_FIELDS = new Set(['productIsCatalogVisible', 'productIsOrderable', 'productIsActive', 'isInventoryBase', 'isSellable', 'isCatalogVisible', 'isActive', 'locationRequired']);
+export const BOOLEAN_FIELDS = new Set(['productIsCatalogVisible', 'productIsOrderable', 'productIsActive', 'isInventoryBase', 'isSellable', 'isCatalogVisible', 'isActive']);
 export const LIST_TYPE_LABELS: Record<string, string> = { BASE: 'Giá nền', CHANNEL: 'Theo kênh', CUSTOMER_GROUP: 'Theo nhóm khách', CUSTOMER: 'Theo khách hàng', PROMOTION: 'Khuyến mãi', CUSTOM: 'Quy tắc khác' };
 export const ADJUSTMENT_LABELS: Record<string, string> = { FIXED_PRICE: 'Giá cố định', PERCENT_DISCOUNT: 'Giảm phần trăm', AMOUNT_DISCOUNT: 'Giảm số tiền', PERCENT_MARKUP: 'Tăng phần trăm', AMOUNT_MARKUP: 'Tăng số tiền' };
 
@@ -103,7 +103,6 @@ export function humanizeMessage(value: string) {
     .replaceAll('isInventoryBase', 'SKU dùng làm đơn vị tồn chuẩn')
     .replaceAll('lotTrackingMode', 'Quản lý theo lô')
     .replaceAll('expiryTrackingMode', 'Quản lý hạn sử dụng')
-    .replaceAll('locationRequired', 'Bắt buộc chọn vị trí kho')
     .replaceAll('priceListCode', 'Mã bảng giá')
     .replaceAll('sourceKey', 'Mã nguồn dòng giá')
     .replaceAll('actualCount', 'Số đếm thực tế')
