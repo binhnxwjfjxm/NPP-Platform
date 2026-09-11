@@ -3,7 +3,7 @@ import { postManualInbound } from './manual-inbound.js';
 import {
   validateManualInboundPostInventoryPolicy,
 } from './manual-inbound-preparation.js';
-import { previewManualInboundOperator } from './manual-inbound-operator-preview.js';
+import { previewManualInboundOperator as previewManualInbound } from './manual-inbound-operator-preview.js';
 
 function failure(code, message, statusCode = 400, details = {}) {
   return Object.freeze({ ok: false, code, message, statusCode, retryable: false, details });
@@ -51,7 +51,7 @@ export async function confirmManualInbound({ adapter, requestContext, idempotenc
     return failure('PERMISSION_DENIED', 'Không có quyền xác nhận Nhập kho thủ công.', 403);
   }
 
-  const prepared = await previewManualInboundOperator(adapter, { requestContext, payload });
+  const prepared = await previewManualInbound(adapter, { requestContext, payload });
   if (!prepared.ok) return prepared;
   if (!prepared.preview.ready) {
     return failure(
