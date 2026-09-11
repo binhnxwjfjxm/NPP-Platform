@@ -50,10 +50,10 @@ async function seedWarehouses(pool, installationId) {
   );
   await pool.query(
     `INSERT INTO shared.warehouses
-      (id, installation_id, branch_id, code, name, warehouse_type, is_active, created_by, updated_by)
+      (id, installation_id, branch_id, code, name, warehouse_type, location_management_mode, is_active, created_by, updated_by)
      VALUES
-      ($1,$3,$4,'KHO-A','Kho A','main',true,$5,$5),
-      ($2,$3,$4,'KHO-B','Kho B','main',true,$5,$5)`,
+      ($1,$3,$4,'KHO-A','Kho A','main','UNMANAGED',true,$5,$5),
+      ($2,$3,$4,'KHO-B','Kho B','main','UNMANAGED',true,$5,$5)`,
     [warehouseAId, warehouseBId, installationId, branchId, actor],
   );
   return { warehouseAId, warehouseBId };

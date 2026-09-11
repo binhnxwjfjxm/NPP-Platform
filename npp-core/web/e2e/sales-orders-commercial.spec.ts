@@ -1,4 +1,5 @@
 import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
+import { configureWarehouseLocationMode } from './support/warehouse-location-mode';
 
 function suffix() {
   return Date.now().toString(36).toUpperCase().slice(-10);
@@ -21,7 +22,9 @@ async function createWarehouse(request: APIRequestContext, token: string) {
     },
   });
   expect(warehouseResponse.status()).toBe(201);
-  return (await warehouseResponse.json()).data as { id: string; code: string; name: string };
+  const warehouse = (await warehouseResponse.json()).data as { id: string; code: string; name: string };
+  await configureWarehouseLocationMode(request, warehouse.id, 'UNMANAGED');
+  return warehouse;
 }
 
 function variantId(index: number) {

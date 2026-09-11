@@ -85,8 +85,8 @@ test('PostgreSQL driver attempts preserve ownership, idempotency, inventory cust
     );
     await fixture.query(
       `INSERT INTO shared.warehouses
-        (id, installation_id, branch_id, code, name, warehouse_type, is_active, created_by, updated_by)
-       VALUES ($1,$2,$3,'WH-DELIVERY','Kho giao hàng','main',true,$4,$4)`,
+        (id, installation_id, branch_id, code, name, warehouse_type, location_management_mode, is_active, created_by, updated_by)
+       VALUES ($1,$2,$3,'WH-DELIVERY','Kho giao hàng','main','UNMANAGED',true,$4,$4)`,
       [warehouseId, installationId, branchId, actor],
     );
     await fixture.query(

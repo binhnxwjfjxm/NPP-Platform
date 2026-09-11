@@ -1,12 +1,13 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { createIdempotencyKey, IDEMPOTENCY_KEY_PATTERN } from '@npp/contracts';
 import { PERMISSIONS } from '../access/permissions.js';
 import * as repository from '../db/repositories/inventory-adjustment.js';
 import * as ledgerRepository from '../db/repositories/inventory-ledger.js';
+import * as warehouseLocationModeRepository from '../db/repositories/warehouse-location-mode.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const QUANTITY_PATTERN = /^(?:0|[1-9]\d{0,13})(?:\.\d{1,6})?$/;
 const REVISION_PATTERN = /^(?:0|[1-9]\d{0,18})$/;
-const IDEMPOTENCY_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 const DOCUMENT_KINDS = new Set([
   'MANUAL_ADJUSTMENT',
   'QUARANTINE_TRANSFER',
@@ -110,11 +111,19 @@ function payloadHash(value) {
   return createHash('sha256').update(JSON.stringify(canonicalize(value))).digest('hex');
 }
 
+function deterministicUuid(value) {
+  const bytes = Buffer.from(createHash('sha256').update(value).digest().subarray(0, 16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x50;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = bytes.toString('hex');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 function childIdempotencyKey(parentKey, suffix) {
-  const candidate = `${parentKey}:${suffix}`;
-  if (candidate.length <= 128) return candidate;
-  const digest = createHash('sha256').update(parentKey).digest('hex').slice(0, 32);
-  return `${parentKey.slice(0, 80)}:${suffix}:${digest}`;
+  return createIdempotencyKey(
+    'inventory-adjustment',
+    deterministicUuid(`${parentKey}|${suffix}`),
+  );
 }
 
 function dateOnly(value) {
@@ -301,17 +310,11 @@ function normalizeCreatePayload(payload) {
     if (sourceLocationId && !isUuid(sourceLocationId)) {
       return failure('INVALID_SOURCE_LOCATION_ID', `Line ${index + 1} sourceLocationId is invalid`);
     }
-    if (!sourceLocationId && !(documentKind === 'MANUAL_ADJUSTMENT' && adjustmentDirection === 'OUT')) {
-      return failure('SOURCE_LOCATION_REQUIRED', `Dòng ${index + 1}: Cần chọn Vị trí cho điều chỉnh này.`);
-    }
     if (destinationLocationId && !isUuid(destinationLocationId)) {
       return failure('INVALID_DESTINATION_LOCATION_ID', `Line ${index + 1} destinationLocationId is invalid`);
     }
     if (!isUuid(sourceVariantId)) return failure('INVALID_SOURCE_VARIANT_ID', `Line ${index + 1} sourceVariantId is invalid`);
     if (lotId && !isUuid(lotId)) return failure('INVALID_LOT_ID', `Line ${index + 1} lotId is invalid`);
-    if (TRANSFER_KINDS.has(documentKind) && !destinationLocationId) {
-      return failure('DESTINATION_LOCATION_REQUIRED', `Line ${index + 1} destinationLocationId is required`);
-    }
     if (!TRANSFER_KINDS.has(documentKind) && destinationLocationId) {
       return failure('DESTINATION_LOCATION_NOT_ALLOWED', `Line ${index + 1} destinationLocationId is not allowed`);
     }
@@ -320,7 +323,7 @@ function normalizeCreatePayload(payload) {
     }
     const quantity = parsePositiveQuantity(input.quantity, `lines[${index}].quantity`);
     if (!quantity.ok) return quantity;
-    const key = [sourceLocationId, destinationLocationId ?? '<null>', sourceVariantId, lotId ?? '<null>'].join(':');
+    const key = [sourceLocationId ?? '<null>', destinationLocationId ?? '<null>', sourceVariantId, lotId ?? '<null>'].join(':');
     if (unique.has(key)) return failure('DUPLICATE_ADJUSTMENT_SCOPE', `Line ${index + 1} duplicates an exact scope`);
     unique.add(key);
     lines.push(Object.freeze({
@@ -344,6 +347,36 @@ function normalizeCreatePayload(payload) {
       lines: Object.freeze(lines),
     }),
   });
+}
+
+function locationIdsForLine(line) {
+  return Object.freeze({
+    source: line?.source_location_id ?? line?.sourceLocationId ?? line?.locationId ?? null,
+    destination: line?.destination_location_id ?? line?.destinationLocationId ?? null,
+  });
+}
+
+function validateWarehouseLocationMode(warehouse, documentKind, lines) {
+  const mode = warehouse?.location_management_mode;
+  if (!['MANAGED', 'UNMANAGED'].includes(mode)) {
+    return failure('WAREHOUSE_LOCATION_MODE_REQUIRED', 'Kho chưa thiết lập chế độ quản lý vị trí.');
+  }
+  if (mode === 'UNMANAGED' && TRANSFER_KINDS.has(documentKind)) {
+    return failure('WAREHOUSE_LOCATION_MANAGEMENT_REQUIRED', 'Kho dùng tồn chung nên không áp dụng chuyển hàng giữa các vị trí trong cùng kho.');
+  }
+  for (let index = 0; index < lines.length; index += 1) {
+    const locations = locationIdsForLine(lines[index]);
+    if (mode === 'UNMANAGED' && (locations.source || locations.destination)) {
+      return failure('LOCATION_NOT_ALLOWED', `Dòng ${index + 1}: Kho này dùng tồn chung. Hãy để trống Vị trí.`);
+    }
+    if (mode === 'MANAGED' && !locations.source) {
+      return failure('SOURCE_LOCATION_REQUIRED', `Dòng ${index + 1}: Kho này có quản lý vị trí. Cần chọn Vị trí.`);
+    }
+    if (mode === 'MANAGED' && TRANSFER_KINDS.has(documentKind) && !locations.destination) {
+      return failure('DESTINATION_LOCATION_REQUIRED', `Dòng ${index + 1}: Cần chọn Vị trí nhận.`);
+    }
+  }
+  return Object.freeze({ ok: true });
 }
 
 function scopeRows(lines, { posted = false } = {}) {
@@ -459,7 +492,7 @@ async function insertMovement(client, {
   currentByKey,
   idempotencyKey,
 }) {
-  if (!IDEMPOTENCY_PATTERN.test(idempotencyKey)) {
+  if (!IDEMPOTENCY_KEY_PATTERN.test(idempotencyKey)) {
     return failure('INVALID_IDEMPOTENCY_KEY', 'Movement idempotency key is invalid');
   }
   await ledgerRepository.lockIdempotencyKey(client, {
@@ -573,7 +606,7 @@ async function insertReversalMovement(client, {
   idempotencyKey,
   reason,
 }) {
-  if (!IDEMPOTENCY_PATTERN.test(idempotencyKey)) {
+  if (!IDEMPOTENCY_KEY_PATTERN.test(idempotencyKey)) {
     return failure('INVALID_IDEMPOTENCY_KEY', 'Reversal idempotency key is invalid');
   }
   await ledgerRepository.lockIdempotencyKey(client, {
@@ -717,13 +750,16 @@ export async function createAdjustment(client, { requestContext, payload }) {
   if (!hasWarehouse(requestContext, input.warehouseId)) {
     return failure('WAREHOUSE_SCOPE_DENIED', 'Warehouse is outside the authorized scope');
   }
-  const warehouse = await repository.loadWarehouse(client, {
+  const warehouse = await warehouseLocationModeRepository.getWarehouse(client, {
     installationId: requestContext.installationId,
     warehouseId: input.warehouseId,
+    forUpdate: false,
   });
   if (!warehouse || !warehouse.is_active || ['vehicle', 'transit'].includes(warehouse.warehouse_type)) {
     return failure('WAREHOUSE_NOT_AVAILABLE', 'Warehouse is missing, inactive or not eligible for adjustment');
   }
+  const locationValidation = validateWarehouseLocationMode(warehouse, input.documentKind, input.lines);
+  if (!locationValidation.ok) return locationValidation;
   const reason = await repository.getReason(client, { code: input.reasonCode });
   if (!reason || !reason.is_active) return failure('ADJUSTMENT_REASON_NOT_AVAILABLE', 'Reason code is not available');
   if (reason.document_kind !== input.documentKind
@@ -878,6 +914,21 @@ export async function postAdjustment(client, {
     adjustmentId: row.id,
     forUpdate: true,
   });
+  const warehouse = await warehouseLocationModeRepository.getWarehouse(client, {
+    installationId: row.installation_id,
+    warehouseId: row.warehouse_id,
+    forUpdate: true,
+  });
+  if (!warehouse || !warehouse.is_active) return failure('WAREHOUSE_NOT_AVAILABLE', 'Kho không còn hoạt động.');
+  const locationValidation = validateWarehouseLocationMode(warehouse, row.document_kind, lines);
+  if (!locationValidation.ok) {
+    return failure(
+      'INVENTORY_ADJUSTMENT_LOCATION_MODE_CHANGED',
+      'Thiết lập quản lý vị trí của Kho đã thay đổi. Hãy hủy phiếu cũ và lập lại theo thiết lập hiện tại.',
+      false,
+      { cause: locationValidation.code },
+    );
+  }
   const watermark = shouldVerifySnapshotAtPost(row.document_kind)
     ? await verifySnapshotWatermarks(client, row, lines, { lock: true })
     : await loadCurrentScopeState(client, row, lines, { lock: true });
@@ -1047,4 +1098,5 @@ export const inventoryAdjustmentInternals = Object.freeze({
   childIdempotencyKey,
   canApproveOwnAdjustment,
   shouldVerifySnapshotAtPost,
+  validateWarehouseLocationMode,
 });

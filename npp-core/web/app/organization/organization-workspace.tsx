@@ -61,6 +61,35 @@ type ToggleState =
   | { resource: 'locations'; entityId: string; nextActive: boolean }
   | null;
 
+type LocationManagementMode = 'MANAGED' | 'UNMANAGED';
+
+type WarehouseLocationModePreview = {
+  warehouse: {
+    id: string;
+    code: string;
+    name: string;
+    currentMode: LocationManagementMode | null;
+  };
+  targetMode: LocationManagementMode;
+  destinationLocation: { id: string; code: string; name: string } | null;
+  summary: {
+    affectedSkuCount: number;
+    affectedScopeCount: number;
+    totalBaseQuantity: string;
+    relocatedReservationCount: number;
+  };
+  blockers: Array<{ code: string; message?: string }>;
+  canConvert: boolean;
+  previewHash: string;
+};
+
+type LocationModeState = {
+  warehouseId: string;
+  targetMode: LocationManagementMode;
+  destinationLocationId: string;
+  preview: WarehouseLocationModePreview | null;
+} | null;
+
 type ApiEnvelope<T> = {
   data?: T;
   error?: {
@@ -132,6 +161,12 @@ function statusClass(active: boolean): string {
 
 function warehouseNegativeStockEnabled(warehouse: Warehouse): boolean {
   return (warehouse as Warehouse & { allow_negative_stock?: boolean }).allow_negative_stock === true;
+}
+
+function warehouseLocationModeLabel(warehouse: Warehouse): string {
+  if (warehouse.location_management_mode === 'MANAGED') return 'Có quản lý vị trí';
+  if (warehouse.location_management_mode === 'UNMANAGED') return 'Không quản lý vị trí';
+  return 'Chưa thiết lập';
 }
 
 function entitySearchText(
@@ -227,6 +262,7 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
   const [warehouseDraft, setWarehouseDraft] = useState<WarehouseFormState>(emptyWarehouseForm());
   const [locationDraft, setLocationDraft] = useState<LocationFormState>(emptyLocationForm());
   const [toggleState, setToggleState] = useState<ToggleState>(null);
+  const [locationModeState, setLocationModeState] = useState<LocationModeState>(null);
   const mutationKeys = useRef(new Map<string, string>());
 
   const branchMap = useMemo(() => new Map(branches.map((branch) => [branch.id, branch])), [branches]);
@@ -342,6 +378,17 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
     });
   }, [branches, locations, warehouses]);
 
+  const locationModeWarehouse = locationModeState
+    ? warehouses.find((warehouse) => warehouse.id === locationModeState.warehouseId) ?? null
+    : null;
+  const locationModeDestinationLocations = locationModeWarehouse
+    ? locations.filter((location) => (
+      location.warehouse_id === locationModeWarehouse.id
+      && location.is_active
+      && location.location_type === 'storage'
+    ))
+    : [];
+
   useEffect(() => {
     setLoading(false);
   }, [scope]);
@@ -429,9 +476,21 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
     setToggleState({ resource, entityId, nextActive });
   }
 
+  function openLocationMode(warehouse: Warehouse) {
+    setError(null);
+    setNotice(null);
+    setLocationModeState({
+      warehouseId: warehouse.id,
+      targetMode: warehouse.location_management_mode === 'MANAGED' ? 'UNMANAGED' : 'MANAGED',
+      destinationLocationId: '',
+      preview: null,
+    });
+  }
+
   function closeModals() {
     setEditor(null);
     setToggleState(null);
+    setLocationModeState(null);
   }
 
   async function submitBranch(event: React.FormEvent<HTMLFormElement>) {
@@ -561,6 +620,62 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
       setToggleState(null);
     } catch (toggleError) {
       setError(toggleError instanceof Error ? toggleError.message : 'Không đổi được trạng thái');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function previewLocationMode() {
+    if (!locationModeState) return;
+    const { warehouseId, targetMode, destinationLocationId } = locationModeState;
+    setBusy(`preview-location-mode-${warehouseId}`);
+    setError(null);
+    setNotice(null);
+    try {
+      const query = new URLSearchParams({ targetMode });
+      if (destinationLocationId) query.set('destinationLocationId', destinationLocationId);
+      const preview = await requestJson<WarehouseLocationModePreview>(
+        `/api/organization/warehouses/${warehouseId}/location-mode/preview?${query}`,
+      );
+      setLocationModeState((current) => current && current.warehouseId === warehouseId
+        ? { ...current, preview }
+        : current);
+    } catch (previewError) {
+      setError(previewError instanceof Error ? previewError.message : 'Không xem trước được việc thay đổi chế độ quản lý vị trí.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function confirmLocationMode() {
+    if (!locationModeState?.preview?.canConvert) return;
+    const { warehouseId, targetMode, destinationLocationId, preview } = locationModeState;
+    const operationScope = `warehouse-location-mode|${warehouseId}|${targetMode}|${destinationLocationId}|${preview.previewHash}`;
+    let idempotencyKey = mutationKeys.current.get(operationScope);
+    if (!idempotencyKey) {
+      idempotencyKey = createIdempotencyKey('warehouse-location-mode-convert');
+      mutationKeys.current.set(operationScope, idempotencyKey);
+    }
+
+    setBusy(`confirm-location-mode-${warehouseId}`);
+    setError(null);
+    setNotice(null);
+    try {
+      await requestJson(`/api/organization/warehouses/${warehouseId}/location-mode/convert`, {
+        method: 'POST',
+        headers: { 'Idempotency-Key': idempotencyKey },
+        body: JSON.stringify({
+          targetMode,
+          destinationLocationId: destinationLocationId || null,
+          previewHash: preview.previewHash,
+        }),
+      });
+      mutationKeys.current.delete(operationScope);
+      await loadAll();
+      setLocationModeState(null);
+      setNotice(initialNotice(targetMode === 'MANAGED' ? 'Đã bắt đầu quản lý vị trí cho kho.' : 'Đã chuyển kho sang tồn chung.'));
+    } catch (conversionError) {
+      setError(conversionError instanceof Error ? conversionError.message : 'Không đổi được chế độ quản lý vị trí.');
     } finally {
       setBusy(null);
     }
@@ -852,6 +967,7 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
                         <th>Tên</th>
                         <th>Thuộc chi nhánh</th>
                         <th>Loại kho</th>
+                        <th>Quản lý vị trí</th>
                         <th>Xuất vượt tồn</th>
                         <th>Trạng thái</th>
                         <th>Xử lý</th>
@@ -873,6 +989,11 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
                             <td className={styles.relationCell}>{branch ? `${branch.code} · ${branch.name}` : 'Chưa xác định chi nhánh'}</td>
                             <td>{typeLabel('warehouses', warehouse.warehouse_type)}</td>
                             <td>
+                              <span data-testid={`warehouse-location-mode-status-${warehouse.code}`}>
+                                {warehouseLocationModeLabel(warehouse)}
+                              </span>
+                            </td>
+                            <td>
                               <span
                                 className={joinClasses(styles.statusPill, statusClass(allowNegativeStock))}
                                 data-testid={`warehouse-negative-stock-status-${warehouse.code}`}
@@ -884,6 +1005,7 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
                             <td>
                               <div className={styles.rowActions}>
                                 <button type="button" data-testid={`edit-warehouse-${warehouse.code}`} onClick={() => openEdit('warehouses', warehouse.id)}>Chỉnh sửa</button>
+                                <button type="button" data-testid={`warehouse-location-mode-${warehouse.code}`} onClick={() => openLocationMode(warehouse)}>Quản lý vị trí</button>
                                 <button type="button" data-testid={`toggle-warehouse-${warehouse.code}`} onClick={() => openToggle('warehouses', warehouse.id, !warehouse.is_active)}>
                                   {warehouse.is_active ? 'Ngừng sử dụng' : 'Đưa vào sử dụng'}
                                 </button>
@@ -893,7 +1015,7 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
                         );
                       }) : (
                         <tr>
-                          <td colSpan={7}>
+                          <td colSpan={8}>
                             <div className={styles.emptyState}>Không tìm thấy kho hàng phù hợp.</div>
                           </td>
                         </tr>
@@ -1113,6 +1235,105 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
                   </div>
                 </form>
               ) : null}
+            </div>
+          </div>
+        ) : null}
+
+        {locationModeState && locationModeWarehouse ? (
+          <div className={styles.modalBackdrop} role="presentation" onClick={closeModals}>
+            <div className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="warehouse-location-mode-title" onClick={(event) => event.stopPropagation()}>
+              <div className={styles.modalHeader}>
+                <div>
+                  <p className={styles.panelKicker}>Thiết lập kho</p>
+                  <h3 id="warehouse-location-mode-title">Quản lý vị trí trong kho</h3>
+                </div>
+                <button type="button" className={styles.modalClose} onClick={closeModals}>Đóng</button>
+              </div>
+              <p className={styles.confirmText}>
+                Kho {locationModeWarehouse.code} · {locationModeWarehouse.name} hiện {warehouseLocationModeLabel(locationModeWarehouse).toLowerCase()}.
+                Hệ thống chỉ thay đổi sau khi bạn xem trước và xác nhận.
+              </p>
+              <div className={styles.form}>
+                <label>
+                  Chế độ quản lý vị trí
+                  <select
+                    data-testid="warehouse-location-mode-target"
+                    value={locationModeState.targetMode}
+                    onChange={(event) => setLocationModeState((current) => current ? {
+                      ...current,
+                      targetMode: event.target.value as LocationManagementMode,
+                      destinationLocationId: '',
+                      preview: null,
+                    } : current)}
+                  >
+                    <option value="MANAGED">Có quản lý vị trí</option>
+                    <option value="UNMANAGED">Không quản lý vị trí</option>
+                  </select>
+                </label>
+
+                {locationModeState.targetMode === 'MANAGED' ? (
+                  <label>
+                    Vị trí nhận ban đầu
+                    <select
+                      data-testid="warehouse-location-mode-destination"
+                      value={locationModeState.destinationLocationId}
+                      onChange={(event) => setLocationModeState((current) => current ? {
+                        ...current,
+                        destinationLocationId: event.target.value,
+                        preview: null,
+                      } : current)}
+                      required
+                    >
+                      <option value="">Chọn vị trí lưu trữ</option>
+                      {locationModeDestinationLocations.map((location) => (
+                        <option key={location.id} value={location.id}>{location.code} · {location.name}</option>
+                      ))}
+                    </select>
+                    <small>Vui lòng tự chọn vị trí nhận ban đầu. Hệ thống không tự gán vị trí.</small>
+                  </label>
+                ) : null}
+
+                {locationModeState.preview ? (
+                  <section aria-label="Kết quả xem trước thay đổi chế độ vị trí">
+                    <p className={styles.panelKicker}>Kết quả xem trước</p>
+                    <p className={styles.confirmText}>
+                      {locationModeState.preview.targetMode === 'MANAGED'
+                        ? `Tồn chung sẽ được chuyển vào ${locationModeState.preview.destinationLocation?.code ?? 'vị trí đã chọn'}.`
+                        : 'Tồn tại các vị trí sẽ được gộp về tồn chung.'}
+                    </p>
+                    <p className={styles.confirmText}>
+                      {locationModeState.preview.summary.affectedSkuCount} sản phẩm · {locationModeState.preview.summary.affectedScopeCount} phạm vi tồn · tổng số lượng {locationModeState.preview.summary.totalBaseQuantity} · {locationModeState.preview.summary.relocatedReservationCount} phần hàng giữ cần chuyển.
+                    </p>
+                    {locationModeState.preview.blockers.length ? (
+                      <ul>
+                        {locationModeState.preview.blockers.map((blocker) => (
+                          <li key={`${blocker.code}-${JSON.stringify(blocker)}`}>{blocker.message ?? 'Dữ liệu kho cần được đối soát trước khi chuyển chế độ.'}</li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </section>
+                ) : null}
+
+                <div className={styles.formActions}>
+                  <button type="button" className={styles.secondaryButton} onClick={closeModals}>Hủy</button>
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    onClick={() => void previewLocationMode()}
+                    disabled={busy !== null || (locationModeState.targetMode === 'MANAGED' && !locationModeState.destinationLocationId)}
+                  >
+                    Xem trước thay đổi
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.primaryButton}
+                    onClick={() => void confirmLocationMode()}
+                    disabled={busy !== null || !locationModeState.preview?.canConvert}
+                  >
+                    Xác nhận chuyển chế độ
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         ) : null}

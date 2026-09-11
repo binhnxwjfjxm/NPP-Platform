@@ -1,4 +1,5 @@
 import { test, expect, type APIRequestContext } from '@playwright/test';
+import { configureWarehouseLocationMode } from './support/warehouse-location-mode';
 
 function suffix() {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`.toUpperCase();
@@ -27,6 +28,7 @@ async function createFixture(request: APIRequestContext, code: string) {
     name: `Vị trí thanh toán ${code}`,
     locationType: 'storage',
   });
+  await configureWarehouseLocationMode(request, warehouse.id, 'MANAGED', location.id);
   const supplier = await create('/api/suppliers', `sp-supplier-${code}`, {
     code: `SPS-${code}`,
     name: `Nhà cung cấp thanh toán ${code}`,

@@ -85,11 +85,11 @@ async function seedMasterData(pool, installationId) {
 
   await pool.query(
     `INSERT INTO shared.warehouses (
-       id, installation_id, branch_id, code, name, warehouse_type,
+       id, installation_id, branch_id, code, name, warehouse_type, location_management_mode,
        is_active, created_by, updated_by
      ) VALUES
-       ($1,$3,$4,$5,'Kho P4.3 chính','main',true,$7,$7),
-       ($2,$3,$4,$6,'Kho P4.3 khác','main',true,$7,$7)`,
+       ($1,$3,$4,$5,'Kho P4.3 chính','main','MANAGED',true,$7,$7),
+       ($2,$3,$4,$6,'Kho P4.3 khác','main','MANAGED',true,$7,$7)`,
     [
       warehouseId,
       otherWarehouseId,

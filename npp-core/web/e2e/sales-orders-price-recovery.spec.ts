@@ -1,4 +1,5 @@
 import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
+import { configureWarehouseLocationMode } from './support/warehouse-location-mode';
 
 const ORDER_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const CHANNEL_ID = '11111111-1111-4111-8111-111111111111';
@@ -25,7 +26,9 @@ async function createWarehouse(request: APIRequestContext, token: string) {
     },
   });
   expect(warehouseResponse.status()).toBe(201);
-  return (await warehouseResponse.json()).data as { id: string };
+  const warehouse = (await warehouseResponse.json()).data as { id: string };
+  await configureWarehouseLocationMode(request, warehouse.id, 'UNMANAGED');
+  return warehouse;
 }
 
 function orderEnvelope(

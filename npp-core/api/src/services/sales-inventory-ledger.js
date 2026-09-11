@@ -220,6 +220,39 @@ async function validateNegativeStockLines(client, { requestContext, movement }) 
   return Object.freeze({ ok: true, evidenceByLine });
 }
 
+async function validateWarehouseLocationModes(client, { requestContext, lines }) {
+  const checked = new Map();
+  for (const line of lines) {
+    const cacheKey = `${line.warehouseId}|${line.locationId ?? '<null>'}`;
+    let warehouse = checked.get(cacheKey);
+    if (!warehouse) {
+      warehouse = await inventoryRepository.resolveWarehouseLocation(client, {
+        installationId: requestContext.installationId,
+        warehouseId: line.warehouseId,
+        locationId: line.locationId,
+        forUpdate: true,
+      });
+      checked.set(cacheKey, warehouse ?? null);
+    }
+    if (!warehouse || !warehouse.warehouse_active) {
+      return failure('WAREHOUSE_NOT_AVAILABLE', 'Kho không tồn tại hoặc đã ngừng sử dụng.', false, { line: line.lineNumber });
+    }
+    if (!['MANAGED', 'UNMANAGED'].includes(warehouse.location_management_mode)) {
+      return failure('WAREHOUSE_LOCATION_MODE_REQUIRED', 'Kho chưa thiết lập chế độ quản lý vị trí.', false, { line: line.lineNumber });
+    }
+    if (warehouse.location_management_mode === 'MANAGED' && !line.locationId) {
+      return failure('LOCATION_REQUIRED', 'Kho này có quản lý vị trí. Cần chọn vị trí kho.', false, { line: line.lineNumber });
+    }
+    if (warehouse.location_management_mode === 'UNMANAGED' && line.locationId) {
+      return failure('LOCATION_NOT_ALLOWED', 'Kho này dùng tồn chung, không chọn vị trí kho.', false, { line: line.lineNumber });
+    }
+    if (line.locationId && (!warehouse.location_id || !warehouse.location_active || warehouse.location_type !== 'storage')) {
+      return failure('LOCATION_NOT_AVAILABLE', 'Vị trí kho không hoạt động, không phải vị trí lưu trữ hoặc không thuộc kho đã chọn.', false, { line: line.lineNumber });
+    }
+  }
+  return Object.freeze({ ok: true });
+}
+
 export async function postServerOwnedDomainMovement(client, {
   requestContext,
   idempotencyKey,
@@ -250,6 +283,12 @@ export async function postServerOwnedDomainMovement(client, {
     || normalized.value.lines.some((line) => !allowedWarehouses.has(line.warehouseId))) {
     return failure('WAREHOUSE_SCOPE_DENIED', 'Domain movement is outside the current warehouse scope');
   }
+
+  const locationValidation = await validateWarehouseLocationModes(client, {
+    requestContext,
+    lines: normalized.value.lines,
+  });
+  if (!locationValidation.ok) return locationValidation;
 
   const negativeValidation = await validateNegativeStockLines(client, {
     requestContext,
@@ -353,4 +392,5 @@ export const salesInventoryLedgerInternals = Object.freeze({
   normalizePayload,
   negativeStockContext,
   validateNegativeStockLines,
+  validateWarehouseLocationModes,
 });

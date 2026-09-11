@@ -284,9 +284,19 @@ async function createReservation(client, { requestContext, idempotencyKey, paylo
     installationId: requestContext.installationId,
     warehouseId: normalized.value.warehouseId,
     locationId: normalized.value.locationId,
+    forUpdate: true,
   });
   if (!warehouse || !warehouse.warehouse_active) {
     return failure('WAREHOUSE_NOT_AVAILABLE', 'Warehouse is missing or inactive');
+  }
+  if (!['MANAGED', 'UNMANAGED'].includes(warehouse.location_management_mode)) {
+    return failure('WAREHOUSE_LOCATION_MODE_REQUIRED', 'Kho chưa thiết lập chế độ quản lý vị trí.');
+  }
+  if (warehouse.location_management_mode === 'MANAGED' && !normalized.value.locationId) {
+    return failure('LOCATION_REQUIRED', 'Kho này có quản lý vị trí. Cần chọn vị trí kho.');
+  }
+  if (warehouse.location_management_mode === 'UNMANAGED' && normalized.value.locationId) {
+    return failure('LOCATION_NOT_ALLOWED', 'Kho này dùng tồn chung, không chọn vị trí kho.');
   }
   if (normalized.value.locationId && (!warehouse.location_id || !warehouse.location_active)) {
     return failure(

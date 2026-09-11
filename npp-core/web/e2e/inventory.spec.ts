@@ -1,4 +1,5 @@
 import { test, expect, type APIRequestContext } from '@playwright/test';
+import { configureWarehouseLocationMode } from './support/warehouse-location-mode';
 
 function uniqueSuffix() {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`.toUpperCase();
@@ -21,6 +22,7 @@ async function createFixture(request: APIRequestContext, suffix: string) {
   const location = await create('/api/organization/warehouse-locations', `inventory-location-${suffix}`, {
     warehouseId: warehouse.id, code: `LOC-${suffix}`, name: `Vị trí ${suffix}`, locationType: 'storage',
   });
+  await configureWarehouseLocationMode(request, warehouse.id, 'MANAGED', location.id);
   const unit = await create('/api/units', `inventory-unit-${suffix}`, {
     code: `EA-${suffix}`, name: `Đơn vị ${suffix}`, unitKind: 'COUNT', allowsFractional: false,
   });

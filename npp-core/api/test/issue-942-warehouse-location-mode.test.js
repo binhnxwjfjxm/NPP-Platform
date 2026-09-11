@@ -64,9 +64,13 @@ test('Issue #942 conversion uses carrying-cost transfers and never fakes economi
   assert.doesNotMatch(serviceSource, /MANUAL_ADJUSTMENT_IN|MANUAL_ADJUSTMENT_OUT/);
 });
 
-test('Issue #942 preview blocks open reservations but does not block merely because stock exists', () => {
-  assert.match(serviceSource, /ACTIVE_RESERVATIONS_PRESENT/);
-  assert.match(serviceSource, /reservedQuantity\s*>\s*0n/);
+test('Issue #942 remaps pre-execution reservations and blocks only physical fulfillment execution', () => {
+  assert.match(serviceSource, /function reservationPlan\(/);
+  assert.match(serviceSource, /ACTIVE_RESERVATION_NOT_RELOCATABLE/);
+  assert.match(serviceSource, /FULFILLMENT_PHYSICAL_EXECUTION_PRESENT/);
+  assert.match(serviceSource, /physicallyStarted/);
+  assert.match(serviceSource, /relocations/);
+  assert.doesNotMatch(serviceSource, /ACTIVE_RESERVATIONS_PRESENT/);
   assert.doesNotMatch(serviceSource, /WAREHOUSE_HAS_STOCK|STOCK_MUST_BE_ZERO/);
 });
 

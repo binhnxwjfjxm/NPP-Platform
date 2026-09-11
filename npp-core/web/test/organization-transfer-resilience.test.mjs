@@ -4,7 +4,11 @@ import { readFileSync } from 'node:fs';
 
 const organizationPage = readFileSync(new URL('../app/organization/page.tsx', import.meta.url), 'utf8');
 const organizationLayout = readFileSync(new URL('../app/organization/organization-overview-layout.module.css', import.meta.url), 'utf8');
+const organizationWorkspace = readFileSync(new URL('../app/organization/organization-workspace.tsx', import.meta.url), 'utf8');
 const transferPage = readFileSync(new URL('../app/inventory/transfers/page.tsx', import.meta.url), 'utf8');
+const warehouseLocationModeGateway = readFileSync(new URL('../lib/warehouse-location-mode-gateway.ts', import.meta.url), 'utf8');
+const warehouseLocationModePreviewRoute = readFileSync(new URL('../app/api/organization/warehouses/[id]/location-mode/preview/route.ts', import.meta.url), 'utf8');
+const warehouseLocationModeConvertRoute = readFileSync(new URL('../app/api/organization/warehouses/[id]/location-mode/convert/route.ts', import.meta.url), 'utf8');
 
 test('organization overview balances quick access and hierarchy on desktop', () => {
   assert.match(organizationPage, /organization-overview-layout\.module\.css/);
@@ -36,4 +40,17 @@ test('inventory transfer warehouse-location query stays within API limit contrac
     /'warehouse-locations',[\s\S]*new URLSearchParams\(\{ active: 'true', limit: '1000' \}\)/,
   );
   assert.doesNotMatch(transferPage, /limit: '5000'/);
+});
+
+test('warehouse location mode is managed from the Company warehouse screen through the server gateway', () => {
+  assert.match(organizationWorkspace, /Quản lý vị trí trong kho/);
+  assert.match(organizationWorkspace, /data-testid=\{`warehouse-location-mode-\$\{warehouse\.code\}`\}/);
+  assert.match(organizationWorkspace, /Vui lòng tự chọn vị trí nhận ban đầu/);
+  assert.match(organizationWorkspace, /createIdempotencyKey\('warehouse-location-mode-convert'\)/);
+  assert.match(organizationWorkspace, /mutationKeys\.current\.get\(operationScope\)/);
+  assert.match(warehouseLocationModeGateway, /import 'server-only'/);
+  assert.match(warehouseLocationModeGateway, /requireNppWorkforceSessionToken/);
+  assert.match(warehouseLocationModeGateway, /'Idempotency-Key': requireIdempotencyKey/);
+  assert.match(warehouseLocationModePreviewRoute, /previewWarehouseLocationMode/);
+  assert.match(warehouseLocationModeConvertRoute, /convertWarehouseLocationMode/);
 });

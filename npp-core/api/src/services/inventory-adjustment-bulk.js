@@ -1,4 +1,5 @@
 import * as adjustmentRepository from '../db/repositories/inventory-adjustment.js';
+import * as warehouseLocationModeRepository from '../db/repositories/warehouse-location-mode.js';
 import { createAdjustment } from './inventory-adjustment.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -272,6 +273,7 @@ function candidateLocationCode(candidate) {
 }
 
 function matchesLocation(candidate, locationCode) {
+  if (!locationCode) return candidate?.location_id === null;
   return sameCode(candidateLocationCode(candidate), locationCode);
 }
 
@@ -287,19 +289,18 @@ function uniqueLocationCodes(candidates) {
   return values;
 }
 
-function scopeOptions(candidates) {
+function scopeOptions(candidates, { locationRequired = true } = {}) {
   const seen = new Set();
   const options = [];
   for (const candidate of candidates ?? []) {
-    const locationCode = candidateLocationCode(candidate);
-    if (!locationCode) continue;
+    const locationCode = locationRequired ? candidateLocationCode(candidate) : null;
     const lotCode = candidate.lot_code ? String(candidate.lot_code).trim().toUpperCase() : null;
-    const key = `${locationCode}\u001f${lotCode ?? ''}`;
+    const key = `${locationCode ?? '<common>'}\u001f${lotCode ?? ''}`;
     if (seen.has(key)) continue;
     seen.add(key);
     options.push(Object.freeze({
       locationCode,
-      locationName: candidate.location_name ?? null,
+      locationName: locationRequired ? (candidate.location_name ?? null) : null,
       lotCode,
     }));
   }
@@ -320,25 +321,20 @@ function uniqueCodes(candidates, field) {
   return values;
 }
 
-function resolveScopeSelection(row, source, balanceCandidates = []) {
-  const candidates = Array.isArray(balanceCandidates) ? balanceCandidates : [];
+function resolveScopeSelection(row, source, balanceCandidates = [], locationManagementMode = 'MANAGED') {
+  const locationRequired = locationManagementMode === 'MANAGED';
+  const candidates = Array.isArray(balanceCandidates)
+    ? balanceCandidates.filter((candidate) => (locationRequired ? candidate.location_id !== null : candidate.location_id === null))
+    : [];
   const lotRequired = source?.lot_tracking_mode === 'REQUIRED';
   const scopeRequired = row.actualScaled6 !== 0n || candidates.length > 0;
-  let locationCode = row.locationCode ?? null;
+  let locationCode = locationRequired ? (row.locationCode ?? null) : null;
   let lotCode = row.lotCode ?? null;
-  let locationAutoFilled = false;
+  const locationAutoFilled = false;
   let lotAutoFilled = false;
 
-  if (!locationCode) {
-    const locationCodes = uniqueLocationCodes(candidates);
-    if (locationCodes.length === 1) {
-      [locationCode] = locationCodes;
-      locationAutoFilled = true;
-    }
-  }
-
   if (lotRequired && !lotCode) {
-    const lotCandidates = locationCode
+    const lotCandidates = locationRequired && locationCode
       ? candidates.filter((item) => matchesLocation(item, locationCode))
       : candidates;
     const lotCodes = uniqueCodes(lotCandidates, 'lot_code');
@@ -349,7 +345,7 @@ function resolveScopeSelection(row, source, balanceCandidates = []) {
   }
 
   let filteredCandidates = candidates;
-  if (locationCode) filteredCandidates = filteredCandidates.filter((item) => matchesLocation(item, locationCode));
+  if (locationRequired && locationCode) filteredCandidates = filteredCandidates.filter((item) => matchesLocation(item, locationCode));
   if (lotCode) filteredCandidates = filteredCandidates.filter((item) => sameCode(item.lot_code, lotCode));
 
   return Object.freeze({
@@ -359,10 +355,11 @@ function resolveScopeSelection(row, source, balanceCandidates = []) {
     scopeRequired,
     locationAutoFilled,
     lotAutoFilled,
-    requiresLocationSelection: scopeRequired && !locationCode,
+    requiresLocationSelection: locationRequired && scopeRequired && !locationCode,
     requiresLotSelection: scopeRequired && lotRequired && !lotCode,
-    scopeOptions: scopeOptions(candidates),
+    scopeOptions: scopeOptions(candidates, { locationRequired }),
     candidates: Object.freeze([...filteredCandidates]),
+    locationRequired,
   });
 }
 
@@ -435,16 +432,17 @@ function previewRow(row, source, scope, currentScaled12) {
     signedDeltaBaseQuantity: deltaScaled12 === null ? null : signedScaled(deltaScaled12),
     direction,
     locationId: scope?.location_id ?? null,
-    locationCode: scope?.location_code ?? row.locationCode,
-    locationName: scope?.location_name ?? null,
+    locationCode: row.locationRequired ? (scope?.location_code ?? row.locationCode) : null,
+    locationName: row.locationRequired ? (scope?.location_name ?? null) : null,
     lotId: scope?.lot_id ?? null,
     lotCode: scope?.lot_code ?? row.lotCode,
     lotTrackingMode: source?.lot_tracking_mode ?? 'NONE',
     lotRequired: Boolean(row.lotRequired),
     scopeRequired: Boolean(row.scopeRequired),
+    locationRequired: Boolean(row.locationRequired),
     requiresLocationSelection: Boolean(row.requiresLocationSelection),
     requiresLotSelection: Boolean(row.requiresLotSelection),
-    locationAutoFilled: Boolean(row.locationAutoFilled),
+    locationAutoFilled: false,
     lotAutoFilled: Boolean(row.lotAutoFilled),
     scopeOptions: row.scopeOptions ?? Object.freeze([]),
     baseVariantId: source?.base_variant_id ?? null,
@@ -463,12 +461,24 @@ async function prepareBulkAdjustment(client, { requestContext, payload, lockScop
   if (!allowed.has(normalized.warehouseId)) {
     return failure('WAREHOUSE_SCOPE_DENIED', 'Kho nằm ngoài phạm vi được cấp.');
   }
-  const warehouse = await adjustmentRepository.loadWarehouse(client, {
+  const warehouse = await warehouseLocationModeRepository.getWarehouse(client, {
     installationId: requestContext.installationId,
     warehouseId: normalized.warehouseId,
+    forUpdate: lockScopes,
   });
   if (!warehouse?.is_active || ['vehicle', 'transit'].includes(String(warehouse.warehouse_type).toLowerCase())) {
     return failure('WAREHOUSE_NOT_AVAILABLE', 'Kho đã chọn không thể lập phiếu điều chỉnh tồn.');
+  }
+  if (!['MANAGED', 'UNMANAGED'].includes(warehouse.location_management_mode)) {
+    return failure('WAREHOUSE_LOCATION_MODE_REQUIRED', 'Kho chưa thiết lập chế độ quản lý vị trí.');
+  }
+  const locationRequired = warehouse.location_management_mode === 'MANAGED';
+  if (!locationRequired) {
+    for (const row of normalized.rows) {
+      if (row.locationCode) {
+        row.errors.push({ code: 'LOCATION_NOT_ALLOWED', message: `Dòng ${row.lineNumber}: Kho này dùng tồn chung. Hãy để trống Vị trí.` });
+      }
+    }
   }
 
   const skus = [...new Set(normalized.rows.filter((row) => row.sku).map((row) => row.sku))];
@@ -485,9 +495,9 @@ async function prepareBulkAdjustment(client, { requestContext, payload, lockScop
       client,
       requestContext.installationId,
       normalized.warehouseId,
-      [...new Set(normalized.rows
-        .map((row) => row.locationCode)
-        .filter((code) => code && code !== UNASSIGNED_LOCATION_CODE))],
+      locationRequired
+        ? [...new Set(normalized.rows.map((row) => row.locationCode).filter(Boolean))]
+        : [],
     ),
     loadLotMap(
       client,
@@ -512,10 +522,11 @@ async function prepareBulkAdjustment(client, { requestContext, payload, lockScop
 
     let scope = null;
     let selection = Object.freeze({
-      locationCode: row.locationCode,
+      locationCode: locationRequired ? row.locationCode : null,
       lotCode: row.lotCode,
       lotRequired: false,
       scopeRequired: false,
+      locationRequired,
       locationAutoFilled: false,
       lotAutoFilled: false,
       requiresLocationSelection: false,
@@ -526,7 +537,7 @@ async function prepareBulkAdjustment(client, { requestContext, payload, lockScop
 
     if (source?.base_variant_id) {
       const balanceCandidates = balanceMap.get(source.base_variant_id) ?? [];
-      selection = resolveScopeSelection(row, source, balanceCandidates);
+      selection = resolveScopeSelection(row, source, balanceCandidates, warehouse.location_management_mode);
 
       if (selection.requiresLotSelection) {
         rowErrors.push({
@@ -537,7 +548,7 @@ async function prepareBulkAdjustment(client, { requestContext, payload, lockScop
       if (selection.requiresLocationSelection) {
         rowErrors.push({
           code: 'LOCATION_SELECTION_REQUIRED',
-          message: `Dòng ${row.lineNumber}: Có nhiều hoặc chưa có Vị trí xác định. Hãy chọn Vị trí * tại Xem trước.`,
+          message: `Dòng ${row.lineNumber}: Kho này có quản lý vị trí. Hãy chọn Vị trí * tại Xem trước.`,
         });
       }
 
@@ -552,7 +563,7 @@ async function prepareBulkAdjustment(client, { requestContext, payload, lockScop
         });
       }
 
-      if (!scope && row.locationCode && row.locationCode !== UNASSIGNED_LOCATION_CODE && !locationMap.get(row.locationCode)) {
+      if (locationRequired && !scope && row.locationCode && !locationMap.get(row.locationCode)) {
         rowErrors.push({ code: 'LOCATION_NOT_FOUND', message: `Dòng ${row.lineNumber}: Không tìm thấy Vị trí ${row.locationCode} trong kho đã chọn.` });
       }
       if (!scope && row.lotCode && !lotMap.get(`${source.base_variant_id}\u001f${row.lotCode}`)) {
@@ -562,17 +573,15 @@ async function prepareBulkAdjustment(client, { requestContext, payload, lockScop
       if (!scope
           && !selection.requiresLotSelection
           && !selection.requiresLocationSelection
-          && selection.locationCode
-          && selection.locationCode !== UNASSIGNED_LOCATION_CODE) {
+          && locationRequired
+          && selection.locationCode) {
         const location = locationMap.get(selection.locationCode) ?? null;
         const lot = selection.lotCode
           ? (lotMap.get(`${source.base_variant_id}\u001f${selection.lotCode}`) ?? null)
           : null;
-        const locationWasEntered = Boolean(row.locationCode);
         const lotWasEntered = Boolean(row.lotCode);
-        const locationValid = !locationWasEntered || Boolean(location);
         const lotValid = !lotWasEntered || Boolean(lot);
-        if (locationValid && lotValid && location) {
+        if (location && lotValid) {
           scope = {
             base_variant_id: source.base_variant_id,
             location_id: location.id,
@@ -583,6 +592,24 @@ async function prepareBulkAdjustment(client, { requestContext, payload, lockScop
             on_hand_quantity: '0',
           };
         }
+      }
+
+      if (!scope
+          && !locationRequired
+          && !selection.requiresLotSelection
+          && rowErrors.length === row.errors.length) {
+        const lot = selection.lotCode
+          ? (lotMap.get(`${source.base_variant_id}\u001f${selection.lotCode}`) ?? null)
+          : null;
+        scope = {
+          base_variant_id: source.base_variant_id,
+          location_id: null,
+          location_code: null,
+          location_name: null,
+          lot_id: lot?.id ?? null,
+          lot_code: lot?.lot_code ?? null,
+          on_hand_quantity: '0',
+        };
       }
 
       if (!scope
@@ -603,9 +630,10 @@ async function prepareBulkAdjustment(client, { requestContext, payload, lockScop
       lotCode: selection.lotCode,
       lotRequired: selection.lotRequired,
       scopeRequired: selection.scopeRequired,
+      locationRequired: selection.locationRequired,
       requiresLocationSelection: selection.requiresLocationSelection,
       requiresLotSelection: selection.requiresLotSelection,
-      locationAutoFilled: selection.locationAutoFilled,
+      locationAutoFilled: false,
       lotAutoFilled: selection.lotAutoFilled,
       scopeOptions: selection.scopeOptions,
       errors: rowErrors,
@@ -666,10 +694,14 @@ async function prepareBulkAdjustment(client, { requestContext, payload, lockScop
     }
     const source = row.source;
     const mapped = previewRow(row, source, row.scope, currentScaled12);
-    if (row.scope && row.scope.location_id === null && mapped.direction === 'IN' && mapped.status === 'READY') {
+    if (locationRequired
+        && row.scope
+        && row.scope.location_id === null
+        && mapped.direction === 'IN'
+        && mapped.status === 'READY') {
       mapped.errors.push({
         code: 'UNASSIGNED_LOCATION_INCREASE_DENIED',
-        message: `Dòng ${row.lineNumber}: “Không vị trí” chỉ dùng để giảm hoặc đưa tồn cũ về 0. Muốn tăng tồn, hãy chọn một Vị trí cụ thể.`,
+        message: `Dòng ${row.lineNumber}: Kho này có quản lý vị trí. Muốn tăng tồn, hãy chọn một Vị trí cụ thể.`,
       });
       mapped.status = 'NEEDS_ATTENTION';
     }
@@ -695,6 +727,8 @@ async function prepareBulkAdjustment(client, { requestContext, payload, lockScop
     preview: Object.freeze({
       ready: rowErrors.length === 0,
       stockUnchanged: true,
+      locationManagementMode: warehouse.location_management_mode,
+      locationRequired,
       rows: Object.freeze(previewRows),
       rowErrors: Object.freeze(rowErrors),
       totals: Object.freeze(totals),

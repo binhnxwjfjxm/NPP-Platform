@@ -154,7 +154,8 @@ export async function getActiveDemandForUpdate(client, { installationId, demandI
        base_unit.code AS base_unit_code,
        COALESCE(policy.lot_tracking_mode, 'NONE') AS lot_tracking_mode,
        COALESCE(policy.expiry_tracking_mode, 'NONE') AS expiry_tracking_mode,
-       COALESCE(policy.location_required, false) AS location_required
+       warehouse.location_management_mode,
+       (warehouse.location_management_mode = 'MANAGED') AS location_required
       FROM sales.sales_order_fulfillment_demands demand
       JOIN sales.sales_orders orders
         ON orders.installation_id = demand.installation_id
@@ -171,12 +172,17 @@ export async function getActiveDemandForUpdate(client, { installationId, demandI
       JOIN shared.units_of_measure base_unit
         ON base_unit.installation_id = base_variant.installation_id
        AND base_unit.id = base_variant.unit_id
+      JOIN shared.warehouses warehouse
+        ON warehouse.installation_id = demand.installation_id
+       AND warehouse.id = demand.warehouse_id
+       AND warehouse.is_active = true
       LEFT JOIN inventory.product_tracking_policies policy
         ON policy.installation_id = demand.installation_id
        AND policy.base_variant_id = demand.base_variant_id
      WHERE demand.installation_id = $1
        AND demand.id = $2
        AND demand.state = 'ACTIVE'
+       AND warehouse.location_management_mode IN ('MANAGED', 'UNMANAGED')
        AND NOT (
          version.delivery_mode = 'DELIVERY'
          AND COALESCE(version.delivery_execution_mode, 'TRIP') = 'MANUAL'
@@ -207,13 +213,18 @@ export async function listAllocationCandidates(client, {
        balance.available_quantity,
        COALESCE(policy.lot_tracking_mode, 'NONE') AS lot_tracking_mode,
        COALESCE(policy.expiry_tracking_mode, 'NONE') AS expiry_tracking_mode,
-       COALESCE(policy.location_required, false) AS location_required,
+       warehouse.location_management_mode,
+       (warehouse.location_management_mode = 'MANAGED') AS location_required,
        receipt.first_received_at,
        CASE
          WHEN lot.expiry_date IS NOT NULL THEN 'FEFO'
          ELSE 'FIFO'
        END AS allocation_policy
       FROM inventory.inventory_balances balance
+      JOIN shared.warehouses warehouse
+        ON warehouse.installation_id = balance.installation_id
+       AND warehouse.id = balance.warehouse_id
+       AND warehouse.is_active = true
       LEFT JOIN shared.warehouse_locations location
         ON location.installation_id = balance.installation_id
        AND location.warehouse_id = balance.warehouse_id
@@ -241,10 +252,12 @@ export async function listAllocationCandidates(client, {
        AND balance.warehouse_id = $2
        AND balance.base_variant_id = $3
        AND balance.available_quantity > 0
+       AND warehouse.location_management_mode IN ('MANAGED', 'UNMANAGED')
        AND (
-         (balance.location_id IS NULL AND COALESCE(policy.location_required, false) = false)
+         (warehouse.location_management_mode = 'UNMANAGED' AND balance.location_id IS NULL)
          OR (
-           balance.location_id IS NOT NULL
+           warehouse.location_management_mode = 'MANAGED'
+           AND balance.location_id IS NOT NULL
            AND location.is_active = true
            AND location.location_type = 'storage'
          )
@@ -258,10 +271,6 @@ export async function listAllocationCandidates(client, {
          OR lot.expiry_date IS NOT NULL
        )
        AND (lot.expiry_date IS NULL OR lot.expiry_date >= CURRENT_DATE)
-       AND (
-         COALESCE(policy.location_required, false) = false
-         OR balance.location_id IS NOT NULL
-       )
      ORDER BY
        CASE
          WHEN lot.expiry_date IS NOT NULL THEN lot.expiry_date

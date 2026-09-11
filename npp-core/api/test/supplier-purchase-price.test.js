@@ -67,8 +67,8 @@ async function seedFixture(pool, installationId) {
   );
   await pool.query(
     `INSERT INTO shared.warehouses
-       (id, installation_id, branch_id, code, name, warehouse_type, is_active, created_by, updated_by)
-     VALUES ($1,$2,$3,$4,$5,'main',true,$6,$6)`,
+       (id, installation_id, branch_id, code, name, warehouse_type, location_management_mode, is_active, created_by, updated_by)
+     VALUES ($1,$2,$3,$4,$5,'main','UNMANAGED',true,$6,$6)`,
     [ids.warehouseId, installationId, ids.branchId, `WH-${suffix}`, `Kho ${suffix}`, actor],
   );
   for (const [id, code, name] of [

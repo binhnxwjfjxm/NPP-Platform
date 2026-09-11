@@ -66,11 +66,11 @@ async function seed(pool, installationId) {
     );
     await client.query(
       `INSERT INTO shared.warehouses (
-         id, installation_id, branch_id, code, name, warehouse_type,
+         id, installation_id, branch_id, code, name, warehouse_type, location_management_mode,
          is_active, created_by, updated_by
        ) VALUES
-         ($1,$3,$4,$5,$6,'main',true,$7,$7),
-         ($2,$3,$4,$8,$9,'main',true,$7,$7)`,
+         ($1,$3,$4,$5,$6,'main','UNMANAGED',true,$7,$7),
+         ($2,$3,$4,$8,$9,'main','UNMANAGED',true,$7,$7)`,
       [
         ids.warehouseA,
         ids.warehouseB,

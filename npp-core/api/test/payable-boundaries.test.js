@@ -57,8 +57,8 @@ test('payable reads enforce permission, warehouse scope, installation isolation 
       [branchId, config.installationId, `PB-${suffix}`, 'Chi nhánh công nợ', actor],
     );
     await pool.query(
-      `INSERT INTO shared.warehouses (id,installation_id,branch_id,code,name,warehouse_type,is_active,created_by,updated_by)
-       VALUES ($1,$2,$3,$4,$5,'main',true,$6,$6),($7,$2,$3,$8,$9,'main',true,$6,$6)`,
+      `INSERT INTO shared.warehouses (id,installation_id,branch_id,code,name,warehouse_type,location_management_mode,is_active,created_by,updated_by)
+       VALUES ($1,$2,$3,$4,$5,'main','UNMANAGED',true,$6,$6),($7,$2,$3,$8,$9,'main','UNMANAGED',true,$6,$6)`,
       [warehouseA, config.installationId, branchId, `PA-${suffix}`, 'Kho A', actor, warehouseB, `PC-${suffix}`, 'Kho B'],
     );
     await pool.query(

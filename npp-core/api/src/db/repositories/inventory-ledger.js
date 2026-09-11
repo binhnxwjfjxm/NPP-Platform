@@ -77,19 +77,29 @@ export async function resolvePostingVariant(client, { installationId, sourceVari
   return result.rows?.[0] ?? null;
 }
 
-export async function resolveWarehouseLocation(client, { installationId, warehouseId, locationId }) {
+export async function resolveWarehouseLocation(client, {
+  installationId,
+  warehouseId,
+  locationId,
+  forUpdate = false,
+}) {
   const result = await client.query(
     `SELECT warehouse.id AS warehouse_id,
             warehouse.is_active AS warehouse_active,
+            warehouse.warehouse_type,
+            warehouse.location_management_mode,
+            warehouse.location_management_mode_version,
             location.id AS location_id,
-            location.is_active AS location_active
+            location.is_active AS location_active,
+            location.location_type
        FROM shared.warehouses warehouse
        LEFT JOIN shared.warehouse_locations location
          ON location.installation_id = warehouse.installation_id
         AND location.warehouse_id = warehouse.id
         AND location.id = $3
       WHERE warehouse.installation_id = $1
-        AND warehouse.id = $2`,
+        AND warehouse.id = $2
+      ${forUpdate ? 'FOR UPDATE OF warehouse' : ''}`,
     [installationId, warehouseId, locationId],
   );
   return result.rows?.[0] ?? null;

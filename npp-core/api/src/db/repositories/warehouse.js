@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-const WAREHOUSE_COLUMNS = `id, installation_id, branch_id, code, name, warehouse_type, allow_negative_stock, is_active, created_at, updated_at, created_by, updated_by`;
+const WAREHOUSE_COLUMNS = `id, installation_id, branch_id, code, name, warehouse_type, location_management_mode, allow_negative_stock, is_active, created_at, updated_at, created_by, updated_by`;
 
 /**
  * Warehouse repository for managing warehouses scoped to installation and branch.

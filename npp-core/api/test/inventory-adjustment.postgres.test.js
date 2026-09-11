@@ -59,9 +59,9 @@ async function seed(pool, installationId) {
   await pool.query(`INSERT INTO shared.branches (id,installation_id,code,name,is_active,created_by,updated_by)
     VALUES ($1,$2,$3,'Chi nhánh điều chỉnh',true,'test:seed','test:seed')`, [ids.branchId, installationId, `B-${suffix}`]);
   await pool.query(`INSERT INTO shared.warehouses
-    (id,installation_id,branch_id,code,name,warehouse_type,is_active,created_by,updated_by)
-    VALUES ($1,$3,$4,$5,'Kho điều chỉnh','main',true,'test:seed','test:seed'),
-           ($2,$3,$4,$6,'Kho ngoài phạm vi','main',true,'test:seed','test:seed')`,
+    (id,installation_id,branch_id,code,name,warehouse_type,location_management_mode,is_active,created_by,updated_by)
+    VALUES ($1,$3,$4,$5,'Kho điều chỉnh','main','MANAGED',true,'test:seed','test:seed'),
+           ($2,$3,$4,$6,'Kho ngoài phạm vi','main','MANAGED',true,'test:seed','test:seed')`,
   [ids.warehouseId, ids.otherWarehouseId, installationId, ids.branchId, `ADJ-${suffix}`, `OTH-${suffix}`]);
   await pool.query(`INSERT INTO shared.warehouse_locations
     (id,installation_id,warehouse_id,code,name,location_type,is_active,created_by,updated_by)
