@@ -9,6 +9,7 @@ import { handleInventoryTrackingPolicyCandidateRoutes } from './inventory-tracki
 import { handleOpeningBalanceOperatorRoutes } from './opening-balance-operator.js';
 import { handleManualInboundRoutes } from './manual-inbound.js';
 import { handleInventoryHoldRoutes } from './inventory-holds.js';
+import { handleWarehouseLocationModeRoutes } from './warehouse-location-mode.js';
 import { handleCodDriverRoutes } from './cod-driver.js';
 import { handleLogisticsRoutes } from './logistics.js';
 import { handleLogisticsAttemptRoutes } from './logistics-attempts.js';
@@ -34,6 +35,10 @@ export async function handleInventoryRoutes(req, res, options) {
   }
   if (pathname === '/api/inventory/manual-inbounds' || pathname.startsWith('/api/inventory/manual-inbounds/')) {
     return handleManualInboundRoutes(req, res, options);
+  }
+  if (pathname.startsWith('/api/inventory/warehouses/')
+      || pathname.startsWith('/api/inventory/location-mode-runs/')) {
+    if (await handleWarehouseLocationModeRoutes(req, res, options)) return true;
   }
   if (pathname === '/api/inventory/costing' || pathname.startsWith('/api/inventory/costing/')) {
     if (await handleInventoryCostingPeriodRoutes(req, res, options)) return true;
