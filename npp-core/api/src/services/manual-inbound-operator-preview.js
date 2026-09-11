@@ -207,7 +207,9 @@ function enrichStock(row, warehouse, balanceContext, incomingQuantities) {
     }
     currentOnHand = next;
   }
-  const incomingQuantity = incomingQuantities.get(stockScopeKey(scope));
+  const incomingQuantity = incomingQuantities
+    ? incomingQuantities.get(stockScopeKey(scope))
+    : row.baseQuantity;
   const afterOnHand = incomingQuantity === null || incomingQuantity === undefined
     ? null
     : addExactDecimal(currentOnHand, incomingQuantity);
