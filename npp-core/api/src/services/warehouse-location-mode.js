@@ -78,6 +78,19 @@ function movementRepresentation(quantityScaled12) {
   });
 }
 
+function transferLegs(quantityScaled12) {
+  if (quantityScaled12 === null || quantityScaled12 === 0n) return null;
+  const sourceDelta = -quantityScaled12;
+  const destinationDelta = quantityScaled12;
+  return Object.freeze({
+    sourceDirection: sourceDelta > 0n ? 'IN' : 'OUT',
+    sourceBaseQuantityDelta: format12(sourceDelta),
+    destinationDirection: destinationDelta > 0n ? 'IN' : 'OUT',
+    destinationBaseQuantityDelta: format12(destinationDelta),
+    negativeRelocation: quantityScaled12 < 0n,
+  });
+}
+
 function canonicalize(value) {
   if (typeof value === 'bigint') return value.toString();
   if (Array.isArray(value)) return value.map(canonicalize);
@@ -203,7 +216,7 @@ function modeShape(rows) {
     const reservedQuantity = parse12(row.reserved_quantity) ?? 0n;
     if (onHand < 0n) negative.push(row);
     if (reservedQuantity > 0n) reserved.push(row);
-    if (onHand > 0n) {
+    if (onHand !== 0n) {
       if (row.location_id) located.push(row);
       else unlocated.push(row);
     }
@@ -221,6 +234,11 @@ function reservationPlan(entries, balances, targetMode, destination) {
     const allocation = entry.allocation;
     const key = scopeKey(reservation.location_id, reservation.base_variant_id, reservation.lot_id);
     reservedByScope.set(key, (reservedByScope.get(key) ?? 0n) + (parse12(reservation.quantity) ?? 0n));
+
+    const alreadyInTargetScope = targetMode === 'UNMANAGED'
+      ? !reservation.location_id
+      : Boolean(reservation.location_id);
+    if (alreadyInTargetScope) continue;
 
     if (reservation.source_domain !== 'SALES'
         || reservation.source_document_type !== 'SALES_FULFILLMENT_ALLOCATION'
@@ -258,17 +276,6 @@ function reservationPlan(entries, balances, targetMode, destination) {
         'FULFILLMENT_PHYSICAL_EXECUTION_PRESENT',
         'Kho đang có phần hàng đã bắt đầu soạn, đóng gói hoặc lập chứng từ giao. Cần hoàn tất xử lý phần này trước khi chuyển chế độ.',
         { allocationId: allocation.id, salesOrderId: allocation.sales_order_id },
-      ));
-      continue;
-    }
-
-    const expectedSourceLocated = targetMode === 'UNMANAGED';
-    if ((expectedSourceLocated && !reservation.location_id)
-        || (!expectedSourceLocated && reservation.location_id)) {
-      blockers.push(blocker(
-        'RESERVATION_LOCATION_DATA_MISMATCH',
-        'Vị trí của phần hàng đang giữ không khớp chế độ kho hiện tại. Cần đối soát trước khi chuyển chế độ.',
-        { reservationId: reservation.id },
       ));
       continue;
     }
@@ -390,36 +397,9 @@ async function previewInternal(client, {
   const inferredMode = inferMode(balances);
   const storedMode = normalizeMode(warehouse.location_management_mode);
   const blockers = [];
+  const sourceRows = normalizedTargetMode === 'UNMANAGED' ? shape.located : shape.unlocated;
 
-  if (shape.negative.length > 0) {
-    blockers.push(blocker(
-      'NEGATIVE_STOCK_PRESENT',
-      'Kho đang có tồn âm. Cần đối soát tồn âm trước khi chuyển chế độ quản lý vị trí.',
-      { scopeCount: shape.negative.length },
-    ));
-  }
-  if (storedMode === 'MANAGED' && shape.unlocated.length > 0) {
-    blockers.push(blocker(
-      'WAREHOUSE_LOCATION_DATA_MISMATCH',
-      'Kho đang quản lý vị trí nhưng vẫn còn tồn chung. Cần đối soát dữ liệu trước khi chuyển chế độ.',
-      { unlocatedScopeCount: shape.unlocated.length },
-    ));
-  }
-  if (storedMode === 'UNMANAGED' && shape.located.length > 0) {
-    blockers.push(blocker(
-      'WAREHOUSE_LOCATION_DATA_MISMATCH',
-      'Kho đang dùng tồn chung nhưng vẫn còn tồn theo vị trí. Cần đối soát dữ liệu trước khi chuyển chế độ.',
-      { locatedScopeCount: shape.located.length },
-    ));
-  }
-  if (!storedMode && shape.located.length > 0 && shape.unlocated.length > 0) {
-    blockers.push(blocker(
-      'WAREHOUSE_LOCATION_MODE_UNRESOLVED',
-      'Kho còn đồng thời tồn chung và tồn theo vị trí. Cần đối soát trước khi thiết lập chế độ.',
-      { locatedScopeCount: shape.located.length, unlocatedScopeCount: shape.unlocated.length },
-    ));
-  }
-  if (storedMode === normalizedTargetMode) {
+  if (storedMode === normalizedTargetMode && sourceRows.length === 0) {
     blockers.push(blocker(
       'LOCATION_MANAGEMENT_MODE_UNCHANGED',
       'Kho đã ở đúng chế độ quản lý vị trí đã chọn.',
@@ -429,7 +409,6 @@ async function previewInternal(client, {
   const reservationResult = reservationPlan(activeReservations, balances, normalizedTargetMode, destination);
   blockers.push(...reservationResult.blockers);
 
-  const sourceRows = normalizedTargetMode === 'UNMANAGED' ? shape.located : shape.unlocated;
   const draftLines = sourceRows.map((row, index) => ({
     id: randomUUID(),
     lineNumber: index + 1,
@@ -520,6 +499,7 @@ async function previewInternal(client, {
         affectedScopeCount: lines.length,
         lotScopeCount,
         totalBaseQuantity: format12(totalQuantity),
+        negativeScopeCount: shape.negative.length,
         relocatedReservationCount: reservationResult.relocations.length,
       }),
       lines: Object.freeze(lines),
@@ -882,6 +862,7 @@ export async function convertWarehouseLocationMode(client, {
       issueLineIds.set(line.id, { runLineId: lineId, movementLineId });
       const quantity = parse12(line.baseQuantity);
       const representation = movementRepresentation(quantity);
+      const legs = transferLegs(quantity);
       await ledgerRepository.insertMovementLine(client, {
         id: movementLineId,
         installationId: requestContext.installationId,
@@ -897,8 +878,8 @@ export async function convertWarehouseLocationMode(client, {
         conversionToBase: representation.conversionToBase,
         baseVariantId: line.baseVariantId,
         baseSku: line.baseSku,
-        direction: 'OUT',
-        baseQuantityDelta: `-${line.baseQuantity}`,
+        direction: legs.sourceDirection,
+        baseQuantityDelta: legs.sourceBaseQuantityDelta,
         lotId: line.lotId,
         lotCode: line.lotCode,
         expiryDate: line.expiryDate,
@@ -909,6 +890,8 @@ export async function convertWarehouseLocationMode(client, {
           inventoryTransferLineId: lineId,
           scopeSide: 'SOURCE',
           transferKind: 'WAREHOUSE_LOCATION_MODE',
+          negativeRelocation: legs.negativeRelocation,
+          signedBaseQuantity: line.baseQuantity,
         },
       });
     }
@@ -943,6 +926,26 @@ export async function convertWarehouseLocationMode(client, {
       receiptLineIds.set(line.id, movementLineId);
       const quantity = parse12(line.baseQuantity);
       const representation = movementRepresentation(quantity);
+      const legs = transferLegs(quantity);
+      if (legs.negativeRelocation) {
+        await client.query(
+          `SELECT set_config('npp.warehouse_location_mode_negative_relocation', $1, true)`,
+          [JSON.stringify({
+            source: 'WAREHOUSE_LOCATION_MODE_SERVICE',
+            installationId: requestContext.installationId,
+            warehouseId,
+            runId,
+            issueMovementId,
+            receiptMovementId,
+            transferLineId: sourceIds.runLineId,
+            sourceLocationId: line.sourceLocationId,
+            destinationLocationId: line.destinationLocationId,
+            baseVariantId: line.baseVariantId,
+            lotId: line.lotId,
+            signedBaseQuantity: line.baseQuantity,
+          })],
+        );
+      }
       await ledgerRepository.insertMovementLine(client, {
         id: movementLineId,
         installationId: requestContext.installationId,
@@ -958,8 +961,8 @@ export async function convertWarehouseLocationMode(client, {
         conversionToBase: representation.conversionToBase,
         baseVariantId: line.baseVariantId,
         baseSku: line.baseSku,
-        direction: 'IN',
-        baseQuantityDelta: line.baseQuantity,
+        direction: legs.destinationDirection,
+        baseQuantityDelta: legs.destinationBaseQuantityDelta,
         lotId: line.lotId,
         lotCode: line.lotCode,
         expiryDate: line.expiryDate,
@@ -970,8 +973,15 @@ export async function convertWarehouseLocationMode(client, {
           inventoryTransferLineId: sourceIds.runLineId,
           scopeSide: 'DESTINATION',
           transferKind: 'WAREHOUSE_LOCATION_MODE',
+          negativeRelocation: legs.negativeRelocation,
+          signedBaseQuantity: line.baseQuantity,
         },
       });
+      if (legs.negativeRelocation) {
+        await client.query(
+          `SELECT set_config('npp.warehouse_location_mode_negative_relocation', '', true)`,
+        );
+      }
     }
   }
 
@@ -1020,6 +1030,7 @@ export async function convertWarehouseLocationMode(client, {
       previousModeVersion: preview.warehouse.modeVersion,
       nextModeVersion: String(updatedWarehouse.location_management_mode_version),
       lotScopeCount: preview.summary.lotScopeCount,
+      negativeScopeCount: preview.summary.negativeScopeCount,
       relocatedReservationCount: reservationMappings.length,
       reservationMappings,
       quantityInvariant: 'warehouse_total_unchanged',
@@ -1093,10 +1104,12 @@ export async function getWarehouseLocationModeRun(client, {
 export const warehouseLocationModeInternals = Object.freeze({
   inferMode,
   movementRepresentation,
+  transferLegs,
   parse12,
   format12,
   payloadHash,
   scopeKey,
+  modeShape,
   reservationPlan,
   deterministicUuid,
 });
