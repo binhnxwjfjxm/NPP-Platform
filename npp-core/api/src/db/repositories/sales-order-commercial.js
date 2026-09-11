@@ -155,7 +155,8 @@ export async function applyCommercialSnapshot(client, {
   });
   if (!addressSnapshotApplied) return false;
 
-  for (const line of lines) {
+  if (!Array.isArray(lines) || lines.length === 0) return true;
+  const lineSnapshots = lines.map((line) => {
     const source = line.manualOverride
       ? 'MANUAL_OVERRIDE'
       : (line.priceSource === 'HISTORY_REFERENCE' ? 'HISTORY_REFERENCE' : 'PRICE_ENGINE');
@@ -176,37 +177,46 @@ export async function applyCommercialSnapshot(client, {
         : []),
     ];
     const ids = provenance(line.systemTrace);
-    const result = await client.query(
-      `UPDATE sales.sales_order_version_lines
-          SET base_unit_price = $4,
-              system_unit_price = $5,
-              unit_price = $6,
-              price_source = $7,
-              price_list_id = $8,
-              price_rule_id = $9,
-              manual_override_reason = $10,
-              pricing_trace_snapshot = $11::jsonb,
-              updated_at = now()
-        WHERE installation_id = $1
-          AND sales_order_version_id = $2
-          AND line_number = $3`,
-      [
-        installationId,
-        versionId,
-        line.lineNumber,
-        line.baseUnitPriceMinor,
-        line.systemUnitPriceMinor,
-        line.finalUnitPriceMinor,
-        source,
-        ids.priceListId,
-        ids.priceRuleId,
-        line.manualReason,
-        JSON.stringify(trace),
-      ],
-    );
-    if (result.rowCount !== 1) return false;
-  }
-  return true;
+    return {
+      line_number: line.lineNumber,
+      base_unit_price: line.baseUnitPriceMinor,
+      system_unit_price: line.systemUnitPriceMinor,
+      unit_price: line.finalUnitPriceMinor,
+      price_source: source,
+      price_list_id: ids.priceListId,
+      price_rule_id: ids.priceRuleId,
+      manual_override_reason: line.manualReason,
+      pricing_trace_snapshot: trace,
+    };
+  });
+  const lineResult = await client.query(
+    `UPDATE sales.sales_order_version_lines AS target
+        SET base_unit_price = snapshot.base_unit_price,
+            system_unit_price = snapshot.system_unit_price,
+            unit_price = snapshot.unit_price,
+            price_source = snapshot.price_source,
+            price_list_id = snapshot.price_list_id,
+            price_rule_id = snapshot.price_rule_id,
+            manual_override_reason = snapshot.manual_override_reason,
+            pricing_trace_snapshot = snapshot.pricing_trace_snapshot,
+            updated_at = now()
+       FROM jsonb_to_recordset($3::jsonb) AS snapshot(
+         line_number integer,
+         base_unit_price numeric,
+         system_unit_price numeric,
+         unit_price numeric,
+         price_source text,
+         price_list_id uuid,
+         price_rule_id uuid,
+         manual_override_reason text,
+         pricing_trace_snapshot jsonb
+       )
+      WHERE target.installation_id = $1
+        AND target.sales_order_version_id = $2
+        AND target.line_number = snapshot.line_number`,
+    [installationId, versionId, JSON.stringify(lineSnapshots)],
+  );
+  return lineResult.rowCount === lines.length;
 }
 
 export async function getDraftCommercialSnapshot(client, {
