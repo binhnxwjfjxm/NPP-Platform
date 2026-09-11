@@ -112,6 +112,7 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   migration('128_inventory_adjustment_unassigned_location', 'inventory/128_inventory_adjustment_unassigned_location.sql'),
   migration('129_inventory_adjustment_owner_self_approval', 'inventory/129_inventory_adjustment_owner_self_approval.sql'),
   migration('130_sales_order_last_purchase_price', 'sales/130_sales_order_last_purchase_price.sql'),
+  migration('131_warehouse_location_management_mode', 'inventory/131_warehouse_location_management_mode.sql'),
 ]);
 
 export { runMigrations };
