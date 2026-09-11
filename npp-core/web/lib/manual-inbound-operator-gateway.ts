@@ -139,6 +139,27 @@ export function listManualInboundOperatorLocations<T>(warehouseId: string, reque
   });
 }
 
+export function searchManualInboundOperatorProducts<T>({
+  warehouseId,
+  search,
+  requestId,
+}: {
+  warehouseId: string;
+  search: string;
+  requestId: string;
+}): Promise<T> {
+  const query = new URLSearchParams({
+    warehouseId: String(warehouseId ?? '').trim(),
+    search: String(search ?? '').trim(),
+    limit: '30',
+  });
+  return requestCore<T>({
+    path: `/api/inventory/manual-inbounds/operator/products?${query.toString()}`,
+    method: 'GET',
+    requestId,
+  });
+}
+
 export function searchManualInboundOperatorHistory<T>({
   inboundType,
   referenceNumber,

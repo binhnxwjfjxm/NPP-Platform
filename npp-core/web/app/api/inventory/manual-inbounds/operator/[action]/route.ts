@@ -9,6 +9,7 @@ import {
   resolveManualInboundOperatorRequestId,
   reverseManualInboundOperator,
   searchManualInboundOperatorHistory,
+  searchManualInboundOperatorProducts,
 } from '../../../../../../lib/manual-inbound-operator-gateway';
 
 function headers(requestId: string) {
@@ -54,6 +55,13 @@ export async function GET(
         await listManualInboundOperatorLocations(request.nextUrl.searchParams.get('warehouseId') ?? '', requestId),
         requestId,
       );
+    }
+    if (params.action === 'products') {
+      return success(await searchManualInboundOperatorProducts({
+        warehouseId: request.nextUrl.searchParams.get('warehouseId') ?? '',
+        search: request.nextUrl.searchParams.get('search') ?? '',
+        requestId,
+      }), requestId);
     }
     if (params.action === 'history') {
       return success(await searchManualInboundOperatorHistory({
