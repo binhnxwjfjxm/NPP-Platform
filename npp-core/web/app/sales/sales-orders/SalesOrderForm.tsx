@@ -11,6 +11,23 @@ import styles from './sales-orders.module.css';
 export { type SalesOrderFormMode } from './SalesOrderCommercialForm';
 
 type SalesOrderFormProps = ComponentProps<typeof SalesOrderCommercialForm>;
+type SalesOrderEditorTarget = Readonly<{
+  mode: SalesOrderFormProps['mode'];
+  orderId: SalesOrderFormProps['orderId'];
+  version: SalesOrderFormProps['version'];
+}>;
+
+export function captureSalesOrderEditorTarget(
+  mode: SalesOrderFormProps['mode'],
+  orderId: SalesOrderFormProps['orderId'],
+  version: SalesOrderFormProps['version'],
+): SalesOrderEditorTarget {
+  return Object.freeze({
+    mode,
+    orderId: mode === 'create' ? undefined : orderId,
+    version: version ?? null,
+  });
+}
 
 export function normalizeVndMinor(value: string | number | null | undefined): string {
   const normalized = String(value ?? '').trim();
@@ -78,6 +95,11 @@ export default function SalesOrderForm(props: SalesOrderFormProps) {
   const copyHandledRef = useRef(false);
   const onCloseRef = useRef(props.onClose);
   const onErrorRef = useRef(props.onError);
+  const editorTargetRef = useRef<SalesOrderEditorTarget | null>(null);
+  if (!editorTargetRef.current) {
+    editorTargetRef.current = captureSalesOrderEditorTarget(props.mode, props.orderId, props.version);
+  }
+  const editorTarget = editorTargetRef.current;
 
   useEffect(() => {
     onCloseRef.current = props.onClose;
@@ -88,7 +110,7 @@ export default function SalesOrderForm(props: SalesOrderFormProps) {
   }, [props.onError]);
 
   useEffect(() => {
-    if (copyHandledRef.current || props.mode !== 'create' || props.version) return;
+    if (copyHandledRef.current || editorTarget.mode !== 'create' || editorTarget.version) return;
 
     const params = new URLSearchParams(window.location.search);
     const copyFrom = params.get('copyFrom')?.trim();
@@ -130,11 +152,11 @@ export default function SalesOrderForm(props: SalesOrderFormProps) {
     return () => {
       disposed = true;
     };
-  }, [props.mode, props.version]);
+  }, [editorTarget]);
 
   const normalizedVersion = useMemo(
-    () => normalizeVersionForEditing(props.version ?? copyVersion),
-    [copyVersion, props.version],
+    () => normalizeVersionForEditing(editorTarget.version ?? copyVersion),
+    [copyVersion, editorTarget],
   );
 
   const handleError = (message: string) => {
@@ -168,8 +190,10 @@ export default function SalesOrderForm(props: SalesOrderFormProps) {
   return (
     <>
       <SalesOrderCommercialForm
-        key={normalizedVersion?.id ?? 'new-sales-order'}
+        key={`${editorTarget.mode}:${editorTarget.orderId ?? 'new-sales-order'}:${normalizedVersion?.id ?? 'no-version'}`}
         {...props}
+        mode={editorTarget.mode}
+        orderId={editorTarget.orderId}
         version={normalizedVersion}
         onError={handleError}
       />
