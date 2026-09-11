@@ -81,8 +81,12 @@ export async function resolveWarehouseLocation(client, { installationId, warehou
   const result = await client.query(
     `SELECT warehouse.id AS warehouse_id,
             warehouse.is_active AS warehouse_active,
+            warehouse.warehouse_type,
+            warehouse.location_management_mode,
+            warehouse.location_management_mode_version,
             location.id AS location_id,
-            location.is_active AS location_active
+            location.is_active AS location_active,
+            location.location_type
        FROM shared.warehouses warehouse
        LEFT JOIN shared.warehouse_locations location
          ON location.installation_id = warehouse.installation_id
