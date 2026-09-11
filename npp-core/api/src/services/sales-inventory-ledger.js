@@ -230,6 +230,7 @@ async function validateWarehouseLocationModes(client, { requestContext, lines })
         installationId: requestContext.installationId,
         warehouseId: line.warehouseId,
         locationId: line.locationId,
+        forUpdate: true,
       });
       checked.set(cacheKey, warehouse ?? null);
     }

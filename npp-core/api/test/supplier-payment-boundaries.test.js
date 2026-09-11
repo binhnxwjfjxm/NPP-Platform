@@ -56,8 +56,8 @@ test('supplier payment permissions deny by default and reads stay installation/w
       [branchId,appConfig.installationId,`BR-${code}`,`Chi nhánh ${code}`,actor],
     );
     await pool.query(
-      `INSERT INTO shared.warehouses(id,installation_id,branch_id,code,name,warehouse_type,is_active,created_by,updated_by)
-       VALUES($1,$2,$3,$4,$5,'main',true,$6,$6),($7,$2,$3,$8,$9,'main',true,$6,$6)`,
+      `INSERT INTO shared.warehouses(id,installation_id,branch_id,code,name,warehouse_type,location_management_mode,is_active,created_by,updated_by)
+       VALUES($1,$2,$3,$4,$5,'main','UNMANAGED',true,$6,$6),($7,$2,$3,$8,$9,'main','UNMANAGED',true,$6,$6)`,
       [warehouseA,appConfig.installationId,branchId,`WA-${code}`,`Kho A ${code}`,actor,
         warehouseB,`WB-${code}`,`Kho B ${code}`],
     );

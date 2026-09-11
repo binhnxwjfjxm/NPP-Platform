@@ -237,6 +237,7 @@ async function resolveLine(client, requestContext, line) {
     installationId: requestContext.installationId,
     warehouseId: line.warehouseId,
     locationId: line.locationId,
+    forUpdate: true,
   });
   if (!warehouse || !warehouse.warehouse_active) return failure('WAREHOUSE_NOT_AVAILABLE', 'Kho không tồn tại hoặc đã ngừng sử dụng.');
   if (!['MANAGED', 'UNMANAGED'].includes(warehouse.location_management_mode)) {

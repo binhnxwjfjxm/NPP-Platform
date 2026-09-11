@@ -124,7 +124,8 @@ BEGIN
       END IF;
 
       IF lot_record.expiry_date IS NOT NULL
-         AND lot_record.expiry_date < CURRENT_DATE THEN
+         AND lot_record.expiry_date < CURRENT_DATE
+         AND NOT remap_allowed THEN
         RAISE EXCEPTION 'sales_fulfillment_allocation_expired_lot_forbidden';
       END IF;
 

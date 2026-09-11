@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import * as inventoryLedgerRepository from '../src/db/repositories/inventory-ledger.js';
+import * as inventoryReservationsRepository from '../src/db/repositories/inventory-reservations.js';
 
 function source(relativePath) {
   return readFileSync(new URL(relativePath, import.meta.url), 'utf8');
@@ -17,6 +19,7 @@ const goodsReceiptRepository = source('../src/db/repositories/goods-receipt.js')
 const goodsReceiptTrackingRepository = source('../src/db/repositories/goods-receipt-tracking.js');
 const fulfillmentRepository = source('../src/db/repositories/sales-fulfillment-operations.js');
 const ledgerCore = source('../src/services/inventory-ledger-core.js');
+const inventoryReservationService = source('../src/services/inventory-reservations.js');
 const salesLedger = source('../src/services/sales-inventory-ledger.js');
 const transferReceiptRepository = source('../src/db/repositories/inventory-transfer-receipt.js');
 
@@ -29,9 +32,42 @@ test('migration 132 keeps warehouse as location authority and remaps pre-executi
   assert.match(migration132, /relocatedFromAllocationId/);
   assert.match(migration132, /allocation\.state <> 'RELEASED'/);
   assert.match(migration132, /allocation_context = 'fulfillment_release_service'/);
+  assert.match(
+    migration132,
+    /lot_record\.expiry_date < CURRENT_DATE\s+AND NOT remap_allowed/,
+  );
   assert.match(migration132, /RETURN NEW;/);
   assert.match(migration132, /DEPRECATED for runtime location decisions/);
   assert.doesNotMatch(migration132, /policy_record\.location_required/);
+});
+
+test('inventory mutation paths lock the warehouse before validating its location mode', async () => {
+  const calls = [];
+  const client = {
+    async query(query) {
+      calls.push(query);
+      return { rows: [] };
+    },
+  };
+
+  await inventoryLedgerRepository.resolveWarehouseLocation(client, {
+    installationId: 'test-installation',
+    warehouseId: '11111111-1111-4111-8111-111111111111',
+    locationId: null,
+    forUpdate: true,
+  });
+  await inventoryReservationsRepository.resolveWarehouseLocation(client, {
+    installationId: 'test-installation',
+    warehouseId: '11111111-1111-4111-8111-111111111111',
+    locationId: null,
+    forUpdate: true,
+  });
+
+  assert.match(calls[0], /FOR UPDATE OF warehouse/);
+  assert.match(calls[1], /FOR UPDATE OF w/);
+  assert.match(ledgerCore, /forUpdate:\s*true/);
+  assert.match(inventoryReservationService, /forUpdate:\s*true/);
+  assert.match(salesLedger, /forUpdate:\s*true/);
 });
 
 test('reservation remap establishes one transaction-scoped run context before release/replacement events', () => {

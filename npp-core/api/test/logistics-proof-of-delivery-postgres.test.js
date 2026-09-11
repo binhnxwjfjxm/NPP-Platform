@@ -101,8 +101,8 @@ test('PostgreSQL POD is optional, driver-scoped, immutable and idempotent', asyn
     );
     await fixture.query(
       `INSERT INTO shared.warehouses
-        (id, installation_id, branch_id, code, name, warehouse_type, is_active, created_by, updated_by)
-       VALUES ($1,$2,$3,'WH-POD','Kho POD','main',true,$4,$4)`,
+        (id, installation_id, branch_id, code, name, warehouse_type, location_management_mode, is_active, created_by, updated_by)
+       VALUES ($1,$2,$3,'WH-POD','Kho POD','main','UNMANAGED',true,$4,$4)`,
       [warehouseId, installationId, branchId, actor],
     );
     await fixture.query(

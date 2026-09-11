@@ -80,11 +80,17 @@ export async function resolveReservationBalance(client, {
   return result.rows[0] ?? null;
 }
 
-export async function resolveWarehouseLocation(client, { installationId, warehouseId, locationId }) {
+export async function resolveWarehouseLocation(client, {
+  installationId,
+  warehouseId,
+  locationId,
+  forUpdate = false,
+}) {
   const query = locationId
     ? `SELECT
          w.id as warehouse_id,
          w.is_active as warehouse_active,
+         w.location_management_mode,
          l.id as location_id,
          l.is_active as location_active
         FROM shared.warehouses w
@@ -93,14 +99,17 @@ export async function resolveWarehouseLocation(client, { installationId, warehou
          AND l.warehouse_id = w.id
          AND l.id = $3
          AND l.location_type = 'storage'
-       WHERE w.installation_id = $1 AND w.id = $2`
+       WHERE w.installation_id = $1 AND w.id = $2
+       ${forUpdate ? 'FOR UPDATE OF w' : ''}`
     : `SELECT
          w.id as warehouse_id,
          w.is_active as warehouse_active,
+         w.location_management_mode,
          NULL::uuid as location_id,
          NULL as location_active
         FROM shared.warehouses w
-       WHERE w.installation_id = $1 AND w.id = $2`;
+       WHERE w.installation_id = $1 AND w.id = $2
+       ${forUpdate ? 'FOR UPDATE OF w' : ''}`;
   const values = locationId
     ? [installationId, warehouseId, locationId]
     : [installationId, warehouseId];

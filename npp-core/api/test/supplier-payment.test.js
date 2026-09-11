@@ -36,8 +36,8 @@ async function seed(pool,installationId) {
     [ids.branchId,installationId,`BR-${code}`,`Chi nhánh ${code}`,actor],
   );
   await pool.query(
-    `INSERT INTO shared.warehouses(id,installation_id,branch_id,code,name,warehouse_type,is_active,created_by,updated_by)
-     VALUES($1,$2,$3,$4,$5,'main',true,$6,$6),($7,$2,$3,$8,$9,'main',true,$6,$6)`,
+    `INSERT INTO shared.warehouses(id,installation_id,branch_id,code,name,warehouse_type,location_management_mode,is_active,created_by,updated_by)
+     VALUES($1,$2,$3,$4,$5,'main','UNMANAGED',true,$6,$6),($7,$2,$3,$8,$9,'main','UNMANAGED',true,$6,$6)`,
     [ids.warehouseId,installationId,ids.branchId,`WH-${code}`,`Kho ${code}`,actor,
       ids.otherWarehouseId,`WHX-${code}`,`Kho khác ${code}`],
   );
