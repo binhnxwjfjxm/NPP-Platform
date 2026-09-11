@@ -387,6 +387,20 @@ function customerGroupLabel(customer: Customer): string {
   return /^khách hàng\b/i.test(group) ? group : `Khách hàng ${group}`;
 }
 
+function lastPurchaseFallbackChannelId(
+  settings: SalesOrderEntrySettings | null,
+  currentChannelId: string,
+): string {
+  if (currentChannelId && settings?.salesChannels.some((channel) => channel.id === currentChannelId)) {
+    return currentChannelId;
+  }
+  const configuredDefault = settings?.defaultSalesChannelId ?? '';
+  if (configuredDefault && settings?.salesChannels.some((channel) => channel.id === configuredDefault)) {
+    return configuredDefault;
+  }
+  return settings?.salesChannels.find((channel) => channel.code === 'GT')?.id ?? '';
+}
+
 export default function SalesOrderCommercialForm(props: Props) {
   const { version, onClose, onError } = props;
   const initialWalkIn = version?.customerMode === 'WALK_IN';
@@ -509,6 +523,7 @@ export default function SalesOrderCommercialForm(props: Props) {
   const deliveryChoice: SalesOrderDeliveryChoice = deliveryMode === 'PICKUP' ? 'PICKUP' : (deliveryExecutionMode ?? 'TRIP');
   const hasVersionDirectDestination = Boolean(version && !version.customerAddressId && versionDeliveryAddressLine1(version));
   const priceSelectionValue = priceSelectionMode === 'LAST_PURCHASE' ? 'LAST_PURCHASE' : salesChannelId;
+  const lastPurchaseChannelId = lastPurchaseFallbackChannelId(entrySettings, salesChannelId);
 
   const markDirty = useCallback(() => {
     setDirty(true);
@@ -1485,13 +1500,18 @@ export default function SalesOrderCommercialForm(props: Props) {
                 <label className={styles.salesChannelField}><span>Giá áp dụng *</span><select data-testid="sales-channel-select" value={priceSelectionValue} onChange={(event) => {
                   const value = event.target.value;
                   if (value === 'LAST_PURCHASE') {
+                    if (!lastPurchaseChannelId) {
+                      onError('Chưa có kênh giá hoạt động để dự phòng khi khách chưa có lịch sử mua.');
+                      return;
+                    }
+                    setSalesChannelId(lastPurchaseChannelId);
                     setPriceSelectionMode('LAST_PURCHASE');
                   } else {
                     setPriceSelectionMode('STANDARD');
                     setSalesChannelId(value);
                   }
                   markDirty();
-                }}><option value="">Chọn giá áp dụng</option><option value="LAST_PURCHASE" disabled={customerMode !== 'EXISTING' || !customerId || !salesChannelId}>Giá lần mua trước</option>{entrySettings?.salesChannels.map((channel) => <option key={channel.id} value={channel.id}>{channel.code} — {channel.name}</option>)}</select></label>
+                }}><option value="">Chọn giá áp dụng</option><option value="LAST_PURCHASE" disabled={customerMode !== 'EXISTING' || !customerId || !lastPurchaseChannelId}>Giá lần mua trước</option>{entrySettings?.salesChannels.map((channel) => <option key={channel.id} value={channel.id}>{channel.code} — {channel.name}</option>)}</select></label>
                 <label><span>Tìm hàng nhanh</span><input ref={searchRef} value={skuTerm} onChange={(event) => setSkuTerm(event.target.value)} onKeyDown={handleSkuKeyDown} placeholder="Tên sản phẩm, mã hàng, SKU hoặc barcode" autoComplete="off" /></label>
               </div>
               {skuLoading && <span className={styles.searchStatus}>Đang tìm…</span>}
