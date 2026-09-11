@@ -1,6 +1,7 @@
 import { sendError, sendSuccess } from '../http-utils.js';
 import * as customerService from '../services/customer.js';
 import * as profileService from '../services/customer-profile.js';
+import * as deliveryReturnsService from '../services/customer-profile-delivery-returns.js';
 import * as warehouseRepository from '../db/repositories/warehouse.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -38,7 +39,7 @@ async function warehouseScopedContext(client, requestContext) {
 
 export async function handleCustomerProfileRoutes(req, res, options) {
   const url = new URL(`http://localhost${req.url}`);
-  const match = url.pathname.match(/^\/api\/customers\/([^/]+)\/(overview|purchased-items)$/);
+  const match = url.pathname.match(/^\/api\/customers\/([^/]+)\/(overview|purchased-items|delivery-returns)$/);
   if (!match) return false;
   if (String(req.method || 'GET').toUpperCase() !== 'GET') {
     sendError(res, error('METHOD_NOT_ALLOWED', 'Method not allowed', 405), options.requestId, options.receivedAt);
@@ -69,8 +70,10 @@ export async function handleCustomerProfileRoutes(req, res, options) {
     return true;
   }
 
-  const period = profileService.normalizeCustomerProfilePeriod(url.searchParams.get('period'));
-  if (!period) {
+  const period = section === 'delivery-returns'
+    ? null
+    : profileService.normalizeCustomerProfilePeriod(url.searchParams.get('period'));
+  if (section !== 'delivery-returns' && !period) {
     sendError(res, error('INVALID_CUSTOMER_PROFILE_PERIOD', 'Khoảng thời gian không hợp lệ.', 400), options.requestId, options.receivedAt);
     return true;
   }
@@ -84,6 +87,18 @@ export async function handleCustomerProfileRoutes(req, res, options) {
     : null;
   if (purchasedItemsQuery && !purchasedItemsQuery.ok) {
     sendError(res, error(purchasedItemsQuery.code, purchasedItemsQuery.message, 400), options.requestId, options.receivedAt);
+    return true;
+  }
+  const deliveryReturnsQuery = section === 'delivery-returns'
+    ? deliveryReturnsService.normalizeCustomerDeliveryReturnsQuery({
+      deliveryLimit: url.searchParams.get('deliveryLimit'),
+      deliveryOffset: url.searchParams.get('deliveryOffset'),
+      returnLimit: url.searchParams.get('returnLimit'),
+      returnOffset: url.searchParams.get('returnOffset'),
+    })
+    : null;
+  if (deliveryReturnsQuery && !deliveryReturnsQuery.ok) {
+    sendError(res, error(deliveryReturnsQuery.code, deliveryReturnsQuery.message, 400), options.requestId, options.receivedAt);
     return true;
   }
 
@@ -119,6 +134,29 @@ export async function handleCustomerProfileRoutes(req, res, options) {
       return true;
     }
 
+    if (section === 'delivery-returns') {
+      const canReadDeliveryOrders = options.authorize(requestContext, options.PERMISSIONS.coreDeliveryOrderRead).ok;
+      const canReadDeliveryAttempts = options.authorize(requestContext, options.PERMISSIONS.coreDeliveryAttemptRead).ok
+        && options.authorize(requestContext, options.PERMISSIONS.coreDeliveryTripRead).ok;
+      const permissions = Object.freeze({
+        deliveryOrders: canReadDeliveryOrders,
+        deliveryAttempts: canReadDeliveryOrders && canReadDeliveryAttempts,
+        returns: options.authorize(requestContext, options.PERMISSIONS.coreCustomerReturnRead).ok,
+      });
+      const result = await deliveryReturnsService.loadCustomerDeliveryReturns(pool, {
+        requestContext,
+        customerId,
+        query: deliveryReturnsQuery.query,
+        permissions,
+      });
+      if (!result.ok) {
+        sendError(res, error(result.code, result.message, 400), options.requestId, options.receivedAt);
+        return true;
+      }
+      sendSuccess(res, result.result, options.requestId, options.receivedAt);
+      return true;
+    }
+
     const canReadReceivable = options.authorize(requestContext, options.PERMISSIONS.coreReceivableRead).ok;
     const [salesResult, receivableResult] = await Promise.all([
       canReadSales
@@ -145,16 +183,19 @@ export async function handleCustomerProfileRoutes(req, res, options) {
       permissions: Object.freeze({ sales: canReadSales, receivable: canReadReceivable }),
     }), options.requestId, options.receivedAt);
   } catch {
-    const isPurchasedItems = section === 'purchased-items';
+    const code = section === 'purchased-items'
+      ? 'CUSTOMER_PURCHASED_ITEMS_UNAVAILABLE'
+      : section === 'delivery-returns'
+        ? 'CUSTOMER_DELIVERY_RETURNS_UNAVAILABLE'
+        : 'CUSTOMER_PROFILE_UNAVAILABLE';
+    const message = section === 'purchased-items'
+      ? 'Chưa tải được hàng đã mua.'
+      : section === 'delivery-returns'
+        ? 'Chưa tải được lịch sử giao và trả hàng.'
+        : 'Chưa tải được tổng quan khách hàng.';
     sendError(
       res,
-      {
-        code: isPurchasedItems ? 'CUSTOMER_PURCHASED_ITEMS_UNAVAILABLE' : 'CUSTOMER_PROFILE_UNAVAILABLE',
-        message: isPurchasedItems ? 'Chưa tải được hàng đã mua.' : 'Chưa tải được tổng quan khách hàng.',
-        details: {},
-        retryable: true,
-        statusCode: 503,
-      },
+      { code, message, details: {}, retryable: true, statusCode: 503 },
       options.requestId,
       options.receivedAt,
     );

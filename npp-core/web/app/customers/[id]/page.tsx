@@ -12,11 +12,16 @@ import {
   type CustomerPurchasedItemsPage,
 } from '../../../lib/customer-profile-gateway';
 import {
+  CustomerDeliveryReturnsGatewayError,
+  getCustomerDeliveryReturns,
+  resolveCustomerDeliveryReturnsRequestId,
+  type CustomerDeliveryReturnsHistory,
+} from '../../../lib/customer-delivery-returns-gateway';
+import {
   listSalesOrders,
   normalizeSalesOrderGatewayError,
   resolveSalesOrderRequestId,
 } from '../../../lib/sales-order-gateway';
-import type { SalesOrder } from '../../../lib/sales-order-types';
 import {
   listReceivables,
   resolveReceivableRequestId,
@@ -47,14 +52,17 @@ type SearchParams = Promise<{
   offset?: string;
   debtOffset?: string;
   paymentOffset?: string;
+  deliveryOffset?: string;
+  returnOffset?: string;
 }>;
 
-type CustomerDetailTab = 'overview' | 'purchased-items' | 'orders' | 'finance' | 'info';
+type CustomerDetailTab = 'overview' | 'purchased-items' | 'orders' | 'finance' | 'delivery-returns' | 'info';
 
 function normalizeTab(value?: string): CustomerDetailTab {
   if (value === 'purchased-items') return 'purchased-items';
   if (value === 'orders') return 'orders';
   if (value === 'finance') return 'finance';
+  if (value === 'delivery-returns') return 'delivery-returns';
   if (value === 'info') return 'info';
   return 'overview';
 }
@@ -72,6 +80,8 @@ export default async function CustomerDetailPage({ params, searchParams }: { par
   const listOffset = normalizeOffset(query.offset);
   const debtOffset = normalizeOffset(query.debtOffset);
   const paymentOffset = normalizeOffset(query.paymentOffset);
+  const deliveryOffset = normalizeOffset(query.deliveryOffset);
+  const returnOffset = normalizeOffset(query.returnOffset);
   const profileRequestId = resolveCustomerProfileRequestId(null);
   const addressRequestId = resolveCustomerRequestId(null);
 
@@ -184,6 +194,27 @@ export default async function CustomerDetailPage({ params, searchParams }: { par
       });
     }
 
+    let deliveryReturnsHistory: CustomerDeliveryReturnsHistory | null = null;
+    let deliveryReturnsError: string | null = null;
+    if (activeTab === 'delivery-returns') {
+      try {
+        deliveryReturnsHistory = await getCustomerDeliveryReturns(
+          id,
+          resolveCustomerDeliveryReturnsRequestId(null),
+          {
+            deliveryLimit: 20,
+            deliveryOffset,
+            returnLimit: 20,
+            returnOffset,
+          },
+        );
+      } catch (error) {
+        deliveryReturnsError = error instanceof CustomerDeliveryReturnsGatewayError
+          ? error.publicMessage
+          : 'Chưa tải được lịch sử giao và trả hàng.';
+      }
+    }
+
     return (
       <CustomerDetailView
         profile={profile}
@@ -198,6 +229,8 @@ export default async function CustomerDetailPage({ params, searchParams }: { par
         ordersSearch={activeTab === 'orders' ? search : ''}
         ordersError={ordersError}
         financeHistory={financeHistory}
+        deliveryReturnsHistory={deliveryReturnsHistory}
+        deliveryReturnsError={deliveryReturnsError}
       />
     );
   } catch (error) {

@@ -53,6 +53,14 @@ test.describe('Chi tiết khách hàng', () => {
     await expect(page.getByTestId('customer-receivable-documents')).toBeVisible();
     await expect(page.getByTestId('customer-payments')).toBeVisible();
 
+    await detail.getByRole('link', { name: 'Giao hàng / Trả hàng', exact: true }).click();
+    await expect(page).toHaveURL(/tab=delivery-returns/);
+    await expect(page.getByTestId('customer-delivery-returns')).toBeVisible();
+    await expect(page.getByTestId('customer-delivery-history')).toBeVisible();
+    await expect(page.getByTestId('customer-return-history')).toBeVisible();
+    await expect(page.getByText('Khách hàng chưa có lịch sử giao hàng.')).toBeVisible();
+    await expect(page.getByText('Khách hàng chưa có hàng trả.')).toBeVisible();
+
     await detail.getByRole('link', { name: 'Thông tin & địa chỉ' }).click();
     await expect(detail.getByText('Địa chỉ chính')).toBeVisible();
     await expect(detail.getByText(new RegExp(`10 Đường ${suffix}`))).toBeVisible();

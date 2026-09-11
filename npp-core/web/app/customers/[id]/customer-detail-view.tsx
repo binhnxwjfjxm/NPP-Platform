@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { AppShell } from '../../components/app-shell';
 import type { CustomerAddress } from '../../../lib/customer-types';
+import type { CustomerDeliveryReturnsHistory } from '../../../lib/customer-delivery-returns-gateway';
 import type {
   CustomerProfileOverview,
   CustomerProfilePeriod,
@@ -12,9 +13,10 @@ import {
   type CustomerFinanceHistory,
   type CustomerOrdersHistory,
 } from './customer-history-sections';
+import CustomerDeliveryReturnsSection from './customer-delivery-returns-section';
 import styles from './customer-detail.module.css';
 
-type Tab = 'overview' | 'purchased-items' | 'orders' | 'finance' | 'info';
+type Tab = 'overview' | 'purchased-items' | 'orders' | 'finance' | 'delivery-returns' | 'info';
 
 type Props = Readonly<{
   profile: CustomerProfileOverview;
@@ -29,6 +31,8 @@ type Props = Readonly<{
   ordersSearch?: string;
   ordersError?: string | null;
   financeHistory?: CustomerFinanceHistory | null;
+  deliveryReturnsHistory?: CustomerDeliveryReturnsHistory | null;
+  deliveryReturnsError?: string | null;
 }>;
 
 const periodLabels: Record<CustomerProfilePeriod, string> = {
@@ -114,6 +118,8 @@ export default function CustomerDetailView({
   ordersSearch = '',
   ordersError = null,
   financeHistory = null,
+  deliveryReturnsHistory = null,
+  deliveryReturnsError = null,
 }: Props) {
   const { customer, sales, receivable, permissions } = profile;
   const defaultAddress = addresses.find((address) => address.is_default && address.is_active)
@@ -170,6 +176,7 @@ export default function CustomerDetailView({
           <Link className={activeTab === 'purchased-items' ? styles.tabActive : styles.tab} href={tabHref(customer.id, 'purchased-items', period)} aria-current={activeTab === 'purchased-items' ? 'page' : undefined}>Hàng đã mua</Link>
           <Link className={activeTab === 'orders' ? styles.tabActive : styles.tab} href={tabHref(customer.id, 'orders', period)} aria-current={activeTab === 'orders' ? 'page' : undefined}>Đơn hàng</Link>
           <Link className={activeTab === 'finance' ? styles.tabActive : styles.tab} href={tabHref(customer.id, 'finance', period)} aria-current={activeTab === 'finance' ? 'page' : undefined}>Công nợ &amp; thanh toán</Link>
+          <Link className={activeTab === 'delivery-returns' ? styles.tabActive : styles.tab} href={tabHref(customer.id, 'delivery-returns', period)} aria-current={activeTab === 'delivery-returns' ? 'page' : undefined}>Giao hàng / Trả hàng</Link>
           <Link className={activeTab === 'info' ? styles.tabActive : styles.tab} href={tabHref(customer.id, 'info', period)} aria-current={activeTab === 'info' ? 'page' : undefined}>Thông tin &amp; địa chỉ</Link>
         </nav>
 
@@ -280,6 +287,8 @@ export default function CustomerDetailView({
           <CustomerOrdersSection customerId={customer.id} period={period} allowed={permissions.sales} history={ordersHistory ? { ...ordersHistory, search: ordersSearch } : null} error={ordersError} />
         ) : activeTab === 'finance' && financeHistory ? (
           <CustomerFinanceSection customerId={customer.id} period={period} summary={receivable} history={financeHistory} />
+        ) : activeTab === 'delivery-returns' ? (
+          <CustomerDeliveryReturnsSection customerId={customer.id} period={period} history={deliveryReturnsHistory} error={deliveryReturnsError} />
         ) : (
           <div className={styles.contentGrid}>
             <section className={styles.panel}>
