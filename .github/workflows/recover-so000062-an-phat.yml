@@ -5,6 +5,10 @@ on:
     paths:
       - '.github/workflows/recover-so000062-an-phat.yml'
       - 'npp-core/api/scripts/recover-so000062-an-phat.mjs'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/recover-so000062-an-phat.yml'
   issue_comment:
     types: [created]
 
@@ -49,10 +53,13 @@ jobs:
 
   recover-production:
     if: >-
-      github.event_name == 'issue_comment' &&
+      (github.event_name == 'issue_comment' &&
       github.event.issue.number == 5 &&
       github.event.comment.body == '/recover-so000062-an-phat' &&
-      (github.actor == 'binhnxwjfjxm' || github.actor == 'khuongbinhinfo-a11y')
+      (github.actor == 'binhnxwjfjxm' || github.actor == 'khuongbinhinfo-a11y')) ||
+      (github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      github.event.head_commit.message == 'ops(recovery): execute SO000062 AN PHAT')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
