@@ -24,11 +24,14 @@ test('opening balance template keeps operator input small and edits lot facts in
   assert.match(workspace, /updateRow/);
 });
 
-test('opening balance operator resolves tracking policy from the inventory-base SKU, not from batch input', () => {
+test('opening balance operator resolves tracking policy from the inventory-base SKU and location rules from the selected warehouse', () => {
   assert.match(operator, /base\.is_inventory_base = true/);
   assert.match(operator, /policy\.lot_tracking_mode/);
   assert.match(operator, /policy\.expiry_tracking_mode/);
-  assert.match(operator, /policy\.location_required/);
+  assert.match(operator, /warehouse\.location_management_mode/);
+  assert.match(operator, /locationRequired = warehouse\.location_management_mode === 'MANAGED'/);
+  assert.match(operator, /LOCATION_REQUIRED/);
+  assert.match(operator, /LOCATION_NOT_ALLOWED/);
   assert.match(operator, /baseVariantId: variant\.base_variant_id/);
 });
 
