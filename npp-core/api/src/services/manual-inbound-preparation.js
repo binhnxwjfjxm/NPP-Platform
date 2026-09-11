@@ -189,7 +189,7 @@ async function inventoryManagementPolicyAvailable(client) {
 async function scopedWarehouse(client, requestContext, warehouseId) {
   if (!allowedWarehouseIds(requestContext).includes(warehouseId)) return null;
   const result = await client.query(
-    `SELECT id, code, name
+    `SELECT id, code, name, location_management_mode
        FROM shared.warehouses
       WHERE installation_id = $1 AND id = $2 AND is_active = true`,
     [requestContext.installationId, warehouseId],
@@ -204,7 +204,7 @@ export async function listManualInboundWarehouseOptions(client, { requestContext
   const warehouseIds = allowedWarehouseIds(requestContext);
   if (warehouseIds.length === 0) return Object.freeze({ ok: true, warehouses: Object.freeze([]) });
   const result = await client.query(
-    `SELECT id, code, name
+    `SELECT id, code, name, location_management_mode
        FROM shared.warehouses
       WHERE installation_id = $1
         AND id = ANY($2::uuid[])
@@ -214,7 +214,13 @@ export async function listManualInboundWarehouseOptions(client, { requestContext
   );
   return Object.freeze({
     ok: true,
-    warehouses: Object.freeze(result.rows.map((row) => ({ id: row.id, code: row.code, name: row.name }))),
+    warehouses: Object.freeze(result.rows.map((row) => ({
+      id: row.id,
+      code: row.code,
+      name: row.name,
+      locationManagementMode: row.location_management_mode ?? null,
+      locationRequired: row.location_management_mode === 'MANAGED',
+    }))),
   });
 }
 
@@ -225,18 +231,39 @@ export async function listManualInboundLocationOptions(client, { requestContext,
   if (!UUID_PATTERN.test(String(warehouseId ?? ''))) return failure('INVALID_WAREHOUSE_ID', 'Kho nhập không hợp lệ.');
   const warehouse = await scopedWarehouse(client, requestContext, warehouseId);
   if (!warehouse) return failure('WAREHOUSE_SCOPE_DENIED', 'Kho không hoạt động hoặc ngoài phạm vi được cấp.', 403);
+  if (!['MANAGED', 'UNMANAGED'].includes(warehouse.location_management_mode)) {
+    return failure('WAREHOUSE_LOCATION_MODE_REQUIRED', 'Kho chưa thiết lập chế độ quản lý vị trí.', 409);
+  }
+  if (warehouse.location_management_mode === 'UNMANAGED') {
+    return Object.freeze({
+      ok: true,
+      warehouse: Object.freeze({
+        id: warehouse.id,
+        code: warehouse.code,
+        name: warehouse.name,
+        locationManagementMode: warehouse.location_management_mode,
+      }),
+      locations: Object.freeze([]),
+    });
+  }
   const result = await client.query(
     `SELECT id, code, name, location_type
        FROM shared.warehouse_locations
       WHERE installation_id = $1
         AND warehouse_id = $2
         AND is_active = true
+        AND location_type = 'storage'
       ORDER BY code ASC, id ASC`,
     [requestContext.installationId, warehouseId],
   );
   return Object.freeze({
     ok: true,
-    warehouse: Object.freeze({ id: warehouse.id, code: warehouse.code, name: warehouse.name }),
+    warehouse: Object.freeze({
+      id: warehouse.id,
+      code: warehouse.code,
+      name: warehouse.name,
+      locationManagementMode: warehouse.location_management_mode,
+    }),
     locations: Object.freeze(result.rows.map((row) => ({ id: row.id, code: row.code, name: row.name, locationType: row.location_type }))),
   });
 }
@@ -249,7 +276,7 @@ async function resolveSkuMap(client, installationId, skus, policyAvailable) {
             unit.code AS unit_code, unit.allows_fractional,
             p.code AS product_code, p.name AS product_name, ${inventoryManagedField} AS is_inventory_managed,
             base.id AS base_variant_id, base.sku AS base_sku,
-            policy.lot_tracking_mode, policy.expiry_tracking_mode, policy.location_required
+            policy.lot_tracking_mode, policy.expiry_tracking_mode
        FROM shared.product_variants pv
        JOIN shared.products p
          ON p.installation_id = pv.installation_id AND p.id = pv.product_id
@@ -288,6 +315,7 @@ async function resolveLocationMap(client, installationId, warehouseId, codes) {
         AND warehouse_id = $2
         AND upper(code) = ANY($3::text[])
         AND is_active = true
+        AND location_type = 'storage'
       ORDER BY code ASC, id ASC`,
     [installationId, warehouseId, codes],
   );
@@ -351,6 +379,9 @@ export async function previewManualInbound(client, { requestContext, payload }) 
   const body = normalized.value;
   const warehouse = await scopedWarehouse(client, requestContext, body.warehouseId);
   if (!warehouse) return failure('WAREHOUSE_SCOPE_DENIED', 'Kho không hoạt động hoặc ngoài phạm vi được cấp.', 403);
+  if (!['MANAGED', 'UNMANAGED'].includes(warehouse.location_management_mode)) {
+    return failure('WAREHOUSE_LOCATION_MODE_REQUIRED', 'Kho chưa thiết lập chế độ quản lý vị trí.', 409);
+  }
 
   const policyAvailable = await inventoryManagementPolicyAvailable(client);
   const skuKeys = [...new Set(body.rows.map((row) => row.sku))];
@@ -363,6 +394,7 @@ export async function previewManualInbound(client, { requestContext, payload }) 
   const rowErrors = [];
   const displayRows = [];
   let totalQuantityScaled = 0n;
+  const warehouseRequiresLocation = warehouse.location_management_mode === 'MANAGED';
 
   for (const row of body.rows) {
     const display = {
@@ -378,6 +410,8 @@ export async function previewManualInbound(client, { requestContext, payload }) 
       supplierLotReference: row.supplierLotReference,
       warehouseCode: warehouse.code,
       warehouseName: warehouse.name,
+      locationManagementMode: warehouse.location_management_mode,
+      locationRequired: warehouseRequiresLocation,
       status: 'NEEDS_ATTENTION',
       requiredFields: [],
     };
@@ -403,7 +437,6 @@ export async function previewManualInbound(client, { requestContext, payload }) 
       baseSku: variant.base_sku,
       lotTrackingMode: variant.lot_tracking_mode ?? null,
       expiryTrackingMode: variant.expiry_tracking_mode ?? null,
-      locationRequired: variant.location_required === true,
     });
 
     if (!policyAvailable) {
@@ -439,25 +472,33 @@ export async function previewManualInbound(client, { requestContext, payload }) 
       displayRows.push(display);
       continue;
     }
-    if (!variant.lot_tracking_mode || !variant.expiry_tracking_mode || variant.location_required === null || variant.location_required === undefined) {
-      rowErrors.push({ lineNumber: row.lineNumber, code: 'TRACKING_POLICY_NOT_FOUND', message: `SKU ${row.sku}: Chưa cấu hình chính sách lô, hạn dùng hoặc vị trí.` });
+    if (!variant.lot_tracking_mode || !variant.expiry_tracking_mode) {
+      rowErrors.push({ lineNumber: row.lineNumber, code: 'TRACKING_POLICY_NOT_FOUND', message: `SKU ${row.sku}: Chưa cấu hình chính sách lô hoặc hạn dùng.` });
       displayRows.push(display);
       continue;
     }
 
     let location = null;
-    if (row.locationCode) {
-      location = locationMap.get(row.locationCode) ?? null;
-      if (!location) {
-        display.requiredFields.push('LOCATION');
-        rowErrors.push({ lineNumber: row.lineNumber, code: 'LOCATION_NOT_FOUND', message: `Dòng ${row.lineNumber}: Vị trí ${row.locationCode} không có trong kho ${warehouse.code}.` });
-      } else {
-        Object.assign(display, { locationId: location.id, locationCode: location.code, locationName: location.name });
+    if (warehouseRequiresLocation) {
+      if (row.locationCode) {
+        location = locationMap.get(row.locationCode) ?? null;
+        if (!location) {
+          display.requiredFields.push('LOCATION');
+          rowErrors.push({ lineNumber: row.lineNumber, code: 'LOCATION_NOT_FOUND', message: `Dòng ${row.lineNumber}: Vị trí ${row.locationCode} không có trong kho ${warehouse.code}.` });
+        } else {
+          Object.assign(display, { locationId: location.id, locationCode: location.code, locationName: location.name });
+        }
       }
-    }
-    if (variant.location_required && !location) {
-      if (!display.requiredFields.includes('LOCATION')) display.requiredFields.push('LOCATION');
-      rowErrors.push({ lineNumber: row.lineNumber, code: 'LOCATION_REQUIRED', message: `SKU ${row.sku}: Cần chọn vị trí kho.` });
+      if (!location) {
+        if (!display.requiredFields.includes('LOCATION')) display.requiredFields.push('LOCATION');
+        rowErrors.push({ lineNumber: row.lineNumber, code: 'LOCATION_REQUIRED', message: `Kho ${warehouse.code}: Cần chọn vị trí kho.` });
+      }
+    } else if (row.locationCode) {
+      rowErrors.push({
+        lineNumber: row.lineNumber,
+        code: 'LOCATION_NOT_ALLOWED',
+        message: `Kho ${warehouse.code} dùng tồn chung; hãy để trống Vị trí.`,
+      });
     }
 
     if (variant.lot_tracking_mode === 'NONE') {
@@ -517,7 +558,13 @@ export async function previewManualInbound(client, { requestContext, payload }) 
     ok: true,
     preview: Object.freeze({
       ready: rowErrors.length === 0,
-      warehouse: Object.freeze({ id: warehouse.id, code: warehouse.code, name: warehouse.name }),
+      warehouse: Object.freeze({
+        id: warehouse.id,
+        code: warehouse.code,
+        name: warehouse.name,
+        locationManagementMode: warehouse.location_management_mode,
+        locationRequired: warehouseRequiresLocation,
+      }),
       header: Object.freeze({
         inboundType: body.inboundType,
         documentDate: body.documentDate,
