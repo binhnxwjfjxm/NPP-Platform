@@ -78,14 +78,15 @@ test.describe('Kho vận', () => {
     await expect(page.getByTestId('inventory-menu-toggle')).toHaveAttribute('aria-expanded', 'true');
 
     await page.goto('/inventory/tracking-policies');
-    await expect(page.getByTestId('inventory-tracking-policies-page')).toBeVisible();
-    await expect(page.getByTestId('inventory-policies-section')).toContainText(fixture.baseVariant.sku);
-    const skuSelect = page.getByTestId('inventory-policy-base-variant-select');
+    const policyPage = page.getByTestId('inventory-tracking-policies-page');
+    await expect(policyPage).toBeVisible();
+    await expect(policyPage.getByRole('table')).toContainText(fixture.baseVariant.sku);
+    const skuSelect = policyPage.getByLabel('SKU hàng hóa');
     const skuOption = skuSelect.locator(`option[value="${fixture.baseVariant.id}"]`);
     await expect(skuOption).toContainText(fixture.baseVariant.sku);
     await skuSelect.selectOption(fixture.baseVariant.id);
     await expect(skuSelect).toHaveValue(fixture.baseVariant.id);
-    await expect(page.getByTestId('inventory-policy-editor')).toBeVisible();
+    await expect(policyPage.getByRole('heading', { name: 'Tạo hoặc sửa chính sách', exact: true })).toBeVisible();
 
     await page.goto('/inventory/opening-balances');
     const warehouseSelect = page.getByTestId('inventory-opening-warehouse-select');
