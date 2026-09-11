@@ -31,10 +31,22 @@ export async function getTransferResolutionRows(client, { installationId, transf
             resolution.short_base_quantity,
             resolution.remaining_source_quantity,
             resolution.remaining_base_quantity,
-            policy.location_required,
+            CASE
+              WHEN destination_warehouse.location_management_mode = 'MANAGED' THEN true
+              WHEN destination_warehouse.location_management_mode = 'UNMANAGED' THEN false
+              ELSE NULL
+            END AS location_required,
+            destination_warehouse.location_management_mode,
             policy.lot_tracking_mode,
             policy.expiry_tracking_mode
        FROM inventory.inventory_transfer_lines line
+       JOIN inventory.inventory_transfers transfer
+         ON transfer.installation_id = line.installation_id
+        AND transfer.id = line.transfer_id
+       JOIN shared.warehouses destination_warehouse
+         ON destination_warehouse.installation_id = transfer.installation_id
+        AND destination_warehouse.id = transfer.destination_warehouse_id
+        AND destination_warehouse.is_active = true
        JOIN inventory.inventory_transfer_line_resolution resolution
          ON resolution.installation_id = line.installation_id
         AND resolution.transfer_line_id = line.id
@@ -55,11 +67,17 @@ export async function loadDestinationLocations(client, {
 }) {
   if (locationIds.length === 0) return [];
   const result = await client.query(
-    `SELECT id, warehouse_id, code, name, is_active
-       FROM shared.warehouse_locations
-      WHERE installation_id = $1
-        AND warehouse_id = $2
-        AND id = ANY($3::uuid[])`,
+    `SELECT location.id, location.warehouse_id, location.code, location.name, location.is_active
+       FROM shared.warehouse_locations location
+       JOIN shared.warehouses warehouse
+         ON warehouse.installation_id = location.installation_id
+        AND warehouse.id = location.warehouse_id
+        AND warehouse.is_active = true
+        AND warehouse.location_management_mode = 'MANAGED'
+      WHERE location.installation_id = $1
+        AND location.warehouse_id = $2
+        AND location.id = ANY($3::uuid[])
+        AND location.location_type = 'storage'`,
     [installationId, destinationWarehouseId, locationIds],
   );
   return result.rows;
@@ -320,18 +338,18 @@ export async function hasDownstreamOutboundMovement(client, {
           AND downstream_line.location_id IS NOT DISTINCT FROM receipt_line.location_id
           AND downstream_line.base_variant_id = receipt_line.base_variant_id
           AND downstream_line.lot_id IS NOT DISTINCT FROM receipt_line.lot_id
-          AND downstream_line.direction = 'OUT'
          JOIN inventory.inventory_movements downstream_movement
            ON downstream_movement.installation_id = downstream_line.installation_id
           AND downstream_movement.id = downstream_line.movement_id
         WHERE receipt_movement.installation_id = $1
           AND receipt_movement.id = $2
+          AND downstream_line.direction = 'OUT'
           AND downstream_movement.posted_at > receipt_movement.posted_at
           AND downstream_movement.reversal_of_movement_id IS NULL
-     ) AS has_downstream`,
+     ) AS exists`,
     [installationId, receiptMovementId],
   );
-  return Boolean(result.rows[0]?.has_downstream);
+  return result.rows[0]?.exists === true;
 }
 
 export async function insertReceiptReversal(client, {
@@ -342,12 +360,11 @@ export async function insertReceiptReversal(client, {
   reason,
   actorId,
 }) {
-  const result = await client.query(
+  await client.query(
     `INSERT INTO inventory.inventory_transfer_receipt_reversals (
        id, installation_id, receipt_id, reversal_movement_id, reason, reversed_by
-     ) VALUES ($1,$2,$3,$4,$5,$6)
-     RETURNING *`,
+     ) VALUES ($1,$2,$3,$4,$5,$6)`,
     [id, installationId, receiptId, reversalMovementId, reason, actorId],
   );
-  return result.rows[0] ?? null;
+  return getTransferReceiptById(client, { installationId, receiptId, forUpdate: false });
 }
