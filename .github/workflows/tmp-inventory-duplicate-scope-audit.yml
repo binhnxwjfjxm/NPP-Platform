@@ -1,0 +1,127 @@
+name: Temporary inventory duplicate-scope read-only audit
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/tmp-inventory-duplicate-scope-audit.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    if: github.head_ref == 'agent/audit-inventory-duplicate-scopes'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      HEROKU_APP_NAME: hung-phat
+    steps:
+      - name: Install Heroku CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://cli-assets.heroku.com/install.sh | sh >/dev/null
+
+      - name: Run production read-only inventory query
+        shell: bash
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${HEROKU_API_KEY:-}"
+          raw="$RUNNER_TEMP/inventory-duplicate-scope-audit.csv"
+          sql=$(cat <<'SQL'
+          COPY (
+            WITH grouped AS (
+              SELECT balance.installation_id,
+                     balance.warehouse_id,
+                     balance.base_variant_id,
+                     bool_or(balance.location_id IS NULL) AS has_unassigned_scope,
+                     bool_or(balance.location_id IS NOT NULL) AS has_assigned_scope,
+                     count(*) FILTER (WHERE balance.location_id IS NOT NULL) AS assigned_scope_rows,
+                     sum(CASE WHEN balance.location_id IS NULL THEN balance.on_hand_quantity ELSE 0 END)::numeric(30,12) AS unassigned_on_hand,
+                     sum(CASE WHEN balance.location_id IS NOT NULL THEN balance.on_hand_quantity ELSE 0 END)::numeric(30,12) AS assigned_on_hand
+                FROM inventory.inventory_balances balance
+               GROUP BY balance.installation_id, balance.warehouse_id, balance.base_variant_id
+            )
+            SELECT warehouse.code AS "Kho",
+                   warehouse.name AS "Tên kho",
+                   base.sku AS "SKU tồn",
+                   product.name AS "Sản phẩm",
+                   COALESCE(base_unit.name, base_unit.code, '') AS "Đơn vị tồn",
+                   grouped.unassigned_on_hand AS "Tồn Không vị trí",
+                   grouped.assigned_on_hand AS "Tồn ở vị trí thật",
+                   (grouped.unassigned_on_hand + grouped.assigned_on_hand)::numeric(30,12) AS "Tổng tồn",
+                   grouped.assigned_scope_rows AS "Số phạm vi vị trí thật",
+                   CASE
+                     WHEN grouped.assigned_on_hand > 0 THEN 'ĐANG CÓ TỒN Ở CẢ HAI PHẠM VI'
+                     ELSE 'CÒN TỒN KHÔNG VỊ TRÍ, VỊ TRÍ THẬT ĐANG 0'
+                   END AS "Phân loại"
+              FROM grouped
+              JOIN shared.warehouses warehouse
+                ON warehouse.installation_id = grouped.installation_id
+               AND warehouse.id = grouped.warehouse_id
+              JOIN shared.product_variants base
+                ON base.installation_id = grouped.installation_id
+               AND base.id = grouped.base_variant_id
+              JOIN shared.products product
+                ON product.installation_id = base.installation_id
+               AND product.id = base.product_id
+              LEFT JOIN shared.units_of_measure base_unit
+                ON base_unit.installation_id = base.installation_id
+               AND base_unit.id = base.unit_id
+             WHERE grouped.has_unassigned_scope = true
+               AND grouped.has_assigned_scope = true
+               AND grouped.unassigned_on_hand > 0
+             ORDER BY warehouse.code, product.name, base.sku
+          ) TO STDOUT WITH CSV HEADER;
+          SQL
+          )
+          heroku pg:psql --app "$HEROKU_APP_NAME" --command "$sql" > "$raw"
+          test -s "$raw"
+
+      - name: Encrypt audit result before upload
+        shell: bash
+        run: |
+          set -euo pipefail
+          cert="$RUNNER_TEMP/audit-cert.pem"
+          encrypted="$RUNNER_TEMP/inventory-duplicate-scope-audit.csv.cms"
+          cat > "$cert" <<'CERT'
+          -----BEGIN CERTIFICATE-----
+          MIIEKTCCApGgAwIBAgIUAcxfbzJgA9yQE/Sc1cPvYpGXdxkwDQYJKoZIhvcNAQEL
+          BQAwJDEiMCAGA1UEAwwZaW52ZW50b3J5LWF1ZGl0LWVwaGVtZXJhbDAeFw0yNjA5
+          MTEwMjAyMDBaFw0yNjA5MTIwMjAyMDBaMCQxIjAgBgNVBAMMGWludmVudG9yeS1h
+          dWRpdC1lcGhlbWVyYWwwggGiMA0GCSqGSIb3DQEBAQUAA4IBjwAwggGKAoIBgQCm
+          A8CQ8Ez7sgyzSzZ0PiKf0BaWsxWdjAPYV5Q4+UWiP36+p7yJDfHw0ReNevbp4cyJ
+          mWrWrFG5k5kjrdyDLzC3cTf/RnsMKuQNCaxWT8tpeqSQBVNzxWXktCTbxYrNJOlk
+          dkHoAWgaP3jkMaDl1Mm3qZTayO3ezY0ENx/y8pxEu+io8uSawIJix5cJ+kSm/5av
+          u2oXlXtKa4+1WNQVcxJrAaWQwuU9G46UjIm6tuc6Ry0Sp5Od30FifnPu5Fqrs9M9
+          YbjucU9OyVLfCdtoNoF6cMEeX3U31QtI6hdQYW5kLF3wZwbBb50QVYBFDewch3Uv
+          3E/wq1CQLyL9po4UgTmyFGIqv28/JwT0wB+PHRozZRxUcy/f+lsjT29A/lra5U8q
+          mCRjzsAlG6wJta808UnbFrFOTfDx+pKNCzC2r74HUQARNALOhyCexT1LfMtm1Cvh
+          AXbyOWV6zauDyJmLYM46h7ZwG2xVHyYfvRwwqLCMDMyW8EQXyOWsR9a2F3AVFTUC
+          AwEAAaNTMFEwHQYDVR0OBBYEFGRPHo7lH9JpIliFa/z+OoqWHQqPMB8GA1UdIwQY
+          MBaAFGRPHo7lH9JpIliFa/z+OoqWHQqPMA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZI
+          hvcNAQELBQADggGBAE0BjEGK+cPWRo6USySYRk59NqRQJ3f2fgBAuG74X6qWluSR
+          I8xMoyAWcr0yh6+VxkystzW5Hh/HMPg5O0plJ4wULx6+XvKvkE6lJibTd4bBC1s2
+          vMycFK2wqOpuSqzjtUXmjAuRvcBeo2tjeJ00R46KXkoVKh4f0jHlaD8l/eAbYO4b
+          CQAZ9RZy+mdnPTU/ulFndlhImu95DbFIm0ehU4Y9smJ/BD80xir49gAJtow0OfmA
+          a5Vhu6Zt4PsFPfS6/QUkzl9NrzerLW/wjrFUoYKolikd9iVQ6i8NFcJ/9kzDYGmU
+          2eBDukw/Z13lOwyOrx4RO/VruhtDYPPMejffRajf5jJKve9sr3CzOTicG0kVw7pT
+          OPQjozYo411FGbm1aOYuzzwQgC1SiDcdLDiY5MKgzqGdUD5MBAm1hZ7Y+uYejBp+
+          uXTn80yqSH0Pl5T7cJgX4PK+TXfLWi4LFmQ2HX9pMA5PoAMMEuRmGYCObb7Uq9WS
+          tfh8LPUHVBEfVzglSA==
+          -----END CERTIFICATE-----
+          CERT
+          openssl cms -encrypt -aes256 -binary -in "$RUNNER_TEMP/inventory-duplicate-scope-audit.csv" -out "$encrypted" -outform DER "$cert"
+          rm -f "$RUNNER_TEMP/inventory-duplicate-scope-audit.csv" "$cert"
+          test -s "$encrypted"
+
+      - name: Upload encrypted audit result
+        uses: actions/upload-artifact@v4
+        with:
+          name: inventory-duplicate-scope-audit-encrypted
+          path: ${{ runner.temp }}/inventory-duplicate-scope-audit.csv.cms
+          retention-days: 1
+          if-no-files-found: error
