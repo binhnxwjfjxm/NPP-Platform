@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { createIdempotencyKey, IDEMPOTENCY_KEY_PATTERN } from '@npp/contracts';
 import * as repository from '../db/repositories/warehouse-location-mode.js';
 import * as ledgerRepository from '../db/repositories/inventory-ledger.js';
+import * as reservationRemapRepository from '../db/repositories/warehouse-location-reservation-remap.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MODES = new Set(['MANAGED', 'UNMANAGED']);
@@ -23,9 +24,15 @@ function actorId(requestContext) {
   return text(requestContext?.actorId ?? requestContext?.principalId ?? requestContext?.subject, 128) ?? 'system';
 }
 
+function sourceApp(requestContext) {
+  return text(requestContext?.sourceApp, 128) ?? 'NPP_CORE';
+}
+
 function warehouseIds(requestContext) {
   return Array.isArray(requestContext?.scopes?.warehouseIds)
-    ? [...new Set(requestContext.scopes.warehouseIds.filter((value) => typeof value === 'string' && UUID_PATTERN.test(value.trim())).map((value) => value.trim()))]
+    ? [...new Set(requestContext.scopes.warehouseIds
+      .filter((value) => typeof value === 'string' && UUID_PATTERN.test(value.trim()))
+      .map((value) => value.trim()))]
     : [];
 }
 
@@ -82,8 +89,24 @@ function payloadHash(value) {
   return createHash('sha256').update(JSON.stringify(canonicalize(value))).digest('hex');
 }
 
+function deterministicUuid(value) {
+  const bytes = Buffer.from(createHash('sha256').update(value).digest().subarray(0, 16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x50;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = bytes.toString('hex');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+function childKey(operation, seed) {
+  return createIdempotencyKey(operation, deterministicUuid(seed));
+}
+
 function scopeKey(locationId, baseVariantId, lotId) {
   return `${locationId ?? '<null>'}|${baseVariantId}|${lotId ?? '<null>'}`;
+}
+
+function isZero(value) {
+  return (parse12(value) ?? 0n) === 0n;
 }
 
 function inferMode(rows) {
@@ -188,6 +211,122 @@ function modeShape(rows) {
   return Object.freeze({ located, unlocated, negative, reserved });
 }
 
+function reservationPlan(entries, balances, targetMode, destination) {
+  const blockers = [];
+  const relocations = [];
+  const reservedByScope = new Map();
+
+  for (const entry of entries) {
+    const reservation = entry.reservation;
+    const allocation = entry.allocation;
+    const key = scopeKey(reservation.location_id, reservation.base_variant_id, reservation.lot_id);
+    reservedByScope.set(key, (reservedByScope.get(key) ?? 0n) + (parse12(reservation.quantity) ?? 0n));
+
+    if (reservation.source_domain !== 'SALES'
+        || reservation.source_document_type !== 'SALES_FULFILLMENT_ALLOCATION'
+        || !allocation) {
+      blockers.push(blocker(
+        'ACTIVE_RESERVATION_NOT_RELOCATABLE',
+        'Kho đang có phần giữ hàng của nghiệp vụ khác chưa thể chuyển tự động.',
+        { reservationId: reservation.id },
+      ));
+      continue;
+    }
+
+    const exactMatch = reservation.source_document_id === allocation.id
+      && reservation.warehouse_id === allocation.warehouse_id
+      && reservation.location_id === allocation.location_id
+      && reservation.base_variant_id === allocation.base_variant_id
+      && reservation.lot_id === allocation.lot_id
+      && String(reservation.quantity) === String(allocation.allocated_base_quantity);
+    if (!exactMatch) {
+      blockers.push(blocker(
+        'RESERVATION_ALLOCATION_MISMATCH',
+        'Phần hàng đã giữ không khớp với phân bổ của đơn. Cần đối soát trước khi chuyển chế độ.',
+        { reservationId: reservation.id, allocationId: allocation.id },
+      ));
+      continue;
+    }
+
+    const physicallyStarted = allocation.state !== 'ACTIVE'
+      || !isZero(allocation.picked_base_quantity)
+      || !isZero(allocation.packed_base_quantity)
+      || !isZero(allocation.issued_base_quantity)
+      || !isZero(allocation.claimed_base_quantity);
+    if (physicallyStarted) {
+      blockers.push(blocker(
+        'FULFILLMENT_PHYSICAL_EXECUTION_PRESENT',
+        'Kho đang có phần hàng đã bắt đầu soạn, đóng gói hoặc lập chứng từ giao. Cần hoàn tất xử lý phần này trước khi chuyển chế độ.',
+        { allocationId: allocation.id, salesOrderId: allocation.sales_order_id },
+      ));
+      continue;
+    }
+
+    const expectedSourceLocated = targetMode === 'UNMANAGED';
+    if ((expectedSourceLocated && !reservation.location_id)
+        || (!expectedSourceLocated && reservation.location_id)) {
+      blockers.push(blocker(
+        'RESERVATION_LOCATION_DATA_MISMATCH',
+        'Vị trí của phần hàng đang giữ không khớp chế độ kho hiện tại. Cần đối soát trước khi chuyển chế độ.',
+        { reservationId: reservation.id },
+      ));
+      continue;
+    }
+
+    relocations.push(Object.freeze({
+      reservationId: reservation.id,
+      allocationId: allocation.id,
+      fulfillmentDemandId: allocation.fulfillment_demand_id,
+      salesOrderId: allocation.sales_order_id,
+      salesOrderVersionId: allocation.sales_order_version_id,
+      salesOrderLineId: allocation.sales_order_line_id,
+      warehouseId: allocation.warehouse_id,
+      baseVariantId: allocation.base_variant_id,
+      lotId: allocation.lot_id ?? null,
+      sourceLocationId: allocation.location_id ?? null,
+      destinationLocationId: targetMode === 'MANAGED' ? destination.id : null,
+      quantity: String(allocation.allocated_base_quantity),
+      allocationSequence: Number(allocation.allocation_sequence),
+      allocationPolicy: allocation.allocation_policy,
+      policyRank: Number(allocation.policy_rank),
+      manualOverrideReason: allocation.manual_override_reason ?? null,
+    }));
+  }
+
+  const balanceByScope = new Map(balances.map((row) => [
+    scopeKey(row.location_id, row.base_variant_id, row.lot_id),
+    row,
+  ]));
+  const allScopeKeys = new Set([
+    ...reservedByScope.keys(),
+    ...balances
+      .filter((row) => (parse12(row.reserved_quantity) ?? 0n) !== 0n)
+      .map((row) => scopeKey(row.location_id, row.base_variant_id, row.lot_id)),
+  ]);
+  for (const key of allScopeKeys) {
+    const balance = balanceByScope.get(key);
+    const balanceReserved = parse12(balance?.reserved_quantity ?? 0) ?? 0n;
+    const reservationReserved = reservedByScope.get(key) ?? 0n;
+    const onHand = parse12(balance?.on_hand_quantity ?? 0) ?? 0n;
+    if (balanceReserved !== reservationReserved) {
+      blockers.push(blocker(
+        'RESERVATION_BALANCE_MISMATCH',
+        'Số lượng giữ hàng không khớp số liệu tồn. Cần đối soát trước khi chuyển chế độ.',
+        { scopeKey: key, balanceReserved: format12(balanceReserved), reservationReserved: format12(reservationReserved) },
+      ));
+    }
+    if (balanceReserved > onHand) {
+      blockers.push(blocker(
+        'RESERVATION_EXCEEDS_ON_HAND',
+        'Số lượng đang giữ lớn hơn tồn thực tế tại một phạm vi kho. Cần đối soát trước khi chuyển chế độ.',
+        { scopeKey: key },
+      ));
+    }
+  }
+
+  return Object.freeze({ blockers: Object.freeze(blockers), relocations: Object.freeze(relocations) });
+}
+
 async function previewInternal(client, {
   requestContext,
   warehouseId,
@@ -242,6 +381,11 @@ async function previewInternal(client, {
     warehouseId,
     lock,
   });
+  const activeReservations = await reservationRemapRepository.loadActiveReservations(client, {
+    installationId: requestContext.installationId,
+    warehouseId,
+    lock,
+  });
   const shape = modeShape(balances);
   const inferredMode = inferMode(balances);
   const storedMode = normalizeMode(warehouse.location_management_mode);
@@ -252,13 +396,6 @@ async function previewInternal(client, {
       'NEGATIVE_STOCK_PRESENT',
       'Kho đang có tồn âm. Cần đối soát tồn âm trước khi chuyển chế độ quản lý vị trí.',
       { scopeCount: shape.negative.length },
-    ));
-  }
-  if (shape.reserved.length > 0) {
-    blockers.push(blocker(
-      'ACTIVE_RESERVATIONS_PRESENT',
-      'Kho đang có hàng đã giữ cho đơn. Cần hoàn tất hoặc giải phóng phần giữ hàng trước khi chuyển chế độ.',
-      { scopeCount: shape.reserved.length },
     ));
   }
   if (storedMode === 'MANAGED' && shape.unlocated.length > 0) {
@@ -288,6 +425,9 @@ async function previewInternal(client, {
       'Kho đã ở đúng chế độ quản lý vị trí đã chọn.',
     ));
   }
+
+  const reservationResult = reservationPlan(activeReservations, balances, normalizedTargetMode, destination);
+  blockers.push(...reservationResult.blockers);
 
   const sourceRows = normalizedTargetMode === 'UNMANAGED' ? shape.located : shape.unlocated;
   const draftLines = sourceRows.map((row, index) => ({
@@ -344,6 +484,15 @@ async function previewInternal(client, {
       sourceScopeVersion: line.sourceScopeVersion,
       destinationScopeVersion: line.destinationScopeVersion,
     })),
+    reservationRelocations: reservationResult.relocations.map((item) => ({
+      reservationId: item.reservationId,
+      allocationId: item.allocationId,
+      baseVariantId: item.baseVariantId,
+      lotId: item.lotId,
+      sourceLocationId: item.sourceLocationId,
+      destinationLocationId: item.destinationLocationId,
+      quantity: item.quantity,
+    })),
     blockers: blockers.map((item) => ({ code: item.code, details: item.details })),
   };
   const previewHash = payloadHash(previewShape);
@@ -371,8 +520,10 @@ async function previewInternal(client, {
         affectedScopeCount: lines.length,
         lotScopeCount,
         totalBaseQuantity: format12(totalQuantity),
+        relocatedReservationCount: reservationResult.relocations.length,
       }),
       lines: Object.freeze(lines),
+      reservationRelocations: reservationResult.relocations,
       blockers: Object.freeze(blockers),
       canConvert: blockers.length === 0,
       previewHash,
@@ -382,6 +533,217 @@ async function previewInternal(client, {
 
 export async function previewWarehouseLocationMode(client, input) {
   return previewInternal(client, { ...input, lock: false });
+}
+
+async function releaseReservationsBeforeStockMove(client, {
+  requestContext,
+  runId,
+  relocations,
+  occurredAt,
+}) {
+  for (const item of relocations) {
+    await reservationRemapRepository.lockReservationScope(client, {
+      installationId: requestContext.installationId,
+      warehouseId: item.warehouseId,
+      locationId: item.sourceLocationId,
+      baseVariantId: item.baseVariantId,
+      lotId: item.lotId,
+    });
+    const releasedReservation = await reservationRemapRepository.releaseReservation(client, {
+      installationId: requestContext.installationId,
+      reservationId: item.reservationId,
+      transitionedAt: occurredAt,
+    });
+    if (!releasedReservation) {
+      return failure('WAREHOUSE_LOCATION_RESERVATION_CONFLICT', 'Phần hàng đang giữ đã thay đổi. Hãy xem trước lại.', true);
+    }
+    const reservationEventHash = payloadHash({
+      runId,
+      reservationId: item.reservationId,
+      transition: 'RELEASE_TO_RELEASED',
+      destinationLocationId: item.destinationLocationId,
+    });
+    await reservationRemapRepository.insertReservationEvent(client, {
+      id: deterministicUuid(`${runId}|${item.reservationId}|release-event`),
+      installationId: requestContext.installationId,
+      reservationId: item.reservationId,
+      transition: 'RELEASE_TO_RELEASED',
+      actorId: actorId(requestContext),
+      requestId: requestContext.requestId,
+      sourceApp: sourceApp(requestContext),
+      payloadHash: reservationEventHash,
+      occurredAt,
+      metadata: {
+        action: 'warehouse-location-mode-change',
+        warehouseLocationModeRunId: runId,
+        relocatedToLocationId: item.destinationLocationId,
+        allocationId: item.allocationId,
+        salesOrderId: item.salesOrderId,
+      },
+    });
+
+    const releasedAllocation = await reservationRemapRepository.releaseAllocation(client, {
+      installationId: requestContext.installationId,
+      allocationId: item.allocationId,
+      actorId: actorId(requestContext),
+    });
+    if (!releasedAllocation) {
+      return failure('WAREHOUSE_LOCATION_ALLOCATION_CONFLICT', 'Phân bổ hàng của đơn đã thay đổi. Hãy xem trước lại.', true);
+    }
+    const allocationEventHash = payloadHash({
+      runId,
+      allocationId: item.allocationId,
+      eventType: 'RELEASED',
+      quantity: item.quantity,
+      destinationLocationId: item.destinationLocationId,
+    });
+    await reservationRemapRepository.insertAllocationEvent(client, {
+      id: deterministicUuid(`${runId}|${item.allocationId}|release-event`),
+      installationId: requestContext.installationId,
+      allocationId: item.allocationId,
+      eventType: 'RELEASED',
+      quantity: item.quantity,
+      actorId: actorId(requestContext),
+      requestId: requestContext.requestId,
+      sourceApp: sourceApp(requestContext),
+      idempotencyKey: childKey('wlm-allocation-release', `${runId}|${item.allocationId}|release-key`),
+      payloadHash: allocationEventHash,
+      reason: 'Chuyển phần hàng đang giữ theo chế độ vị trí của kho',
+      metadata: {
+        warehouseLocationModeRunId: runId,
+        relocatedToLocationId: item.destinationLocationId,
+      },
+      occurredAt,
+    });
+  }
+  return Object.freeze({ ok: true });
+}
+
+async function recreateReservationsAfterStockMove(client, {
+  requestContext,
+  runId,
+  relocations,
+  occurredAt,
+}) {
+  const mappings = [];
+  for (const item of relocations) {
+    await reservationRemapRepository.lockReservationScope(client, {
+      installationId: requestContext.installationId,
+      warehouseId: item.warehouseId,
+      locationId: item.destinationLocationId,
+      baseVariantId: item.baseVariantId,
+      lotId: item.lotId,
+    });
+    const allocationId = deterministicUuid(`${runId}|${item.allocationId}|replacement-allocation`);
+    const reservationId = deterministicUuid(`${runId}|${item.reservationId}|replacement-reservation`);
+    const reservationKey = childKey('wlm-reservation-create', `${runId}|${item.reservationId}|reservation-key`);
+    const reservationHash = payloadHash({
+      runId,
+      relocatedFromReservationId: item.reservationId,
+      allocationId,
+      warehouseId: item.warehouseId,
+      locationId: item.destinationLocationId,
+      baseVariantId: item.baseVariantId,
+      lotId: item.lotId,
+      quantity: item.quantity,
+    });
+    await reservationRemapRepository.insertReservation(client, {
+      id: reservationId,
+      installationId: requestContext.installationId,
+      warehouseId: item.warehouseId,
+      locationId: item.destinationLocationId,
+      baseVariantId: item.baseVariantId,
+      lotId: item.lotId,
+      quantity: item.quantity,
+      allocationId,
+      occurredAt,
+      idempotencyKey: reservationKey,
+      payloadHash: reservationHash,
+      metadata: {
+        warehouseLocationModeRunId: runId,
+        relocatedFromReservationId: item.reservationId,
+        relocatedFromAllocationId: item.allocationId,
+        salesOrderId: item.salesOrderId,
+      },
+    });
+    await reservationRemapRepository.insertReservationEvent(client, {
+      id: deterministicUuid(`${runId}|${reservationId}|create-event`),
+      installationId: requestContext.installationId,
+      reservationId,
+      transition: 'CREATE_ACTIVE',
+      actorId: actorId(requestContext),
+      requestId: requestContext.requestId,
+      sourceApp: sourceApp(requestContext),
+      payloadHash: reservationHash,
+      occurredAt,
+      metadata: {
+        action: 'warehouse-location-mode-change',
+        warehouseLocationModeRunId: runId,
+        relocatedFromReservationId: item.reservationId,
+        allocationId,
+        salesOrderId: item.salesOrderId,
+      },
+    });
+
+    const operationKey = childKey('wlm-allocation-operation', `${runId}|${item.allocationId}|operation-key`);
+    const allocationKey = childKey('wlm-allocation-create', `${runId}|${item.allocationId}|allocation-key`);
+    const allocationHash = payloadHash({
+      runId,
+      relocatedFromAllocationId: item.allocationId,
+      allocationId,
+      reservationId,
+      locationId: item.destinationLocationId,
+      quantity: item.quantity,
+    });
+    await reservationRemapRepository.insertAllocation(client, {
+      id: allocationId,
+      installationId: requestContext.installationId,
+      fulfillmentDemandId: item.fulfillmentDemandId,
+      salesOrderId: item.salesOrderId,
+      salesOrderVersionId: item.salesOrderVersionId,
+      salesOrderLineId: item.salesOrderLineId,
+      warehouseId: item.warehouseId,
+      locationId: item.destinationLocationId,
+      baseVariantId: item.baseVariantId,
+      lotId: item.lotId,
+      inventoryReservationId: reservationId,
+      allocationSequence: item.allocationSequence,
+      allocationPolicy: item.allocationPolicy,
+      policyRank: item.policyRank,
+      manualOverrideReason: item.manualOverrideReason,
+      quantity: item.quantity,
+      operationIdempotencyKey: operationKey,
+      idempotencyKey: allocationKey,
+      payloadHash: allocationHash,
+      actorId: actorId(requestContext),
+    });
+    await reservationRemapRepository.insertAllocationEvent(client, {
+      id: deterministicUuid(`${runId}|${allocationId}|allocated-event`),
+      installationId: requestContext.installationId,
+      allocationId,
+      eventType: 'ALLOCATED',
+      quantity: item.quantity,
+      actorId: actorId(requestContext),
+      requestId: requestContext.requestId,
+      sourceApp: sourceApp(requestContext),
+      idempotencyKey: childKey('wlm-allocation-event', `${runId}|${item.allocationId}|allocated-event-key`),
+      payloadHash: allocationHash,
+      reason: 'Giữ lại phần hàng của đơn sau khi chuyển chế độ vị trí kho',
+      metadata: {
+        warehouseLocationModeRunId: runId,
+        relocatedFromAllocationId: item.allocationId,
+        relocatedFromReservationId: item.reservationId,
+      },
+      occurredAt,
+    });
+    mappings.push(Object.freeze({
+      fromReservationId: item.reservationId,
+      toReservationId: reservationId,
+      fromAllocationId: item.allocationId,
+      toAllocationId: allocationId,
+    }));
+  }
+  return Object.freeze(mappings);
 }
 
 export async function convertWarehouseLocationMode(client, {
@@ -411,6 +773,9 @@ export async function convertWarehouseLocationMode(client, {
     idempotencyKey,
   });
   if (replay) {
+    if (!hasWarehouse(requestContext, replay.warehouse_id)) {
+      return failure('WAREHOUSE_SCOPE_DENIED', 'Kho nằm ngoài phạm vi được cấp quyền.');
+    }
     if (replay.payload_hash !== requestHash) {
       return failure('IDEMPOTENCY_PAYLOAD_MISMATCH', 'Idempotency-Key đã được dùng cho một lần chuyển chế độ khác.');
     }
@@ -429,7 +794,7 @@ export async function convertWarehouseLocationMode(client, {
   if (preview.previewHash !== suppliedPreviewHash) {
     return failure(
       'WAREHOUSE_LOCATION_PREVIEW_STALE',
-      'Dữ liệu tồn kho đã thay đổi. Hãy xem trước lại trước khi xác nhận.',
+      'Dữ liệu tồn kho hoặc phần hàng đang giữ đã thay đổi. Hãy xem trước lại trước khi xác nhận.',
       false,
       { currentPreviewHash: preview.previewHash },
     );
@@ -441,6 +806,7 @@ export async function convertWarehouseLocationMode(client, {
 
   const runId = randomUUID();
   const completedAt = new Date();
+  const occurredAt = completedAt.toISOString();
   const issueMovementId = preview.lines.length > 0 ? randomUUID() : null;
   const receiptMovementId = preview.lines.length > 0 ? randomUUID() : null;
   const issueKey = issueMovementId ? createIdempotencyKey('warehouse-location-mode-issue', runId) : null;
@@ -469,6 +835,14 @@ export async function convertWarehouseLocationMode(client, {
     if (collision) return failure('IDEMPOTENCY_PAYLOAD_MISMATCH', 'Khóa ghi sổ nhận vị trí đã tồn tại.');
   }
 
+  const releaseResult = await releaseReservationsBeforeStockMove(client, {
+    requestContext,
+    runId,
+    relocations: preview.reservationRelocations,
+    occurredAt,
+  });
+  if (!releaseResult.ok) return releaseResult;
+
   const issueLineIds = new Map();
   const receiptLineIds = new Map();
   if (preview.lines.length > 0) {
@@ -491,7 +865,7 @@ export async function convertWarehouseLocationMode(client, {
       postedAt: completedAt,
       postedBy: actorId(requestContext),
       requestId: requestContext.requestId,
-      sourceApp: requestContext.sourceApp ?? 'NPP_CORE',
+      sourceApp: sourceApp(requestContext),
       idempotencyKey: issueKey,
       payloadHash: payloadHash({ runId, side: 'ISSUE', lines: preview.lines }),
       reversalOfMovementId: null,
@@ -552,7 +926,7 @@ export async function convertWarehouseLocationMode(client, {
       postedAt: receiptAt,
       postedBy: actorId(requestContext),
       requestId: requestContext.requestId,
-      sourceApp: requestContext.sourceApp ?? 'NPP_CORE',
+      sourceApp: sourceApp(requestContext),
       idempotencyKey: receiptKey,
       payloadHash: payloadHash({ runId, side: 'RECEIPT', lines: preview.lines }),
       reversalOfMovementId: null,
@@ -601,6 +975,13 @@ export async function convertWarehouseLocationMode(client, {
     }
   }
 
+  const reservationMappings = await recreateReservationsAfterStockMove(client, {
+    requestContext,
+    runId,
+    relocations: preview.reservationRelocations,
+    occurredAt: new Date(completedAt.getTime() + 2).toISOString(),
+  });
+
   const updatedWarehouse = await repository.updateWarehouseMode(client, {
     installationId: requestContext.installationId,
     warehouseId,
@@ -634,12 +1015,15 @@ export async function convertWarehouseLocationMode(client, {
     completedAt,
     completedBy: actorId(requestContext),
     requestId: requestContext.requestId,
-    sourceApp: requestContext.sourceApp ?? 'NPP_CORE',
+    sourceApp: sourceApp(requestContext),
     metadata: {
       previousModeVersion: preview.warehouse.modeVersion,
       nextModeVersion: String(updatedWarehouse.location_management_mode_version),
       lotScopeCount: preview.summary.lotScopeCount,
+      relocatedReservationCount: reservationMappings.length,
+      reservationMappings,
       quantityInvariant: 'warehouse_total_unchanged',
+      reservedQuantityInvariant: 'warehouse_reserved_total_unchanged',
       valueInvariant: 'transfer_carrying_cost',
     },
   });
@@ -713,4 +1097,6 @@ export const warehouseLocationModeInternals = Object.freeze({
   format12,
   payloadHash,
   scopeKey,
+  reservationPlan,
+  deterministicUuid,
 });
