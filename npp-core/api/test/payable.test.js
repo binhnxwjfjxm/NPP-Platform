@@ -29,7 +29,7 @@ async function seedFixture(pool, installationId) {
     baseVariantId: randomUUID(), cartonVariantId: randomUUID(),
   };
   await pool.query(`INSERT INTO shared.branches (id,installation_id,code,name,is_active,created_by,updated_by) VALUES ($1,$2,$3,$4,true,$5,$5)`, [ids.branchId, installationId, `PB-${suffix}`, `Chi nhánh ${suffix}`, actor]);
-  await pool.query(`INSERT INTO shared.warehouses (id,installation_id,branch_id,code,name,warehouse_type,is_active,created_by,updated_by) VALUES ($1,$2,$3,$4,$5,'main',true,$6,$6)`, [ids.warehouseId, installationId, ids.branchId, `PW-${suffix}`, `Kho ${suffix}`, actor]);
+  await pool.query(`INSERT INTO shared.warehouses (id,installation_id,branch_id,code,name,warehouse_type,location_management_mode,is_active,created_by,updated_by) VALUES ($1,$2,$3,$4,$5,'main','MANAGED',true,$6,$6)`, [ids.warehouseId, installationId, ids.branchId, `PW-${suffix}`, `Kho ${suffix}`, actor]);
   await pool.query(`INSERT INTO shared.warehouse_locations (id,installation_id,warehouse_id,code,name,location_type,is_active,created_by,updated_by) VALUES ($1,$2,$3,$4,$5,'storage',true,$6,$6)`, [ids.locationId, installationId, ids.warehouseId, `PL-${suffix}`, `Vị trí ${suffix}`, actor]);
   await pool.query(`INSERT INTO shared.suppliers (id,installation_id,code,name,is_active,created_by,updated_by) VALUES ($1,$2,$3,$4,true,$5,$5)`, [ids.supplierId, installationId, `PS-${suffix}`, `Nhà cung cấp ${suffix}`, actor]);
   await pool.query(`INSERT INTO shared.supplier_payment_terms (id,installation_id,supplier_id,payment_method,term_days,is_primary,is_active,created_by,updated_by) VALUES ($1,$2,$3,'BANK_TRANSFER',30,true,true,$4,$4)`, [ids.paymentTermId, installationId, ids.supplierId, actor]);

@@ -32,7 +32,7 @@ function noCostPreviewClient({ warehouseId, sourceVariantId, baseVariantId }) {
     async query(sql) {
       const statement = String(sql);
       if (statement.includes('FROM shared.warehouses')) {
-        return { rows: [{ id: warehouseId, code: 'KHO-01', name: 'Kho chính' }] };
+        return { rows: [{ id: warehouseId, code: 'KHO-01', name: 'Kho chính', location_management_mode: 'UNMANAGED' }] };
       }
       if (statement.includes('FROM information_schema.columns')) {
         return { rows: [{ present: true }] };

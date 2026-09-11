@@ -22,7 +22,7 @@ const transferReceiptRepository = source('../src/db/repositories/inventory-trans
 
 test('migration 132 keeps warehouse as location authority and remaps pre-execution allocations safely', () => {
   assert.match(migrationIndex, /132_warehouse_location_authority_allocation/);
-  assert.match(migration132, /warehouse\.location_management_mode/);
+  assert.match(migration132, /location_management_mode/);
   assert.match(migration132, /npp\.warehouse_location_mode_remap/);
   assert.match(migration132, /warehouseLocationModeRunId/);
   assert.match(migration132, /relocatedFromReservationId/);

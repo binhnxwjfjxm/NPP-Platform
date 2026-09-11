@@ -83,10 +83,10 @@ async function seedStocktakeMasterData(pool, installationId) {
   );
   await pool.query(
     `INSERT INTO shared.warehouses (
-       id, installation_id, branch_id, code, name, warehouse_type, is_active, created_by, updated_by
+       id, installation_id, branch_id, code, name, warehouse_type, location_management_mode, is_active, created_by, updated_by
      ) VALUES
-       ($1,$3,$4,$5,'Kho kiểm kê','main',true,$7,$7),
-       ($2,$3,$4,$6,'Kho ngoài phạm vi','main',true,$7,$7)`,
+       ($1,$3,$4,$5,'Kho kiểm kê','main','MANAGED',true,$7,$7),
+       ($2,$3,$4,$6,'Kho ngoài phạm vi','main','MANAGED',true,$7,$7)`,
     [warehouseId, otherWarehouseId, installationId, branchId, `STK-${suffix}`, `OTH-${suffix}`, 'test:seed'],
   );
   await pool.query(

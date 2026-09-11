@@ -78,8 +78,8 @@ test('PostgreSQL reconciliation receives exact stock once and closes only at zer
     await fixture.query("SET LOCAL session_replication_role = 'replica'");
     await fixture.query(`
       INSERT INTO shared.warehouses
-        (id, installation_id, branch_id, code, name, warehouse_type, is_active, created_by, updated_by)
-      VALUES (${quoted(ids.warehouse)}, ${quoted(installationId)}, ${quoted(ids.branch)}, 'WH-RECON', 'Kho đối soát', 'main', true, ${quoted(actor)}, ${quoted(actor)});
+        (id, installation_id, branch_id, code, name, warehouse_type, location_management_mode, is_active, created_by, updated_by)
+      VALUES (${quoted(ids.warehouse)}, ${quoted(installationId)}, ${quoted(ids.branch)}, 'WH-RECON', 'Kho đối soát', 'main', 'MANAGED', true, ${quoted(actor)}, ${quoted(actor)});
 
       INSERT INTO shared.warehouse_locations
         (id, installation_id, warehouse_id, code, name, location_type, is_active, created_by, updated_by)

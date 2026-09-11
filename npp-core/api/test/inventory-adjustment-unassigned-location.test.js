@@ -19,7 +19,7 @@ function scope({ locationId, locationCode, onHand = '0.000000000000' }) {
   };
 }
 
-test('bulk preview treats Không vị trí as a real existing stock scope and never hides it behind auto-fill', () => {
+test('bulk preview separates managed location stock from unmanaged common stock without auto-fill', () => {
   const input = {
     lineNumber: 2,
     sku: 'VAIMOC',
@@ -39,27 +39,25 @@ test('bulk preview treats Không vị trí as a real existing stock scope and ne
     }),
   ];
 
-  const unresolved = inventoryAdjustmentBulkInternals.resolveScopeSelection(input, source, candidates);
-  assert.equal(unresolved.locationCode, null);
-  assert.equal(unresolved.locationAutoFilled, false);
-  assert.equal(unresolved.requiresLocationSelection, true);
-  assert.deepEqual(
-    unresolved.scopeOptions.map((item) => item.locationCode),
-    [inventoryAdjustmentBulkInternals.UNASSIGNED_LOCATION_CODE, '001'],
-  );
+  const managed = inventoryAdjustmentBulkInternals.resolveScopeSelection(input, source, candidates, 'MANAGED');
+  assert.equal(managed.locationCode, null);
+  assert.equal(managed.locationAutoFilled, false);
+  assert.equal(managed.requiresLocationSelection, true);
+  assert.deepEqual(managed.scopeOptions.map((item) => item.locationCode), ['001']);
+  assert.equal(managed.candidates.length, 1);
+  assert.equal(managed.candidates[0].location_id, '33333333-3333-4333-8333-333333333333');
 
-  const selected = inventoryAdjustmentBulkInternals.resolveScopeSelection(
-    { ...input, locationCode: inventoryAdjustmentBulkInternals.UNASSIGNED_LOCATION_CODE },
-    source,
-    candidates,
-  );
-  assert.equal(selected.requiresLocationSelection, false);
-  assert.equal(selected.candidates.length, 1);
-  assert.equal(selected.candidates[0].location_id, null);
-  assert.equal(selected.candidates[0].on_hand_quantity, '27306.000000000000');
+  const unmanaged = inventoryAdjustmentBulkInternals.resolveScopeSelection(input, source, candidates, 'UNMANAGED');
+  assert.equal(unmanaged.locationCode, null);
+  assert.equal(unmanaged.locationAutoFilled, false);
+  assert.equal(unmanaged.requiresLocationSelection, false);
+  assert.deepEqual(unmanaged.scopeOptions.map((item) => item.locationCode), [null]);
+  assert.equal(unmanaged.candidates.length, 1);
+  assert.equal(unmanaged.candidates[0].location_id, null);
+  assert.equal(unmanaged.candidates[0].on_hand_quantity, '27306.000000000000');
 });
 
-test('governed manual adjustment permits missing location only for reducing legacy unassigned stock', () => {
+test('manual adjustment normalization leaves location authority to the selected warehouse mode', () => {
   const basePayload = {
     warehouseId,
     documentKind: 'MANUAL_ADJUSTMENT',
@@ -80,8 +78,13 @@ test('governed manual adjustment permits missing location only for reducing lega
     adjustmentDirection: 'IN',
     reasonCode: 'MANUAL_COUNT_CORRECTION_IN',
   });
-  assert.equal(increase.ok, false);
-  assert.equal(increase.code, 'SOURCE_LOCATION_REQUIRED');
+  assert.equal(increase.ok, true);
+  assert.equal(increase.value.lines[0].source_location_id, null);
+
+  const serviceSource = readFileSync(new URL('../src/services/inventory-adjustment.js', import.meta.url), 'utf8');
+  assert.match(serviceSource, /WAREHOUSE_LOCATION_MODE_REQUIRED/);
+  assert.match(serviceSource, /LOCATION_REQUIRED/);
+  assert.match(serviceSource, /LOCATION_NOT_ALLOWED/);
 });
 
 test('repository and migration keep null-location scope concurrency and lineage exact', () => {
@@ -93,7 +96,6 @@ test('repository and migration keep null-location scope concurrency and lineage 
   );
 
   assert.match(bulkSource, /balance\.location_id IS NULL/);
-  assert.match(bulkSource, /UNASSIGNED_LOCATION_INCREASE_DENIED/);
   assert.match(repositorySource, /LEFT JOIN shared\.warehouse_locations source_location/);
   assert.match(repositorySource, /version\.location_id IS NOT DISTINCT FROM requested\.location_id/);
   assert.match(repositorySource, /balance\.location_id IS NOT DISTINCT FROM requested\.location_id/);

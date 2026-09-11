@@ -47,36 +47,36 @@ test('bulk input flags duplicate SKU scope before preview', () => {
   assert.ok(result.rows.every((item) => item.errors.some((error) => error.code === 'DUPLICATE_ROW')));
 });
 
-test('bulk scope auto-fills the sole valid required lot instead of asking for a file column', () => {
+test('bulk scope auto-fills the sole valid required lot but never auto-selects a managed warehouse location', () => {
   const input = { ...row({ actualQuantity: '8', locationCode: null, lotCode: null }), actualScaled6: 8n };
   const source = { lot_tracking_mode: 'REQUIRED' };
   const resolved = inventoryAdjustmentBulkInternals.resolveScopeSelection(input, source, [
     balance({ locationCode: 'A01', lotCode: 'LO-001' }),
   ]);
   assert.equal(resolved.lotCode, 'LO-001');
-  assert.equal(resolved.locationCode, 'A01');
+  assert.equal(resolved.locationCode, null);
   assert.equal(resolved.lotAutoFilled, true);
-  assert.equal(resolved.locationAutoFilled, true);
+  assert.equal(resolved.locationAutoFilled, false);
   assert.equal(resolved.requiresLotSelection, false);
-  assert.equal(resolved.requiresLocationSelection, false);
+  assert.equal(resolved.requiresLocationSelection, true);
 });
 
-test('bulk scope requires a user lot choice when tracking policy has multiple valid lots', () => {
+test('bulk scope requires explicit managed location and user lot when multiple valid lots exist', () => {
   const input = { ...row({ actualQuantity: '8', locationCode: null, lotCode: null }), actualScaled6: 8n };
   const source = { lot_tracking_mode: 'REQUIRED' };
   const resolved = inventoryAdjustmentBulkInternals.resolveScopeSelection(input, source, [
     balance({ locationCode: 'A01', lotCode: 'LO-001' }),
     balance({ locationCode: 'A01', lotCode: 'LO-002' }),
   ]);
-  assert.equal(resolved.locationCode, 'A01');
-  assert.equal(resolved.locationAutoFilled, true);
+  assert.equal(resolved.locationCode, null);
+  assert.equal(resolved.locationAutoFilled, false);
   assert.equal(resolved.lotCode, null);
   assert.equal(resolved.requiresLotSelection, true);
-  assert.equal(resolved.requiresLocationSelection, false);
+  assert.equal(resolved.requiresLocationSelection, true);
   assert.deepEqual(resolved.scopeOptions.map((item) => item.lotCode), ['LO-001', 'LO-002']);
 });
 
-test('bulk scope requires location only when exact scope is still ambiguous', () => {
+test('bulk scope may infer a unique lot but always requires explicit managed location', () => {
   const input = { ...row({ actualQuantity: '8', locationCode: null, lotCode: null }), actualScaled6: 8n };
   const requiredLot = inventoryAdjustmentBulkInternals.resolveScopeSelection(input, { lot_tracking_mode: 'REQUIRED' }, [
     balance({ locationCode: 'A01', lotCode: 'LO-001' }),
@@ -92,20 +92,22 @@ test('bulk scope requires location only when exact scope is still ambiguous', ()
   ]);
   assert.equal(noLotTracking.lotRequired, false);
   assert.equal(noLotTracking.requiresLotSelection, false);
-  assert.equal(noLotTracking.locationCode, 'A01');
-  assert.equal(noLotTracking.requiresLocationSelection, false);
+  assert.equal(noLotTracking.locationCode, null);
+  assert.equal(noLotTracking.locationAutoFilled, false);
+  assert.equal(noLotTracking.requiresLocationSelection, true);
 });
 
-test('bulk scope uses active warehouse locations even when a SKU has no balance there yet', () => {
+test('bulk scope exposes active managed warehouse locations as choices without auto-selecting one', () => {
   const input = { ...row({ actualQuantity: '8', locationCode: null, lotCode: null }), actualScaled6: 8n };
   const source = { lot_tracking_mode: 'NONE' };
 
   const soleLocation = inventoryAdjustmentBulkInternals.resolveScopeSelection(input, source, [
     balance({ locationCode: 'A01', onHandQuantity: '0.000000000000' }),
   ]);
-  assert.equal(soleLocation.locationCode, 'A01');
-  assert.equal(soleLocation.locationAutoFilled, true);
-  assert.equal(soleLocation.requiresLocationSelection, false);
+  assert.equal(soleLocation.locationCode, null);
+  assert.equal(soleLocation.locationAutoFilled, false);
+  assert.equal(soleLocation.requiresLocationSelection, true);
+  assert.deepEqual(soleLocation.scopeOptions.map((item) => item.locationCode), ['A01']);
 
   const multipleLocations = inventoryAdjustmentBulkInternals.resolveScopeSelection(input, source, [
     balance({ locationCode: 'A01', onHandQuantity: '10.000000000000' }),
