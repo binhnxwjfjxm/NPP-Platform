@@ -175,7 +175,11 @@ async function loadBalanceContext(client, { installationId, warehouseId, scopes 
          ON lot.installation_id = balance.installation_id
         AND lot.id = balance.lot_id
       ORDER BY base.id ASC, balance.location_id ASC NULLS FIRST, balance.lot_id ASC NULLS FIRST`,
-    [installationId, warehouseId, JSON.stringify(scopes)],
+    [installationId, warehouseId, JSON.stringify(scopes.map((scope) => ({
+      base_variant_id: scope.baseVariantId,
+      location_id: scope.locationId,
+      normalized_lot_code: scope.normalizedLotCode,
+    })))],
   );
   return result.rows ?? [];
 }
