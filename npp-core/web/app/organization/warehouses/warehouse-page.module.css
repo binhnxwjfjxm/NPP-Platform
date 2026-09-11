@@ -1,0 +1,29 @@
+.historyShortcut {
+  position: fixed;
+  top: 78px;
+  right: 28px;
+  z-index: 40;
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--border-strong, #cbd5e1);
+  border-radius: 10px;
+  background: var(--surface, #ffffff);
+  color: var(--text-primary, #0f172a);
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: 0 6px 18px rgb(15 23 42 / 8%);
+}
+
+.historyShortcut:hover {
+  border-color: var(--accent, #15803d);
+}
+
+@media (max-width: 900px) {
+  .historyShortcut {
+    position: static;
+    margin: 12px 16px 0;
+  }
+}
