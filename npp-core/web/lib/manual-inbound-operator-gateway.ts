@@ -139,6 +139,14 @@ export function listManualInboundOperatorLocations<T>(warehouseId: string, reque
   });
 }
 
+export function listManualInboundOperatorSuppliers<T>(requestId: string): Promise<T> {
+  return requestCore<T>({
+    path: '/api/inventory/manual-inbounds/operator/suppliers',
+    method: 'GET',
+    requestId,
+  });
+}
+
 export function searchManualInboundOperatorProducts<T>({
   warehouseId,
   search,

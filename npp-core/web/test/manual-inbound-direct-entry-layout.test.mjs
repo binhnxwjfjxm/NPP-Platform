@@ -7,17 +7,23 @@ const css = readFileSync(new URL('../app/inventory/manual-inbounds/manual-inboun
 const gateway = readFileSync(new URL('../lib/manual-inbound-operator-gateway.ts', import.meta.url), 'utf8');
 const route = readFileSync(new URL('../app/api/inventory/manual-inbounds/operator/[action]/route.ts', import.meta.url), 'utf8');
 
-test('Nhập kho thủ công chia 70/30 và giữ vùng nhập hàng là trọng tâm', () => {
-  assert.match(css, /workspaceGrid\{[^}]*grid-template-columns:minmax\(0,7fr\) minmax\(300px,3fr\)/);
+test('Nhập kho thủ công tận dụng chiều ngang và lịch sử không chồng lên vùng nhập', () => {
+  assert.match(css, /workspaceGrid\{[^}]*grid-template-columns:minmax\(0,1fr\) minmax\(320px,360px\)/);
+  assert.match(css, /workspaceGrid\{[^}]*width:100%[^}]*max-width:none/);
   assert.match(workspace, /className=\{styles\.entryColumn\}/);
   assert.match(workspace, /className=\{styles\.historyColumn\}/);
-  assert.match(css, /productColumn\{[^}]*min-width:280px/);
-  assert.match(css, /itemsCard\{min-height:520px/);
+  assert.match(css, /historyColumn\{[^}]*position:static/);
+  assert.match(css, /itemsCard\{min-height:0/);
+  assert.match(css, /productColumn\{[^}]*min-width:300px/);
 });
 
-test('Thông tin chứng từ gọn và Ghi chú chỉ còn một dòng', () => {
+test('Thông tin chứng từ gọn, có Nhà cung cấp tùy chọn và Ghi chú một dòng', () => {
   assert.match(workspace, /<AppShell title="Nhập kho thủ công" kicker="Kho">/);
   assert.doesNotMatch(workspace, /subtitle=/);
+  assert.match(css, /headerGrid\{[^}]*grid-template-columns:repeat\(5,minmax\(0,1fr\)\)/);
+  assert.match(workspace, /<span>Nhà cung cấp<\/span><select value=\{supplierId\}/);
+  assert.match(workspace, /<option value="">Không chọn<\/option>/);
+  assert.match(workspace, /\/api\/inventory\/manual-inbounds\/operator\/suppliers/);
   assert.match(workspace, /className=\{styles\.noteField\}><span>Ghi chú[\s\S]*?<input value=\{note\}/);
   assert.doesNotMatch(workspace, /<textarea value=\{note\}/);
 });
@@ -32,8 +38,18 @@ test('Nhập trực tiếp và Nhập từ file dùng chung preview-confirm cano
   assert.match(workspace, /\/api\/inventory\/manual-inbounds\/operator\/confirm/);
 });
 
-test('Web gateway có tìm hàng riêng cho Nhập kho thủ công', () => {
+test('Kết quả kiểm tra giữ cột cũ và bổ sung tồn hiện tại, tồn sau nhập', () => {
+  assert.match(workspace, /<th>Tồn hiện tại<\/th><th>Tồn sau nhập<\/th>/);
+  assert.match(workspace, /row\.currentOnHand/);
+  assert.match(workspace, /row\.afterOnHand/);
+  assert.match(css, /previewTable\{min-width:1420px/);
+});
+
+test('Web gateway có endpoint riêng cho hàng và nhà cung cấp của Nhập kho thủ công', () => {
   assert.match(gateway, /searchManualInboundOperatorProducts/);
   assert.match(gateway, /operator\/products/);
+  assert.match(gateway, /listManualInboundOperatorSuppliers/);
+  assert.match(gateway, /operator\/suppliers/);
   assert.match(route, /params\.action === 'products'/);
+  assert.match(route, /params\.action === 'suppliers'/);
 });

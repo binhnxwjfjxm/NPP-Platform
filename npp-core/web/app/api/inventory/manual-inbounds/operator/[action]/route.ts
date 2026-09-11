@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   confirmManualInboundOperator,
   listManualInboundOperatorLocations,
+  listManualInboundOperatorSuppliers,
   listManualInboundOperatorWarehouses,
   normalizeManualInboundOperatorGatewayError,
   previewManualInboundOperator,
@@ -55,6 +56,9 @@ export async function GET(
         await listManualInboundOperatorLocations(request.nextUrl.searchParams.get('warehouseId') ?? '', requestId),
         requestId,
       );
+    }
+    if (params.action === 'suppliers') {
+      return success(await listManualInboundOperatorSuppliers(requestId), requestId);
     }
     if (params.action === 'products') {
       return success(await searchManualInboundOperatorProducts({

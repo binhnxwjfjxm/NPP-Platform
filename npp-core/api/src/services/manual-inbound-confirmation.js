@@ -1,9 +1,9 @@
 import { PERMISSIONS } from '../access/permissions.js';
 import { postManualInbound } from './manual-inbound.js';
 import {
-  previewManualInbound,
   validateManualInboundPostInventoryPolicy,
 } from './manual-inbound-preparation.js';
+import { previewManualInboundOperator } from './manual-inbound-operator-preview.js';
 
 function failure(code, message, statusCode = 400, details = {}) {
   return Object.freeze({ ok: false, code, message, statusCode, retryable: false, details });
@@ -22,6 +22,11 @@ function buildPostingPayload(preview) {
     note: preview.header.note,
     metadata: Object.freeze({
       preparedFrom: 'MANUAL_INBOUND_OPERATOR_PREVIEW',
+      ...(preview.header.supplierId ? {
+        supplierId: preview.header.supplierId,
+        supplierCode: preview.header.supplierCode,
+        supplierName: preview.header.supplierName,
+      } : {}),
     }),
     rows: Object.freeze(preview.rows.map((row) => Object.freeze({
       sourceVariantId: row.sourceVariantId,
@@ -46,7 +51,7 @@ export async function confirmManualInbound({ adapter, requestContext, idempotenc
     return failure('PERMISSION_DENIED', 'Không có quyền xác nhận Nhập kho thủ công.', 403);
   }
 
-  const prepared = await previewManualInbound(adapter, { requestContext, payload });
+  const prepared = await previewManualInboundOperator(adapter, { requestContext, payload });
   if (!prepared.ok) return prepared;
   if (!prepared.preview.ready) {
     return failure(
