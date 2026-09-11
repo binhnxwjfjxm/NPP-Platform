@@ -271,6 +271,7 @@ export const manualInboundOperatorPreviewInternals = Object.freeze({
   normalizedSupplierId,
   enrichStock,
   incomingQuantitiesByStockScope,
+  loadBalanceContext,
   requestedStockScopes,
   stockScope,
 });
