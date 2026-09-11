@@ -7,8 +7,16 @@ export async function listPurchaseOrderTrackingRequirements(client, { installati
             base.id AS base_variant_id,
             policy.lot_tracking_mode,
             policy.expiry_tracking_mode,
-            policy.location_required
+            warehouse.location_management_mode,
+            (warehouse.location_management_mode = 'MANAGED') AS location_required
        FROM purchasing.purchase_order_lines pol
+       JOIN purchasing.purchase_orders po
+         ON po.installation_id = pol.installation_id
+        AND po.id = pol.purchase_order_id
+       JOIN shared.warehouses warehouse
+         ON warehouse.installation_id = po.installation_id
+        AND warehouse.id = po.warehouse_id
+        AND warehouse.is_active = true
        JOIN shared.product_variants source
          ON source.installation_id = pol.installation_id
         AND source.id = pol.variant_id
@@ -22,6 +30,7 @@ export async function listPurchaseOrderTrackingRequirements(client, { installati
         AND policy.base_variant_id = base.id
       WHERE pol.installation_id = $1
         AND pol.purchase_order_id = $2
+        AND warehouse.location_management_mode IN ('MANAGED', 'UNMANAGED')
       ORDER BY pol.line_number ASC`,
     [installationId, purchaseOrderId],
   );
