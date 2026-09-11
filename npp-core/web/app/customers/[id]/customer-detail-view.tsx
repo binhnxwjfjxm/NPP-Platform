@@ -6,9 +6,15 @@ import type {
   CustomerProfilePeriod,
   CustomerPurchasedItemsPage,
 } from '../../../lib/customer-profile-gateway';
+import {
+  CustomerFinanceSection,
+  CustomerOrdersSection,
+  type CustomerFinanceHistory,
+  type CustomerOrdersHistory,
+} from './customer-history-sections';
 import styles from './customer-detail.module.css';
 
-type Tab = 'overview' | 'purchased-items' | 'info';
+type Tab = 'overview' | 'purchased-items' | 'orders' | 'finance' | 'info';
 
 type Props = Readonly<{
   profile: CustomerProfileOverview;
@@ -19,6 +25,10 @@ type Props = Readonly<{
   purchasedItems?: CustomerPurchasedItemsPage | null;
   purchasedItemsSearch?: string;
   purchasedItemsError?: string | null;
+  ordersHistory?: CustomerOrdersHistory | null;
+  ordersSearch?: string;
+  ordersError?: string | null;
+  financeHistory?: CustomerFinanceHistory | null;
 }>;
 
 const periodLabels: Record<CustomerProfilePeriod, string> = {
@@ -83,7 +93,7 @@ function tabHref(
   options: Readonly<{ search?: string; offset?: number }> = {},
 ) {
   const query = new URLSearchParams({ tab, period });
-  if (tab === 'purchased-items') {
+  if (tab === 'purchased-items' || tab === 'orders') {
     const search = String(options.search ?? '').trim();
     if (search) query.set('search', search);
     if ((options.offset ?? 0) > 0) query.set('offset', String(options.offset));
@@ -100,6 +110,10 @@ export default function CustomerDetailView({
   purchasedItems = null,
   purchasedItemsSearch = '',
   purchasedItemsError = null,
+  ordersHistory = null,
+  ordersSearch = '',
+  ordersError = null,
+  financeHistory = null,
 }: Props) {
   const { customer, sales, receivable, permissions } = profile;
   const defaultAddress = addresses.find((address) => address.is_default && address.is_active)
@@ -154,6 +168,8 @@ export default function CustomerDetailView({
         <nav className={styles.tabs} aria-label="Hồ sơ khách hàng">
           <Link className={activeTab === 'overview' ? styles.tabActive : styles.tab} href={tabHref(customer.id, 'overview', period)} aria-current={activeTab === 'overview' ? 'page' : undefined}>Tổng quan</Link>
           <Link className={activeTab === 'purchased-items' ? styles.tabActive : styles.tab} href={tabHref(customer.id, 'purchased-items', period)} aria-current={activeTab === 'purchased-items' ? 'page' : undefined}>Hàng đã mua</Link>
+          <Link className={activeTab === 'orders' ? styles.tabActive : styles.tab} href={tabHref(customer.id, 'orders', period)} aria-current={activeTab === 'orders' ? 'page' : undefined}>Đơn hàng</Link>
+          <Link className={activeTab === 'finance' ? styles.tabActive : styles.tab} href={tabHref(customer.id, 'finance', period)} aria-current={activeTab === 'finance' ? 'page' : undefined}>Công nợ &amp; thanh toán</Link>
           <Link className={activeTab === 'info' ? styles.tabActive : styles.tab} href={tabHref(customer.id, 'info', period)} aria-current={activeTab === 'info' ? 'page' : undefined}>Thông tin &amp; địa chỉ</Link>
         </nav>
 
@@ -166,44 +182,17 @@ export default function CustomerDetailView({
               </div>
               <div className={styles.periods} aria-label="Khoảng thời gian">
                 {(Object.keys(periodLabels) as CustomerProfilePeriod[]).map((value) => (
-                  <Link
-                    key={value}
-                    href={tabHref(customer.id, 'overview', value)}
-                    className={period === value ? styles.periodActive : styles.period}
-                    aria-current={period === value ? 'page' : undefined}
-                  >
-                    {periodLabels[value]}
-                  </Link>
+                  <Link key={value} href={tabHref(customer.id, 'overview', value)} className={period === value ? styles.periodActive : styles.period} aria-current={period === value ? 'page' : undefined}>{periodLabels[value]}</Link>
                 ))}
               </div>
             </div>
 
             <section className={styles.summaryGrid} aria-label="Chỉ số khách hàng">
-              <article className={styles.summaryCard} data-testid="customer-summary-revenue">
-                <span>Doanh số</span>
-                <strong>{permissions.sales && sales ? formatVnd(sales.revenue) : 'Không có quyền xem'}</strong>
-                <small>{permissions.sales ? periodLabels[period] : 'Dữ liệu bán hàng được giới hạn theo quyền.'}</small>
-              </article>
-              <article className={styles.summaryCard} data-testid="customer-summary-orders">
-                <span>Số đơn</span>
-                <strong>{permissions.sales && sales ? formatCount(sales.orderCount) : '—'}</strong>
-                <small>Đơn đã chốt hoặc hoàn thành</small>
-              </article>
-              <article className={styles.summaryCard} data-testid="customer-summary-last-purchase">
-                <span>Lần mua gần nhất</span>
-                <strong>{permissions.sales && sales ? formatDateTime(sales.lastPurchaseAt) : '—'}</strong>
-                <small>Tính trên lịch sử được phép xem</small>
-              </article>
-              <article className={styles.summaryCard} data-testid="customer-summary-receivable">
-                <span>Công nợ hiện tại</span>
-                <strong>{permissions.receivable && receivable ? formatVnd(receivable.balance) : 'Không có quyền xem'}</strong>
-                <small>{permissions.receivable && receivable ? `${formatCount(receivable.openDocumentCount)} chứng từ còn mở` : 'Dữ liệu công nợ được giới hạn theo quyền.'}</small>
-              </article>
-              <article className={styles.summaryCard} data-testid="customer-summary-credit-limit">
-                <span>Hạn mức tín dụng</span>
-                <strong>{formatVnd(customer.credit_limit)}</strong>
-                <small>Thời hạn thanh toán: {customer.payment_terms_days} ngày</small>
-              </article>
+              <article className={styles.summaryCard} data-testid="customer-summary-revenue"><span>Doanh số</span><strong>{permissions.sales && sales ? formatVnd(sales.revenue) : 'Không có quyền xem'}</strong><small>{permissions.sales ? periodLabels[period] : 'Dữ liệu bán hàng được giới hạn theo quyền.'}</small></article>
+              <article className={styles.summaryCard} data-testid="customer-summary-orders"><span>Số đơn</span><strong>{permissions.sales && sales ? formatCount(sales.orderCount) : '—'}</strong><small>Đơn đã chốt hoặc hoàn thành</small></article>
+              <article className={styles.summaryCard} data-testid="customer-summary-last-purchase"><span>Lần mua gần nhất</span><strong>{permissions.sales && sales ? formatDateTime(sales.lastPurchaseAt) : '—'}</strong><small>Tính trên lịch sử được phép xem</small></article>
+              <article className={styles.summaryCard} data-testid="customer-summary-receivable"><span>Công nợ hiện tại</span><strong>{permissions.receivable && receivable ? formatVnd(receivable.balance) : 'Không có quyền xem'}</strong><small>{permissions.receivable && receivable ? `${formatCount(receivable.openDocumentCount)} chứng từ còn mở` : 'Dữ liệu công nợ được giới hạn theo quyền.'}</small></article>
+              <article className={styles.summaryCard} data-testid="customer-summary-credit-limit"><span>Hạn mức tín dụng</span><strong>{formatVnd(customer.credit_limit)}</strong><small>Thời hạn thanh toán: {customer.payment_terms_days} ngày</small></article>
             </section>
 
             <div className={styles.contentGrid}>
@@ -223,18 +212,9 @@ export default function CustomerDetailView({
               <section className={styles.panel}>
                 <div className={styles.panelHeader}><h3>Hoạt động gần đây</h3></div>
                 <div className={styles.activityList}>
-                  <div className={styles.activityItem}>
-                    <strong>Lần mua gần nhất</strong>
-                    <span>{permissions.sales && sales ? formatDateTime(sales.lastPurchaseAt) : 'Không có dữ liệu được phép xem.'}</span>
-                  </div>
-                  <div className={styles.activityItem}>
-                    <strong>Công nợ cập nhật</strong>
-                    <span>{permissions.receivable && receivable ? formatDateTime(receivable.updatedAt) : 'Không có dữ liệu được phép xem.'}</span>
-                  </div>
-                  <div className={styles.activityItem}>
-                    <strong>Địa chỉ đang sử dụng</strong>
-                    <span>{addresses.filter((address) => address.is_active).length} địa chỉ</span>
-                  </div>
+                  <div className={styles.activityItem}><strong>Lần mua gần nhất</strong><span>{permissions.sales && sales ? formatDateTime(sales.lastPurchaseAt) : 'Không có dữ liệu được phép xem.'}</span></div>
+                  <div className={styles.activityItem}><strong>Công nợ cập nhật</strong><span>{permissions.receivable && receivable ? formatDateTime(receivable.updatedAt) : 'Không có dữ liệu được phép xem.'}</span></div>
+                  <div className={styles.activityItem}><strong>Địa chỉ đang sử dụng</strong><span>{addresses.filter((address) => address.is_active).length} địa chỉ</span></div>
                 </div>
               </section>
             </div>
@@ -242,20 +222,10 @@ export default function CustomerDetailView({
         ) : activeTab === 'purchased-items' ? (
           <section className={styles.purchasePanel} data-testid="customer-purchased-items">
             <div className={styles.toolbar}>
-              <div className={styles.toolbarCopy}>
-                <strong>Hàng đã mua</strong>
-                <span>Tổng hợp theo từng SKU từ đơn đã chốt/hoàn thành trong khoảng được chọn.</span>
-              </div>
+              <div className={styles.toolbarCopy}><strong>Hàng đã mua</strong><span>Tổng hợp theo từng SKU từ đơn đã chốt/hoàn thành trong khoảng được chọn.</span></div>
               <div className={styles.periods} aria-label="Khoảng thời gian hàng đã mua">
                 {(Object.keys(periodLabels) as CustomerProfilePeriod[]).map((value) => (
-                  <Link
-                    key={value}
-                    href={tabHref(customer.id, 'purchased-items', value, { search: purchasedItemsSearch })}
-                    className={period === value ? styles.periodActive : styles.period}
-                    aria-current={period === value ? 'page' : undefined}
-                  >
-                    {periodLabels[value]}
-                  </Link>
+                  <Link key={value} href={tabHref(customer.id, 'purchased-items', value, { search: purchasedItemsSearch })} className={period === value ? styles.periodActive : styles.period} aria-current={period === value ? 'page' : undefined}>{periodLabels[value]}</Link>
                 ))}
               </div>
             </div>
@@ -265,15 +235,7 @@ export default function CustomerDetailView({
                 <form className={styles.purchaseFilters} method="get">
                   <input type="hidden" name="tab" value="purchased-items" />
                   <input type="hidden" name="period" value={period} />
-                  <label className={styles.searchField}>
-                    <span>Tìm sản phẩm</span>
-                    <input
-                      name="search"
-                      defaultValue={purchasedItemsSearch}
-                      placeholder="Tên sản phẩm hoặc SKU"
-                      maxLength={120}
-                    />
-                  </label>
+                  <label className={styles.searchField}><span>Tìm sản phẩm</span><input name="search" defaultValue={purchasedItemsSearch} placeholder="Tên sản phẩm hoặc SKU" maxLength={120} /></label>
                   <button type="submit">Tìm</button>
                   {purchasedItemsSearch ? <Link href={tabHref(customer.id, 'purchased-items', period)}>Xóa tìm kiếm</Link> : null}
                 </form>
@@ -281,33 +243,15 @@ export default function CustomerDetailView({
                 {purchasedItemsError ? <div className={styles.errorBox} role="alert">{purchasedItemsError}</div> : null}
                 {!purchasedItemsError && purchasedItems ? (
                   <>
-                    <div className={styles.purchaseSummary}>
-                      <strong>{formatCount(purchasedItems.total)} mặt hàng</strong>
-                      <span>{periodLabels[period]}{purchasedItemsSearch ? ` · Kết quả cho “${purchasedItemsSearch}”` : ''}</span>
-                    </div>
+                    <div className={styles.purchaseSummary}><strong>{formatCount(purchasedItems.total)} mặt hàng</strong><span>{periodLabels[period]}{purchasedItemsSearch ? ` · Kết quả cho “${purchasedItemsSearch}”` : ''}</span></div>
                     {purchasedItems.items.length > 0 ? (
                       <div className={styles.tableWrap}>
                         <table className={styles.purchaseTable}>
-                          <thead>
-                            <tr>
-                              <th>Sản phẩm</th>
-                              <th>ĐVT</th>
-                              <th className={styles.numeric}>Tổng SL</th>
-                              <th className={styles.numeric}>Doanh số</th>
-                              <th className={styles.numeric}>Số lần mua</th>
-                              <th className={styles.numeric}>Giá mua gần nhất</th>
-                              <th>Mua gần nhất</th>
-                            </tr>
-                          </thead>
+                          <thead><tr><th>Sản phẩm</th><th>ĐVT</th><th className={styles.numeric}>Tổng SL</th><th className={styles.numeric}>Doanh số</th><th className={styles.numeric}>Số lần mua</th><th className={styles.numeric}>Giá mua gần nhất</th><th>Mua gần nhất</th></tr></thead>
                           <tbody>
                             {purchasedItems.items.map((item) => (
                               <tr key={item.variantId}>
-                                <td>
-                                  <div className={styles.productCell}>
-                                    <strong>{item.productName || 'Chưa có tên sản phẩm'}</strong>
-                                    <small>{item.sku || 'Chưa có SKU'}</small>
-                                  </div>
-                                </td>
+                                <td><div className={styles.productCell}><strong>{item.productName || 'Chưa có tên sản phẩm'}</strong><small>{item.sku || 'Chưa có SKU'}</small></div></td>
                                 <td>{item.unitCode || '—'}</td>
                                 <td className={styles.numeric}>{formatQuantity(item.totalQuantity)}</td>
                                 <td className={styles.numeric}>{formatVnd(item.revenue)}</td>
@@ -319,46 +263,23 @@ export default function CustomerDetailView({
                           </tbody>
                         </table>
                       </div>
-                    ) : (
-                      <div className={styles.empty}>Chưa có hàng đã mua trong khoảng thời gian này.</div>
-                    )}
-
+                    ) : <div className={styles.empty}>Chưa có hàng đã mua trong khoảng thời gian này.</div>}
                     <div className={styles.pagination} aria-label="Phân trang hàng đã mua">
-                      <span>
-                        {purchasedItems.items.length > 0
-                          ? `Đang xem ${purchasedItems.offset + 1}–${purchasedItems.offset + purchasedItems.items.length}`
-                          : 'Không có dữ liệu'}
-                      </span>
+                      <span>{purchasedItems.items.length > 0 ? `Đang xem ${purchasedItems.offset + 1}–${purchasedItems.offset + purchasedItems.items.length}` : 'Không có dữ liệu'}</span>
                       <div>
-                        {purchasedHasPrevious ? (
-                          <Link
-                            href={tabHref(customer.id, 'purchased-items', period, {
-                              search: purchasedItemsSearch,
-                              offset: Math.max(0, purchasedItems.offset - purchasedItems.limit),
-                            })}
-                          >
-                            Trang trước
-                          </Link>
-                        ) : null}
-                        {purchasedHasNext ? (
-                          <Link
-                            href={tabHref(customer.id, 'purchased-items', period, {
-                              search: purchasedItemsSearch,
-                              offset: purchasedItems.offset + purchasedItems.limit,
-                            })}
-                          >
-                            Trang sau
-                          </Link>
-                        ) : null}
+                        {purchasedHasPrevious ? <Link href={tabHref(customer.id, 'purchased-items', period, { search: purchasedItemsSearch, offset: Math.max(0, purchasedItems.offset - purchasedItems.limit) })}>Trang trước</Link> : null}
+                        {purchasedHasNext ? <Link href={tabHref(customer.id, 'purchased-items', period, { search: purchasedItemsSearch, offset: purchasedItems.offset + purchasedItems.limit })}>Trang sau</Link> : null}
                       </div>
                     </div>
                   </>
                 ) : null}
               </>
-            ) : (
-              <div className={styles.empty}>Bạn không có quyền xem lịch sử mua hàng của khách hàng này.</div>
-            )}
+            ) : <div className={styles.empty}>Bạn không có quyền xem lịch sử mua hàng của khách hàng này.</div>}
           </section>
+        ) : activeTab === 'orders' ? (
+          <CustomerOrdersSection customerId={customer.id} period={period} allowed={permissions.sales} history={ordersHistory ? { ...ordersHistory, search: ordersSearch } : null} error={ordersError} />
+        ) : activeTab === 'finance' && financeHistory ? (
+          <CustomerFinanceSection customerId={customer.id} period={period} summary={receivable} history={financeHistory} />
         ) : (
           <div className={styles.contentGrid}>
             <section className={styles.panel}>
@@ -384,11 +305,7 @@ export default function CustomerDetailView({
               <div className={styles.addressList}>
                 {addresses.map((address) => (
                   <article className={styles.addressCard} key={address.id}>
-                    <div className={styles.addressTopline}>
-                      <strong>{address.label}</strong>
-                      {address.is_default ? <span className={styles.addressDefault}>Mặc định</span> : null}
-                      {!address.is_active ? <span>Ngừng sử dụng</span> : null}
-                    </div>
+                    <div className={styles.addressTopline}><strong>{address.label}</strong>{address.is_default ? <span className={styles.addressDefault}>Mặc định</span> : null}{!address.is_active ? <span>Ngừng sử dụng</span> : null}</div>
                     <span>{addressText(address)}</span>
                     {address.recipient_name ? <span>Người nhận: {address.recipient_name}</span> : null}
                     {address.phone ? <span>SĐT nhận hàng: {address.phone}</span> : null}

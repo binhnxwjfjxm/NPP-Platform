@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Chi tiết khách hàng', () => {
-  test('mở hồ sơ theo đúng khách và hiển thị tổng quan, hàng đã mua, thông tin, địa chỉ', async ({ page }) => {
+  test('mở hồ sơ theo đúng khách và hiển thị các tab lịch sử theo lazy-load', async ({ page }) => {
     const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`.toUpperCase();
     const customerCode = `CT-${suffix}`;
     const customerName = `Khách hồ sơ ${suffix}`;
@@ -40,6 +40,18 @@ test.describe('Chi tiết khách hàng', () => {
     await expect(page.getByTestId('customer-purchased-items')).toBeVisible();
     await expect(page.getByPlaceholder('Tên sản phẩm hoặc SKU')).toBeVisible();
     await expect(page.getByText('Chưa có hàng đã mua trong khoảng thời gian này.')).toBeVisible();
+
+    await detail.getByRole('link', { name: 'Đơn hàng', exact: true }).click();
+    await expect(page).toHaveURL(/tab=orders/);
+    await expect(page.getByTestId('customer-orders')).toBeVisible();
+    await expect(page.getByPlaceholder('Số đơn')).toBeVisible();
+    await expect(page.getByText('Khách hàng chưa có đơn hàng phù hợp.')).toBeVisible();
+
+    await detail.getByRole('link', { name: 'Công nợ & thanh toán', exact: true }).click();
+    await expect(page).toHaveURL(/tab=finance/);
+    await expect(page.getByTestId('customer-finance')).toBeVisible();
+    await expect(page.getByTestId('customer-receivable-documents')).toBeVisible();
+    await expect(page.getByTestId('customer-payments')).toBeVisible();
 
     await detail.getByRole('link', { name: 'Thông tin & địa chỉ' }).click();
     await expect(detail.getByText('Địa chỉ chính')).toBeVisible();
