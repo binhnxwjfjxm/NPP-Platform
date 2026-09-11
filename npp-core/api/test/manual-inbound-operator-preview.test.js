@@ -3,9 +3,16 @@ import test from 'node:test';
 import {
   listManualInboundSupplierOptions,
   manualInboundOperatorPreviewInternals,
+  previewManualInboundOperator,
 } from '../src/services/manual-inbound-operator-preview.js';
 
-const { addExactDecimal, normalizedSupplierId, enrichStock } = manualInboundOperatorPreviewInternals;
+const {
+  addExactDecimal,
+  normalizedSupplierId,
+  enrichStock,
+  incomingQuantitiesByStockScope,
+  loadBalanceContext,
+} = manualInboundOperatorPreviewInternals;
 
 test('manual inbound stock preview cộng số tồn bằng decimal chính xác, kể cả tồn âm', () => {
   assert.equal(addExactDecimal('12.500000', '2.25'), '14.75');
@@ -91,4 +98,67 @@ test('manual inbound lấy danh sách nhà cung cấp hoạt động bằng quy�
   assert.equal(calls.length, 1);
   assert.match(calls[0].sql, /FROM shared\.suppliers/);
   assert.deepEqual(calls[0].params, ['installation-1']);
+});
+
+test('manual inbound stock preview cộng tổng các dòng cùng phạm vi với độ chính xác ledger', () => {
+  const warehouse = { locationRequired: true };
+  const first = {
+    baseVariantId: 'base-precision',
+    baseQuantity: '0.000000000001',
+    locationId: 'location-precision',
+    lotTrackingMode: 'NONE',
+  };
+  const second = { ...first, baseQuantity: '1.25' };
+  const incoming = incomingQuantitiesByStockScope([first, second], warehouse);
+  const enriched = enrichStock(first, warehouse, [{
+    base_variant_id: 'base-precision',
+    base_unit_code: 'CÁI',
+    balance_base_variant_id: 'base-precision',
+    location_id: 'location-precision',
+    lot_id: null,
+    on_hand_quantity: '2.000000000001',
+    normalized_lot_code: null,
+  }], incoming);
+
+  assert.equal(enriched.currentOnHand, '2.000000000001');
+  assert.equal(enriched.afterOnHand, '3.250000000002');
+});
+
+test('manual inbound chỉ truy vấn đúng phạm vi tồn cần hiển thị', async () => {
+  let captured;
+  await loadBalanceContext({
+    query: async (sql, params) => {
+      captured = { sql, params };
+      return { rows: [] };
+    },
+  }, {
+    installationId: 'installation-1',
+    warehouseId: 'warehouse-1',
+    scopes: [{ baseVariantId: 'base-1', locationId: 'location-1', normalizedLotCode: null }],
+  });
+
+  assert.match(captured.sql, /jsonb_to_recordset/);
+  assert.match(captured.sql, /balance\.location_id IS NOT DISTINCT FROM scope\.location_id/);
+  assert.deepEqual(JSON.parse(captured.params[2]), [{
+    base_variant_id: 'base-1',
+    location_id: 'location-1',
+    normalized_lot_code: null,
+  }]);
+});
+
+test('manual inbound từ chối trước khi tra cứu nhà cung cấp nếu chưa có quyền', async () => {
+  let queried = false;
+  const result = await previewManualInboundOperator({
+    query: async () => {
+      queried = true;
+      throw new Error('supplier query must not run');
+    },
+  }, {
+    requestContext: { installationId: 'installation-1', permissions: [] },
+    payload: { supplierId: '11111111-1111-4111-8111-111111111111' },
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, 'PERMISSION_DENIED');
+  assert.equal(queried, false);
 });
