@@ -74,6 +74,14 @@ test('canonical form activates product-first commercial entry with walk-in and q
   assert.doesNotMatch(formSource, /Kiểu CK thêm/);
 });
 
+test('Giá lần mua trước mở ngay sau khi chọn khách và giữ kênh dự phòng hợp lệ', () => {
+  assert.match(formSource, /function lastPurchaseFallbackChannelId/);
+  assert.match(formSource, /channel\.code === 'GT'/);
+  assert.match(formSource, /setSalesChannelId\(lastPurchaseChannelId\)/);
+  assert.match(formSource, /disabled=\{customerMode !== 'EXISTING' \|\| !customerId \|\| !lastPurchaseChannelId\}/);
+  assert.doesNotMatch(formSource, /disabled=\{customerMode !== 'EXISTING' \|\| !customerId \|\| !salesChannelId\}/);
+});
+
 test('confirm price mismatch recovers the exact form-owned committed draft instead of creating another order', () => {
   assert.match(formSource, /const committedDraftRef = useRef<SalesOrder \| null>\(null\)/);
   assert.match(formSource, /draftRecoveryTarget\([\s\S]*committedDraftRef\.current/);
