@@ -1,0 +1,143 @@
+name: Recover SO000062 AN PHAT
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/recover-so000062-an-phat.yml'
+      - 'npp-core/api/scripts/recover-so000062-an-phat.mjs'
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: recover-so000062-${{ github.event_name }}-${{ github.event.pull_request.number || github.event.issue.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  contract:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: npp-core/api
+    steps:
+      - name: Checkout pull request head
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate guarded recovery script
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check scripts/recover-so000062-an-phat.mjs
+          grep -Fq "orderNumber: 'SO-202609-000062'" scripts/recover-so000062-an-phat.mjs
+          grep -Fq "sourceVersion: 6" scripts/recover-so000062-an-phat.mjs
+          grep -Fq "wrongVersion: 7" scripts/recover-so000062-an-phat.mjs
+          grep -Fq "nextVersion: 8" scripts/recover-so000062-an-phat.mjs
+          grep -Fq "createIdempotencyKey('sales-order-recovery', TARGET.orderId)" scripts/recover-so000062-an-phat.mjs
+          grep -Fq "releasePreExecutionAllocations" scripts/recover-so000062-an-phat.mjs
+          grep -Fq "replaceSalesOrderFulfillmentDemand" scripts/recover-so000062-an-phat.mjs
+          grep -Fq "client.query('ROLLBACK')" scripts/recover-so000062-an-phat.mjs
+
+  recover-production:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 5 &&
+      github.event.comment.body == '/recover-so000062-an-phat' &&
+      (github.actor == 'binhnxwjfjxm' || github.actor == 'khuongbinhinfo-a11y')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write
+    env:
+      HEROKU_APP_NAME: hung-phat
+    defaults:
+      run:
+        working-directory: npp-core/api
+    steps:
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact origin main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=1
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          test -f scripts/recover-so000062-an-phat.mjs
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install repository dependencies
+        shell: bash
+        run: npm ci --prefix ../.. --ignore-scripts
+
+      - name: Load production database target safely
+        shell: bash
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$HEROKU_API_KEY"
+          config_json="$(curl --fail --silent --show-error \
+            -H 'Accept: application/vnd.heroku+json; version=3' \
+            -H "Authorization: Bearer $HEROKU_API_KEY" \
+            "https://api.heroku.com/apps/$HEROKU_APP_NAME/config-vars")"
+          database_url="$(jq -r '.DATABASE_URL // empty' <<<"$config_json")"
+          database_ssl_mode="$(jq -r '.DATABASE_SSL_MODE // "require"' <<<"$config_json")"
+          test -n "$database_url"
+          echo "::add-mask::$database_url"
+          {
+            echo "DATABASE_URL=$database_url"
+            echo "DATABASE_SSL_MODE=$database_ssl_mode"
+          } >> "$GITHUB_ENV"
+
+      - name: Run guarded recovery transaction
+        id: recovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/recover-so000062-an-phat.mjs | tee "$RUNNER_TEMP/recovery-result.json"
+          jq -e '.restored == true' "$RUNNER_TEMP/recovery-result.json" >/dev/null
+          {
+            echo '## SO000062 recovery'
+            echo
+            echo '```json'
+            cat "$RUNNER_TEMP/recovery-result.json"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Comment success on control issue
+        if: success()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          result="$(cat "$RUNNER_TEMP/recovery-result.json")"
+          body="Khôi phục SO-202609-000062 hoàn tất. Kết quả: ${result}"
+          jq -n --arg body "$body" '{body:$body}' > "$RUNNER_TEMP/comment.json"
+          curl --fail --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            --data-binary @"$RUNNER_TEMP/comment.json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/5/comments" >/dev/null
