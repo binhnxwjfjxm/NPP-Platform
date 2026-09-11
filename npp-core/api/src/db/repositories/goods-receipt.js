@@ -28,7 +28,8 @@ const LINE_COLUMNS = `grl.id, grl.installation_id, grl.goods_receipt_id,
   tracking_base_variant.id AS tracking_base_variant_id,
   tracking_policy.lot_tracking_mode,
   tracking_policy.expiry_tracking_mode,
-  tracking_policy.location_required`;
+  tracking_warehouse.location_management_mode,
+  (tracking_warehouse.location_management_mode = 'MANAGED') AS location_required`;
 
 function normalizedWarehouseIds(warehouseIds) {
   return Array.isArray(warehouseIds)
@@ -130,6 +131,9 @@ export async function getGoodsReceiptLines(client, { installationId, receiptId }
      JOIN purchasing.purchase_order_lines pol
        ON pol.installation_id = grl.installation_id
       AND pol.id = grl.purchase_order_line_id
+     JOIN shared.warehouses tracking_warehouse
+       ON tracking_warehouse.installation_id = grl.installation_id
+      AND tracking_warehouse.id = grl.warehouse_id
      JOIN shared.product_variants source_variant
        ON source_variant.installation_id = grl.installation_id
       AND source_variant.id = grl.variant_id

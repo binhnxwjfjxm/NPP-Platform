@@ -1,3 +1,14 @@
+async function setWarehouseLocationModeRemapContext(client, metadata) {
+  const runId = typeof metadata?.warehouseLocationModeRunId === 'string'
+    ? metadata.warehouseLocationModeRunId.trim()
+    : '';
+  if (!runId) return;
+  await client.query(
+    "SELECT set_config('npp.warehouse_location_mode_remap', $1, true)",
+    [runId],
+  );
+}
+
 export async function loadActiveReservations(client, {
   installationId,
   warehouseId,
@@ -89,6 +100,7 @@ export async function releaseReservation(client, {
 }
 
 export async function insertReservationEvent(client, input) {
+  await setWarehouseLocationModeRemapContext(client, input.metadata);
   await client.query(
     "SELECT set_config('npp.inventory_reservation_write_context', 'reservation_service', true)",
   );
@@ -165,6 +177,7 @@ export async function insertAllocationEvent(client, input) {
 }
 
 export async function insertReservation(client, input) {
+  await setWarehouseLocationModeRemapContext(client, input.metadata);
   await client.query(
     "SELECT set_config('npp.inventory_reservation_write_context', 'reservation_service', true)",
   );

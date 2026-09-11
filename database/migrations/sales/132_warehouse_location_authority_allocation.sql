@@ -1,6 +1,8 @@
 -- Issue #942 Lô 2: Warehouse is the sole runtime authority for location management.
 -- SKU tracking policy continues to own lot/expiry rules only.
 -- Released allocations are immutable history and must not count against a replacement allocation.
+-- A warehouse-mode conversion may temporarily release an allocation before its replacement is
+-- inserted. The remap context keeps the demand projection stable inside that one transaction only.
 
 COMMENT ON COLUMN inventory.product_tracking_policies.location_required IS
   'DEPRECATED for runtime location decisions. Warehouse location_management_mode is authoritative; keep temporarily for compatibility only.';
@@ -11,6 +13,7 @@ LANGUAGE plpgsql
 AS $$
 DECLARE
   write_context text := current_setting('npp.sales_fulfillment_allocation_write_context', true);
+  remap_run_id text := current_setting('npp.warehouse_location_mode_remap', true);
   demand_record sales.sales_order_fulfillment_demands;
   reservation_record inventory.inventory_reservations;
   policy_record inventory.product_tracking_policies;
@@ -18,6 +21,7 @@ DECLARE
   location_record shared.warehouse_locations;
   lot_record inventory.inventory_lots;
   allocated_total numeric(30,12);
+  remap_allowed boolean := false;
 BEGIN
   IF write_context IS DISTINCT FROM 'fulfillment_allocation_service' THEN
     RAISE EXCEPTION 'sales_fulfillment_allocation_write_requires_service_context';
@@ -47,6 +51,20 @@ BEGIN
       RAISE EXCEPTION 'sales_fulfillment_allocation_lineage_mismatch';
     END IF;
 
+    SELECT * INTO reservation_record
+      FROM inventory.inventory_reservations
+     WHERE installation_id = NEW.installation_id
+       AND id = NEW.inventory_reservation_id;
+
+    remap_allowed := COALESCE(remap_run_id, '') <> ''
+      AND reservation_record IS NOT NULL
+      AND reservation_record.source_domain = 'SALES'
+      AND reservation_record.source_document_type = 'SALES_FULFILLMENT_ALLOCATION'
+      AND reservation_record.source_document_id IS NOT DISTINCT FROM NEW.id::text
+      AND reservation_record.metadata->>'warehouseLocationModeRunId' = remap_run_id
+      AND COALESCE(reservation_record.metadata->>'relocatedFromReservationId', '') <> ''
+      AND COALESCE(reservation_record.metadata->>'relocatedFromAllocationId', '') <> '';
+
     SELECT * INTO warehouse_record
       FROM shared.warehouses
      WHERE installation_id = NEW.installation_id
@@ -59,10 +77,14 @@ BEGIN
     IF warehouse_record.location_management_mode IS NULL THEN
       RAISE EXCEPTION 'sales_fulfillment_warehouse_location_mode_required';
     END IF;
-    IF warehouse_record.location_management_mode = 'MANAGED' AND NEW.location_id IS NULL THEN
+    IF warehouse_record.location_management_mode = 'MANAGED'
+       AND NEW.location_id IS NULL
+       AND NOT remap_allowed THEN
       RAISE EXCEPTION 'sales_fulfillment_allocation_location_required';
     END IF;
-    IF warehouse_record.location_management_mode = 'UNMANAGED' AND NEW.location_id IS NOT NULL THEN
+    IF warehouse_record.location_management_mode = 'UNMANAGED'
+       AND NEW.location_id IS NOT NULL
+       AND NOT remap_allowed THEN
       RAISE EXCEPTION 'sales_fulfillment_allocation_location_not_allowed';
     END IF;
 
@@ -123,11 +145,6 @@ BEGIN
       RAISE EXCEPTION 'sales_fulfillment_allocation_exceeds_reserved_demand';
     END IF;
 
-    SELECT * INTO reservation_record
-      FROM inventory.inventory_reservations
-     WHERE installation_id = NEW.installation_id
-       AND id = NEW.inventory_reservation_id;
-
     IF reservation_record IS NULL
        OR reservation_record.state <> 'ACTIVE'
        OR reservation_record.warehouse_id IS DISTINCT FROM NEW.warehouse_id
@@ -183,5 +200,90 @@ BEGIN
   END IF;
 
   RETURN NEW;
+END;
+$$;
+
+-- During warehouse-mode remap, the old exact reservation/allocation is released before the
+-- replacement reservation is created at the new scope. Keep the demand projection stable for
+-- that release only; the following replacement allocation insert recomputes it normally.
+CREATE OR REPLACE FUNCTION sales.project_sales_order_fulfillment_allocation_progress()
+RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+  previous_context text := current_setting('npp.sales_fulfillment_write_context', true);
+  allocation_context text := current_setting('npp.sales_fulfillment_allocation_write_context', true);
+  remap_run_id text := current_setting('npp.warehouse_location_mode_remap', true);
+  target_demand_id uuid;
+  target_order_id uuid;
+  target_installation_id text;
+  target_actor_id text;
+  progress_status text;
+BEGIN
+  IF allocation_context = 'fulfillment_release_service'
+     AND COALESCE(remap_run_id, '') <> '' THEN
+    RETURN NEW;
+  END IF;
+
+  target_demand_id := COALESCE(NEW.fulfillment_demand_id, OLD.fulfillment_demand_id);
+  target_order_id := COALESCE(NEW.sales_order_id, OLD.sales_order_id);
+  target_installation_id := COALESCE(NEW.installation_id, OLD.installation_id);
+  target_actor_id := COALESCE(NEW.updated_by, OLD.updated_by);
+  PERFORM set_config(
+    'npp.sales_fulfillment_write_context',
+    CASE
+      WHEN allocation_context = 'fulfillment_reversal_service' THEN 'fulfillment_reversal_service'
+      WHEN allocation_context = 'fulfillment_release_service' THEN 'fulfillment_release_service'
+      ELSE 'fulfillment_service'
+    END,
+    true
+  );
+  UPDATE sales.sales_order_fulfillment_demands demand
+     SET allocated_base_quantity = totals.allocated_quantity,
+         picked_base_quantity = totals.picked_quantity,
+         packed_base_quantity = totals.packed_quantity,
+         updated_at = now(),
+         updated_by = target_actor_id
+    FROM (
+      SELECT COALESCE(sum(allocation.allocated_base_quantity) FILTER (WHERE allocation.state <> 'RELEASED'), 0)::numeric(30,12) AS allocated_quantity,
+             COALESCE(sum(allocation.picked_base_quantity) FILTER (WHERE allocation.state <> 'RELEASED'), 0)::numeric(30,12) AS picked_quantity,
+             COALESCE(sum(allocation.packed_base_quantity) FILTER (WHERE allocation.state <> 'RELEASED'), 0)::numeric(30,12) AS packed_quantity
+        FROM sales.sales_order_fulfillment_allocations allocation
+       WHERE allocation.installation_id = target_installation_id
+         AND allocation.fulfillment_demand_id = target_demand_id
+    ) totals
+   WHERE demand.installation_id = target_installation_id
+     AND demand.id = target_demand_id;
+  SELECT CASE
+    WHEN count(*) = 0 THEN NULL
+    WHEN sum(demand.packed_base_quantity) = sum(demand.reserved_base_quantity)
+         AND sum(demand.reserved_base_quantity) > 0
+         AND sum(demand.backordered_base_quantity) = 0 THEN 'packed'
+    WHEN sum(demand.packed_base_quantity) > 0 THEN 'partially_packed'
+    WHEN sum(demand.picked_base_quantity) = sum(demand.reserved_base_quantity)
+         AND sum(demand.reserved_base_quantity) > 0
+         AND sum(demand.backordered_base_quantity) = 0 THEN 'picked'
+    WHEN sum(demand.picked_base_quantity) > 0 THEN 'partially_picked'
+    WHEN sum(demand.allocated_base_quantity) = sum(demand.reserved_base_quantity)
+         AND sum(demand.reserved_base_quantity) > 0
+         AND sum(demand.backordered_base_quantity) = 0 THEN 'allocated'
+    WHEN sum(demand.allocated_base_quantity) > 0 THEN 'partially_allocated'
+    WHEN sum(demand.reserved_base_quantity) = 0 THEN 'backordered'
+    WHEN sum(demand.backordered_base_quantity) > 0 THEN 'partially_reserved'
+    ELSE 'reserved'
+  END INTO progress_status
+    FROM sales.sales_order_fulfillment_demands demand
+   WHERE demand.installation_id = target_installation_id
+     AND demand.sales_order_id = target_order_id
+     AND demand.state = 'ACTIVE';
+  UPDATE sales.sales_orders
+     SET fulfillment_status = COALESCE(progress_status, fulfillment_status),
+         updated_at = now(), updated_by = target_actor_id
+   WHERE installation_id = target_installation_id
+     AND id = target_order_id
+     AND status = 'confirmed';
+  PERFORM set_config('npp.sales_fulfillment_write_context', COALESCE(previous_context, ''), true);
+  RETURN NEW;
+EXCEPTION WHEN OTHERS THEN
+  PERFORM set_config('npp.sales_fulfillment_write_context', COALESCE(previous_context, ''), true);
+  RAISE;
 END;
 $$;

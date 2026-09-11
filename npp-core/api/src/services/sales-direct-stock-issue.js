@@ -82,12 +82,17 @@ async function lockSource(client, { installationId, salesOrderId }) {
             orders.current_version_number,
             version.warehouse_id,
             version.id AS sales_order_version_id,
-            version.revision AS version_revision
+            version.revision AS version_revision,
+            warehouse.location_management_mode
        FROM sales.sales_orders orders
        JOIN sales.sales_order_versions version
          ON version.installation_id = orders.installation_id
         AND version.sales_order_id = orders.id
         AND version.version_number = orders.current_version_number
+       JOIN shared.warehouses warehouse
+         ON warehouse.installation_id = version.installation_id
+        AND warehouse.id = version.warehouse_id
+        AND warehouse.is_active = true
       WHERE orders.installation_id = $1
         AND orders.id = $2
       FOR UPDATE OF orders, version`,
@@ -106,7 +111,8 @@ async function lockDemands(client, { installationId, salesOrderId }) {
             unit.code AS base_unit_code,
             COALESCE(policy.lot_tracking_mode, 'NONE') AS lot_tracking_mode,
             COALESCE(policy.expiry_tracking_mode, 'NONE') AS expiry_tracking_mode,
-            COALESCE(policy.location_required, false) AS location_required
+            warehouse.location_management_mode,
+            (warehouse.location_management_mode = 'MANAGED') AS location_required
        FROM sales.sales_order_fulfillment_demands demand
        JOIN sales.sales_order_version_lines line
          ON line.installation_id = demand.installation_id
@@ -117,6 +123,10 @@ async function lockDemands(client, { installationId, salesOrderId }) {
        JOIN shared.units_of_measure unit
          ON unit.installation_id = base.installation_id
         AND unit.id = base.unit_id
+       JOIN shared.warehouses warehouse
+         ON warehouse.installation_id = demand.installation_id
+        AND warehouse.id = demand.warehouse_id
+        AND warehouse.is_active = true
        LEFT JOIN inventory.product_tracking_policies policy
          ON policy.installation_id = demand.installation_id
         AND policy.base_variant_id = demand.base_variant_id
@@ -141,6 +151,10 @@ async function listCandidates(client, { installationId, warehouseId, baseVariant
             lot.expiry_date,
             balance.available_quantity
        FROM inventory.inventory_balances balance
+       JOIN shared.warehouses warehouse
+         ON warehouse.installation_id = balance.installation_id
+        AND warehouse.id = balance.warehouse_id
+        AND warehouse.is_active = true
        LEFT JOIN shared.warehouse_locations location
          ON location.installation_id = balance.installation_id
         AND location.warehouse_id = balance.warehouse_id
@@ -168,10 +182,12 @@ async function listCandidates(client, { installationId, warehouseId, baseVariant
         AND balance.warehouse_id = $2
         AND balance.base_variant_id = $3
         AND balance.available_quantity > 0
+        AND warehouse.location_management_mode IN ('MANAGED', 'UNMANAGED')
         AND (
-          (balance.location_id IS NULL AND COALESCE(policy.location_required, false) = false)
+          (warehouse.location_management_mode = 'UNMANAGED' AND balance.location_id IS NULL)
           OR (
-            balance.location_id IS NOT NULL
+            warehouse.location_management_mode = 'MANAGED'
+            AND balance.location_id IS NOT NULL
             AND location.is_active = true
             AND location.location_type = 'storage'
           )
@@ -185,10 +201,6 @@ async function listCandidates(client, { installationId, warehouseId, baseVariant
           OR lot.expiry_date IS NOT NULL
         )
         AND (lot.expiry_date IS NULL OR lot.expiry_date >= CURRENT_DATE)
-        AND (
-          COALESCE(policy.location_required, false) = false
-          OR balance.location_id IS NOT NULL
-        )
       ORDER BY
         CASE WHEN lot.expiry_date IS NOT NULL THEN lot.expiry_date END ASC NULLS LAST,
         CASE WHEN lot.expiry_date IS NULL THEN receipt.first_received_at END ASC NULLS LAST,
@@ -310,6 +322,9 @@ export async function issueDirectSalesOrderStock(client, {
   if (!warehouseScopeAllows(requestContext, source.warehouse_id)) {
     return Object.freeze({ ok: false, code: 'WAREHOUSE_SCOPE_DENIED', message: 'Đơn nằm ngoài phạm vi kho được cấp quyền', retryable: false, details: {} });
   }
+  if (!['MANAGED', 'UNMANAGED'].includes(source.location_management_mode)) {
+    return failure(contract, 'WAREHOUSE_LOCATION_MODE_REQUIRED', 'Kho của đơn chưa thiết lập chế độ quản lý vị trí.');
+  }
   if (String(source.version_revision) !== String(expectedRevision ?? '')) {
     return failure(
       contract,
@@ -331,6 +346,9 @@ export async function issueDirectSalesOrderStock(client, {
       return Object.freeze({ ...result, movementId: null, replayed: false, inventoryMovementRequired: false });
     }
     return failure(contract, 'NO_LINES', 'Đơn chưa có nhu cầu giữ hàng để Xuất kho');
+  }
+  if (demands.some((demand) => !['MANAGED', 'UNMANAGED'].includes(demand.location_management_mode))) {
+    return failure(contract, 'WAREHOUSE_LOCATION_MODE_REQUIRED', 'Kho của đơn chưa thiết lập chế độ quản lý vị trí.');
   }
 
   const fullyIssued = demands.every((demand) => {

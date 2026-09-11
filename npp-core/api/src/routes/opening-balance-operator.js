@@ -2,6 +2,7 @@ import { createSuccessEnvelope } from '@npp/contracts';
 import { sendError, sendJson, sendSuccess } from '../http-utils.js';
 import { normalizeIdempotencyKey, readJsonBody } from '../idempotency.js';
 import * as warehouseRepository from '../db/repositories/warehouse.js';
+import * as warehouseLocationModeRepository from '../db/repositories/warehouse-location-mode.js';
 import {
   postOpeningBalanceImport,
   validateOpeningBalanceImport,
@@ -125,44 +126,72 @@ function warehouseAllowed(requestContext, warehouseId) {
 async function getWarehouse(client, requestContext, warehouseId) {
   if (!UUID_PATTERN.test(String(warehouseId ?? ''))) return null;
   if (!warehouseAllowed(requestContext, warehouseId)) return null;
-  const warehouses = await warehouseRepository.listWarehousesForInstallation(client, {
+  return warehouseLocationModeRepository.getWarehouse(client, {
     installationId: requestContext.installationId,
-    active: true,
-    limit: 10000,
-    offset: 0,
+    warehouseId,
+    forUpdate: false,
   });
-  return warehouses.find((warehouse) => warehouse.id === warehouseId) ?? null;
 }
 
 export async function listOpeningBalanceWarehouseOptions(client, requestContext) {
-  const rows = await warehouseRepository.listWarehousesForInstallation(client, {
-    installationId: requestContext.installationId,
-    active: true,
-    limit: 10000,
-    offset: 0,
-  });
-  const allowed = new Set(requestContext.scopes?.warehouseIds ?? []);
-  return rows
-    .filter((warehouse) => allowed.has(warehouse.id))
-    .map((warehouse) => ({ id: warehouse.id, code: warehouse.code, name: warehouse.name }))
-    .sort((left, right) => left.code.localeCompare(right.code));
+  const allowed = [...new Set(requestContext.scopes?.warehouseIds ?? [])].filter((id) => UUID_PATTERN.test(String(id)));
+  if (allowed.length === 0) return [];
+  const result = await client.query(
+    `SELECT id, code, name, location_management_mode
+       FROM shared.warehouses
+      WHERE installation_id = $1
+        AND id = ANY($2::uuid[])
+        AND is_active = true
+      ORDER BY code ASC, id ASC`,
+    [requestContext.installationId, allowed],
+  );
+  return (result.rows ?? []).map((warehouse) => ({
+    id: warehouse.id,
+    code: warehouse.code,
+    name: warehouse.name,
+    locationManagementMode: warehouse.location_management_mode,
+    locationRequired: warehouse.location_management_mode === 'MANAGED',
+  }));
 }
 
 export async function listOpeningBalanceLocationOptions(client, requestContext, warehouseId) {
   const warehouse = await getWarehouse(client, requestContext, warehouseId);
-  if (!warehouse) return failure('WAREHOUSE_SCOPE_DENIED', 'Kho không hoạt động hoặc ngoài phạm vi được cấp', {}, 403);
+  if (!warehouse || !warehouse.is_active) return failure('WAREHOUSE_SCOPE_DENIED', 'Kho không hoạt động hoặc ngoài phạm vi được cấp', {}, 403);
+  if (!['MANAGED', 'UNMANAGED'].includes(warehouse.location_management_mode)) {
+    return failure('WAREHOUSE_LOCATION_MODE_REQUIRED', 'Kho chưa thiết lập chế độ quản lý vị trí.');
+  }
+  if (warehouse.location_management_mode === 'UNMANAGED') {
+    return Object.freeze({
+      ok: true,
+      warehouse: {
+        id: warehouse.id,
+        code: warehouse.code,
+        name: warehouse.name,
+        locationManagementMode: warehouse.location_management_mode,
+        locationRequired: false,
+      },
+      locations: Object.freeze([]),
+    });
+  }
   const result = await client.query(
     `SELECT id, code, name, location_type
        FROM shared.warehouse_locations
       WHERE installation_id = $1
         AND warehouse_id = $2
         AND is_active = true
+        AND location_type = 'storage'
       ORDER BY code ASC, id ASC`,
     [requestContext.installationId, warehouseId],
   );
   return Object.freeze({
     ok: true,
-    warehouse: { id: warehouse.id, code: warehouse.code, name: warehouse.name },
+    warehouse: {
+      id: warehouse.id,
+      code: warehouse.code,
+      name: warehouse.name,
+      locationManagementMode: warehouse.location_management_mode,
+      locationRequired: true,
+    },
     locations: result.rows.map((row) => ({
       id: row.id,
       code: row.code,
@@ -178,7 +207,7 @@ async function resolveSkuMap(client, installationId, skus) {
     `SELECT pv.id, pv.sku, pv.unit_id, unit.code AS unit_code,
             p.code AS product_code, p.name AS product_name,
             base.id AS base_variant_id, base.sku AS base_sku,
-            policy.lot_tracking_mode, policy.expiry_tracking_mode, policy.location_required
+            policy.lot_tracking_mode, policy.expiry_tracking_mode
        FROM shared.product_variants pv
        JOIN shared.products p
          ON p.installation_id = pv.installation_id
@@ -220,6 +249,7 @@ async function resolveLocationMap(client, installationId, warehouseId, codes) {
         AND warehouse_id = $2
         AND upper(code) = ANY($3::text[])
         AND is_active = true
+        AND location_type = 'storage'
       ORDER BY code ASC, id ASC`,
     [installationId, warehouseId, codes],
   );
@@ -234,7 +264,11 @@ export async function resolveOpeningBalanceOperatorPayload(client, requestContex
   }
   const warehouseId = String(payload.warehouseId ?? '').trim();
   const warehouse = await getWarehouse(client, requestContext, warehouseId);
-  if (!warehouse) return failure('WAREHOUSE_SCOPE_DENIED', 'Hãy chọn một kho đang hoạt động trong phạm vi được cấp', {}, 403);
+  if (!warehouse || !warehouse.is_active) return failure('WAREHOUSE_SCOPE_DENIED', 'Hãy chọn một kho đang hoạt động trong phạm vi được cấp', {}, 403);
+  if (!['MANAGED', 'UNMANAGED'].includes(warehouse.location_management_mode)) {
+    return failure('WAREHOUSE_LOCATION_MODE_REQUIRED', 'Kho chưa thiết lập chế độ quản lý vị trí.');
+  }
+  const locationRequired = warehouse.location_management_mode === 'MANAGED';
   if (!Array.isArray(payload.rows) || payload.rows.length < 1 || payload.rows.length > OPENING_BALANCE_MAX_ROWS) {
     return failure('INVALID_ROWS', `Tệp phải có từ 1 đến ${OPENING_BALANCE_MAX_ROWS} dòng dữ liệu`);
   }
@@ -248,7 +282,9 @@ export async function resolveOpeningBalanceOperatorPayload(client, requestContex
       : text(row.locationCode, 64),
   }));
   const skuKeys = [...new Set(parsedRows.map((row) => row.sku?.toUpperCase()).filter(Boolean))];
-  const locationKeys = [...new Set(parsedRows.map((row) => row.locationCode?.toUpperCase()).filter(Boolean))];
+  const locationKeys = locationRequired
+    ? [...new Set(parsedRows.map((row) => row.locationCode?.toUpperCase()).filter(Boolean))]
+    : [];
   const [skuMap, locationMap] = await Promise.all([
     resolveSkuMap(client, requestContext.installationId, skuKeys),
     resolveLocationMap(client, requestContext.installationId, warehouseId, locationKeys),
@@ -262,18 +298,29 @@ export async function resolveOpeningBalanceOperatorPayload(client, requestContex
     const { source, lineNumber, sku, locationCode } = parsed;
     if (!sku || !SKU_PATTERN.test(sku)) {
       rowErrors.push({ lineNumber, code: 'SKU_REQUIRED', message: 'Thiếu SKU hợp lệ.' });
-      displayRows.push({ lineNumber, warehouseCode: warehouse.code, warehouseName: warehouse.name, sku: sku ?? '', locationCode, sourceQuantity: source.sourceQuantity ?? '' });
+      displayRows.push({ lineNumber, warehouseCode: warehouse.code, warehouseName: warehouse.name, sku: sku ?? '', locationCode, sourceQuantity: source.sourceQuantity ?? '', locationRequired });
       continue;
     }
     const variants = skuMap.get(sku.toUpperCase()) ?? [];
     if (variants.length === 0) {
       rowErrors.push({ lineNumber, code: 'SKU_NOT_FOUND', message: `SKU ${sku} không tồn tại hoặc không hoạt động.` });
-      displayRows.push({ lineNumber, warehouseCode: warehouse.code, warehouseName: warehouse.name, sku, locationCode, sourceQuantity: source.sourceQuantity ?? '' });
+      displayRows.push({ lineNumber, warehouseCode: warehouse.code, warehouseName: warehouse.name, sku, locationCode, sourceQuantity: source.sourceQuantity ?? '', locationRequired });
       continue;
     }
     if (variants.length > 1) {
       rowErrors.push({ lineNumber, code: 'SKU_AMBIGUOUS', message: `SKU ${sku} không duy nhất; cần chuẩn hóa danh mục hàng.` });
-      displayRows.push({ lineNumber, warehouseCode: warehouse.code, warehouseName: warehouse.name, sku, locationCode, sourceQuantity: source.sourceQuantity ?? '' });
+      displayRows.push({ lineNumber, warehouseCode: warehouse.code, warehouseName: warehouse.name, sku, locationCode, sourceQuantity: source.sourceQuantity ?? '', locationRequired });
+      continue;
+    }
+
+    if (!locationRequired && locationCode) {
+      rowErrors.push({ lineNumber, code: 'LOCATION_NOT_ALLOWED', message: `Dòng ${lineNumber}: Kho này dùng tồn chung. Hãy để trống Vị trí.` });
+      displayRows.push({ lineNumber, warehouseCode: warehouse.code, warehouseName: warehouse.name, sku, locationCode, sourceQuantity: source.sourceQuantity ?? '', locationRequired });
+      continue;
+    }
+    if (locationRequired && !locationCode) {
+      rowErrors.push({ lineNumber, code: 'LOCATION_REQUIRED', message: `Dòng ${lineNumber}: Kho này có quản lý vị trí. Cần chọn Vị trí.` });
+      displayRows.push({ lineNumber, warehouseCode: warehouse.code, warehouseName: warehouse.name, sku, locationCode: null, sourceQuantity: source.sourceQuantity ?? '', locationRequired });
       continue;
     }
 
@@ -281,13 +328,13 @@ export async function resolveOpeningBalanceOperatorPayload(client, requestContex
     if (locationCode) {
       if (!LOCATION_CODE_PATTERN.test(locationCode)) {
         rowErrors.push({ lineNumber, code: 'INVALID_LOCATION_CODE', message: `Mã vị trí ${locationCode} không hợp lệ.` });
-        displayRows.push({ lineNumber, warehouseCode: warehouse.code, warehouseName: warehouse.name, sku, locationCode, sourceQuantity: source.sourceQuantity ?? '' });
+        displayRows.push({ lineNumber, warehouseCode: warehouse.code, warehouseName: warehouse.name, sku, locationCode, sourceQuantity: source.sourceQuantity ?? '', locationRequired });
         continue;
       }
       location = locationMap.get(locationCode.toUpperCase()) ?? null;
       if (!location) {
-        rowErrors.push({ lineNumber, code: 'LOCATION_NOT_FOUND', message: `Vị trí ${locationCode} không tồn tại/không hoạt động trong kho ${warehouse.code}.` });
-        displayRows.push({ lineNumber, warehouseCode: warehouse.code, warehouseName: warehouse.name, sku, locationCode, sourceQuantity: source.sourceQuantity ?? '' });
+        rowErrors.push({ lineNumber, code: 'LOCATION_NOT_FOUND', message: `Vị trí ${locationCode} không phải vị trí lưu trữ đang hoạt động trong kho ${warehouse.code}.` });
+        displayRows.push({ lineNumber, warehouseCode: warehouse.code, warehouseName: warehouse.name, sku, locationCode, sourceQuantity: source.sourceQuantity ?? '', locationRequired });
         continue;
       }
     }
@@ -310,6 +357,8 @@ export async function resolveOpeningBalanceOperatorPayload(client, requestContex
       warehouseId,
       warehouseCode: warehouse.code,
       warehouseName: warehouse.name,
+      locationManagementMode: warehouse.location_management_mode,
+      locationRequired,
       locationId: location?.id ?? null,
       locationCode: location?.code ?? null,
       locationName: location?.name ?? null,
@@ -323,7 +372,6 @@ export async function resolveOpeningBalanceOperatorPayload(client, requestContex
       baseSku: variant.base_sku,
       lotTrackingMode: variant.lot_tracking_mode ?? null,
       expiryTrackingMode: variant.expiry_tracking_mode ?? null,
-      locationRequired: variant.location_required ?? null,
       sourceQuantity: source.sourceQuantity,
       lotCode: source.lotCode || null,
       manufacturedDate: source.manufacturedDate || null,
@@ -345,6 +393,7 @@ export async function resolveOpeningBalanceOperatorPayload(client, requestContex
         operatorInputVersion: 1,
         selectedWarehouseId: warehouseId,
         selectedWarehouseCode: warehouse.code,
+        locationManagementMode: warehouse.location_management_mode,
       },
       rows: legacyRows,
     }),
