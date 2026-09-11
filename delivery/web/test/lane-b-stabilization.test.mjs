@@ -45,7 +45,9 @@ test('Lane B3 uses canonical demand/allocation detail and pick mutation', () => 
   assert.match(pickingPanel, /allocatedBaseQuantity/);
   assert.match(pickingPanel, /pickedBaseQuantity/);
   assert.match(pickingPanel, /Lý do chênh lệch/);
-  assert.match(pickingDetail, /state machine canonical/);
+  assert.match(pickingDetail, /<PickingClosePanel/);
+  assert.match(pickingDetail, /Tiếp tục đóng gói hoặc hoàn tất theo quy trình giao hàng/);
+  assert.doesNotMatch(pickingDetail, /state machine canonical/);
 });
 
 test('Lane B4 keeps warehouse authorization server-side and lets pick permission read its own picking workflow', () => {

@@ -1,4 +1,4 @@
-import InventoryScopedWorkspace from '../inventory-scoped-workspace';
+import TrackingPolicyWorkspace from './tracking-policy-workspace';
 import { createEmptyInventorySnapshot } from '../../../lib/inventory-types';
 import { loadInventoryTrackingPolicySnapshot } from '../../../lib/inventory-scoped-snapshot';
 import type { InventoryTrackingPolicyCandidate } from '../../../lib/inventory-policy-types';
@@ -19,11 +19,8 @@ export default async function InventoryTrackingPoliciesPage() {
   }
 
   return (
-    <InventoryScopedWorkspace
-      scope="tracking-policies"
-      title="Chính sách quản lý lô"
-      subtitle="Chọn cách quản lý lô, hạn sử dụng và vị trí cho từng SKU."
-      initialSnapshot={initialData}
+    <TrackingPolicyWorkspace
+      initialPolicies={initialData.trackingPolicies}
       initialCandidates={initialCandidates}
       initialError={initialError}
     />

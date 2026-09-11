@@ -1,7 +1,9 @@
+import Link from 'next/link';
 import InitialLoadRetry from '../../components/initial-load-retry';
 import OrganizationWorkspace from '../organization-workspace';
 import { loadOrganizationSnapshot } from '../../../lib/organization-snapshot';
 import { createEmptyOrganizationSnapshot } from '../../../lib/organization-types';
+import styles from './warehouse-page.module.css';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,6 +20,9 @@ export default async function WarehousesPage() {
   return (
     <>
       <InitialLoadRetry enabled={Boolean(initialError)} retryKey="organization-warehouses" />
+      <Link className={styles.historyShortcut} href="/organization/warehouses/location-mode-history">
+        Lịch sử quản lý vị trí
+      </Link>
       <OrganizationWorkspace
         scope="warehouses"
         title="Kho hàng"
