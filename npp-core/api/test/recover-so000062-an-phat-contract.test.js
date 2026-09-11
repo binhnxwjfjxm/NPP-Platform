@@ -28,5 +28,8 @@ test('SO000062 recovery is exact-target, fail-closed and transaction guarded', (
   assert.match(recoverySource, /releasePreExecutionAllocations/);
   assert.match(recoverySource, /replaceSalesOrderFulfillmentDemand/);
   assert.match(recoverySource, /client\.query\('ROLLBACK'\)/);
-  assert.match(recoverySource, /comparison_order_changed_during_recovery/);
+  assert.match(recoverySource, /final_customer_not_an_phat/);
+  assert.match(recoverySource, /final_total_not_restored/);
+  assert.match(recoverySource, /wrong_version_history_changed/);
+  assert.doesNotMatch(recoverySource, /comparisonOrderId|comparison_order_/);
 });
