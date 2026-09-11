@@ -12,12 +12,12 @@ export async function configureWarehouseLocationMode(
   const query = new URLSearchParams({ targetMode });
   if (destinationLocationId) query.set('destinationLocationId', destinationLocationId);
 
-  const previewResponse = await request.get(`/api/inventory/warehouses/${warehouseId}/location-mode/preview?${query}`);
+  const previewResponse = await request.get(`/api/organization/warehouses/${warehouseId}/location-mode/preview?${query}`);
   expect(previewResponse.status()).toBe(200);
   const preview = (await previewResponse.json()).data;
   expect(preview.previewHash).toMatch(/^[0-9a-f]{64}$/);
 
-  const convertResponse = await request.post(`/api/inventory/warehouses/${warehouseId}/location-mode/convert`, {
+  const convertResponse = await request.post(`/api/organization/warehouses/${warehouseId}/location-mode/convert`, {
     headers: { 'Idempotency-Key': createIdempotencyKey('e2e-warehouse-location-mode') },
     data: {
       targetMode,

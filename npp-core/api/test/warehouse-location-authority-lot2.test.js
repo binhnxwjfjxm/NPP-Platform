@@ -22,6 +22,7 @@ const ledgerCore = source('../src/services/inventory-ledger-core.js');
 const inventoryReservationService = source('../src/services/inventory-reservations.js');
 const salesLedger = source('../src/services/sales-inventory-ledger.js');
 const transferReceiptRepository = source('../src/db/repositories/inventory-transfer-receipt.js');
+const warehouseRepository = source('../src/db/repositories/warehouse.js');
 
 test('migration 132 keeps warehouse as location authority and remaps pre-execution allocations safely', () => {
   assert.match(migrationIndex, /132_warehouse_location_authority_allocation/);
@@ -68,6 +69,11 @@ test('inventory mutation paths lock the warehouse before validating its location
   assert.match(ledgerCore, /forUpdate:\s*true/);
   assert.match(inventoryReservationService, /forUpdate:\s*true/);
   assert.match(salesLedger, /forUpdate:\s*true/);
+});
+
+test('warehouse management readers expose the warehouse-owned location mode to the Company screen', () => {
+  assert.match(warehouseRepository, /WAREHOUSE_COLUMNS[\s\S]*location_management_mode/);
+  assert.match(warehouseRepository, /listWarehousesForInstallation[\s\S]*WAREHOUSE_COLUMNS/);
 });
 
 test('reservation remap establishes one transaction-scoped run context before release/replacement events', () => {
