@@ -228,9 +228,13 @@ function formatCost(value: string | null | undefined) {
 }
 
 function formatQuantity(value: string | null | undefined) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return value || '0';
-  return new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 6 }).format(number);
+  const normalized = String(value ?? '').trim();
+  const match = /^(-?)(\d+)(?:\.(\d+))?$/.exec(normalized);
+  if (!match) return normalized || '0';
+  const whole = match[2].replace(/^0+(?=\d)/, '');
+  const groupedWhole = whole.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  const fraction = (match[3] ?? '').replace(/0+$/, '');
+  return `${match[1]}${groupedWhole}${fraction ? `,${fraction}` : ''}`;
 }
 
 function inboundTypeLabel(value: InboundType) {
