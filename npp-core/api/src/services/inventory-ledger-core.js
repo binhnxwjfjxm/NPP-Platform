@@ -238,10 +238,20 @@ async function resolveLine(client, requestContext, line) {
     warehouseId: line.warehouseId,
     locationId: line.locationId,
   });
-  if (!warehouse || !warehouse.warehouse_active) return failure('WAREHOUSE_NOT_AVAILABLE', 'Warehouse is missing or inactive');
-  if (line.locationId && (!warehouse.location_id || !warehouse.location_active)) {
-    return failure('LOCATION_NOT_AVAILABLE', 'Location is missing, inactive or belongs to another warehouse');
+  if (!warehouse || !warehouse.warehouse_active) return failure('WAREHOUSE_NOT_AVAILABLE', 'Kho không tồn tại hoặc đã ngừng sử dụng.');
+  if (!['MANAGED', 'UNMANAGED'].includes(warehouse.location_management_mode)) {
+    return failure('WAREHOUSE_LOCATION_MODE_REQUIRED', 'Kho chưa thiết lập chế độ quản lý vị trí.');
   }
+  if (warehouse.location_management_mode === 'MANAGED' && !line.locationId) {
+    return failure('LOCATION_REQUIRED', 'Kho này có quản lý vị trí. Cần chọn vị trí kho.');
+  }
+  if (warehouse.location_management_mode === 'UNMANAGED' && line.locationId) {
+    return failure('LOCATION_NOT_ALLOWED', 'Kho này dùng tồn chung, không chọn vị trí kho.');
+  }
+  if (line.locationId && (!warehouse.location_id || !warehouse.location_active)) {
+    return failure('LOCATION_NOT_AVAILABLE', 'Vị trí không tồn tại, đã ngừng sử dụng hoặc không thuộc kho đã chọn.');
+  }
+
   const trustedSnapshot = line.sourceSnapshot ?? null;
   let variant = null;
   let policy = null;
@@ -263,9 +273,6 @@ async function resolveLine(client, requestContext, line) {
     if (!policy) return failure('TRACKING_POLICY_NOT_FOUND', 'Tracking policy was not found');
     if (!policy.is_inventory_base || !policy.base_variant_active) {
       return failure('BASE_VARIANT_NOT_AVAILABLE', 'Inventory base SKU is missing, inactive or invalid');
-    }
-    if (policy.location_required && !line.locationId) {
-      return failure('LOCATION_REQUIRED', 'Location is required by the active tracking policy');
     }
     const hasLotInput = Boolean(line.lotId || line.lotCode || line.manufacturedDate || line.expiryDate || line.supplierLotReference);
     if (policy.lot_tracking_mode === 'NONE' && hasLotInput) {
@@ -300,9 +307,6 @@ async function resolveLine(client, requestContext, line) {
     if (!policy) return failure('TRACKING_POLICY_NOT_FOUND', 'Tracking policy was not found');
     if (!policy.is_inventory_base || !policy.base_variant_active) {
       return failure('BASE_VARIANT_NOT_AVAILABLE', 'Inventory base SKU is missing, inactive or invalid');
-    }
-    if (policy.location_required && !line.locationId) {
-      return failure('LOCATION_REQUIRED', 'Location is required by the active tracking policy');
     }
     const hasLotInput = Boolean(line.lotId || line.lotCode || line.manufacturedDate || line.expiryDate || line.supplierLotReference);
     if (policy.lot_tracking_mode === 'NONE' && hasLotInput) {
