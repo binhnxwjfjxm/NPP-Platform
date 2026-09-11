@@ -1,4 +1,5 @@
 import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
+import { configureWarehouseLocationMode } from './support/warehouse-location-mode';
 
 function uniqueSuffix() {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`.toUpperCase();
@@ -30,6 +31,7 @@ async function createFixture(request: APIRequestContext, suffix: string) {
     name: `Vị trí trả NCC ${suffix}`,
     locationType: 'storage',
   });
+  await configureWarehouseLocationMode(request, warehouse.id, 'MANAGED', location.id);
   const supplier = await create('/api/suppliers', `sr-supplier-${suffix}`, {
     code: `SRS-${suffix}`,
     name: `Nhà cung cấp trả NCC ${suffix}`,

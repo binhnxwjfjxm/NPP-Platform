@@ -1,5 +1,6 @@
 import { createIdempotencyKey } from '@npp/contracts';
 import { test, expect, type APIRequestContext } from '@playwright/test';
+import { configureWarehouseLocationMode } from './support/warehouse-location-mode';
 
 function uniqueSuffix() {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`.toUpperCase();
@@ -33,6 +34,7 @@ async function createFixture(request: APIRequestContext) {
     name: `Vị trí nhận hàng ${suffix}`,
     locationType: 'storage',
   });
+  await configureWarehouseLocationMode(request, warehouse.id, 'MANAGED', location.id);
   const supplier = await createResource(request, '/api/suppliers', 'supplier', {
     code: `GRS-${suffix}`,
     name: `Nhà cung cấp nhận hàng ${suffix}`,

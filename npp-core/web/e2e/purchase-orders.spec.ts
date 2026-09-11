@@ -1,4 +1,5 @@
 import { test, expect, type APIRequestContext } from '@playwright/test';
+import { configureWarehouseLocationMode } from './support/warehouse-location-mode';
 import { createIdempotencyKey } from '@npp/contracts';
 
 function uniqueReference() {
@@ -22,6 +23,7 @@ async function createPurchaseOrderFixture(request: APIRequestContext, suffix: st
     name: `Kho PO ${suffix}`,
     warehouseType: 'main',
   });
+  await configureWarehouseLocationMode(request, warehouse.id, 'UNMANAGED');
   const supplier = await create('/api/suppliers', 'purchase-order-e2e-supplier', {
     code: `NCC-${suffix}`,
     name: `Nhà cung cấp PO ${suffix}`,

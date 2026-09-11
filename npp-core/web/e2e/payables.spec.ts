@@ -1,4 +1,5 @@
 import { test, expect, type APIRequestContext } from '@playwright/test';
+import { configureWarehouseLocationMode } from './support/warehouse-location-mode';
 
 function uniqueSuffix() {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`.toUpperCase();
@@ -14,6 +15,7 @@ async function createFixture(request: APIRequestContext, suffix: string) {
   const branch = await create('/api/organization/branches', `pay-branch-${suffix}`, { code: `PYB-${suffix}`, name: `Chi nhánh công nợ ${suffix}` });
   const warehouse = await create('/api/organization/warehouses', `pay-warehouse-${suffix}`, { branchId: branch.id, code: `PYW-${suffix}`, name: `Kho công nợ ${suffix}`, warehouseType: 'main' });
   const location = await create('/api/organization/warehouse-locations', `pay-location-${suffix}`, { warehouseId: warehouse.id, code: `PYL-${suffix}`, name: `Vị trí công nợ ${suffix}`, locationType: 'storage' });
+  await configureWarehouseLocationMode(request, warehouse.id, 'MANAGED', location.id);
   const supplier = await create('/api/suppliers', `pay-supplier-${suffix}`, { code: `PYS-${suffix}`, name: `Nhà cung cấp công nợ ${suffix}` });
   const unit = await create('/api/units', `pay-unit-${suffix}`, { code: `PYE-${suffix}`, name: `Đơn vị lẻ ${suffix}`, unitKind: 'COUNT', allowsFractional: true });
   const cartonUnit = await create('/api/units', `pay-carton-${suffix}`, { code: `PYT-${suffix}`, name: `Thùng ${suffix}`, unitKind: 'PACKAGE', allowsFractional: false });
