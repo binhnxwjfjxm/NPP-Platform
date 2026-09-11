@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Chi tiết khách hàng', () => {
-  test('mở hồ sơ theo đúng khách và hiển thị tổng quan, thông tin, địa chỉ', async ({ page }) => {
+  test('mở hồ sơ theo đúng khách và hiển thị tổng quan, hàng đã mua, thông tin, địa chỉ', async ({ page }) => {
     const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`.toUpperCase();
     const customerCode = `CT-${suffix}`;
     const customerName = `Khách hồ sơ ${suffix}`;
@@ -34,6 +34,12 @@ test.describe('Chi tiết khách hàng', () => {
     await expect(page.getByTestId('customer-summary-orders')).toContainText('Số đơn');
     await expect(page.getByTestId('customer-summary-receivable')).toContainText('Công nợ hiện tại');
     await expect(page.getByTestId('customer-summary-credit-limit')).toContainText('Hạn mức tín dụng');
+
+    await detail.getByRole('link', { name: 'Hàng đã mua' }).click();
+    await expect(page).toHaveURL(/tab=purchased-items/);
+    await expect(page.getByTestId('customer-purchased-items')).toBeVisible();
+    await expect(page.getByPlaceholder('Tên sản phẩm hoặc SKU')).toBeVisible();
+    await expect(page.getByText('Chưa có hàng đã mua trong khoảng thời gian này.')).toBeVisible();
 
     await detail.getByRole('link', { name: 'Thông tin & địa chỉ' }).click();
     await expect(detail.getByText('Địa chỉ chính')).toBeVisible();

@@ -38,7 +38,7 @@ async function warehouseScopedContext(client, requestContext) {
 
 export async function handleCustomerProfileRoutes(req, res, options) {
   const url = new URL(`http://localhost${req.url}`);
-  const match = url.pathname.match(/^\/api\/customers\/([^/]+)\/overview$/);
+  const match = url.pathname.match(/^\/api\/customers\/([^/]+)\/(overview|purchased-items)$/);
   if (!match) return false;
   if (String(req.method || 'GET').toUpperCase() !== 'GET') {
     sendError(res, error('METHOD_NOT_ALLOWED', 'Method not allowed', 405), options.requestId, options.receivedAt);
@@ -63,13 +63,27 @@ export async function handleCustomerProfileRoutes(req, res, options) {
   }
 
   const customerId = match[1];
+  const section = match[2];
   if (!UUID_PATTERN.test(customerId)) {
     sendError(res, error('INVALID_CUSTOMER_ID', 'Mã khách hàng không hợp lệ.', 400), options.requestId, options.receivedAt);
     return true;
   }
+
   const period = profileService.normalizeCustomerProfilePeriod(url.searchParams.get('period'));
   if (!period) {
     sendError(res, error('INVALID_CUSTOMER_PROFILE_PERIOD', 'Khoảng thời gian không hợp lệ.', 400), options.requestId, options.receivedAt);
+    return true;
+  }
+  const purchasedItemsQuery = section === 'purchased-items'
+    ? profileService.normalizeCustomerPurchasedItemsQuery({
+      period,
+      search: url.searchParams.get('search'),
+      limit: url.searchParams.get('limit'),
+      offset: url.searchParams.get('offset'),
+    })
+    : null;
+  if (purchasedItemsQuery && !purchasedItemsQuery.ok) {
+    sendError(res, error(purchasedItemsQuery.code, purchasedItemsQuery.message, 400), options.requestId, options.receivedAt);
     return true;
   }
 
@@ -86,6 +100,25 @@ export async function handleCustomerProfileRoutes(req, res, options) {
 
     requestContext = await warehouseScopedContext(pool, requestContext);
     const canReadSales = options.authorize(requestContext, options.PERMISSIONS.coreSalesOrderRead).ok;
+
+    if (section === 'purchased-items') {
+      if (!canReadSales) {
+        sendError(res, error('FORBIDDEN', 'Không có quyền xem lịch sử mua hàng.', 403), options.requestId, options.receivedAt);
+        return true;
+      }
+      const purchasedItemsResult = await profileService.loadCustomerPurchasedItems(pool, {
+        requestContext,
+        customerId,
+        query: purchasedItemsQuery.query,
+      });
+      if (!purchasedItemsResult.ok) {
+        sendError(res, error(purchasedItemsResult.code, purchasedItemsResult.message, 400), options.requestId, options.receivedAt);
+        return true;
+      }
+      sendSuccess(res, purchasedItemsResult.result, options.requestId, options.receivedAt);
+      return true;
+    }
+
     const canReadReceivable = options.authorize(requestContext, options.PERMISSIONS.coreReceivableRead).ok;
     const [salesResult, receivableResult] = await Promise.all([
       canReadSales
@@ -112,9 +145,16 @@ export async function handleCustomerProfileRoutes(req, res, options) {
       permissions: Object.freeze({ sales: canReadSales, receivable: canReadReceivable }),
     }), options.requestId, options.receivedAt);
   } catch {
+    const isPurchasedItems = section === 'purchased-items';
     sendError(
       res,
-      { code: 'CUSTOMER_PROFILE_UNAVAILABLE', message: 'Chưa tải được tổng quan khách hàng.', details: {}, retryable: true, statusCode: 503 },
+      {
+        code: isPurchasedItems ? 'CUSTOMER_PURCHASED_ITEMS_UNAVAILABLE' : 'CUSTOMER_PROFILE_UNAVAILABLE',
+        message: isPurchasedItems ? 'Chưa tải được hàng đã mua.' : 'Chưa tải được tổng quan khách hàng.',
+        details: {},
+        retryable: true,
+        statusCode: 503,
+      },
       options.requestId,
       options.receivedAt,
     );

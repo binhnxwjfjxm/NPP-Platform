@@ -1,10 +1,14 @@
 import Link from 'next/link';
 import { AppShell } from '../../components/app-shell';
 import type { CustomerAddress } from '../../../lib/customer-types';
-import type { CustomerProfileOverview, CustomerProfilePeriod } from '../../../lib/customer-profile-gateway';
+import type {
+  CustomerProfileOverview,
+  CustomerProfilePeriod,
+  CustomerPurchasedItemsPage,
+} from '../../../lib/customer-profile-gateway';
 import styles from './customer-detail.module.css';
 
-type Tab = 'overview' | 'info';
+type Tab = 'overview' | 'purchased-items' | 'info';
 
 type Props = Readonly<{
   profile: CustomerProfileOverview;
@@ -12,6 +16,9 @@ type Props = Readonly<{
   activeTab: Tab;
   period: CustomerProfilePeriod;
   addressError?: string | null;
+  purchasedItems?: CustomerPurchasedItemsPage | null;
+  purchasedItemsSearch?: string;
+  purchasedItemsError?: string | null;
 }>;
 
 const periodLabels: Record<CustomerProfilePeriod, string> = {
@@ -38,6 +45,15 @@ function formatCount(value: string | null | undefined) {
   return /^\d+$/.test(normalized) ? new Intl.NumberFormat('vi-VN').format(BigInt(normalized)) : '—';
 }
 
+function formatQuantity(value: string | null | undefined) {
+  const normalized = String(value ?? '0').trim();
+  const match = /^(\d+)(?:\.(\d+))?$/.exec(normalized);
+  if (!match) return '—';
+  const whole = new Intl.NumberFormat('vi-VN').format(BigInt(match[1]));
+  const fraction = (match[2] ?? '').replace(/0+$/, '');
+  return fraction ? `${whole},${fraction}` : whole;
+}
+
 function formatDateTime(value: string | null | undefined) {
   if (!value) return 'Chưa có';
   const date = new Date(value);
@@ -60,12 +76,31 @@ function addressText(address: CustomerAddress | null | undefined) {
   ].filter(Boolean).join(', ');
 }
 
-function tabHref(customerId: string, tab: Tab, period: CustomerProfilePeriod) {
+function tabHref(
+  customerId: string,
+  tab: Tab,
+  period: CustomerProfilePeriod,
+  options: Readonly<{ search?: string; offset?: number }> = {},
+) {
   const query = new URLSearchParams({ tab, period });
+  if (tab === 'purchased-items') {
+    const search = String(options.search ?? '').trim();
+    if (search) query.set('search', search);
+    if ((options.offset ?? 0) > 0) query.set('offset', String(options.offset));
+  }
   return `/customers/${customerId}?${query.toString()}`;
 }
 
-export default function CustomerDetailView({ profile, addresses, activeTab, period, addressError = null }: Props) {
+export default function CustomerDetailView({
+  profile,
+  addresses,
+  activeTab,
+  period,
+  addressError = null,
+  purchasedItems = null,
+  purchasedItemsSearch = '',
+  purchasedItemsError = null,
+}: Props) {
   const { customer, sales, receivable, permissions } = profile;
   const defaultAddress = addresses.find((address) => address.is_default && address.is_active)
     ?? addresses.find((address) => address.is_active)
@@ -76,6 +111,14 @@ export default function CustomerDetailView({ profile, addresses, activeTab, peri
       <Link className={styles.actionSecondary} href="/customers">Danh sách khách hàng</Link>
       <Link className={styles.actionPrimary} href={`/customers?edit=${encodeURIComponent(customer.id)}`}>Sửa thông tin</Link>
     </div>
+  );
+  const purchasedTotal = purchasedItems && /^\d+$/.test(purchasedItems.total)
+    ? BigInt(purchasedItems.total)
+    : 0n;
+  const purchasedHasPrevious = Boolean(purchasedItems && purchasedItems.offset > 0);
+  const purchasedHasNext = Boolean(
+    purchasedItems
+    && BigInt(purchasedItems.offset + purchasedItems.limit) < purchasedTotal,
   );
 
   return (
@@ -110,6 +153,7 @@ export default function CustomerDetailView({ profile, addresses, activeTab, peri
 
         <nav className={styles.tabs} aria-label="Hồ sơ khách hàng">
           <Link className={activeTab === 'overview' ? styles.tabActive : styles.tab} href={tabHref(customer.id, 'overview', period)} aria-current={activeTab === 'overview' ? 'page' : undefined}>Tổng quan</Link>
+          <Link className={activeTab === 'purchased-items' ? styles.tabActive : styles.tab} href={tabHref(customer.id, 'purchased-items', period)} aria-current={activeTab === 'purchased-items' ? 'page' : undefined}>Hàng đã mua</Link>
           <Link className={activeTab === 'info' ? styles.tabActive : styles.tab} href={tabHref(customer.id, 'info', period)} aria-current={activeTab === 'info' ? 'page' : undefined}>Thông tin &amp; địa chỉ</Link>
         </nav>
 
@@ -195,6 +239,126 @@ export default function CustomerDetailView({ profile, addresses, activeTab, peri
               </section>
             </div>
           </>
+        ) : activeTab === 'purchased-items' ? (
+          <section className={styles.purchasePanel} data-testid="customer-purchased-items">
+            <div className={styles.toolbar}>
+              <div className={styles.toolbarCopy}>
+                <strong>Hàng đã mua</strong>
+                <span>Tổng hợp theo từng SKU từ đơn đã chốt/hoàn thành trong khoảng được chọn.</span>
+              </div>
+              <div className={styles.periods} aria-label="Khoảng thời gian hàng đã mua">
+                {(Object.keys(periodLabels) as CustomerProfilePeriod[]).map((value) => (
+                  <Link
+                    key={value}
+                    href={tabHref(customer.id, 'purchased-items', value, { search: purchasedItemsSearch })}
+                    className={period === value ? styles.periodActive : styles.period}
+                    aria-current={period === value ? 'page' : undefined}
+                  >
+                    {periodLabels[value]}
+                  </Link>
+                ))}
+              </div>
+            </div>
+
+            {permissions.sales ? (
+              <>
+                <form className={styles.purchaseFilters} method="get">
+                  <input type="hidden" name="tab" value="purchased-items" />
+                  <input type="hidden" name="period" value={period} />
+                  <label className={styles.searchField}>
+                    <span>Tìm sản phẩm</span>
+                    <input
+                      name="search"
+                      defaultValue={purchasedItemsSearch}
+                      placeholder="Tên sản phẩm hoặc SKU"
+                      maxLength={120}
+                    />
+                  </label>
+                  <button type="submit">Tìm</button>
+                  {purchasedItemsSearch ? <Link href={tabHref(customer.id, 'purchased-items', period)}>Xóa tìm kiếm</Link> : null}
+                </form>
+
+                {purchasedItemsError ? <div className={styles.errorBox} role="alert">{purchasedItemsError}</div> : null}
+                {!purchasedItemsError && purchasedItems ? (
+                  <>
+                    <div className={styles.purchaseSummary}>
+                      <strong>{formatCount(purchasedItems.total)} mặt hàng</strong>
+                      <span>{periodLabels[period]}{purchasedItemsSearch ? ` · Kết quả cho “${purchasedItemsSearch}”` : ''}</span>
+                    </div>
+                    {purchasedItems.items.length > 0 ? (
+                      <div className={styles.tableWrap}>
+                        <table className={styles.purchaseTable}>
+                          <thead>
+                            <tr>
+                              <th>Sản phẩm</th>
+                              <th>ĐVT</th>
+                              <th className={styles.numeric}>Tổng SL</th>
+                              <th className={styles.numeric}>Doanh số</th>
+                              <th className={styles.numeric}>Số lần mua</th>
+                              <th className={styles.numeric}>Giá mua gần nhất</th>
+                              <th>Mua gần nhất</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {purchasedItems.items.map((item) => (
+                              <tr key={item.variantId}>
+                                <td>
+                                  <div className={styles.productCell}>
+                                    <strong>{item.productName || 'Chưa có tên sản phẩm'}</strong>
+                                    <small>{item.sku || 'Chưa có SKU'}</small>
+                                  </div>
+                                </td>
+                                <td>{item.unitCode || '—'}</td>
+                                <td className={styles.numeric}>{formatQuantity(item.totalQuantity)}</td>
+                                <td className={styles.numeric}>{formatVnd(item.revenue)}</td>
+                                <td className={styles.numeric}>{formatCount(item.purchaseCount)}</td>
+                                <td className={styles.numeric}>{formatVnd(item.lastUnitPrice)}</td>
+                                <td>{formatDateTime(item.lastPurchaseAt)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <div className={styles.empty}>Chưa có hàng đã mua trong khoảng thời gian này.</div>
+                    )}
+
+                    <div className={styles.pagination} aria-label="Phân trang hàng đã mua">
+                      <span>
+                        {purchasedItems.items.length > 0
+                          ? `Đang xem ${purchasedItems.offset + 1}–${purchasedItems.offset + purchasedItems.items.length}`
+                          : 'Không có dữ liệu'}
+                      </span>
+                      <div>
+                        {purchasedHasPrevious ? (
+                          <Link
+                            href={tabHref(customer.id, 'purchased-items', period, {
+                              search: purchasedItemsSearch,
+                              offset: Math.max(0, purchasedItems.offset - purchasedItems.limit),
+                            })}
+                          >
+                            Trang trước
+                          </Link>
+                        ) : null}
+                        {purchasedHasNext ? (
+                          <Link
+                            href={tabHref(customer.id, 'purchased-items', period, {
+                              search: purchasedItemsSearch,
+                              offset: purchasedItems.offset + purchasedItems.limit,
+                            })}
+                          >
+                            Trang sau
+                          </Link>
+                        ) : null}
+                      </div>
+                    </div>
+                  </>
+                ) : null}
+              </>
+            ) : (
+              <div className={styles.empty}>Bạn không có quyền xem lịch sử mua hàng của khách hàng này.</div>
+            )}
+          </section>
         ) : (
           <div className={styles.contentGrid}>
             <section className={styles.panel}>

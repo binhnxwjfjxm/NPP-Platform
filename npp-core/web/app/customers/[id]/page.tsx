@@ -6,8 +6,10 @@ import { listCustomerAddresses, normalizeCustomerGatewayError, resolveCustomerRe
 import {
   CustomerProfileGatewayError,
   getCustomerProfileOverview,
+  getCustomerPurchasedItems,
   normalizeCustomerProfilePeriod,
   resolveCustomerProfileRequestId,
+  type CustomerPurchasedItemsPage,
 } from '../../../lib/customer-profile-gateway';
 import CustomerDetailView from './customer-detail-view';
 import styles from './customer-detail.module.css';
@@ -15,12 +17,27 @@ import styles from './customer-detail.module.css';
 export const dynamic = 'force-dynamic';
 
 type Params = Promise<{ id: string }>;
-type SearchParams = Promise<{ tab?: string; period?: string }>;
+type SearchParams = Promise<{ tab?: string; period?: string; search?: string; offset?: string }>;
+
+type CustomerDetailTab = 'overview' | 'purchased-items' | 'info';
+
+function normalizeTab(value?: string): CustomerDetailTab {
+  if (value === 'purchased-items') return 'purchased-items';
+  if (value === 'info') return 'info';
+  return 'overview';
+}
+
+function normalizeOffset(value?: string) {
+  const parsed = Number(value ?? '0');
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : 0;
+}
 
 export default async function CustomerDetailPage({ params, searchParams }: { params: Params; searchParams: SearchParams }) {
   const [{ id }, query] = await Promise.all([params, searchParams]);
   const period = normalizeCustomerProfilePeriod(query.period);
-  const activeTab = query.tab === 'info' ? 'info' : 'overview';
+  const activeTab = normalizeTab(query.tab);
+  const purchasedItemsSearch = String(query.search ?? '').trim();
+  const purchasedItemsOffset = normalizeOffset(query.offset);
   const profileRequestId = resolveCustomerProfileRequestId(null);
   const addressRequestId = resolveCustomerRequestId(null);
 
@@ -31,6 +48,24 @@ export default async function CustomerDetailPage({ params, searchParams }: { par
         .then((addresses) => ({ addresses, error: null as string | null }))
         .catch((error) => ({ addresses: [] as CustomerAddress[], error: normalizeCustomerGatewayError(error).publicMessage })),
     ]);
+
+    let purchasedItems: CustomerPurchasedItemsPage | null = null;
+    let purchasedItemsError: string | null = null;
+    if (activeTab === 'purchased-items' && profile.permissions.sales) {
+      try {
+        purchasedItems = await getCustomerPurchasedItems(id, resolveCustomerProfileRequestId(null), {
+          period,
+          search: purchasedItemsSearch,
+          limit: 50,
+          offset: purchasedItemsOffset,
+        });
+      } catch (error) {
+        purchasedItemsError = error instanceof CustomerProfileGatewayError
+          ? error.publicMessage
+          : 'Chưa tải được hàng đã mua.';
+      }
+    }
+
     return (
       <CustomerDetailView
         profile={profile}
@@ -38,6 +73,9 @@ export default async function CustomerDetailPage({ params, searchParams }: { par
         addressError={addressResult.error}
         activeTab={activeTab}
         period={period}
+        purchasedItems={purchasedItems}
+        purchasedItemsSearch={purchasedItemsSearch}
+        purchasedItemsError={purchasedItemsError}
       />
     );
   } catch (error) {
