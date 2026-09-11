@@ -18,10 +18,12 @@ const TARGET = Object.freeze({
   sourceTotal: '33232487',
   sourceLineCount: 25,
   sourceWeightKg: '807.78',
+  sourceLineSignature: '779c67a77a16e91ef0267e6f59b94693',
   wrongCustomerId: 'f3fd8e47-6ce0-469b-8eb8-ac2be3ce2558',
   wrongCustomerName: 'KIM THIÊN HỘ',
   wrongTotal: '14269800',
   wrongLineCount: 21,
+  wrongLineSignature: 'c04565855b27cd1c2faf9a9e417b5326',
   comparisonOrderId: '088f2b4e-f586-4885-905e-32c282b43bcd',
   comparisonOrderNumber: 'SO-202609-000107',
 });
@@ -70,14 +72,36 @@ async function tableColumns(client, schema, table) {
     .map((column) => column.column_name);
 }
 
-async function insertObject(client, schema, table, columns, valuesByColumn) {
+// Clone inside PostgreSQL with INSERT ... SELECT so json/jsonb/arrays/numerics never
+// round-trip through JavaScript parameters. Overrides contain only scalar recovery fields.
+async function cloneDatabaseRow(client, {
+  schema,
+  table,
+  sourceWhere,
+  sourceParams,
+  overrides,
+  failureCode,
+}) {
+  const columns = await tableColumns(client, schema, table);
+  const params = [...sourceParams];
+  const selectExpressions = columns.map((column) => {
+    if (Object.prototype.hasOwnProperty.call(overrides, column)) {
+      params.push(overrides[column]);
+      return `$${params.length}`;
+    }
+    return `source.${quotedIdentifier(column)}`;
+  });
   const names = columns.map(quotedIdentifier).join(', ');
-  const values = columns.map((column) => valuesByColumn[column]);
-  const placeholders = columns.map((_, index) => `$${index + 1}`).join(', ');
-  await client.query(
-    `INSERT INTO ${quotedIdentifier(schema)}.${quotedIdentifier(table)} (${names}) VALUES (${placeholders})`,
-    values,
+  const result = await client.query(
+    `INSERT INTO ${quotedIdentifier(schema)}.${quotedIdentifier(table)} (${names})
+     SELECT ${selectExpressions.join(', ')}
+       FROM ${quotedIdentifier(schema)}.${quotedIdentifier(table)} AS source
+      WHERE ${sourceWhere}
+      RETURNING id`,
+    params,
   );
+  assert(result.rowCount === 1, failureCode);
+  return result.rows[0].id;
 }
 
 async function versionMetrics(client, installationId, orderId, versionNumber) {
@@ -140,27 +164,30 @@ async function currentOrderSignature(client, orderId) {
 }
 
 async function cloneVersionSixAsEight(client, order, sourceRow, occurredAt) {
-  const versionColumns = await tableColumns(client, 'sales', 'sales_order_versions');
-  const versionId = randomUUID();
-  const values = {};
-  for (const column of versionColumns) {
-    if (column === 'id') values[column] = versionId;
-    else if (column === 'installation_id') values[column] = order.installation_id;
-    else if (column === 'sales_order_id') values[column] = TARGET.orderId;
-    else if (column === 'version_number') values[column] = TARGET.nextVersion;
-    else if (column === 'version_status') values[column] = 'draft';
-    else if (column === 'amendment_reason') values[column] = RECOVERY_REASON;
-    else if (column === 'based_on_version_number') values[column] = TARGET.wrongVersion;
-    else if (column === 'revision') values[column] = 1;
-    else if (column === 'created_at' || column === 'updated_at') values[column] = occurredAt;
-    else if (column === 'created_by' || column === 'updated_by') values[column] = ACTOR_ID;
-    else if (column === 'confirmed_at' || column === 'confirmed_by') values[column] = null;
-    else values[column] = sourceRow[column];
-  }
-  await insertObject(client, 'sales', 'sales_order_versions', versionColumns, values);
+  const versionId = await cloneDatabaseRow(client, {
+    schema: 'sales',
+    table: 'sales_order_versions',
+    sourceWhere: 'source.installation_id=$1 AND source.sales_order_id=$2 AND source.version_number=$3',
+    sourceParams: [order.installation_id, TARGET.orderId, TARGET.sourceVersion],
+    overrides: {
+      id: randomUUID(),
+      version_number: TARGET.nextVersion,
+      version_status: 'draft',
+      amendment_reason: RECOVERY_REASON,
+      based_on_version_number: TARGET.wrongVersion,
+      revision: 1,
+      created_at: occurredAt,
+      updated_at: occurredAt,
+      created_by: ACTOR_ID,
+      updated_by: ACTOR_ID,
+      confirmed_at: null,
+      confirmed_by: null,
+    },
+    failureCode: 'source_version_clone_failed',
+  });
 
   const sourceLines = await client.query(
-    `SELECT *
+    `SELECT id
        FROM sales.sales_order_version_lines
       WHERE installation_id=$1 AND sales_order_version_id=$2
       ORDER BY line_number`,
@@ -168,19 +195,23 @@ async function cloneVersionSixAsEight(client, order, sourceRow, occurredAt) {
   );
   assert(sourceLines.rowCount === TARGET.sourceLineCount, 'source_line_rows_changed');
 
-  const lineColumns = await tableColumns(client, 'sales', 'sales_order_version_lines');
   for (const sourceLine of sourceLines.rows) {
-    const lineValues = {};
-    for (const column of lineColumns) {
-      if (column === 'id') lineValues[column] = randomUUID();
-      else if (column === 'installation_id') lineValues[column] = order.installation_id;
-      else if (column === 'sales_order_version_id') lineValues[column] = versionId;
-      else if (column === 'revision') lineValues[column] = 1;
-      else if (column === 'created_at' || column === 'updated_at') lineValues[column] = occurredAt;
-      else if (column === 'created_by' || column === 'updated_by') lineValues[column] = ACTOR_ID;
-      else lineValues[column] = sourceLine[column];
-    }
-    await insertObject(client, 'sales', 'sales_order_version_lines', lineColumns, lineValues);
+    await cloneDatabaseRow(client, {
+      schema: 'sales',
+      table: 'sales_order_version_lines',
+      sourceWhere: 'source.installation_id=$1 AND source.id=$2',
+      sourceParams: [order.installation_id, sourceLine.id],
+      overrides: {
+        id: randomUUID(),
+        sales_order_version_id: versionId,
+        revision: 1,
+        created_at: occurredAt,
+        updated_at: occurredAt,
+        created_by: ACTOR_ID,
+        updated_by: ACTOR_ID,
+      },
+      failureCode: `source_line_clone_failed_${sourceLine.id}`,
+    });
   }
   return versionId;
 }
@@ -203,13 +234,10 @@ async function run() {
     const occurredAt = new Date().toISOString();
 
     const orderResult = await client.query(
-      `SELECT so.*, c.code AS current_customer_code, c.name AS current_customer_name,
-              w.code AS current_warehouse_code, w.name AS current_warehouse_name
+      `SELECT so.*, c.code AS current_customer_code, c.name AS current_customer_name
          FROM sales.sales_orders so
          JOIN shared.customers c
            ON c.installation_id=so.installation_id AND c.id=so.customer_id
-         JOIN shared.warehouses w
-           ON w.installation_id=so.installation_id AND w.id=so.warehouse_id
         WHERE so.id=$1
         FOR UPDATE OF so`,
       [TARGET.orderId],
@@ -233,9 +261,11 @@ async function run() {
     assert(normalizeNumeric(sourceMetric.total) === TARGET.sourceTotal, 'source_total_changed');
     assert(Number(sourceMetric.line_count) === TARGET.sourceLineCount, 'source_line_count_changed');
     assert(normalizeNumeric(sourceMetric.weight_kg) === TARGET.sourceWeightKg, 'source_weight_changed');
+    assert(sourceMetric.line_signature === TARGET.sourceLineSignature, 'source_line_signature_changed');
     assert(wrongMetric.customer_id === TARGET.wrongCustomerId, 'wrong_version_customer_changed');
     assert(normalizeNumeric(wrongMetric.total) === TARGET.wrongTotal, 'wrong_version_total_changed');
     assert(Number(wrongMetric.line_count) === TARGET.wrongLineCount, 'wrong_version_line_count_changed');
+    assert(wrongMetric.line_signature === TARGET.wrongLineSignature, 'wrong_version_line_signature_changed');
 
     const nextVersion = await client.query(
       `SELECT 1 FROM sales.sales_order_versions
@@ -245,7 +275,8 @@ async function run() {
     assert(nextVersion.rowCount === 0, 'recovery_version_already_exists');
 
     const sourceResult = await client.query(
-      `SELECT * FROM sales.sales_order_versions
+      `SELECT id, warehouse_id, sales_channel_id
+         FROM sales.sales_order_versions
         WHERE installation_id=$1 AND sales_order_id=$2 AND version_number=$3`,
       [order.installation_id, TARGET.orderId, TARGET.sourceVersion],
     );
@@ -275,9 +306,18 @@ async function run() {
     assert(otherBefore.order_number === TARGET.comparisonOrderNumber, 'comparison_order_number_changed');
     assert(normalizeNumeric(otherBefore.total) === TARGET.wrongTotal, 'comparison_order_total_changed_before_recovery');
     assert(Number(otherBefore.line_count) === TARGET.wrongLineCount, 'comparison_order_line_count_changed_before_recovery');
+    assert(otherBefore.line_signature === TARGET.wrongLineSignature, 'comparison_order_signature_changed_before_recovery');
     assert(otherBefore.line_signature === wrongMetric.line_signature, 'wrong_version_no_longer_matches_comparison_order');
 
     await cloneVersionSixAsEight(client, order, sourceRow, occurredAt);
+
+    const draftMetric = await versionMetrics(client, order.installation_id, TARGET.orderId, TARGET.nextVersion);
+    assert(draftMetric?.version_status === 'draft', 'recovery_draft_not_created');
+    assert(draftMetric?.customer_id === TARGET.sourceCustomerId, 'recovery_draft_customer_not_an_phat');
+    assert(normalizeNumeric(draftMetric?.total) === TARGET.sourceTotal, 'recovery_draft_total_not_restored');
+    assert(Number(draftMetric?.line_count) === TARGET.sourceLineCount, 'recovery_draft_line_count_not_restored');
+    assert(normalizeNumeric(draftMetric?.weight_kg) === TARGET.sourceWeightKg, 'recovery_draft_weight_not_restored');
+    assert(draftMetric?.line_signature === TARGET.sourceLineSignature, 'recovery_draft_lines_not_exact_v6');
 
     const requestContext = Object.freeze({
       installationId: order.installation_id,
@@ -356,10 +396,11 @@ async function run() {
     assert(normalizeNumeric(finalMetric?.total) === TARGET.sourceTotal, 'final_total_not_restored');
     assert(Number(finalMetric?.line_count) === TARGET.sourceLineCount, 'final_line_count_not_restored');
     assert(normalizeNumeric(finalMetric?.weight_kg) === TARGET.sourceWeightKg, 'final_weight_not_restored');
-    assert(finalMetric?.line_signature === sourceMetric.line_signature, 'final_lines_not_exact_copy_of_v6');
+    assert(finalMetric?.line_signature === TARGET.sourceLineSignature, 'final_lines_not_exact_copy_of_v6');
 
     const wrongAfter = await versionMetrics(client, order.installation_id, TARGET.orderId, TARGET.wrongVersion);
     assert(wrongAfter?.version_status === 'superseded', 'wrong_version_not_preserved_as_superseded');
+    assert(wrongAfter?.line_signature === TARGET.wrongLineSignature, 'wrong_version_history_changed');
 
     const otherAfter = await currentOrderSignature(client, TARGET.comparisonOrderId);
     assert(JSON.stringify(otherAfter) === JSON.stringify(otherBefore), 'comparison_order_changed_during_recovery');
@@ -367,7 +408,7 @@ async function run() {
     await client.query('COMMIT');
     committed = true;
 
-    const result = Object.freeze({
+    console.log(JSON.stringify(Object.freeze({
       restored: true,
       orderNumber: finalOrder.order_number,
       customer: finalOrder.customer_name,
@@ -380,8 +421,7 @@ async function run() {
       preservedWrongVersion: TARGET.wrongVersion,
       comparisonOrderUnchanged: true,
       releasedAllocationCount: Array.isArray(released.released) ? released.released.length : 0,
-    });
-    console.log(JSON.stringify(result));
+    })));
   } catch (error) {
     if (!committed) await client.query('ROLLBACK').catch(() => {});
     const message = String(error?.message ?? error)
