@@ -1,5 +1,7 @@
 import * as base from './file-operations.js';
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 function failure(code, message, statusCode = 400, details = {}) {
   return Object.freeze({ ok: false, code, message, statusCode, details });
 }
@@ -98,7 +100,9 @@ async function validateManagedLocations(client, requestContext, warehouse, rows)
 }
 
 export async function exportStocktakeRows(client, { requestContext, warehouseId, format = 'tabular' }) {
-  const warehouse = await loadWarehouseById(client, requestContext, text(warehouseId));
+  const normalizedWarehouseId = text(warehouseId);
+  if (!UUID_PATTERN.test(normalizedWarehouseId)) return failure('INVALID_WAREHOUSE_ID', 'Kho không hợp lệ.');
+  const warehouse = await loadWarehouseById(client, requestContext, normalizedWarehouseId);
   const modeError = validateWarehouseMode(warehouse);
   if (modeError) return modeError;
   const scopeError = validateWarehouseScope(requestContext, warehouse);
