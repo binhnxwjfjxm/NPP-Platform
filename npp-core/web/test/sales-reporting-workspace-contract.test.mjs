@@ -53,7 +53,7 @@ test('Nền Báo cáo bán hàng giữ so kỳ, tỷ trọng, đối soát và c
 test('Đổi chiều phân tích giữ vùng bảng ổn định, không điều hướng hoặc remount trang', () => {
   const workspace = read('app/components/sales-reporting-workspace.tsx');
   const styles = read('app/components/sales-reporting-workspace.module.css');
-  assert.match(workspace, /onClick=\{\(\) => setActiveDimension\(item\.key\)\}/);
+  assert.match(workspace, /onClick=\{\(\) => \{[\s\S]*setActiveDimension\(item\.key\)/);
   assert.doesNotMatch(workspace, /router\.push|window\.location|href=\{dimension/);
   assert.match(styles, /\.analysisTableWrap[\s\S]*height: clamp\(/);
   assert.match(workspace, /BusinessTableSequenceHeader/);
@@ -69,6 +69,8 @@ test('Lô 3 có preset kỳ, biểu đồ xu hướng, chi tiết và bộ lọc
   assert.match(workspace, /vietnamTodayIso/);
   assert.match(workspace, /TrendChart/);
   assert.match(workspace, /<svg/);
+  assert.match(workspace, /BigInt/);
+  assert.doesNotMatch(workspace, /parseFloat\(|parseInt\(|Number\(/);
   assert.match(workspace, /analysisSearch/);
   assert.match(workspace, /currencyFilter/);
   assert.match(workspace, /comparisonFilter/);

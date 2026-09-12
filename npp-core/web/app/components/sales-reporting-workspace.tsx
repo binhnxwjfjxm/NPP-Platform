@@ -144,22 +144,52 @@ function previousValue(row: SalesBreakdownRow, dimension: SalesBreakdownKey) {
   return `${revenue} · ${formatDecimal(row.previousQuantity)} ${unit}`;
 }
 
-function chartPoints(values: readonly number[], width: number, height: number, ceiling: number) {
-  if (!values.length) return '';
-  if (values.length === 1) return `0,${height - ((values[0] / ceiling) * height)} ${width},${height - ((values[0] / ceiling) * height)}`;
-  return values.map((value, index) => {
-    const x = (index / (values.length - 1)) * width;
-    const y = height - ((value / ceiling) * height);
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  }).join(' ');
+type ChartDecimal = Readonly<{ digits: bigint; scale: number }>;
+
+function parseChartDecimal(value: string | null | undefined): ChartDecimal {
+  const normalized = String(value ?? '0').trim();
+  const match = /^(-?)(\d+)(?:\.(\d+))?$/.exec(normalized);
+  if (!match) return Object.freeze({ digits: 0n, scale: 0 });
+  const fraction = match[3] ?? '';
+  const absolute = BigInt(`${match[2]}${fraction}` || '0');
+  return Object.freeze({
+    digits: match[1] === '-' ? -absolute : absolute,
+    scale: fraction.length,
+  });
+}
+
+function alignChartDecimal(value: ChartDecimal, scale: number) {
+  return value.digits * (10n ** BigInt(scale - value.scale));
+}
+
+function chartSeriesPoints(rows: readonly SalesReportingTrendRow[]) {
+  const current = rows.map((row) => parseChartDecimal(row.revenue));
+  const previous = rows.map((row) => parseChartDecimal(row.previousRevenue));
+  const all = [...current, ...previous];
+  const scale = Math.max(0, ...all.map((value) => value.scale));
+  const aligned = all.map((value) => alignChartDecimal(value, scale));
+  const minValue = aligned.reduce((minimum, value) => value < minimum ? value : minimum, aligned[0] ?? 0n);
+  const maxValue = aligned.reduce((maximum, value) => value > maximum ? value : maximum, aligned[0] ?? 0n);
+  const range = maxValue === minValue ? 1n : maxValue - minValue;
+
+  function points(values: readonly ChartDecimal[]) {
+    if (!values.length) return '';
+    return values.map((value, index) => {
+      const x = values.length === 1 ? 0n : (BigInt(index) * 1000n) / BigInt(values.length - 1);
+      const alignedValue = alignChartDecimal(value, scale);
+      const y = 10n + (((maxValue - alignedValue) * 280n) / range);
+      return `${x},${y}`;
+    }).join(' ');
+  }
+
+  return Object.freeze({
+    current: points(current),
+    previous: points(previous),
+  });
 }
 
 function TrendChart({ currencyCode, rows }: Readonly<{ currencyCode: string; rows: readonly SalesReportingTrendRow[] }>) {
-  const currentValues = rows.map((row) => Number(row.revenue) || 0);
-  const previousValues = rows.map((row) => Number(row.previousRevenue) || 0);
-  const ceiling = Math.max(1, ...currentValues, ...previousValues);
-  const width = 320;
-  const height = 108;
+  const points = chartSeriesPoints(rows);
   const latest = rows[rows.length - 1];
 
   return (
@@ -171,10 +201,10 @@ function TrendChart({ currencyCode, rows }: Readonly<{ currencyCode: string; row
         </div>
         <span>{latest ? formatMoney(latest.revenue, currencyCode) : '0'}</span>
       </div>
-      <svg className={styles.trendChart} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Xu hướng doanh thu ${currencyCode}`}>
-        <line x1="0" y1={height - 1} x2={width} y2={height - 1} className={styles.chartAxis} />
-        <polyline points={chartPoints(previousValues, width, height - 8, ceiling)} className={styles.chartPrevious} />
-        <polyline points={chartPoints(currentValues, width, height - 8, ceiling)} className={styles.chartCurrent} />
+      <svg className={styles.trendChart} viewBox="0 0 1000 300" role="img" aria-label={`Xu hướng doanh thu ${currencyCode}`}>
+        <line x1="0" y1="299" x2="1000" y2="299" className={styles.chartAxis} />
+        <polyline points={points.previous} className={styles.chartPrevious} />
+        <polyline points={points.current} className={styles.chartCurrent} />
       </svg>
       <div className={styles.chartLegend}>
         <span><i className={styles.legendCurrent} /> Kỳ này</span>
