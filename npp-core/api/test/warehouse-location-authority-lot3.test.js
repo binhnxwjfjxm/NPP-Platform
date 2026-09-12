@@ -9,7 +9,8 @@ const productExchange = source('../src/services/product-onboarding-warehouse-loc
 const policyPage = source('../../web/app/inventory/tracking-policies/page.tsx');
 const policyWorkspace = source('../../web/app/inventory/tracking-policies/tracking-policy-workspace.tsx');
 const dataExchangeModel = source('../../web/app/operations/data-exchange/data-exchange-model.ts');
-const warehousePage = source('../../web/app/organization/warehouses/page.tsx');
+const warehouseWorkspace = source('../../web/app/organization/warehouses/warehouse-workspace.tsx');
+const warehouseTabs = source('../../web/app/organization/warehouses/warehouse-tabs.tsx');
 const historyPage = source('../../web/app/organization/warehouses/location-mode-history/page.tsx');
 const historyGateway = source('../../web/lib/warehouse-location-mode-history-gateway.ts');
 
@@ -34,8 +35,9 @@ test('Lô 3 stocktake Data Exchange follows warehouse mode and never auto-fills 
 });
 
 test('Lô 3 exposes warehouse location-mode history from the Warehouse screen', () => {
-  assert.match(warehousePage, /Lịch sử quản lý vị trí/);
-  assert.match(warehousePage, /\/organization\/warehouses\/location-mode-history/);
+  assert.match(warehouseWorkspace, /WarehouseTabs active=\{initialTab\}/);
+  assert.match(warehouseTabs, /label: 'Lịch sử'/);
+  assert.match(warehouseTabs, /\/organization\/warehouses\/location-mode-history/);
   assert.match(historyGateway, /location-mode\/runs/);
   assert.match(historyGateway, /location-mode-runs/);
   assert.match(historyPage, /Chuyển sang tồn chung/);
