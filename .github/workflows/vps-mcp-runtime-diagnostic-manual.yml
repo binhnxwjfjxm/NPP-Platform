@@ -1,0 +1,181 @@
+name: VPS MCP runtime read-only diagnostic
+
+on:
+  workflow_dispatch:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: vps-mcp-runtime-diagnostic-958
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.number == 5 &&
+        github.event.comment.body == '/audit-vps-mcp-runtime-958' &&
+        (
+          github.actor == 'binhnxwjfjxm' ||
+          github.actor == 'khuongbinhinfo-a11y'
+        )
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VPS_MCP_HOST: ${{ vars.VPS_MCP_HOST }}
+      VPS_SSH_USER: ${{ vars.VPS_SSH_USER }}
+
+    steps:
+      - name: Validate exact issue command
+        if: github.event_name == 'issue_comment'
+        shell: bash
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          test "$COMMENT_BODY" = '/audit-vps-mcp-runtime-958'
+
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact origin/main SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          test "$(git rev-parse --is-shallow-repository)" = "false"
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare MCP SSH credential
+        id: ssh
+        shell: bash
+        env:
+          VPS_MCP_SSH_KEY: ${{ secrets.VPS_MCP_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$VPS_MCP_HOST"
+          test -n "$VPS_SSH_USER"
+          test -n "$VPS_MCP_SSH_KEY"
+
+          umask 077
+          key="$RUNNER_TEMP/vps-mcp.key"
+          printf '%s\n' "$VPS_MCP_SSH_KEY" > "$key"
+          chmod 600 "$key"
+          ssh-keygen -y -f "$key" >/dev/null
+
+          known="$RUNNER_TEMP/vps-mcp-known-hosts"
+          ssh-keyscan -T 10 -H "$VPS_MCP_HOST" > "$known" 2>/dev/null
+          test -s "$known"
+          chmod 600 "$known"
+
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+          echo "known=$known" >> "$GITHUB_OUTPUT"
+
+      - name: Capture sanitized MCP runtime evidence
+        id: audit
+        shell: bash
+        env:
+          SSH_KEY: ${{ steps.ssh.outputs.key }}
+          KNOWN_HOSTS: ${{ steps.ssh.outputs.known }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          raw="$RUNNER_TEMP/mcp-runtime-raw.txt"
+          clean="$RUNNER_TEMP/mcp-runtime-clean.txt"
+          report="$RUNNER_TEMP/mcp-runtime-report.md"
+
+          ssh \
+            -i "$SSH_KEY" \
+            -o BatchMode=yes \
+            -o ConnectTimeout=10 \
+            -o ConnectionAttempts=1 \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$KNOWN_HOSTS" \
+            "$VPS_SSH_USER@$VPS_MCP_HOST" 'bash -s' > "$raw" <<'REMOTE'
+          set -euo pipefail
+          service=npp-mcp-api.service
+
+          echo 'service_show_begin'
+          systemctl show "$service" \
+            -p LoadState \
+            -p ActiveState \
+            -p SubState \
+            -p Result \
+            -p ExecMainCode \
+            -p ExecMainStatus \
+            -p NRestarts || true
+          echo 'service_show_end'
+
+          current="$(readlink -f /srv/npp/mcp/current 2>/dev/null || true)"
+          if [ -n "$current" ]; then
+            echo "current_release=${current##*/}"
+          else
+            echo 'current_release=none'
+          fi
+
+          printf 'node_version='; node --version 2>/dev/null || echo missing
+          printf 'port_3105_listener='; ss -lntH | awk '{n=split($4,a,":"); if (a[n]+0==3105) found=1} END {print found?"yes":"no"}'
+          printf 'tcp_3000_listener='; ss -lntH | awk '{n=split($4,a,":"); if (a[n]+0==3000) found=1} END {print found?"yes":"no"}'
+          printf 'proxy_listener_count_3128_3427='; ss -lntH | awk '{n=split($4,a,":"); p=a[n]+0; if (p>=3128 && p<=3427) c++} END {print c+0}'
+          for svc in ipv4-proxy ipv6-proxy oci-ipv6-pool; do
+            printf 'proxy_%s=' "$svc"
+            printf '%s/' "$(systemctl is-active "$svc" 2>/dev/null || true)"
+            systemctl is-enabled "$svc" 2>/dev/null || true
+          done
+
+          echo 'journal_begin'
+          sudo -n journalctl -u "$service" -n 100 --no-pager -o cat 2>/dev/null || true
+          echo 'journal_end'
+          REMOTE
+
+          sed -E \
+            -e 's#(postgres(ql)?://)[^[:space:]"'"'"']+#\1<redacted>#g' \
+            -e 's#(Bearer[[:space:]]+)[A-Za-z0-9._~+/=-]+#\1<redacted>#g' \
+            -e 's#([A-Z0-9_]*(TOKEN|KEY|SECRET|PASSWORD)[A-Z0-9_]*=)[^[:space:]]+#\1<redacted>#g' \
+            -e 's#([?&](token|key|secret|password)=)[^&[:space:]]+#\1<redacted>#Ig' \
+            "$raw" > "$clean"
+
+          {
+            echo '## VPS MCP runtime read-only diagnostic'
+            echo
+            echo "- Source main SHA: \`${SOURCE_SHA}\`"
+            echo "- Run ID: \`${GITHUB_RUN_ID}\`"
+            echo '- Operation: read-only service/journal audit; no deploy, restart, config change, migration or proxy mutation.'
+            echo '- Secret handling: environment file contents are never read; common URL credential/token patterns are redacted from journal output.'
+            echo
+            echo '```text'
+            cat "$clean"
+            echo '```'
+          } > "$report"
+
+          cat "$report" >> "$GITHUB_STEP_SUMMARY"
+          echo "report=$report" >> "$GITHUB_OUTPUT"
+
+      - name: Publish sanitized evidence to Issue 958
+        if: always() && steps.audit.outputs.report != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPORT_FILE: ${{ steps.audit.outputs.report }}
+        run: |
+          set -euo pipefail
+          gh api \
+            --method POST \
+            "repos/$GITHUB_REPOSITORY/issues/958/comments" \
+            -f body="$(cat "$REPORT_FILE")" \
+            >/dev/null
