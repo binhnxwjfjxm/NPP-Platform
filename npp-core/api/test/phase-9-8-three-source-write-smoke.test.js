@@ -19,6 +19,15 @@ test('three-source smoke writes only draft orders inside a rollback transaction'
   assert.doesNotMatch(script, /confirmSalesOrder|allocateDocumentNumber|\bCOMMIT\b/);
 });
 
+test('three-source smoke uses the canonical sales-order candidate path and shared idempotency generator', () => {
+  assert.match(script, /salesOrderEntryService\.searchSalesOrderSkuOptions/);
+  assert.match(script, /eligibility\?\.selectable === true/);
+  assert.match(script, /createIdempotencyKey\('phase-9-8-customer-portal-order'\)/);
+  assert.match(script, /candidateFailures/);
+  assert.doesNotMatch(script, /listPortalCatalog/);
+  assert.doesNotMatch(script, /const portalKey = `phase98-/);
+});
+
 test('workflow is owner-guarded and verifies deployed PWA icon assets', () => {
   assert.match(workflow, /github\.event\.issue\.number == 395/);
   assert.match(workflow, /github\.event\.comment\.body == '\/smoke-phase-9-8-three-source-write'/);

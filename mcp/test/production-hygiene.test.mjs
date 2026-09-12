@@ -76,6 +76,28 @@ test("MCP v1 API smoke always runs guarded cleanup after the smoke body", async 
   assert.doesNotMatch(source, /await cleanupRoute\(routeId\);\s*\n\s*return \{/);
 });
 
+test("MCP v1 API smoke uses shared canonical idempotency keys and reuses the retry key", async () => {
+  const source = await readFile(path.join(root, "scripts/smoke-mcp-v1-api.mjs"), "utf8");
+  assert.match(source, /createIdempotencyKey/);
+  assert.match(source, /isValidIdempotencyKey/);
+  assert.match(source, /const openKey = mutationKey\("route-session\.open"\)/);
+  assert.match(source, /withMutationKey\("route-session\.open", openInit, openKey\)/);
+  for (const operation of [
+    "route.create",
+    "route-customer.add",
+    "route.archive",
+    "session-customer.status.update",
+    "session-customer.order.create",
+    "session-customer.test.create",
+    "session-customer.report.create",
+    "session-customer.followup.create",
+    "route-session.update",
+    "route-session.delete-empty"
+  ]) assert.match(source, new RegExp(operation.replaceAll(".", "\\.")));
+  assert.match(source, /full_open_retry_not_replayed/);
+  assert.doesNotMatch(source, /Idempotency-Key"\s*:\s*`/);
+});
+
 test("smoke route cleanup migration is strict and service-role-only", async () => {
   const source = await readFile(migrationPath, "utf8");
   assert.match(source, /route_name[^\n]*\^__MCP_V1_API_\(FULL\|SNAPSHOT_ONCE\)__/);
