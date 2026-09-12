@@ -34,6 +34,14 @@ test('Sales export chỉ nhận 6 chiều canonical, XLSX/CSV và whitelist cộ
   assert.deepEqual(Object.keys(salesReportingExportInternals.DIMENSIONS), [
     'customers', 'customerGroups', 'channels', 'products', 'productGroups', 'employees',
   ]);
+  assert.deepEqual(
+    salesReportingExportInternals.flattenRow({ unit: { code: 'THUNG', name: 'Thùng' } }),
+    {
+      code: '', name: '', currencyCode: '', unitCode: 'THUNG', unitName: 'Thùng', revenue: '', quantity: '',
+      documentCount: '', customerCount: '', productCount: '', sharePercent: '', previousRevenue: '',
+      previousQuantity: '', changePercent: '', source: '',
+    },
+  );
 });
 
 test('Sales export mặc định cột an toàn và không tự lấy documents giới hạn 200 dòng', async () => {

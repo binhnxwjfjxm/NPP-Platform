@@ -137,7 +137,7 @@ function flattenRow(row) {
     code: row?.code ?? '',
     name: row?.name ?? '',
     currencyCode: row?.currencyCode ?? '',
-    unitCode: row?.curt?.code ?? '',
+    unitCode: row?.unit?.code ?? '',
     unitName: row?.unit?.name ?? '',
     revenue: row?.revenue ?? '',
     quantity: row?.quantity ?? '',
