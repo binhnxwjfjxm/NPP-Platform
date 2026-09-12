@@ -12,12 +12,12 @@ test('Sales export chỉ nhận 6 chiều canonical, XLSX/CSV và whitelist cộ
   const valid = normalizeSalesReportingExportSelection({
     dimension: 'products',
     format: 'csv',
-    columns: ['code', 'name', 'unitName', 'revenue', 'quantity', 'changePercent'],
+    columns: ['code', 'name', 'unitName', 'quantity', 'revenue', 'changePercent'],
   });
   assert.equal(valid.ok, true);
   assert.equal(valid.dimension, 'products');
   assert.equal(valid.format, 'csv');
-  assert.deepEqual(valid.columns.map((item) => item.key), ['code', 'name', 'unitName', 'revenue', 'quantity', 'changePercent']);
+  assert.deepEqual(valid.columns.map((item) => item.key), ['code', 'name', 'unitName', 'quantity', 'revenue', 'changePercent']);
 
   const invalidDimension = normalizeSalesReportingExportSelection({ dimension: 'documents', format: 'xlsx', columns: [] });
   assert.equal(invalidDimension.ok, false);
@@ -42,6 +42,25 @@ test('Sales export chỉ nhận 6 chiều canonical, XLSX/CSV và whitelist cộ
       previousQuantity: '', changePercent: '', source: '',
     },
   );
+
+  const formatted = salesReportingExportInternals.flattenRow({
+    revenue: '5000000',
+    previousRevenue: '1234567.5',
+    sharePercent: '7.8543',
+    changePercent: '1506500.8887',
+  });
+  assert.equal(formatted.revenue, '5,000,000');
+  assert.equal(formatted.previousRevenue, '1,234,567.5');
+  assert.equal(formatted.sharePercent, '7.85%');
+  assert.equal(formatted.changePercent, '1,506,500.89%');
+
+  const productDefaults = normalizeSalesReportingExportSelection({
+    dimension: 'products',
+    format: 'xlsx',
+    columns: [],
+  });
+  assert.equal(productDefaults.ok, true);
+  assert.deepEqual(productDefaults.columns.map((item) => item.key).slice(3, 6), ['unitName', 'quantity', 'revenue']);
 });
 
 test('Sales export mặc định cột an toàn và không tự lấy documents giới hạn 200 dòng', async () => {

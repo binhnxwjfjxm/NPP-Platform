@@ -58,7 +58,7 @@ const COLUMN_OPTIONS: Readonly<Record<SalesBreakdownKey, readonly ColumnOption[]
   customers: columns(['code', 'name', 'currencyCode', 'revenue', 'documentCount', 'sharePercent', 'previousRevenue', 'changePercent', 'source']),
   customerGroups: columns(['code', 'name', 'currencyCode', 'revenue', 'customerCount', 'documentCount', 'sharePercent', 'previousRevenue', 'changePercent', 'source']),
   channels: columns(['code', 'name', 'currencyCode', 'revenue', 'documentCount', 'customerCount', 'sharePercent', 'previousRevenue', 'changePercent', 'source']),
-  products: columns(['code', 'name', 'currencyCode', 'unitCode', 'unitName', 'revenue', 'quantity', 'sharePercent', 'previousRevenue', 'previousQuantity', 'changePercent', 'source']),
+  products: columns(['code', 'name', 'currencyCode', 'unitCode', 'unitName', 'quantity', 'revenue', 'sharePercent', 'previousRevenue', 'previousQuantity', 'changePercent', 'source']),
   productGroups: columns(['code', 'name', 'currencyCode', 'revenue', 'productCount', 'sharePercent', 'previousRevenue', 'changePercent', 'source']),
   employees: columns(['code', 'name', 'currencyCode', 'revenue', 'documentCount', 'customerCount', 'sharePercent', 'previousRevenue', 'changePercent', 'source']),
 });
@@ -67,7 +67,7 @@ const DEFAULT_COLUMNS: Readonly<Record<SalesBreakdownKey, readonly string[]>> = 
   customers: Object.freeze(['code', 'name', 'currencyCode', 'revenue', 'documentCount', 'sharePercent', 'previousRevenue', 'changePercent']),
   customerGroups: Object.freeze(['code', 'name', 'currencyCode', 'revenue', 'customerCount', 'documentCount', 'sharePercent', 'previousRevenue', 'changePercent']),
   channels: Object.freeze(['code', 'name', 'currencyCode', 'revenue', 'documentCount', 'customerCount', 'sharePercent', 'previousRevenue', 'changePercent']),
-  products: Object.freeze(['code', 'name', 'currencyCode', 'unitName', 'revenue', 'quantity', 'sharePercent', 'previousRevenue', 'previousQuantity', 'changePercent']),
+  products: Object.freeze(['code', 'name', 'currencyCode', 'unitName', 'quantity', 'revenue', 'sharePercent', 'previousRevenue', 'previousQuantity', 'changePercent']),
   productGroups: Object.freeze(['code', 'name', 'currencyCode', 'revenue', 'productCount', 'sharePercent', 'previousRevenue', 'changePercent']),
   employees: Object.freeze(['code', 'name', 'currencyCode', 'revenue', 'documentCount', 'customerCount', 'sharePercent', 'previousRevenue', 'changePercent']),
 });

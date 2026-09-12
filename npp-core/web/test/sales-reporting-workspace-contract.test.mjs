@@ -96,3 +96,15 @@ test('Lô 3 giữ UX responsive cho công cụ phân tích, chi tiết và biể
   assert.match(styles, /@media \(max-width: 640px\)[\s\S]*\.analysisTools/);
   assert.match(styles, /\.trendChart/);
 });
+
+
+test('Báo cáo bán hàng gom bộ lọc desktop một hàng và ưu tiên số liệu tổng', () => {
+  const workspace = read('app/components/sales-reporting-workspace.tsx');
+  const styles = read('app/components/sales-reporting-workspace.module.css');
+  assert.match(workspace, /styles\.filterToolbar/);
+  assert.match(styles, /\.filterToolbar[\s\S]*grid-template-columns: max-content/);
+  assert.match(styles, /\.summaryGrid article[\s\S]*min-height: 92px/);
+  assert.match(styles, /\.cardValue,[\s\S]*font-size: 2rem/);
+  assert.match(workspace, /formatDecimal\(value, 2\)/);
+  assert.match(workspace, /percent\(row\.sharePercent\)/);
+});

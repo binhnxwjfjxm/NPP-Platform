@@ -58,7 +58,7 @@ const DIMENSIONS = Object.freeze({
     'Sản phẩm',
     'San-pham',
     ['code', 'name', 'currencyCode', 'unitCode', 'unitName', 'revenue', 'quantity', 'sharePercent', 'previousRevenue', 'previousQuantity', 'changePercent', 'source'],
-    ['code', 'name', 'currencyCode', 'unitName', 'revenue', 'quantity', 'sharePercent', 'previousRevenue', 'previousQuantity', 'changePercent'],
+    ['code', 'name', 'currencyCode', 'unitName', 'quantity', 'revenue', 'sharePercent', 'previousRevenue', 'previousQuantity', 'changePercent'],
   ),
   productGroups: dimension(
     'Nhóm hàng',
@@ -132,6 +132,38 @@ function sourceLabel(value) {
   return SOURCE_LABELS[normalized] ?? normalized;
 }
 
+function formatGroupedDecimal(value, maxFractionDigits = 2) {
+  const normalized = valueText(value).trim();
+  if (!normalized) return '';
+  const match = /^(-?)(\d+)(?:\.(\d+))?$/.exec(normalized);
+  if (!match) return normalized;
+
+  const [, sign, rawInteger, rawFraction = ''] = match;
+  const scale = Math.max(0, maxFractionDigits);
+  let integer = rawInteger;
+  let fraction = rawFraction.slice(0, scale);
+
+  if (rawFraction.length > scale && rawFraction.charCodeAt(scale) >= 53) {
+    const factor = 10n ** BigInt(scale);
+    const absolute = (BigInt(integer) * factor) + BigInt(fraction || '0') + 1n;
+    integer = (absolute / factor).toString();
+    fraction = scale ? (absolute % factor).toString().padStart(scale, '0') : '';
+  }
+
+  fraction = fraction.replace(/0+$/, '');
+  const grouped = integer.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return `${sign}${grouped}${fraction ? `.${fraction}` : ''}`;
+}
+
+function formatMoneyValue(value) {
+  return formatGroupedDecimal(value, 2);
+}
+
+function formatPercentValue(value) {
+  const formatted = formatGroupedDecimal(value, 2);
+  return formatted ? `${formatted}%` : '';
+}
+
 function flattenRow(row) {
   return Object.freeze({
     code: row?.code ?? '',
@@ -139,15 +171,15 @@ function flattenRow(row) {
     currencyCode: row?.currencyCode ?? '',
     unitCode: row?.unit?.code ?? '',
     unitName: row?.unit?.name ?? '',
-    revenue: row?.revenue ?? '',
+    revenue: formatMoneyValue(row?.revenue),
     quantity: row?.quantity ?? '',
     documentCount: row?.documentCount ?? '',
     customerCount: row?.customerCount ?? '',
     productCount: row?.productCount ?? '',
-    sharePercent: row?.sharePercent ?? '',
-    previousRevenue: row?.previousRevenue ?? '',
+    sharePercent: formatPercentValue(row?.sharePercent),
+    previousRevenue: formatMoneyValue(row?.previousRevenue),
     previousQuantity: row?.previousQuantity ?? '',
-    changePercent: row?.changePercent ?? '',
+    changePercent: formatPercentValue(row?.changePercent),
     source: sourceLabel(row?.source),
   });
 }

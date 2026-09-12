@@ -90,24 +90,36 @@ function presetRange(key: (typeof PERIOD_PRESETS)[number]['key']) {
   return Object.freeze({ from: `${previousMonthLast.slice(0, 7)}-01`, to: previousMonthLast });
 }
 
-function formatDecimal(value: string | null | undefined) {
+function formatDecimal(value: string | null | undefined, maxFractionDigits = 6) {
   const normalized = String(value ?? '0').trim();
   const match = /^(-?)(\d+)(?:\.(\d+))?$/.exec(normalized);
   if (!match) return normalized || '0';
-  const [, sign, integer, fraction = ''] = match;
-  const grouped = integer.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-  const trimmedFraction = fraction.replace(/0+$/, '').slice(0, 6);
-  return `${sign}${grouped}${trimmedFraction ? `,${trimmedFraction}` : ''}`;
+
+  const [, sign, rawInteger, rawFraction = ''] = match;
+  const scale = Math.max(0, maxFractionDigits);
+  let integer = rawInteger;
+  let fraction = rawFraction.slice(0, scale);
+
+  if (rawFraction.length > scale && rawFraction.charCodeAt(scale) >= 53) {
+    const factor = 10n ** BigInt(scale);
+    const absolute = (BigInt(integer) * factor) + BigInt(fraction || '0') + 1n;
+    integer = (absolute / factor).toString();
+    fraction = scale ? (absolute % factor).toString().padStart(scale, '0') : '';
+  }
+
+  fraction = fraction.replace(/0+$/, '');
+  const grouped = integer.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return `${sign}${grouped}${fraction ? `.${fraction}` : ''}`;
 }
 
 function formatMoney(value: string | null | undefined, currencyCode: string) {
   const suffix = currencyCode === 'VND' ? '₫' : currencyCode;
-  return `${formatDecimal(value)} ${suffix}`;
+  return `${formatDecimal(value, 2)} ${suffix}`;
 }
 
 function percent(value: string | null | undefined) {
   if (value === null || value === undefined || String(value).trim() === '') return 'Chưa có cơ sở so sánh';
-  return `${formatDecimal(value)}%`;
+  return `${formatDecimal(value, 2)}%`;
 }
 
 function rowChange(row: SalesBreakdownRow) {
@@ -384,54 +396,55 @@ export function SalesReportingWorkspace() {
             <small>{periodDescription}</small>
           </div>
 
-          <div className={styles.presetRow} aria-label="Chọn nhanh kỳ báo cáo">
-            {PERIOD_PRESETS.map((preset) => (
-              <button key={preset.key} type="button" onClick={() => applyPreset(preset.key)} disabled={busy}>
-                {preset.label}
-              </button>
-            ))}
-            <span>Tùy chọn: nhập ngày bên dưới</span>
-          </div>
+          <div className={styles.filterToolbar}>
+            <div className={styles.presetRow} aria-label="Chọn nhanh kỳ báo cáo">
+              {PERIOD_PRESETS.map((preset) => (
+                <button key={preset.key} type="button" onClick={() => applyPreset(preset.key)} disabled={busy}>
+                  {preset.label}
+                </button>
+              ))}
+            </div>
 
-          <div className={styles.filterGrid}>
-            <label>
-              <span>Từ ngày</span>
-              <input
-                type="date"
-                value={draft.from}
-                disabled={busy}
-                onChange={(event) => setDraft((current) => ({ ...current, from: event.target.value }))}
-              />
-            </label>
-            <label>
-              <span>Đến ngày</span>
-              <input
-                type="date"
-                value={draft.to}
-                disabled={busy}
-                onChange={(event) => setDraft((current) => ({ ...current, to: event.target.value }))}
-              />
-            </label>
-            <label>
-              <span>Kho</span>
-              <select
-                value={draft.warehouseId}
-                disabled={busy}
-                onChange={(event) => setDraft((current) => ({ ...current, warehouseId: event.target.value }))}
-              >
-                <option value="">Tất cả kho được cấp quyền</option>
-                {warehouses.map((warehouse) => (
-                  <option key={warehouse.warehouseId} value={warehouse.warehouseId}>
-                    {warehouse.warehouseCode} — {warehouse.warehouseName}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
+            <div className={styles.filterGrid}>
+              <label>
+                <span>Từ ngày</span>
+                <input
+                  type="date"
+                  value={draft.from}
+                  disabled={busy}
+                  onChange={(event) => setDraft((current) => ({ ...current, from: event.target.value }))}
+                />
+              </label>
+              <label>
+                <span>Đến ngày</span>
+                <input
+                  type="date"
+                  value={draft.to}
+                  disabled={busy}
+                  onChange={(event) => setDraft((current) => ({ ...current, to: event.target.value }))}
+                />
+              </label>
+              <label>
+                <span>Kho</span>
+                <select
+                  value={draft.warehouseId}
+                  disabled={busy}
+                  onChange={(event) => setDraft((current) => ({ ...current, warehouseId: event.target.value }))}
+                >
+                  <option value="">Tất cả kho được cấp quyền</option>
+                  {warehouses.map((warehouse) => (
+                    <option key={warehouse.warehouseId} value={warehouse.warehouseId}>
+                      {warehouse.warehouseCode} — {warehouse.warehouseName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
 
-          <div className={styles.filterActions}>
-            <button type="button" className={styles.secondaryButton} onClick={resetFilters} disabled={busy}>Đặt lại</button>
-            <button type="submit" className={styles.primaryButton} disabled={busy}>{busy ? 'Đang cập nhật…' : 'Áp dụng'}</button>
+            <div className={styles.filterActions}>
+              <button type="button" className={styles.secondaryButton} onClick={resetFilters} disabled={busy}>Đặt lại</button>
+              <button type="submit" className={styles.primaryButton} disabled={busy}>{busy ? 'Đang cập nhật…' : 'Áp dụng'}</button>
+            </div>
           </div>
         </form>
 
@@ -555,7 +568,7 @@ export function SalesReportingWorkspace() {
                     </td>
                     <td>{formatMoney(row.revenue, row.currencyCode)}</td>
                     <td>{metricValue(row, activeDimension)}</td>
-                    <td>{formatDecimal(row.sharePercent)}%</td>
+                    <td>{percent(row.sharePercent)}</td>
                     <td>{previousValue(row, activeDimension)}</td>
                     <td><span className={styles.changeBadge}>{rowChange(row)}</span></td>
                     <td>
@@ -588,7 +601,7 @@ export function SalesReportingWorkspace() {
                 <div><dt>Doanh thu</dt><dd>{formatMoney(selectedRow.revenue, selectedRow.currencyCode)}</dd></div>
                 <div><dt>Kỳ trước</dt><dd>{formatMoney(selectedRow.previousRevenue, selectedRow.currencyCode)}</dd></div>
                 <div><dt>Thay đổi</dt><dd>{rowChange(selectedRow)}</dd></div>
-                <div><dt>Tỷ trọng</dt><dd>{formatDecimal(selectedRow.sharePercent)}%</dd></div>
+                <div><dt>Tỷ trọng</dt><dd>{percent(selectedRow.sharePercent)}</dd></div>
                 <div><dt>Số đơn</dt><dd>{formatDecimal(selectedRow.documentCount)}</dd></div>
                 <div><dt>Số khách</dt><dd>{formatDecimal(selectedRow.customerCount)}</dd></div>
                 <div><dt>Số sản phẩm</dt><dd>{formatDecimal(selectedRow.productCount)}</dd></div>
