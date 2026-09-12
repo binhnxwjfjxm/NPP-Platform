@@ -66,13 +66,17 @@ test("production runtime and seed contain no smoke fixtures", async () => {
   assert.deepEqual(violations, []);
 });
 
-test("MCP v1 API smoke always runs guarded cleanup after the smoke body", async () => {
+test("MCP v1 API smoke always runs tracked target-scoped cleanup after the smoke body", async () => {
   const source = await readFile(path.join(root, "scripts/smoke-mcp-v1-api.mjs"), "utf8");
   assert.match(source, /async function cleanupAllRoutes\(\)/);
   assert.match(source, /await cleanupAllRoutes\(\)/);
   assert.match(source, /let primaryError = null/);
   assert.match(source, /let cleanupError = null/);
-  assert.match(source, /data\.smokeCleanup === true/);
+  assert.match(source, /cleanupRouteIds\.has\(routeId\)/);
+  assert.match(source, /data\.deleted === true/);
+  assert.match(source, /String\(data\.routeId \|\| ""\) === routeId/);
+  assert.match(source, /data\.deleteJobId/);
+  assert.doesNotMatch(source, /data\.smokeCleanup === true/);
   assert.doesNotMatch(source, /await cleanupRoute\(routeId\);\s*\n\s*return \{/);
 });
 
@@ -103,6 +107,15 @@ test("MCP v1 API smoke validates the current PostgreSQL health contract", async 
   assert.match(source, /persistenceProvider === "postgresql"/);
   assert.match(source, /persistenceConfigured === true/);
   assert.doesNotMatch(source, /providerConfigured/);
+});
+
+test("MCP v1 API smoke follows the typed PostgreSQL session response contract", async () => {
+  const source = await readFile(path.join(root, "scripts/smoke-mcp-v1-api.mjs"), "utf8");
+  assert.match(source, /firstOpen\.sessionId \|\| firstOpen\.id/);
+  assert.match(source, /secondOpen\.sessionId \|\| secondOpen\.id/);
+  assert.doesNotMatch(source, /object\(firstOpen\.session\)\.id/);
+  assert.doesNotMatch(source, /firstOpen\.created === true/);
+  assert.doesNotMatch(source, /existing_session_snapshot_frozen/);
 });
 
 test("smoke route cleanup migration is strict and service-role-only", async () => {
