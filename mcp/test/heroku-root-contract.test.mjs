@@ -31,6 +31,29 @@ test("VPS DB bootstrap is manual, exact-main and never exposes PostgreSQL public
   assert.doesNotMatch(workflow, /migration:migrate|pg_restore|DATABASE_URL/);
 });
 
+test("Heroku to VPS DB rehearsal locks migration heads and cannot cut over production", async () => {
+  const workflow = await read(".github/workflows/vps-db-heroku-rehearsal-manual.yml");
+  const script = await read("npp-core/api/scripts/vps-db-heroku-rehearsal-958.sh");
+
+  assert.match(workflow, /\/audit-heroku-migration-head-958/);
+  assert.match(workflow, /\/rehearse-heroku-to-vps-db-958/);
+  assert.match(workflow, /github\.event\.issue\.number == 5/);
+  assert.doesNotMatch(workflow, /^\s{2}(?:push|pull_request):\s*$/m);
+  assert.match(workflow, /ref: main/);
+  assert.match(workflow, /git rev-parse origin\/main/);
+  assert.match(script, /shared\.schema_migrations/);
+  assert.match(script, /heroku pg:backups:capture/);
+  assert.match(script, /pg_restore --exit-on-error --no-owner --no-acl/);
+  assert.match(script, /restore_db="npp_rehearsal_958"/);
+  assert.match(script, /MIGRATION_RERUN_NOOP=PASS/);
+  assert.match(script, /PRE_MIGRATION_RECONCILIATION=/);
+  assert.match(script, /PUBLIC_TCP_5432=closed/);
+  assert.match(script, /PRODUCTION_TRAFFIC=not_enabled/);
+  assert.match(script, /CUTOVER=not_performed/);
+  assert.doesNotMatch(script, /maintenance:on|maintenance:off/);
+  assert.doesNotMatch(workflow, /VPS_COMPANY_SSH_KEY|VPS_MCP_SSH_KEY/);
+});
+
 test("Công Ty VPS deploy has isolated release, health and rollback boundaries", async () => {
   const workflow = await read(".github/workflows/vps-company-backend-manual.yml");
 
