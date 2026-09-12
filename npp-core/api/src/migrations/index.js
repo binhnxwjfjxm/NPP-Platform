@@ -115,6 +115,7 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   migration('131_warehouse_location_management_mode', 'inventory/131_warehouse_location_management_mode.sql'),
   migration('132_warehouse_location_authority_allocation', 'sales/132_warehouse_location_authority_allocation.sql'),
   migration('133_warehouse_location_negative_relocation', 'inventory/133_warehouse_location_negative_relocation.sql'),
+  migration('134_customer_profile_delivery_return_indexes', 'sales/134_customer_profile_delivery_return_indexes.sql'),
 ]);
 
 export { runMigrations };
