@@ -83,6 +83,10 @@ export async function supabaseRpc(config, name, args, options = {}) {
     if (POSTGRESQL_CHECKIN_RPC_NAMES.has(name)) {
       return postgresqlCheckinRpc(config, name, args, options);
     }
+    const { POSTGRESQL_TEST_RPC_NAMES, postgresqlTestRpc } = await import("./postgresql-test-adapter.js");
+    if (POSTGRESQL_TEST_RPC_NAMES.has(name)) {
+      return postgresqlTestRpc(config, name, args, options);
+    }
     const { POSTGRESQL_REPORT_RPC_NAMES, postgresqlReportRpc } = await import("./postgresql-report-adapter.js");
     if (POSTGRESQL_REPORT_RPC_NAMES.has(name)) {
       return postgresqlReportRpc(config, name, args, options);
