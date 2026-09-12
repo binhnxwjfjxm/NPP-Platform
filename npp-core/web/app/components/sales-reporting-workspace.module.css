@@ -1,0 +1,392 @@
+.workspace {
+  display: grid;
+  min-width: 0;
+  gap: 18px;
+}
+
+.filters,
+.panel,
+.summaryGrid article {
+  border: 1px solid var(--border-color, #dfe4ea);
+  border-radius: 18px;
+  background: var(--surface-color, #fff);
+  box-shadow: 0 8px 24px rgb(15 23 42 / 5%);
+}
+
+.filters,
+.panel {
+  padding: 18px;
+}
+
+.filterHeading,
+.sectionHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.filterHeading h2,
+.sectionHeading h2 {
+  margin: 2px 0 0;
+  font-size: 1rem;
+}
+
+.filterHeading small,
+.sectionHeading small,
+.sectionHeading > span {
+  color: #64748b;
+  font-size: 0.82rem;
+}
+
+.eyebrow {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.filterGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 220px));
+  gap: 12px;
+}
+
+.filterGrid label {
+  display: grid;
+  gap: 6px;
+  color: #334155;
+  font-size: 0.84rem;
+  font-weight: 650;
+}
+
+.filterGrid input,
+.filterGrid select {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: #fff;
+  color: #0f172a;
+  font: inherit;
+}
+
+.filterActions,
+.headerActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.filterActions {
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
+.primaryButton,
+.secondaryButton,
+.headerLink,
+.tab,
+.activeTab {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  padding: 8px 13px;
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.primaryButton,
+.secondaryButton,
+.tab,
+.activeTab {
+  cursor: pointer;
+}
+
+.primaryButton {
+  border: 1px solid #0f172a;
+  background: #0f172a;
+  color: #fff;
+}
+
+.secondaryButton,
+.headerLink,
+.tab {
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #0f172a;
+}
+
+.activeTab {
+  border: 1px solid #0f172a;
+  background: #0f172a;
+  color: #fff;
+}
+
+.primaryButton:disabled,
+.secondaryButton:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.summaryGrid article {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  min-height: 134px;
+  padding: 16px;
+}
+
+.cardLabel {
+  color: #64748b;
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.cardValue,
+.revenueLine strong {
+  color: #0f172a;
+  font-size: 1.6rem;
+  line-height: 1.15;
+}
+
+.summaryGrid small,
+.revenueLine small {
+  color: #64748b;
+  line-height: 1.4;
+}
+
+.revenueCard {
+  gap: 10px !important;
+}
+
+.revenueLine {
+  display: grid;
+  gap: 4px;
+}
+
+.dimensionTabs {
+  display: flex;
+  min-width: 0;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 0 12px;
+  scrollbar-width: thin;
+}
+
+.dimensionTabs button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.analysisTableWrap,
+.tableWrap {
+  overflow: auto;
+  border: 1px solid #edf2f7;
+  border-radius: 12px;
+}
+
+.analysisTableWrap {
+  height: clamp(360px, 55vh, 520px);
+}
+
+.analysisTableWrap table,
+.tableWrap table {
+  width: 100%;
+  min-width: 860px;
+  border-collapse: collapse;
+}
+
+.analysisTableWrap thead,
+.tableWrap thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #fff;
+}
+
+.analysisTableWrap th,
+.analysisTableWrap td,
+.tableWrap th,
+.tableWrap td {
+  border-bottom: 1px solid #edf2f7;
+  padding: 10px 8px;
+  text-align: left;
+  vertical-align: top;
+  font-size: 0.84rem;
+}
+
+.analysisTableWrap th,
+.tableWrap th {
+  color: #64748b;
+  font-size: 0.76rem;
+  font-weight: 750;
+}
+
+.analysisTableWrap td,
+.tableWrap td {
+  color: #1e293b;
+}
+
+.analysisTableWrap td > small,
+.tableWrap td > small {
+  display: block;
+  margin-top: 3px;
+  color: #64748b;
+}
+
+.changeBadge,
+.okBadge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: #f1f5f9;
+  color: #334155;
+  font-size: 0.76rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.okBadge {
+  background: #ecfdf5;
+  color: #166534;
+}
+
+.twoColumns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.factList {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.factList div {
+  border: 1px solid #edf2f7;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.factList dt {
+  color: #64748b;
+  font-size: 0.78rem;
+}
+
+.factList dd {
+  margin: 4px 0 0;
+  color: #0f172a;
+  font-size: 1.35rem;
+  font-weight: 750;
+}
+
+.warningList {
+  margin: 0;
+  padding-left: 20px;
+  color: #7c2d12;
+  line-height: 1.55;
+}
+
+.goodState,
+.helperText,
+.lineage {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.helperText {
+  margin-top: 12px;
+}
+
+.empty {
+  padding: 28px !important;
+  color: #64748b !important;
+  text-align: center !important;
+}
+
+.loading {
+  min-height: 220px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  background: #fff;
+  color: #64748b;
+  font-weight: 650;
+}
+
+.error {
+  border: 1px solid #fecaca;
+  border-radius: 12px;
+  padding: 11px 13px;
+  background: #fff7f7;
+  color: #991b1b;
+}
+
+@media (max-width: 1000px) {
+  .summaryGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 820px) {
+  .filterGrid,
+  .twoColumns {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .filters,
+  .panel,
+  .summaryGrid article {
+    border-radius: 14px;
+    padding: 14px;
+  }
+
+  .filterHeading,
+  .sectionHeading {
+    display: grid;
+  }
+
+  .summaryGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .filterActions {
+    justify-content: stretch;
+  }
+
+  .filterActions button,
+  .headerLink {
+    flex: 1;
+  }
+
+  .headerActions {
+    width: 100%;
+  }
+
+  .analysisTableWrap {
+    height: clamp(340px, 58vh, 480px);
+  }
+}
