@@ -95,10 +95,7 @@ jobs:
 
           umask 077
           prepare_key() {
-            local raw="$1"
-            local host="$2"
-            local key="$3"
-            local known="$4"
+            local raw="$1" host="$2" key="$3" known="$4"
             printf '%s\n' "$raw" > "$key"
             chmod 600 "$key"
             ssh-keygen -y -f "$key" >/dev/null
@@ -118,32 +115,38 @@ jobs:
           echo "mcp_key=$RUNNER_TEMP/vps-mcp.key" >> "$GITHUB_OUTPUT"
           echo "mcp_known=$RUNNER_TEMP/vps-mcp-known-hosts" >> "$GITHUB_OUTPUT"
 
-      - name: Resolve exact VPS IPv4 addresses
+      - name: Resolve private VPS network addresses
         id: network
         shell: bash
         run: |
           set -euo pipefail
-          resolve_ipv4() {
-            local host="$1"
-            local ip
-            ip="$(getent ahostsv4 "$host" | awk '$2 == "STREAM" {print $1; exit}')"
-            test -n "$ip"
-            python3 - "$ip" <<'PY'
-          import ipaddress, sys
-          ipaddress.IPv4Address(sys.argv[1])
-          PY
-            printf '%s' "$ip"
+
+          private_ip() {
+            local key="$1" known="$2" host="$3"
+            ssh -i "$key" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$known" \
+              "$VPS_SSH_USER@$host" \
+              "ip -4 route get 1.1.1.1 | awk 'NR==1 {for(i=1;i<=NF;i++) if(\$i==\"src\") {print \$(i+1); exit}}'"
           }
 
-          db_ip="$(resolve_ipv4 "$VPS_DB_HOST")"
-          company_ip="$(resolve_ipv4 "$VPS_COMPANY_HOST")"
-          mcp_ip="$(resolve_ipv4 "$VPS_MCP_HOST")"
-          test "$db_ip" != "$company_ip"
-          test "$db_ip" != "$mcp_ip"
-          test "$company_ip" != "$mcp_ip"
-          echo "db_ip=$db_ip" >> "$GITHUB_OUTPUT"
-          echo "company_ip=$company_ip" >> "$GITHUB_OUTPUT"
-          echo "mcp_ip=$mcp_ip" >> "$GITHUB_OUTPUT"
+          db_private_ip="$(private_ip "$RUNNER_TEMP/vps-db.key" "$RUNNER_TEMP/vps-db-known-hosts" "$VPS_DB_HOST")"
+          company_private_ip="$(private_ip "$RUNNER_TEMP/vps-company.key" "$RUNNER_TEMP/vps-company-known-hosts" "$VPS_COMPANY_HOST")"
+          mcp_private_ip="$(private_ip "$RUNNER_TEMP/vps-mcp.key" "$RUNNER_TEMP/vps-mcp-known-hosts" "$VPS_MCP_HOST")"
+
+          python3 - "$db_private_ip" "$company_private_ip" "$mcp_private_ip" <<'PY'
+          import ipaddress, sys
+          ips = [ipaddress.IPv4Address(value) for value in sys.argv[1:]]
+          if not all(ip.is_private for ip in ips):
+              raise SystemExit('non_private_vps_address')
+          if len(set(ips)) != 3:
+              raise SystemExit('duplicate_private_vps_address')
+          subnet = ipaddress.ip_network(f'{ips[0]}/24', strict=False)
+          if not all(ip in subnet for ip in ips[1:]):
+              raise SystemExit('vps_private_addresses_not_same_subnet')
+          PY
+
+          echo "db_private_ip=$db_private_ip" >> "$GITHUB_OUTPUT"
+          echo "company_private_ip=$company_private_ip" >> "$GITHUB_OUTPUT"
+          echo "mcp_private_ip=$mcp_private_ip" >> "$GITHUB_OUTPUT"
 
       - name: Fail closed if DB is publicly reachable before setup
         shell: bash
@@ -181,13 +184,14 @@ jobs:
             has("MCP_DB_SCHEMA") and has("MCP_DB_ROLE") and has("PERSISTENCE_PROVIDER")
           ' "$MCP_CONFIG_FILE" >/dev/null
 
-      - name: Create test-only DB roles and narrow network access
+      - name: Create test-only DB roles and private-only network access
         shell: bash
         env:
           DB_KEY: ${{ steps.ssh.outputs.db_key }}
           DB_KNOWN: ${{ steps.ssh.outputs.db_known }}
-          COMPANY_IP: ${{ steps.network.outputs.company_ip }}
-          MCP_IP: ${{ steps.network.outputs.mcp_ip }}
+          DB_PRIVATE_IP: ${{ steps.network.outputs.db_private_ip }}
+          COMPANY_PRIVATE_IP: ${{ steps.network.outputs.company_private_ip }}
+          MCP_PRIVATE_IP: ${{ steps.network.outputs.mcp_private_ip }}
         run: |
           set -euo pipefail
           umask 077
@@ -241,11 +245,15 @@ jobs:
 
           ssh -i "$DB_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$DB_KNOWN" \
             "$VPS_SSH_USER@$VPS_DB_HOST" \
-            "bash -s -- '$COMPANY_IP' '$MCP_IP'" >> "$REPORT_FILE" <<'REMOTE'
+            "bash -s -- '$DB_PRIVATE_IP' '$COMPANY_PRIVATE_IP' '$MCP_PRIVATE_IP' '$VPS_COMPANY_HOST' '$VPS_MCP_HOST'" >> "$REPORT_FILE" <<'REMOTE'
           set -euo pipefail
-          company_ip="$1"
-          mcp_ip="$2"
+          db_private_ip="$1"
+          company_private_ip="$2"
+          mcp_private_ip="$3"
+          company_public_ip="$4"
+          mcp_public_ip="$5"
           sudo -n true
+
           cleanup_sql() {
             sudo -n rm -f /tmp/npp958-parallel-test-roles.sql
           }
@@ -258,8 +266,7 @@ jobs:
           cleanup_sql
           trap - EXIT
 
-          ssl_state="$(sudo -n -u postgres psql -Atqc 'show ssl')"
-          test "$ssl_state" = on
+          test "$(sudo -n -u postgres psql -Atqc 'show ssl')" = on
           hba="$(sudo -n -u postgres psql -Atqc 'show hba_file')"
           test -n "$hba"
           temp="$(mktemp)"
@@ -270,44 +277,56 @@ jobs:
           ' "$hba" > "$temp"
           cat >> "$temp" <<EOF
           # BEGIN NPP958 PARALLEL TEST
-          hostssl npp_rehearsal_958 npp_company_test_runtime ${company_ip}/32 scram-sha-256
-          hostssl npp_rehearsal_958 mcp_test_runtime ${mcp_ip}/32 scram-sha-256
+          hostssl npp_rehearsal_958 npp_company_test_runtime ${company_private_ip}/32 scram-sha-256
+          hostssl npp_rehearsal_958 mcp_test_runtime ${mcp_private_ip}/32 scram-sha-256
           # END NPP958 PARALLEL TEST
           EOF
           sudo -n install -o postgres -g postgres -m 0640 "$temp" "$hba"
           rm -f "$temp"
 
-          sudo -n -u postgres psql -v ON_ERROR_STOP=1 postgres <<'SQL'
-          ALTER SYSTEM SET listen_addresses = '*';
+          sudo -n -u postgres psql -v ON_ERROR_STOP=1 -v db_private_ip="$db_private_ip" postgres <<'SQL'
+          SELECT format('ALTER SYSTEM SET listen_addresses = %L', '127.0.0.1,::1,' || :'db_private_ip') \gexec
           ALTER SYSTEM SET password_encryption = 'scram-sha-256';
           SQL
 
           sudo -n ufw default deny incoming >/dev/null
           sudo -n ufw default allow outgoing >/dev/null
           sudo -n ufw allow 22/tcp >/dev/null
-          sudo -n ufw allow from "$company_ip" to any port 5432 proto tcp comment 'NPP958 company test DB' >/dev/null
-          sudo -n ufw allow from "$mcp_ip" to any port 5432 proto tcp comment 'NPP958 MCP test DB' >/dev/null
+          sudo -n ufw --force delete allow from "$company_public_ip" to any port 5432 proto tcp >/dev/null 2>&1 || true
+          sudo -n ufw --force delete allow from "$mcp_public_ip" to any port 5432 proto tcp >/dev/null 2>&1 || true
+          sudo -n ufw --force delete allow from "$company_private_ip" to any port 5432 proto tcp >/dev/null 2>&1 || true
+          sudo -n ufw --force delete allow from "$mcp_private_ip" to any port 5432 proto tcp >/dev/null 2>&1 || true
+          sudo -n ufw allow from "$company_private_ip" to any port 5432 proto tcp comment 'NPP958 company test DB private' >/dev/null
+          sudo -n ufw allow from "$mcp_private_ip" to any port 5432 proto tcp comment 'NPP958 MCP test DB private' >/dev/null
           sudo -n ufw --force enable >/dev/null
+
           if sudo -n ufw status | grep -Eq '^5432(/tcp)?[[:space:]]+ALLOW([[:space:]]+IN)?[[:space:]]+Anywhere'; then
             echo broad_public_5432_rule_detected >&2
             exit 31
           fi
+          if sudo -n ufw status | grep -Fq "$company_public_ip" || sudo -n ufw status | grep -Fq "$mcp_public_ip"; then
+            echo public_vps_5432_rule_still_present >&2
+            exit 32
+          fi
 
           sudo -n systemctl restart postgresql
+          expected_listen="127.0.0.1,::1,$db_private_ip"
           test "$(systemctl is-active postgresql)" = active
           test "$(sudo -n -u postgres psql -Atqc 'show ssl')" = on
-          test "$(sudo -n -u postgres psql -Atqc 'show listen_addresses')" = '*'
+          test "$(sudo -n -u postgres psql -Atqc 'show listen_addresses')" = "$expected_listen"
           hba_errors="$(sudo -n -u postgres psql -Atqc 'select count(*) from pg_hba_file_rules where error is not null')"
           test "$hba_errors" = 0
           sudo -n -u postgres psql -Atqc "select 1 from pg_database where datname='npp_rehearsal_958'" | grep -qx 1
+          ss -lntH | awk -v ip="$db_private_ip" '$4 == ip ":5432" {found=1} END {exit found?0:1}'
 
           echo 'db_database=npp_rehearsal_958'
           echo 'db_ssl=on'
-          echo 'db_listen=all_interfaces_firewall_restricted'
+          echo 'db_network=private_vps_subnet_only'
+          echo 'db_listen=loopback_plus_private_ip'
           echo 'db_company_role=npp_company_test_runtime'
           echo 'db_mcp_role=mcp_test_runtime'
-          echo 'db_hba_sources=company_vps,mcp_vps'
-          echo 'db_public_5432=blocked_except_explicit_vps_sources'
+          echo 'db_hba_sources=company_private_ip,mcp_private_ip'
+          echo 'db_public_5432=closed'
           REMOTE
 
       - name: Verify DB remains closed to public runner
@@ -323,7 +342,7 @@ jobs:
       - name: Build test-only VPS environment files
         shell: bash
         env:
-          DB_IP: ${{ steps.network.outputs.db_ip }}
+          DB_PRIVATE_IP: ${{ steps.network.outputs.db_private_ip }}
         run: |
           set -euo pipefail
           company_password="$(cat "$COMPANY_DB_PASSWORD_FILE")"
@@ -331,10 +350,9 @@ jobs:
           echo "::add-mask::$company_password"
           echo "::add-mask::$mcp_password"
 
-          COMPANY_DB_PASSWORD="$company_password" MCP_DB_PASSWORD="$mcp_password" DB_IP="$DB_IP" \
+          COMPANY_DB_PASSWORD="$company_password" MCP_DB_PASSWORD="$mcp_password" DB_PRIVATE_IP="$DB_PRIVATE_IP" \
           node <<'NODE'
           const fs = require('node:fs');
-
           const core = JSON.parse(fs.readFileSync(process.env.CORE_CONFIG_FILE, 'utf8'));
           const mcp = JSON.parse(fs.readFileSync(process.env.MCP_CONFIG_FILE, 'utf8'));
 
@@ -356,7 +374,7 @@ jobs:
             NODE_ENV: 'production',
             HOST: '127.0.0.1',
             PORT: '3104',
-            DATABASE_URL: `postgresql://npp_company_test_runtime:${process.env.COMPANY_DB_PASSWORD}@${process.env.DB_IP}:5432/npp_rehearsal_958`,
+            DATABASE_URL: `postgresql://npp_company_test_runtime:${process.env.COMPANY_DB_PASSWORD}@${process.env.DB_PRIVATE_IP}:5432/npp_rehearsal_958`,
             DATABASE_SSL_MODE: 'require'
           });
 
@@ -367,7 +385,7 @@ jobs:
             PORT: '3105',
             LEGACY_INTERNAL_PORT: '3106',
             PERSISTENCE_PROVIDER: 'postgresql',
-            DATABASE_URL: `postgresql://mcp_test_runtime:${process.env.MCP_DB_PASSWORD}@${process.env.DB_IP}:5432/npp_rehearsal_958`,
+            DATABASE_URL: `postgresql://mcp_test_runtime:${process.env.MCP_DB_PASSWORD}@${process.env.DB_PRIVATE_IP}:5432/npp_rehearsal_958`,
             MCP_DB_SCHEMA: 'mcp',
             MCP_DB_ROLE: 'mcp_test_runtime',
             MCP_LEGACY_RUNTIME_ENABLED: 'false'
@@ -382,6 +400,8 @@ jobs:
           grep -q '^DATABASE_SSL_MODE="require"$' "$COMPANY_ENV_FILE"
           grep -q '^DATABASE_URL="postgresql://npp_company_test_runtime:' "$COMPANY_ENV_FILE"
           grep -q '^DATABASE_URL="postgresql://mcp_test_runtime:' "$MCP_ENV_FILE"
+          grep -q "@${DB_PRIVATE_IP}:5432/npp_rehearsal_958\"$" "$COMPANY_ENV_FILE"
+          grep -q "@${DB_PRIVATE_IP}:5432/npp_rehearsal_958\"$" "$MCP_ENV_FILE"
           grep -q '^MCP_DB_ROLE="mcp_test_runtime"$' "$MCP_ENV_FILE"
           ! grep -Eq '^(SUPABASE_URL|SUPABASE_SERVICE_ROLE_KEY|MCP_MIGRATION_DATABASE_URL)=' "$MCP_ENV_FILE"
 
@@ -441,14 +461,14 @@ jobs:
             echo 'tcp_3000_listener=preserved'
           } >> "$REPORT_FILE"
 
-      - name: Verify DB TCP from both backend VPS hosts
+      - name: Verify private DB TCP from both backend VPS hosts
         shell: bash
         env:
           COMPANY_KEY: ${{ steps.ssh.outputs.company_key }}
           COMPANY_KNOWN: ${{ steps.ssh.outputs.company_known }}
           MCP_KEY: ${{ steps.ssh.outputs.mcp_key }}
           MCP_KNOWN: ${{ steps.ssh.outputs.mcp_known }}
-          DB_IP: ${{ steps.network.outputs.db_ip }}
+          DB_PRIVATE_IP: ${{ steps.network.outputs.db_private_ip }}
         run: |
           set -euo pipefail
           for target in company mcp; do
@@ -458,10 +478,10 @@ jobs:
               key="$MCP_KEY"; known="$MCP_KNOWN"; host="$VPS_MCP_HOST"
             fi
             ssh -i "$key" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$known" \
-              "$VPS_SSH_USER@$host" "timeout 6 bash -c 'cat < /dev/null > /dev/tcp/$DB_IP/5432'"
+              "$VPS_SSH_USER@$host" "ip -4 route get '$DB_PRIVATE_IP' | grep -F '$DB_PRIVATE_IP' >/dev/null && timeout 6 bash -c 'cat < /dev/null > /dev/tcp/$DB_PRIVATE_IP/5432'"
           done
-          echo 'company_to_db_tcp=PASS' >> "$REPORT_FILE"
-          echo 'mcp_to_db_tcp=PASS' >> "$REPORT_FILE"
+          echo 'company_to_db_private_tcp=PASS' >> "$REPORT_FILE"
+          echo 'mcp_to_db_private_tcp=PASS' >> "$REPORT_FILE"
           echo 'production_traffic=not_enabled' >> "$REPORT_FILE"
           echo 'cutover=not_performed' >> "$REPORT_FILE"
 
@@ -480,7 +500,7 @@ jobs:
             echo
             echo "- Source main SHA: \`$SOURCE_SHA\`"
             echo "- Run ID: \`$GITHUB_RUN_ID\`"
-            echo '- Scope: rehearsal DB + test-only backend runtime env; no Vercel/Heroku production endpoint change and no cutover.'
+            echo '- Scope: rehearsal DB over private VPS network + test-only backend runtime env; no Vercel/Heroku production endpoint change and no cutover.'
             echo '- No secret values are included below.'
             echo '```text'
             cat "$REPORT_FILE"
