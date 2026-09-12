@@ -35,7 +35,7 @@ write_snapshot_sql() {
 CREATE TEMP TABLE reconcile_key_counts (
   relation_name text PRIMARY KEY,
   row_count bigint NOT NULL
-) ON COMMIT DROP;
+);
 DO $snapshot$
 DECLARE
   relation_name text;
@@ -62,7 +62,7 @@ BEGIN
     relation_oid := to_regclass(relation_name);
     IF relation_oid IS NOT NULL THEN
       EXECUTE format('SELECT count(*) FROM %s', relation_oid) INTO relation_count;
-      INSERT INTO reconcile_key_counts(relation_name, row_count)
+      INSERT INTO pg_temp.reconcile_key_counts(relation_name, row_count)
       VALUES (relation_name, relation_count);
     END IF;
   END LOOP;
@@ -71,7 +71,7 @@ $snapshot$;
 SELECT line
 FROM (
   SELECT 'key|' || relation_name || '|' || row_count::text AS line
-  FROM reconcile_key_counts
+  FROM pg_temp.reconcile_key_counts
   UNION ALL
   SELECT 'schema|' || n.nspname || '|' || count(*)::text
   FROM pg_class c
