@@ -108,12 +108,16 @@ test("Công Ty VPS deploy has isolated release, health and rollback boundaries",
   assert.doesNotMatch(workflow, /migration:migrate|psql .*migrate/);
 });
 
-test("MCP VPS deploy preserves proxy and prevents current symlink loops", async () => {
+test("MCP VPS deploy packages exact monorepo runtime, preserves proxy and prevents current symlink loops", async () => {
   const workflow = await read(".github/workflows/vps-mcp-backend-manual.yml");
 
   assert.match(workflow, /\/deploy-vps-mcp-production/);
   assert.match(workflow, /VPS_MCP_SSH_KEY/);
   assert.doesNotMatch(workflow, /VPS_COMPANY_SSH_KEY/);
+  assert.match(workflow, /git archive --format=tar HEAD mcp\/apps\/backend packages\/contracts/);
+  assert.match(workflow, /packages\/contracts\/index\.js/);
+  assert.match(workflow, /target="\$release_root\/mcp\/apps\/backend"/);
+  assert.match(workflow, /cd "\$target"/);
   assert.match(workflow, /ipv4-proxy ipv6-proxy oci-ipv6-pool/);
   assert.match(workflow, /proxy_listener_count=300/);
   assert.match(workflow, /tcp_3000_listener=preserved/);
@@ -122,6 +126,7 @@ test("MCP VPS deploy preserves proxy and prevents current symlink loops", async 
   assert.match(workflow, /\/health\/live/);
   assert.match(workflow, /\/health\/ready/);
   assert.match(workflow, /activate_release\(\)/);
+  assert.match(workflow, /valid_runtime_target\(\)/);
   assert.match(workflow, /ln -sfnT "\$candidate" "\$current"/);
   assert.match(workflow, /resolved_current="\$\(readlink -f "\$current"/);
   assert.match(workflow, /current_path_not_release_symlink/);
