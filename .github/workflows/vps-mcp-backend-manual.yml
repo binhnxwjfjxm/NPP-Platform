@@ -83,6 +83,7 @@ jobs:
           const pkg = JSON.parse(await readFile("mcp/apps/backend/package.json", "utf8"));
           if (pkg.scripts?.start !== "node bootstrap.js") throw new Error("unexpected_mcp_start_contract");
           if (pkg.dependencies?.pg !== "^8.12.0") throw new Error("missing_mcp_postgresql_dependency");
+          await readFile("packages/contracts/index.js", "utf8");
           NODE
 
       - name: Resolve requested action
@@ -132,13 +133,15 @@ jobs:
           echo "key=$key" >> "$GITHUB_OUTPUT"
           echo "known_hosts=$known_hosts" >> "$GITHUB_OUTPUT"
 
-      - name: Package exact MCP backend source
+      - name: Package exact MCP runtime source
         if: steps.request.outputs.action == 'deploy'
         shell: bash
         run: |
           set -euo pipefail
-          git archive --format=tar HEAD:mcp/apps/backend | gzip -9 > "$RUNNER_TEMP/mcp-source.tgz"
+          git archive --format=tar HEAD mcp/apps/backend packages/contracts | gzip -9 > "$RUNNER_TEMP/mcp-source.tgz"
           test -s "$RUNNER_TEMP/mcp-source.tgz"
+          tar -tzf "$RUNNER_TEMP/mcp-source.tgz" | grep -qx 'mcp/apps/backend/bootstrap.js'
+          tar -tzf "$RUNNER_TEMP/mcp-source.tgz" | grep -qx 'packages/contracts/index.js'
 
       - name: Copy MCP source to target
         if: steps.request.outputs.action == 'deploy'
@@ -201,14 +204,38 @@ jobs:
             ss -lntH | awk '{n=split($4,a,":"); if (a[n]+0==3000) found=1} END {exit found?0:1}'
           }
 
+          release_root_for_runtime() {
+            local runtime="$1"
+            printf '%s\n' "${runtime%/mcp/apps/backend}"
+          }
+
+          release_sha_for_runtime() {
+            local runtime="$1"
+            local release_root
+            release_root="$(release_root_for_runtime "$runtime")"
+            printf '%s\n' "${release_root##*/}"
+          }
+
+          valid_runtime_target() {
+            local candidate="$1"
+            local release_root
+            case "$candidate" in
+              "$releases"/*/mcp/apps/backend) ;;
+              *) return 1 ;;
+            esac
+            release_root="$(release_root_for_runtime "$candidate")"
+            test -d "$candidate"
+            test -f "$candidate/bootstrap.js"
+            test -f "$release_root/packages/contracts/index.js"
+          }
+
           activate_release() {
             local candidate="$1"
             local resolved=""
-            case "$candidate" in
-              "$releases"/*) ;;
-              *) echo "invalid_release_target" >&2; return 1 ;;
-            esac
-            test -d "$candidate"
+            valid_runtime_target "$candidate" || {
+              echo "invalid_release_target" >&2
+              return 1
+            }
             sudo -n ln -sfnT "$candidate" "$current"
             resolved="$(readlink -f "$current" 2>/dev/null || true)"
             test -n "$resolved"
@@ -268,7 +295,7 @@ jobs:
           previous=""
           if [ -L "$current" ]; then
             resolved_current="$(readlink -f "$current" 2>/dev/null || true)"
-            if [ -n "$resolved_current" ] && [ -d "$resolved_current" ] && [[ "$resolved_current" == "$releases/"* ]]; then
+            if [ -n "$resolved_current" ] && valid_runtime_target "$resolved_current"; then
               previous="$resolved_current"
             else
               sudo -n rm -f "$current"
@@ -284,21 +311,30 @@ jobs:
           fi
 
           target=""
+          release_root=""
 
           case "$action" in
             deploy)
-              target="$releases/$source_sha"
+              release_root="$releases/$source_sha"
+              target="$release_root/mcp/apps/backend"
               archive="/tmp/npp-mcp-${source_sha}.tgz"
               test -f "$archive"
-              if [ ! -d "$target" ]; then
-                sudo -n install -d -m 0755 "$target"
-                sudo -n tar -xzf "$archive" -C "$target"
-                sudo -n chown -R "$USER":"$(id -gn)" "$target"
+
+              if [ -d "$release_root" ] && ! valid_runtime_target "$target"; then
+                sudo -n rm -rf "$release_root"
+              fi
+
+              if [ ! -d "$release_root" ]; then
+                sudo -n install -d -m 0755 "$release_root"
+                sudo -n tar -xzf "$archive" -C "$release_root"
+                test -f "$target/bootstrap.js"
+                test -f "$release_root/packages/contracts/index.js"
+                sudo -n chown -R "$USER":"$(id -gn)" "$release_root"
                 (
                   cd "$target"
                   npm ci --omit=dev --ignore-scripts
                 )
-                sudo -n chown -R "$service_user":"$service_user" "$target"
+                sudo -n chown -R "$service_user":"$service_user" "$release_root"
               fi
               rm -f "$archive"
               ;;
@@ -306,17 +342,17 @@ jobs:
               matches="$(find "$releases" -mindepth 1 -maxdepth 1 -type d -name "${rollback_sha}*" -print)"
               count="$(printf '%s\n' "$matches" | sed '/^$/d' | wc -l)"
               test "$count" = 1
-              target="$matches"
+              release_root="$matches"
+              target="$release_root/mcp/apps/backend"
               ;;
             *) exit 41 ;;
           esac
 
-          case "$target" in
-            "$releases"/*) ;;
-            *) echo "invalid_release_target" >&2; exit 44 ;;
-          esac
+          valid_runtime_target "$target" || {
+            echo "invalid_release_target" >&2
+            exit 44
+          }
           test "$target" != "$current"
-          test -d "$target"
 
           unit_tmp="$(mktemp)"
           cat >"$unit_tmp" <<UNIT
@@ -351,7 +387,7 @@ jobs:
 
           if ! smoke /health/live || ! smoke /health/ready; then
             rollback_ok=0
-            if [ -n "$previous" ] && [ -d "$previous" ]; then
+            if [ -n "$previous" ] && valid_runtime_target "$previous"; then
               activate_release "$previous"
               sudo -n systemctl restart "$service"
               if smoke /health/live && smoke /health/ready; then
@@ -374,7 +410,11 @@ jobs:
           verify_proxy
 
           active="$(readlink -f "$current")"
-          active_release="${active##*/}"
+          active_release="$(release_sha_for_runtime "$active")"
+          rollback_target=""
+          if [ -n "$previous" ]; then
+            rollback_target="$(release_sha_for_runtime "$previous")"
+          fi
           echo "action=$action"
           echo "source_sha=$source_sha"
           echo "active_release=$active_release"
@@ -384,7 +424,7 @@ jobs:
           echo "proxy_services=active_enabled_untouched"
           echo "proxy_listener_count=300"
           echo "tcp_3000_listener=preserved"
-          echo "rollback_target=${previous##*/}"
+          echo "rollback_target=$rollback_target"
           REMOTE
 
           cat "$out"
