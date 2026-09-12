@@ -209,7 +209,7 @@ jobs:
           test -f "$env_file"
           sudo -n chown root:"$service_user" "$env_file"
           sudo -n chmod 640 "$env_file"
-          grep -q '^PORT=' "$env_file"
+          sudo -n grep -q '^PORT=' "$env_file"
 
           port="$(sudo -n awk -F= '/^PORT=/{sub(/^PORT=/,""); gsub(/^["'"'"']|["'"'"']$/ ,""); print; exit}' "$env_file")"
           [[ "$port" =~ ^[0-9]+$ ]]
