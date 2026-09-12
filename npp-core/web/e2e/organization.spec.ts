@@ -5,14 +5,14 @@ function uniqueSuffix() {
 }
 
 test.describe('Bộ ba quản trị tổ chức', () => {
-  test('thêm, sửa, lọc và bật/tắt chi nhánh, kho hàng, vị trí kho', async ({ page }) => {
+  test('quản lý chi nhánh, kho hàng và khu vực trong sơ đồ kho', async ({ page }) => {
     const suffix = uniqueSuffix();
     const branchCode = `BR-${suffix}`;
     const warehouseCode = `WH-${suffix}`;
     const locationCode = `LOC-${suffix}`;
     let branchName = `Chi nhánh ${suffix}`;
     let warehouseName = `Kho ${suffix}`;
-    let locationName = `Vị trí ${suffix}`;
+    let locationName = `Khu vực ${suffix}`;
 
     await page.goto('/organization/branches');
     await expect(page.getByTestId('branches-page').getByRole('heading', { name: 'Chi nhánh', exact: true })).toBeVisible();
@@ -52,88 +52,82 @@ test.describe('Bộ ba quản trị tổ chức', () => {
     await page.getByTestId('branches-status-filter').selectOption('all');
     await expect(branchRow).toContainText('Đang hoạt động');
 
+    await page.goto('/organization/warehouses?tab=quick');
+    const quickSetup = page.getByTestId('warehouse-quick-setup');
+    await expect(quickSetup.getByRole('heading', { name: 'Thiết lập nhanh kho hàng', exact: true })).toBeVisible();
+    await quickSetup.getByLabel('Chi nhánh quản lý').selectOption({ label: `${branchCode} · ${branchName}` });
+    await quickSetup.getByLabel('Mã kho').fill(warehouseCode.toLowerCase());
+    await quickSetup.getByLabel('Tên kho').fill(warehouseName);
+    await quickSetup.getByLabel('Loại kho').selectOption('distribution');
+    await quickSetup.getByRole('button', { name: 'Tạo kho' }).click();
+    await expect(page.getByRole('status')).toContainText(`Đã tạo kho ${warehouseCode}`);
+
     await page.goto('/organization/warehouses');
     await expect(page.getByTestId('warehouses-page').getByRole('heading', { name: 'Kho hàng', exact: true })).toBeVisible();
-    await expect(page.getByTestId('warehouses-page')).toBeVisible();
-    await page.getByTestId('warehouses-topbar-create-button').click();
-    await page.getByTestId('warehouse-branch-select').selectOption({ label: `${branchCode} · ${branchName}` });
-    await page.getByTestId('warehouse-code-input').fill(warehouseCode.toLowerCase());
-    await page.getByTestId('warehouse-name-input').fill(warehouseName);
-    await page.getByTestId('warehouse-type-select').selectOption('distribution');
-    await page.getByRole('button', { name: 'Tạo kho' }).click();
-
     const warehouseRow = page.getByTestId(`warehouse-row-${warehouseCode}`);
     await expect(warehouseRow).toBeVisible();
     await expect(warehouseRow).toContainText(warehouseName);
     await expect(warehouseRow).toContainText(branchName);
     await expect(warehouseRow).toContainText('Đang hoạt động');
-    await page.getByTestId('warehouses-search-input').fill(warehouseCode);
+    await page.getByLabel('Tra cứu kho').fill(warehouseCode);
     await expect(warehouseRow).toBeVisible();
-    await page.getByTestId('warehouses-status-filter').selectOption('active');
+    await page.getByLabel('Trạng thái').selectOption('active');
     await expect(warehouseRow).toBeVisible();
-    await page.getByTestId('warehouses-status-filter').selectOption('all');
-    await page.getByTestId('warehouses-search-input').fill('');
+    await page.getByLabel('Trạng thái').selectOption('all');
+    await page.getByLabel('Tra cứu kho').fill('');
 
     const warehouseNameEdited = `${warehouseName} đã sửa`;
-    await page.getByTestId(`edit-warehouse-${warehouseCode}`).click();
-    await page.getByTestId('warehouse-name-input').fill(warehouseNameEdited);
-    await page.getByRole('button', { name: 'Lưu thay đổi' }).click();
+    await warehouseRow.getByRole('button', { name: 'Chỉnh sửa' }).click();
+    await page.getByRole('dialog').getByLabel('Tên kho').fill(warehouseNameEdited);
+    await page.getByRole('dialog').getByRole('button', { name: 'Lưu thay đổi' }).click();
     warehouseName = warehouseNameEdited;
     await expect(warehouseRow).toContainText(warehouseNameEdited);
-    await page.getByTestId(`toggle-warehouse-${warehouseCode}`).click();
-    await page.getByRole('button', { name: 'Xác nhận' }).click();
+    await warehouseRow.getByRole('button', { name: 'Ngừng sử dụng' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Xác nhận' }).click();
     await expect(warehouseRow).toContainText('Ngừng hoạt động');
-    await page.getByTestId('warehouses-status-filter').selectOption('inactive');
+    await page.getByLabel('Trạng thái').selectOption('inactive');
     await expect(warehouseRow).toBeVisible();
-    await page.getByTestId(`toggle-warehouse-${warehouseCode}`).click();
-    await page.getByRole('button', { name: 'Xác nhận' }).click();
-    await page.getByTestId('warehouses-status-filter').selectOption('all');
+    await warehouseRow.getByRole('button', { name: 'Đưa vào sử dụng' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Xác nhận' }).click();
+    await page.getByLabel('Trạng thái').selectOption('all');
     await expect(warehouseRow).toContainText('Đang hoạt động');
 
-    await page.goto('/organization/locations');
-    await expect(page.getByTestId('locations-page').getByRole('heading', { name: 'Vị trí kho', exact: true })).toBeVisible();
-    await expect(page.getByTestId('locations-page')).toBeVisible();
-    await page.getByTestId('locations-topbar-create-button').click();
-    await page.getByTestId('location-warehouse-select').selectOption({ label: `${warehouseCode} · ${warehouseName}` });
-    await page.getByTestId('location-code-input').fill(locationCode.toLowerCase());
-    await page.getByTestId('location-name-input').fill(locationName);
-    await page.getByTestId('location-type-select').selectOption('storage');
-    await page.getByRole('button', { name: 'Tạo vị trí' }).click();
+    await page.goto('/organization/warehouses?tab=layout');
+    const layout = page.getByTestId('warehouse-layout-workspace');
+    await expect(layout.getByRole('heading', { name: 'Sơ đồ kho', exact: true })).toBeVisible();
+    await layout.getByLabel('Kho').selectOption({ label: `${warehouseCode} · ${warehouseName}` });
+    await layout.getByRole('button', { name: 'Thêm khu vực' }).click();
 
-    const locationRow = page.getByTestId(`location-row-${locationCode}`);
+    let locationDialog = page.getByRole('dialog');
+    await locationDialog.getByLabel('Mã khu vực').fill(locationCode.toLowerCase());
+    await locationDialog.getByLabel('Tên khu vực').fill(locationName);
+    await locationDialog.getByLabel('Loại khu vực').selectOption('storage');
+    await locationDialog.getByRole('button', { name: 'Thêm khu vực' }).click();
+    await expect(page.getByRole('status')).toContainText('Đã thêm khu vực vào sơ đồ kho.');
+
+    const locationRow = page.getByTestId('warehouse-layout-table').getByRole('row').filter({ hasText: locationCode });
     await expect(locationRow).toBeVisible();
     await expect(locationRow).toContainText(locationName);
-    await expect(locationRow).toContainText(warehouseCode);
     await expect(locationRow).toContainText('Đang hoạt động');
-    await page.getByTestId('locations-search-input').fill(locationCode);
-    await expect(locationRow).toBeVisible();
-    await page.getByTestId('locations-status-filter').selectOption('active');
-    await expect(locationRow).toBeVisible();
-    await page.getByTestId('locations-status-filter').selectOption('all');
-    await page.getByTestId('locations-search-input').fill('');
 
     const locationNameEdited = `${locationName} đã sửa`;
-    await page.getByTestId(`edit-location-${locationCode}`).click();
-    const locationNameInput = page.getByTestId('location-name-input');
+    await locationRow.getByRole('button', { name: 'Chỉnh sửa' }).click();
+    locationDialog = page.getByRole('dialog');
+    const locationNameInput = locationDialog.getByLabel('Tên khu vực');
     await locationNameInput.fill(locationNameEdited);
-    await page.getByTestId('location-type-select').selectOption('receiving');
-    await expect(page.getByRole('dialog')).toBeVisible();
+    await locationDialog.getByLabel('Loại khu vực').selectOption('receiving');
     await expect(locationNameInput).toHaveValue(locationNameEdited);
-    await expect(page.getByTestId('location-type-select')).toHaveValue('receiving');
-    await expect(page.getByRole('button', { name: 'Lưu thay đổi' })).toBeVisible();
-    await page.getByRole('button', { name: 'Lưu thay đổi' }).click();
+    await expect(locationDialog.getByLabel('Loại khu vực')).toHaveValue('receiving');
+    await locationDialog.getByRole('button', { name: 'Lưu thay đổi' }).click();
     locationName = locationNameEdited;
     await expect(locationRow).toContainText(locationNameEdited);
     await expect(locationRow).toContainText('Khu nhận hàng');
 
-    await page.getByTestId(`toggle-location-${locationCode}`).click();
-    await page.getByRole('button', { name: 'Xác nhận' }).click();
+    await locationRow.getByRole('button', { name: 'Ngừng sử dụng' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Xác nhận' }).click();
     await expect(locationRow).toContainText('Ngừng hoạt động');
-    await page.getByTestId('locations-status-filter').selectOption('inactive');
-    await expect(locationRow).toBeVisible();
-    await page.getByTestId(`toggle-location-${locationCode}`).click();
-    await page.getByRole('button', { name: 'Xác nhận' }).click();
-    await page.getByTestId('locations-status-filter').selectOption('all');
+    await locationRow.getByRole('button', { name: 'Đưa vào sử dụng' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Xác nhận' }).click();
     await expect(locationRow).toContainText('Đang hoạt động');
   });
 });
