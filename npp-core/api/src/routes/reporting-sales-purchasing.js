@@ -29,6 +29,10 @@ import {
   normalizeImportExportHistoryFilters,
 } from './reporting-operations.js';
 import { createBusinessDataExport } from '../services/business-data-export.js';
+import {
+  createSalesReportingExport,
+  normalizeSalesReportingExportSelection,
+} from '../services/reporting-sales-export.js';
 
 function apiError(code, message, details = {}, retryable = false, statusCode = 500) {
   return { code, message, details, retryable, statusCode };
@@ -86,6 +90,7 @@ function reportingFamily(pathname) {
   if (pathname === '/api/reporting/import-export-history') return 'import-export-history';
   if (pathname === '/api/reporting/control-tower') return 'control-tower';
   if (pathname === '/api/reporting/business-export') return 'business-export';
+  if (pathname === '/api/reporting/sales-export') return 'sales-export';
   return null;
 }
 
@@ -98,6 +103,7 @@ function reportingPermission(options, family) {
   if (family === 'logistics') return options.PERMISSIONS.coreReportingLogisticsRead;
   if (family === 'cod') return options.PERMISSIONS.coreReportingCodRead;
   if (family === 'business-export') return options.PERMISSIONS.coreReportingExport;
+  if (family === 'sales-export') return options.PERMISSIONS.coreReportingExport;
   if (family === 'audit-history' || family === 'import-export-history') return options.PERMISSIONS.coreReportingAuditHistoryRead;
   if (family === 'control-tower') return options.PERMISSIONS.coreReportingControlTowerRead;
   return options.PERMISSIONS.coreReportingEmployeeMcpRead;
@@ -188,6 +194,55 @@ async function streamBusinessExport(req, res, options, requestContext) {
   }
 }
 
+async function streamSalesReportingExport(res, options, requestContext, filters, warehouseIds, selection) {
+  let artifact = null;
+  try {
+    artifact = await createSalesReportingExport(options.getPool(), {
+      requestContext,
+      filters,
+      warehouseIds,
+      selection,
+    });
+    res.statusCode = 200;
+    res.setHeader('Cache-Control', 'no-store, max-age=0');
+    res.setHeader('Content-Type', artifact.contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${artifact.filename}"`);
+    res.setHeader('Content-Length', String(artifact.size));
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    await pipeline(createReadStream(artifact.filePath), res);
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: 'sales_reporting_export_failed',
+      requestId: options.requestId,
+      errorName: error?.name ?? null,
+      errorCode: typeof error?.code === 'string' ? error.code : null,
+    }));
+    if (!res.headersSent) {
+      const reconciliationFailed = error?.code === 'SALES_REPORT_RECONCILIATION_FAILED';
+      sendError(
+        res,
+        apiError(
+          reconciliationFailed ? 'SALES_REPORT_RECONCILIATION_FAILED' : 'SALES_REPORT_EXPORT_FAILED',
+          reconciliationFailed
+            ? 'Báo cáo chưa đối soát khớp nên chưa thể xuất file'
+            : 'Không xuất được Báo cáo bán hàng',
+          {},
+          !reconciliationFailed,
+          reconciliationFailed ? 409 : 503,
+        ),
+        options.requestId,
+        options.receivedAt,
+      );
+    } else if (!res.destroyed) {
+      res.destroy(error instanceof Error ? error : undefined);
+    }
+  } finally {
+    if (artifact?.cleanup) {
+      try { await artifact.cleanup(); } catch {}
+    }
+  }
+}
+
 async function resolveMcpFieldScope(res, options, requestContext) {
   const fieldScope = await resolveReportingMcpScope(options.getPool(), requestContext);
   if (!fieldScope.ok) {
@@ -225,6 +280,19 @@ export async function handleReportingRoutes(req, res, options) {
     warehouseScoped,
   );
   if (!requestContext) return true;
+
+  if (family === 'sales-export') {
+    const salesReadPermission = options.PERMISSIONS.coreReportingSalesRead;
+    if (!salesReadPermission || !options.authorize(requestContext, salesReadPermission).ok) {
+      sendError(
+        res,
+        apiError('FORBIDDEN', 'Tài khoản hiện tại không có quyền xem Báo cáo bán hàng', {}, false, 403),
+        options.requestId,
+        options.receivedAt,
+      );
+      return true;
+    }
+  }
 
   if (family === 'business-export') {
     await streamBusinessExport(req, res, options, requestContext);
@@ -333,6 +401,27 @@ export async function handleReportingRoutes(req, res, options) {
       sendNormalizedError(res, warehouseScope, options);
       return true;
     }
+  }
+
+  if (family === 'sales-export') {
+    const selection = normalizeSalesReportingExportSelection({
+      dimension: url.searchParams.get('dimension'),
+      format: url.searchParams.get('format'),
+      columns: url.searchParams.getAll('column'),
+    });
+    if (!selection.ok) {
+      sendNormalizedError(res, selection, options);
+      return true;
+    }
+    await streamSalesReportingExport(
+      res,
+      options,
+      requestContext,
+      normalized,
+      warehouseScope.warehouseIds,
+      selection,
+    );
+    return true;
   }
 
   let fieldScope = null;

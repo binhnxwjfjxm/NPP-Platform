@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { AppShell } from './app-shell';
+import { SalesReportingExportDialog } from './sales-reporting-export-dialog';
 import {
   BusinessTableSequenceCell,
   BusinessTableSequenceHeader,
@@ -167,6 +168,11 @@ export function SalesReportingWorkspace() {
 
   const actions = (
     <div className={styles.headerActions}>
+      <SalesReportingExportDialog
+        dimension={activeDimension}
+        filters={applied}
+        disabled={busy || !report}
+      />
       <Link className={styles.headerLink} href="/sales/sales-orders">Mở đơn bán hàng</Link>
       <Link className={styles.headerLink} href="/sales/gross-margin">Xem báo cáo lãi gộp</Link>
     </div>

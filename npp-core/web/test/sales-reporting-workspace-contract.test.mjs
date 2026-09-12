@@ -39,7 +39,7 @@ test('Bộ lọc Sales gửi kỳ và kho, chỉ hiện kho trong scope backend'
   assert.match(workspace, /Tất cả kho được cấp quyền/);
 });
 
-test('Lô 1 có so kỳ, tỷ trọng, đối soát và cảnh báo nhưng chưa mở export/preset', () => {
+test('Nền Báo cáo bán hàng giữ so kỳ, tỷ trọng, đối soát, cảnh báo và chưa mở preset kỳ', () => {
   const workspace = read('app/components/sales-reporting-workspace.tsx');
   assert.match(workspace, /previousRevenue/);
   assert.match(workspace, /sharePercent/);
@@ -48,7 +48,6 @@ test('Lô 1 có so kỳ, tỷ trọng, đối soát và cảnh báo nhưng chưa
   assert.match(workspace, /Xu hướng theo ngày/);
   assert.match(workspace, /Doanh thu kỳ trước/);
   assert.doesNotMatch(workspace, /Ngày tương ứng kỳ trước/);
-  assert.doesNotMatch(workspace, /Xuất báo cáo|Xuất Excel|CSV|XLSX/);
   assert.doesNotMatch(workspace, /Hôm nay|7 ngày|Tháng trước/);
 });
 
