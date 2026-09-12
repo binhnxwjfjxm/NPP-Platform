@@ -49,6 +49,9 @@ function persistenceWithRows({ daySession = true } = {}) {
         };
       }
       if (sql.includes("FROM mcp.mcp_session_customers")) {
+        assert.doesNotMatch(sql, /\bplanned_status\b|\bvisit_id\b/);
+        assert.match(sql, /\baccount_name\b/);
+        assert.match(sql, /\bchecked_in\b/);
         return {
           rows: [{
             id: "session-customer-1",
@@ -57,19 +60,20 @@ function persistenceWithRows({ daySession = true } = {}) {
             route_customer_id: "route-customer-1",
             customer_id: "customer-1",
             customer_name: "Cửa hàng A",
+            account_name: "Cửa hàng A",
             phone: "0900000000",
             area: "Quận 5",
             address: "Địa chỉ A",
             sort_order: 1,
             source: "planned",
-            planned_status: "planned",
+            status: "done",
             visit_status: "visited",
             status_reason: null,
-            visit_id: "visit-1",
             order_id: "order-1",
             test_id: null,
             report_id: null,
             followup_count: 0,
+            checked_in: true,
             note: "Đã ghé",
             checkin_lat: null,
             checkin_lng: null,
@@ -82,21 +86,22 @@ function persistenceWithRows({ daySession = true } = {}) {
         };
       }
       if (sql.includes("FROM mcp.mcp_visits")) {
+        assert.match(sql, /\bsession_customer_id\b/);
+        assert.doesNotMatch(sql, /\bhas_order\b|\bhas_test\b|\bhas_report\b/);
+        assert.doesNotMatch(sql, /\border_id\b|\btest_id\b|\breport_id\b/);
         return {
           rows: [{
             id: "visit-1",
             session_id: "session-1",
+            session_customer_id: "session-customer-1",
             route_id: "route-1",
             route_customer_id: "route-customer-1",
+            customer_id: "customer-1",
+            customer_name: "Cửa hàng A",
             visit_date: "2026-08-02",
             status: "visited",
-            has_order: true,
-            has_test: false,
-            has_report: false,
-            order_id: "order-1",
-            test_id: null,
-            report_id: null,
             checkin_at: "2026-08-02T02:00:00.000Z",
+            checkout_at: "2026-08-02T02:10:00.000Z",
             note: "Có đơn",
             created_at: "2026-08-02T02:00:00.000Z"
           }]
@@ -170,7 +175,7 @@ test("PostgreSQL exposes active session status for route-customer creation", asy
   });
 });
 
-test("PostgreSQL typed runtime exposes MCP day data for an opened session", async () => {
+test("PostgreSQL typed runtime exposes MCP day data using the actual PostgreSQL session schema", async () => {
   bindProviderPersistence(persistenceWithRows());
   const { req, url } = request("/api/mcp-day/data?routeId=route-1&date=2026-08-02");
   const result = await handlePostgresqlCompatibilityApi(req, url, context);
@@ -181,8 +186,11 @@ test("PostgreSQL typed runtime exposes MCP day data for an opened session", asyn
   assert.equal(result.payload.data.run.routeId, "route-1");
   assert.equal(result.payload.data.lines.length, 1);
   assert.equal(result.payload.data.lines[0].sessionCustomerId, "session-customer-1");
+  assert.equal(result.payload.data.lines[0].visitId, "visit-1");
   assert.equal(result.payload.data.lines[0].hasOrder, true);
   assert.equal(result.payload.data.results.length, 1);
+  assert.equal(result.payload.data.results[0].sessionCustomerId, "session-customer-1");
+  assert.equal(result.payload.data.results[0].hasOrder, true);
 });
 
 test("PostgreSQL typed runtime keeps the canonical empty MCP day contract", async () => {
