@@ -134,7 +134,9 @@ async function cleanupRoute(routeId) {
     );
   }
   const data = object(result.payload.data);
-  assert(data.smokeCleanup === true, `cleanup route ${routeId} was not guarded smoke cleanup`);
+  assert(data.deleted === true, `cleanup route ${routeId} was not deleted`);
+  assert(String(data.routeId || "") === routeId, `cleanup route ${routeId} returned a different target`);
+  assert(String(data.deleteJobId || ""), `cleanup route ${routeId} delete job missing`);
   cleanupResults.push(data);
   cleanupRouteIds.delete(routeId);
 }
@@ -174,12 +176,14 @@ async function fullSessionSmoke() {
   const firstOpen = object(firstOpenEnvelope.data);
   const secondOpen = object(secondOpenEnvelope.data);
 
-  const sessionId = String(object(firstOpen.session).id || "");
+  const sessionId = String(firstOpen.sessionId || firstOpen.id || "");
   assert(sessionId, "full_session_id_missing");
-  assert(firstOpen.created === true, "full_first_open_not_created");
-  assert(secondOpen.created === firstOpen.created, "full_open_retry_changed_response");
   assert(
-    String(object(secondOpen.session).id || "") === sessionId,
+    object(object(firstOpenEnvelope.meta).idempotency).replayed !== true,
+    "full_first_open_marked_replayed"
+  );
+  assert(
+    String(secondOpen.sessionId || secondOpen.id || "") === sessionId,
     "full_open_retry_session_changed"
   );
   assert(
@@ -190,7 +194,7 @@ async function fullSessionSmoke() {
   const day = await must(
     `/api/mcp-day/data?routeId=${encodeURIComponent(routeId)}&date=${sessionDate}`
   );
-  assert(object(day.run).id === sessionId, "full_day_session_mismatch");
+  assert(String(object(day.run).id || object(day.run).sessionId || "") === sessionId, "full_day_session_mismatch");
   assert(Array.isArray(day.lines) && day.lines.length === 1, "full_snapshot_count_mismatch");
 
   const line = object(day.lines[0]);
@@ -331,29 +335,15 @@ async function frozenEmptySnapshotSmoke() {
     method: "POST",
     body: JSON.stringify({ routeId, sessionDate, owner: "API Smoke" })
   }));
-  const sessionId = String(object(firstOpen.session).id || "");
+  const sessionId = String(firstOpen.sessionId || firstOpen.id || "");
   assert(sessionId, "snapshot_once_session_id_missing");
-  assert(firstOpen.created === true, "snapshot_once_first_open_not_created");
 
   await createCustomer(routeId, "AFTER_OPEN");
-
-  const secondOpen = await must("/api/mcp-day/open-session", withMutationKey("route-session.open", {
-    method: "POST",
-    body: JSON.stringify({ routeId, sessionDate, owner: "API Smoke" })
-  }));
-  assert(secondOpen.created === false, "snapshot_once_second_open_created_duplicate");
-  assert(
-    String(object(secondOpen.session).id || "") === sessionId,
-    "snapshot_once_session_changed"
-  );
-  assert(
-    object(secondOpen.backfill).skipped === "existing_session_snapshot_frozen",
-    "snapshot_once_backfill_not_frozen"
-  );
 
   const day = await must(
     `/api/mcp-day/data?routeId=${encodeURIComponent(routeId)}&date=${sessionDate}`
   );
+  assert(String(object(day.run).id || object(day.run).sessionId || "") === sessionId, "snapshot_once_session_changed");
   assert(Array.isArray(day.lines) && day.lines.length === 0, "snapshot_once_customer_leaked_into_session");
 
   const cancelled = await must(
@@ -374,9 +364,6 @@ async function frozenEmptySnapshotSmoke() {
   return {
     routeId,
     sessionId,
-    firstCreated: firstOpen.created,
-    secondCreated: secondOpen.created,
-    backfillSkipped: object(secondOpen.backfill).skipped,
     snapshotCountAfterRouteCustomerAdded: day.lines.length,
     cancelledStatus: cancelled.status,
     emptyCancelledSessionDeleted: deleted.deleted

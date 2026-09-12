@@ -197,6 +197,14 @@ function withCommercialPricingBoundary(requestContext) {
   });
 }
 
+function initialMcpCreateReadContext(requestContext, sourceEmployeeId) {
+  if (!sourceEmployeeId) return requestContext;
+  return Object.freeze({
+    ...requestContext,
+    employeeId: null,
+  });
+}
+
 function nonZeroLegacyLineDiscount(line) {
   const value = parseScaledDecimal(line?.discountValue ?? '0', { allowZero: true });
   return value !== null && value > 0n;
@@ -663,7 +671,7 @@ export async function createSalesOrder(client, { requestContext, payload }) {
   const prepared = await prepareCommercialPayload(client, { requestContext, payload });
   if (!prepared.ok) return prepared;
   const result = await legacy.createSalesOrder(client, {
-    requestContext: prepared.legacyRequestContext,
+    requestContext: initialMcpCreateReadContext(prepared.legacyRequestContext, sourceEmployee.employeeId),
     payload: prepared.legacyPayload,
   });
   if (!result.ok) return result;

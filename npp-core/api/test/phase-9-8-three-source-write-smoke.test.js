@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const script = await readFile(new URL('../scripts/phase-9-8-three-source-write-smoke.js', import.meta.url), 'utf8');
+const salesOrderService = await readFile(new URL('../src/services/sales-order.js', import.meta.url), 'utf8');
 const workflow = await readFile(new URL('../../../.github/workflows/phase-9-8-three-source-write-smoke.yml', import.meta.url), 'utf8');
 
 test('three-source smoke writes only draft orders inside a rollback transaction', () => {
@@ -33,6 +34,18 @@ test('three-source smoke uses priced canonical candidates and canonical MCP prin
   assert.doesNotMatch(script, /salesOrderEntryService\.searchSalesOrderSkuOptions/);
   assert.doesNotMatch(script, /listPortalCatalog/);
   assert.doesNotMatch(script, /const portalKey = `phase98-/);
+});
+
+test('MCP create keeps employee scope after the initial actor-owned draft reload', () => {
+  assert.match(salesOrderService, /function initialMcpCreateReadContext\(requestContext, sourceEmployeeId\)/);
+  assert.match(salesOrderService, /if \(!sourceEmployeeId\) return requestContext;/);
+  assert.match(salesOrderService, /employeeId: null/);
+  assert.match(
+    salesOrderService,
+    /requestContext: initialMcpCreateReadContext\(prepared\.legacyRequestContext, sourceEmployee\.employeeId\)/,
+  );
+  assert.match(salesOrderService, /setInitialSourceEmployeeSnapshot/);
+  assert.match(salesOrderService, /return applySnapshotAndReload\(client, \{[\s\S]*requestContext,[\s\S]*prepared,/);
 });
 
 test('workflow is owner-guarded and verifies deployed PWA icon assets', () => {

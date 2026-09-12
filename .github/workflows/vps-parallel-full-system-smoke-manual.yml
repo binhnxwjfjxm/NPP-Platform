@@ -330,7 +330,14 @@ jobs:
           ssh -i "$MCP_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$MCP_KNOWN" "$VPS_SSH_USER@$VPS_MCP_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
           env_file=/etc/npp/mcp.env
+          current=/srv/npp/mcp/current
           read_env() { sudo -n awk -F= -v key="$1" '$1==key{sub(/^[^=]*=/,""); gsub(/^["'"'"']|["'"'"']$/ ,""); print; exit}' "$env_file"; }
+          fail_http() {
+            local check="$1" status="$2" file="$3" code
+            code="$(node -e 'try{const p=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); process.stdout.write(String(p?.error?.code||""));}catch{}' "$file")"
+            echo "mcp_boundary_failed check=$check status=${status:-none} code=${code:-none}" >&2
+            return 1
+          }
           db_url="$(read_env DATABASE_URL)"
           DATABASE_URL_CHECK="$db_url" node --input-type=module <<'NODE'
           const parsed = new URL(process.env.DATABASE_URL_CHECK);
@@ -341,19 +348,61 @@ jobs:
           ! grep -Fqi 'herokuapp.com' <<<"$sales_base"
           [[ "$sales_base" == https://*":3443" ]]
           base="http://127.0.0.1:$port"
-          test "$(curl -sS -o /dev/null -w '%{http_code}' "$base/health/live")" = 200
-          test "$(curl -sS -o /dev/null -w '%{http_code}' "$base/health/ready")" = 200
-          test "$(curl -sS -o /tmp/npp958-mcp-unauth.json -w '%{http_code}' "$base/api/routes")" = 401
-          preflight="$(curl -sS -o /tmp/npp958-mcp-options.out -D /tmp/npp958-mcp-options.headers -w '%{http_code}' -X OPTIONS -H "Origin: $origin" -H 'Access-Control-Request-Method: GET' -H 'Access-Control-Request-Headers: Content-Type, X-Backend-Token, X-Request-Id, Idempotency-Key' "$base/api/routes")"
-          test "$preflight" = 204
-          grep -Fqi "access-control-allow-origin: $origin" /tmp/npp958-mcp-options.headers
-          test "$(curl -sS -o /tmp/npp958-mcp-denied.json -w '%{http_code}' -H "X-Backend-Token: $token" -H 'Origin: https://invalid.example.com' "$base/api/routes")" = 403
-          test "$(curl -sS -o /tmp/npp958-mcp-products.json -w '%{http_code}' -H "X-Backend-Token: $token" -H 'Accept: application/json' "$base/api/core-sales/products/search?q=&limit=1")" = 200
+          live="$(curl -sS -o /tmp/npp958-mcp-live.json -w '%{http_code}' "$base/health/live" || true)"
+          [ "$live" = 200 ] || fail_http health_live "$live" /tmp/npp958-mcp-live.json
+          ready="$(curl -sS -o /tmp/npp958-mcp-ready.json -w '%{http_code}' "$base/health/ready" || true)"
+          [ "$ready" = 200 ] || fail_http health_ready "$ready" /tmp/npp958-mcp-ready.json
+          unauth="$(curl -sS -o /tmp/npp958-mcp-unauth.json -w '%{http_code}' "$base/api/routes" || true)"
+          [ "$unauth" = 401 ] || fail_http service_auth "$unauth" /tmp/npp958-mcp-unauth.json
+          preflight="$(curl -sS -o /tmp/npp958-mcp-options.out -D /tmp/npp958-mcp-options.headers -w '%{http_code}' -X OPTIONS -H "Origin: $origin" -H 'Access-Control-Request-Method: GET' -H 'Access-Control-Request-Headers: Content-Type, Authorization, X-Request-Id, Idempotency-Key' "$base/api/routes" || true)"
+          if [ "$preflight" != 204 ]; then
+            echo "mcp_boundary_failed check=cors_preflight status=${preflight:-none}" >&2
+            exit 1
+          fi
+          grep -Fqi "access-control-allow-origin: $origin" /tmp/npp958-mcp-options.headers || {
+            echo 'mcp_boundary_failed check=cors_allow_origin' >&2
+            exit 1
+          }
+          denied="$(curl -sS -o /tmp/npp958-mcp-denied.json -w '%{http_code}' -H "X-Backend-Token: $token" -H 'Origin: https://invalid.example.com' "$base/api/routes" || true)"
+          [ "$denied" = 403 ] || fail_http cors_denied "$denied" /tmp/npp958-mcp-denied.json
+
+          set -a
+          source <(sudo -n cat "$env_file")
+          set +a
+          employee_id="$(cd "$current" && node --input-type=module <<'NODE'
+          import pg from 'pg';
+          const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 1 });
+          try {
+            const result = await pool.query(
+              `SELECT id
+                 FROM shared.employees
+                WHERE installation_id = $1
+                  AND is_active = true
+                ORDER BY updated_at DESC NULLS LAST, id ASC
+                LIMIT 1`,
+              [process.env.INSTALLATION_ID],
+            );
+            const id = String(result.rows[0]?.id || '');
+            if (!id) process.exit(1);
+            process.stdout.write(id);
+          } finally {
+            await pool.end();
+          }
+          NODE
+          )"
+          [[ "$employee_id" =~ ^[0-9a-fA-F-]{36}$ ]]
+          workforce="$(printf 'v3|npp958-smoke|%s|NPP958%%20Smoke|1' "$employee_id" | base64 | tr -d '\n')"
+          test -n "$workforce"
+          products="$(curl -sS -o /tmp/npp958-mcp-products.json -w '%{http_code}' -H "X-Backend-Token: $token" -H "Authorization: Basic $workforce" -H 'Accept: application/json' "$base/api/core-sales/products/search?q=&limit=1" || true)"
+          [ "$products" = 200 ] || fail_http company_products "$products" /tmp/npp958-mcp-products.json
           node -e 'JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"))' /tmp/npp958-mcp-products.json
-          direct="$(curl -sS -o /tmp/npp958-mcp-orders.json -w '%{http_code}' -H "X-Backend-Token: $token" -H 'Accept: application/json' "$base/api/core-sales/orders")"
-          test "$direct" = 401
+          direct="$(curl -sS -o /tmp/npp958-mcp-orders.json -w '%{http_code}' -H "X-Backend-Token: $token" -H 'Accept: application/json' "$base/api/core-sales/orders" || true)"
+          [ "$direct" = 401 ] || fail_http direct_order_service_only "$direct" /tmp/npp958-mcp-orders.json
           code="$(node -e 'try{const p=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); process.stdout.write(String(p?.error?.code||""));}catch{}' /tmp/npp958-mcp-orders.json)"
-          test "$code" = TRUSTED_EMPLOYEE_REQUIRED
+          [ "$code" = TRUSTED_EMPLOYEE_REQUIRED ] || {
+            echo "mcp_boundary_failed check=trusted_employee_guard status=$direct code=${code:-none}" >&2
+            exit 1
+          }
           rm -f /tmp/npp958-mcp-*.json /tmp/npp958-mcp-options.out /tmp/npp958-mcp-options.headers
           REMOTE
           cat >> "$REPORT_FILE" <<'REPORT'
