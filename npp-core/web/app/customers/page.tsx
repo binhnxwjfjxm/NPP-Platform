@@ -1,6 +1,5 @@
 import CustomerWorkspace from './customer-workspace';
 import CustomerBulkTabsLauncher from './customer-bulk-tabs-launcher';
-import CustomerMediaLauncher from './customer-media-launcher';
 import CustomerDetailLinkLayer from './customer-detail-link-layer';
 import type { Customer, CustomerGroup } from '../../lib/customer-types';
 import { listVietnamProvinces } from '../../lib/vietnam-administrative-data';
@@ -39,7 +38,6 @@ export default async function CustomersPage() {
       />
       <CustomerDetailLinkLayer customers={initialCustomers} />
       <CustomerBulkTabsLauncher />
-      <CustomerMediaLauncher customers={initialCustomers} />
     </>
   );
 }

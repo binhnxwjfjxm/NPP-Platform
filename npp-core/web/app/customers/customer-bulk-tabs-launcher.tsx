@@ -3,14 +3,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import CustomerBulkWorkspace from './customer-bulk-workspace';
+import CustomerQuickSetupWorkspace from './customer-quick-setup-workspace';
 
-type BulkMode = 'import' | 'update' | null;
+type CustomerToolMode = 'quick' | 'import' | 'update' | null;
 
 export default function CustomerBulkTabsLauncher() {
-  const [mode, setMode] = useState<BulkMode>(null);
+  const [mode, setMode] = useState<CustomerToolMode>(null);
   const [tabHost, setTabHost] = useState<HTMLElement | null>(null);
   const [contentHost, setContentHost] = useState<HTMLElement | null>(null);
-  const modeRef = useRef<BulkMode>(null);
+  const modeRef = useRef<CustomerToolMode>(null);
 
   useEffect(() => {
     modeRef.current = mode;
@@ -33,21 +34,21 @@ export default function CustomerBulkTabsLauncher() {
     nextContentHost.dataset.customerBulkHost = 'true';
     tabs.insertAdjacentElement('afterend', nextContentHost);
 
-    const clearBulk = () => {
+    const clearToolMode = () => {
       if (modeRef.current !== null) {
         window.location.reload();
         return;
       }
       setMode(null);
     };
-    existingButtons[0].addEventListener('click', clearBulk);
-    existingButtons[1].addEventListener('click', clearBulk);
+    existingButtons[0].addEventListener('click', clearToolMode);
+    existingButtons[1].addEventListener('click', clearToolMode);
     setTabHost(nextTabHost);
     setContentHost(nextContentHost);
 
     return () => {
-      existingButtons[0].removeEventListener('click', clearBulk);
-      existingButtons[1].removeEventListener('click', clearBulk);
+      existingButtons[0].removeEventListener('click', clearToolMode);
+      existingButtons[1].removeEventListener('click', clearToolMode);
       nextTabHost.remove();
       nextContentHost.remove();
       setTabHost(null);
@@ -80,6 +81,7 @@ export default function CustomerBulkTabsLauncher() {
 
   const tabs = tabHost ? createPortal(
     <>
+      <button type="button" aria-pressed={mode === 'quick'} onClick={() => setMode('quick')} data-testid="customers-quick-setup-tab">Thiết lập nhanh</button>
       <button type="button" aria-pressed={mode === 'import'} onClick={() => setMode('import')} data-testid="customers-import-tab">Nhập KH</button>
       <button type="button" aria-pressed={mode === 'update'} onClick={() => setMode('update')} data-testid="customers-update-tab">Cập nhật KH</button>
     </>,
@@ -88,7 +90,9 @@ export default function CustomerBulkTabsLauncher() {
 
   const workspace = contentHost && mode ? createPortal(
     <div data-customer-bulk-content="true">
-      <CustomerBulkWorkspace key={mode} mode={mode} />
+      {mode === 'quick'
+        ? <CustomerQuickSetupWorkspace />
+        : <CustomerBulkWorkspace key={mode} mode={mode} />}
     </div>,
     contentHost,
   ) : null;
