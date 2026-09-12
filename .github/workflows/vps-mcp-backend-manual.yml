@@ -1,0 +1,370 @@
+name: VPS MCP backend manual deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Deploy exact main or roll back an existing MCP VPS release.
+        required: true
+        default: deploy
+        type: choice
+        options:
+          - deploy
+          - rollback
+      release_sha:
+        description: Existing release SHA used only for rollback.
+        required: false
+        default: ""
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: vps-mcp-backend-manual
+  cancel-in-progress: false
+
+jobs:
+  deploy-or-rollback:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.number == 5 &&
+        github.event.comment.body == '/deploy-vps-mcp-production' &&
+        (
+          github.actor == 'binhnxwjfjxm' ||
+          github.actor == 'khuongbinhinfo-a11y'
+        )
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      VPS_MCP_HOST: ${{ vars.VPS_MCP_HOST }}
+      VPS_SSH_USER: ${{ vars.VPS_SSH_USER }}
+
+    steps:
+      - name: Validate exact issue command
+        if: github.event_name == 'issue_comment'
+        shell: bash
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          test "$COMMENT_BODY" = '/deploy-vps-mcp-production'
+
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact origin/main SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          test "$(git rev-parse --is-shallow-repository)" = "false"
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Validate MCP package boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { readFile } from "node:fs/promises";
+          const pkg = JSON.parse(await readFile("mcp/apps/backend/package.json", "utf8"));
+          if (pkg.scripts?.start !== "node bootstrap.js") throw new Error("unexpected_mcp_start_contract");
+          if (pkg.dependencies?.pg !== "^8.12.0") throw new Error("missing_mcp_postgresql_dependency");
+          NODE
+
+      - name: Resolve requested action
+        id: request
+        shell: bash
+        env:
+          REQUESTED_ACTION: ${{ inputs.action }}
+          REQUESTED_RELEASE_SHA: ${{ inputs.release_sha }}
+        run: |
+          set -euo pipefail
+          action="${REQUESTED_ACTION:-deploy}"
+          release_sha="${REQUESTED_RELEASE_SHA:-}"
+          if [ "$GITHUB_EVENT_NAME" = issue_comment ]; then
+            action=deploy
+            release_sha=""
+          fi
+          case "$action" in
+            deploy) ;;
+            rollback) [[ "$release_sha" =~ ^[0-9a-f]{7,40}$ ]] ;;
+            *) exit 1 ;;
+          esac
+          echo "action=$action" >> "$GITHUB_OUTPUT"
+          echo "release_sha=$release_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare MCP SSH credential
+        id: ssh
+        shell: bash
+        env:
+          VPS_MCP_SSH_KEY: ${{ secrets.VPS_MCP_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$VPS_MCP_HOST"
+          test -n "$VPS_SSH_USER"
+          test -n "$VPS_MCP_SSH_KEY"
+
+          umask 077
+          key="$RUNNER_TEMP/vps-mcp.key"
+          printf '%s\n' "$VPS_MCP_SSH_KEY" > "$key"
+          chmod 600 "$key"
+          ssh-keygen -y -f "$key" >/dev/null
+
+          known_hosts="$RUNNER_TEMP/vps-mcp-known-hosts"
+          ssh-keyscan -T 10 -H "$VPS_MCP_HOST" > "$known_hosts" 2>/dev/null
+          test -s "$known_hosts"
+          chmod 600 "$known_hosts"
+
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+          echo "known_hosts=$known_hosts" >> "$GITHUB_OUTPUT"
+
+      - name: Package exact MCP backend source
+        if: steps.request.outputs.action == 'deploy'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git archive --format=tar HEAD:mcp/apps/backend | gzip -9 > "$RUNNER_TEMP/mcp-source.tgz"
+          test -s "$RUNNER_TEMP/mcp-source.tgz"
+
+      - name: Copy MCP source to target
+        if: steps.request.outputs.action == 'deploy'
+        shell: bash
+        env:
+          SSH_KEY: ${{ steps.ssh.outputs.key }}
+          KNOWN_HOSTS: ${{ steps.ssh.outputs.known_hosts }}
+        run: |
+          set -euo pipefail
+          scp \
+            -i "$SSH_KEY" \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$KNOWN_HOSTS" \
+            "$RUNNER_TEMP/mcp-source.tgz" \
+            "$VPS_SSH_USER@$VPS_MCP_HOST:/tmp/npp-mcp-${{ steps.source.outputs.sha }}.tgz"
+
+      - name: Deploy or roll back MCP backend without touching proxy
+        id: release
+        shell: bash
+        env:
+          SSH_KEY: ${{ steps.ssh.outputs.key }}
+          KNOWN_HOSTS: ${{ steps.ssh.outputs.known_hosts }}
+          ACTION: ${{ steps.request.outputs.action }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          ROLLBACK_SHA: ${{ steps.request.outputs.release_sha }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/mcp-release.out"
+
+          ssh \
+            -i "$SSH_KEY" \
+            -o BatchMode=yes \
+            -o ConnectTimeout=10 \
+            -o ConnectionAttempts=1 \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$KNOWN_HOSTS" \
+            "$VPS_SSH_USER@$VPS_MCP_HOST" \
+            "bash -s -- '$ACTION' '$SOURCE_SHA' '$ROLLBACK_SHA'" >"$out" <<'REMOTE'
+          set -euo pipefail
+          action="$1"
+          source_sha="$2"
+          rollback_sha="$3"
+          sudo -n true
+
+          root=/srv/npp/mcp
+          current="$root/current"
+          releases="$root/releases"
+          env_file=/etc/npp/mcp.env
+          service=npp-mcp-api.service
+          service_user=npp-mcp
+
+          verify_proxy() {
+            for svc in ipv4-proxy ipv6-proxy oci-ipv6-pool; do
+              test "$(systemctl is-active "$svc")" = active
+              test "$(systemctl is-enabled "$svc")" = enabled
+            done
+            count="$(ss -lntH | awk '{n=split($4,a,":"); p=a[n]+0; if (p>=3128 && p<=3427) c++} END {print c+0}')"
+            test "$count" = 300
+            ss -lntH | awk '{n=split($4,a,":"); if (a[n]+0==3000) found=1} END {exit found?0:1}'
+          }
+
+          verify_proxy
+          if ! id -u "$service_user" >/dev/null 2>&1; then
+            sudo -n useradd --system --home-dir "$root" --shell /usr/sbin/nologin "$service_user"
+          fi
+
+          test -f "$env_file"
+          sudo -n chown root:"$service_user" "$env_file"
+          sudo -n chmod 640 "$env_file"
+          grep -q '^PORT=' "$env_file"
+
+          port="$(sudo -n awk -F= '/^PORT=/{sub(/^PORT=/,""); gsub(/^["'"'"']|["'"'"']$/ ,""); print; exit}' "$env_file")"
+          [[ "$port" =~ ^[0-9]+$ ]]
+          [ "$port" -ge 1024 ] && [ "$port" -le 65535 ]
+          [ "$port" -ne 3000 ]
+          if [ "$port" -ge 3128 ] && [ "$port" -le 3427 ]; then
+            echo "mcp_port_conflicts_with_proxy_range" >&2
+            exit 40
+          fi
+
+          ensure_node20() {
+            if command -v node >/dev/null 2>&1 && node --version | grep -Eq '^v20\.'; then
+              return 0
+            fi
+            sudo -n apt-get update -y
+            sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates curl gnupg
+            curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -n -E bash -
+            sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs
+            node --version | grep -Eq '^v20\.'
+            verify_proxy
+          }
+
+          smoke() {
+            local path="$1"
+            local deadline=$((SECONDS + 120))
+            local code=""
+            while [ "$SECONDS" -lt "$deadline" ]; do
+              code="$(curl --silent --show-error --connect-timeout 3 --max-time 8 --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:${port}${path}" || true)"
+              [ "$code" = 200 ] && return 0
+              sleep 3
+            done
+            echo "health_failed=$path status=${code:-none}" >&2
+            return 1
+          }
+
+          ensure_node20
+          sudo -n install -d -m 0755 "$releases"
+          previous="$(readlink -f "$current" 2>/dev/null || true)"
+          target=""
+
+          case "$action" in
+            deploy)
+              target="$releases/$source_sha"
+              archive="/tmp/npp-mcp-${source_sha}.tgz"
+              test -f "$archive"
+              if [ ! -d "$target" ]; then
+                sudo -n install -d -m 0755 "$target"
+                sudo -n tar -xzf "$archive" -C "$target"
+                sudo -n chown -R "$USER":"$(id -gn)" "$target"
+                (
+                  cd "$target"
+                  npm ci --omit=dev --ignore-scripts
+                )
+                sudo -n chown -R "$service_user":"$service_user" "$target"
+              fi
+              rm -f "$archive"
+              ;;
+            rollback)
+              matches="$(find "$releases" -mindepth 1 -maxdepth 1 -type d -name "${rollback_sha}*" -print)"
+              count="$(printf '%s\n' "$matches" | sed '/^$/d' | wc -l)"
+              test "$count" = 1
+              target="$matches"
+              ;;
+            *) exit 41 ;;
+          esac
+
+          test -d "$target"
+
+          unit_tmp="$(mktemp)"
+          cat >"$unit_tmp" <<UNIT
+          [Unit]
+          Description=NPP MCP API
+          After=network-online.target
+          Wants=network-online.target
+
+          [Service]
+          Type=simple
+          User=$service_user
+          Group=$service_user
+          UMask=0027
+          WorkingDirectory=$current
+          EnvironmentFile=$env_file
+          ExecStart=/usr/bin/node bootstrap.js
+          Restart=on-failure
+          RestartSec=5
+          KillSignal=SIGTERM
+          TimeoutStopSec=30
+
+          [Install]
+          WantedBy=multi-user.target
+          UNIT
+          sudo -n install -m 0644 "$unit_tmp" "/etc/systemd/system/$service"
+          rm -f "$unit_tmp"
+
+          sudo -n ln -sfn "$target" "$current"
+          sudo -n systemctl daemon-reload
+          sudo -n systemctl enable "$service" >/dev/null
+          sudo -n systemctl restart "$service"
+
+          if ! smoke /health/live || ! smoke /health/ready; then
+            if [ -n "$previous" ] && [ -d "$previous" ]; then
+              sudo -n ln -sfn "$previous" "$current"
+              sudo -n systemctl restart "$service"
+              smoke /health/live
+              smoke /health/ready
+            else
+              sudo -n systemctl stop "$service" || true
+              sudo -n rm -f "$current"
+            fi
+            verify_proxy
+            exit 42
+          fi
+
+          verify_proxy
+
+          active="$(readlink -f "$current")"
+          active_release="${active##*/}"
+          echo "action=$action"
+          echo "source_sha=$source_sha"
+          echo "active_release=$active_release"
+          echo "service_state=$(systemctl is-active "$service")"
+          echo "health_live=PASS"
+          echo "health_ready=PASS"
+          echo "proxy_services=active_enabled_untouched"
+          echo "proxy_listener_count=300"
+          echo "tcp_3000_listener=preserved"
+          echo "rollback_target=${previous##*/}"
+          REMOTE
+
+          cat "$out"
+          active_release="$(awk -F= '$1=="active_release"{print $2}' "$out" | tail -n1)"
+          echo "active_release=$active_release" >> "$GITHUB_OUTPUT"
+          echo "report=$out" >> "$GITHUB_OUTPUT"
+
+      - name: Publish sanitized MCP VPS release evidence to Issue 958
+        if: always() && steps.release.outputs.report != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPORT_FILE: ${{ steps.release.outputs.report }}
+        run: |
+          set -euo pipefail
+          evidence="$(mktemp)"
+          {
+            echo "## MCP VPS release"
+            echo
+            echo "- Run ID: \`$GITHUB_RUN_ID\`"
+            echo "- Exact main SHA: \`${{ steps.source.outputs.sha }}\`"
+            echo "- Operation: \`${{ steps.request.outputs.action }}\`"
+            echo "- Proxy IPv4/IPv6 services are verification-only and are never stopped/restarted/configured by this workflow."
+            echo "- No database migration is run by this workflow."
+            echo '```text'
+            cat "$REPORT_FILE"
+            echo '```'
+          } > "$evidence"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/958/comments" \
+            -f body="$(cat "$evidence")" >/dev/null
+          rm -f "$evidence"

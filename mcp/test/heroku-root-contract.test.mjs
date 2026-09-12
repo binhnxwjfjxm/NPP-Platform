@@ -15,3 +15,48 @@ test("Heroku runs the Core API from the repository root", async () => {
   assert.equal(pkg.scripts.start, "npm run start:core-api");
   assert.equal(pkg.scripts["heroku-postbuild"], "npm run build:core-api");
 });
+
+test("VPS DB bootstrap is manual, exact-main and never exposes PostgreSQL publicly", async () => {
+  const workflow = await read(".github/workflows/vps-db-postgresql17-bootstrap-manual.yml");
+
+  assert.match(workflow, /github\.event\.issue\.number == 5/);
+  assert.match(workflow, /\/bootstrap-vps-db-postgresql17/);
+  assert.doesNotMatch(workflow, /^\s{2}(?:push|pull_request):\s*$/m);
+  assert.match(workflow, /ref: main/);
+  assert.match(workflow, /git rev-parse origin\/main/);
+  assert.match(workflow, /postgresql-17 postgresql-client-17/);
+  assert.match(workflow, /listen_addresses = '127\.0\.0\.1,::1'/);
+  assert.match(workflow, /TCP 5432 became public after bootstrap/);
+  assert.match(workflow, /production_traffic=not_enabled/);
+  assert.doesNotMatch(workflow, /migration:migrate|pg_restore|DATABASE_URL/);
+});
+
+test("Công Ty VPS deploy has isolated release, health and rollback boundaries", async () => {
+  const workflow = await read(".github/workflows/vps-company-backend-manual.yml");
+
+  assert.match(workflow, /\/deploy-vps-company-production/);
+  assert.match(workflow, /VPS_COMPANY_SSH_KEY/);
+  assert.doesNotMatch(workflow, /VPS_MCP_SSH_KEY|ipv4-proxy|ipv6-proxy|oci-ipv6-pool/);
+  assert.match(workflow, /root=\/srv\/npp\/company/);
+  assert.match(workflow, /releases="\$root\/releases"/);
+  assert.match(workflow, /\/health\/live/);
+  assert.match(workflow, /\/health\/ready/);
+  assert.match(workflow, /ln -sfn "\$previous" "\$current"/);
+  assert.doesNotMatch(workflow, /migration:migrate|psql .*migrate/);
+});
+
+test("MCP VPS deploy preserves all existing proxy services and listeners", async () => {
+  const workflow = await read(".github/workflows/vps-mcp-backend-manual.yml");
+
+  assert.match(workflow, /\/deploy-vps-mcp-production/);
+  assert.match(workflow, /VPS_MCP_SSH_KEY/);
+  assert.doesNotMatch(workflow, /VPS_COMPANY_SSH_KEY/);
+  assert.match(workflow, /ipv4-proxy ipv6-proxy oci-ipv6-pool/);
+  assert.match(workflow, /proxy_listener_count=300/);
+  assert.match(workflow, /tcp_3000_listener=preserved/);
+  assert.match(workflow, /mcp_port_conflicts_with_proxy_range/);
+  assert.doesNotMatch(workflow, /systemctl (?:stop|restart) (?:ipv4-proxy|ipv6-proxy|oci-ipv6-pool)/);
+  assert.match(workflow, /\/health\/live/);
+  assert.match(workflow, /\/health\/ready/);
+  assert.doesNotMatch(workflow, /migration:migrate|pg_restore/);
+});
