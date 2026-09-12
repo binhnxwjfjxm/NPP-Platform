@@ -194,10 +194,16 @@ jobs:
           fi
           echo 'ufw_status:'
           sudo -n ufw status numbered 2>/dev/null | grep -E 'Status:|22/tcp|5432' || true
-          echo 'iptables_input:'
-          sudo -n iptables -S INPUT 2>/dev/null | grep -E '^-P INPUT|22|5432|ufw' || true
+          echo 'iptables_input_rules:'
+          sudo -n iptables -S INPUT 2>/dev/null || true
+          echo 'iptables_input_ordered:'
+          sudo -n iptables -vnL INPUT --line-numbers 2>/dev/null || true
+          echo 'iptables_ufw_user_input:'
+          sudo -n iptables -vnL ufw-user-input --line-numbers 2>/dev/null || true
+          echo 'tcp_5432_listener:'
+          sudo -n ss -lntp 2>/dev/null | grep ':5432' || true
           echo 'nft_input_summary:'
-          sudo -n nft list ruleset 2>/dev/null | grep -E 'hook input|tcp dport (22|5432)|policy (drop|accept)' | head -n 30 || true
+          sudo -n nft list ruleset 2>/dev/null | grep -E 'hook input|tcp dport (22|5432)|policy (drop|accept)|reject' | head -n 60 || true
           REMOTE
             echo '```' >> "$REPORT_FILE"
             echo >> "$REPORT_FILE"
@@ -228,13 +234,17 @@ jobs:
           dest="$1"
           port="$2"
           echo "route=$(ip -4 route get "$dest" 2>/dev/null | head -n1 || true)"
-          timeout 4 bash -c "cat < /dev/null > /dev/tcp/$dest/$port" >/dev/null 2>&1
+          probe_output="$(timeout 4 bash -c "cat < /dev/null > /dev/tcp/$dest/$port" 2>&1)"
           rc=$?
+          detail="$(printf '%s' "$probe_output" | tr '\r\n' '  ')"
           case "$rc" in
             0) echo 'result=PASS' ;;
             124) echo 'result=TIMEOUT' ;;
             *) echo "result=FAIL rc=$rc" ;;
           esac
+          if [ -n "$detail" ]; then
+            echo "detail=$detail"
+          fi
           exit 0
           REMOTE
             ssh_rc=$?
@@ -262,6 +272,24 @@ jobs:
           probe_from db "$VPS_DB_HOST" 'db_to_company_private_22:' "$COMPANY_PRIVATE_IP" 22
           probe_from db "$VPS_DB_HOST" 'db_to_mcp_private_22:' "$MCP_PRIVATE_IP" 22
 
+          echo '```' >> "$REPORT_FILE"
+          echo >> "$REPORT_FILE"
+
+          {
+            echo '### DB firewall counters after probes'
+            echo '```text'
+          } >> "$REPORT_FILE"
+          ssh -i "$RUNNER_TEMP/vps-db.key" -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/vps-db-known-hosts" \
+            "$VPS_SSH_USER@$VPS_DB_HOST" 'bash -s' >> "$REPORT_FILE" <<'REMOTE'
+          set -euo pipefail
+          echo 'iptables_input_ordered:'
+          sudo -n iptables -vnL INPUT --line-numbers 2>/dev/null || true
+          echo 'iptables_ufw_user_input:'
+          sudo -n iptables -vnL ufw-user-input --line-numbers 2>/dev/null || true
+          echo 'tcp_5432_listener:'
+          sudo -n ss -lntp 2>/dev/null | grep ':5432' || true
+          REMOTE
           {
             echo '```'
             echo
