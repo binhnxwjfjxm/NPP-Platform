@@ -37,7 +37,8 @@ test("Công Ty VPS deploy has isolated release, health and rollback boundaries",
   assert.match(workflow, /\/deploy-vps-company-production/);
   assert.match(workflow, /VPS_COMPANY_SSH_KEY/);
   assert.doesNotMatch(workflow, /VPS_MCP_SSH_KEY|ipv4-proxy|ipv6-proxy|oci-ipv6-pool/);
-  assert.match(workflow, /\/srv\/npp\/company\/releases/);
+  assert.match(workflow, /root=\/srv\/npp\/company/);
+  assert.match(workflow, /releases="\$root\/releases"/);
   assert.match(workflow, /\/health\/live/);
   assert.match(workflow, /\/health\/ready/);
   assert.match(workflow, /ln -sfn "\$previous" "\$current"/);
