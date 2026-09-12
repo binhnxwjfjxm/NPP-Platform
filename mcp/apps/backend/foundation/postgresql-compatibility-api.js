@@ -201,18 +201,19 @@ async function mcpDayData(url, context) {
 
     const [snapshotResult, visitResult] = await Promise.all([
       client.query(
-        `SELECT id, session_id, route_id, route_customer_id, customer_id, customer_name, phone, area, address,
-                sort_order, source, planned_status, visit_status, status_reason, visit_id, order_id, test_id,
-                report_id, followup_count, note, checkin_lat, checkin_lng, checkin_accuracy, checkin_at,
-                checkin_source, created_at, updated_at
+        `SELECT id, session_id, route_id, route_customer_id, customer_id, customer_name, account_name,
+                phone, area, address, sort_order, source, status, visit_status, status_reason,
+                order_id, test_id, report_id, followup_count, checked_in, note,
+                checkin_lat, checkin_lng, checkin_accuracy, checkin_at, checkin_source,
+                created_at, updated_at
          FROM mcp.mcp_session_customers
          WHERE installation_id = $1 AND session_id = $2
          ORDER BY sort_order ASC, created_at ASC`,
         [context.installation.id, session.id]
       ),
       client.query(
-        `SELECT id, session_id, route_id, route_customer_id, visit_date, status, has_order, has_test,
-                has_report, order_id, test_id, report_id, checkin_at, note, created_at
+        `SELECT id, session_id, session_customer_id, route_id, route_customer_id, customer_id,
+                customer_name, visit_date, status, checkin_at, checkout_at, note, created_at
          FROM mcp.mcp_visits
          WHERE installation_id = $1 AND session_id = $2
          ORDER BY checkin_at ASC NULLS LAST, created_at ASC`,
@@ -222,32 +223,30 @@ async function mcpDayData(url, context) {
 
     const snapshots = snapshotResult.rows || [];
     const visits = visitResult.rows || [];
-    const visitById = new Map();
+    const visitBySessionCustomer = new Map();
     const visitByRouteCustomer = new Map();
     for (const visit of visits) {
-      if (visit.id) visitById.set(visit.id, visit);
-      if (visit.route_customer_id && !visitByRouteCustomer.has(visit.route_customer_id)) {
-        visitByRouteCustomer.set(visit.route_customer_id, visit);
-      }
+      if (visit.session_customer_id) visitBySessionCustomer.set(visit.session_customer_id, visit);
+      if (visit.route_customer_id) visitByRouteCustomer.set(visit.route_customer_id, visit);
     }
 
-    const snapshotByVisitId = new Map();
+    const snapshotById = new Map();
     const snapshotByRouteCustomerId = new Map();
     const lines = snapshots.map((snapshot) => {
-      const visit = visitById.get(snapshot.visit_id) || visitByRouteCustomer.get(snapshot.route_customer_id);
-      const status = snapshot.visit_status || (visit ? "visited" : "pending");
-      const orderId = snapshot.order_id || visit?.order_id || null;
-      const testId = snapshot.test_id || visit?.test_id || null;
-      const reportId = snapshot.report_id || visit?.report_id || null;
+      const visit = visitBySessionCustomer.get(snapshot.id) || visitByRouteCustomer.get(snapshot.route_customer_id);
+      const status = snapshot.visit_status || snapshot.status || (visit ? "visited" : "pending");
+      const orderId = snapshot.order_id || null;
+      const testId = snapshot.test_id || null;
+      const reportId = snapshot.report_id || null;
       const followupCount = numberValue(snapshot.followup_count);
-      if (visit?.id) snapshotByVisitId.set(visit.id, snapshot);
+      snapshotById.set(snapshot.id, snapshot);
       if (snapshot.route_customer_id) snapshotByRouteCustomerId.set(snapshot.route_customer_id, snapshot);
       return {
         id: snapshot.id,
         sessionCustomerId: snapshot.id,
         routeCustomerId: snapshot.route_customer_id,
         sortOrder: numberValue(snapshot.sort_order),
-        accountName: snapshot.customer_name || "Khách chưa tên",
+        accountName: snapshot.account_name || snapshot.customer_name || "Khách chưa tên",
         phone: snapshot.phone || undefined,
         address: snapshot.address || undefined,
         area: snapshot.area || "-",
@@ -259,13 +258,13 @@ async function mcpDayData(url, context) {
         orderId: orderId || undefined,
         testId: testId || undefined,
         reportId: reportId || undefined,
-        hasOrder: Boolean(visit?.has_order || orderId),
-        hasTest: Boolean(visit?.has_test || testId),
-        hasReport: Boolean(visit?.has_report || reportId),
+        hasOrder: Boolean(orderId),
+        hasTest: Boolean(testId),
+        hasReport: Boolean(reportId),
         followupCount,
-        visitId: visit?.id || snapshot.visit_id || undefined,
-        checkedIn: Boolean(snapshot.checkin_at),
-        checkinAt: snapshot.checkin_at || undefined,
+        visitId: visit?.id || undefined,
+        checkedIn: Boolean(snapshot.checked_in || snapshot.checkin_at || visit?.checkin_at),
+        checkinAt: snapshot.checkin_at || visit?.checkin_at || undefined,
         checkinLat: snapshot.checkin_lat == null ? undefined : numberValue(snapshot.checkin_lat),
         checkinLng: snapshot.checkin_lng == null ? undefined : numberValue(snapshot.checkin_lng),
         checkinAccuracy: snapshot.checkin_accuracy == null ? undefined : numberValue(snapshot.checkin_accuracy),
@@ -274,22 +273,22 @@ async function mcpDayData(url, context) {
     });
 
     const results = visits.map((visit) => {
-      const snapshot = snapshotByVisitId.get(visit.id) || snapshotByRouteCustomerId.get(visit.route_customer_id);
-      const orderId = snapshot?.order_id || visit.order_id || null;
-      const testId = snapshot?.test_id || visit.test_id || null;
-      const reportId = snapshot?.report_id || visit.report_id || null;
-      const hasOrder = Boolean(visit.has_order || orderId);
-      const hasTest = Boolean(visit.has_test || testId);
-      const hasReport = Boolean(visit.has_report || reportId);
+      const snapshot = snapshotById.get(visit.session_customer_id) || snapshotByRouteCustomerId.get(visit.route_customer_id);
+      const orderId = snapshot?.order_id || null;
+      const testId = snapshot?.test_id || null;
+      const reportId = snapshot?.report_id || null;
+      const hasOrder = Boolean(orderId);
+      const hasTest = Boolean(testId);
+      const hasReport = Boolean(reportId);
       const followupCount = numberValue(snapshot?.followup_count);
       return {
         id: visit.id,
-        lineId: snapshot?.id || visit.route_customer_id || visit.id,
-        sessionCustomerId: snapshot?.id,
+        lineId: snapshot?.id || visit.session_customer_id || visit.route_customer_id || visit.id,
+        sessionCustomerId: snapshot?.id || visit.session_customer_id || undefined,
         routeCustomerId: visit.route_customer_id,
-        accountName: snapshot?.customer_name || "Điểm bán",
+        accountName: snapshot?.account_name || snapshot?.customer_name || visit.customer_name || "Điểm bán",
         startTime: timeOnly(visit.checkin_at || visit.created_at),
-        endTime: timeOnly(visit.checkin_at || visit.created_at),
+        endTime: timeOnly(visit.checkout_at || visit.checkin_at || visit.created_at),
         result: visit.note || visit.status || "Đã ghé",
         orderId: orderId || undefined,
         testId: testId || undefined,

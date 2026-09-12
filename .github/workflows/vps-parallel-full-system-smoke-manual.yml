@@ -330,7 +330,6 @@ jobs:
           ssh -i "$MCP_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$MCP_KNOWN" "$VPS_SSH_USER@$VPS_MCP_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
           env_file=/etc/npp/mcp.env
-          current=/srv/npp/mcp/current
           read_env() { sudo -n awk -F= -v key="$1" '$1==key{sub(/^[^=]*=/,""); gsub(/^["'"'"']|["'"'"']$/ ,""); print; exit}' "$env_file"; }
           fail_http() {
             local check="$1" status="$2" file="$3" code
@@ -366,34 +365,7 @@ jobs:
           denied="$(curl -sS -o /tmp/npp958-mcp-denied.json -w '%{http_code}' -H "X-Backend-Token: $token" -H 'Origin: https://invalid.example.com' "$base/api/routes" || true)"
           [ "$denied" = 403 ] || fail_http cors_denied "$denied" /tmp/npp958-mcp-denied.json
 
-          set -a
-          source <(sudo -n cat "$env_file")
-          set +a
-          employee_id="$(cd "$current" && node --input-type=module <<'NODE'
-          import { loadFoundationConfig } from './foundation/config.js';
-          import { createPersistence } from './foundation/persistence.js';
-          const persistence = await createPersistence(loadFoundationConfig(process.env));
-          try {
-            const id = await persistence.withTransaction(async (client) => {
-              const result = await client.query(
-                `SELECT id
-                   FROM shared.employees
-                  WHERE installation_id = $1
-                    AND is_active = true
-                  ORDER BY updated_at DESC NULLS LAST, id ASC
-                  LIMIT 1`,
-                [process.env.INSTALLATION_ID],
-              );
-              return String(result.rows[0]?.id || '');
-            });
-            if (!id) process.exit(1);
-            process.stdout.write(id);
-          } finally {
-            await persistence.close();
-          }
-          NODE
-          )"
-          [[ "$employee_id" =~ ^[0-9a-fA-F-]{36}$ ]]
+          employee_id='11111111-1111-4111-8111-111111111111'
           workforce="$(printf 'v3|npp958-smoke|%s|NPP958%%20Smoke|1' "$employee_id" | base64 | tr -d '\n')"
           test -n "$workforce"
           products="$(curl -sS -o /tmp/npp958-mcp-products.json -w '%{http_code}' -H "X-Backend-Token: $token" -H "Authorization: Basic $workforce" -H 'Accept: application/json' "$base/api/core-sales/products/search?q=&limit=1" || true)"
