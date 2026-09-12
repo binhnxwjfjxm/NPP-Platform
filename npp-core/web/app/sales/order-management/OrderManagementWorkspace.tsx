@@ -8,6 +8,7 @@ import type { Customer } from '../../../lib/customer-types';
 import type { SalesOrder, SalesOrderVersion } from '../../../lib/sales-order-types';
 import { SALES_ORDER_PERMISSION_KEYS } from '../../../lib/sales-order-permissions';
 import SalesOrderPrintSheet from '../sales-orders/SalesOrderPrintSheet';
+import { confirmBulkStockIssue, confirmSingleStockIssue } from '../sales-orders/sales-order-stock-issue-confirm';
 import {
   activeVersion,
   apiRequest,
@@ -295,7 +296,7 @@ async function loadAllPages<T>(basePath: string): Promise<T[]> {
   let offset = 0;
   for (;;) {
     if (offset > MAX_OFFSET) {
-      throw new Error('Dữ liệu vượt phạm vi truy vấn an toàn. Chưa thể dùng Chọn tất cả cho danh sách này.');
+      throw new Error('Dữ liệu vượt phạm vi truy vấn an toàn. Hãy thu hẹp bộ lọc hoặc tải lại.');
     }
     const separator = basePath.includes('?') ? '&' : '?';
     const response = await fetch(`${basePath}${separator}limit=${FETCH_PAGE_SIZE}&offset=${offset}`, {
@@ -495,8 +496,8 @@ export default function OrderManagementWorkspace({ permissionKeys }: { permissio
   const pageOrders = useMemo(() => filteredOrders.slice((currentPage - 1) * pageSize, currentPage * pageSize), [currentPage, filteredOrders, pageSize]);
   const selectedOrders = useMemo(() => orders.filter((order) => selectedIds.has(order.id)), [orders, selectedIds]);
   const printableSelectedCount = useMemo(() => selectedOrders.filter(isPrintable).length, [selectedOrders]);
-  const allFilteredSelected = filteredOrders.length > 0 && filteredOrders.every((order) => selectedIds.has(order.id));
-  const someFilteredSelected = filteredOrders.some((order) => selectedIds.has(order.id));
+  const allPageSelected = pageOrders.length > 0 && pageOrders.every((order) => selectedIds.has(order.id));
+  const somePageSelected = pageOrders.some((order) => selectedIds.has(order.id));
   const selectedQuickActions = useMemo(
     () => selectedOrders.map((order) => nextQuickAction(order, quickPermissions)),
     [quickPermissions, selectedOrders],
@@ -509,8 +510,8 @@ export default function OrderManagementWorkspace({ permissionKeys }: { permissio
   }, [selectedOrders.length, selectedQuickActions]);
 
   useEffect(() => {
-    if (selectAllRef.current) selectAllRef.current.indeterminate = someFilteredSelected && !allFilteredSelected;
-  }, [allFilteredSelected, someFilteredSelected]);
+    if (selectAllRef.current) selectAllRef.current.indeterminate = somePageSelected && !allPageSelected;
+  }, [allPageSelected, somePageSelected]);
 
   function updateFilter<K extends keyof Filters>(key: K, value: Filters[K]) {
     setFilters((current) => ({ ...current, [key]: value }));
@@ -528,12 +529,9 @@ export default function OrderManagementWorkspace({ permissionKeys }: { permissio
     setNotice(null);
   }
 
-  function toggleAllFiltered(checked: boolean) {
-    if (!checked) {
-      setSelectedIds(new Set());
-      return;
-    }
-    setSelectedIds(new Set(filteredOrders.map((order) => order.id)));
+  function toggleAllPage(checked: boolean) {
+    setSelectedIds(checked ? new Set(pageOrders.map((order) => order.id)) : new Set());
+    setPartialSettlement(null);
   }
 
   function toggleOrder(id: string, checked: boolean) {
@@ -542,6 +540,19 @@ export default function OrderManagementWorkspace({ permissionKeys }: { permissio
       if (checked) next.add(id); else next.delete(id);
       return next;
     });
+  }
+
+  function changePage(nextPage: number) {
+    setSelectedIds(new Set());
+    setPartialSettlement(null);
+    setPage(nextPage);
+  }
+
+  function changePageSize(nextPageSize: number) {
+    setSelectedIds(new Set());
+    setPartialSettlement(null);
+    setPageSize(nextPageSize);
+    setPage(1);
   }
 
   function applyOrderUpdate(updated: SalesOrder) {
@@ -615,6 +626,7 @@ export default function OrderManagementWorkspace({ permissionKeys }: { permissio
 
   async function runRowQuickAction(order: SalesOrder, action: QuickAction) {
     if (busyAction || bulkBusy) return;
+    if (action === 'issue-stock' && !confirmSingleStockIssue(order.number)) return;
     setBusyAction(`${action}:${order.id}`);
     setNotice(null);
     try {
@@ -632,6 +644,7 @@ export default function OrderManagementWorkspace({ permissionKeys }: { permissio
     if (bulkBusy || busyAction || bulkAction !== action) return;
     const targets = selectedOrders.filter((order) => nextQuickAction(order, quickPermissions) === action);
     if (targets.length === 0) return;
+    if (action === 'issue-stock' && !confirmBulkStockIssue(targets.length)) return;
     setBulkBusy(action);
     setNotice(null);
     let successCount = 0;
@@ -659,6 +672,7 @@ export default function OrderManagementWorkspace({ permissionKeys }: { permissio
       setNotice(failures.length
         ? `Đã ${label.toLocaleLowerCase('vi')} ${successCount} đơn; ${failures.length} đơn chưa thực hiện được. ${failures[0]}`
         : `Đã ${label.toLocaleLowerCase('vi')} ${successCount} đơn.`);
+      setSelectedIds(new Set());
     } finally {
       setBulkBusy(null);
     }
@@ -823,8 +837,8 @@ export default function OrderManagementWorkspace({ permissionKeys }: { permissio
         <section className={styles.tablePanel}>
           <div className={styles.selectionBar}>
             <label className={styles.selectAllLabel}>
-              <input ref={selectAllRef} type="checkbox" checked={allFilteredSelected} disabled={filteredOrders.length === 0 || Boolean(rangeError)} onChange={(event) => toggleAllFiltered(event.target.checked)} />
-              <span>Chọn tất cả</span>
+              <input ref={selectAllRef} type="checkbox" checked={allPageSelected} disabled={pageOrders.length === 0 || Boolean(rangeError)} onChange={(event) => toggleAllPage(event.target.checked)} />
+              <span>Chọn trang này</span>
             </label>
             <span className={styles.resultCount}>{loading ? 'Đang tải đơn hàng…' : `${filteredOrders.length.toLocaleString('vi-VN')} đơn theo bộ lọc`}</span>
             {selectedIds.size > 0 ? <strong className={styles.selectedCount}>{`Đã chọn ${selectedIds.size.toLocaleString('vi-VN')} đơn`}</strong> : null}
@@ -948,10 +962,10 @@ export default function OrderManagementWorkspace({ permissionKeys }: { permissio
           <footer className={styles.pagination}>
             <span>{filteredOrders.length ? `Hiển thị ${(currentPage - 1) * pageSize + 1}–${Math.min(currentPage * pageSize, filteredOrders.length)} trong ${filteredOrders.length.toLocaleString('vi-VN')} đơn` : '0 đơn'}</span>
             <div>
-              <select aria-label="Số dòng mỗi trang" value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(1); }}>{TABLE_PAGE_SIZES.map((size) => <option value={size} key={size}>{size} / trang</option>)}</select>
-              <button type="button" disabled={currentPage <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>Trước</button>
+              <select aria-label="Số dòng mỗi trang" value={pageSize} onChange={(event) => changePageSize(Number(event.target.value))}>{TABLE_PAGE_SIZES.map((size) => <option value={size} key={size}>{size} / trang</option>)}</select>
+              <button type="button" disabled={currentPage <= 1} onClick={() => changePage(Math.max(1, currentPage - 1))}>Trước</button>
               <strong>Trang {currentPage}/{pageCount}</strong>
-              <button type="button" disabled={currentPage >= pageCount} onClick={() => setPage((value) => Math.min(pageCount, value + 1))}>Sau</button>
+              <button type="button" disabled={currentPage >= pageCount} onClick={() => changePage(Math.min(pageCount, currentPage + 1))}>Sau</button>
             </div>
           </footer>
         </section>
