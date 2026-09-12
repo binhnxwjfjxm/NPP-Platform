@@ -108,7 +108,7 @@ test("Công Ty VPS deploy has isolated release, health and rollback boundaries",
   assert.doesNotMatch(workflow, /migration:migrate|psql .*migrate/);
 });
 
-test("MCP VPS deploy preserves all existing proxy services and listeners", async () => {
+test("MCP VPS deploy preserves proxy and prevents current symlink loops", async () => {
   const workflow = await read(".github/workflows/vps-mcp-backend-manual.yml");
 
   assert.match(workflow, /\/deploy-vps-mcp-production/);
@@ -121,5 +121,13 @@ test("MCP VPS deploy preserves all existing proxy services and listeners", async
   assert.doesNotMatch(workflow, /systemctl (?:stop|restart) (?:ipv4-proxy|ipv6-proxy|oci-ipv6-pool)/);
   assert.match(workflow, /\/health\/live/);
   assert.match(workflow, /\/health\/ready/);
+  assert.match(workflow, /activate_release\(\)/);
+  assert.match(workflow, /ln -sfnT "\$candidate" "\$current"/);
+  assert.match(workflow, /resolved_current="\$\(readlink -f "\$current"/);
+  assert.match(workflow, /current_path_not_release_symlink/);
+  assert.match(workflow, /invalid_release_target/);
+  assert.match(workflow, /systemctl stop "\$service"/);
+  assert.match(workflow, /auto_rollback=PASS/);
+  assert.doesNotMatch(workflow, /ln -sfn "\$previous" "\$current"/);
   assert.doesNotMatch(workflow, /migration:migrate|pg_restore/);
 });

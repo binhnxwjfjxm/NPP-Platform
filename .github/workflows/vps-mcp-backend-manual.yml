@@ -201,6 +201,21 @@ jobs:
             ss -lntH | awk '{n=split($4,a,":"); if (a[n]+0==3000) found=1} END {exit found?0:1}'
           }
 
+          activate_release() {
+            local candidate="$1"
+            local resolved=""
+            case "$candidate" in
+              "$releases"/*) ;;
+              *) echo "invalid_release_target" >&2; return 1 ;;
+            esac
+            test -d "$candidate"
+            sudo -n ln -sfnT "$candidate" "$current"
+            resolved="$(readlink -f "$current" 2>/dev/null || true)"
+            test -n "$resolved"
+            test "$resolved" = "$candidate"
+            test "$resolved" != "$current"
+          }
+
           verify_proxy
           if ! id -u "$service_user" >/dev/null 2>&1; then
             sudo -n useradd --system --home-dir "$root" --shell /usr/sbin/nologin "$service_user"
@@ -246,8 +261,28 @@ jobs:
           }
 
           ensure_node20
-          sudo -n install -d -m 0755 "$releases"
-          previous="$(readlink -f "$current" 2>/dev/null || true)"
+          sudo -n install -d -m 0755 "$root" "$releases"
+          sudo -n systemctl stop "$service" >/dev/null 2>&1 || true
+          sudo -n systemctl reset-failed "$service" >/dev/null 2>&1 || true
+
+          previous=""
+          if [ -L "$current" ]; then
+            resolved_current="$(readlink -f "$current" 2>/dev/null || true)"
+            if [ -n "$resolved_current" ] && [ -d "$resolved_current" ] && [[ "$resolved_current" == "$releases/"* ]]; then
+              previous="$resolved_current"
+            else
+              sudo -n rm -f "$current"
+            fi
+          elif [ -e "$current" ]; then
+            legacy_current="$root/legacy-current-pre-release"
+            if [ -e "$legacy_current" ]; then
+              echo "current_path_not_release_symlink" >&2
+              exit 43
+            fi
+            sudo -n mv "$current" "$legacy_current"
+            echo "legacy_current_preserved=${legacy_current##*/}"
+          fi
+
           target=""
 
           case "$action" in
@@ -276,6 +311,11 @@ jobs:
             *) exit 41 ;;
           esac
 
+          case "$target" in
+            "$releases"/*) ;;
+            *) echo "invalid_release_target" >&2; exit 44 ;;
+          esac
+          test "$target" != "$current"
           test -d "$target"
 
           unit_tmp="$(mktemp)"
@@ -304,22 +344,30 @@ jobs:
           sudo -n install -m 0644 "$unit_tmp" "/etc/systemd/system/$service"
           rm -f "$unit_tmp"
 
-          sudo -n ln -sfn "$target" "$current"
+          activate_release "$target"
           sudo -n systemctl daemon-reload
           sudo -n systemctl enable "$service" >/dev/null
           sudo -n systemctl restart "$service"
 
           if ! smoke /health/live || ! smoke /health/ready; then
+            rollback_ok=0
             if [ -n "$previous" ] && [ -d "$previous" ]; then
-              sudo -n ln -sfn "$previous" "$current"
+              activate_release "$previous"
               sudo -n systemctl restart "$service"
-              smoke /health/live
-              smoke /health/ready
+              if smoke /health/live && smoke /health/ready; then
+                rollback_ok=1
+              else
+                sudo -n systemctl stop "$service" || true
+                sudo -n rm -f "$current"
+              fi
             else
               sudo -n systemctl stop "$service" || true
               sudo -n rm -f "$current"
             fi
             verify_proxy
+            if [ "$rollback_ok" = 1 ]; then
+              echo "auto_rollback=PASS"
+            fi
             exit 42
           fi
 
