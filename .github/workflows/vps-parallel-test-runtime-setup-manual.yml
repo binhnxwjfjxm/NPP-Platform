@@ -35,6 +35,8 @@ jobs:
       VPS_MCP_HOST: ${{ vars.VPS_MCP_HOST }}
       VPS_SSH_USER: ${{ vars.VPS_SSH_USER }}
       COMPANY_TEST_HTTPS_PORT: '3443'
+      COMPANY_TEST_HTTPS_NAME: 'npp958-company.test'
+      COMPANY_TEST_EDGE_PORT: '443'
 
     steps:
       - name: Validate exact issue command
@@ -349,7 +351,7 @@ jobs:
           set -euo pipefail
           company_password="$(cat "$COMPANY_DB_PASSWORD_FILE")"
           mcp_password="$(cat "$MCP_DB_PASSWORD_FILE")"
-          company_test_base_url="https://${VPS_COMPANY_HOST}:${COMPANY_TEST_HTTPS_PORT}"
+          company_test_base_url="https://${COMPANY_TEST_HTTPS_NAME}:${COMPANY_TEST_HTTPS_PORT}"
           echo "::add-mask::$company_password"
           echo "::add-mask::$mcp_password"
 
@@ -446,7 +448,9 @@ jobs:
           MCP_KNOWN: ${{ steps.ssh.outputs.mcp_known }}
         run: |
           set -euo pipefail
+          company_public_ip="$(getent ahostsv4 "$VPS_COMPANY_HOST" | awk 'NR==1 {print $1}')"
           mcp_source_ip="$(getent ahostsv4 "$VPS_MCP_HOST" | awk 'NR==1 {print $1}')"
+          [[ "$company_public_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]
           [[ "$mcp_source_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]
           ca_key="$RUNNER_TEMP/npp958-company-test-ca.key"
           ca_cert="$RUNNER_TEMP/npp958-company-test-ca.pem"
@@ -454,16 +458,11 @@ jobs:
           server_csr="$RUNNER_TEMP/npp958-company-test.csr"
           server_cert="$RUNNER_TEMP/npp958-company-test.crt"
           ext_file="$RUNNER_TEMP/npp958-company-test.ext"
-          if [[ "$VPS_COMPANY_HOST" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            san="IP:$VPS_COMPANY_HOST"
-          else
-            san="DNS:$VPS_COMPANY_HOST"
-          fi
-          printf 'subjectAltName=%s\nextendedKeyUsage=serverAuth\n' "$san" > "$ext_file"
+          printf 'subjectAltName=DNS:%s\nextendedKeyUsage=serverAuth\n' "$COMPANY_TEST_HTTPS_NAME" > "$ext_file"
           openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 2 \
             -subj '/CN=NPP958 Parallel Test CA' -keyout "$ca_key" -out "$ca_cert" >/dev/null 2>&1
           openssl req -new -newkey rsa:2048 -nodes -sha256 \
-            -subj "/CN=$VPS_COMPANY_HOST" -keyout "$server_key" -out "$server_csr" >/dev/null 2>&1
+            -subj "/CN=$COMPANY_TEST_HTTPS_NAME" -keyout "$server_key" -out "$server_csr" >/dev/null 2>&1
           openssl x509 -req -sha256 -days 2 -in "$server_csr" -CA "$ca_cert" -CAkey "$ca_key" -CAcreateserial \
             -out "$server_cert" -extfile "$ext_file" >/dev/null 2>&1
 
@@ -472,9 +471,9 @@ jobs:
           scp -i "$COMPANY_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$COMPANY_KNOWN" \
             "$server_key" "$VPS_SSH_USER@$VPS_COMPANY_HOST:/tmp/npp958-company-test.key"
           ssh -i "$COMPANY_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$COMPANY_KNOWN" \
-            "$VPS_SSH_USER@$VPS_COMPANY_HOST" "bash -s -- '$COMPANY_TEST_HTTPS_PORT' '$mcp_source_ip'" <<'REMOTE'
+            "$VPS_SSH_USER@$VPS_COMPANY_HOST" "bash -s -- '$COMPANY_TEST_HTTPS_PORT' '$COMPANY_TEST_EDGE_PORT' '$COMPANY_TEST_HTTPS_NAME' '$mcp_source_ip'" <<'REMOTE'
           set -euo pipefail
-          test_port="$1"; mcp_source_ip="$2"
+          test_port="$1"; edge_port="$2"; test_name="$3"; mcp_source_ip="$4"
           sudo -n true
           command -v nginx >/dev/null
           test "$(systemctl is-active nginx)" = active
@@ -487,10 +486,14 @@ jobs:
           server {
             listen ${test_port} ssl;
             listen [::]:${test_port} ssl;
-            server_name _;
+            listen ${edge_port} ssl;
+            listen [::]:${edge_port} ssl;
+            server_name ${test_name};
             ssl_certificate /etc/npp/npp958-company-test.crt;
             ssl_certificate_key /etc/npp/npp958-company-test.key;
             ssl_protocols TLSv1.2 TLSv1.3;
+            allow ${mcp_source_ip};
+            deny all;
             location / {
               proxy_pass http://127.0.0.1:3104;
               proxy_http_version 1.1;
@@ -515,14 +518,15 @@ jobs:
           fi
           sudo -n ufw status | grep -F "$mcp_source_ip" | grep -Fq "$test_port"
           ss -lntH | awk -v p="$test_port" '{n=split($4,a,":"); if (a[n]+0==p) found=1} END {exit found?0:1}'
+          ss -lntH | awk -v p="$edge_port" '{n=split($4,a,":"); if (a[n]+0==p) found=1} END {exit found?0:1}'
           REMOTE
 
           scp -i "$MCP_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$MCP_KNOWN" \
             "$ca_cert" "$VPS_SSH_USER@$VPS_MCP_HOST:/tmp/npp958-company-test-ca.pem"
           ssh -i "$MCP_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$MCP_KNOWN" \
-            "$VPS_SSH_USER@$VPS_MCP_HOST" "bash -s -- '$VPS_COMPANY_HOST' '$COMPANY_TEST_HTTPS_PORT'" <<'REMOTE'
+            "$VPS_SSH_USER@$VPS_MCP_HOST" "bash -s -- '$company_public_ip' '$COMPANY_TEST_HTTPS_NAME' '$COMPANY_TEST_HTTPS_PORT' '$COMPANY_TEST_EDGE_PORT'" <<'REMOTE'
           set -euo pipefail
-          company_host="$1"; test_port="$2"
+          company_public_ip="$1"; test_name="$2"; test_port="$3"; edge_port="$4"
           sudo -n true
           verify_proxy() {
             for svc in ipv4-proxy ipv6-proxy oci-ipv6-pool; do
@@ -537,13 +541,26 @@ jobs:
           sudo -n install -d -m 0755 /etc/npp
           sudo -n install -o root -g root -m 0644 /tmp/npp958-company-test-ca.pem /etc/npp/npp958-company-test-ca.pem
           rm -f /tmp/npp958-company-test-ca.pem
+
+          hosts_tmp="$(mktemp)"
+          sudo -n awk '!/# NPP958 COMPANY TEST$/ {print}' /etc/hosts > "$hosts_tmp"
+          printf '%s %s # NPP958 COMPANY TEST\n' "$company_public_ip" "$test_name" >> "$hosts_tmp"
+          sudo -n install -o root -g root -m 0644 "$hosts_tmp" /etc/hosts
+          rm -f "$hosts_tmp"
+          getent ahostsv4 "$test_name" | awk 'NR==1 {print $1}' | grep -qx "$company_public_ip"
+
+          sudo -n iptables -t nat -D OUTPUT -p tcp -d "$company_public_ip" --dport "$test_port" -j DNAT --to-destination "${company_public_ip}:${edge_port}" >/dev/null 2>&1 || true
+          sudo -n iptables -t nat -A OUTPUT -p tcp -d "$company_public_ip" --dport "$test_port" -j DNAT --to-destination "${company_public_ip}:${edge_port}"
+          sudo -n iptables -t nat -C OUTPUT -p tcp -d "$company_public_ip" --dport "$test_port" -j DNAT --to-destination "${company_public_ip}:${edge_port}"
+
           curl --fail --silent --show-error --cacert /etc/npp/npp958-company-test-ca.pem \
-            --connect-timeout 5 --max-time 15 "https://${company_host}:${test_port}/health/live" >/dev/null
+            --connect-timeout 5 --max-time 15 "https://${test_name}:${test_port}/health/live" >/dev/null
           verify_proxy
           REMOTE
           {
             echo 'company_test_https_from_mcp=PASS'
             echo 'company_test_https_scope=mcp_public_ip_only'
+            echo 'company_test_https_transport=provider_443_via_test_only_mcp_dnat'
             echo 'mcp_core_sales_target=company_vps_test_https'
             echo 'mcp_core_onboarding_target=company_vps_test_https'
           } >> "$REPORT_FILE"
