@@ -2,6 +2,10 @@ const base = String(
   process.env.MCP_API_BASE_URL || "http://127.0.0.1:3001"
 ).replace(/\/+$/, "");
 const backendToken = String(process.env.BACKEND_API_TOKEN || "").trim();
+const contractModule = process.env.NPP_IDEMPOTENCY_CONTRACT_MODULE
+  ? process.env.NPP_IDEMPOTENCY_CONTRACT_MODULE
+  : new URL("../../packages/contracts/index.js", import.meta.url);
+const { createIdempotencyKey, isValidIdempotencyKey } = await import(contractModule);
 
 const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const cleanupRouteIds = new Set();
@@ -25,6 +29,22 @@ function errorCode(payload) {
   return "request_failed";
 }
 
+function mutationKey(operation) {
+  const key = createIdempotencyKey(operation);
+  assert(isValidIdempotencyKey(key), `invalid_idempotency_key_${operation}`);
+  return key;
+}
+
+function withMutationKey(operation, init = {}, key = mutationKey(operation)) {
+  return {
+    ...init,
+    headers: {
+      ...(init.headers || {}),
+      "Idempotency-Key": key
+    }
+  };
+}
+
 async function call(path, init = {}) {
   const response = await fetch(`${base}${path}`, {
     cache: "no-store",
@@ -41,14 +61,18 @@ async function call(path, init = {}) {
   return { response, payload };
 }
 
-async function must(path, init = {}) {
+async function mustEnvelope(path, init = {}) {
   const result = await call(path, init);
   if (!result.response.ok) {
     throw new Error(
       `${init.method || "GET"} ${path} -> ${result.response.status}: ${errorCode(result.payload)}`
     );
   }
-  return object(result.payload.data);
+  return result.payload;
+}
+
+async function must(path, init = {}) {
+  return object((await mustEnvelope(path, init)).data);
 }
 
 async function mustConflict(path, init = {}) {
@@ -61,7 +85,7 @@ async function mustConflict(path, init = {}) {
 }
 
 async function createRoute(label, weekday) {
-  const route = await must("/api/routes", {
+  const route = await must("/api/routes", withMutationKey("route.create", {
     method: "POST",
     body: JSON.stringify({
       routeName: `__MCP_V1_API_${label}__${stamp}`,
@@ -69,7 +93,7 @@ async function createRoute(label, weekday) {
       weekday,
       note: "temporary MCP v1 API smoke"
     })
-  });
+  }));
   const routeId = String(route.routeId || route.id || "");
   assert(routeId, `${label}_route_id_missing`);
   cleanupRouteIds.add(routeId);
@@ -77,7 +101,7 @@ async function createRoute(label, weekday) {
 }
 
 async function createCustomer(routeId, label) {
-  const customer = await must("/api/route-customers", {
+  const customer = await must("/api/route-customers", withMutationKey("route-customer.add", {
     method: "POST",
     body: JSON.stringify({
       routeId,
@@ -86,7 +110,7 @@ async function createCustomer(routeId, label) {
       sortOrder: 1,
       note: "temporary MCP v1 API smoke"
     })
-  });
+  }));
   const routeCustomerId = String(
     customer.routeCustomerId || customer.id || ""
   );
@@ -96,10 +120,10 @@ async function createCustomer(routeId, label) {
 
 async function cleanupRoute(routeId) {
   if (!routeId || !cleanupRouteIds.has(routeId)) return;
-  const result = await call(`/api/routes/${encodeURIComponent(routeId)}/archive`, {
-    method: "POST",
-    body: "{}"
-  });
+  const result = await call(
+    `/api/routes/${encodeURIComponent(routeId)}/archive`,
+    withMutationKey("route.archive", { method: "POST", body: "{}" })
+  );
   if (result.response.status === 404) {
     cleanupRouteIds.delete(routeId);
     return;
@@ -133,23 +157,34 @@ async function fullSessionSmoke() {
   const routeId = await createRoute("FULL", 5);
   await createCustomer(routeId, "FULL");
   const sessionDate = "2099-12-31";
+  const openKey = mutationKey("route-session.open");
+  const openInit = {
+    method: "POST",
+    body: JSON.stringify({ routeId, sessionDate, owner: "API Smoke" })
+  };
 
-  const firstOpen = await must("/api/mcp-day/open-session", {
-    method: "POST",
-    body: JSON.stringify({ routeId, sessionDate, owner: "API Smoke" })
-  });
-  const secondOpen = await must("/api/mcp-day/open-session", {
-    method: "POST",
-    body: JSON.stringify({ routeId, sessionDate, owner: "API Smoke" })
-  });
+  const firstOpenEnvelope = await mustEnvelope(
+    "/api/mcp-day/open-session",
+    withMutationKey("route-session.open", openInit, openKey)
+  );
+  const secondOpenEnvelope = await mustEnvelope(
+    "/api/mcp-day/open-session",
+    withMutationKey("route-session.open", openInit, openKey)
+  );
+  const firstOpen = object(firstOpenEnvelope.data);
+  const secondOpen = object(secondOpenEnvelope.data);
 
   const sessionId = String(object(firstOpen.session).id || "");
   assert(sessionId, "full_session_id_missing");
   assert(firstOpen.created === true, "full_first_open_not_created");
-  assert(secondOpen.created === false, "full_second_open_created_duplicate");
+  assert(secondOpen.created === firstOpen.created, "full_open_retry_changed_response");
   assert(
     String(object(secondOpen.session).id || "") === sessionId,
-    "full_open_not_idempotent"
+    "full_open_retry_session_changed"
+  );
+  assert(
+    object(object(secondOpenEnvelope.meta).idempotency).replayed === true,
+    "full_open_retry_not_replayed"
   );
 
   const day = await must(
@@ -162,17 +197,17 @@ async function fullSessionSmoke() {
   const sessionCustomerId = String(line.sessionCustomerId || line.id || "");
   assert(sessionCustomerId, "full_session_customer_id_missing");
 
-  const visited = await must("/api/mcp-day/session-customer/status", {
+  const visited = await must("/api/mcp-day/session-customer/status", withMutationKey("session-customer.status.update", {
     method: "POST",
     body: JSON.stringify({
       sessionCustomerId,
       visitStatus: "visited",
       note: "API smoke visited"
     })
-  });
+  }));
   assert(visited.visitStatus === "visited", "full_visit_not_recorded");
 
-  const order = await must("/api/mcp-day/session-customer/order", {
+  const order = await must("/api/mcp-day/session-customer/order", withMutationKey("session-customer.order.create", {
     method: "POST",
     body: JSON.stringify({
       sessionCustomerId,
@@ -189,10 +224,10 @@ async function fullSessionSmoke() {
         }
       ]
     })
-  });
+  }));
   assert(Object.keys(order).length > 0, "full_order_not_created");
 
-  const test = await must("/api/mcp-day/session-customer/test", {
+  const test = await must("/api/mcp-day/session-customer/test", withMutationKey("session-customer.test.create", {
     method: "POST",
     body: JSON.stringify({
       sessionCustomerId,
@@ -206,10 +241,10 @@ async function fullSessionSmoke() {
         }
       ]
     })
-  });
+  }));
   assert(Object.keys(test).length > 0, "full_test_not_created");
 
-  const report = await must("/api/mcp-day/session-customer/report", {
+  const report = await must("/api/mcp-day/session-customer/report", withMutationKey("session-customer.report.create", {
     method: "POST",
     body: JSON.stringify({
       sessionCustomerId,
@@ -231,10 +266,10 @@ async function fullSessionSmoke() {
         customerName: line.accountName || "API Smoke Customer"
       }
     })
-  });
+  }));
   assert(Object.keys(report).length > 0, "full_report_not_created");
 
-  const followup = await must("/api/mcp-day/session-customer/followup", {
+  const followup = await must("/api/mcp-day/session-customer/followup", withMutationKey("session-customer.followup.create", {
     method: "POST",
     body: JSON.stringify({
       sessionCustomerId,
@@ -245,28 +280,32 @@ async function fullSessionSmoke() {
       followupType: "order",
       note: "Gọi lại chốt đơn"
     })
-  });
+  }));
   assert(Object.keys(followup).length > 0, "full_followup_not_created");
 
-  await mustConflict(`/api/mcp-sessions/${encodeURIComponent(sessionId)}`, {
-    method: "DELETE"
-  });
+  await mustConflict(
+    `/api/mcp-sessions/${encodeURIComponent(sessionId)}`,
+    withMutationKey("route-session.delete-empty", { method: "DELETE" })
+  );
 
-  const closed = await must(`/api/mcp-sessions/${encodeURIComponent(sessionId)}`, {
-    method: "PATCH",
-    body: JSON.stringify({ status: "done", note: "API smoke closed" })
-  });
+  const closed = await must(
+    `/api/mcp-sessions/${encodeURIComponent(sessionId)}`,
+    withMutationKey("route-session.update", {
+      method: "PATCH",
+      body: JSON.stringify({ status: "done", note: "API smoke closed" })
+    })
+  );
   assert(closed.status === "done", "full_session_not_closed");
   assert(Object.keys(object(closed.snapshot)).length > 0, "full_close_snapshot_missing");
 
-  await mustConflict("/api/mcp-day/session-customer/status", {
+  await mustConflict("/api/mcp-day/session-customer/status", withMutationKey("session-customer.status.update", {
     method: "POST",
     body: JSON.stringify({
       sessionCustomerId,
       visitStatus: "visited",
       note: "must stay read-only"
     })
-  });
+  }));
 
   return {
     routeId,
@@ -276,6 +315,7 @@ async function fullSessionSmoke() {
     testCreated: true,
     reportCreated: true,
     followupCreated: true,
+    openRetryReplayed: true,
     activityDeleteBlocked: true,
     closedStatus: closed.status,
     closeSnapshotCreated: true,
@@ -287,20 +327,20 @@ async function frozenEmptySnapshotSmoke() {
   const routeId = await createRoute("SNAPSHOT_ONCE", 4);
   const sessionDate = "2099-12-30";
 
-  const firstOpen = await must("/api/mcp-day/open-session", {
+  const firstOpen = await must("/api/mcp-day/open-session", withMutationKey("route-session.open", {
     method: "POST",
     body: JSON.stringify({ routeId, sessionDate, owner: "API Smoke" })
-  });
+  }));
   const sessionId = String(object(firstOpen.session).id || "");
   assert(sessionId, "snapshot_once_session_id_missing");
   assert(firstOpen.created === true, "snapshot_once_first_open_not_created");
 
   await createCustomer(routeId, "AFTER_OPEN");
 
-  const secondOpen = await must("/api/mcp-day/open-session", {
+  const secondOpen = await must("/api/mcp-day/open-session", withMutationKey("route-session.open", {
     method: "POST",
     body: JSON.stringify({ routeId, sessionDate, owner: "API Smoke" })
-  });
+  }));
   assert(secondOpen.created === false, "snapshot_once_second_open_created_duplicate");
   assert(
     String(object(secondOpen.session).id || "") === sessionId,
@@ -316,15 +356,19 @@ async function frozenEmptySnapshotSmoke() {
   );
   assert(Array.isArray(day.lines) && day.lines.length === 0, "snapshot_once_customer_leaked_into_session");
 
-  const cancelled = await must(`/api/mcp-sessions/${encodeURIComponent(sessionId)}`, {
-    method: "PATCH",
-    body: JSON.stringify({ status: "cancelled", note: "API smoke cancelled" })
-  });
+  const cancelled = await must(
+    `/api/mcp-sessions/${encodeURIComponent(sessionId)}`,
+    withMutationKey("route-session.update", {
+      method: "PATCH",
+      body: JSON.stringify({ status: "cancelled", note: "API smoke cancelled" })
+    })
+  );
   assert(cancelled.status === "cancelled", "snapshot_once_cancel_failed");
 
-  const deleted = await must(`/api/mcp-sessions/${encodeURIComponent(sessionId)}`, {
-    method: "DELETE"
-  });
+  const deleted = await must(
+    `/api/mcp-sessions/${encodeURIComponent(sessionId)}`,
+    withMutationKey("route-session.delete-empty", { method: "DELETE" })
+  );
   assert(deleted.deleted === true, "snapshot_once_empty_cancelled_delete_failed");
 
   return {
@@ -337,6 +381,18 @@ async function frozenEmptySnapshotSmoke() {
     cancelledStatus: cancelled.status,
     emptyCancelledSessionDeleted: deleted.deleted
   };
+}
+
+function errorSummary(error) {
+  if (error instanceof AggregateError) {
+    return {
+      name: error.name,
+      message: error.message,
+      errors: Array.from(error.errors || [], (entry) => errorSummary(entry))
+    };
+  }
+  if (error instanceof Error) return { name: error.name, message: error.message };
+  return { name: "Error", message: String(error) };
 }
 
 async function runSmoke() {
@@ -390,6 +446,6 @@ try {
   const result = await runSmoke();
   console.log(JSON.stringify(result, null, 2));
 } catch (error) {
-  console.error(error instanceof Error ? error.stack || error.message : error);
+  console.error(JSON.stringify({ ok: false, error: errorSummary(error) }, null, 2));
   process.exitCode = 1;
 }
