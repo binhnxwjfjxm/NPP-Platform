@@ -207,7 +207,7 @@ jobs:
           ALTER ROLE mcp_test_runtime LOGIN PASSWORD '$mcp_password';
           GRANT CONNECT ON DATABASE npp_rehearsal_958 TO npp_company_test_runtime, mcp_test_runtime;
           \\connect npp_rehearsal_958
-          DO \\$\$
+          DO \$npp_company\$
           DECLARE s text;
           BEGIN
             FOR s IN
@@ -221,19 +221,21 @@ jobs:
               EXECUTE format('GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA %I TO npp_company_test_runtime', s);
             END LOOP;
           END
-          \\$\$;
-          DO \\$\$
+          \$npp_company\$;
+          DO \$npp_mcp\$
           BEGIN
             IF to_regprocedure('shared.grant_mcp_runtime_access(name)') IS NULL THEN
               RAISE EXCEPTION 'missing_grant_mcp_runtime_access';
             END IF;
           END
-          \\$\$;
+          \$npp_mcp\$;
           SELECT shared.grant_mcp_runtime_access('mcp_test_runtime'::name);
           ALTER ROLE mcp_test_runtime SET search_path TO mcp, public;
           SQL
           chmod 600 "$sql"
 
+          ssh -i "$DB_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$DB_KNOWN" \
+            "$VPS_SSH_USER@$VPS_DB_HOST" 'sudo -n rm -f /tmp/npp958-parallel-test-roles.sql'
           scp -i "$DB_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$DB_KNOWN" \
             "$sql" "$VPS_SSH_USER@$VPS_DB_HOST:/tmp/npp958-parallel-test-roles.sql"
 
@@ -244,12 +246,17 @@ jobs:
           company_ip="$1"
           mcp_ip="$2"
           sudo -n true
+          cleanup_sql() {
+            sudo -n rm -f /tmp/npp958-parallel-test-roles.sql
+          }
+          trap cleanup_sql EXIT
           test "$(systemctl is-active postgresql)" = active
           test -f /tmp/npp958-parallel-test-roles.sql
           sudo -n chown postgres:postgres /tmp/npp958-parallel-test-roles.sql
           sudo -n chmod 600 /tmp/npp958-parallel-test-roles.sql
           sudo -n -u postgres psql -v ON_ERROR_STOP=1 postgres -f /tmp/npp958-parallel-test-roles.sql >/dev/null
-          sudo -n rm -f /tmp/npp958-parallel-test-roles.sql
+          cleanup_sql
+          trap - EXIT
 
           ssl_state="$(sudo -n -u postgres psql -Atqc 'show ssl')"
           test "$ssl_state" = on
