@@ -28,7 +28,7 @@ jobs:
         )
       )
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     env:
       VPS_DB_HOST: ${{ vars.VPS_DB_HOST }}
       VPS_COMPANY_HOST: ${{ vars.VPS_COMPANY_HOST }}
@@ -64,7 +64,6 @@ jobs:
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
       - name: Prepare SSH credentials
-        id: ssh
         shell: bash
         env:
           VPS_DB_SSH_KEY: ${{ secrets.VPS_DB_SSH_KEY }}
@@ -81,161 +80,189 @@ jobs:
           test -n "$VPS_MCP_SSH_KEY"
 
           umask 077
-          for item in db company mcp; do
-            case "$item" in
-              db) raw="$VPS_DB_SSH_KEY"; host="$VPS_DB_HOST" ;;
-              company) raw="$VPS_COMPANY_SSH_KEY"; host="$VPS_COMPANY_HOST" ;;
-              mcp) raw="$VPS_MCP_SSH_KEY"; host="$VPS_MCP_HOST" ;;
-            esac
-            key="$RUNNER_TEMP/vps-${item}.key"
-            known="$RUNNER_TEMP/vps-${item}-known-hosts"
+          prepare_key() {
+            local raw="$1" host="$2" slug="$3"
+            local key="$RUNNER_TEMP/vps-${slug}.key"
+            local known="$RUNNER_TEMP/vps-${slug}-known-hosts"
             printf '%s\n' "$raw" > "$key"
             chmod 600 "$key"
             ssh-keygen -y -f "$key" >/dev/null
             ssh-keyscan -T 10 -H "$host" > "$known" 2>/dev/null
             test -s "$known"
             chmod 600 "$known"
-          done
+          }
 
-      - name: Collect DB listener and firewall state
+          prepare_key "$VPS_DB_SSH_KEY" "$VPS_DB_HOST" db
+          prepare_key "$VPS_COMPANY_SSH_KEY" "$VPS_COMPANY_HOST" company
+          prepare_key "$VPS_MCP_SSH_KEY" "$VPS_MCP_HOST" mcp
+
+      - name: Resolve exact private IPv4 addresses
+        id: network
+        shell: bash
+        run: |
+          set -euo pipefail
+          private_ip() {
+            local slug="$1" host="$2"
+            ssh -i "$RUNNER_TEMP/vps-${slug}.key" -o BatchMode=yes -o StrictHostKeyChecking=yes \
+              -o UserKnownHostsFile="$RUNNER_TEMP/vps-${slug}-known-hosts" \
+              "$VPS_SSH_USER@$host" \
+              "ip -4 route get 1.1.1.1 | awk 'NR==1 {for(i=1;i<=NF;i++) if(\$i==\"src\") {print \$(i+1); exit}}'"
+          }
+
+          db_private_ip="$(private_ip db "$VPS_DB_HOST")"
+          company_private_ip="$(private_ip company "$VPS_COMPANY_HOST")"
+          mcp_private_ip="$(private_ip mcp "$VPS_MCP_HOST")"
+
+          python3 - "$db_private_ip" "$company_private_ip" "$mcp_private_ip" <<'PY'
+          import ipaddress, sys
+          ips = [ipaddress.IPv4Address(value) for value in sys.argv[1:]]
+          if not all(ip.is_private for ip in ips):
+              raise SystemExit('non_private_vps_address')
+          if len(set(ips)) != 3:
+              raise SystemExit('duplicate_private_vps_address')
+          PY
+
+          echo "db_private_ip=$db_private_ip" >> "$GITHUB_OUTPUT"
+          echo "company_private_ip=$company_private_ip" >> "$GITHUB_OUTPUT"
+          echo "mcp_private_ip=$mcp_private_ip" >> "$GITHUB_OUTPUT"
+
+      - name: Collect provider metadata and host firewall state
         shell: bash
         env:
           REPORT_FILE: ${{ runner.temp }}/vps-db-network-958.md
+          DB_PRIVATE_IP: ${{ steps.network.outputs.db_private_ip }}
+          COMPANY_PRIVATE_IP: ${{ steps.network.outputs.company_private_ip }}
+          MCP_PRIVATE_IP: ${{ steps.network.outputs.mcp_private_ip }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
         run: |
           set -euo pipefail
           : > "$REPORT_FILE"
           {
             echo '## VPS DB network read-only audit'
             echo
-            echo "- Source main SHA: `${{ steps.source.outputs.sha }}`"
-            echo "- Run ID: `$GITHUB_RUN_ID`"
-            echo '- Operation: read-only route/firewall/listener/packet audit; no config mutation.'
+            echo "- Source main SHA: \`$SOURCE_SHA\`"
+            echo "- Run ID: \`$GITHUB_RUN_ID\`"
+            echo '- Operation: read-only provider/network/firewall/connectivity audit; no config mutation.'
             echo '- Production traffic: unchanged.'
             echo
-            echo '### DB VPS state'
-            echo '```text'
           } >> "$REPORT_FILE"
 
-          ssh -i "$RUNNER_TEMP/vps-db.key" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$RUNNER_TEMP/vps-db-known-hosts" \
-            "$VPS_SSH_USER@$VPS_DB_HOST" 'bash -s' >> "$REPORT_FILE" <<'REMOTE'
+          collect_host() {
+            local role="$1" slug="$2" host="$3" expected_private="$4"
+            {
+              echo "### $role"
+              echo '```text'
+            } >> "$REPORT_FILE"
+            ssh -i "$RUNNER_TEMP/vps-${slug}.key" -o BatchMode=yes -o StrictHostKeyChecking=yes \
+              -o UserKnownHostsFile="$RUNNER_TEMP/vps-${slug}-known-hosts" \
+              "$VPS_SSH_USER@$host" "bash -s -- '$expected_private'" >> "$REPORT_FILE" <<'REMOTE'
           set -euo pipefail
+          expected_private="$1"
+          actual_private="$(ip -4 route get 1.1.1.1 | awk 'NR==1 {for(i=1;i<=NF;i++) if($i=="src") {print $(i+1); exit}}')"
           echo "hostname=$(hostname)"
-          echo "postgresql_active=$(systemctl is-active postgresql 2>/dev/null || true)"
-          echo "listen_addresses=$(sudo -n -u postgres psql -Atqc 'show listen_addresses')"
-          echo "ssl=$(sudo -n -u postgres psql -Atqc 'show ssl')"
-          echo 'tcp_5432_listeners:'
-          ss -lntH | awk '$4 ~ /:5432$/ {print $4}'
-          echo 'route_company:'
-          ip -4 route get 40.233.83.234 2>/dev/null | head -n1 || true
-          echo 'route_mcp:'
-          ip -4 route get 68.233.111.135 2>/dev/null | head -n1 || true
-          echo 'ufw_5432:'
-          sudo -n ufw status numbered 2>/dev/null | grep -E '5432|Status:' || true
-          echo 'iptables_input_5432:'
-          sudo -n iptables -S INPUT 2>/dev/null | grep -E '5432|^-P INPUT' || true
-          echo 'hba_parallel_test:'
-          sudo -n -u postgres psql -Atqc "select type||'|'||database||'|'||user_name||'|'||address||'|'||auth_method||'|'||coalesce(error,'') from pg_hba_file_rules where database::text like '%npp_rehearsal_958%' or user_name::text like '%test_runtime%' order by line_number" 2>/dev/null || true
-          echo "tcpdump_available=$(command -v tcpdump >/dev/null 2>&1 && echo yes || echo no)"
+          echo "private_ip=$actual_private"
+          test "$actual_private" = "$expected_private"
+          echo 'private_routes:'
+          ip -4 route show | grep -E '(^default|10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)' || true
+          echo 'provider_metadata:'
+          if metadata="$(curl -fsS --max-time 2 -H 'Authorization: Bearer Oracle' http://169.254.169.254/opc/v2/instance/ 2>/dev/null)"; then
+            PROVIDER_METADATA="$metadata" python3 - <<'PY'
+          import json, os
+          data = json.loads(os.environ['PROVIDER_METADATA'])
+          print('provider=oracle_oci')
+          print('region=' + str(data.get('region', 'unknown')))
+          print('availability_domain=' + str(data.get('availabilityDomain', 'unknown')))
+          PY
+          else
+            echo 'provider=metadata_unavailable'
+          fi
+          echo 'vnic_metadata:'
+          if vnics="$(curl -fsS --max-time 2 -H 'Authorization: Bearer Oracle' http://169.254.169.254/opc/v2/vnics/ 2>/dev/null)"; then
+            VNIC_METADATA="$vnics" python3 - <<'PY'
+          import json, os
+          rows = json.loads(os.environ['VNIC_METADATA'])
+          if not rows:
+              print('vnic=none')
+          else:
+              row = rows[0]
+              print('vnic_private_ip=' + str(row.get('privateIp', 'unknown')))
+              print('subnet_cidr=' + str(row.get('subnetCidrBlock', 'unknown')))
+              print('virtual_router_ip=' + str(row.get('virtualRouterIp', 'unknown')))
+          PY
+          else
+            echo 'vnic=metadata_unavailable'
+          fi
+          echo 'ufw_status:'
+          sudo -n ufw status numbered 2>/dev/null | grep -E 'Status:|22/tcp|5432' || true
+          echo 'iptables_input:'
+          sudo -n iptables -S INPUT 2>/dev/null | grep -E '^-P INPUT|22|5432|ufw' || true
+          echo 'nft_input_summary:'
+          sudo -n nft list ruleset 2>/dev/null | grep -E 'hook input|tcp dport (22|5432)|policy (drop|accept)' | head -n 30 || true
           REMOTE
-          echo '```' >> "$REPORT_FILE"
+            echo '```' >> "$REPORT_FILE"
+            echo >> "$REPORT_FILE"
+          }
 
-      - name: Probe Công Ty VPS to DB while capturing DB packets
+          collect_host 'DB VPS' db "$VPS_DB_HOST" "$DB_PRIVATE_IP"
+          collect_host 'Công Ty VPS' company "$VPS_COMPANY_HOST" "$COMPANY_PRIVATE_IP"
+          collect_host 'MCP/proxy VPS' mcp "$VPS_MCP_HOST" "$MCP_PRIVATE_IP"
+
+      - name: Probe private and public network paths without mutation
         shell: bash
         env:
           REPORT_FILE: ${{ runner.temp }}/vps-db-network-958.md
+          DB_PRIVATE_IP: ${{ steps.network.outputs.db_private_ip }}
+          COMPANY_PRIVATE_IP: ${{ steps.network.outputs.company_private_ip }}
+          MCP_PRIVATE_IP: ${{ steps.network.outputs.mcp_private_ip }}
         run: |
           set -euo pipefail
-          capture="$RUNNER_TEMP/company-db-5432.capture"
-          probe="$RUNNER_TEMP/company-db-5432.probe"
-          : > "$capture"
-          : > "$probe"
 
-          set +e
-          ssh -i "$RUNNER_TEMP/vps-db.key" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$RUNNER_TEMP/vps-db-known-hosts" \
-            "$VPS_SSH_USER@$VPS_DB_HOST" \
-            "if command -v tcpdump >/dev/null 2>&1; then sudo -n timeout 10 tcpdump -nn -i any 'tcp dst port 5432' -c 8 2>/dev/null; else echo tcpdump_missing; fi" > "$capture" 2>&1 &
-          capture_pid=$!
-          set -e
-          sleep 1
-
-          set +e
-          ssh -i "$RUNNER_TEMP/vps-company.key" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$RUNNER_TEMP/vps-company-known-hosts" \
-            "$VPS_SSH_USER@$VPS_COMPANY_HOST" "bash -s -- '$VPS_DB_HOST'" > "$probe" 2>&1 <<'REMOTE'
+          probe_from() {
+            local slug="$1" host="$2" label="$3" dest="$4" port="$5"
+            local output="$RUNNER_TEMP/probe-${slug}-${port}.out"
+            set +e
+            ssh -i "$RUNNER_TEMP/vps-${slug}.key" -o BatchMode=yes -o StrictHostKeyChecking=yes \
+              -o UserKnownHostsFile="$RUNNER_TEMP/vps-${slug}-known-hosts" \
+              "$VPS_SSH_USER@$host" "bash -s -- '$dest' '$port'" > "$output" 2>&1 <<'REMOTE'
           set -u
-          db="$1"
-          echo "hostname=$(hostname)"
-          echo 'route_to_db:'
-          ip -4 route get "$db" 2>/dev/null | head -n1 || true
-          echo 'tcp_probe:'
-          timeout 6 bash -c "cat < /dev/null > /dev/tcp/$db/5432"
+          dest="$1"
+          port="$2"
+          echo "route=$(ip -4 route get "$dest" 2>/dev/null | head -n1 || true)"
+          timeout 4 bash -c "cat < /dev/null > /dev/tcp/$dest/$port" >/dev/null 2>&1
           rc=$?
-          echo "tcp_probe_rc=$rc"
+          case "$rc" in
+            0) echo 'result=PASS' ;;
+            124) echo 'result=TIMEOUT' ;;
+            *) echo "result=FAIL rc=$rc" ;;
+          esac
           exit 0
           REMOTE
-          probe_ssh_rc=$?
-          wait "$capture_pid"
-          capture_rc=$?
-          set -e
+            ssh_rc=$?
+            set -e
+            {
+              echo "$label"
+              cat "$output"
+              echo "ssh_wrapper_rc=$ssh_rc"
+            } >> "$REPORT_FILE"
+          }
 
           {
-            echo
-            echo '### Công Ty VPS → DB VPS'
+            echo '### Connectivity matrix'
             echo '```text'
-            cat "$probe"
-            echo "probe_ssh_rc=$probe_ssh_rc"
-            echo 'db_packet_capture:'
-            cat "$capture"
-            echo "capture_rc=$capture_rc"
-            echo '```'
           } >> "$REPORT_FILE"
 
-      - name: Probe MCP VPS to DB while capturing DB packets
-        shell: bash
-        env:
-          REPORT_FILE: ${{ runner.temp }}/vps-db-network-958.md
-        run: |
-          set -euo pipefail
-          capture="$RUNNER_TEMP/mcp-db-5432.capture"
-          probe="$RUNNER_TEMP/mcp-db-5432.probe"
-          : > "$capture"
-          : > "$probe"
-
-          set +e
-          ssh -i "$RUNNER_TEMP/vps-db.key" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$RUNNER_TEMP/vps-db-known-hosts" \
-            "$VPS_SSH_USER@$VPS_DB_HOST" \
-            "if command -v tcpdump >/dev/null 2>&1; then sudo -n timeout 10 tcpdump -nn -i any 'tcp dst port 5432' -c 8 2>/dev/null; else echo tcpdump_missing; fi" > "$capture" 2>&1 &
-          capture_pid=$!
-          set -e
-          sleep 1
-
-          set +e
-          ssh -i "$RUNNER_TEMP/vps-mcp.key" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$RUNNER_TEMP/vps-mcp-known-hosts" \
-            "$VPS_SSH_USER@$VPS_MCP_HOST" "bash -s -- '$VPS_DB_HOST'" > "$probe" 2>&1 <<'REMOTE'
-          set -u
-          db="$1"
-          echo "hostname=$(hostname)"
-          echo 'route_to_db:'
-          ip -4 route get "$db" 2>/dev/null | head -n1 || true
-          echo 'tcp_probe:'
-          timeout 6 bash -c "cat < /dev/null > /dev/tcp/$db/5432"
-          rc=$?
-          echo "tcp_probe_rc=$rc"
-          exit 0
-          REMOTE
-          probe_ssh_rc=$?
-          wait "$capture_pid"
-          capture_rc=$?
-          set -e
+          probe_from company "$VPS_COMPANY_HOST" 'company_to_db_private_22:' "$DB_PRIVATE_IP" 22
+          probe_from company "$VPS_COMPANY_HOST" 'company_to_db_private_5432:' "$DB_PRIVATE_IP" 5432
+          probe_from company "$VPS_COMPANY_HOST" 'company_to_db_public_22:' "$VPS_DB_HOST" 22
+          probe_from company "$VPS_COMPANY_HOST" 'company_to_db_public_5432:' "$VPS_DB_HOST" 5432
+          probe_from mcp "$VPS_MCP_HOST" 'mcp_to_db_private_22:' "$DB_PRIVATE_IP" 22
+          probe_from mcp "$VPS_MCP_HOST" 'mcp_to_db_private_5432:' "$DB_PRIVATE_IP" 5432
+          probe_from mcp "$VPS_MCP_HOST" 'mcp_to_db_public_22:' "$VPS_DB_HOST" 22
+          probe_from mcp "$VPS_MCP_HOST" 'mcp_to_db_public_5432:' "$VPS_DB_HOST" 5432
+          probe_from db "$VPS_DB_HOST" 'db_to_company_private_22:' "$COMPANY_PRIVATE_IP" 22
+          probe_from db "$VPS_DB_HOST" 'db_to_mcp_private_22:' "$MCP_PRIVATE_IP" 22
 
           {
-            echo
-            echo '### MCP VPS → DB VPS'
-            echo '```text'
-            cat "$probe"
-            echo "probe_ssh_rc=$probe_ssh_rc"
-            echo 'db_packet_capture:'
-            cat "$capture"
-            echo "capture_rc=$capture_rc"
             echo '```'
             echo
             echo 'production_traffic=not_enabled'
