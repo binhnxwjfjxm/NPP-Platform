@@ -1,0 +1,250 @@
+.openButton,
+.closeButton,
+.quickActions button,
+.cancelButton,
+.exportButton {
+  font: inherit;
+}
+
+.openButton {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #0f172a;
+  border-radius: 10px;
+  padding: 8px 13px;
+  background: #0f172a;
+  color: #fff;
+  font-size: 0.84rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.openButton:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.backdrop {
+  position: fixed;
+  z-index: 80;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgb(15 23 42 / 46%);
+}
+
+.dialog {
+  width: min(720px, 100%);
+  max-height: min(760px, calc(100vh - 40px));
+  overflow: auto;
+  border: 1px solid #dbe3ec;
+  border-radius: 18px;
+  padding: 20px;
+  background: #fff;
+  box-shadow: 0 24px 80px rgb(15 23 42 / 24%);
+  color: #0f172a;
+}
+
+.heading,
+.columnHeader,
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.heading p {
+  margin: 0 0 3px;
+  color: #64748b;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.heading h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.closeButton {
+  width: 38px;
+  height: 38px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #fff;
+  color: #334155;
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.description {
+  margin: 14px 0 18px;
+  color: #475569;
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+.formatGroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  margin: 0 0 20px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.formatGroup legend {
+  padding: 0 6px;
+  color: #334155;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.formatGroup label,
+.columnGrid label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.columnHeader {
+  align-items: flex-end;
+  margin-bottom: 10px;
+}
+
+.columnHeader > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.columnHeader strong {
+  font-size: 0.9rem;
+}
+
+.columnHeader small {
+  color: #64748b;
+}
+
+.quickActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.quickActions button {
+  border: 0;
+  padding: 4px 6px;
+  background: transparent;
+  color: #334155;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.columnGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  max-height: 310px;
+  overflow: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.columnGrid label {
+  min-height: 38px;
+  border-radius: 8px;
+  padding: 7px 9px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 0.84rem;
+}
+
+.columnGrid input,
+.formatGroup input {
+  width: 16px;
+  height: 16px;
+  accent-color: #0f172a;
+}
+
+.error {
+  margin-top: 12px;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #fff7f7;
+  color: #991b1b;
+  font-size: 0.84rem;
+}
+
+.footer {
+  justify-content: flex-end;
+  margin-top: 18px;
+}
+
+.cancelButton,
+.exportButton {
+  min-height: 40px;
+  border-radius: 10px;
+  padding: 8px 14px;
+  font-size: 0.84rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.cancelButton {
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #0f172a;
+}
+
+.exportButton {
+  border: 1px solid #0f172a;
+  background: #0f172a;
+  color: #fff;
+}
+
+.cancelButton:disabled,
+.exportButton:disabled,
+.closeButton:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+@media (max-width: 640px) {
+  .backdrop {
+    align-items: end;
+    padding: 0;
+  }
+
+  .dialog {
+    width: 100%;
+    max-height: 88vh;
+    border-radius: 18px 18px 0 0;
+    padding: 16px;
+  }
+
+  .columnHeader {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .columnGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .footer button {
+    flex: 1;
+  }
+}
