@@ -1,0 +1,155 @@
+name: VPS DB Heroku migration head and rehearsal
+
+on:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: vps-db-heroku-rehearsal-958
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    if: >-
+      github.event.issue.number == 5 &&
+      (
+        github.event.comment.body == '/audit-heroku-migration-head-958' ||
+        github.event.comment.body == '/rehearse-heroku-to-vps-db-958'
+      ) &&
+      (
+        github.actor == 'binhnxwjfjxm' ||
+        github.actor == 'khuongbinhinfo-a11y'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      HEROKU_APP_NAME: hung-phat
+      VPS_DB_HOST: ${{ vars.VPS_DB_HOST }}
+      VPS_SSH_USER: ${{ vars.VPS_SSH_USER }}
+      REPORT_FILE: ${{ runner.temp }}/vps-db-heroku-rehearsal-958.md
+
+    steps:
+      - name: Validate exact issue command
+        id: request
+        shell: bash
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          case "$COMMENT_BODY" in
+            /audit-heroku-migration-head-958) action=audit ;;
+            /rehearse-heroku-to-vps-db-958) action=rehearse ;;
+            *) exit 1 ;;
+          esac
+          echo "action=$action" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact origin/main SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          test "$(git rev-parse --is-shallow-repository)" = "false"
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Install database and Heroku clients
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update -y
+            sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y postgresql-client
+          fi
+          if ! command -v heroku >/dev/null 2>&1; then
+            curl -fsSL https://cli-assets.heroku.com/install.sh | sh
+          fi
+          command -v psql >/dev/null
+          command -v heroku >/dev/null
+          command -v jq >/dev/null
+          command -v ssh >/dev/null
+          command -v scp >/dev/null
+
+      - name: Prepare DB SSH credential
+        if: steps.request.outputs.action == 'rehearse'
+        id: ssh
+        shell: bash
+        env:
+          VPS_DB_SSH_KEY: ${{ secrets.VPS_DB_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$VPS_DB_HOST"
+          test -n "$VPS_SSH_USER"
+          test -n "$VPS_DB_SSH_KEY"
+
+          umask 077
+          key="$RUNNER_TEMP/vps-db.key"
+          printf '%s\n' "$VPS_DB_SSH_KEY" > "$key"
+          chmod 600 "$key"
+          ssh-keygen -y -f "$key" >/dev/null
+
+          known_hosts="$RUNNER_TEMP/vps-db-known-hosts"
+          ssh-keyscan -T 10 -H "$VPS_DB_HOST" > "$known_hosts" 2>/dev/null
+          test -s "$known_hosts"
+          chmod 600 "$known_hosts"
+
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+          echo "known_hosts=$known_hosts" >> "$GITHUB_OUTPUT"
+
+      - name: Lock migration head or run restore rehearsal
+        id: gate
+        shell: bash
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          REQUESTED_ACTION: ${{ steps.request.outputs.action }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          SSH_KEY: ${{ steps.ssh.outputs.key }}
+          KNOWN_HOSTS: ${{ steps.ssh.outputs.known_hosts }}
+        run: |
+          set -euo pipefail
+          bash npp-core/api/scripts/vps-db-heroku-rehearsal-958.sh
+
+      - name: Publish sanitized evidence to Issue 958
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPERATION_STATUS: ${{ job.status }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          REQUESTED_ACTION: ${{ steps.request.outputs.action }}
+        run: |
+          set -euo pipefail
+          evidence="$(mktemp)"
+          {
+            echo "## VPS DB Heroku gate — ${REQUESTED_ACTION:-unknown} — ${OPERATION_STATUS}"
+            echo
+            echo "- Source main SHA: \`${SOURCE_SHA:-unknown}\`"
+            echo "- Run ID: \`$GITHUB_RUN_ID\`"
+            echo "- No production cutover, app deploy, endpoint change or proxy mutation is performed."
+            if [ -s "$REPORT_FILE" ]; then
+              echo
+              cat "$REPORT_FILE"
+            else
+              echo
+              echo '```text'
+              echo 'EVIDENCE=unavailable'
+              echo '```'
+            fi
+          } > "$evidence"
+          cat "$evidence" >> "$GITHUB_STEP_SUMMARY"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/958/comments" \
+            -f body="$(cat "$evidence")" >/dev/null
+          rm -f "$evidence"
