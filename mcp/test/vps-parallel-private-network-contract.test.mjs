@@ -45,3 +45,14 @@ test("VPS parallel backend setup uses allowlisted PostgreSQL paths and isolated 
   assert.doesNotMatch(workflow, /maintenance:on|maintenance:off|pg:promote/);
   assert.doesNotMatch(workflow, /systemctl (?:stop|restart) (?:ipv4-proxy|ipv6-proxy|oci-ipv6-pool)/);
 });
+
+test("Step 6 MCP DB probe reuses the production PostgreSQL runtime contract", async () => {
+  const workflow = await readFile(new URL(".github/workflows/vps-parallel-full-system-smoke-manual.yml", root), "utf8");
+
+  assert.match(workflow, /import \{ loadFoundationConfig \} from '\.\/foundation\/config\.js';/);
+  assert.match(workflow, /import \{ createPersistence \} from '\.\/foundation\/persistence\.js';/);
+  assert.match(workflow, /createPersistence\(loadFoundationConfig\(process\.env\)\)/);
+  assert.match(workflow, /persistence\.withTransaction/);
+  assert.match(workflow, /await persistence\.close\(\)/);
+  assert.doesNotMatch(workflow, /new pg\.Pool\(\{ connectionString: process\.env\.DATABASE_URL/);
+});
