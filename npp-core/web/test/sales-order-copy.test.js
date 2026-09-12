@@ -6,6 +6,10 @@ const detailSource = readFileSync(
   new URL('../app/sales/sales-orders/SalesOrderDetail.tsx', import.meta.url),
   'utf8',
 );
+const workspaceSource = readFileSync(
+  new URL('../app/sales/sales-orders/SalesOrderWorkspace.tsx', import.meta.url),
+  'utf8',
+);
 const formEntrySource = readFileSync(
   new URL('../app/sales/sales-orders/SalesOrderForm.tsx', import.meta.url),
   'utf8',
@@ -14,24 +18,33 @@ const formSource = readFileSync(
   new URL('../app/sales/sales-orders/SalesOrderCommercialForm.tsx', import.meta.url),
   'utf8',
 );
+const stockIssueConfirmSource = readFileSync(
+  new URL('../app/sales/sales-orders/sales-order-stock-issue-confirm.ts', import.meta.url),
+  'utf8',
+);
 
-test('cancelled Sales Order exposes a safe copy link that opens the current create screen in a new tab', () => {
-  assert.match(detailSource, /order\.status === 'cancelled'/);
+test('mọi Sales Order đều có liên kết sao chép an toàn mở màn tạo đơn hiện tại ở tab mới khi có quyền tạo', () => {
+  assert.doesNotMatch(detailSource, /\{order\.status === 'cancelled' \? \(/);
+  assert.match(detailSource, /canCreate: boolean/);
+  assert.match(detailSource, /\{props\.canCreate \? \(/);
+  assert.match(workspaceSource, /canCreate=\{canCreate\}/);
   assert.match(detailSource, /quickAction: 'create'/);
   assert.match(detailSource, /copyFrom: orderId/);
+  assert.match(detailSource, /href=\{salesOrderCopyHref\(order\.id\)\}/);
   assert.match(detailSource, /target="_blank"/);
   assert.match(detailSource, /rel="noopener noreferrer"/);
   assert.match(detailSource, /data-testid="sales-order-copy"/);
   assert.match(detailSource, /Sao chép đơn/);
 });
 
-test('copy prefill reads the cancelled source order without mutating it and clears stale create-only data', () => {
+test('copy prefill đọc đơn nguồn ở mọi trạng thái mà không mutate nguồn và xóa dữ liệu chỉ dành cho lần tạo cũ', () => {
   assert.match(
     formEntrySource,
     /apiRequest<SalesOrder>\(`\/api\/sales-orders\/\$\{encodeURIComponent\(copyFrom\)\}`\)/,
   );
-  assert.match(formEntrySource, /source\.status !== 'cancelled'/);
+  assert.doesNotMatch(formEntrySource, /source\.status !== 'cancelled'/);
   assert.match(formEntrySource, /activeVersion\(source\)/);
+  assert.match(formEntrySource, /Đơn nguồn không còn dữ liệu phiên bản để sao chép/);
   assert.match(formEntrySource, /prepareSalesOrderCopyVersion\(sourceVersion\)/);
   assert.match(formEntrySource, /requestedDeliveryDate: null/);
   assert.match(formEntrySource, /priceSource: 'PRICE_ENGINE' as const/);
@@ -41,7 +54,13 @@ test('copy prefill reads the cancelled source order without mutating it and clea
   assert.doesNotMatch(formEntrySource, /\/clone|clone\(/i);
 });
 
-test('copied Sales Order still saves through the canonical create contract so it gets a new id and number', () => {
+test('Xuất kho Giao thủ công ở chi tiết đơn phải xác nhận trước khi gọi action', () => {
+  assert.match(detailSource, /confirmSingleStockIssue\(order\.number\)/);
+  assert.match(stockIssueConfirmSource, /Xác nhận xuất kho \$\{target\}\?/);
+  assert.match(stockIssueConfirmSource, /return window\.confirm/);
+});
+
+test('copied Sales Order vẫn lưu qua canonical create contract để nhận id và số đơn mới', () => {
   assert.match(formSource, /let path = '\/api\/sales-orders';\s*let method = 'POST';/);
   assert.match(
     formSource,

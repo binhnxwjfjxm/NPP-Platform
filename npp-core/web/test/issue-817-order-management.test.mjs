@@ -6,6 +6,7 @@ const workspaceSource = readFileSync(new URL('../app/sales/order-management/Orde
 const cssSource = readFileSync(new URL('../app/sales/order-management/order-management.module.css', import.meta.url), 'utf8');
 const shellSource = readFileSync(new URL('../app/components/app-shell-core.tsx', import.meta.url), 'utf8');
 const businessPrintSource = readFileSync(new URL('../app/components/business-document-print.tsx', import.meta.url), 'utf8');
+const stockIssueConfirmSource = readFileSync(new URL('../app/sales/sales-orders/sales-order-stock-issue-confirm.ts', import.meta.url), 'utf8');
 
 test('issue 817 exposes Quản lý đơn hàng in the Bán hàng navigation', () => {
   assert.match(shellSource, /href: '\/sales\/order-management'/);
@@ -22,10 +23,21 @@ test('issue 817 filters by date and exact time and clears prior selection when f
   assert.match(workspaceSource, /rangeTimestamp/);
 });
 
-test('issue 817 select-all targets the entire filtered set rather than only the current page', () => {
-  assert.match(workspaceSource, /new Set\(filteredOrders\.map\(\(order\) => order\.id\)\)/);
+test('issue 817 Chọn trang này chỉ chọn các đơn đang hiển thị và đổi trang xóa lựa chọn cũ', () => {
+  assert.match(workspaceSource, /new Set\(pageOrders\.map\(\(order\) => order\.id\)\)/);
+  assert.match(workspaceSource, /Chọn trang này/);
   assert.match(workspaceSource, /Đã chọn \$\{selectedIds\.size\.toLocaleString\('vi-VN'\)\} đơn/);
-  assert.doesNotMatch(workspaceSource, /new Set\(pageOrders\.map/);
+  assert.doesNotMatch(workspaceSource, /new Set\(filteredOrders\.map\(\(order\) => order\.id\)\)/);
+  assert.match(workspaceSource, /function changePage\(nextPage: number\)[\s\S]*?setSelectedIds\(new Set\(\)\);[\s\S]*?setPage\(nextPage\);/);
+  assert.match(workspaceSource, /function changePageSize\(nextPageSize: number\)[\s\S]*?setSelectedIds\(new Set\(\)\);[\s\S]*?setPageSize\(nextPageSize\);/);
+});
+
+test('issue 817 chỉ xác nhận với Xuất kho nhanh và lô xuất kho hiển thị đúng số đơn', () => {
+  assert.match(workspaceSource, /action === 'issue-stock' && !confirmSingleStockIssue\(order\.number\)/);
+  assert.match(workspaceSource, /action === 'issue-stock' && !confirmBulkStockIssue\(targets\.length\)/);
+  assert.match(stockIssueConfirmSource, /Xác nhận xuất kho \$\{target\}\?/);
+  assert.match(stockIssueConfirmSource, /Xác nhận xuất kho \$\{count\.toLocaleString\('vi-VN'\)\} đơn Giao thủ công\?/);
+  assert.equal((stockIssueConfirmSource.match(/window\.confirm/g) ?? []).length, 2);
 });
 
 test('issue 817 batch print reuses the canonical SalesOrderPrintSheet and current print eligibility', () => {

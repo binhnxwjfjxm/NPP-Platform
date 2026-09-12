@@ -538,6 +538,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
           <SalesOrderDetail
             order={selected}
             busy={busy}
+            canCreate={canCreate}
             canUpdate={canUpdate}
             canConfirm={canConfirm}
             canAmend={canAmend}

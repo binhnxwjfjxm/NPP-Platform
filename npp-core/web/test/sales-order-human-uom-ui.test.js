@@ -30,10 +30,12 @@ test('chi tiết đơn dùng tên ĐVT và đưa thao tác giao thủ công lên
   assert.match(detail, /baseUnitName=\{stock\.baseUnitName\}/);
   const headerIndex = detail.indexOf('<header className={styles.panelHeading}>');
   const editIndex = detail.indexOf('onClick={props.onEditManual}', headerIndex);
+  const issueIndex = detail.indexOf('confirmSingleStockIssue(order.number)', headerIndex);
   const printIndex = detail.indexOf('<SalesOrderPrintSheet', headerIndex);
   assert.ok(editIndex > headerIndex && editIndex < printIndex);
+  assert.ok(issueIndex > editIndex && issueIndex < printIndex);
   assert.equal(detail.match(/onClick=\{props\.onEditManual\}/g)?.length, 1);
-  assert.equal(detail.match(/onClick=\{props\.onIssueStock\}/g)?.length, 1);
+  assert.equal(detail.match(/props\.onIssueStock\(\)/g)?.length, 1);
 });
 
 test('In đơn có biến thể text-only thay vì nút tô màu', () => {

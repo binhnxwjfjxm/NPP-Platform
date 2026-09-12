@@ -5,6 +5,7 @@ import { StockHoldBreakdown } from '../../components/stock-hold-breakdown';
 import { BusinessSequenceNumber } from '../../components/business-table-sequence';
 import ManualSalesOrderSettlement from './ManualSalesOrderSettlement';
 import SalesOrderPrintSheet from './SalesOrderPrintSheet';
+import { confirmSingleStockIssue } from './sales-order-stock-issue-confirm';
 import {
   activeVersion,
   collectionLabels,
@@ -22,6 +23,7 @@ import styles from './sales-orders.module.css';
 type Props = {
   order: SalesOrder | null;
   busy: boolean;
+  canCreate: boolean;
   canUpdate: boolean;
   canConfirm: boolean;
   canAmend: boolean;
@@ -104,7 +106,7 @@ export default function SalesOrderDetail(props: Props) {
           <p>{order.customerCode} · Kho {order.warehouseName}</p>
         </div>
         <div className={styles.inlineActions}>
-          {order.status === 'cancelled' ? (
+          {props.canCreate ? (
             <a
               href={salesOrderCopyHref(order.id)}
               target="_blank"
@@ -123,7 +125,9 @@ export default function SalesOrderDetail(props: Props) {
               type="button"
               className={styles.primaryButton}
               disabled={props.busy || hasIssued}
-              onClick={props.onIssueStock}
+              onClick={() => {
+                if (confirmSingleStockIssue(order.number)) props.onIssueStock();
+              }}
             >
               {hasIssued ? 'Đã xuất kho' : 'Xuất kho'}
             </button>
