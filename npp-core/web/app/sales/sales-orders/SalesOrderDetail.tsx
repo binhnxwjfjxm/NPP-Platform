@@ -23,6 +23,7 @@ import styles from './sales-orders.module.css';
 type Props = {
   order: SalesOrder | null;
   busy: boolean;
+  canCreate: boolean;
   canUpdate: boolean;
   canConfirm: boolean;
   canAmend: boolean;
@@ -105,15 +106,17 @@ export default function SalesOrderDetail(props: Props) {
           <p>{order.customerCode} · Kho {order.warehouseName}</p>
         </div>
         <div className={styles.inlineActions}>
-          <a
-            href={salesOrderCopyHref(order.id)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={styles.primaryButton}
-            data-testid="sales-order-copy"
-          >
-            Sao chép đơn
-          </a>
+          {props.canCreate ? (
+            <a
+              href={salesOrderCopyHref(order.id)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={styles.primaryButton}
+              data-testid="sales-order-copy"
+            >
+              Sao chép đơn
+            </a>
+          ) : null}
           {order.status === 'confirmed' && isManual && !amendment && props.canAmend ? (
             <button type="button" disabled={props.busy || hasIssued} onClick={props.onEditManual}>Sửa đơn</button>
           ) : null}

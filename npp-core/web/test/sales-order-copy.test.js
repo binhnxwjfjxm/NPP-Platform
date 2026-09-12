@@ -6,6 +6,10 @@ const detailSource = readFileSync(
   new URL('../app/sales/sales-orders/SalesOrderDetail.tsx', import.meta.url),
   'utf8',
 );
+const workspaceSource = readFileSync(
+  new URL('../app/sales/sales-orders/SalesOrderWorkspace.tsx', import.meta.url),
+  'utf8',
+);
 const formEntrySource = readFileSync(
   new URL('../app/sales/sales-orders/SalesOrderForm.tsx', import.meta.url),
   'utf8',
@@ -19,8 +23,11 @@ const stockIssueConfirmSource = readFileSync(
   'utf8',
 );
 
-test('mọi Sales Order đều có liên kết sao chép an toàn mở màn tạo đơn hiện tại ở tab mới', () => {
+test('mọi Sales Order đều có liên kết sao chép an toàn mở màn tạo đơn hiện tại ở tab mới khi có quyền tạo', () => {
   assert.doesNotMatch(detailSource, /\{order\.status === 'cancelled' \? \(/);
+  assert.match(detailSource, /canCreate: boolean/);
+  assert.match(detailSource, /\{props\.canCreate \? \(/);
+  assert.match(workspaceSource, /canCreate=\{canCreate\}/);
   assert.match(detailSource, /quickAction: 'create'/);
   assert.match(detailSource, /copyFrom: orderId/);
   assert.match(detailSource, /href=\{salesOrderCopyHref\(order\.id\)\}/);
