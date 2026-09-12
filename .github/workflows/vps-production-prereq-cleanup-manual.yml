@@ -165,7 +165,7 @@ jobs:
           port3000_external_before="${1:-UNKNOWN}"
           sudo -n true
 
-          # Proxy là tài sản đang chạy: chỉ kiểm chứng, tuyệt đối không stop/restart/sửa config.
+          # Proxy đang chạy thực tế: chỉ kiểm chứng, tuyệt đối không stop/restart/sửa config.
           for svc in ipv4-proxy ipv6-proxy oci-ipv6-pool; do
             test "$(systemctl is-active "$svc")" = "active"
             test "$(systemctl is-enabled "$svc")" = "enabled"
@@ -185,7 +185,7 @@ jobs:
             exit 31
           done <<< "$tcp_ports"
 
-          udp_ports="$(ss -lnuH | awk '{n=split($5,a,":"); print a[n]+0}' | sort -n -u)"
+          udp_ports="$(ss -lnuH | awk '{n=split($4,a,":"); print a[n]+0}' | sort -n -u)"
           while read -r port; do
             [ -n "$port" ] || continue
             if [ "$port" = "53" ] || [ "$port" = "111" ]; then
@@ -230,8 +230,7 @@ jobs:
             rpcbind_was_active=yes
           fi
 
-          # Từ đây mới bắt đầu mutation. Nếu bất kỳ lệnh nào lỗi, firewall được tắt lại
-          # và rpcbind được phục hồi về trạng thái trước đó. Proxy không bị chạm tới.
+          # Từ đây mới mutation. Nếu lỗi, firewall được tắt lại và rpcbind được phục hồi.
           rollback() {
             rc=$?
             trap - ERR
@@ -256,18 +255,23 @@ jobs:
           fi
           test "$(systemctl is-active rpcbind.service 2>/dev/null || true)" != "active"
           if ss -lntH | awk '{n=split($4,a,":"); if (a[n]+0==111) found=1} END {exit found?0:1}'; then
-            echo 'Port 111 still listening after rpcbind stop' >&2
+            echo 'TCP 111 still listening after rpcbind stop' >&2
+            false
+          fi
+          if ss -lnuH | awk '{n=split($4,a,":"); if (a[n]+0==111) found=1} END {exit found?0:1}'; then
+            echo 'UDP 111 still listening after rpcbind stop' >&2
             false
           fi
 
-          # Giữ nguyên toàn bộ rule UFW cũ. Chỉ chèn các allow thiết yếu lên đầu
-          # để SSH và proxy không thể bị rule cũ nằm phía sau chặn nhầm.
+          # Giữ nguyên toàn bộ rule UFW cũ. Chèn allow ưu tiên cao cho SSH/proxy,
+          # đồng thời giữ outbound mở như trạng thái trước để không cắt đường ra của proxy.
           sudo -n ufw default deny incoming >/dev/null
           sudo -n ufw default allow outgoing >/dev/null
-          sudo -n ufw insert 1 allow 22/tcp >/dev/null
-          sudo -n ufw insert 1 allow 3128:3427/tcp >/dev/null
+          sudo -n ufw insert 1 allow out from any to any >/dev/null
+          sudo -n ufw insert 1 allow proto tcp from any to any port 22 >/dev/null
+          sudo -n ufw insert 1 allow proto tcp from any to any port 3128:3427 >/dev/null
           if [ "$port3000_external_before" = "OPEN" ]; then
-            sudo -n ufw insert 1 allow 3000/tcp >/dev/null
+            sudo -n ufw insert 1 allow proto tcp from any to any port 3000 >/dev/null
           fi
           sudo -n ufw --force enable >/dev/null
           test "$(sudo -n ufw status | head -n1)" = 'Status: active'
@@ -289,10 +293,10 @@ jobs:
           echo "tcp_3000_external_before=$port3000_external_before"
           echo "rpcbind_was_active=$rpcbind_was_active"
           echo 'rpcbind=inactive_disabled'
-          echo 'tcp_111=closed'
+          echo 'tcp_udp_111=closed'
           echo 'ufw=active'
           echo 'ufw_existing_rules=preserved'
-          echo 'ufw_priority_allow=22/tcp,3128-3427/tcp,3000-if-preexisting-public'
+          echo 'ufw_priority_allow=outbound-any,22/tcp,3128-3427/tcp,3000-if-preexisting-public'
           REMOTE
           cat "$out"
           echo "output=$out" >> "$GITHUB_OUTPUT"
