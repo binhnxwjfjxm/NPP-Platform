@@ -40,8 +40,8 @@ test('Lô 3 exposes warehouse location-mode history from the Warehouse screen', 
   assert.match(warehouseTabs, /\/organization\/warehouses\/location-mode-history/);
   assert.match(historyGateway, /location-mode\/runs/);
   assert.match(historyGateway, /location-mode-runs/);
-  assert.match(historyPage, /Chuyển sang tồn chung/);
-  assert.match(historyPage, /Bắt đầu quản lý vị trí/);
+  assert.match(historyPage, /Chuyển về tồn chung/);
+  assert.match(historyPage, /Bắt đầu dùng sơ đồ kho/);
   assert.match(historyPage, /Tồn chung/);
   assert.match(historyPage, /Không lô/);
   assert.match(historyPage, /completedBy/);
