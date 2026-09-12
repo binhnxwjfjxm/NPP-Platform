@@ -34,6 +34,7 @@ jobs:
       VPS_COMPANY_HOST: ${{ vars.VPS_COMPANY_HOST }}
       VPS_MCP_HOST: ${{ vars.VPS_MCP_HOST }}
       VPS_SSH_USER: ${{ vars.VPS_SSH_USER }}
+      COMPANY_TEST_HTTPS_PORT: '3443'
 
     steps:
       - name: Validate exact issue command
@@ -348,10 +349,11 @@ jobs:
           set -euo pipefail
           company_password="$(cat "$COMPANY_DB_PASSWORD_FILE")"
           mcp_password="$(cat "$MCP_DB_PASSWORD_FILE")"
+          company_test_base_url="https://${VPS_COMPANY_HOST}:${COMPANY_TEST_HTTPS_PORT}"
           echo "::add-mask::$company_password"
           echo "::add-mask::$mcp_password"
 
-          COMPANY_DB_PASSWORD="$company_password" MCP_DB_PASSWORD="$mcp_password" DB_PRIVATE_IP="$DB_PRIVATE_IP" DB_PUBLIC_IP="$VPS_DB_HOST" \
+          COMPANY_DB_PASSWORD="$company_password" MCP_DB_PASSWORD="$mcp_password" DB_PRIVATE_IP="$DB_PRIVATE_IP" DB_PUBLIC_IP="$VPS_DB_HOST" COMPANY_TEST_BASE_URL="$company_test_base_url" \
           node <<'NODE'
           const fs = require('node:fs');
           const core = JSON.parse(fs.readFileSync(process.env.CORE_CONFIG_FILE, 'utf8'));
@@ -380,6 +382,9 @@ jobs:
           });
 
           for (const key of ['DATABASE_URL','HOST','PORT','LEGACY_INTERNAL_PORT','SUPABASE_URL','SUPABASE_SERVICE_ROLE_KEY','MCP_MIGRATION_DATABASE_URL']) delete mcp[key];
+          for (const key of ['CORE_SALES_API_TOKEN','CORE_SALES_DEFAULT_WAREHOUSE_ID','CORE_ONBOARDING_API_TOKEN']) {
+            if (!String(mcp[key] ?? '').trim()) throw new Error(`missing_parallel_test_${key.toLowerCase()}`);
+          }
           Object.assign(mcp, {
             NODE_ENV: 'production',
             HOST: '127.0.0.1',
@@ -389,7 +394,10 @@ jobs:
             DATABASE_URL: `postgresql://mcp_test_runtime:${process.env.MCP_DB_PASSWORD}@${process.env.DB_PUBLIC_IP}:5432/npp_rehearsal_958`,
             MCP_DB_SCHEMA: 'mcp',
             MCP_DB_ROLE: 'mcp_test_runtime',
-            MCP_LEGACY_RUNTIME_ENABLED: 'false'
+            MCP_LEGACY_RUNTIME_ENABLED: 'false',
+            CORE_SALES_API_BASE_URL: process.env.COMPANY_TEST_BASE_URL,
+            CORE_ONBOARDING_API_BASE_URL: process.env.COMPANY_TEST_BASE_URL,
+            NODE_EXTRA_CA_CERTS: '/etc/npp/npp958-company-test-ca.pem'
           });
 
           fs.writeFileSync(process.env.COMPANY_ENV_FILE, envText(core), { mode: 0o600 });
@@ -404,6 +412,9 @@ jobs:
           grep -q "@${DB_PRIVATE_IP}:5432/npp_rehearsal_958\"$" "$COMPANY_ENV_FILE"
           grep -q "@${VPS_DB_HOST}:5432/npp_rehearsal_958\"$" "$MCP_ENV_FILE"
           grep -q '^MCP_DB_ROLE="mcp_test_runtime"$' "$MCP_ENV_FILE"
+          grep -Fqx "CORE_SALES_API_BASE_URL=\"$company_test_base_url\"" "$MCP_ENV_FILE"
+          grep -Fqx "CORE_ONBOARDING_API_BASE_URL=\"$company_test_base_url\"" "$MCP_ENV_FILE"
+          grep -Fqx 'NODE_EXTRA_CA_CERTS="/etc/npp/npp958-company-test-ca.pem"' "$MCP_ENV_FILE"
           ! grep -Eq '^(SUPABASE_URL|SUPABASE_SERVICE_ROLE_KEY|MCP_MIGRATION_DATABASE_URL)=' "$MCP_ENV_FILE"
 
       - name: Install test runtime env on Công Ty VPS
@@ -425,6 +436,117 @@ jobs:
           sudo -n grep -q '^PORT="3104"$' /etc/npp/company.env
           REMOTE
           echo 'company_env=installed_test_only' >> "$REPORT_FILE"
+
+      - name: Configure isolated Company HTTPS test endpoint for MCP
+        shell: bash
+        env:
+          COMPANY_KEY: ${{ steps.ssh.outputs.company_key }}
+          COMPANY_KNOWN: ${{ steps.ssh.outputs.company_known }}
+          MCP_KEY: ${{ steps.ssh.outputs.mcp_key }}
+          MCP_KNOWN: ${{ steps.ssh.outputs.mcp_known }}
+        run: |
+          set -euo pipefail
+          mcp_source_ip="$(getent ahostsv4 "$VPS_MCP_HOST" | awk 'NR==1 {print $1}')"
+          [[ "$mcp_source_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          ca_key="$RUNNER_TEMP/npp958-company-test-ca.key"
+          ca_cert="$RUNNER_TEMP/npp958-company-test-ca.pem"
+          server_key="$RUNNER_TEMP/npp958-company-test.key"
+          server_csr="$RUNNER_TEMP/npp958-company-test.csr"
+          server_cert="$RUNNER_TEMP/npp958-company-test.crt"
+          ext_file="$RUNNER_TEMP/npp958-company-test.ext"
+          if [[ "$VPS_COMPANY_HOST" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            san="IP:$VPS_COMPANY_HOST"
+          else
+            san="DNS:$VPS_COMPANY_HOST"
+          fi
+          printf 'subjectAltName=%s\nextendedKeyUsage=serverAuth\n' "$san" > "$ext_file"
+          openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 2 \
+            -subj '/CN=NPP958 Parallel Test CA' -keyout "$ca_key" -out "$ca_cert" >/dev/null 2>&1
+          openssl req -new -newkey rsa:2048 -nodes -sha256 \
+            -subj "/CN=$VPS_COMPANY_HOST" -keyout "$server_key" -out "$server_csr" >/dev/null 2>&1
+          openssl x509 -req -sha256 -days 2 -in "$server_csr" -CA "$ca_cert" -CAkey "$ca_key" -CAcreateserial \
+            -out "$server_cert" -extfile "$ext_file" >/dev/null 2>&1
+
+          scp -i "$COMPANY_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$COMPANY_KNOWN" \
+            "$server_cert" "$VPS_SSH_USER@$VPS_COMPANY_HOST:/tmp/npp958-company-test.crt"
+          scp -i "$COMPANY_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$COMPANY_KNOWN" \
+            "$server_key" "$VPS_SSH_USER@$VPS_COMPANY_HOST:/tmp/npp958-company-test.key"
+          ssh -i "$COMPANY_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$COMPANY_KNOWN" \
+            "$VPS_SSH_USER@$VPS_COMPANY_HOST" "bash -s -- '$COMPANY_TEST_HTTPS_PORT' '$mcp_source_ip'" <<'REMOTE'
+          set -euo pipefail
+          test_port="$1"; mcp_source_ip="$2"
+          sudo -n true
+          command -v nginx >/dev/null
+          test "$(systemctl is-active nginx)" = active
+          sudo -n install -d -m 0755 /etc/npp
+          sudo -n install -o root -g root -m 0644 /tmp/npp958-company-test.crt /etc/npp/npp958-company-test.crt
+          sudo -n install -o root -g root -m 0600 /tmp/npp958-company-test.key /etc/npp/npp958-company-test.key
+          rm -f /tmp/npp958-company-test.crt /tmp/npp958-company-test.key
+          conf="$(mktemp)"
+          cat > "$conf" <<EOF
+          server {
+            listen ${test_port} ssl;
+            listen [::]:${test_port} ssl;
+            server_name _;
+            ssl_certificate /etc/npp/npp958-company-test.crt;
+            ssl_certificate_key /etc/npp/npp958-company-test.key;
+            ssl_protocols TLSv1.2 TLSv1.3;
+            location / {
+              proxy_pass http://127.0.0.1:3104;
+              proxy_http_version 1.1;
+              proxy_set_header Host \$host;
+              proxy_set_header X-Forwarded-Proto https;
+              proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+            }
+          }
+          EOF
+          sudo -n install -o root -g root -m 0644 "$conf" /etc/nginx/sites-available/npp958-company-test.conf
+          rm -f "$conf"
+          sudo -n ln -sfn /etc/nginx/sites-available/npp958-company-test.conf /etc/nginx/sites-enabled/npp958-company-test.conf
+          sudo -n nginx -t
+          sudo -n systemctl reload nginx
+          test "$(systemctl is-active nginx)" = active
+          sudo -n ufw --force delete allow from "$mcp_source_ip" to any port "$test_port" proto tcp >/dev/null 2>&1 || true
+          sudo -n ufw allow from "$mcp_source_ip" to any port "$test_port" proto tcp comment 'NPP958 MCP to Company HTTPS test' >/dev/null
+          sudo -n ufw --force enable >/dev/null
+          if sudo -n ufw status | grep -Eq "^${test_port}(/tcp)?[[:space:]]+ALLOW([[:space:]]+IN)?[[:space:]]+Anywhere"; then
+            echo broad_public_company_test_https_rule_detected >&2
+            exit 41
+          fi
+          sudo -n ufw status | grep -F "$mcp_source_ip" | grep -Fq "$test_port"
+          ss -lntH | awk -v p="$test_port" '{n=split($4,a,":"); if (a[n]+0==p) found=1} END {exit found?0:1}'
+          REMOTE
+
+          scp -i "$MCP_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$MCP_KNOWN" \
+            "$ca_cert" "$VPS_SSH_USER@$VPS_MCP_HOST:/tmp/npp958-company-test-ca.pem"
+          ssh -i "$MCP_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$MCP_KNOWN" \
+            "$VPS_SSH_USER@$VPS_MCP_HOST" "bash -s -- '$VPS_COMPANY_HOST' '$COMPANY_TEST_HTTPS_PORT'" <<'REMOTE'
+          set -euo pipefail
+          company_host="$1"; test_port="$2"
+          sudo -n true
+          verify_proxy() {
+            for svc in ipv4-proxy ipv6-proxy oci-ipv6-pool; do
+              test "$(systemctl is-active "$svc")" = active
+              test "$(systemctl is-enabled "$svc")" = enabled
+            done
+            count="$(ss -lntH | awk '{n=split($4,a,":"); p=a[n]+0; if (p>=3128 && p<=3427) c++} END {print c+0}')"
+            test "$count" = 300
+            ss -lntH | awk '{n=split($4,a,":"); if (a[n]+0==3000) found=1} END {exit found?0:1}'
+          }
+          verify_proxy
+          sudo -n install -d -m 0755 /etc/npp
+          sudo -n install -o root -g root -m 0644 /tmp/npp958-company-test-ca.pem /etc/npp/npp958-company-test-ca.pem
+          rm -f /tmp/npp958-company-test-ca.pem
+          curl --fail --silent --show-error --cacert /etc/npp/npp958-company-test-ca.pem \
+            --connect-timeout 5 --max-time 15 "https://${company_host}:${test_port}/health/live" >/dev/null
+          verify_proxy
+          REMOTE
+          {
+            echo 'company_test_https_from_mcp=PASS'
+            echo 'company_test_https_scope=mcp_public_ip_only'
+            echo 'mcp_core_sales_target=company_vps_test_https'
+            echo 'mcp_core_onboarding_target=company_vps_test_https'
+          } >> "$REPORT_FILE"
 
       - name: Install test runtime env on MCP VPS without touching proxy
         shell: bash
@@ -450,9 +572,11 @@ jobs:
           }
           verify_proxy
           sudo -n install -d -m 0755 /etc/npp
+          sudo -n test -r /etc/npp/npp958-company-test-ca.pem
           sudo -n install -o root -g root -m 0600 /tmp/npp-mcp-parallel-test.env /etc/npp/mcp.env
           rm -f /tmp/npp-mcp-parallel-test.env
           sudo -n grep -q '^PORT="3105"$' /etc/npp/mcp.env
+          sudo -n grep -q '^NODE_EXTRA_CA_CERTS="/etc/npp/npp958-company-test-ca.pem"$' /etc/npp/mcp.env
           verify_proxy
           REMOTE
           {
@@ -500,7 +624,7 @@ jobs:
             echo
             echo "- Source main SHA: \`$SOURCE_SHA\`"
             echo "- Run ID: \`$GITHUB_RUN_ID\`"
-            echo '- Scope: rehearsal DB over allowlisted backend paths (Công Ty private, MCP public /32) + test-only backend runtime env; no Vercel/Heroku production endpoint change and no cutover.'
+            echo '- Scope: rehearsal DB over allowlisted backend paths + isolated MCP-to-Công Ty HTTPS test endpoint; no Vercel/Heroku production endpoint change and no cutover.'
             echo '- No secret values are included below.'
             echo '```text'
             cat "$REPORT_FILE"

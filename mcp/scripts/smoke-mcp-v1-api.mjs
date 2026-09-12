@@ -408,7 +408,8 @@ async function runSmoke() {
     const healthData = object(healthResult.payload.data);
     assert(healthData.service === "mcp-plan-backend", "health_service_invalid");
     assert(healthData.installationConfigured === true, "health_installation_not_configured");
-    assert(healthData.providerConfigured === true, "health_provider_not_configured");
+    assert(healthData.persistenceProvider === "postgresql", "health_persistence_provider_invalid");
+    assert(healthData.persistenceConfigured === true, "health_persistence_not_configured");
     assert(healthData.authBoundary === "proxy-service", "health_auth_boundary_invalid");
 
     const fullSession = await fullSessionSmoke();

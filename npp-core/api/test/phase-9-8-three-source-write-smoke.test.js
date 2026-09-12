@@ -19,11 +19,18 @@ test('three-source smoke writes only draft orders inside a rollback transaction'
   assert.doesNotMatch(script, /confirmSalesOrder|allocateDocumentNumber|\bCOMMIT\b/);
 });
 
-test('three-source smoke uses the canonical sales-order candidate path and shared idempotency generator', () => {
-  assert.match(script, /salesOrderEntryService\.searchSalesOrderSkuOptions/);
-  assert.match(script, /eligibility\?\.selectable === true/);
+test('three-source smoke uses priced canonical candidates and canonical MCP principal', () => {
+  assert.match(script, /salesOrderSearchPreviewService\.searchSalesOrderSkuOptions/);
+  assert.match(script, /pricePreview\?\.status === 'RESOLVED'/);
+  assert.match(script, /pricePreview\?\.unitPriceMinor !== null/);
+  assert.match(script, /createMcpSalesPrincipal/);
+  assert.match(script, /mcpSalesWarehouseIds/);
+  assert.match(script, /mcp_employee_id/);
+  assert.match(script, /requestContext: mcpContext/);
+  assert.match(script, /source_employee_id/);
   assert.match(script, /createIdempotencyKey\('phase-9-8-customer-portal-order'\)/);
   assert.match(script, /candidateFailures/);
+  assert.doesNotMatch(script, /salesOrderEntryService\.searchSalesOrderSkuOptions/);
   assert.doesNotMatch(script, /listPortalCatalog/);
   assert.doesNotMatch(script, /const portalKey = `phase98-/);
 });

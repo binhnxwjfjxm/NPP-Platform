@@ -4,7 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { createIdempotencyKey } from '../../../packages/contracts/index.js';
 import { loadConfig } from '../src/config.js';
 import { createPgPool } from '../src/db/pool.js';
-import * as salesOrderEntryService from '../src/services/sales-order-entry.js';
+import { createMcpSalesPrincipal } from '../src/request-context-base.js';
+import * as salesOrderSearchPreviewService from '../src/services/sales-order-search-preview.js';
 import * as salesOrderService from '../src/services/sales-order.js';
 import * as portalService from '../src/services/customer-portal.js';
 
@@ -39,13 +40,29 @@ function requestContext(config, warehouseId) {
   });
 }
 
-async function loadFixtures(client, installationId) {
+function mcpRequestContext(config, employeeId) {
+  const principal = createMcpSalesPrincipal(config, employeeId);
+  if (!principal) throw operationalError('mcp_sales_principal_unavailable');
+  return Object.freeze({
+    ...principal,
+    installationId: config.installationId,
+    requestId: `phase98-mcp-${randomUUID()}`,
+    receivedAt: new Date().toISOString(),
+  });
+}
+
+async function loadFixtures(client, config) {
+  const warehouseIds = Array.isArray(config.mcpSalesWarehouseIds)
+    ? config.mcpSalesWarehouseIds.filter(Boolean)
+    : [];
+  if (warehouseIds.length === 0) throw operationalError('mcp_sales_warehouse_scope_missing');
   const result = await client.query(
     `WITH warehouse AS (
        SELECT id
          FROM shared.warehouses
         WHERE installation_id = $1
           AND is_active = true
+          AND id = ANY($2::uuid[])
         ORDER BY code ASC
         LIMIT 1
      ), sales_channel AS (
@@ -55,11 +72,19 @@ async function loadFixtures(client, installationId) {
           AND is_active = true
         ORDER BY CASE WHEN code = 'CUSTOMER_PORTAL' THEN 0 ELSE 1 END, code ASC
         LIMIT 1
+     ), mcp_employee AS (
+       SELECT id
+         FROM shared.employees
+        WHERE installation_id = $1
+          AND is_active = true
+        ORDER BY updated_at DESC NULLS LAST, id ASC
+        LIMIT 1
      )
      SELECT c.id AS customer_id,
             address.id AS address_id,
             warehouse.id AS warehouse_id,
-            sales_channel.id AS sales_channel_id
+            sales_channel.id AS sales_channel_id,
+            mcp_employee.id AS mcp_employee_id
        FROM shared.customers c
        JOIN shared.customer_addresses address
          ON address.installation_id = c.installation_id
@@ -67,11 +92,12 @@ async function loadFixtures(client, installationId) {
         AND address.is_active = true
        CROSS JOIN warehouse
        CROSS JOIN sales_channel
+       CROSS JOIN mcp_employee
       WHERE c.installation_id = $1
         AND c.is_active = true
       ORDER BY c.updated_at DESC, address.is_default DESC, address.updated_at DESC
-      LIMIT $2`,
-    [installationId, MAX_FIXTURES],
+      LIMIT $3`,
+    [config.installationId, warehouseIds, MAX_FIXTURES],
   );
   return result.rows;
 }
@@ -110,10 +136,15 @@ function recordCandidateFailure(failures, error) {
   failures.add(serviceCode ? `${code}:${serviceCode}` : code);
 }
 
-async function loadCanonicalCandidates(client, requestContext, failures) {
-  const result = await salesOrderEntryService.searchSalesOrderSkuOptions(client, {
-    requestContext,
+async function loadCanonicalCandidates(client, context, fixture, failures) {
+  const result = await salesOrderSearchPreviewService.searchSalesOrderSkuOptions(client, {
+    requestContext: context,
     search: '',
+    warehouseId: fixture.warehouse_id,
+    salesChannelId: fixture.sales_channel_id,
+    customerId: fixture.customer_id,
+    priceSelectionMode: 'STANDARD',
+    pricingAt: context.receivedAt,
     limit: CANDIDATE_LIMIT,
     offset: 0,
   });
@@ -121,11 +152,16 @@ async function loadCanonicalCandidates(client, requestContext, failures) {
     failures.add(`candidate_search:${String(result?.code ?? 'unknown')}`);
     return [];
   }
-  return result.skuOptions.filter((item) => item?.eligibility?.selectable === true);
+  return result.skuOptions.filter((item) => (
+    item?.eligibility?.selectable === true
+    && item?.pricePreview?.status === 'RESOLVED'
+    && item?.pricePreview?.unitPriceMinor !== null
+  ));
 }
 
 async function exerciseFixture(client, config, fixture, failures) {
   const context = requestContext(config, fixture.warehouse_id);
+  const mcpContext = mcpRequestContext(config, fixture.mcp_employee_id);
   const syntheticMembership = Object.freeze({
     portal_user_id: randomUUID(),
     customer_id: fixture.customer_id,
@@ -134,7 +170,7 @@ async function exerciseFixture(client, config, fixture, failures) {
     collection_policy: 'COLLECT_ON_DELIVERY',
     allow_cancel: true,
   });
-  const candidates = await loadCanonicalCandidates(client, context, failures);
+  const candidates = await loadCanonicalCandidates(client, context, fixture, failures);
 
   for (const item of candidates) {
     const marker = randomUUID().replaceAll('-', '').slice(0, 20);
@@ -167,12 +203,12 @@ async function exerciseFixture(client, config, fixture, failures) {
         sourceOutletId: mcpOutletId,
       };
       const mcp = expectSuccess(await salesOrderService.createSalesOrder(client, {
-        requestContext: context,
+        requestContext: mcpContext,
         payload: mcpPayload,
       }), 'mcp_write_failed');
 
       expectDuplicate(await salesOrderService.createSalesOrder(client, {
-        requestContext: context,
+        requestContext: mcpContext,
         payload: mcpPayload,
       }), 'mcp_duplicate_guard_failed');
 
@@ -186,7 +222,7 @@ async function exerciseFixture(client, config, fixture, failures) {
       await client.query('SET CONSTRAINTS ALL IMMEDIATE');
       const ids = [internal.salesOrder.id, mcp.salesOrder.id, portal.order.id];
       const rows = (await client.query(
-        `SELECT id, source_type, source_id
+        `SELECT id, source_type, source_id, source_employee_id
            FROM sales.sales_orders
           WHERE installation_id = $1
             AND id = ANY($2::uuid[])`,
@@ -195,7 +231,11 @@ async function exerciseFixture(client, config, fixture, failures) {
       if (rows.length !== 3) throw operationalError('write_projection_count_mismatch', { count: rows.length });
       const byId = new Map(rows.map((row) => [row.id, row]));
       if (byId.get(internal.salesOrder.id)?.source_type !== 'MANUAL') throw operationalError('internal_lineage_mismatch');
-      if (byId.get(mcp.salesOrder.id)?.source_type !== 'MCP' || byId.get(mcp.salesOrder.id)?.source_id !== mcpSourceId) {
+      if (
+        byId.get(mcp.salesOrder.id)?.source_type !== 'MCP'
+        || byId.get(mcp.salesOrder.id)?.source_id !== mcpSourceId
+        || byId.get(mcp.salesOrder.id)?.source_employee_id !== fixture.mcp_employee_id
+      ) {
         throw operationalError('mcp_lineage_mismatch');
       }
       const portalRow = byId.get(portal.order.id);
@@ -226,7 +266,7 @@ export async function run({ config = loadConfig(), pool = null } = {}) {
   const candidateFailures = new Set();
   try {
     await client.query('BEGIN');
-    const fixtures = await loadFixtures(client, config.installationId);
+    const fixtures = await loadFixtures(client, config);
     if (fixtures.length === 0) throw operationalError('no_active_sales_fixture');
     let exercised = null;
     for (const fixture of fixtures) {
