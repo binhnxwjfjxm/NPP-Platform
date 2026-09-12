@@ -1,0 +1,525 @@
+name: VPS parallel full-system smoke
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: vps-parallel-full-system-smoke-958
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    if: >-
+      github.event.issue.number == 5 &&
+      github.event.comment.body == '/smoke-vps-parallel-958' &&
+      (
+        github.actor == 'binhnxwjfjxm' ||
+        github.actor == 'khuongbinhinfo-a11y'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      VPS_COMPANY_HOST: ${{ vars.VPS_COMPANY_HOST }}
+      VPS_MCP_HOST: ${{ vars.VPS_MCP_HOST }}
+      VPS_SSH_USER: ${{ vars.VPS_SSH_USER }}
+      VERCEL_ORG_ID: team_hBA8rX68UHC8ogvREkOyQlJ2
+      COMPANY_PROJECT_ID: prj_vFEAzoxesLqNJIfD8uF4q1kytpvk
+      RETAIL_PROJECT_ID: prj_1O9Ob6ZptSqZOBpxKbpn3Ujfm811
+      ADMIN_PROJECT_ID: prj_0hp2A8WyUW4zgglShPTzL70hesVC
+      ORDERING_PROJECT_ID: prj_btLk3p4FhmShgKFdRBMq6ZFOagKe
+      WEBSITE_PROJECT_ID: prj_rXqH83GFDHuEGUcQrrv82JBPWnjU
+      DELIVERY_PROJECT_ID: prj_aqsb62CiXpN1a1u3vU9P8SOKw2Ux
+      MCP_PROJECT_ID: prj_854SWdJeDEOPezAvvTZzTaRvZUSq
+
+    steps:
+      - name: Validate exact issue command
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: test "$COMMENT_BODY" = '/smoke-vps-parallel-958'
+
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact origin/main SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          test "$(git rev-parse --is-shallow-repository)" = false
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare sanitized report and SSH credentials
+        id: ssh
+        shell: bash
+        env:
+          VPS_COMPANY_SSH_KEY: ${{ secrets.VPS_COMPANY_SSH_KEY }}
+          VPS_MCP_SSH_KEY: ${{ secrets.VPS_MCP_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$VPS_COMPANY_HOST"
+          test -n "$VPS_MCP_HOST"
+          test -n "$VPS_SSH_USER"
+          test -n "$VPS_COMPANY_SSH_KEY"
+          test -n "$VPS_MCP_SSH_KEY"
+          report="$RUNNER_TEMP/npp958-full-system-smoke.txt"
+          : > "$report"
+          echo "REPORT_FILE=$report" >> "$GITHUB_ENV"
+          umask 077
+          prepare_key() {
+            local raw="$1" host="$2" key="$3" known="$4"
+            printf '%s\n' "$raw" > "$key"
+            chmod 600 "$key"
+            ssh-keygen -y -f "$key" >/dev/null
+            ssh-keyscan -T 10 -H "$host" > "$known" 2>/dev/null
+            test -s "$known"
+            chmod 600 "$known"
+          }
+          prepare_key "$VPS_COMPANY_SSH_KEY" "$VPS_COMPANY_HOST" "$RUNNER_TEMP/company.key" "$RUNNER_TEMP/company.known"
+          prepare_key "$VPS_MCP_SSH_KEY" "$VPS_MCP_HOST" "$RUNNER_TEMP/mcp.key" "$RUNNER_TEMP/mcp.known"
+          echo "company_key=$RUNNER_TEMP/company.key" >> "$GITHUB_OUTPUT"
+          echo "company_known=$RUNNER_TEMP/company.known" >> "$GITHUB_OUTPUT"
+          echo "mcp_key=$RUNNER_TEMP/mcp.key" >> "$GITHUB_OUTPUT"
+          echo "mcp_known=$RUNNER_TEMP/mcp.known" >> "$GITHUB_OUTPUT"
+
+      - name: Audit release identity and rehearsal DB guard
+        id: releases
+        continue-on-error: true
+        shell: bash
+        env:
+          COMPANY_KEY: ${{ steps.ssh.outputs.company_key }}
+          COMPANY_KNOWN: ${{ steps.ssh.outputs.company_known }}
+          MCP_KEY: ${{ steps.ssh.outputs.mcp_key }}
+          MCP_KNOWN: ${{ steps.ssh.outputs.mcp_known }}
+        run: |
+          set -euo pipefail
+          company_release="$(ssh -i "$COMPANY_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$COMPANY_KNOWN" "$VPS_SSH_USER@$VPS_COMPANY_HOST" 'resolved="$(readlink -f /srv/npp/company/current)"; basename "$resolved"')"
+          mcp_release="$(ssh -i "$MCP_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$MCP_KNOWN" "$VPS_SSH_USER@$VPS_MCP_HOST" 'resolved="$(readlink -f /srv/npp/mcp/current)"; release_root="${resolved%/mcp/apps/backend}"; basename "$release_root"')"
+          [[ "$company_release" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$mcp_release" =~ ^[0-9a-f]{40}$ ]]
+          git cat-file -e "$company_release^{commit}"
+          git cat-file -e "$mcp_release^{commit}"
+          git diff --quiet "$company_release" HEAD -- npp-core/api packages || {
+            echo 'Công Ty VPS differs from main in backend/package paths.' >&2
+            exit 1
+          }
+          git diff --quiet "$mcp_release" HEAD -- mcp/apps/backend packages/contracts || {
+            echo 'MCP VPS differs from main in backend/contract paths.' >&2
+            exit 1
+          }
+          for target in company mcp; do
+            if [ "$target" = company ]; then
+              key="$COMPANY_KEY"; known="$COMPANY_KNOWN"; host="$VPS_COMPANY_HOST"; service=npp-company-api.service; env_file=/etc/npp/company.env
+            else
+              key="$MCP_KEY"; known="$MCP_KNOWN"; host="$VPS_MCP_HOST"; service=npp-mcp-api.service; env_file=/etc/npp/mcp.env
+            fi
+            ssh -i "$key" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$known" "$VPS_SSH_USER@$host" "bash -s -- '$service' '$env_file'" <<'REMOTE'
+          set -euo pipefail
+          service="$1"; env_file="$2"
+          test "$(systemctl is-active "$service")" = active
+          db_url="$(sudo -n awk -F= '/^DATABASE_URL=/{sub(/^DATABASE_URL=/,""); gsub(/^["'"'"']|["'"'"']$/ ,""); print; exit}' "$env_file")"
+          test -n "$db_url"
+          DATABASE_URL_CHECK="$db_url" node --input-type=module <<'NODE'
+          const parsed = new URL(process.env.DATABASE_URL_CHECK);
+          if (parsed.pathname !== '/npp_rehearsal_958') process.exit(1);
+          NODE
+          REMOTE
+          done
+          {
+            echo 'RELEASE_IDENTITY=PASS'
+            echo 'REHEARSAL_DB_GUARD=PASS'
+          } >> "$REPORT_FILE"
+
+      - name: Verify MCP proxy boundary remains untouched
+        id: proxy
+        continue-on-error: true
+        shell: bash
+        env:
+          MCP_KEY: ${{ steps.ssh.outputs.mcp_key }}
+          MCP_KNOWN: ${{ steps.ssh.outputs.mcp_known }}
+        run: |
+          set -euo pipefail
+          ssh -i "$MCP_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$MCP_KNOWN" "$VPS_SSH_USER@$VPS_MCP_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          for svc in ipv4-proxy ipv6-proxy oci-ipv6-pool; do
+            test "$(systemctl is-active "$svc")" = active
+            test "$(systemctl is-enabled "$svc")" = enabled
+          done
+          count="$(ss -lntH | awk '{n=split($4,a,":"); p=a[n]+0; if (p>=3128 && p<=3427) c++} END {print c+0}')"
+          test "$count" = 300
+          ss -lntH | awk '{n=split($4,a,":"); if (a[n]+0==3000) found=1} END {exit found?0:1}'
+          REMOTE
+          echo 'MCP_PROXY_BOUNDARY=PASS' >> "$REPORT_FILE"
+
+      - name: Công Ty VPS health, auth and business reads
+        id: company_reads
+        continue-on-error: true
+        shell: bash
+        env:
+          COMPANY_KEY: ${{ steps.ssh.outputs.company_key }}
+          COMPANY_KNOWN: ${{ steps.ssh.outputs.company_known }}
+        run: |
+          set -euo pipefail
+          ssh -i "$COMPANY_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$COMPANY_KNOWN" "$VPS_SSH_USER@$VPS_COMPANY_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          env_file=/etc/npp/company.env
+          read_env() { sudo -n awk -F= -v key="$1" '$1==key{sub(/^[^=]*=/,""); gsub(/^["'"'"']|["'"'"']$/ ,""); print; exit}' "$env_file"; }
+          port="$(read_env PORT)"
+          token="$(read_env BACKEND_API_TOKEN)"
+          test -n "$port"; test -n "$token"
+          base="http://127.0.0.1:$port"
+          request() {
+            local expected="$1" path="$2"; shift 2
+            local body status code
+            body="$(mktemp)"
+            status="$(curl --silent --show-error --connect-timeout 3 --max-time 20 --output "$body" --write-out '%{http_code}' "$@" "$base$path" || true)"
+            if [ "$status" != "$expected" ]; then
+              code="$(jq -r '.error.code // empty' "$body" 2>/dev/null || true)"
+              echo "company_request_failed path=$path status=${status:-none} code=${code:-none}" >&2
+              rm -f "$body"
+              return 1
+            fi
+            jq -e . "$body" >/dev/null
+            rm -f "$body"
+          }
+          request 200 /health/live
+          request 200 /health/ready
+          unauth="$(curl -sS -o /tmp/npp958-company-unauth.json -w '%{http_code}' "$base/api/customers" || true)"
+          case "$unauth" in 401|403) ;; *) echo "deny_by_default_failed status=$unauth" >&2; exit 1 ;; esac
+          auth=(-H "Authorization: Bearer $token" -H 'Accept: application/json')
+          request 200 '/api/customers?limit=1&offset=0' "${auth[@]}"
+          request 200 '/api/products?limit=1&offset=0' "${auth[@]}"
+          request 200 '/api/sales-orders?limit=1&offset=0' "${auth[@]}"
+          request 200 '/api/inventory/balances?limit=1&offset=0' "${auth[@]}"
+          request 200 '/api/receivables?limit=1&offset=0' "${auth[@]}"
+          rm -f /tmp/npp958-company-unauth.json
+          REMOTE
+          cat >> "$REPORT_FILE" <<'REPORT'
+          COMPANY_HEALTH=PASS
+          COMPANY_DENY_BY_DEFAULT=PASS
+          COMPANY_CUSTOMERS_READ=PASS
+          COMPANY_PRODUCTS_READ=PASS
+          COMPANY_ORDERS_READ=PASS
+          COMPANY_INVENTORY_READ=PASS
+          COMPANY_RECEIVABLES_READ=PASS
+          REPORT
+
+      - name: Công Ty business write rollback and idempotency smoke
+        id: company_write
+        continue-on-error: true
+        shell: bash
+        env:
+          COMPANY_KEY: ${{ steps.ssh.outputs.company_key }}
+          COMPANY_KNOWN: ${{ steps.ssh.outputs.company_known }}
+        run: |
+          set -euo pipefail
+          result="$(ssh -i "$COMPANY_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$COMPANY_KNOWN" "$VPS_SSH_USER@$VPS_COMPANY_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          current=/srv/npp/company/current
+          env_file=/etc/npp/company.env
+          test -f "$current/npp-core/api/scripts/phase-9-8-three-source-write-smoke.js"
+          db_url="$(sudo -n awk -F= '/^DATABASE_URL=/{sub(/^DATABASE_URL=/,""); gsub(/^["'"'"']|["'"'"']$/ ,""); print; exit}' "$env_file")"
+          DATABASE_URL_CHECK="$db_url" node --input-type=module <<'NODE'
+          const parsed = new URL(process.env.DATABASE_URL_CHECK);
+          if (parsed.pathname !== '/npp_rehearsal_958') process.exit(1);
+          NODE
+          set -a
+          source <(sudo -n cat "$env_file")
+          set +a
+          cd "$current"
+          node npp-core/api/scripts/phase-9-8-three-source-write-smoke.js
+          REMOTE
+          )"
+          payload="$(printf '%s\n' "$result" | sed -n 's/^PHASE_9_8_WRITE_SMOKE_RESULT=//p' | tail -n1)"
+          test -n "$payload"
+          jq -e '.ok == true and .internalWriteRollback == true and .mcpWriteRollback == true and .customerPortalServiceWriteRollback == true and .mcpSourceDuplicateGuard == true and .customerPortalSourceDuplicateGuard == true and .productionPersistedTestRows == 0' <<<"$payload" >/dev/null
+          cat >> "$REPORT_FILE" <<'REPORT'
+          COMPANY_WRITE_ROLLBACK=PASS
+          COMPANY_IDEMPOTENCY=PASS
+          COMPANY_TEST_ROWS_PERSISTED=0
+          REPORT
+
+      - name: Công Ty R2 historical-read and temporary write/read/delete smoke
+        id: r2
+        continue-on-error: true
+        shell: bash
+        env:
+          COMPANY_KEY: ${{ steps.ssh.outputs.company_key }}
+          COMPANY_KNOWN: ${{ steps.ssh.outputs.company_known }}
+        run: |
+          set -euo pipefail
+          ssh -i "$COMPANY_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$COMPANY_KNOWN" "$VPS_SSH_USER@$VPS_COMPANY_HOST" "bash -s -- '$GITHUB_RUN_ID'" <<'REMOTE'
+          set -euo pipefail
+          run_id="$1"; current=/srv/npp/company/current; env_file=/etc/npp/company.env
+          set -a
+          source <(sudo -n cat "$env_file")
+          set +a
+          cd "$current"
+          node --input-type=module - "$run_id" <<'NODE'
+          import { DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+          const runId = process.argv[2];
+          const endpoint = String(process.env.R2_ENDPOINT || '').trim();
+          const accessKeyId = String(process.env.R2_ACCESS_KEY_ID || '').trim();
+          const secretAccessKey = String(process.env.R2_SECRET_ACCESS_KEY || '').trim();
+          const bucket = String(process.env.R2_BUCKET || process.env.R2_BUCKET_NAME || '').trim();
+          const region = String(process.env.R2_REGION || 'auto').trim();
+          if (!endpoint || !accessKeyId || !secretAccessKey || !bucket) throw new Error('r2_config_incomplete');
+          const client = new S3Client({ region, endpoint, credentials: { accessKeyId, secretAccessKey } });
+          const key = `_vps-parallel-smoke/${runId}-${Date.now()}.txt`;
+          let uploaded = false;
+          try {
+            const listed = await client.send(new ListObjectsV2Command({ Bucket: bucket, Prefix: 'app-customer/products/', MaxKeys: 1 }));
+            if (!listed.Contents?.length) throw new Error('r2_historical_product_object_missing');
+            const value = `npp958-${runId}`;
+            await client.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: value, ContentType: 'text/plain' }));
+            uploaded = true;
+            const head = await client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
+            if (!Number.isFinite(head.ContentLength) || head.ContentLength < 1) throw new Error('r2_head_invalid');
+            const get = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+            if (await get.Body.transformToString() !== value) throw new Error('r2_content_mismatch');
+          } finally {
+            if (uploaded) await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+            client.destroy();
+          }
+          NODE
+          REMOTE
+          echo 'R2_READ_WRITE_DELETE=PASS' >> "$REPORT_FILE"
+
+      - name: MCP VPS boundary, CORS and Công Ty proxy reads
+        id: mcp_boundary
+        continue-on-error: true
+        shell: bash
+        env:
+          MCP_KEY: ${{ steps.ssh.outputs.mcp_key }}
+          MCP_KNOWN: ${{ steps.ssh.outputs.mcp_known }}
+        run: |
+          set -euo pipefail
+          ssh -i "$MCP_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$MCP_KNOWN" "$VPS_SSH_USER@$VPS_MCP_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          env_file=/etc/npp/mcp.env
+          read_env() { sudo -n awk -F= -v key="$1" '$1==key{sub(/^[^=]*=/,""); gsub(/^["'"'"']|["'"'"']$/ ,""); print; exit}' "$env_file"; }
+          db_url="$(read_env DATABASE_URL)"
+          DATABASE_URL_CHECK="$db_url" node --input-type=module <<'NODE'
+          const parsed = new URL(process.env.DATABASE_URL_CHECK);
+          if (parsed.pathname !== '/npp_rehearsal_958') process.exit(1);
+          NODE
+          port="$(read_env PORT)"; token="$(read_env BACKEND_API_TOKEN)"; origin="$(read_env CORS_ORIGINS | cut -d, -f1)"; sales_base="$(read_env CORE_SALES_API_BASE_URL)"
+          test -n "$port"; test -n "$token"; test -n "$origin"; test -n "$sales_base"
+          ! grep -Fqi 'herokuapp.com' <<<"$sales_base"
+          base="http://127.0.0.1:$port"
+          test "$(curl -sS -o /dev/null -w '%{http_code}' "$base/health/live")" = 200
+          test "$(curl -sS -o /dev/null -w '%{http_code}' "$base/health/ready")" = 200
+          test "$(curl -sS -o /tmp/npp958-mcp-unauth.json -w '%{http_code}' "$base/api/routes")" = 401
+          preflight="$(curl -sS -o /tmp/npp958-mcp-options.out -D /tmp/npp958-mcp-options.headers -w '%{http_code}' -X OPTIONS -H "Origin: $origin" -H 'Access-Control-Request-Method: GET' -H 'Access-Control-Request-Headers: Content-Type, X-Backend-Token, X-Request-Id, Idempotency-Key' "$base/api/routes")"
+          test "$preflight" = 204
+          grep -Fqi "access-control-allow-origin: $origin" /tmp/npp958-mcp-options.headers
+          test "$(curl -sS -o /tmp/npp958-mcp-denied.json -w '%{http_code}' -H "X-Backend-Token: $token" -H 'Origin: https://invalid.example.com' "$base/api/routes")" = 403
+          test "$(curl -sS -o /tmp/npp958-mcp-products.json -w '%{http_code}' -H "X-Backend-Token: $token" -H 'Accept: application/json' "$base/api/core-sales/products/search?q=&limit=1")" = 200
+          jq -e . /tmp/npp958-mcp-products.json >/dev/null
+          direct="$(curl -sS -o /tmp/npp958-mcp-orders.json -w '%{http_code}' -H "X-Backend-Token: $token" -H 'Accept: application/json' "$base/api/core-sales/orders")"
+          test "$direct" = 401
+          test "$(jq -r '.error.code // empty' /tmp/npp958-mcp-orders.json)" = TRUSTED_EMPLOYEE_REQUIRED
+          rm -f /tmp/npp958-mcp-*.json /tmp/npp958-mcp-options.out /tmp/npp958-mcp-options.headers
+          REMOTE
+          cat >> "$REPORT_FILE" <<'REPORT'
+          MCP_HEALTH=PASS
+          MCP_AUTH=PASS
+          MCP_CORS=PASS
+          MCP_TO_COMPANY_PRODUCTS=PASS
+          MCP_PERMISSION_BOUNDARY=PASS
+          MCP_NOT_WIRED_TO_HEROKU=PASS
+          REPORT
+
+      - name: MCP business workflow and cleanup smoke
+        id: mcp_business
+        continue-on-error: true
+        shell: bash
+        env:
+          MCP_KEY: ${{ steps.ssh.outputs.mcp_key }}
+          MCP_KNOWN: ${{ steps.ssh.outputs.mcp_known }}
+        run: |
+          set -euo pipefail
+          scp -i "$MCP_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$MCP_KNOWN" mcp/scripts/smoke-mcp-v1-api.mjs "$VPS_SSH_USER@$VPS_MCP_HOST:/tmp/npp958-smoke-mcp-v1-api.mjs"
+          ssh -i "$MCP_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$MCP_KNOWN" "$VPS_SSH_USER@$VPS_MCP_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          trap 'rm -f /tmp/npp958-smoke-mcp-v1-api.mjs' EXIT
+          env_file=/etc/npp/mcp.env
+          read_env() { sudo -n awk -F= -v key="$1" '$1==key{sub(/^[^=]*=/,""); gsub(/^["'"'"']|["'"'"']$/ ,""); print; exit}' "$env_file"; }
+          db_url="$(read_env DATABASE_URL)"
+          DATABASE_URL_CHECK="$db_url" node --input-type=module <<'NODE'
+          const parsed = new URL(process.env.DATABASE_URL_CHECK);
+          if (parsed.pathname !== '/npp_rehearsal_958') process.exit(1);
+          NODE
+          port="$(read_env PORT)"; token="$(read_env BACKEND_API_TOKEN)"
+          test -n "$port"; test -n "$token"
+          output="$(MCP_API_BASE_URL="http://127.0.0.1:$port" BACKEND_API_TOKEN="$token" node /tmp/npp958-smoke-mcp-v1-api.mjs)"
+          jq -e '.ok == true and .health == true and .authBoundary == true and .fullSession.orderCreated == true and .fullSession.closedMutationBlocked == true and .frozenEmptySnapshot.emptyCancelledSessionDeleted == true' <<<"$output" >/dev/null
+          REMOTE
+          cat >> "$REPORT_FILE" <<'REPORT'
+          MCP_BUSINESS_WORKFLOW=PASS
+          MCP_SMOKE_CLEANUP=PASS
+          REPORT
+
+      - name: Verify seven frontend project identities without deployment
+        id: vercel
+        continue-on-error: true
+        shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$VERCEL_TOKEN"
+          for entry in \
+            "npp-platform:$COMPANY_PROJECT_ID" \
+            "npp-retail:$RETAIL_PROJECT_ID" \
+            "admin-mcp-npp:$ADMIN_PROJECT_ID" \
+            "customer-ordering:$ORDERING_PROJECT_ID" \
+            "nguyenlieuhungphat:$WEBSITE_PROJECT_ID" \
+            "npp-delivery:$DELIVERY_PROJECT_ID" \
+            "mcp-field:$MCP_PROJECT_ID"
+          do
+            name="${entry%%:*}"; id="${entry##*:}"; body="$(mktemp)"
+            status="$(curl -sS -o "$body" -w '%{http_code}' -H "Authorization: Bearer $VERCEL_TOKEN" "https://api.vercel.com/v9/projects/$id?teamId=$VERCEL_ORG_ID" || true)"
+            test "$status" = 200
+            test "$(jq -r '.id // empty' "$body")" = "$id"
+            test "$(jq -r '.name // empty' "$body")" = "$name"
+            rm -f "$body"
+          done
+          echo 'SEVEN_FRONTEND_PROJECTS=PASS' >> "$REPORT_FILE"
+          echo 'VERCEL_PRODUCTION_DEPLOYED_BY_SMOKE=false' >> "$REPORT_FILE"
+
+      - name: Frontend/server wiring contracts
+        id: wiring
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { readFile } from 'node:fs/promises';
+          const checks = [
+            ['Công Ty', 'npp-core/web/lib/internal-auth-client.ts', 'CORE_API_INTERNAL_URL'],
+            ['Admin', 'admin/web/lib/core-download.ts', 'CORE_API_INTERNAL_URL'],
+            ['Delivery', 'delivery/web/lib/delivery-auth.ts', 'CORE_API_INTERNAL_URL'],
+            ['Retail', 'retail/web/app/api/cong-ty/health/route.ts', 'CORE_API_INTERNAL_URL'],
+            ['MCP', 'mcp/src/server/env.ts', 'BACKEND_API_BASE_URL'],
+          ];
+          for (const [name, file, needle] of checks) {
+            const source = await readFile(file, 'utf8');
+            if (!source.includes(needle)) throw new Error(`${name}_wiring_contract_missing_${needle}`);
+          }
+          const customerGateway = await readFile('npp-core/web/lib/customer-gateway.ts', 'utf8');
+          for (const needle of ['createIdempotencyKey', 'normalizeIdempotencyKey', 'isValidIdempotencyKey']) {
+            if (!customerGateway.includes(needle)) throw new Error(`company_customer_${needle}_missing`);
+          }
+          NODE
+          website_env="$(curl --fail --silent --show-error --connect-timeout 10 --max-time 20 'https://raw.githubusercontent.com/binhnxwjfjxm/nguyenlieuhungphat/main/.env.example')"
+          grep -q '^COMPANY_API_URL=' <<<"$website_env"
+          grep -q '^COMPANY_WEBSITE_AI_API_TOKEN=' <<<"$website_env"
+          cat >> "$REPORT_FILE" <<'REPORT'
+          FRONTEND_SERVER_WIRING_CONTRACTS=PASS
+          WEBSITE_COMPANY_API_CONTRACT=PASS
+          CUSTOMER_ORDERING_PROJECT_IDENTITY=PASS
+          REPORT
+
+      - name: Idempotency, import/export, Retail and Delivery contracts
+        id: contracts
+        continue-on-error: true
+        shell: bash
+        working-directory: mcp
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts
+          node --test ../packages/contracts/test/idempotency-source-guard.test.js
+          node --test test/a5-5-1-idempotency-caller-contract.test.mjs
+          node --test test/heroku-root-contract.test.mjs
+          node --test ../npp-core/web/test/data-exchange-xlsx-compatibility.test.js
+          node --test ../retail/web/test/retail-runtime-contract.test.mjs
+          node --test ../delivery/web/test/delivery-location-media.test.mjs
+          cat >> "$REPORT_FILE" <<'REPORT'
+          IDEMPOTENCY_CONTRACT=PASS
+          IMPORT_EXPORT_XLSX_CONTRACT=PASS
+          RETAIL_RUNTIME_CONTRACT=PASS
+          DELIVERY_RUNTIME_CONTRACT=PASS
+          REPORT
+
+      - name: Verify production providers remain present
+        id: no_cutover
+        continue-on-error: true
+        shell: bash
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$HEROKU_API_KEY"
+          for app in hung-phat hung-phat-mcp; do
+            status="$(curl -sS -o /dev/null -w '%{http_code}' -H 'Accept: application/vnd.heroku+json; version=3' -H "Authorization: Bearer $HEROKU_API_KEY" "https://api.heroku.com/apps/$app")"
+            test "$status" = 200
+          done
+          cat >> "$REPORT_FILE" <<'REPORT'
+          HEROKU_PRODUCTION_STILL_PRESENT=PASS
+          PRODUCTION_DB_CUTOVER=false
+          PRODUCTION_TRAFFIC_CUTOVER=false
+          PRODUCTION_DNS_CHANGED=false
+          REPORT
+
+      - name: Publish complete sanitized evidence
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          RELEASES: ${{ steps.releases.outcome }}
+          PROXY: ${{ steps.proxy.outcome }}
+          COMPANY_READS: ${{ steps.company_reads.outcome }}
+          COMPANY_WRITE: ${{ steps.company_write.outcome }}
+          R2: ${{ steps.r2.outcome }}
+          MCP_BOUNDARY: ${{ steps.mcp_boundary.outcome }}
+          MCP_BUSINESS: ${{ steps.mcp_business.outcome }}
+          VERCEL: ${{ steps.vercel.outcome }}
+          WIRING: ${{ steps.wiring.outcome }}
+          CONTRACTS: ${{ steps.contracts.outcome }}
+          NO_CUTOVER: ${{ steps.no_cutover.outcome }}
+        run: |
+          set -euo pipefail
+          overall=PASS
+          for state in "$RELEASES" "$PROXY" "$COMPANY_READS" "$COMPANY_WRITE" "$R2" "$MCP_BOUNDARY" "$MCP_BUSINESS" "$VERCEL" "$WIRING" "$CONTRACTS" "$NO_CUTOVER"; do
+            [ "$state" = success ] || overall=FAIL
+          done
+          evidence="$(mktemp)"
+          {
+            echo "## Bước 6 — VPS parallel full-system smoke — $overall"
+            echo
+            echo "- Run ID: \`$GITHUB_RUN_ID\`"
+            echo "- Exact main SHA: \`$SOURCE_SHA\`"
+            echo '- Không deploy Vercel/Heroku; không cutover DB/DNS/traffic.'
+            echo '- Không restart/reconfigure/xóa MCP proxy.'
+            echo
+            echo '```text'
+            printf 'release_identity=%s\n' "$RELEASES"
+            printf 'mcp_proxy_boundary=%s\n' "$PROXY"
+            printf 'company_business_reads=%s\n' "$COMPANY_READS"
+            printf 'company_write_rollback=%s\n' "$COMPANY_WRITE"
+            printf 'r2=%s\n' "$R2"
+            printf 'mcp_boundary_and_company_proxy=%s\n' "$MCP_BOUNDARY"
+            printf 'mcp_business_workflow=%s\n' "$MCP_BUSINESS"
+            printf 'seven_frontend_projects=%s\n' "$VERCEL"
+            printf 'frontend_server_wiring=%s\n' "$WIRING"
+            printf 'contracts=%s\n' "$CONTRACTS"
+            printf 'no_cutover=%s\n' "$NO_CUTOVER"
+            if [ -s "$REPORT_FILE" ]; then echo; cat "$REPORT_FILE"; fi
+            echo '```'
+          } > "$evidence"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/958/comments" -f body="$(cat "$evidence")" >/dev/null
+          rm -f "$evidence"
+          test "$overall" = PASS
