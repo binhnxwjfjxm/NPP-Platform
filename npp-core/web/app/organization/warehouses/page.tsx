@@ -1,13 +1,19 @@
-import Link from 'next/link';
 import InitialLoadRetry from '../../components/initial-load-retry';
-import OrganizationWorkspace from '../organization-workspace';
+import WarehouseWorkspace, { type WarehouseWorkspaceTab } from './warehouse-workspace';
 import { loadOrganizationSnapshot } from '../../../lib/organization-snapshot';
 import { createEmptyOrganizationSnapshot } from '../../../lib/organization-types';
-import styles from './warehouse-page.module.css';
 
 export const dynamic = 'force-dynamic';
 
-export default async function WarehousesPage() {
+type SearchParams = Readonly<{ tab?: string; warehouseId?: string }>;
+
+function warehouseTab(value?: string): WarehouseWorkspaceTab {
+  if (value === 'quick') return 'quick';
+  if (value === 'layout') return 'layout';
+  return 'list';
+}
+
+export default async function WarehousesPage({ searchParams }: Readonly<{ searchParams?: SearchParams }>) {
   let initialData = createEmptyOrganizationSnapshot();
   let initialError: string | null = null;
 
@@ -20,15 +26,11 @@ export default async function WarehousesPage() {
   return (
     <>
       <InitialLoadRetry enabled={Boolean(initialError)} retryKey="organization-warehouses" />
-      <Link className={styles.historyShortcut} href="/organization/warehouses/location-mode-history">
-        Lịch sử quản lý vị trí
-      </Link>
-      <OrganizationWorkspace
-        scope="warehouses"
-        title="Kho hàng"
-        subtitle="Quản lý kho theo chi nhánh và danh sách loại kho cố định phục vụ phân loại, báo cáo."
+      <WarehouseWorkspace
         initialData={initialData}
         initialError={initialError}
+        initialTab={warehouseTab(searchParams?.tab)}
+        initialWarehouseId={searchParams?.warehouseId ?? ''}
       />
     </>
   );

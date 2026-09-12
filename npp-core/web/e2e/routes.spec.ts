@@ -89,7 +89,7 @@ test.describe('Core web route smoke', () => {
     await page.getByTestId('organization-menu-toggle').click();
     await expect(page.getByTestId('nav-branches')).toBeVisible();
     await expect(page.getByTestId('nav-warehouses')).toBeVisible();
-    await expect(page.getByTestId('nav-locations')).toBeVisible();
+    await expect(page.getByTestId('nav-locations')).toHaveCount(0);
 
     await page.getByTestId('sidebar-collapse-button').click();
     await expect(page.locator('[data-collapsed="true"]')).toBeVisible();

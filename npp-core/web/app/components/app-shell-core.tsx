@@ -204,7 +204,9 @@ export function AppShell({ title, subtitle, kicker = 'Hệ thống quản trị 
     setMobileOpen(false);
   }, [pathname]);
 
-  const organizationChildren = useMemo(() => organizationItems.map((item) => ({ ...item, active: isActive(pathname, item.href) })), [pathname]);
+  const organizationChildren = useMemo(() => organizationItems
+    .filter((item) => item.testId !== 'nav-locations')
+    .map((item) => ({ ...item, active: isActive(pathname, item.href) })), [pathname]);
   const inventoryChildren = useMemo(() => inventoryItems.map((item) => ({ ...item, active: isActive(pathname, item.href) })), [pathname]);
   const logisticsChildren = useMemo(() => logisticsItems.map((item) => ({ ...item, active: isActive(pathname, item.href) })), [pathname]);
   const salesChildren = useMemo(() => salesItems.map((item) => ({ ...item, active: isActive(pathname, item.href) })), [pathname]);
