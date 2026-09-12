@@ -370,23 +370,26 @@ jobs:
           source <(sudo -n cat "$env_file")
           set +a
           employee_id="$(cd "$current" && node --input-type=module <<'NODE'
-          import pg from 'pg';
-          const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 1 });
+          import { loadFoundationConfig } from './foundation/config.js';
+          import { createPersistence } from './foundation/persistence.js';
+          const persistence = await createPersistence(loadFoundationConfig(process.env));
           try {
-            const result = await pool.query(
-              `SELECT id
-                 FROM shared.employees
-                WHERE installation_id = $1
-                  AND is_active = true
-                ORDER BY updated_at DESC NULLS LAST, id ASC
-                LIMIT 1`,
-              [process.env.INSTALLATION_ID],
-            );
-            const id = String(result.rows[0]?.id || '');
+            const id = await persistence.withTransaction(async (client) => {
+              const result = await client.query(
+                `SELECT id
+                   FROM shared.employees
+                  WHERE installation_id = $1
+                    AND is_active = true
+                  ORDER BY updated_at DESC NULLS LAST, id ASC
+                  LIMIT 1`,
+                [process.env.INSTALLATION_ID],
+              );
+              return String(result.rows[0]?.id || '');
+            });
             if (!id) process.exit(1);
             process.stdout.write(id);
           } finally {
-            await pool.end();
+            await persistence.close();
           }
           NODE
           )"
