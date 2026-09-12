@@ -436,15 +436,16 @@ jobs:
         id: contracts
         continue-on-error: true
         shell: bash
+        working-directory: mcp
         run: |
           set -euo pipefail
           npm ci --ignore-scripts
-          node --test packages/contracts/test/idempotency-source-guard.test.js
-          node --test mcp/test/a5-5-1-idempotency-caller-contract.test.mjs
-          node --test mcp/test/heroku-root-contract.test.mjs
-          node --test npp-core/web/test/data-exchange-xlsx-compatibility.test.js
-          node --test retail/web/test/retail-runtime-contract.test.mjs
-          node --test delivery/web/test/delivery-location-media.test.mjs
+          node --test ../packages/contracts/test/idempotency-source-guard.test.js
+          node --test test/a5-5-1-idempotency-caller-contract.test.mjs
+          node --test test/heroku-root-contract.test.mjs
+          node --test ../npp-core/web/test/data-exchange-xlsx-compatibility.test.js
+          node --test ../retail/web/test/retail-runtime-contract.test.mjs
+          node --test ../delivery/web/test/delivery-location-media.test.mjs
           cat >> "$REPORT_FILE" <<'REPORT'
           IDEMPOTENCY_CONTRACT=PASS
           IMPORT_EXPORT_XLSX_CONTRACT=PASS
