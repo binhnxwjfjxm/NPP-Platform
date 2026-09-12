@@ -341,7 +341,7 @@ export function SalesReportingWorkspace() {
                   <th>Ngày</th>
                   <th>Tiền tệ</th>
                   <th>Doanh thu</th>
-                  <th>Ngày tương ứng kỳ trước</th>
+                  <th>Doanh thu kỳ trước</th>
                   <th>Thay đổi</th>
                 </tr>
               </thead>

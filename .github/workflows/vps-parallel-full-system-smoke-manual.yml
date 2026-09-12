@@ -185,12 +185,12 @@ jobs:
             body="$(mktemp)"
             status="$(curl --silent --show-error --connect-timeout 3 --max-time 20 --output "$body" --write-out '%{http_code}' "$@" "$base$path" || true)"
             if [ "$status" != "$expected" ]; then
-              code="$(jq -r '.error.code // empty' "$body" 2>/dev/null || true)"
+              code="$(node -e 'try{const p=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); process.stdout.write(String(p?.error?.code||""));}catch{}' "$body")"
               echo "company_request_failed path=$path status=${status:-none} code=${code:-none}" >&2
               rm -f "$body"
               return 1
             fi
-            jq -e . "$body" >/dev/null
+            node -e 'JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"))' "$body"
             rm -f "$body"
           }
           request 200 /health/live
@@ -224,7 +224,8 @@ jobs:
           COMPANY_KNOWN: ${{ steps.ssh.outputs.company_known }}
         run: |
           set -euo pipefail
-          result="$(ssh -i "$COMPANY_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$COMPANY_KNOWN" "$VPS_SSH_USER@$VPS_COMPANY_HOST" 'bash -s' <<'REMOTE'
+          set +e
+          result="$(ssh -i "$COMPANY_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$COMPANY_KNOWN" "$VPS_SSH_USER@$VPS_COMPANY_HOST" 'bash -s' 2>&1 <<'REMOTE'
           set -euo pipefail
           current=/srv/npp/company/current
           env_file=/etc/npp/company.env
@@ -241,9 +242,30 @@ jobs:
           node npp-core/api/scripts/phase-9-8-three-source-write-smoke.js
           REMOTE
           )"
+          remote_status=$?
+          set -e
           payload="$(printf '%s\n' "$result" | sed -n 's/^PHASE_9_8_WRITE_SMOKE_RESULT=//p' | tail -n1)"
-          test -n "$payload"
-          jq -e '.ok == true and .internalWriteRollback == true and .mcpWriteRollback == true and .customerPortalServiceWriteRollback == true and .mcpSourceDuplicateGuard == true and .customerPortalSourceDuplicateGuard == true and .productionPersistedTestRows == 0' <<<"$payload" >/dev/null
+          if [ -z "$payload" ]; then
+            echo "company_write_smoke_missing_result status=$remote_status" >&2
+            printf '%s\n' "$result" >&2
+            exit 1
+          fi
+          PAYLOAD="$payload" node --input-type=module <<'NODE'
+          const payload = JSON.parse(process.env.PAYLOAD);
+          if (payload.ok !== true) {
+            console.error(`company_write_smoke_failed code=${payload.code || 'unknown'} details=${JSON.stringify(payload.details || {})}`);
+            process.exit(1);
+          }
+          const required = [
+            'internalWriteRollback',
+            'mcpWriteRollback',
+            'customerPortalServiceWriteRollback',
+            'mcpSourceDuplicateGuard',
+            'customerPortalSourceDuplicateGuard',
+          ];
+          if (required.some((key) => payload[key] !== true) || payload.productionPersistedTestRows !== 0) process.exit(1);
+          NODE
+          test "$remote_status" -eq 0
           cat >> "$REPORT_FILE" <<'REPORT'
           COMPANY_WRITE_ROLLBACK=PASS
           COMPANY_IDEMPOTENCY=PASS
@@ -326,10 +348,11 @@ jobs:
           grep -Fqi "access-control-allow-origin: $origin" /tmp/npp958-mcp-options.headers
           test "$(curl -sS -o /tmp/npp958-mcp-denied.json -w '%{http_code}' -H "X-Backend-Token: $token" -H 'Origin: https://invalid.example.com' "$base/api/routes")" = 403
           test "$(curl -sS -o /tmp/npp958-mcp-products.json -w '%{http_code}' -H "X-Backend-Token: $token" -H 'Accept: application/json' "$base/api/core-sales/products/search?q=&limit=1")" = 200
-          jq -e . /tmp/npp958-mcp-products.json >/dev/null
+          node -e 'JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"))' /tmp/npp958-mcp-products.json
           direct="$(curl -sS -o /tmp/npp958-mcp-orders.json -w '%{http_code}' -H "X-Backend-Token: $token" -H 'Accept: application/json' "$base/api/core-sales/orders")"
           test "$direct" = 401
-          test "$(jq -r '.error.code // empty' /tmp/npp958-mcp-orders.json)" = TRUSTED_EMPLOYEE_REQUIRED
+          code="$(node -e 'try{const p=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); process.stdout.write(String(p?.error?.code||""));}catch{}' /tmp/npp958-mcp-orders.json)"
+          test "$code" = TRUSTED_EMPLOYEE_REQUIRED
           rm -f /tmp/npp958-mcp-*.json /tmp/npp958-mcp-options.out /tmp/npp958-mcp-options.headers
           REMOTE
           cat >> "$REPORT_FILE" <<'REPORT'
@@ -351,9 +374,10 @@ jobs:
         run: |
           set -euo pipefail
           scp -i "$MCP_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$MCP_KNOWN" mcp/scripts/smoke-mcp-v1-api.mjs "$VPS_SSH_USER@$VPS_MCP_HOST:/tmp/npp958-smoke-mcp-v1-api.mjs"
+          scp -i "$MCP_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$MCP_KNOWN" packages/contracts/index.js "$VPS_SSH_USER@$VPS_MCP_HOST:/tmp/npp958-contracts.mjs"
           ssh -i "$MCP_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$MCP_KNOWN" "$VPS_SSH_USER@$VPS_MCP_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
-          trap 'rm -f /tmp/npp958-smoke-mcp-v1-api.mjs' EXIT
+          trap 'rm -f /tmp/npp958-smoke-mcp-v1-api.mjs /tmp/npp958-contracts.mjs' EXIT
           env_file=/etc/npp/mcp.env
           read_env() { sudo -n awk -F= -v key="$1" '$1==key{sub(/^[^=]*=/,""); gsub(/^["'"'"']|["'"'"']$/ ,""); print; exit}' "$env_file"; }
           db_url="$(read_env DATABASE_URL)"
@@ -363,8 +387,26 @@ jobs:
           NODE
           port="$(read_env PORT)"; token="$(read_env BACKEND_API_TOKEN)"
           test -n "$port"; test -n "$token"
-          output="$(MCP_API_BASE_URL="http://127.0.0.1:$port" BACKEND_API_TOKEN="$token" node /tmp/npp958-smoke-mcp-v1-api.mjs)"
-          jq -e '.ok == true and .health == true and .authBoundary == true and .fullSession.orderCreated == true and .fullSession.closedMutationBlocked == true and .frozenEmptySnapshot.emptyCancelledSessionDeleted == true' <<<"$output" >/dev/null
+          set +e
+          output="$(MCP_API_BASE_URL="http://127.0.0.1:$port" BACKEND_API_TOKEN="$token" NPP_IDEMPOTENCY_CONTRACT_MODULE='file:///tmp/npp958-contracts.mjs' node /tmp/npp958-smoke-mcp-v1-api.mjs 2>&1)"
+          smoke_status=$?
+          set -e
+          if [ "$smoke_status" -ne 0 ]; then
+            printf '%s\n' "$output" >&2
+            exit "$smoke_status"
+          fi
+          SMOKE_OUTPUT="$output" node --input-type=module <<'NODE'
+          const payload = JSON.parse(process.env.SMOKE_OUTPUT);
+          if (
+            payload.ok !== true
+            || payload.health !== true
+            || payload.authBoundary !== true
+            || payload.fullSession?.orderCreated !== true
+            || payload.fullSession?.openRetryReplayed !== true
+            || payload.fullSession?.closedMutationBlocked !== true
+            || payload.frozenEmptySnapshot?.emptyCancelledSessionDeleted !== true
+          ) process.exit(1);
+          NODE
           REMOTE
           cat >> "$REPORT_FILE" <<'REPORT'
           MCP_BUSINESS_WORKFLOW=PASS
@@ -392,8 +434,11 @@ jobs:
             name="${entry%%:*}"; id="${entry##*:}"; body="$(mktemp)"
             status="$(curl -sS -o "$body" -w '%{http_code}' -H "Authorization: Bearer $VERCEL_TOKEN" "https://api.vercel.com/v9/projects/$id?teamId=$VERCEL_ORG_ID" || true)"
             test "$status" = 200
-            test "$(jq -r '.id // empty' "$body")" = "$id"
-            test "$(jq -r '.name // empty' "$body")" = "$name"
+            PROJECT_FILE="$body" EXPECTED_ID="$id" EXPECTED_NAME="$name" node --input-type=module <<'NODE'
+            import { readFileSync } from 'node:fs';
+            const payload = JSON.parse(readFileSync(process.env.PROJECT_FILE, 'utf8'));
+            if (payload.id !== process.env.EXPECTED_ID || payload.name !== process.env.EXPECTED_NAME) process.exit(1);
+            NODE
             rm -f "$body"
           done
           echo 'SEVEN_FRONTEND_PROJECTS=PASS' >> "$REPORT_FILE"
@@ -442,12 +487,15 @@ jobs:
           npm ci --ignore-scripts
           node --test ../packages/contracts/test/idempotency-source-guard.test.js
           node --test test/a5-5-1-idempotency-caller-contract.test.mjs
+          node --test test/production-hygiene.test.mjs
           node --test test/heroku-root-contract.test.mjs
+          node --test ../npp-core/api/test/phase-9-8-three-source-write-smoke.test.js
           node --test ../npp-core/web/test/data-exchange-xlsx-compatibility.test.js
           node --test ../retail/web/test/retail-runtime-contract.test.mjs
           node --test ../delivery/web/test/delivery-location-media.test.mjs
           cat >> "$REPORT_FILE" <<'REPORT'
           IDEMPOTENCY_CONTRACT=PASS
+          SMOKE_REGRESSION_CONTRACT=PASS
           IMPORT_EXPORT_XLSX_CONTRACT=PASS
           RETAIL_RUNTIME_CONTRACT=PASS
           DELIVERY_RUNTIME_CONTRACT=PASS

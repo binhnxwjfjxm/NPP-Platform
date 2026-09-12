@@ -1,15 +1,18 @@
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createIdempotencyKey } from '../../../packages/contracts/index.js';
 import { loadConfig } from '../src/config.js';
 import { createPgPool } from '../src/db/pool.js';
+import * as salesOrderEntryService from '../src/services/sales-order-entry.js';
 import * as salesOrderService from '../src/services/sales-order.js';
 import * as portalService from '../src/services/customer-portal.js';
 
 const ACTOR_ID = 'ops:phase-9-8-three-source-write-smoke';
 const SOURCE_APP = 'phase-9-8-three-source-write-smoke';
 const MAX_FIXTURES = 20;
-const CATALOG_LIMIT = 20;
+const CANDIDATE_LIMIT = 50;
+const MAX_FAILURE_CODES = 20;
 
 function operationalError(code, details = {}) {
   const error = new Error(code);
@@ -100,7 +103,28 @@ function expectDuplicate(result, code) {
   }
 }
 
-async function exerciseFixture(client, config, fixture) {
+function recordCandidateFailure(failures, error) {
+  if (failures.size >= MAX_FAILURE_CODES) return;
+  const code = String(error?.code ?? 'candidate_failed');
+  const serviceCode = error?.safeDetails?.serviceCode ? String(error.safeDetails.serviceCode) : '';
+  failures.add(serviceCode ? `${code}:${serviceCode}` : code);
+}
+
+async function loadCanonicalCandidates(client, requestContext, failures) {
+  const result = await salesOrderEntryService.searchSalesOrderSkuOptions(client, {
+    requestContext,
+    search: '',
+    limit: CANDIDATE_LIMIT,
+    offset: 0,
+  });
+  if (!result?.ok) {
+    failures.add(`candidate_search:${String(result?.code ?? 'unknown')}`);
+    return [];
+  }
+  return result.skuOptions.filter((item) => item?.eligibility?.selectable === true);
+}
+
+async function exerciseFixture(client, config, fixture, failures) {
   const context = requestContext(config, fixture.warehouse_id);
   const syntheticMembership = Object.freeze({
     portal_user_id: randomUUID(),
@@ -110,19 +134,11 @@ async function exerciseFixture(client, config, fixture) {
     collection_policy: 'COLLECT_ON_DELIVERY',
     allow_cancel: true,
   });
-  const catalog = await portalService.listPortalCatalog(client, {
-    requestContext: context,
-    membership: syntheticMembership,
-    search: '',
-    limit: CATALOG_LIMIT,
-    offset: 0,
-  });
-  if (!catalog?.ok) return null;
-  const candidates = catalog.items.filter((item) => item?.price?.status === 'available');
+  const candidates = await loadCanonicalCandidates(client, context, failures);
 
   for (const item of candidates) {
     const marker = randomUUID().replaceAll('-', '').slice(0, 20);
-    const portalKey = `phase98-${marker}`;
+    const portalKey = createIdempotencyKey('phase-9-8-customer-portal-order');
     const mcpSourceId = `phase98-mcp-${marker}`;
     const mcpOutletId = `phase98-outlet-${marker}`;
     await client.query('SAVEPOINT phase98_candidate');
@@ -141,11 +157,11 @@ async function exerciseFixture(client, config, fixture) {
 
       const internal = expectSuccess(await salesOrderService.createSalesOrder(client, {
         requestContext: context,
-        payload: { ...commonPayload(fixture, item.variantId, marker), sourceType: 'MANUAL' },
+        payload: { ...commonPayload(fixture, item.id, marker), sourceType: 'MANUAL' },
       }), 'internal_write_failed');
 
       const mcpPayload = {
-        ...commonPayload(fixture, item.variantId, marker),
+        ...commonPayload(fixture, item.id, marker),
         sourceType: 'MCP',
         sourceId: mcpSourceId,
         sourceOutletId: mcpOutletId,
@@ -196,6 +212,7 @@ async function exerciseFixture(client, config, fixture) {
         || error?.code?.endsWith('_lineage_mismatch')
         || error?.code?.endsWith('_duplicate_guard_failed')
       ) throw error;
+      recordCandidateFailure(failures, error);
     }
   }
   return null;
@@ -206,16 +223,22 @@ export async function run({ config = loadConfig(), pool = null } = {}) {
   const ownsPool = !pool;
   const client = await adapter.connect();
   let writtenIds = [];
+  const candidateFailures = new Set();
   try {
     await client.query('BEGIN');
     const fixtures = await loadFixtures(client, config.installationId);
     if (fixtures.length === 0) throw operationalError('no_active_sales_fixture');
     let exercised = null;
     for (const fixture of fixtures) {
-      exercised = await exerciseFixture(client, config, fixture);
+      exercised = await exerciseFixture(client, config, fixture, candidateFailures);
       if (exercised) break;
     }
-    if (!exercised) throw operationalError('no_orderable_rollback_fixture', { attemptedFixtures: fixtures.length });
+    if (!exercised) {
+      throw operationalError('no_orderable_rollback_fixture', {
+        attemptedFixtures: fixtures.length,
+        candidateFailures: [...candidateFailures],
+      });
+    }
     writtenIds = exercised.ids;
     await client.query('ROLLBACK');
 

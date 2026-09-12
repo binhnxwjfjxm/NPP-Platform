@@ -46,6 +46,8 @@ test('Lô 1 có so kỳ, tỷ trọng, đối soát và cảnh báo nhưng chưa
   assert.match(workspace, /report\?\.reconciliation/);
   assert.match(workspace, /dataQuality\.warnings/);
   assert.match(workspace, /Xu hướng theo ngày/);
+  assert.match(workspace, /Doanh thu kỳ trước/);
+  assert.doesNotMatch(workspace, /Ngày tương ứng kỳ trước/);
   assert.doesNotMatch(workspace, /Xuất báo cáo|Xuất Excel|CSV|XLSX/);
   assert.doesNotMatch(workspace, /Hôm nay|7 ngày|Tháng trước/);
 });
