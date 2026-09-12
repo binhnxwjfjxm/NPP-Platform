@@ -115,10 +115,11 @@ jobs:
 
           audit_host() {
             local role="$1"
-            local host="$2"
-            local key="$3"
-            local stdout_file="$RUNNER_TEMP/${role}.out"
-            local stderr_file="$RUNNER_TEMP/${role}.err"
+            local slug="$2"
+            local host="$3"
+            local key="$4"
+            local stdout_file="$RUNNER_TEMP/vps-${slug}.out"
+            local stderr_file="$RUNNER_TEMP/vps-${slug}.err"
 
             {
               echo "### ${role}"
@@ -183,9 +184,9 @@ jobs:
             echo
           } >> "$report"
 
-          audit_host "DB VPS" "$VPS_DB_HOST" "$RUNNER_TEMP/vps-db.key"
-          audit_host "Công Ty VPS" "$VPS_COMPANY_HOST" "$RUNNER_TEMP/vps-company.key"
-          audit_host "MCP/proxy VPS" "$VPS_MCP_HOST" "$RUNNER_TEMP/vps-mcp.key"
+          audit_host "DB VPS" "db" "$VPS_DB_HOST" "$RUNNER_TEMP/vps-db.key"
+          audit_host "Công Ty VPS" "company" "$VPS_COMPANY_HOST" "$RUNNER_TEMP/vps-company.key"
+          audit_host "MCP/proxy VPS" "mcp" "$VPS_MCP_HOST" "$RUNNER_TEMP/vps-mcp.key"
 
           cat "$report" >> "$GITHUB_STEP_SUMMARY"
           echo "report=$report" >> "$GITHUB_OUTPUT"
