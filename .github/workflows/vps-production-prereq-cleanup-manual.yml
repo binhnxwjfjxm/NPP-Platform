@@ -174,26 +174,49 @@ jobs:
           test "$proxy_count_before" = "300"
           ss -lntH | awk '{n=split($4,a,":"); if (a[n]+0==3000) found=1} END {exit found?0:1}'
 
-          # Fail-closed nếu có listener TCP/UDP ngoài tập đã audit.
+          # Thu đủ toàn bộ listener lạ rồi mới fail, tránh vòng lặp báo từng cổng.
           tcp_ports="$(ss -lntH | awk '{n=split($4,a,":"); print a[n]+0}' | sort -n -u)"
+          udp_ports="$(ss -lnuH | awk '{n=split($4,a,":"); print a[n]+0}' | sort -n -u)"
+
+          dhcp68_present=no
+          dhcp68_verified=no
+          if grep -qx '68' <<< "$udp_ports"; then
+            dhcp68_present=yes
+            dhcp_owner="$(sudo -n ss -lnupH 2>/dev/null | awk '{n=split($4,a,":"); if (a[n]+0==68) print}' || true)"
+            if grep -Eqi 'systemd-network|NetworkManager|dhclient' <<< "$dhcp_owner" || \
+               [ "$(systemctl is-active systemd-networkd 2>/dev/null || true)" = "active" ] || \
+               [ "$(systemctl is-active NetworkManager 2>/dev/null || true)" = "active" ] || \
+               pgrep -x dhclient >/dev/null 2>&1; then
+              dhcp68_verified=yes
+            fi
+            if [ "$dhcp68_verified" != "yes" ]; then
+              echo 'Refusing firewall mutation: UDP 68 exists but DHCP client ownership is not verified' >&2
+              exit 31
+            fi
+          fi
+
+          unexpected_tcp=""
           while read -r port; do
             [ -n "$port" ] || continue
             if [ "$port" = "22" ] || [ "$port" = "53" ] || [ "$port" = "111" ] || [ "$port" = "3000" ] || { [ "$port" -ge 3128 ] && [ "$port" -le 3427 ]; }; then
               continue
             fi
-            echo "Refusing firewall mutation: unexplained listening TCP port $port" >&2
-            exit 31
+            unexpected_tcp="${unexpected_tcp}${unexpected_tcp:+,}${port}"
           done <<< "$tcp_ports"
 
-          udp_ports="$(ss -lnuH | awk '{n=split($4,a,":"); print a[n]+0}' | sort -n -u)"
+          unexpected_udp=""
           while read -r port; do
             [ -n "$port" ] || continue
-            if [ "$port" = "53" ] || [ "$port" = "111" ]; then
+            if [ "$port" = "53" ] || [ "$port" = "111" ] || { [ "$port" = "68" ] && [ "$dhcp68_verified" = "yes" ]; }; then
               continue
             fi
-            echo "Refusing firewall mutation: unexplained listening UDP port $port" >&2
-            exit 32
+            unexpected_udp="${unexpected_udp}${unexpected_udp:+,}${port}"
           done <<< "$udp_ports"
+
+          if [ -n "$unexpected_tcp" ] || [ -n "$unexpected_udp" ]; then
+            echo "Refusing firewall mutation: unexplained TCP ports=${unexpected_tcp:-none}; UDP ports=${unexpected_udp:-none}" >&2
+            exit 32
+          fi
 
           # rpcbind chỉ được dọn nếu không có quan hệ với proxy/NFS.
           dep_text="$(systemctl show ipv4-proxy ipv6-proxy oci-ipv6-pool --property=Requires,Wants,After --no-pager 2>/dev/null || true)"
@@ -225,24 +248,46 @@ jobs:
             *) echo 'Unknown external state for TCP 3000' >&2; exit 37 ;;
           esac
 
+          # Xác nhận syntax UFW trước mutation; không đổi rule ở bước này.
+          sudo -n ufw --dry-run insert 1 allow out from any to any >/dev/null
+          sudo -n ufw --dry-run insert 1 allow proto tcp from any to any port 22 >/dev/null
+          sudo -n ufw --dry-run insert 1 allow proto tcp from any to any port 3128:3427 >/dev/null
+          if [ "$port3000_external_before" = "OPEN" ]; then
+            sudo -n ufw --dry-run insert 1 allow proto tcp from any to any port 3000 >/dev/null
+          fi
+          if [ "$dhcp68_present" = "yes" ]; then
+            sudo -n ufw --dry-run insert 1 allow proto udp from any port 67 to any port 68 >/dev/null
+          fi
+
           rpcbind_was_active=no
           if [ "$(systemctl is-active rpcbind.service 2>/dev/null || true)" = "active" ]; then
             rpcbind_was_active=yes
           fi
 
-          # Từ đây mới mutation. Nếu lỗi, firewall được tắt lại và rpcbind được phục hồi.
-          rollback() {
-            rc=$?
-            trap - ERR
+          # Snapshot UFW để rollback trả đúng cấu hình cũ nếu mutation hoặc hậu kiểm fail.
+          ufw_backup="/tmp/npp-958-ufw-preclean-${PPID}.tar"
+          sudo -n tar -C /etc -cpf "$ufw_backup" ufw
+
+          restore_prestate() {
             set +e
             sudo -n ufw disable >/dev/null 2>&1
+            if sudo -n test -f "$ufw_backup"; then
+              sudo -n tar -C /etc -xpf "$ufw_backup" >/dev/null 2>&1 || true
+              sudo -n ufw disable >/dev/null 2>&1 || true
+            fi
             if [ "$rpcbind_was_active" = "yes" ]; then
               sudo -n systemctl enable rpcbind.socket >/dev/null 2>&1 || true
               sudo -n systemctl start rpcbind.socket >/dev/null 2>&1 || true
               sudo -n systemctl enable rpcbind.service >/dev/null 2>&1 || true
               sudo -n systemctl start rpcbind.service >/dev/null 2>&1 || true
             fi
-            echo 'Proxy VPS prerequisite mutation failed; firewall disabled and rpcbind state restored' >&2
+          }
+
+          rollback() {
+            rc=$?
+            trap - ERR
+            restore_prestate
+            echo 'Proxy VPS prerequisite mutation failed; UFW/rpcbind restored to pre-run state' >&2
             exit "$rc"
           }
           trap rollback ERR
@@ -263,8 +308,7 @@ jobs:
             false
           fi
 
-          # Giữ nguyên toàn bộ rule UFW cũ. Chèn allow ưu tiên cao cho SSH/proxy,
-          # đồng thời giữ outbound mở như trạng thái trước để không cắt đường ra của proxy.
+          # Giữ nguyên rule UFW cũ; chỉ chèn bảo vệ bắt buộc cho SSH/proxy/DHCP.
           sudo -n ufw default deny incoming >/dev/null
           sudo -n ufw default allow outgoing >/dev/null
           sudo -n ufw insert 1 allow out from any to any >/dev/null
@@ -272,6 +316,9 @@ jobs:
           sudo -n ufw insert 1 allow proto tcp from any to any port 3128:3427 >/dev/null
           if [ "$port3000_external_before" = "OPEN" ]; then
             sudo -n ufw insert 1 allow proto tcp from any to any port 3000 >/dev/null
+          fi
+          if [ "$dhcp68_present" = "yes" ]; then
+            sudo -n ufw insert 1 allow proto udp from any port 67 to any port 68 >/dev/null
           fi
           sudo -n ufw --force enable >/dev/null
           test "$(sudo -n ufw status | head -n1)" = 'Status: active'
@@ -284,6 +331,9 @@ jobs:
           test "$proxy_count_after" = "$proxy_count_before"
           test "$proxy_count_after" = "300"
           ss -lntH | awk '{n=split($4,a,":"); if (a[n]+0==3000) found=1} END {exit found?0:1}'
+          if [ "$dhcp68_present" = "yes" ]; then
+            ss -lnuH | awk '{n=split($4,a,":"); if (a[n]+0==68) found=1} END {exit found?0:1}'
+          fi
 
           trap - ERR
           echo "proxy_listener_count_before=$proxy_count_before"
@@ -291,16 +341,20 @@ jobs:
           echo 'proxy_services=active_enabled_untouched'
           echo 'tcp_3000_listener=preserved'
           echo "tcp_3000_external_before=$port3000_external_before"
+          echo "dhcp_udp68_present=$dhcp68_present"
+          echo "dhcp_udp68_verified=$dhcp68_verified"
           echo "rpcbind_was_active=$rpcbind_was_active"
           echo 'rpcbind=inactive_disabled'
           echo 'tcp_udp_111=closed'
           echo 'ufw=active'
           echo 'ufw_existing_rules=preserved'
-          echo 'ufw_priority_allow=outbound-any,22/tcp,3128-3427/tcp,3000-if-preexisting-public'
+          echo 'ufw_priority_allow=outbound-any,22/tcp,3128-3427/tcp,3000-if-preexisting-public,dhcp67-to-68-if-present'
+          echo "ufw_backup=$ufw_backup"
           REMOTE
           cat "$out"
           echo "output=$out" >> "$GITHUB_OUTPUT"
           echo "rpcbind_was_active=$(grep '^rpcbind_was_active=' "$out" | tail -n1 | cut -d= -f2-)" >> "$GITHUB_OUTPUT"
+          echo "ufw_backup=$(grep '^ufw_backup=' "$out" | tail -n1 | cut -d= -f2-)" >> "$GITHUB_OUTPUT"
 
       - name: Verify proxy externally after firewall
         id: proxy_after
@@ -312,6 +366,7 @@ jobs:
           BEFORE_3278: ${{ steps.proxy_before.outputs.p3278 }}
           BEFORE_3427: ${{ steps.proxy_before.outputs.p3427 }}
           RPCBIND_WAS_ACTIVE: ${{ steps.proxy_cleanup.outputs.rpcbind_was_active }}
+          UFW_BACKUP: ${{ steps.proxy_cleanup.outputs.ufw_backup }}
         run: |
           set -euo pipefail
           probe() {
@@ -328,10 +383,7 @@ jobs:
           after_3278="$(probe 3278)"
           after_3427="$(probe 3427)"
 
-          if [ "$after_3000" != "$BEFORE_3000" ] || \
-             [ "$after_3128" != "$BEFORE_3128" ] || \
-             [ "$after_3278" != "$BEFORE_3278" ] || \
-             [ "$after_3427" != "$BEFORE_3427" ]; then
+          rollback_remote() {
             ssh \
               -i "$RUNNER_TEMP/vps-mcp.key" \
               -o BatchMode=yes \
@@ -339,10 +391,15 @@ jobs:
               -o ConnectionAttempts=1 \
               -o StrictHostKeyChecking=yes \
               -o UserKnownHostsFile="$KNOWN_HOSTS" \
-              "$VPS_SSH_USER@$VPS_MCP_HOST" "bash -s -- '$RPCBIND_WAS_ACTIVE'" <<'REMOTE'
+              "$VPS_SSH_USER@$VPS_MCP_HOST" "bash -s -- '$RPCBIND_WAS_ACTIVE' '$UFW_BACKUP'" <<'REMOTE'
             set -euo pipefail
             rpcbind_was_active="${1:-no}"
+            ufw_backup="${2:-}"
             sudo -n ufw disable >/dev/null || true
+            if [ -n "$ufw_backup" ] && sudo -n test -f "$ufw_backup"; then
+              sudo -n tar -C /etc -xpf "$ufw_backup" >/dev/null 2>&1 || true
+              sudo -n ufw disable >/dev/null 2>&1 || true
+            fi
             if [ "$rpcbind_was_active" = "yes" ]; then
               sudo -n systemctl enable rpcbind.socket >/dev/null 2>&1 || true
               sudo -n systemctl start rpcbind.socket >/dev/null 2>&1 || true
@@ -350,8 +407,28 @@ jobs:
               sudo -n systemctl start rpcbind.service >/dev/null 2>&1 || true
             fi
             REMOTE
-            echo 'Proxy reachability changed; firewall/rpcbind cleanup rolled back' >&2
+          }
+
+          if [ "$after_3000" != "$BEFORE_3000" ] || \
+             [ "$after_3128" != "$BEFORE_3128" ] || \
+             [ "$after_3278" != "$BEFORE_3278" ] || \
+             [ "$after_3427" != "$BEFORE_3427" ]; then
+            rollback_remote
+            echo 'Proxy reachability changed; UFW/rpcbind cleanup rolled back' >&2
             exit 41
+          fi
+
+          if ! ssh \
+            -i "$RUNNER_TEMP/vps-mcp.key" \
+            -o BatchMode=yes \
+            -o ConnectTimeout=10 \
+            -o ConnectionAttempts=1 \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$KNOWN_HOSTS" \
+            "$VPS_SSH_USER@$VPS_MCP_HOST" 'test "$(systemctl is-active ipv4-proxy)" = active && test "$(systemctl is-active ipv6-proxy)" = active && test "$(systemctl is-active oci-ipv6-pool)" = active && test "$(ss -lntH | awk '\''{n=split($4,a,":"); p=a[n]+0; if (p>=3128 && p<=3427) c++} END {print c+0}'\'')" = 300'; then
+            rollback_remote
+            echo 'Proxy service/listener verification failed; UFW/rpcbind cleanup rolled back' >&2
+            exit 42
           fi
 
           ssh \
@@ -361,7 +438,7 @@ jobs:
             -o ConnectionAttempts=1 \
             -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile="$KNOWN_HOSTS" \
-            "$VPS_SSH_USER@$VPS_MCP_HOST" 'test "$(systemctl is-active ipv4-proxy)" = active && test "$(systemctl is-active ipv6-proxy)" = active && test "$(systemctl is-active oci-ipv6-pool)" = active && test "$(ss -lntH | awk '\''{n=split($4,a,":"); p=a[n]+0; if (p>=3128 && p<=3427) c++} END {print c+0}'\'')" = 300'
+            "$VPS_SSH_USER@$VPS_MCP_HOST" "sudo -n rm -f '$UFW_BACKUP'"
 
           echo "p3000=$after_3000" >> "$GITHUB_OUTPUT"
           echo "p3128=$after_3128" >> "$GITHUB_OUTPUT"
