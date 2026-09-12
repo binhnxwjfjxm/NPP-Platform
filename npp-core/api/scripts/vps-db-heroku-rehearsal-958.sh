@@ -217,6 +217,22 @@ scp_to_vps() {
     "$local_file" "$VPS_SSH_USER@$VPS_DB_HOST:$remote_file"
 }
 
+run_remote_postgres_sql_file() {
+  local remote_file="$1"
+  ssh_base "bash -s -- '$restore_db' '$remote_file'" <<'REMOTE'
+set -euo pipefail
+db="$1"
+file="$2"
+cleanup() {
+  sudo -n rm -f "$file"
+}
+trap cleanup EXIT
+sudo -n chown postgres:postgres "$file"
+sudo -n chmod 600 "$file"
+sudo -n -u postgres psql -XqAt -v ON_ERROR_STOP=1 -d "$db" -f "$file" >/dev/null
+REMOTE
+}
+
 assert_public_5432_closed() {
   if timeout 4 bash -c "cat < /dev/null > /dev/tcp/$VPS_DB_HOST/5432" 2>/dev/null; then
     echo "public_tcp_5432_open" >&2
@@ -348,14 +364,19 @@ run_rehearsal() {
 set -euo pipefail
 db="$1"
 dump="$2"
+cleanup() {
+  sudo -n rm -f "$dump"
+}
+trap cleanup EXIT
 sudo -n true
+sudo -n chown postgres:postgres "$dump"
+sudo -n chmod 600 "$dump"
 version="$(sudo -n -u postgres psql -XAtqc 'show server_version')"
 case "$version" in 17.*) ;; *) exit 30 ;; esac
 sudo -n -u postgres psql -XAt -v ON_ERROR_STOP=1 postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$db' AND pid <> pg_backend_pid();" >/dev/null
 sudo -n -u postgres dropdb --if-exists "$db"
 sudo -n -u postgres createdb "$db"
 sudo -n -u postgres pg_restore --exit-on-error --no-owner --no-acl --dbname="$db" "$dump"
-rm -f "$dump"
 REMOTE
 
   remote_migration_ids "$restored_ids"
@@ -376,7 +397,7 @@ REMOTE
   generate_migration_bundle "$restored_ids" "$first_bundle" "$first_meta"
   remote_first_bundle="/tmp/npp-958-migrations-${GITHUB_RUN_ID:-local}.sql"
   scp_to_vps "$first_bundle" "$remote_first_bundle"
-  ssh_base "sudo -n -u postgres psql -XqAt -v ON_ERROR_STOP=1 -d '$restore_db' -f '$remote_first_bundle' >/dev/null && rm -f '$remote_first_bundle'"
+  run_remote_postgres_sql_file "$remote_first_bundle"
 
   remote_migration_ids "$restored_ids_after"
   final_registry_match=no
@@ -391,7 +412,7 @@ REMOTE
   test "$(awk -F= '$1=="PENDING_MCP_COUNT"{print $2}' "$noop_meta")" = 0
   remote_noop_bundle="/tmp/npp-958-migrations-noop-${GITHUB_RUN_ID:-local}.sql"
   scp_to_vps "$noop_bundle" "$remote_noop_bundle"
-  ssh_base "sudo -n -u postgres psql -XqAt -v ON_ERROR_STOP=1 -d '$restore_db' -f '$remote_noop_bundle' >/dev/null && rm -f '$remote_noop_bundle'"
+  run_remote_postgres_sql_file "$remote_noop_bundle"
 
   snapshot_remote "$restored_after_migrate"
   unvalidated_fks="$(awk -F'|' '$1=="integrity" && $2=="unvalidated_foreign_keys"{print $3}' "$restored_after_migrate")"
