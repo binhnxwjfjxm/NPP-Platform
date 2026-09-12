@@ -138,10 +138,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git archive --format=tar HEAD mcp/apps/backend packages/contracts | gzip -9 > "$RUNNER_TEMP/mcp-source.tgz"
-          test -s "$RUNNER_TEMP/mcp-source.tgz"
-          tar -tzf "$RUNNER_TEMP/mcp-source.tgz" | grep -qx 'mcp/apps/backend/bootstrap.js'
-          tar -tzf "$RUNNER_TEMP/mcp-source.tgz" | grep -qx 'packages/contracts/index.js'
+          archive="$RUNNER_TEMP/mcp-source.tgz"
+          listing="$RUNNER_TEMP/mcp-source.list"
+          git archive --format=tar HEAD mcp/apps/backend packages/contracts | gzip -9 > "$archive"
+          test -s "$archive"
+          tar -tzf "$archive" > "$listing"
+          grep -Fxq 'mcp/apps/backend/bootstrap.js' "$listing"
+          grep -Fxq 'packages/contracts/index.js' "$listing"
 
       - name: Copy MCP source to target
         if: steps.request.outputs.action == 'deploy'
