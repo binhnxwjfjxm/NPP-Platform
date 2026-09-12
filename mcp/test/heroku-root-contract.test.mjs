@@ -60,7 +60,7 @@ test("Heroku to VPS DB rehearsal locks migration heads and cannot cut over produ
   assert.doesNotMatch(workflow, /VPS_COMPANY_SSH_KEY|VPS_MCP_SSH_KEY/);
 });
 
-test("VPS parallel test setup uses only the rehearsal DB and private backend VPS sources", async () => {
+test("VPS parallel test setup uses rehearsal DB with provider-aware allowlisted backend paths", async () => {
   const workflow = await read(".github/workflows/vps-parallel-test-runtime-setup-manual.yml");
 
   assert.match(workflow, /\/prepare-vps-parallel-test-958/);
@@ -71,17 +71,19 @@ test("VPS parallel test setup uses only the rehearsal DB and private backend VPS
   assert.match(workflow, /npp_rehearsal_958/);
   assert.match(workflow, /npp_company_test_runtime/);
   assert.match(workflow, /mcp_test_runtime/);
-  assert.match(workflow, /Resolve private VPS network addresses/);
+  assert.match(workflow, /Resolve backend network addresses/);
+  assert.match(workflow, /company_and_db_not_same_private_subnet/);
   assert.match(workflow, /hostssl npp_rehearsal_958 npp_company_test_runtime \$\{company_private_ip\}\/32/);
-  assert.match(workflow, /hostssl npp_rehearsal_958 mcp_test_runtime \$\{mcp_private_ip\}\/32/);
+  assert.match(workflow, /hostssl npp_rehearsal_958 mcp_test_runtime \$\{mcp_public_ip\}\/32/);
   assert.match(workflow, /ufw allow from "\$company_private_ip" to any port 5432/);
-  assert.match(workflow, /ufw allow from "\$mcp_private_ip" to any port 5432/);
-  assert.match(workflow, /delete allow from "\$company_public_ip" to any port 5432/);
-  assert.match(workflow, /delete allow from "\$mcp_public_ip" to any port 5432/);
+  assert.match(workflow, /ufw allow from "\$mcp_public_ip" to any port 5432/);
+  assert.match(workflow, /delete allow from "\$mcp_private_ip" to any port 5432/);
   assert.match(workflow, /DB_PRIVATE_IP: \$\{\{ steps\.network\.outputs\.db_private_ip \}\}/);
+  assert.match(workflow, /DB_PUBLIC_IP="\$VPS_DB_HOST"/);
   assert.match(workflow, /company_to_db_private_tcp=PASS/);
-  assert.match(workflow, /mcp_to_db_private_tcp=PASS/);
-  assert.match(workflow, /DB TCP 5432 became reachable from the public runner/);
+  assert.match(workflow, /mcp_to_db_public_allowlist_tcp=PASS/);
+  assert.match(workflow, /DB TCP 5432 became reachable from an unrelated public runner/);
+  assert.match(workflow, /db_public_5432=restricted_to_mcp_public_ip/);
   assert.match(workflow, /DATABASE_SSL_MODE: 'require'/);
   assert.match(workflow, /SUPABASE_URL','SUPABASE_SERVICE_ROLE_KEY','MCP_MIGRATION_DATABASE_URL/);
   assert.match(workflow, /company_env=installed_test_only/);
