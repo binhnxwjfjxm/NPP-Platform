@@ -47,6 +47,10 @@ test("Heroku to VPS DB rehearsal locks migration heads and cannot cut over produ
   assert.match(script, /heroku pg:backups:capture/);
   assert.match(script, /pg_restore --exit-on-error --no-owner --no-acl/);
   assert.match(script, /restore_db="npp_rehearsal_958"/);
+  assert.match(script, /CREATE TEMP TABLE reconcile_key_counts/);
+  assert.doesNotMatch(script, /CREATE TEMP TABLE reconcile_key_counts[\s\S]*?ON COMMIT DROP;/);
+  assert.match(script, /INSERT INTO pg_temp\.reconcile_key_counts/);
+  assert.match(script, /FROM pg_temp\.reconcile_key_counts/);
   assert.match(script, /MIGRATION_RERUN_NOOP=PASS/);
   assert.match(script, /PRE_MIGRATION_RECONCILIATION=/);
   assert.match(script, /PUBLIC_TCP_5432=closed/);
