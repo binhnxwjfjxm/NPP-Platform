@@ -110,7 +110,7 @@ jobs:
           echo "p3278=$(probe 3278)" >> "$GITHUB_OUTPUT"
           echo "p3427=$(probe 3427)" >> "$GITHUB_OUTPUT"
 
-      - name: Verify Công Ty cleanup from previous run
+      - name: Verify Công Ty cleanup
         id: company
         shell: bash
         env:
@@ -145,14 +145,14 @@ jobs:
           echo "output=$out" >> "$GITHUB_OUTPUT"
 
       - name: Cleanup proxy VPS prerequisites without changing proxy
-        id: mcp
+        id: proxy_cleanup
         shell: bash
         env:
           KNOWN_HOSTS: ${{ steps.ssh.outputs.known_hosts }}
           PORT3000_EXTERNAL_BEFORE: ${{ steps.proxy_before.outputs.p3000 }}
         run: |
           set -euo pipefail
-          out="$RUNNER_TEMP/mcp-cleanup.out"
+          out="$RUNNER_TEMP/proxy-cleanup.out"
           ssh \
             -i "$RUNNER_TEMP/vps-mcp.key" \
             -o BatchMode=yes \
@@ -165,112 +165,134 @@ jobs:
           port3000_external_before="${1:-UNKNOWN}"
           sudo -n true
 
+          # Proxy là tài sản đang chạy: chỉ kiểm chứng, tuyệt đối không stop/restart/sửa config.
           for svc in ipv4-proxy ipv6-proxy oci-ipv6-pool; do
             test "$(systemctl is-active "$svc")" = "active"
             test "$(systemctl is-enabled "$svc")" = "enabled"
           done
-
           proxy_count_before="$(ss -lntH | awk '{n=split($4,a,":"); p=a[n]+0; if (p>=3128 && p<=3427) c++} END {print c+0}')"
           test "$proxy_count_before" = "300"
           ss -lntH | awk '{n=split($4,a,":"); if (a[n]+0==3000) found=1} END {exit found?0:1}'
 
-          public_ports="$(ss -lntH | awk '{n=split($4,a,":"); p=a[n]+0; if (p!=53) print p}' | sort -n -u)"
+          # Fail-closed nếu có listener TCP/UDP ngoài tập đã audit.
+          tcp_ports="$(ss -lntH | awk '{n=split($4,a,":"); print a[n]+0}' | sort -n -u)"
           while read -r port; do
             [ -n "$port" ] || continue
-            if [ "$port" = "22" ] || [ "$port" = "111" ] || [ "$port" = "3000" ] || { [ "$port" -ge 3128 ] && [ "$port" -le 3427 ]; }; then
+            if [ "$port" = "22" ] || [ "$port" = "53" ] || [ "$port" = "111" ] || [ "$port" = "3000" ] || { [ "$port" -ge 3128 ] && [ "$port" -le 3427 ]; }; then
               continue
             fi
             echo "Refusing firewall mutation: unexplained listening TCP port $port" >&2
             exit 31
-          done <<< "$public_ports"
+          done <<< "$tcp_ports"
 
+          udp_ports="$(ss -lnuH | awk '{n=split($5,a,":"); print a[n]+0}' | sort -n -u)"
+          while read -r port; do
+            [ -n "$port" ] || continue
+            if [ "$port" = "53" ] || [ "$port" = "111" ]; then
+              continue
+            fi
+            echo "Refusing firewall mutation: unexplained listening UDP port $port" >&2
+            exit 32
+          done <<< "$udp_ports"
+
+          # rpcbind chỉ được dọn nếu không có quan hệ với proxy/NFS.
           dep_text="$(systemctl show ipv4-proxy ipv6-proxy oci-ipv6-pool --property=Requires,Wants,After --no-pager 2>/dev/null || true)"
           if grep -Eqi 'rpcbind|nfs|sunrpc' <<< "$dep_text"; then
             echo 'Refusing rpcbind cleanup: proxy unit dependency detected' >&2
-            exit 32
+            exit 33
           fi
-
           for svc in ipv4-proxy ipv6-proxy oci-ipv6-pool; do
             fragment="$(systemctl show "$svc" -p FragmentPath --value 2>/dev/null || true)"
-            if [ -n "$fragment" ] && [ -f "$fragment" ]; then
-              if sudo -n grep -Eqi 'rpcbind|nfs|sunrpc|(^|[^0-9])111([^0-9]|$)' "$fragment"; then
-                echo "Refusing rpcbind cleanup: dependency marker in $svc unit" >&2
-                exit 33
-              fi
+            if [ -n "$fragment" ] && [ -f "$fragment" ] && sudo -n grep -Eqi 'rpcbind|nfs|sunrpc|(^|[^0-9])111([^0-9]|$)' "$fragment"; then
+              echo "Refusing rpcbind cleanup: dependency marker in $svc unit" >&2
+              exit 34
             fi
           done
-
           if findmnt -rn -t nfs,nfs4 | grep -q .; then
             echo 'Refusing rpcbind cleanup: active NFS mount detected' >&2
-            exit 34
+            exit 35
           fi
-
           reverse_deps="$(systemctl list-dependencies --reverse rpcbind.service --plain --no-pager 2>/dev/null || true)"
           if grep -Eqi 'ipv4-proxy|ipv6-proxy|oci-ipv6-pool|nfs-server' <<< "$reverse_deps"; then
             echo 'Refusing rpcbind cleanup: active reverse dependency detected' >&2
-            exit 35
+            exit 36
           fi
 
           command -v ufw >/dev/null
           test "$(sudo -n ufw status | head -n1)" = 'Status: inactive'
-          added_rules="$(sudo -n ufw show added 2>/dev/null | sed '/^[[:space:]]*$/d' || true)"
-          if [ -n "$added_rules" ]; then
-            bad_rules="$(printf '%s\n' "$added_rules" | grep -Ev "^Added user rules \(see 'ufw status' for running firewall\):$|^ufw allow (22/tcp|OpenSSH|3000/tcp|3128:3427/tcp)$" || true)"
-            if [ -n "$bad_rules" ]; then
-              echo 'Refusing UFW enable: pre-existing rules outside approved proxy set' >&2
-              exit 36
-            fi
-          fi
+          case "$port3000_external_before" in
+            OPEN|CLOSED) ;;
+            *) echo 'Unknown external state for TCP 3000' >&2; exit 37 ;;
+          esac
 
           rpcbind_was_active=no
           if [ "$(systemctl is-active rpcbind.service 2>/dev/null || true)" = "active" ]; then
             rpcbind_was_active=yes
           fi
 
+          # Từ đây mới bắt đầu mutation. Nếu bất kỳ lệnh nào lỗi, firewall được tắt lại
+          # và rpcbind được phục hồi về trạng thái trước đó. Proxy không bị chạm tới.
+          rollback() {
+            rc=$?
+            trap - ERR
+            set +e
+            sudo -n ufw disable >/dev/null 2>&1
+            if [ "$rpcbind_was_active" = "yes" ]; then
+              sudo -n systemctl enable rpcbind.socket >/dev/null 2>&1 || true
+              sudo -n systemctl start rpcbind.socket >/dev/null 2>&1 || true
+              sudo -n systemctl enable rpcbind.service >/dev/null 2>&1 || true
+              sudo -n systemctl start rpcbind.service >/dev/null 2>&1 || true
+            fi
+            echo 'Proxy VPS prerequisite mutation failed; firewall disabled and rpcbind state restored' >&2
+            exit "$rc"
+          }
+          trap rollback ERR
+
           if systemctl list-unit-files rpcbind.socket --no-legend 2>/dev/null | grep -q '^rpcbind.socket'; then
-            sudo -n systemctl disable --now rpcbind.socket || true
+            sudo -n systemctl disable --now rpcbind.socket >/dev/null 2>&1 || true
           fi
           if systemctl list-unit-files rpcbind.service --no-legend 2>/dev/null | grep -q '^rpcbind.service'; then
-            sudo -n systemctl disable --now rpcbind.service || true
+            sudo -n systemctl disable --now rpcbind.service >/dev/null 2>&1 || true
           fi
-
           test "$(systemctl is-active rpcbind.service 2>/dev/null || true)" != "active"
           if ss -lntH | awk '{n=split($4,a,":"); if (a[n]+0==111) found=1} END {exit found?0:1}'; then
             echo 'Port 111 still listening after rpcbind stop' >&2
-            exit 37
+            false
           fi
 
+          # Giữ nguyên toàn bộ rule UFW cũ. Chỉ chèn các allow thiết yếu lên đầu
+          # để SSH và proxy không thể bị rule cũ nằm phía sau chặn nhầm.
           sudo -n ufw default deny incoming >/dev/null
           sudo -n ufw default allow outgoing >/dev/null
-          sudo -n ufw allow 22/tcp >/dev/null
-          sudo -n ufw allow 3128:3427/tcp >/dev/null
+          sudo -n ufw insert 1 allow 22/tcp >/dev/null
+          sudo -n ufw insert 1 allow 3128:3427/tcp >/dev/null
           if [ "$port3000_external_before" = "OPEN" ]; then
-            sudo -n ufw allow 3000/tcp >/dev/null
-          elif [ "$port3000_external_before" != "CLOSED" ]; then
-            echo 'Unknown external state for TCP 3000' >&2
-            exit 38
+            sudo -n ufw insert 1 allow 3000/tcp >/dev/null
           fi
           sudo -n ufw --force enable >/dev/null
           test "$(sudo -n ufw status | head -n1)" = 'Status: active'
 
           for svc in ipv4-proxy ipv6-proxy oci-ipv6-pool; do
             test "$(systemctl is-active "$svc")" = "active"
+            test "$(systemctl is-enabled "$svc")" = "enabled"
           done
           proxy_count_after="$(ss -lntH | awk '{n=split($4,a,":"); p=a[n]+0; if (p>=3128 && p<=3427) c++} END {print c+0}')"
           test "$proxy_count_after" = "$proxy_count_before"
           test "$proxy_count_after" = "300"
           ss -lntH | awk '{n=split($4,a,":"); if (a[n]+0==3000) found=1} END {exit found?0:1}'
 
+          trap - ERR
           echo "proxy_listener_count_before=$proxy_count_before"
           echo "proxy_listener_count_after=$proxy_count_after"
-          echo 'proxy_services=active_enabled'
+          echo 'proxy_services=active_enabled_untouched'
           echo 'tcp_3000_listener=preserved'
           echo "tcp_3000_external_before=$port3000_external_before"
           echo "rpcbind_was_active=$rpcbind_was_active"
           echo 'rpcbind=inactive_disabled'
           echo 'tcp_111=closed'
           echo 'ufw=active'
-          echo 'ufw_allowed_tcp=22,3128-3427,3000-only-if-preexisting-public'
+          echo 'ufw_existing_rules=preserved'
+          echo 'ufw_priority_allow=22/tcp,3128-3427/tcp,3000-if-preexisting-public'
           REMOTE
           cat "$out"
           echo "output=$out" >> "$GITHUB_OUTPUT"
@@ -285,7 +307,7 @@ jobs:
           BEFORE_3128: ${{ steps.proxy_before.outputs.p3128 }}
           BEFORE_3278: ${{ steps.proxy_before.outputs.p3278 }}
           BEFORE_3427: ${{ steps.proxy_before.outputs.p3427 }}
-          RPCBIND_WAS_ACTIVE: ${{ steps.mcp.outputs.rpcbind_was_active }}
+          RPCBIND_WAS_ACTIVE: ${{ steps.proxy_cleanup.outputs.rpcbind_was_active }}
         run: |
           set -euo pipefail
           probe() {
@@ -318,10 +340,10 @@ jobs:
             rpcbind_was_active="${1:-no}"
             sudo -n ufw disable >/dev/null || true
             if [ "$rpcbind_was_active" = "yes" ]; then
-              sudo -n systemctl enable rpcbind.socket 2>/dev/null || true
-              sudo -n systemctl start rpcbind.socket 2>/dev/null || true
-              sudo -n systemctl enable rpcbind.service 2>/dev/null || true
-              sudo -n systemctl start rpcbind.service 2>/dev/null || true
+              sudo -n systemctl enable rpcbind.socket >/dev/null 2>&1 || true
+              sudo -n systemctl start rpcbind.socket >/dev/null 2>&1 || true
+              sudo -n systemctl enable rpcbind.service >/dev/null 2>&1 || true
+              sudo -n systemctl start rpcbind.service >/dev/null 2>&1 || true
             fi
             REMOTE
             echo 'Proxy reachability changed; firewall/rpcbind cleanup rolled back' >&2
@@ -349,7 +371,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           SOURCE_SHA: ${{ steps.source.outputs.sha }}
           COMPANY_OUT: ${{ steps.company.outputs.output }}
-          MCP_OUT: ${{ steps.mcp.outputs.output }}
+          PROXY_OUT: ${{ steps.proxy_cleanup.outputs.output }}
           BEFORE_3000: ${{ steps.proxy_before.outputs.p3000 }}
           BEFORE_3128: ${{ steps.proxy_before.outputs.p3128 }}
           BEFORE_3278: ${{ steps.proxy_before.outputs.p3278 }}
@@ -379,9 +401,9 @@ jobs:
             fi
             echo
             echo '### Proxy VPS'
-            if [ -n "${MCP_OUT:-}" ] && [ -f "$MCP_OUT" ]; then
+            if [ -n "${PROXY_OUT:-}" ] && [ -f "$PROXY_OUT" ]; then
               echo '```text'
-              cat "$MCP_OUT"
+              cat "$PROXY_OUT"
               echo '```'
             else
               echo '- Cleanup did not produce a completed sanitized result.'
@@ -408,5 +430,5 @@ jobs:
           set -euo pipefail
           test "${{ steps.ssh.outcome }}" = "success"
           test "${{ steps.company.outcome }}" = "success"
-          test "${{ steps.mcp.outcome }}" = "success"
+          test "${{ steps.proxy_cleanup.outcome }}" = "success"
           test "${{ steps.proxy_after.outcome }}" = "success"
