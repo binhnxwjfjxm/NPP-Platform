@@ -60,6 +60,32 @@ test("Heroku to VPS DB rehearsal locks migration heads and cannot cut over produ
   assert.doesNotMatch(workflow, /VPS_COMPANY_SSH_KEY|VPS_MCP_SSH_KEY/);
 });
 
+test("VPS parallel test setup uses only the rehearsal DB and explicit backend VPS sources", async () => {
+  const workflow = await read(".github/workflows/vps-parallel-test-runtime-setup-manual.yml");
+
+  assert.match(workflow, /\/prepare-vps-parallel-test-958/);
+  assert.match(workflow, /github\.event\.issue\.number == 5/);
+  assert.doesNotMatch(workflow, /^\s{2}(?:push|pull_request):\s*$/m);
+  assert.match(workflow, /ref: main/);
+  assert.match(workflow, /git rev-parse origin\/main/);
+  assert.match(workflow, /npp_rehearsal_958/);
+  assert.match(workflow, /npp_company_test_runtime/);
+  assert.match(workflow, /mcp_test_runtime/);
+  assert.match(workflow, /hostssl npp_rehearsal_958 npp_company_test_runtime/);
+  assert.match(workflow, /hostssl npp_rehearsal_958 mcp_test_runtime/);
+  assert.match(workflow, /ufw allow from "\$company_ip" to any port 5432/);
+  assert.match(workflow, /ufw allow from "\$mcp_ip" to any port 5432/);
+  assert.match(workflow, /DB TCP 5432 became reachable from the public runner/);
+  assert.match(workflow, /DATABASE_SSL_MODE: 'require'/);
+  assert.match(workflow, /SUPABASE_URL','SUPABASE_SERVICE_ROLE_KEY','MCP_MIGRATION_DATABASE_URL/);
+  assert.match(workflow, /company_env=installed_test_only/);
+  assert.match(workflow, /mcp_env=installed_test_only/);
+  assert.match(workflow, /proxy_services=active_enabled_untouched/);
+  assert.match(workflow, /production_traffic=not_enabled/);
+  assert.match(workflow, /cutover=not_performed/);
+  assert.doesNotMatch(workflow, /maintenance:on|maintenance:off|pg:promote/);
+});
+
 test("Công Ty VPS deploy has isolated release, health and rollback boundaries", async () => {
   const workflow = await read(".github/workflows/vps-company-backend-manual.yml");
 
