@@ -105,6 +105,9 @@ test('8.1 live queries keep canonical source, lifecycle and currency contracts e
   assert.match(purchasing, /purchasing\.goods_receipts/);
   assert.match(sales, /AT TIME ZONE '\$\{BUSINESS_TIMEZONE\}'/);
   assert.match(sales, /warehouse_id = ANY\(\$2::uuid\[\]\)/);
+  assert.match(sales, /shared\.warehouses warehouse/);
+  assert.match(sales, /warehouse\.id = ANY\(\$2::uuid\[\]\)/);
+  assert.match(sales, /scopeWarehouses: mapRows\(scopeWarehouses\.rows\)/);
   assert.match(purchasing, /warehouse_id = ANY\(\$2::uuid\[\]\)/);
   assert.match(sales, /line\.line_total::text/);
   assert.match(sales, /sov\.total::text AS version_total/);

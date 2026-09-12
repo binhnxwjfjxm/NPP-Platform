@@ -1,5 +1,5 @@
-import { ReportingDashboardWorkspace } from '../../components/reporting-dashboard-workspace';
+import { SalesReportingWorkspace } from '../../components/sales-reporting-workspace';
 
 export default function SalesReportingPage() {
-  return <ReportingDashboardWorkspace family="sales" />;
+  return <SalesReportingWorkspace />;
 }

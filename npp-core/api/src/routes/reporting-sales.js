@@ -213,7 +213,14 @@ export async function salesReport(adapter, requestContext, filters, warehouseIds
   const previous = previousPeriod(filters);
   const factParams = [requestContext.installationId, warehouseIds, filters.fromInstant, filters.toExclusiveInstant, filters.warehouseId, previous.fromInstant];
   const currentParams = [requestContext.installationId, warehouseIds, filters.fromInstant, filters.toExclusiveInstant, filters.warehouseId];
-  const [summaryResult, factResult, documentsResult] = await Promise.all([
+  const [scopeWarehouses, summaryResult, factResult, documentsResult] = await Promise.all([
+    adapter.query(`SELECT warehouse.id AS warehouse_id,
+              warehouse.code AS warehouse_code,
+              warehouse.name AS warehouse_name
+         FROM shared.warehouses warehouse
+        WHERE warehouse.installation_id = $1
+          AND warehouse.id = ANY($2::uuid[])
+        ORDER BY warehouse.code, warehouse.id`, [requestContext.installationId, warehouseIds]),
     adapter.query(`SELECT count(*)::text AS all_order_count,
               count(*) FILTER (WHERE so.status IN ('confirmed','closed'))::text AS effective_order_count,
               count(*) FILTER (WHERE so.status = 'cancelled')::text AS cancelled_order_count,
@@ -292,6 +299,7 @@ export async function salesReport(adapter, requestContext, filters, warehouseIds
   return Object.freeze({
     family: 'sales', contractVersion: '2026-08-30', generatedAt: requestContext.receivedAt, timezone: BUSINESS_TIMEZONE,
     filters: Object.freeze({ from: filters.from, to: filters.to, warehouseId: filters.warehouseId }),
+    scopeWarehouses: mapRows(scopeWarehouses.rows),
     basis: Object.freeze({ date: 'sales.sales_orders.confirmed_at', revenue: 'sum(sales.sales_order_version_lines.line_total), reconciled exactly to latest confirmed/superseded version total', quantity: 'ordered_quantity is only shown on product rows where the product identity is explicit; quantities are never aggregated across different units or unrelated products', employee: 'sales_orders.source_employee_id, otherwise creator user employee mapping; customer responsible employee is not used', historicalDimensions: 'confirmed snapshots when captured; legacy rows explicitly mark current-master fallback instead of silently rewriting history', effectiveStates: Object.freeze(['confirmed', 'closed']) }),
     comparison: Object.freeze({ current: Object.freeze({ from: filters.from, to: filters.to, dayCount: previous.dayCount }), previous: Object.freeze({ from: previous.from, to: previous.to, dayCount: previous.dayCount }) }),
     summary: Object.freeze({ ...summaryCounts, revenues, quantities, soldProductCount }), breakdowns,
