@@ -116,6 +116,41 @@ jobs:
   assert.deepEqual(errors, []);
 });
 
+test("auditor ignores npm text and heredoc bodies that are input to another command", () => {
+  const errors = auditWorkflowText("remote-deploy.yml", `
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check package contract text
+        run: |
+          test "$(cat Procfile)" = "web: npm run start:core-api"
+          node <<'NODE'
+          const expected = "npm --workspace npp-core-api run start";
+          console.log(expected);
+          NODE
+      - name: Run commands remotely
+        run: |
+          ssh host 'bash -s' <<'REMOTE'
+          cd /srv/release
+          npm ci --omit=dev
+          npm run start
+          REMOTE
+`);
+  assert.deepEqual(errors, []);
+});
+
+test("auditor still catches direct runner npm after shell operators", () => {
+  const errors = auditWorkflowText("direct-npm.yml", `
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo ready && npm ci
+`);
+  assert.ok(errors.some((error) => error.includes("npm_without_workspace_working_directory")));
+});
+
 test("auditor discovers both yml and yaml files", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "workflow-path-audit-"));
   try {

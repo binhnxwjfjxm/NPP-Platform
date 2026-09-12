@@ -70,6 +70,35 @@ function runCommands(lines) {
   return commands;
 }
 
+function stripHeredocBodies(command) {
+  const kept = [];
+  let terminator = null;
+
+  for (const line of String(command || "").split(/\r?\n/)) {
+    if (terminator) {
+      if (line.trim() === terminator) terminator = null;
+      continue;
+    }
+
+    kept.push(line);
+    const match = line.match(/<<-?\s*['"]?([A-Za-z_][A-Za-z0-9_]*)['"]?/);
+    if (match) terminator = match[1];
+  }
+
+  return kept.join("\n");
+}
+
+function hasDirectNpmCommand(command) {
+  const npmCommand = String.raw`(?:sudo(?:\s+-\S+)*\s+)?npm(?:\s|$)`;
+  return stripHeredocBodies(command)
+    .split(/\r?\n/)
+    .some((line) => {
+      const shellLine = line.trim();
+      return new RegExp(`^${npmCommand}`).test(shellLine)
+        || new RegExp(`(?:&&|\\|\\||;)\\s*${npmCommand}`).test(shellLine);
+    });
+}
+
 function pathFilterValues(text) {
   const lines = text.split(/\r?\n/);
   const values = [];
@@ -135,7 +164,7 @@ export function auditWorkflowText(filename, text) {
   for (const job of workflowJobBlocks(text)) {
     const block = job.lines.join("\n");
     const commands = runCommands(job.lines);
-    const runsNpm = commands.some((command) => /(^|\s)npm(?:\s|$)/.test(command));
+    const runsNpm = commands.some((command) => hasDirectNpmCommand(command));
     if (runsNpm && !/working-directory:\s*(?:mcp|npp-core|admin|delivery|retail)(?:\/[^\s]+)?\s*$/m.test(block)) {
       errors.push(`${filename}:${job.name}:npm_without_workspace_working_directory`);
     }
