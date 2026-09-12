@@ -136,23 +136,133 @@ jobs:
               -o ConnectionAttempts=1 \
               -o StrictHostKeyChecking=yes \
               -o UserKnownHostsFile="$KNOWN_HOSTS" \
-              "$VPS_SSH_USER@$host" 'bash -s' >"$stdout_file" 2>"$stderr_file" <<'REMOTE'
+              "$VPS_SSH_USER@$host" "bash -s -- '$slug'" >"$stdout_file" 2>"$stderr_file" <<'REMOTE'
           set -euo pipefail
+          slug="${1:-unknown}"
+
+          yn_path() {
+            if [ -e "$1" ]; then printf 'present'; else printf 'missing'; fi
+          }
+
+          yn_root_path() {
+            if sudo -n test -e "$1" 2>/dev/null; then printf 'present'; else printf 'missing_or_unreadable'; fi
+          }
+
+          svc_state() {
+            local svc="$1"
+            local active enabled
+            active="$(systemctl is-active "$svc" 2>/dev/null || true)"
+            enabled="$(systemctl is-enabled "$svc" 2>/dev/null || true)"
+            printf '%s/%s' "${active:-unknown}" "${enabled:-unknown}"
+          }
+
           printf 'hostname='; hostname
           printf 'os='; . /etc/os-release; echo "$PRETTY_NAME"
           printf 'kernel='; uname -r
           printf 'uptime='; uptime -p
           printf 'cpu_vcpu='; nproc
+          printf 'load_1_5_15='; awk '{print $1","$2","$3}' /proc/loadavg
           printf 'ram_available_mb='; awk '/MemAvailable:/ {printf "%.0f\n", $2/1024}' /proc/meminfo
           printf 'swap_total_mb='; free -m | awk '/Swap:/ {print $2}'
+          printf 'swap_used_mb='; free -m | awk '/Swap:/ {print $3}'
           printf 'disk_root_available='; df -hP / | awk 'NR==2 {print $4}'
-          printf 'failed_units='; systemctl --failed --no-legend --plain 2>/dev/null | wc -l
+          printf 'disk_root_used_percent='; df -hP / | awk 'NR==2 {print $5}'
+          printf 'failed_units_count='; systemctl --failed --no-legend --plain 2>/dev/null | wc -l
+          printf 'failed_units_names='; systemctl --failed --no-legend --plain 2>/dev/null | awk '{print $1}' | paste -sd, - || true
           printf 'tcp_listen_ports='; ss -lntH | awk '{n=split($4,a,":"); print a[n]}' | sort -n -u | paste -sd, -
-          for svc in nginx postgresql datadog-agent ipv4-proxy ipv6-proxy oci-ipv6-pool; do
-            active="$(systemctl is-active "$svc" 2>/dev/null || true)"
-            enabled="$(systemctl is-enabled "$svc" 2>/dev/null || true)"
-            printf 'service_%s=%s/%s\n' "$svc" "${active:-unknown}" "${enabled:-unknown}"
+          printf 'rpcbind='; svc_state rpcbind; echo
+
+          for svc in \
+            nginx postgresql datadog-agent \
+            ipv4-proxy ipv6-proxy oci-ipv6-pool squid \
+            ungdungthongminh \
+            bepsi-api bepsi-api-canary bepsi-ai-worker bepsi-recipe-media-cleanup \
+            tocviet-api vlgn-api viec-lam-gan-nha; do
+            printf 'service_%s=' "$svc"; svc_state "$svc"; echo
           done
+
+          printf 'node_version='; (node --version 2>/dev/null || echo missing)
+          printf 'npm_version='; (npm --version 2>/dev/null || echo missing)
+          printf 'psql_version='; (psql --version 2>/dev/null || echo missing)
+          printf 'pg_lsclusters='
+          if command -v pg_lsclusters >/dev/null 2>&1; then
+            pg_lsclusters --no-header 2>/dev/null | awk '{print $1"/"$2"/"$4"/"$5}' | paste -sd';' -
+          else
+            echo missing
+          fi
+
+          printf 'nginx_test='
+          if command -v nginx >/dev/null 2>&1; then
+            if sudo -n nginx -t >/dev/null 2>&1; then echo PASS; else echo FAIL; fi
+          else
+            echo missing
+          fi
+          printf 'nginx_enabled_sites='
+          if [ -d /etc/nginx/sites-enabled ]; then
+            find /etc/nginx/sites-enabled -maxdepth 1 -type l -printf '%f\n' 2>/dev/null | sort | paste -sd, -
+          else
+            echo missing
+          fi
+
+          printf 'custom_timers_relevant='
+          systemctl list-timers --all --no-legend --no-pager 2>/dev/null \
+            | awk '{print $NF}' \
+            | grep -E 'certbot|bepsi|npp|mcp|postgres|backup' \
+            | sort -u \
+            | paste -sd, - || true
+
+          printf 'ufw_state='
+          if command -v ufw >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+            (sudo -n ufw status 2>/dev/null | head -n1 | sed 's/^Status: //' || echo unavailable)
+          else
+            echo missing_or_unavailable
+          fi
+          printf 'iptables_input_policy='
+          if command -v iptables >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+            (sudo -n iptables -S INPUT 2>/dev/null | awk 'NR==1 {print $0}' || echo unavailable)
+          else
+            echo missing_or_unavailable
+          fi
+          printf 'iptables_input_rule_count='
+          if command -v iptables >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+            (sudo -n iptables -S INPUT 2>/dev/null | awk 'NR>1 {c++} END {print c+0}' || echo unavailable)
+          else
+            echo missing_or_unavailable
+          fi
+
+          case "$slug" in
+            db)
+              echo "path_old_db_app=$(yn_path /opt/ungdungthongminh)"
+              echo "path_preclear_backup=$(yn_root_path /root/npp-preclear-958)"
+              printf 'old_db_vhost_refs='
+              if command -v nginx >/dev/null 2>&1; then
+                refs="$(sudo -n nginx -T 2>/dev/null | { grep -E 'ungdungthongminh\.shop|127\.0\.0\.1:3900' || true; } | wc -l)"
+                echo "$refs"
+              else
+                echo 0
+              fi
+              ;;
+            company)
+              echo "path_bepsi=$(yn_path /srv/apps/bepsi)"
+              echo "path_vlgn=$(yn_path /opt/vlgn-repo)"
+              echo "path_vieclam=$(yn_path /var/www/viec-lam-gan-nha)"
+              echo "path_preclear_backup=$(yn_root_path /root/npp-preclear-958)"
+              printf 'old_company_vhost_refs='
+              if command -v nginx >/dev/null 2>&1; then
+                refs="$(sudo -n nginx -T 2>/dev/null | { grep -E 'api\.bepsi\.click|127\.0\.0\.1:5100|127\.0\.0\.1:5101|127\.0\.0\.1:5102' || true; } | wc -l)"
+                echo "$refs"
+              else
+                echo 0
+              fi
+              ;;
+            mcp)
+              echo "path_ipv4_proxy=$(yn_path /opt/ipv4-proxy)"
+              echo "path_ipv6_proxy=$(yn_path /opt/ipv6-proxy)"
+              echo "path_ipv6_pool_script=$(yn_path /usr/local/sbin/oci-ipv6-pool.sh)"
+              printf 'proxy_listener_count_3128_3427='
+              ss -lntH | awk '{n=split($4,a,":"); p=a[n]+0; if (p>=3128 && p<=3427) c++} END {print c+0}'
+              ;;
+          esac
           REMOTE
             rc=$?
             set -e
@@ -168,7 +278,7 @@ jobs:
               echo "- SSH: **FAIL** (exit ${rc})" >> "$report"
               echo >> "$report"
               echo '```text' >> "$report"
-              head -n 5 "$stderr_file" | sed -E 's#(/[^ ]*vps-[^ ]*\.key)#<ssh-key-file>#g' >> "$report"
+              head -n 8 "$stderr_file" | sed -E 's#(/[^ ]*vps-[^ ]*\.key)#<ssh-key-file>#g' >> "$report"
               echo '```' >> "$report"
             fi
             echo >> "$report"
@@ -180,6 +290,7 @@ jobs:
             echo "- Source main SHA: \`${SOURCE_SHA}\`"
             echo "- Run ID: \`${GITHUB_RUN_ID}\`"
             echo "- Operation: read-only SSH audit; no deploy/restart/migration/config mutation"
+            echo "- Secret handling: no env values, passwords, tokens, private keys, database URLs or file contents are printed."
             echo "- Host-key bootstrap: GitHub runner uses ssh-keyscan for these fixed VPS IPs; pin fingerprints in a follow-up hardening change."
             echo
           } >> "$report"
