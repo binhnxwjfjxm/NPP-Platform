@@ -1,0 +1,483 @@
+name: VPS parallel test runtime setup
+
+on:
+  workflow_dispatch:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: vps-parallel-test-runtime-958
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.number == 5 &&
+        github.event.comment.body == '/prepare-vps-parallel-test-958' &&
+        (
+          github.actor == 'binhnxwjfjxm' ||
+          github.actor == 'khuongbinhinfo-a11y'
+        )
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      VPS_DB_HOST: ${{ vars.VPS_DB_HOST }}
+      VPS_COMPANY_HOST: ${{ vars.VPS_COMPANY_HOST }}
+      VPS_MCP_HOST: ${{ vars.VPS_MCP_HOST }}
+      VPS_SSH_USER: ${{ vars.VPS_SSH_USER }}
+
+    steps:
+      - name: Validate exact issue command
+        if: github.event_name == 'issue_comment'
+        shell: bash
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          test "$COMMENT_BODY" = '/prepare-vps-parallel-test-958'
+
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact origin/main SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          test "$(git rev-parse --is-shallow-repository)" = "false"
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare runtime paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "REPORT_FILE=$RUNNER_TEMP/vps-parallel-test-958.out" >> "$GITHUB_ENV"
+          echo "CORE_CONFIG_FILE=$RUNNER_TEMP/heroku-company-config.json" >> "$GITHUB_ENV"
+          echo "MCP_CONFIG_FILE=$RUNNER_TEMP/heroku-mcp-config.json" >> "$GITHUB_ENV"
+          echo "COMPANY_DB_PASSWORD_FILE=$RUNNER_TEMP/company-db-password" >> "$GITHUB_ENV"
+          echo "MCP_DB_PASSWORD_FILE=$RUNNER_TEMP/mcp-db-password" >> "$GITHUB_ENV"
+          echo "COMPANY_ENV_FILE=$RUNNER_TEMP/company.env" >> "$GITHUB_ENV"
+          echo "MCP_ENV_FILE=$RUNNER_TEMP/mcp.env" >> "$GITHUB_ENV"
+          : > "$RUNNER_TEMP/vps-parallel-test-958.out"
+
+      - name: Prepare SSH credentials
+        id: ssh
+        shell: bash
+        env:
+          VPS_DB_SSH_KEY: ${{ secrets.VPS_DB_SSH_KEY }}
+          VPS_COMPANY_SSH_KEY: ${{ secrets.VPS_COMPANY_SSH_KEY }}
+          VPS_MCP_SSH_KEY: ${{ secrets.VPS_MCP_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$VPS_DB_HOST"
+          test -n "$VPS_COMPANY_HOST"
+          test -n "$VPS_MCP_HOST"
+          test -n "$VPS_SSH_USER"
+          test -n "$VPS_DB_SSH_KEY"
+          test -n "$VPS_COMPANY_SSH_KEY"
+          test -n "$VPS_MCP_SSH_KEY"
+
+          umask 077
+          prepare_key() {
+            local raw="$1"
+            local host="$2"
+            local key="$3"
+            local known="$4"
+            printf '%s\n' "$raw" > "$key"
+            chmod 600 "$key"
+            ssh-keygen -y -f "$key" >/dev/null
+            ssh-keyscan -T 10 -H "$host" > "$known" 2>/dev/null
+            test -s "$known"
+            chmod 600 "$known"
+          }
+
+          prepare_key "$VPS_DB_SSH_KEY" "$VPS_DB_HOST" "$RUNNER_TEMP/vps-db.key" "$RUNNER_TEMP/vps-db-known-hosts"
+          prepare_key "$VPS_COMPANY_SSH_KEY" "$VPS_COMPANY_HOST" "$RUNNER_TEMP/vps-company.key" "$RUNNER_TEMP/vps-company-known-hosts"
+          prepare_key "$VPS_MCP_SSH_KEY" "$VPS_MCP_HOST" "$RUNNER_TEMP/vps-mcp.key" "$RUNNER_TEMP/vps-mcp-known-hosts"
+
+          echo "db_key=$RUNNER_TEMP/vps-db.key" >> "$GITHUB_OUTPUT"
+          echo "db_known=$RUNNER_TEMP/vps-db-known-hosts" >> "$GITHUB_OUTPUT"
+          echo "company_key=$RUNNER_TEMP/vps-company.key" >> "$GITHUB_OUTPUT"
+          echo "company_known=$RUNNER_TEMP/vps-company-known-hosts" >> "$GITHUB_OUTPUT"
+          echo "mcp_key=$RUNNER_TEMP/vps-mcp.key" >> "$GITHUB_OUTPUT"
+          echo "mcp_known=$RUNNER_TEMP/vps-mcp-known-hosts" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve exact VPS IPv4 addresses
+        id: network
+        shell: bash
+        run: |
+          set -euo pipefail
+          resolve_ipv4() {
+            local host="$1"
+            local ip
+            ip="$(getent ahostsv4 "$host" | awk '$2 == "STREAM" {print $1; exit}')"
+            test -n "$ip"
+            python3 - "$ip" <<'PY'
+          import ipaddress, sys
+          ipaddress.IPv4Address(sys.argv[1])
+          PY
+            printf '%s' "$ip"
+          }
+
+          db_ip="$(resolve_ipv4 "$VPS_DB_HOST")"
+          company_ip="$(resolve_ipv4 "$VPS_COMPANY_HOST")"
+          mcp_ip="$(resolve_ipv4 "$VPS_MCP_HOST")"
+          test "$db_ip" != "$company_ip"
+          test "$db_ip" != "$mcp_ip"
+          test "$company_ip" != "$mcp_ip"
+          echo "db_ip=$db_ip" >> "$GITHUB_OUTPUT"
+          echo "company_ip=$company_ip" >> "$GITHUB_OUTPUT"
+          echo "mcp_ip=$mcp_ip" >> "$GITHUB_OUTPUT"
+
+      - name: Fail closed if DB is publicly reachable before setup
+        shell: bash
+        run: |
+          set -euo pipefail
+          if timeout 4 bash -c "cat < /dev/null > /dev/tcp/$VPS_DB_HOST/5432" 2>/dev/null; then
+            echo "DB TCP 5432 is publicly reachable before parallel-test setup." >&2
+            exit 1
+          fi
+
+      - name: Capture Heroku runtime config privately
+        shell: bash
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$HEROKU_API_KEY"
+          umask 077
+          curl --fail --silent --show-error \
+            -H 'Accept: application/vnd.heroku+json; version=3' \
+            -H "Authorization: Bearer $HEROKU_API_KEY" \
+            'https://api.heroku.com/apps/hung-phat/config-vars' > "$CORE_CONFIG_FILE"
+          curl --fail --silent --show-error \
+            -H 'Accept: application/vnd.heroku+json; version=3' \
+            -H "Authorization: Bearer $HEROKU_API_KEY" \
+            'https://api.heroku.com/apps/hung-phat-mcp/config-vars' > "$MCP_CONFIG_FILE"
+
+          jq -e '
+            has("DATABASE_URL") and has("INSTALLATION_ID") and has("BACKEND_API_TOKEN") and
+            has("CORE_BOOTSTRAP_ACTOR_ID") and has("CORS_ORIGINS")
+          ' "$CORE_CONFIG_FILE" >/dev/null
+          jq -e '
+            has("DATABASE_URL") and has("INSTALLATION_ID") and has("BACKEND_API_TOKEN") and
+            has("NPP_CODE") and has("MCP_LEGACY_ACTOR_ID") and has("CORS_ORIGINS") and
+            has("MCP_DB_SCHEMA") and has("MCP_DB_ROLE") and has("PERSISTENCE_PROVIDER")
+          ' "$MCP_CONFIG_FILE" >/dev/null
+
+      - name: Create test-only DB roles and narrow network access
+        shell: bash
+        env:
+          DB_KEY: ${{ steps.ssh.outputs.db_key }}
+          DB_KNOWN: ${{ steps.ssh.outputs.db_known }}
+          COMPANY_IP: ${{ steps.network.outputs.company_ip }}
+          MCP_IP: ${{ steps.network.outputs.mcp_ip }}
+        run: |
+          set -euo pipefail
+          umask 077
+          company_password="$(openssl rand -hex 24)"
+          mcp_password="$(openssl rand -hex 24)"
+          printf '%s' "$company_password" > "$COMPANY_DB_PASSWORD_FILE"
+          printf '%s' "$mcp_password" > "$MCP_DB_PASSWORD_FILE"
+          echo "::add-mask::$company_password"
+          echo "::add-mask::$mcp_password"
+
+          sql="$RUNNER_TEMP/npp958-parallel-test-roles.sql"
+          cat > "$sql" <<SQL
+          \\set ON_ERROR_STOP on
+          SELECT 'CREATE ROLE npp_company_test_runtime LOGIN' WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'npp_company_test_runtime') \\gexec
+          SELECT 'CREATE ROLE mcp_test_runtime LOGIN' WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'mcp_test_runtime') \\gexec
+          ALTER ROLE npp_company_test_runtime LOGIN PASSWORD '$company_password';
+          ALTER ROLE mcp_test_runtime LOGIN PASSWORD '$mcp_password';
+          GRANT CONNECT ON DATABASE npp_rehearsal_958 TO npp_company_test_runtime, mcp_test_runtime;
+          \\connect npp_rehearsal_958
+          DO \\$\$
+          DECLARE s text;
+          BEGIN
+            FOR s IN
+              SELECT nspname
+              FROM pg_namespace
+              WHERE nspname = ANY (ARRAY['shared','sales','purchasing','inventory','logistics','accounting','reporting'])
+            LOOP
+              EXECUTE format('GRANT USAGE ON SCHEMA %I TO npp_company_test_runtime', s);
+              EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA %I TO npp_company_test_runtime', s);
+              EXECUTE format('GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA %I TO npp_company_test_runtime', s);
+              EXECUTE format('GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA %I TO npp_company_test_runtime', s);
+            END LOOP;
+          END
+          \\$\$;
+          DO \\$\$
+          BEGIN
+            IF to_regprocedure('shared.grant_mcp_runtime_access(name)') IS NULL THEN
+              RAISE EXCEPTION 'missing_grant_mcp_runtime_access';
+            END IF;
+          END
+          \\$\$;
+          SELECT shared.grant_mcp_runtime_access('mcp_test_runtime'::name);
+          ALTER ROLE mcp_test_runtime SET search_path TO mcp, public;
+          SQL
+          chmod 600 "$sql"
+
+          scp -i "$DB_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$DB_KNOWN" \
+            "$sql" "$VPS_SSH_USER@$VPS_DB_HOST:/tmp/npp958-parallel-test-roles.sql"
+
+          ssh -i "$DB_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$DB_KNOWN" \
+            "$VPS_SSH_USER@$VPS_DB_HOST" \
+            "bash -s -- '$COMPANY_IP' '$MCP_IP'" >> "$REPORT_FILE" <<'REMOTE'
+          set -euo pipefail
+          company_ip="$1"
+          mcp_ip="$2"
+          sudo -n true
+          test "$(systemctl is-active postgresql)" = active
+          test -f /tmp/npp958-parallel-test-roles.sql
+          sudo -n chmod 600 /tmp/npp958-parallel-test-roles.sql
+          sudo -n -u postgres psql -v ON_ERROR_STOP=1 postgres -f /tmp/npp958-parallel-test-roles.sql >/dev/null
+          sudo -n rm -f /tmp/npp958-parallel-test-roles.sql
+
+          ssl_state="$(sudo -n -u postgres psql -Atqc 'show ssl')"
+          test "$ssl_state" = on
+          hba="$(sudo -n -u postgres psql -Atqc 'show hba_file')"
+          test -n "$hba"
+          temp="$(mktemp)"
+          sudo -n awk '
+            /^# BEGIN NPP958 PARALLEL TEST$/ {skip=1; next}
+            /^# END NPP958 PARALLEL TEST$/ {skip=0; next}
+            !skip {print}
+          ' "$hba" > "$temp"
+          cat >> "$temp" <<EOF
+          # BEGIN NPP958 PARALLEL TEST
+          hostssl npp_rehearsal_958 npp_company_test_runtime ${company_ip}/32 scram-sha-256
+          hostssl npp_rehearsal_958 mcp_test_runtime ${mcp_ip}/32 scram-sha-256
+          # END NPP958 PARALLEL TEST
+          EOF
+          sudo -n install -o postgres -g postgres -m 0640 "$temp" "$hba"
+          rm -f "$temp"
+
+          sudo -n -u postgres psql -v ON_ERROR_STOP=1 postgres <<'SQL'
+          ALTER SYSTEM SET listen_addresses = '*';
+          ALTER SYSTEM SET password_encryption = 'scram-sha-256';
+          SQL
+
+          sudo -n ufw default deny incoming >/dev/null
+          sudo -n ufw default allow outgoing >/dev/null
+          sudo -n ufw allow 22/tcp >/dev/null
+          sudo -n ufw allow from "$company_ip" to any port 5432 proto tcp comment 'NPP958 company test DB' >/dev/null
+          sudo -n ufw allow from "$mcp_ip" to any port 5432 proto tcp comment 'NPP958 MCP test DB' >/dev/null
+          sudo -n ufw --force enable >/dev/null
+          if sudo -n ufw status | grep -Eq '^5432(/tcp)?[[:space:]]+ALLOW([[:space:]]+IN)?[[:space:]]+Anywhere'; then
+            echo broad_public_5432_rule_detected >&2
+            exit 31
+          fi
+
+          sudo -n systemctl restart postgresql
+          test "$(systemctl is-active postgresql)" = active
+          test "$(sudo -n -u postgres psql -Atqc 'show ssl')" = on
+          test "$(sudo -n -u postgres psql -Atqc 'show listen_addresses')" = '*'
+          hba_errors="$(sudo -n -u postgres psql -Atqc 'select count(*) from pg_hba_file_rules where error is not null')"
+          test "$hba_errors" = 0
+          sudo -n -u postgres psql -Atqc "select 1 from pg_database where datname='npp_rehearsal_958'" | grep -qx 1
+
+          echo 'db_database=npp_rehearsal_958'
+          echo 'db_ssl=on'
+          echo 'db_listen=all_interfaces_firewall_restricted'
+          echo 'db_company_role=npp_company_test_runtime'
+          echo 'db_mcp_role=mcp_test_runtime'
+          echo 'db_hba_sources=company_vps,mcp_vps'
+          echo 'db_public_5432=blocked_except_explicit_vps_sources'
+          REMOTE
+
+      - name: Verify DB remains closed to public runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          if timeout 4 bash -c "cat < /dev/null > /dev/tcp/$VPS_DB_HOST/5432" 2>/dev/null; then
+            echo "DB TCP 5432 became reachable from the public runner." >&2
+            exit 1
+          fi
+          echo 'runner_public_5432=closed' >> "$REPORT_FILE"
+
+      - name: Build test-only VPS environment files
+        shell: bash
+        env:
+          DB_IP: ${{ steps.network.outputs.db_ip }}
+        run: |
+          set -euo pipefail
+          company_password="$(cat "$COMPANY_DB_PASSWORD_FILE")"
+          mcp_password="$(cat "$MCP_DB_PASSWORD_FILE")"
+          echo "::add-mask::$company_password"
+          echo "::add-mask::$mcp_password"
+
+          COMPANY_DB_PASSWORD="$company_password" MCP_DB_PASSWORD="$mcp_password" DB_IP="$DB_IP" \
+          node <<'NODE'
+          const fs = require('node:fs');
+
+          const core = JSON.parse(fs.readFileSync(process.env.CORE_CONFIG_FILE, 'utf8'));
+          const mcp = JSON.parse(fs.readFileSync(process.env.MCP_CONFIG_FILE, 'utf8'));
+
+          function envText(values) {
+            return Object.keys(values).sort().map((key) => {
+              const value = String(values[key] ?? '');
+              if (!/^[A-Z_][A-Z0-9_]*$/.test(key)) throw new Error(`invalid_env_name:${key}`);
+              if (/\r|\n/.test(value)) throw new Error(`multiline_env_value:${key}`);
+              const escaped = value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+              return `${key}="${escaped}"`;
+            }).join('\n') + '\n';
+          }
+
+          delete core.DATABASE_URL;
+          delete core.DATABASE_SSL_MODE;
+          delete core.HOST;
+          delete core.PORT;
+          Object.assign(core, {
+            NODE_ENV: 'production',
+            HOST: '127.0.0.1',
+            PORT: '3104',
+            DATABASE_URL: `postgresql://npp_company_test_runtime:${process.env.COMPANY_DB_PASSWORD}@${process.env.DB_IP}:5432/npp_rehearsal_958`,
+            DATABASE_SSL_MODE: 'require'
+          });
+
+          for (const key of ['DATABASE_URL','HOST','PORT','LEGACY_INTERNAL_PORT','SUPABASE_URL','SUPABASE_SERVICE_ROLE_KEY','MCP_MIGRATION_DATABASE_URL']) delete mcp[key];
+          Object.assign(mcp, {
+            NODE_ENV: 'production',
+            HOST: '127.0.0.1',
+            PORT: '3105',
+            LEGACY_INTERNAL_PORT: '3106',
+            PERSISTENCE_PROVIDER: 'postgresql',
+            DATABASE_URL: `postgresql://mcp_test_runtime:${process.env.MCP_DB_PASSWORD}@${process.env.DB_IP}:5432/npp_rehearsal_958`,
+            MCP_DB_SCHEMA: 'mcp',
+            MCP_DB_ROLE: 'mcp_test_runtime',
+            MCP_LEGACY_RUNTIME_ENABLED: 'false'
+          });
+
+          fs.writeFileSync(process.env.COMPANY_ENV_FILE, envText(core), { mode: 0o600 });
+          fs.writeFileSync(process.env.MCP_ENV_FILE, envText(mcp), { mode: 0o600 });
+          NODE
+
+          test -s "$COMPANY_ENV_FILE"
+          test -s "$MCP_ENV_FILE"
+          grep -q '^DATABASE_SSL_MODE="require"$' "$COMPANY_ENV_FILE"
+          grep -q '^DATABASE_URL="postgresql://npp_company_test_runtime:' "$COMPANY_ENV_FILE"
+          grep -q '^DATABASE_URL="postgresql://mcp_test_runtime:' "$MCP_ENV_FILE"
+          grep -q '^MCP_DB_ROLE="mcp_test_runtime"$' "$MCP_ENV_FILE"
+          ! grep -Eq '^(SUPABASE_URL|SUPABASE_SERVICE_ROLE_KEY|MCP_MIGRATION_DATABASE_URL)=' "$MCP_ENV_FILE"
+
+      - name: Install test runtime env on Công Ty VPS
+        shell: bash
+        env:
+          COMPANY_KEY: ${{ steps.ssh.outputs.company_key }}
+          COMPANY_KNOWN: ${{ steps.ssh.outputs.company_known }}
+        run: |
+          set -euo pipefail
+          scp -i "$COMPANY_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$COMPANY_KNOWN" \
+            "$COMPANY_ENV_FILE" "$VPS_SSH_USER@$VPS_COMPANY_HOST:/tmp/npp-company-parallel-test.env"
+          ssh -i "$COMPANY_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$COMPANY_KNOWN" \
+            "$VPS_SSH_USER@$VPS_COMPANY_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          sudo -n true
+          sudo -n install -d -m 0755 /etc/npp
+          sudo -n install -o root -g root -m 0600 /tmp/npp-company-parallel-test.env /etc/npp/company.env
+          rm -f /tmp/npp-company-parallel-test.env
+          sudo -n grep -q '^PORT="3104"$' /etc/npp/company.env
+          REMOTE
+          echo 'company_env=installed_test_only' >> "$REPORT_FILE"
+
+      - name: Install test runtime env on MCP VPS without touching proxy
+        shell: bash
+        env:
+          MCP_KEY: ${{ steps.ssh.outputs.mcp_key }}
+          MCP_KNOWN: ${{ steps.ssh.outputs.mcp_known }}
+        run: |
+          set -euo pipefail
+          scp -i "$MCP_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$MCP_KNOWN" \
+            "$MCP_ENV_FILE" "$VPS_SSH_USER@$VPS_MCP_HOST:/tmp/npp-mcp-parallel-test.env"
+          ssh -i "$MCP_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$MCP_KNOWN" \
+            "$VPS_SSH_USER@$VPS_MCP_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          sudo -n true
+          verify_proxy() {
+            for svc in ipv4-proxy ipv6-proxy oci-ipv6-pool; do
+              test "$(systemctl is-active "$svc")" = active
+              test "$(systemctl is-enabled "$svc")" = enabled
+            done
+            count="$(ss -lntH | awk '{n=split($4,a,":"); p=a[n]+0; if (p>=3128 && p<=3427) c++} END {print c+0}')"
+            test "$count" = 300
+            ss -lntH | awk '{n=split($4,a,":"); if (a[n]+0==3000) found=1} END {exit found?0:1}'
+          }
+          verify_proxy
+          sudo -n install -d -m 0755 /etc/npp
+          sudo -n install -o root -g root -m 0600 /tmp/npp-mcp-parallel-test.env /etc/npp/mcp.env
+          rm -f /tmp/npp-mcp-parallel-test.env
+          sudo -n grep -q '^PORT="3105"$' /etc/npp/mcp.env
+          verify_proxy
+          REMOTE
+          {
+            echo 'mcp_env=installed_test_only'
+            echo 'proxy_services=active_enabled_untouched'
+            echo 'proxy_listener_count=300'
+            echo 'tcp_3000_listener=preserved'
+          } >> "$REPORT_FILE"
+
+      - name: Verify DB TCP from both backend VPS hosts
+        shell: bash
+        env:
+          COMPANY_KEY: ${{ steps.ssh.outputs.company_key }}
+          COMPANY_KNOWN: ${{ steps.ssh.outputs.company_known }}
+          MCP_KEY: ${{ steps.ssh.outputs.mcp_key }}
+          MCP_KNOWN: ${{ steps.ssh.outputs.mcp_known }}
+          DB_IP: ${{ steps.network.outputs.db_ip }}
+        run: |
+          set -euo pipefail
+          for target in company mcp; do
+            if [ "$target" = company ]; then
+              key="$COMPANY_KEY"; known="$COMPANY_KNOWN"; host="$VPS_COMPANY_HOST"
+            else
+              key="$MCP_KEY"; known="$MCP_KNOWN"; host="$VPS_MCP_HOST"
+            fi
+            ssh -i "$key" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$known" \
+              "$VPS_SSH_USER@$host" "timeout 6 bash -c 'cat < /dev/null > /dev/tcp/$DB_IP/5432'"
+          done
+          echo 'company_to_db_tcp=PASS' >> "$REPORT_FILE"
+          echo 'mcp_to_db_tcp=PASS' >> "$REPORT_FILE"
+          echo 'production_traffic=not_enabled' >> "$REPORT_FILE"
+          echo 'cutover=not_performed' >> "$REPORT_FILE"
+
+      - name: Publish sanitized parallel-test setup evidence to Issue 958
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          test -f "$REPORT_FILE"
+          evidence="$(mktemp)"
+          {
+            echo '## VPS parallel backend test runtime setup'
+            echo
+            echo "- Source main SHA: \`$SOURCE_SHA\`"
+            echo "- Run ID: \`$GITHUB_RUN_ID\`"
+            echo '- Scope: rehearsal DB + test-only backend runtime env; no Vercel/Heroku production endpoint change and no cutover.'
+            echo '- No secret values are included below.'
+            echo '```text'
+            cat "$REPORT_FILE"
+            echo '```'
+          } > "$evidence"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/958/comments" \
+            -f body="$(cat "$evidence")" >/dev/null
+          rm -f "$evidence"
