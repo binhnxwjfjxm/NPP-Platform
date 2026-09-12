@@ -132,12 +132,9 @@ export default function SalesOrderForm(props: SalesOrderFormProps) {
     void apiRequest<SalesOrder>(`/api/sales-orders/${encodeURIComponent(copyFrom)}`)
       .then((source) => {
         if (disposed) return;
-        if (source.status !== 'cancelled') {
-          throw new Error('Chỉ sao chép đơn đã hủy sang đơn bán hàng mới.');
-        }
         const sourceVersion = activeVersion(source);
         if (!sourceVersion) {
-          throw new Error('Đơn đã hủy không còn dữ liệu phiên bản để sao chép.');
+          throw new Error('Đơn nguồn không còn dữ liệu phiên bản để sao chép.');
         }
         setCopyVersion(prepareSalesOrderCopyVersion(sourceVersion));
         setCopyLoading(false);
@@ -145,7 +142,7 @@ export default function SalesOrderForm(props: SalesOrderFormProps) {
       .catch((error) => {
         if (disposed) return;
         setCopyLoading(false);
-        onErrorRef.current(error instanceof Error ? error.message : 'Không nạp được đơn đã hủy để sao chép.');
+        onErrorRef.current(error instanceof Error ? error.message : 'Không nạp được đơn nguồn để sao chép.');
         onCloseRef.current();
       });
 
@@ -180,7 +177,7 @@ export default function SalesOrderForm(props: SalesOrderFormProps) {
             </div>
           </header>
           <div className={styles.orderEditorBody}>
-            <p>Đang nạp dữ liệu từ đơn đã hủy…</p>
+            <p>Đang nạp dữ liệu từ đơn nguồn…</p>
           </div>
         </section>
       </div>

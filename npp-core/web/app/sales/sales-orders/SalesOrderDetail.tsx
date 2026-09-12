@@ -5,6 +5,7 @@ import { StockHoldBreakdown } from '../../components/stock-hold-breakdown';
 import { BusinessSequenceNumber } from '../../components/business-table-sequence';
 import ManualSalesOrderSettlement from './ManualSalesOrderSettlement';
 import SalesOrderPrintSheet from './SalesOrderPrintSheet';
+import { confirmSingleStockIssue } from './sales-order-stock-issue-confirm';
 import {
   activeVersion,
   collectionLabels,
@@ -104,17 +105,15 @@ export default function SalesOrderDetail(props: Props) {
           <p>{order.customerCode} · Kho {order.warehouseName}</p>
         </div>
         <div className={styles.inlineActions}>
-          {order.status === 'cancelled' ? (
-            <a
-              href={salesOrderCopyHref(order.id)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={styles.primaryButton}
-              data-testid="sales-order-copy"
-            >
-              Sao chép đơn
-            </a>
-          ) : null}
+          <a
+            href={salesOrderCopyHref(order.id)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={styles.primaryButton}
+            data-testid="sales-order-copy"
+          >
+            Sao chép đơn
+          </a>
           {order.status === 'confirmed' && isManual && !amendment && props.canAmend ? (
             <button type="button" disabled={props.busy || hasIssued} onClick={props.onEditManual}>Sửa đơn</button>
           ) : null}
@@ -123,7 +122,9 @@ export default function SalesOrderDetail(props: Props) {
               type="button"
               className={styles.primaryButton}
               disabled={props.busy || hasIssued}
-              onClick={props.onIssueStock}
+              onClick={() => {
+                if (confirmSingleStockIssue(order.number)) props.onIssueStock();
+              }}
             >
               {hasIssued ? 'Đã xuất kho' : 'Xuất kho'}
             </button>
