@@ -136,23 +136,23 @@ jobs:
               -o StrictHostKeyChecking=yes \
               -o UserKnownHostsFile="$KNOWN_HOSTS" \
               "$VPS_SSH_USER@$host" 'bash -s' >"$stdout_file" 2>"$stderr_file" <<'REMOTE'
-set -euo pipefail
-printf 'hostname='; hostname
-printf 'os='; . /etc/os-release; echo "$PRETTY_NAME"
-printf 'kernel='; uname -r
-printf 'uptime='; uptime -p
-printf 'cpu_vcpu='; nproc
-printf 'ram_available_mb='; awk '/MemAvailable:/ {printf "%.0f\n", $2/1024}' /proc/meminfo
-printf 'swap_total_mb='; free -m | awk '/Swap:/ {print $2}'
-printf 'disk_root_available='; df -hP / | awk 'NR==2 {print $4}'
-printf 'failed_units='; systemctl --failed --no-legend --plain 2>/dev/null | wc -l
-printf 'tcp_listen_ports='; ss -lntH | awk '{n=split($4,a,":"); print a[n]}' | sort -n -u | paste -sd, -
-for svc in nginx postgresql datadog-agent ipv4-proxy ipv6-proxy oci-ipv6-pool; do
-  active="$(systemctl is-active "$svc" 2>/dev/null || true)"
-  enabled="$(systemctl is-enabled "$svc" 2>/dev/null || true)"
-  printf 'service_%s=%s/%s\n' "$svc" "${active:-unknown}" "${enabled:-unknown}"
-done
-REMOTE
+          set -euo pipefail
+          printf 'hostname='; hostname
+          printf 'os='; . /etc/os-release; echo "$PRETTY_NAME"
+          printf 'kernel='; uname -r
+          printf 'uptime='; uptime -p
+          printf 'cpu_vcpu='; nproc
+          printf 'ram_available_mb='; awk '/MemAvailable:/ {printf "%.0f\n", $2/1024}' /proc/meminfo
+          printf 'swap_total_mb='; free -m | awk '/Swap:/ {print $2}'
+          printf 'disk_root_available='; df -hP / | awk 'NR==2 {print $4}'
+          printf 'failed_units='; systemctl --failed --no-legend --plain 2>/dev/null | wc -l
+          printf 'tcp_listen_ports='; ss -lntH | awk '{n=split($4,a,":"); print a[n]}' | sort -n -u | paste -sd, -
+          for svc in nginx postgresql datadog-agent ipv4-proxy ipv6-proxy oci-ipv6-pool; do
+            active="$(systemctl is-active "$svc" 2>/dev/null || true)"
+            enabled="$(systemctl is-enabled "$svc" 2>/dev/null || true)"
+            printf 'service_%s=%s/%s\n' "$svc" "${active:-unknown}" "${enabled:-unknown}"
+          done
+          REMOTE
             rc=$?
             set -e
 
