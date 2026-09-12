@@ -15,7 +15,8 @@
     "migration:verify": "node foundation/migrations/cli.js verify",
     "cutover:validate": "node scripts/provider-cutover-preflight.js validate",
     "cutover:verify-target": "node scripts/provider-cutover-preflight.js verify-target",
-    "cutover:verify-ready": "node scripts/provider-cutover-preflight.js verify-ready"
+    "cutover:verify-ready": "node scripts/provider-cutover-preflight.js verify-ready",
+    "verify": "npm run build && npm run test"
   },
   "engines": {
     "node": ">=20"

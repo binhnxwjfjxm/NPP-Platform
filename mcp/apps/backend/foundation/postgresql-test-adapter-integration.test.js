@@ -5,10 +5,21 @@ import { createPostgresqlPersistence } from "./postgresql-adapter.js";
 import { bindProviderPersistence } from "./provider-runtime.js";
 import { supabaseRpc } from "./supabase-adapter.js";
 import { runMcpMigrations } from "./migrations/index.js";
+import { createIdempotencyKey, isValidIdempotencyKey } from "../../../../packages/contracts/index.js";
 
 const { Pool } = pg;
 const databaseUrl = process.env.TEST_DATABASE_URL;
 const installationId = "installation-test-adapter";
+const idempotencyKeys = new Map();
+
+function mutationKey(operation) {
+  if (!idempotencyKeys.has(operation)) {
+    idempotencyKeys.set(operation, createIdempotencyKey(`postgresql-test-${operation}`));
+  }
+  const key = idempotencyKeys.get(operation);
+  assert.equal(isValidIdempotencyKey(key), true);
+  return key;
+}
 
 function config() {
   return Object.freeze({
@@ -47,7 +58,7 @@ function config() {
 function context(key, requestId = `request-${key}`) {
   return {
     requestId,
-    idempotencyKey: `pgtest-${key}`,
+    idempotencyKey: mutationKey(key),
     receivedAt: "2026-09-12T17:00:00.000Z",
     installationId,
     nppCode: "MCP-TEST-ADAPTER",

@@ -187,9 +187,9 @@ async function resolveTestCustomer(client, args, context, customer, file) {
   return inserted.rows[0];
 }
 
-async function resolveTestProduct(client, item, context, file) {
+async function resolveTestProduct(client, item, context, file, foundationContext) {
   const requestedProductId = text(item?.productId ?? item?.product_id);
-  let productName = text(item?.productName ?? item?.product_name);
+  const productName = text(item?.productName ?? item?.product_name);
 
   if (requestedProductId) {
     const existingById = await client.query(
@@ -238,7 +238,7 @@ async function resolveTestProduct(client, item, context, file) {
       productName,
       Number(sort.rows?.[0]?.next_order || 0),
       text(item?.note),
-      json(context)
+      json(foundationContext || {})
     ]
   );
   return inserted.rows[0];
@@ -378,7 +378,7 @@ async function createTest(client, args, context) {
 
   let lastResult = null;
   for (const item of results) {
-    const product = await resolveTestProduct(client, item, context, file);
+    const product = await resolveTestProduct(client, item, context, file, args.p_context);
     const inserted = await client.query(
       `INSERT INTO mcp.test_customer_results (
          installation_id, file_id, customer_id, product_id, product_name,
