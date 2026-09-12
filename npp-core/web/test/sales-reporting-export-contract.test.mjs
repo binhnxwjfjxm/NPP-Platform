@@ -21,6 +21,10 @@ test('Cửa sổ xuất có Excel, CSV, chọn tất cả, bỏ chọn và cột
   assert.match(dialog, /DEFAULT_COLUMNS/);
   assert.match(dialog, /COLUMN_OPTIONS/);
   assert.match(dialog, /selectedColumns\.length === 0/);
+  assert.match(
+    dialog,
+    /products: Object\.freeze\(\['code', 'name', 'currencyCode', 'unitName', 'quantity', 'revenue'/,
+  );
 });
 
 test('Trình duyệt chỉ yêu cầu file từ server, không tự dựng CSV/XLSX từ dòng đang hiển thị', () => {
