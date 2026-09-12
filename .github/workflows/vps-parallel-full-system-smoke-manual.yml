@@ -339,6 +339,7 @@ jobs:
           port="$(read_env PORT)"; token="$(read_env BACKEND_API_TOKEN)"; origin="$(read_env CORS_ORIGINS | cut -d, -f1)"; sales_base="$(read_env CORE_SALES_API_BASE_URL)"
           test -n "$port"; test -n "$token"; test -n "$origin"; test -n "$sales_base"
           ! grep -Fqi 'herokuapp.com' <<<"$sales_base"
+          [[ "$sales_base" == https://*":3443" ]]
           base="http://127.0.0.1:$port"
           test "$(curl -sS -o /dev/null -w '%{http_code}' "$base/health/live")" = 200
           test "$(curl -sS -o /dev/null -w '%{http_code}' "$base/health/ready")" = 200
@@ -434,11 +435,7 @@ jobs:
             name="${entry%%:*}"; id="${entry##*:}"; body="$(mktemp)"
             status="$(curl -sS -o "$body" -w '%{http_code}' -H "Authorization: Bearer $VERCEL_TOKEN" "https://api.vercel.com/v9/projects/$id?teamId=$VERCEL_ORG_ID" || true)"
             test "$status" = 200
-            PROJECT_FILE="$body" EXPECTED_ID="$id" EXPECTED_NAME="$name" node --input-type=module <<'NODE'
-            import { readFileSync } from 'node:fs';
-            const payload = JSON.parse(readFileSync(process.env.PROJECT_FILE, 'utf8'));
-            if (payload.id !== process.env.EXPECTED_ID || payload.name !== process.env.EXPECTED_NAME) process.exit(1);
-            NODE
+            PROJECT_FILE="$body" EXPECTED_ID="$id" EXPECTED_NAME="$name" node -e 'const fs=require("fs"); const p=JSON.parse(fs.readFileSync(process.env.PROJECT_FILE,"utf8")); if(p.id!==process.env.EXPECTED_ID || p.name!==process.env.EXPECTED_NAME) process.exit(1)'
             rm -f "$body"
           done
           echo 'SEVEN_FRONTEND_PROJECTS=PASS' >> "$REPORT_FILE"
@@ -489,6 +486,7 @@ jobs:
           node --test test/a5-5-1-idempotency-caller-contract.test.mjs
           node --test test/production-hygiene.test.mjs
           node --test test/heroku-root-contract.test.mjs
+          node --test test/vps-parallel-private-network-contract.test.mjs
           node --test ../npp-core/api/test/phase-9-8-three-source-write-smoke.test.js
           node --test ../npp-core/web/test/data-exchange-xlsx-compatibility.test.js
           node --test ../retail/web/test/retail-runtime-contract.test.mjs

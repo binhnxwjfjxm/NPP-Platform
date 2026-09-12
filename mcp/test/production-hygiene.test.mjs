@@ -98,6 +98,13 @@ test("MCP v1 API smoke uses shared canonical idempotency keys and reuses the ret
   assert.doesNotMatch(source, /Idempotency-Key"\s*:\s*`/);
 });
 
+test("MCP v1 API smoke validates the current PostgreSQL health contract", async () => {
+  const source = await readFile(path.join(root, "scripts/smoke-mcp-v1-api.mjs"), "utf8");
+  assert.match(source, /persistenceProvider === "postgresql"/);
+  assert.match(source, /persistenceConfigured === true/);
+  assert.doesNotMatch(source, /providerConfigured/);
+});
+
 test("smoke route cleanup migration is strict and service-role-only", async () => {
   const source = await readFile(migrationPath, "utf8");
   assert.match(source, /route_name[^\n]*\^__MCP_V1_API_\(FULL\|SNAPSHOT_ONCE\)__/);
