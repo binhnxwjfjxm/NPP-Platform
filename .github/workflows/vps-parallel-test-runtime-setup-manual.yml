@@ -246,6 +246,7 @@ jobs:
           sudo -n true
           test "$(systemctl is-active postgresql)" = active
           test -f /tmp/npp958-parallel-test-roles.sql
+          sudo -n chown postgres:postgres /tmp/npp958-parallel-test-roles.sql
           sudo -n chmod 600 /tmp/npp958-parallel-test-roles.sql
           sudo -n -u postgres psql -v ON_ERROR_STOP=1 postgres -f /tmp/npp958-parallel-test-roles.sql >/dev/null
           sudo -n rm -f /tmp/npp958-parallel-test-roles.sql
