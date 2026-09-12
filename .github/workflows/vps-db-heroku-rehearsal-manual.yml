@@ -31,7 +31,6 @@ jobs:
       HEROKU_APP_NAME: hung-phat
       VPS_DB_HOST: ${{ vars.VPS_DB_HOST }}
       VPS_SSH_USER: ${{ vars.VPS_SSH_USER }}
-      REPORT_FILE: ${{ runner.temp }}/vps-db-heroku-rehearsal-958.md
 
     steps:
       - name: Validate exact issue command
@@ -65,6 +64,12 @@ jobs:
           sha="$(git rev-parse HEAD)"
           test "$sha" = "$(git rev-parse origin/main)"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare runtime paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "REPORT_FILE=$RUNNER_TEMP/vps-db-heroku-rehearsal-958.md" >> "$GITHUB_ENV"
 
       - name: Install database and Heroku clients
         shell: bash
@@ -133,15 +138,16 @@ jobs:
         run: |
           set -euo pipefail
           evidence="$(mktemp)"
+          report_file="${REPORT_FILE:-$RUNNER_TEMP/vps-db-heroku-rehearsal-958.md}"
           {
             echo "## VPS DB Heroku gate — ${REQUESTED_ACTION:-unknown} — ${OPERATION_STATUS}"
             echo
             echo "- Source main SHA: \`${SOURCE_SHA:-unknown}\`"
             echo "- Run ID: \`$GITHUB_RUN_ID\`"
             echo "- No production cutover, app deploy, endpoint change or proxy mutation is performed."
-            if [ -s "$REPORT_FILE" ]; then
+            if [ -s "$report_file" ]; then
               echo
-              cat "$REPORT_FILE"
+              cat "$report_file"
             else
               echo
               echo '```text'
