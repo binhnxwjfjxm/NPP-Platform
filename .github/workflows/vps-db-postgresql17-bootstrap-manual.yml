@@ -1,0 +1,266 @@
+name: VPS DB PostgreSQL 17 bootstrap
+
+on:
+  workflow_dispatch:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: vps-db-postgresql17-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  bootstrap:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.number == 5 &&
+        github.event.comment.body == '/bootstrap-vps-db-postgresql17' &&
+        (
+          github.actor == 'binhnxwjfjxm' ||
+          github.actor == 'khuongbinhinfo-a11y'
+        )
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      VPS_DB_HOST: ${{ vars.VPS_DB_HOST }}
+      VPS_SSH_USER: ${{ vars.VPS_SSH_USER }}
+
+    steps:
+      - name: Validate exact issue command
+        if: github.event_name == 'issue_comment'
+        shell: bash
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          test "$COMMENT_BODY" = '/bootstrap-vps-db-postgresql17'
+
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact origin/main SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          test "$(git rev-parse --is-shallow-repository)" = "false"
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare DB SSH credential
+        id: ssh
+        shell: bash
+        env:
+          VPS_DB_SSH_KEY: ${{ secrets.VPS_DB_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$VPS_DB_HOST"
+          test -n "$VPS_SSH_USER"
+          test -n "$VPS_DB_SSH_KEY"
+
+          umask 077
+          key="$RUNNER_TEMP/vps-db.key"
+          printf '%s\n' "$VPS_DB_SSH_KEY" > "$key"
+          chmod 600 "$key"
+          ssh-keygen -y -f "$key" >/dev/null
+
+          known_hosts="$RUNNER_TEMP/vps-db-known-hosts"
+          ssh-keyscan -T 10 -H "$VPS_DB_HOST" > "$known_hosts" 2>/dev/null
+          test -s "$known_hosts"
+          chmod 600 "$known_hosts"
+
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+          echo "known_hosts=$known_hosts" >> "$GITHUB_OUTPUT"
+
+      - name: Fail closed if PostgreSQL is already public
+        shell: bash
+        run: |
+          set -euo pipefail
+          if timeout 4 bash -c "cat < /dev/null > /dev/tcp/$VPS_DB_HOST/5432" 2>/dev/null; then
+            echo "TCP 5432 is already reachable from the public runner; refusing bootstrap." >&2
+            exit 1
+          fi
+
+      - name: Converge PostgreSQL 17 on DB VPS
+        id: bootstrap
+        shell: bash
+        env:
+          SSH_KEY: ${{ steps.ssh.outputs.key }}
+          KNOWN_HOSTS: ${{ steps.ssh.outputs.known_hosts }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/vps-db-postgresql17.out"
+
+          ssh \
+            -i "$SSH_KEY" \
+            -o BatchMode=yes \
+            -o ConnectTimeout=10 \
+            -o ConnectionAttempts=1 \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$KNOWN_HOSTS" \
+            "$VPS_SSH_USER@$VPS_DB_HOST" 'bash -s' >"$out" <<'REMOTE'
+          set -euo pipefail
+          sudo -n true
+
+          if command -v pg_lsclusters >/dev/null 2>&1; then
+            unexpected="$(pg_lsclusters --no-header 2>/dev/null | awk '$1 != "17" {print $1"/"$2}' | paste -sd, - || true)"
+            if [ -n "$unexpected" ]; then
+              echo "unexpected_postgresql_clusters=$unexpected" >&2
+              exit 20
+            fi
+          fi
+
+          installed_before=no
+          if command -v psql >/dev/null 2>&1 && psql --version | grep -Eq 'PostgreSQL\) 17\.'; then
+            installed_before=yes
+          fi
+
+          if [ "$installed_before" = no ]; then
+            sudo -n apt-get update -y
+            sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates curl gnupg
+            sudo -n install -d -m 0755 /usr/share/postgresql-common/pgdg
+            curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+              | sudo -n gpg --dearmor --yes -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg
+            . /etc/os-release
+            echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" \
+              | sudo -n tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+            sudo -n apt-get update -y
+            sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y postgresql-17 postgresql-client-17
+          fi
+
+          sudo -n systemctl enable postgresql >/dev/null
+          sudo -n systemctl start postgresql
+
+          cluster_line="$(pg_lsclusters --no-header 2>/dev/null | awk '$1=="17" && $2=="main" {print; exit}')"
+          test -n "$cluster_line"
+          test "$(awk '{print $4}' <<<"$cluster_line")" = online
+
+          sudo -n -u postgres psql -v ON_ERROR_STOP=1 postgres <<'SQL'
+          ALTER SYSTEM SET listen_addresses = '127.0.0.1,::1';
+          ALTER SYSTEM SET max_connections = '40';
+          ALTER SYSTEM SET shared_buffers = '128MB';
+          ALTER SYSTEM SET effective_cache_size = '384MB';
+          ALTER SYSTEM SET maintenance_work_mem = '64MB';
+          ALTER SYSTEM SET work_mem = '2MB';
+          ALTER SYSTEM SET wal_buffers = '8MB';
+          ALTER SYSTEM SET min_wal_size = '80MB';
+          ALTER SYSTEM SET max_wal_size = '512MB';
+          ALTER SYSTEM SET password_encryption = 'scram-sha-256';
+          ALTER SYSTEM SET autovacuum_max_workers = '2';
+          ALTER SYSTEM SET autovacuum_work_mem = '32MB';
+          ALTER SYSTEM SET logging_collector = 'on';
+          ALTER SYSTEM SET log_rotation_age = '1d';
+          ALTER SYSTEM SET log_rotation_size = '100MB';
+          ALTER SYSTEM SET log_truncate_on_rotation = 'on';
+          SQL
+
+          hba="$(sudo -n -u postgres psql -Atqc 'show hba_file')"
+          test -n "$hba"
+          broad_hba="$(
+            sudo -n awk '
+              /^[[:space:]]*#/ || NF == 0 {next}
+              $1 ~ /^host/ {
+                cidr=$4
+                if (cidr != "127.0.0.1/32" && cidr != "::1/128") print
+              }
+            ' "$hba"
+          )"
+          if [ -n "$broad_hba" ]; then
+            echo "broad_pg_hba_rule_detected" >&2
+            exit 21
+          fi
+
+          sudo -n systemctl restart postgresql
+
+          version="$(sudo -n -u postgres psql -Atqc 'show server_version')"
+          case "$version" in
+            17.*) ;;
+            *) echo "unexpected_postgresql_version=$version" >&2; exit 22 ;;
+          esac
+
+          listen_addresses="$(sudo -n -u postgres psql -Atqc 'show listen_addresses')"
+          test "$listen_addresses" = "127.0.0.1,::1"
+
+          listeners="$(ss -lntH | awk '$4 ~ /:5432$/ {print $4}')"
+          test -n "$listeners"
+          while IFS= read -r endpoint; do
+            case "$endpoint" in
+              127.0.0.1:5432|'[::1]':5432|::1:5432) ;;
+              *) echo "non_loopback_5432_listener=$endpoint" >&2; exit 23 ;;
+            esac
+          done <<<"$listeners"
+
+          if command -v ufw >/dev/null 2>&1; then
+            ssh_port="$(ss -lntH | awk '$4 ~ /:22$/ {found=1} END {print found?22:""}')"
+            test "$ssh_port" = 22
+            sudo -n ufw default deny incoming >/dev/null
+            sudo -n ufw default allow outgoing >/dev/null
+            sudo -n ufw allow 22/tcp >/dev/null
+            sudo -n ufw --force enable >/dev/null
+          fi
+
+          failed_units="$(systemctl --failed --no-legend --plain 2>/dev/null | wc -l)"
+          test "$failed_units" = 0
+
+          echo "installed_before=$installed_before"
+          echo "postgresql_version=$version"
+          echo "postgresql_service=$(systemctl is-active postgresql)"
+          echo "listen_addresses=$listen_addresses"
+          echo "tcp_5432_scope=loopback_only"
+          echo "ufw=$(sudo -n ufw status 2>/dev/null | head -n1 | sed 's/^Status: //' || echo unavailable)"
+          echo "failed_units=$failed_units"
+          echo "production_traffic=not_enabled"
+          REMOTE
+
+          cat "$out"
+          echo "report=$out" >> "$GITHUB_OUTPUT"
+
+      - name: Verify TCP 5432 remains closed publicly
+        shell: bash
+        run: |
+          set -euo pipefail
+          if timeout 4 bash -c "cat < /dev/null > /dev/tcp/$VPS_DB_HOST/5432" 2>/dev/null; then
+            echo "TCP 5432 became public after bootstrap." >&2
+            exit 1
+          fi
+
+      - name: Publish sanitized DB bootstrap evidence to Issue 958
+        if: always() && steps.bootstrap.outputs.report != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPORT_FILE: ${{ steps.bootstrap.outputs.report }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          evidence="$(mktemp)"
+          {
+            echo "## VPS DB PostgreSQL 17 bootstrap"
+            echo
+            echo "- Source main SHA: \`$SOURCE_SHA\`"
+            echo "- Run ID: \`$GITHUB_RUN_ID\`"
+            echo "- Scope: PostgreSQL 17 runtime only; no restore, migration, app deploy or cutover."
+            echo '```text'
+            cat "$REPORT_FILE"
+            echo '```'
+          } > "$evidence"
+          gh api \
+            --method POST \
+            "repos/$GITHUB_REPOSITORY/issues/958/comments" \
+            -f body="$(cat "$evidence")" \
+            >/dev/null
+          rm -f "$evidence"
