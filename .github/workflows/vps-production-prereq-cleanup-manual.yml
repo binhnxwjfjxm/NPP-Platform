@@ -195,6 +195,24 @@ jobs:
             fi
           fi
 
+          dhcp546_present=no
+          dhcp546_verified=no
+          if grep -qx '546' <<< "$udp_ports"; then
+            dhcp546_present=yes
+            dhcpv6_owner="$(sudo -n ss -lnupH 2>/dev/null | awk '{n=split($4,a,":"); if (a[n]+0==546) print}' || true)"
+            if grep -Eqi 'systemd-network|NetworkManager|dhclient|dhcpcd' <<< "$dhcpv6_owner" || \
+               [ "$(systemctl is-active systemd-networkd 2>/dev/null || true)" = "active" ] || \
+               [ "$(systemctl is-active NetworkManager 2>/dev/null || true)" = "active" ] || \
+               pgrep -x dhclient >/dev/null 2>&1 || \
+               pgrep -x dhcpcd >/dev/null 2>&1; then
+              dhcp546_verified=yes
+            fi
+            if [ "$dhcp546_verified" != "yes" ]; then
+              echo 'Refusing firewall mutation: UDP 546 exists but DHCPv6 client ownership is not verified' >&2
+              exit 31
+            fi
+          fi
+
           unexpected_tcp=""
           while read -r port; do
             [ -n "$port" ] || continue
@@ -207,7 +225,9 @@ jobs:
           unexpected_udp=""
           while read -r port; do
             [ -n "$port" ] || continue
-            if [ "$port" = "53" ] || [ "$port" = "111" ] || { [ "$port" = "68" ] && [ "$dhcp68_verified" = "yes" ]; }; then
+            if [ "$port" = "53" ] || [ "$port" = "111" ] || \
+               { [ "$port" = "68" ] && [ "$dhcp68_verified" = "yes" ]; } || \
+               { [ "$port" = "546" ] && [ "$dhcp546_verified" = "yes" ]; }; then
               continue
             fi
             unexpected_udp="${unexpected_udp}${unexpected_udp:+,}${port}"
@@ -257,6 +277,9 @@ jobs:
           fi
           if [ "$dhcp68_present" = "yes" ]; then
             sudo -n ufw --dry-run insert 1 allow proto udp from any port 67 to any port 68 >/dev/null
+          fi
+          if [ "$dhcp546_present" = "yes" ]; then
+            sudo -n ufw --dry-run insert 1 allow proto udp from any port 547 to any port 546 >/dev/null
           fi
 
           rpcbind_was_active=no
@@ -320,6 +343,9 @@ jobs:
           if [ "$dhcp68_present" = "yes" ]; then
             sudo -n ufw insert 1 allow proto udp from any port 67 to any port 68 >/dev/null
           fi
+          if [ "$dhcp546_present" = "yes" ]; then
+            sudo -n ufw insert 1 allow proto udp from any port 547 to any port 546 >/dev/null
+          fi
           sudo -n ufw --force enable >/dev/null
           test "$(sudo -n ufw status | head -n1)" = 'Status: active'
 
@@ -334,6 +360,9 @@ jobs:
           if [ "$dhcp68_present" = "yes" ]; then
             ss -lnuH | awk '{n=split($4,a,":"); if (a[n]+0==68) found=1} END {exit found?0:1}'
           fi
+          if [ "$dhcp546_present" = "yes" ]; then
+            ss -lnuH | awk '{n=split($4,a,":"); if (a[n]+0==546) found=1} END {exit found?0:1}'
+          fi
 
           trap - ERR
           echo "proxy_listener_count_before=$proxy_count_before"
@@ -343,12 +372,14 @@ jobs:
           echo "tcp_3000_external_before=$port3000_external_before"
           echo "dhcp_udp68_present=$dhcp68_present"
           echo "dhcp_udp68_verified=$dhcp68_verified"
+          echo "dhcpv6_udp546_present=$dhcp546_present"
+          echo "dhcpv6_udp546_verified=$dhcp546_verified"
           echo "rpcbind_was_active=$rpcbind_was_active"
           echo 'rpcbind=inactive_disabled'
           echo 'tcp_udp_111=closed'
           echo 'ufw=active'
           echo 'ufw_existing_rules=preserved'
-          echo 'ufw_priority_allow=outbound-any,22/tcp,3128-3427/tcp,3000-if-preexisting-public,dhcp67-to-68-if-present'
+          echo 'ufw_priority_allow=outbound-any,22/tcp,3128-3427/tcp,3000-if-preexisting-public,dhcp67-to-68-if-present,dhcpv6-547-to-546-if-present'
           echo "ufw_backup=$ufw_backup"
           REMOTE
           cat "$out"
