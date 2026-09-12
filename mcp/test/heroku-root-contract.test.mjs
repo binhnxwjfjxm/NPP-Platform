@@ -41,6 +41,8 @@ test("Heroku to VPS DB rehearsal locks migration heads and cannot cut over produ
   assert.doesNotMatch(workflow, /^\s{2}(?:push|pull_request):\s*$/m);
   assert.match(workflow, /ref: main/);
   assert.match(workflow, /git rev-parse origin\/main/);
+  assert.doesNotMatch(workflow, /\$\{\{\s*runner\.temp\s*\}\}/);
+  assert.match(workflow, /REPORT_FILE=\$RUNNER_TEMP\/vps-db-heroku-rehearsal-958\.md/);
   assert.match(script, /shared\.schema_migrations/);
   assert.match(script, /heroku pg:backups:capture/);
   assert.match(script, /pg_restore --exit-on-error --no-owner --no-acl/);
