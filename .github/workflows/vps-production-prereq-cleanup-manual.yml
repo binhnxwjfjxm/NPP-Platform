@@ -269,17 +269,17 @@ jobs:
           esac
 
           # Xác nhận syntax UFW trước mutation; không đổi rule ở bước này.
-          sudo -n ufw --dry-run insert 1 allow out from any to any >/dev/null
-          sudo -n ufw --dry-run insert 1 allow proto tcp from any to any port 22 >/dev/null
-          sudo -n ufw --dry-run insert 1 allow proto tcp from any to any port 3128:3427 >/dev/null
+          sudo -n ufw --dry-run prepend allow out from any to any >/dev/null
+          sudo -n ufw --dry-run prepend allow proto tcp from any to any port 22 >/dev/null
+          sudo -n ufw --dry-run prepend allow proto tcp from any to any port 3128:3427 >/dev/null
           if [ "$port3000_external_before" = "OPEN" ]; then
-            sudo -n ufw --dry-run insert 1 allow proto tcp from any to any port 3000 >/dev/null
+            sudo -n ufw --dry-run prepend allow proto tcp from any to any port 3000 >/dev/null
           fi
           if [ "$dhcp68_present" = "yes" ]; then
-            sudo -n ufw --dry-run insert 1 allow proto udp from any port 67 to any port 68 >/dev/null
+            sudo -n ufw --dry-run prepend allow proto udp from any port 67 to any port 68 >/dev/null
           fi
           if [ "$dhcp546_present" = "yes" ]; then
-            sudo -n ufw --dry-run insert 1 allow proto udp from any port 547 to any port 546 >/dev/null
+            sudo -n ufw --dry-run prepend allow proto udp from any port 547 to any port 546 >/dev/null
           fi
 
           rpcbind_was_active=no
@@ -334,17 +334,17 @@ jobs:
           # Giữ nguyên rule UFW cũ; chỉ chèn bảo vệ bắt buộc cho SSH/proxy/DHCP.
           sudo -n ufw default deny incoming >/dev/null
           sudo -n ufw default allow outgoing >/dev/null
-          sudo -n ufw insert 1 allow out from any to any >/dev/null
-          sudo -n ufw insert 1 allow proto tcp from any to any port 22 >/dev/null
-          sudo -n ufw insert 1 allow proto tcp from any to any port 3128:3427 >/dev/null
+          sudo -n ufw prepend allow out from any to any >/dev/null
+          sudo -n ufw prepend allow proto tcp from any to any port 22 >/dev/null
+          sudo -n ufw prepend allow proto tcp from any to any port 3128:3427 >/dev/null
           if [ "$port3000_external_before" = "OPEN" ]; then
-            sudo -n ufw insert 1 allow proto tcp from any to any port 3000 >/dev/null
+            sudo -n ufw prepend allow proto tcp from any to any port 3000 >/dev/null
           fi
           if [ "$dhcp68_present" = "yes" ]; then
-            sudo -n ufw insert 1 allow proto udp from any port 67 to any port 68 >/dev/null
+            sudo -n ufw prepend allow proto udp from any port 67 to any port 68 >/dev/null
           fi
           if [ "$dhcp546_present" = "yes" ]; then
-            sudo -n ufw insert 1 allow proto udp from any port 547 to any port 546 >/dev/null
+            sudo -n ufw prepend allow proto udp from any port 547 to any port 546 >/dev/null
           fi
           sudo -n ufw --force enable >/dev/null
           test "$(sudo -n ufw status | head -n1)" = 'Status: active'
