@@ -12,6 +12,7 @@ import type {
   SalesBreakdownKey,
   SalesBreakdownRow,
   SalesReportingDashboard,
+  SalesReportingTrendRow,
 } from '../../lib/sales-reporting-types';
 import styles from './sales-reporting-workspace.module.css';
 
@@ -41,6 +42,53 @@ const DIMENSIONS: readonly DimensionOption[] = Object.freeze([
   Object.freeze({ key: 'productGroups', label: 'Nhóm hàng' }),
   Object.freeze({ key: 'employees', label: 'Nhân viên bán hàng' }),
 ]);
+
+type ComparisonFilter = 'all' | SalesBreakdownRow['comparisonState'];
+
+const SAVED_VIEW_KEY = 'npp.sales-reporting.view.v1';
+
+const PERIOD_PRESETS = Object.freeze([
+  Object.freeze({ key: 'today', label: 'Hôm nay' }),
+  Object.freeze({ key: 'last7', label: '7 ngày' }),
+  Object.freeze({ key: 'thisMonth', label: 'Tháng này' }),
+  Object.freeze({ key: 'previousMonth', label: 'Tháng trước' }),
+] as const);
+
+function isBreakdownKey(value: unknown): value is SalesBreakdownKey {
+  return typeof value === 'string' && DIMENSIONS.some((item) => item.key === value);
+}
+
+function isComparisonFilter(value: unknown): value is ComparisonFilter {
+  return value === 'all' || value === 'new' || value === 'inactive' || value === 'comparable';
+}
+
+function vietnamTodayIso() {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function shiftIsoDate(iso: string, days: number) {
+  const [year, month, day] = iso.split('-').map(Number);
+  const value = new Date(Date.UTC(year, month - 1, day));
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+
+function presetRange(key: (typeof PERIOD_PRESETS)[number]['key']) {
+  const today = vietnamTodayIso();
+  if (key === 'today') return Object.freeze({ from: today, to: today });
+  if (key === 'last7') return Object.freeze({ from: shiftIsoDate(today, -6), to: today });
+  if (key === 'thisMonth') return Object.freeze({ from: `${today.slice(0, 7)}-01`, to: today });
+  const firstCurrentMonth = `${today.slice(0, 7)}-01`;
+  const previousMonthLast = shiftIsoDate(firstCurrentMonth, -1);
+  return Object.freeze({ from: `${previousMonthLast.slice(0, 7)}-01`, to: previousMonthLast });
+}
 
 function formatDecimal(value: string | null | undefined) {
   const normalized = String(value ?? '0').trim();
@@ -96,6 +144,76 @@ function previousValue(row: SalesBreakdownRow, dimension: SalesBreakdownKey) {
   return `${revenue} · ${formatDecimal(row.previousQuantity)} ${unit}`;
 }
 
+type ChartDecimal = Readonly<{ digits: bigint; scale: number }>;
+
+function parseChartDecimal(value: string | null | undefined): ChartDecimal {
+  const normalized = String(value ?? '0').trim();
+  const match = /^(-?)(\d+)(?:\.(\d+))?$/.exec(normalized);
+  if (!match) return Object.freeze({ digits: 0n, scale: 0 });
+  const fraction = match[3] ?? '';
+  const absolute = BigInt(`${match[2]}${fraction}` || '0');
+  return Object.freeze({
+    digits: match[1] === '-' ? -absolute : absolute,
+    scale: fraction.length,
+  });
+}
+
+function alignChartDecimal(value: ChartDecimal, scale: number) {
+  return value.digits * (10n ** BigInt(scale - value.scale));
+}
+
+function chartSeriesPoints(rows: readonly SalesReportingTrendRow[]) {
+  const current = rows.map((row) => parseChartDecimal(row.revenue));
+  const previous = rows.map((row) => parseChartDecimal(row.previousRevenue));
+  const all = [...current, ...previous];
+  const scale = Math.max(0, ...all.map((value) => value.scale));
+  const aligned = all.map((value) => alignChartDecimal(value, scale));
+  const minValue = aligned.reduce((minimum, value) => value < minimum ? value : minimum, aligned[0] ?? 0n);
+  const maxValue = aligned.reduce((maximum, value) => value > maximum ? value : maximum, aligned[0] ?? 0n);
+  const range = maxValue === minValue ? 1n : maxValue - minValue;
+
+  function points(values: readonly ChartDecimal[]) {
+    if (!values.length) return '';
+    return values.map((value, index) => {
+      const x = values.length === 1 ? 0n : (BigInt(index) * 1000n) / BigInt(values.length - 1);
+      const alignedValue = alignChartDecimal(value, scale);
+      const y = 10n + (((maxValue - alignedValue) * 280n) / range);
+      return `${x},${y}`;
+    }).join(' ');
+  }
+
+  return Object.freeze({
+    current: points(current),
+    previous: points(previous),
+  });
+}
+
+function TrendChart({ currencyCode, rows }: Readonly<{ currencyCode: string; rows: readonly SalesReportingTrendRow[] }>) {
+  const points = chartSeriesPoints(rows);
+  const latest = rows[rows.length - 1];
+
+  return (
+    <article className={styles.trendCard}>
+      <div className={styles.trendCardHeading}>
+        <div>
+          <strong>{currencyCode}</strong>
+          <small>{rows.length} ngày có dữ liệu</small>
+        </div>
+        <span>{latest ? formatMoney(latest.revenue, currencyCode) : '0'}</span>
+      </div>
+      <svg className={styles.trendChart} viewBox="0 0 1000 300" role="img" aria-label={`Xu hướng doanh thu ${currencyCode}`}>
+        <line x1="0" y1="299" x2="1000" y2="299" className={styles.chartAxis} />
+        <polyline points={points.previous} className={styles.chartPrevious} />
+        <polyline points={points.current} className={styles.chartCurrent} />
+      </svg>
+      <div className={styles.chartLegend}>
+        <span><i className={styles.legendCurrent} /> Kỳ này</span>
+        <span><i className={styles.legendPrevious} /> Kỳ trước</span>
+      </div>
+    </article>
+  );
+}
+
 async function requestReport(filters: Filters): Promise<SalesReportingDashboard> {
   const query = new URLSearchParams();
   if (filters.from) query.set('from', filters.from);
@@ -118,6 +236,11 @@ export function SalesReportingWorkspace() {
   const [activeDimension, setActiveDimension] = useState<SalesBreakdownKey>('customers');
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
+  const [analysisSearch, setAnalysisSearch] = useState('');
+  const [currencyFilter, setCurrencyFilter] = useState('');
+  const [comparisonFilter, setComparisonFilter] = useState<ComparisonFilter>('all');
+  const [selectedRow, setSelectedRow] = useState<SalesBreakdownRow | null>(null);
+  const [savedNotice, setSavedNotice] = useState('');
 
   const load = useCallback(async (filters: Filters, initialize = false) => {
     setBusy(true);
@@ -143,6 +266,25 @@ export function SalesReportingWorkspace() {
     void load(EMPTY_FILTERS, true);
   }, [load]);
 
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(SAVED_VIEW_KEY);
+      if (!raw) return;
+      const saved = JSON.parse(raw) as {
+        dimension?: unknown;
+        analysisSearch?: unknown;
+        currencyFilter?: unknown;
+        comparisonFilter?: unknown;
+      };
+      if (isBreakdownKey(saved.dimension)) setActiveDimension(saved.dimension);
+      if (typeof saved.analysisSearch === 'string') setAnalysisSearch(saved.analysisSearch.slice(0, 80));
+      if (typeof saved.currencyFilter === 'string') setCurrencyFilter(saved.currencyFilter.slice(0, 16));
+      if (isComparisonFilter(saved.comparisonFilter)) setComparisonFilter(saved.comparisonFilter);
+    } catch {
+      window.localStorage.removeItem(SAVED_VIEW_KEY);
+    }
+  }, []);
+
   function applyFilters(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     void load(draft);
@@ -153,6 +295,31 @@ export function SalesReportingWorkspace() {
     void load(EMPTY_FILTERS, true);
   }
 
+  function applyPreset(key: (typeof PERIOD_PRESETS)[number]['key']) {
+    const range = presetRange(key);
+    const next = Object.freeze({ ...draft, ...range });
+    setDraft(next);
+    void load(next);
+  }
+
+  function clearAnalysisFilters() {
+    setAnalysisSearch('');
+    setCurrencyFilter('');
+    setComparisonFilter('all');
+    setSelectedRow(null);
+  }
+
+  function saveView() {
+    window.localStorage.setItem(SAVED_VIEW_KEY, JSON.stringify({
+      dimension: activeDimension,
+      analysisSearch,
+      currencyFilter,
+      comparisonFilter,
+    }));
+    setSavedNotice('Đã lưu chế độ xem trên thiết bị này');
+    window.setTimeout(() => setSavedNotice(''), 2200);
+  }
+
   const selectedDimension = DIMENSIONS.find((item) => item.key === activeDimension) ?? DIMENSIONS[0];
   const rows = report?.breakdowns[activeDimension] ?? [];
   const revenueRows = report?.summary.revenues ?? [];
@@ -160,6 +327,28 @@ export function SalesReportingWorkspace() {
   const currentPeriod = report?.comparison.current;
   const previousPeriod = report?.comparison.previous;
   const warnings = report?.dataQuality.warnings ?? [];
+  const currencies = useMemo(
+    () => Array.from(new Set(rows.map((row) => row.currencyCode).filter(Boolean))).sort(),
+    [rows],
+  );
+  const filteredRows = useMemo(() => {
+    const needle = analysisSearch.trim().toLocaleLowerCase('vi');
+    return rows.filter((row) => {
+      if (currencyFilter && row.currencyCode !== currencyFilter) return false;
+      if (comparisonFilter !== 'all' && row.comparisonState !== comparisonFilter) return false;
+      if (!needle) return true;
+      return [row.code, row.name].filter(Boolean).some((value) => String(value).toLocaleLowerCase('vi').includes(needle));
+    });
+  }, [rows, analysisSearch, currencyFilter, comparisonFilter]);
+  const trendSeries = useMemo(() => {
+    const grouped = new Map<string, SalesReportingTrendRow[]>();
+    for (const row of report?.dailyTrend ?? []) {
+      const bucket = grouped.get(row.currencyCode) ?? [];
+      bucket.push(row);
+      grouped.set(row.currencyCode, bucket);
+    }
+    return Array.from(grouped.entries()).map(([currencyCode, values]) => ({ currencyCode, rows: values }));
+  }, [report?.dailyTrend]);
 
   const periodDescription = useMemo(() => {
     if (!applied.from || !applied.to) return 'Mặc định tháng hiện tại theo giờ Việt Nam';
@@ -193,6 +382,15 @@ export function SalesReportingWorkspace() {
               <h2>Thời gian và kho</h2>
             </div>
             <small>{periodDescription}</small>
+          </div>
+
+          <div className={styles.presetRow} aria-label="Chọn nhanh kỳ báo cáo">
+            {PERIOD_PRESETS.map((preset) => (
+              <button key={preset.key} type="button" onClick={() => applyPreset(preset.key)} disabled={busy}>
+                {preset.label}
+              </button>
+            ))}
+            <span>Tùy chọn: nhập ngày bên dưới</span>
           </div>
 
           <div className={styles.filterGrid}>
@@ -288,12 +486,50 @@ export function SalesReportingWorkspace() {
                 role="tab"
                 aria-selected={item.key === activeDimension}
                 className={item.key === activeDimension ? styles.activeTab : styles.tab}
-                onClick={() => setActiveDimension(item.key)}
+                onClick={() => {
+                  setActiveDimension(item.key);
+                  setCurrencyFilter('');
+                  setComparisonFilter('all');
+                  setSelectedRow(null);
+                }}
               >
                 {item.label}
               </button>
             ))}
           </div>
+
+          <div className={styles.analysisTools}>
+            <label>
+              <span>Tìm trong danh sách</span>
+              <input
+                type="search"
+                value={analysisSearch}
+                placeholder={`Mã hoặc tên ${selectedDimension.label.toLowerCase()}`}
+                onChange={(event) => setAnalysisSearch(event.target.value.slice(0, 80))}
+              />
+            </label>
+            <label>
+              <span>Tiền tệ</span>
+              <select value={currencyFilter} onChange={(event) => setCurrencyFilter(event.target.value)}>
+                <option value="">Tất cả</option>
+                {currencies.map((currency) => <option key={currency} value={currency}>{currency}</option>)}
+              </select>
+            </label>
+            <label>
+              <span>So với kỳ trước</span>
+              <select value={comparisonFilter} onChange={(event) => setComparisonFilter(event.target.value as ComparisonFilter)}>
+                <option value="all">Tất cả</option>
+                <option value="comparable">Có thể so sánh</option>
+                <option value="new">Mới trong kỳ</option>
+                <option value="inactive">Không phát sinh kỳ này</option>
+              </select>
+            </label>
+            <div className={styles.analysisToolActions}>
+              <button type="button" onClick={clearAnalysisFilters}>Xóa lọc</button>
+              <button type="button" onClick={saveView}>Lưu chế độ xem</button>
+            </div>
+          </div>
+          {savedNotice ? <div className={styles.savedNotice} role="status">{savedNotice}</div> : null}
 
           <div className={styles.analysisTableWrap}>
             <table>
@@ -306,10 +542,11 @@ export function SalesReportingWorkspace() {
                   <th>Tỷ trọng</th>
                   <th>Kỳ trước</th>
                   <th>Thay đổi</th>
+                  <th>Chi tiết</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row, rowIndex) => (
+                {filteredRows.map((row, rowIndex) => (
                   <tr key={`${activeDimension}-${row.id ?? row.code ?? row.name}-${row.currencyCode}-${row.unit?.id ?? row.unit?.code ?? ''}`}>
                     <BusinessTableSequenceCell rowIndex={rowIndex} />
                     <td>
@@ -321,14 +558,44 @@ export function SalesReportingWorkspace() {
                     <td>{formatDecimal(row.sharePercent)}%</td>
                     <td>{previousValue(row, activeDimension)}</td>
                     <td><span className={styles.changeBadge}>{rowChange(row)}</span></td>
+                    <td>
+                      <button type="button" className={styles.detailButton} onClick={() => setSelectedRow(row)}>
+                        Xem
+                      </button>
+                    </td>
                   </tr>
                 ))}
-                {!busy && rows.length === 0 ? (
-                  <tr><td colSpan={7} className={styles.empty}>Không có dữ liệu cho chiều phân tích này trong kỳ.</td></tr>
+                {!busy && filteredRows.length === 0 ? (
+                  <tr><td colSpan={8} className={styles.empty}>
+                    {rows.length ? 'Không có dòng nào khớp bộ lọc phân tích.' : 'Không có dữ liệu cho chiều phân tích này trong kỳ.'}
+                  </td></tr>
                 ) : null}
               </tbody>
             </table>
           </div>
+
+          {selectedRow ? (
+            <aside className={styles.detailPanel} aria-label={`Chi tiết ${selectedDimension.label.toLowerCase()}`}>
+              <div className={styles.detailHeading}>
+                <div>
+                  <p className={styles.eyebrow}>Chi tiết</p>
+                  <h3>{selectedRow.name}</h3>
+                  <small>{[selectedRow.code, selectedRow.currencyCode].filter(Boolean).join(' · ')}</small>
+                </div>
+                <button type="button" onClick={() => setSelectedRow(null)} aria-label="Đóng chi tiết">Đóng</button>
+              </div>
+              <dl className={styles.detailGrid}>
+                <div><dt>Doanh thu</dt><dd>{formatMoney(selectedRow.revenue, selectedRow.currencyCode)}</dd></div>
+                <div><dt>Kỳ trước</dt><dd>{formatMoney(selectedRow.previousRevenue, selectedRow.currencyCode)}</dd></div>
+                <div><dt>Thay đổi</dt><dd>{rowChange(selectedRow)}</dd></div>
+                <div><dt>Tỷ trọng</dt><dd>{formatDecimal(selectedRow.sharePercent)}%</dd></div>
+                <div><dt>Số đơn</dt><dd>{formatDecimal(selectedRow.documentCount)}</dd></div>
+                <div><dt>Số khách</dt><dd>{formatDecimal(selectedRow.customerCount)}</dd></div>
+                <div><dt>Số sản phẩm</dt><dd>{formatDecimal(selectedRow.productCount)}</dd></div>
+                <div><dt>Sản lượng</dt><dd>{formatDecimal(selectedRow.quantity)} {selectedRow.unit?.name || selectedRow.unit?.code || ''}</dd></div>
+              </dl>
+            </aside>
+          ) : null}
         </section>
 
         <section className={styles.panel} aria-labelledby="sales-trend-title">
@@ -339,6 +606,14 @@ export function SalesReportingWorkspace() {
             </div>
             <small>Giữ riêng từng loại tiền</small>
           </div>
+          {trendSeries.length ? (
+            <div className={styles.trendGrid}>
+              {trendSeries.map((series) => (
+                <TrendChart key={series.currencyCode} currencyCode={series.currencyCode} rows={series.rows} />
+              ))}
+            </div>
+          ) : null}
+
           <div className={styles.tableWrap}>
             <table>
               <thead>

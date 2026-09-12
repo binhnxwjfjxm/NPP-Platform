@@ -390,3 +390,290 @@
     height: clamp(340px, 58vh, 480px);
   }
 }
+
+
+.presetRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: -2px 0 14px;
+}
+
+.presetRow button,
+.analysisToolActions button,
+.detailButton,
+.detailHeading button {
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  background: #fff;
+  color: #0f172a;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.presetRow button {
+  min-height: 36px;
+  padding: 7px 11px;
+}
+
+.presetRow button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.presetRow span {
+  color: #64748b;
+  font-size: 0.78rem;
+}
+
+.analysisTools {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.6fr) minmax(120px, 0.7fr) minmax(180px, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 12px;
+}
+
+.analysisTools label {
+  display: grid;
+  gap: 5px;
+  color: #475569;
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.analysisTools input,
+.analysisTools select {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  padding: 7px 9px;
+  background: #fff;
+  color: #0f172a;
+  font: inherit;
+}
+
+.analysisToolActions {
+  display: flex;
+  gap: 7px;
+}
+
+.analysisToolActions button,
+.detailButton,
+.detailHeading button {
+  min-height: 38px;
+  padding: 7px 10px;
+}
+
+.savedNotice {
+  margin: -2px 0 10px;
+  border-radius: 9px;
+  padding: 8px 10px;
+  background: #ecfdf5;
+  color: #166534;
+  font-size: 0.8rem;
+  font-weight: 650;
+}
+
+.detailButton {
+  min-height: 32px;
+  padding: 4px 9px;
+}
+
+.detailPanel {
+  margin-top: 14px;
+  border: 1px solid #dbe3ec;
+  border-radius: 14px;
+  padding: 14px;
+  background: #f8fafc;
+}
+
+.detailHeading {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.detailHeading h3 {
+  margin: 2px 0 2px;
+  font-size: 1rem;
+}
+
+.detailHeading small {
+  color: #64748b;
+}
+
+.detailGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.detailGrid div {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 10px;
+  background: #fff;
+}
+
+.detailGrid dt {
+  color: #64748b;
+  font-size: 0.75rem;
+}
+
+.detailGrid dd {
+  margin: 4px 0 0;
+  color: #0f172a;
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.trendGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.trendCard {
+  min-width: 0;
+  border: 1px solid #e2e8f0;
+  border-radius: 13px;
+  padding: 12px;
+  background: #fff;
+}
+
+.trendCardHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.trendCardHeading > div {
+  display: grid;
+  gap: 2px;
+}
+
+.trendCardHeading strong {
+  color: #0f172a;
+}
+
+.trendCardHeading small {
+  color: #64748b;
+  font-size: 0.75rem;
+}
+
+.trendCardHeading > span {
+  color: #334155;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.trendChart {
+  display: block;
+  width: 100%;
+  height: 118px;
+  margin-top: 8px;
+  overflow: visible;
+}
+
+.chartAxis {
+  stroke: #e2e8f0;
+  stroke-width: 1;
+}
+
+.chartCurrent,
+.chartPrevious {
+  fill: none;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.chartCurrent {
+  stroke: #0f172a;
+}
+
+.chartPrevious {
+  stroke: #94a3b8;
+  stroke-dasharray: 5 5;
+}
+
+.chartLegend {
+  display: flex;
+  gap: 12px;
+  color: #64748b;
+  font-size: 0.74rem;
+}
+
+.chartLegend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.chartLegend i {
+  display: inline-block;
+  width: 16px;
+  height: 3px;
+  border-radius: 999px;
+}
+
+.legendCurrent {
+  background: #0f172a;
+}
+
+.legendPrevious {
+  background: #94a3b8;
+}
+
+@media (max-width: 1000px) {
+  .analysisTools {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .detailGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .presetRow {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding-bottom: 4px;
+  }
+
+  .presetRow button,
+  .presetRow span {
+    flex: 0 0 auto;
+  }
+
+  .analysisTools {
+    grid-template-columns: 1fr;
+  }
+
+  .analysisToolActions button {
+    flex: 1;
+  }
+
+  .detailHeading {
+    display: grid;
+  }
+
+  .detailGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .trendGrid {
+    grid-template-columns: 1fr;
+  }
+}
