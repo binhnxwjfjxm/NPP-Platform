@@ -39,7 +39,7 @@ test('Bộ lọc Sales gửi kỳ và kho, chỉ hiện kho trong scope backend'
   assert.match(workspace, /Tất cả kho được cấp quyền/);
 });
 
-test('Nền Báo cáo bán hàng giữ so kỳ, tỷ trọng, đối soát, cảnh báo và chưa mở preset kỳ', () => {
+test('Nền Báo cáo bán hàng giữ so kỳ, tỷ trọng, đối soát và cảnh báo', () => {
   const workspace = read('app/components/sales-reporting-workspace.tsx');
   assert.match(workspace, /previousRevenue/);
   assert.match(workspace, /sharePercent/);
@@ -48,7 +48,6 @@ test('Nền Báo cáo bán hàng giữ so kỳ, tỷ trọng, đối soát, cả
   assert.match(workspace, /Xu hướng theo ngày/);
   assert.match(workspace, /Doanh thu kỳ trước/);
   assert.doesNotMatch(workspace, /Ngày tương ứng kỳ trước/);
-  assert.doesNotMatch(workspace, /Hôm nay|7 ngày|Tháng trước/);
 });
 
 test('Đổi chiều phân tích giữ vùng bảng ổn định, không điều hướng hoặc remount trang', () => {
@@ -59,4 +58,39 @@ test('Đổi chiều phân tích giữ vùng bảng ổn định, không điều
   assert.match(styles, /\.analysisTableWrap[\s\S]*height: clamp\(/);
   assert.match(workspace, /BusinessTableSequenceHeader/);
   assert.match(workspace, /BusinessTableSequenceCell/);
+});
+
+
+test('Lô 3 có preset kỳ, biểu đồ xu hướng, chi tiết và bộ lọc phân tích nâng cao', () => {
+  const workspace = read('app/components/sales-reporting-workspace.tsx');
+  for (const label of ['Hôm nay', '7 ngày', 'Tháng này', 'Tháng trước']) {
+    assert.match(workspace, new RegExp(label));
+  }
+  assert.match(workspace, /vietnamTodayIso/);
+  assert.match(workspace, /TrendChart/);
+  assert.match(workspace, /<svg/);
+  assert.match(workspace, /analysisSearch/);
+  assert.match(workspace, /currencyFilter/);
+  assert.match(workspace, /comparisonFilter/);
+  assert.match(workspace, /selectedRow/);
+  assert.match(workspace, /Xem/);
+  assert.match(workspace, /Chi tiết/);
+});
+
+test('Lô 3 lưu chế độ xem phía trình duyệt, không thêm API hoặc persistence server', () => {
+  const workspace = read('app/components/sales-reporting-workspace.tsx');
+  assert.match(workspace, /SAVED_VIEW_KEY/);
+  assert.match(workspace, /window\.localStorage\.getItem/);
+  assert.match(workspace, /window\.localStorage\.setItem/);
+  assert.match(workspace, /Lưu chế độ xem/);
+  assert.doesNotMatch(workspace, /fetch\([^)]*saved|\/api\/reporting\/sales\/view/);
+});
+
+test('Lô 3 giữ UX responsive cho công cụ phân tích, chi tiết và biểu đồ', () => {
+  const styles = read('app/components/sales-reporting-workspace.module.css');
+  assert.match(styles, /\.analysisTools/);
+  assert.match(styles, /\.detailGrid/);
+  assert.match(styles, /\.trendGrid/);
+  assert.match(styles, /@media \(max-width: 640px\)[\s\S]*\.analysisTools/);
+  assert.match(styles, /\.trendChart/);
 });
