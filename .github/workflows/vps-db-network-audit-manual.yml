@@ -1,0 +1,255 @@
+name: VPS DB network read-only audit
+
+on:
+  workflow_dispatch:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: vps-db-network-readonly-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.number == 5 &&
+        github.event.comment.body == '/audit-vps-db-network-958' &&
+        (
+          github.actor == 'binhnxwjfjxm' ||
+          github.actor == 'khuongbinhinfo-a11y'
+        )
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VPS_DB_HOST: ${{ vars.VPS_DB_HOST }}
+      VPS_COMPANY_HOST: ${{ vars.VPS_COMPANY_HOST }}
+      VPS_MCP_HOST: ${{ vars.VPS_MCP_HOST }}
+      VPS_SSH_USER: ${{ vars.VPS_SSH_USER }}
+
+    steps:
+      - name: Validate exact issue command
+        if: github.event_name == 'issue_comment'
+        shell: bash
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          test "$COMMENT_BODY" = '/audit-vps-db-network-958'
+
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact origin/main SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          test "$(git rev-parse --is-shallow-repository)" = "false"
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare SSH credentials
+        id: ssh
+        shell: bash
+        env:
+          VPS_DB_SSH_KEY: ${{ secrets.VPS_DB_SSH_KEY }}
+          VPS_COMPANY_SSH_KEY: ${{ secrets.VPS_COMPANY_SSH_KEY }}
+          VPS_MCP_SSH_KEY: ${{ secrets.VPS_MCP_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$VPS_DB_HOST"
+          test -n "$VPS_COMPANY_HOST"
+          test -n "$VPS_MCP_HOST"
+          test -n "$VPS_SSH_USER"
+          test -n "$VPS_DB_SSH_KEY"
+          test -n "$VPS_COMPANY_SSH_KEY"
+          test -n "$VPS_MCP_SSH_KEY"
+
+          umask 077
+          for item in db company mcp; do
+            case "$item" in
+              db) raw="$VPS_DB_SSH_KEY"; host="$VPS_DB_HOST" ;;
+              company) raw="$VPS_COMPANY_SSH_KEY"; host="$VPS_COMPANY_HOST" ;;
+              mcp) raw="$VPS_MCP_SSH_KEY"; host="$VPS_MCP_HOST" ;;
+            esac
+            key="$RUNNER_TEMP/vps-${item}.key"
+            known="$RUNNER_TEMP/vps-${item}-known-hosts"
+            printf '%s\n' "$raw" > "$key"
+            chmod 600 "$key"
+            ssh-keygen -y -f "$key" >/dev/null
+            ssh-keyscan -T 10 -H "$host" > "$known" 2>/dev/null
+            test -s "$known"
+            chmod 600 "$known"
+          done
+
+      - name: Collect DB listener and firewall state
+        shell: bash
+        env:
+          REPORT_FILE: ${{ runner.temp }}/vps-db-network-958.md
+        run: |
+          set -euo pipefail
+          : > "$REPORT_FILE"
+          {
+            echo '## VPS DB network read-only audit'
+            echo
+            echo "- Source main SHA: `${{ steps.source.outputs.sha }}`"
+            echo "- Run ID: `$GITHUB_RUN_ID`"
+            echo '- Operation: read-only route/firewall/listener/packet audit; no config mutation.'
+            echo '- Production traffic: unchanged.'
+            echo
+            echo '### DB VPS state'
+            echo '```text'
+          } >> "$REPORT_FILE"
+
+          ssh -i "$RUNNER_TEMP/vps-db.key" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$RUNNER_TEMP/vps-db-known-hosts" \
+            "$VPS_SSH_USER@$VPS_DB_HOST" 'bash -s' >> "$REPORT_FILE" <<'REMOTE'
+          set -euo pipefail
+          echo "hostname=$(hostname)"
+          echo "postgresql_active=$(systemctl is-active postgresql 2>/dev/null || true)"
+          echo "listen_addresses=$(sudo -n -u postgres psql -Atqc 'show listen_addresses')"
+          echo "ssl=$(sudo -n -u postgres psql -Atqc 'show ssl')"
+          echo 'tcp_5432_listeners:'
+          ss -lntH | awk '$4 ~ /:5432$/ {print $4}'
+          echo 'route_company:'
+          ip -4 route get 40.233.83.234 2>/dev/null | head -n1 || true
+          echo 'route_mcp:'
+          ip -4 route get 68.233.111.135 2>/dev/null | head -n1 || true
+          echo 'ufw_5432:'
+          sudo -n ufw status numbered 2>/dev/null | grep -E '5432|Status:' || true
+          echo 'iptables_input_5432:'
+          sudo -n iptables -S INPUT 2>/dev/null | grep -E '5432|^-P INPUT' || true
+          echo 'hba_parallel_test:'
+          sudo -n -u postgres psql -Atqc "select type||'|'||database||'|'||user_name||'|'||address||'|'||auth_method||'|'||coalesce(error,'') from pg_hba_file_rules where database::text like '%npp_rehearsal_958%' or user_name::text like '%test_runtime%' order by line_number" 2>/dev/null || true
+          echo "tcpdump_available=$(command -v tcpdump >/dev/null 2>&1 && echo yes || echo no)"
+          REMOTE
+          echo '```' >> "$REPORT_FILE"
+
+      - name: Probe Công Ty VPS to DB while capturing DB packets
+        shell: bash
+        env:
+          REPORT_FILE: ${{ runner.temp }}/vps-db-network-958.md
+        run: |
+          set -euo pipefail
+          capture="$RUNNER_TEMP/company-db-5432.capture"
+          probe="$RUNNER_TEMP/company-db-5432.probe"
+          : > "$capture"
+          : > "$probe"
+
+          set +e
+          ssh -i "$RUNNER_TEMP/vps-db.key" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$RUNNER_TEMP/vps-db-known-hosts" \
+            "$VPS_SSH_USER@$VPS_DB_HOST" \
+            "if command -v tcpdump >/dev/null 2>&1; then sudo -n timeout 10 tcpdump -nn -i any 'tcp dst port 5432' -c 8 2>/dev/null; else echo tcpdump_missing; fi" > "$capture" 2>&1 &
+          capture_pid=$!
+          set -e
+          sleep 1
+
+          set +e
+          ssh -i "$RUNNER_TEMP/vps-company.key" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$RUNNER_TEMP/vps-company-known-hosts" \
+            "$VPS_SSH_USER@$VPS_COMPANY_HOST" "bash -s -- '$VPS_DB_HOST'" > "$probe" 2>&1 <<'REMOTE'
+          set -u
+          db="$1"
+          echo "hostname=$(hostname)"
+          echo 'route_to_db:'
+          ip -4 route get "$db" 2>/dev/null | head -n1 || true
+          echo 'tcp_probe:'
+          timeout 6 bash -c "cat < /dev/null > /dev/tcp/$db/5432"
+          rc=$?
+          echo "tcp_probe_rc=$rc"
+          exit 0
+          REMOTE
+          probe_ssh_rc=$?
+          wait "$capture_pid"
+          capture_rc=$?
+          set -e
+
+          {
+            echo
+            echo '### Công Ty VPS → DB VPS'
+            echo '```text'
+            cat "$probe"
+            echo "probe_ssh_rc=$probe_ssh_rc"
+            echo 'db_packet_capture:'
+            cat "$capture"
+            echo "capture_rc=$capture_rc"
+            echo '```'
+          } >> "$REPORT_FILE"
+
+      - name: Probe MCP VPS to DB while capturing DB packets
+        shell: bash
+        env:
+          REPORT_FILE: ${{ runner.temp }}/vps-db-network-958.md
+        run: |
+          set -euo pipefail
+          capture="$RUNNER_TEMP/mcp-db-5432.capture"
+          probe="$RUNNER_TEMP/mcp-db-5432.probe"
+          : > "$capture"
+          : > "$probe"
+
+          set +e
+          ssh -i "$RUNNER_TEMP/vps-db.key" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$RUNNER_TEMP/vps-db-known-hosts" \
+            "$VPS_SSH_USER@$VPS_DB_HOST" \
+            "if command -v tcpdump >/dev/null 2>&1; then sudo -n timeout 10 tcpdump -nn -i any 'tcp dst port 5432' -c 8 2>/dev/null; else echo tcpdump_missing; fi" > "$capture" 2>&1 &
+          capture_pid=$!
+          set -e
+          sleep 1
+
+          set +e
+          ssh -i "$RUNNER_TEMP/vps-mcp.key" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$RUNNER_TEMP/vps-mcp-known-hosts" \
+            "$VPS_SSH_USER@$VPS_MCP_HOST" "bash -s -- '$VPS_DB_HOST'" > "$probe" 2>&1 <<'REMOTE'
+          set -u
+          db="$1"
+          echo "hostname=$(hostname)"
+          echo 'route_to_db:'
+          ip -4 route get "$db" 2>/dev/null | head -n1 || true
+          echo 'tcp_probe:'
+          timeout 6 bash -c "cat < /dev/null > /dev/tcp/$db/5432"
+          rc=$?
+          echo "tcp_probe_rc=$rc"
+          exit 0
+          REMOTE
+          probe_ssh_rc=$?
+          wait "$capture_pid"
+          capture_rc=$?
+          set -e
+
+          {
+            echo
+            echo '### MCP VPS → DB VPS'
+            echo '```text'
+            cat "$probe"
+            echo "probe_ssh_rc=$probe_ssh_rc"
+            echo 'db_packet_capture:'
+            cat "$capture"
+            echo "capture_rc=$capture_rc"
+            echo '```'
+            echo
+            echo 'production_traffic=not_enabled'
+            echo 'cutover=not_performed'
+          } >> "$REPORT_FILE"
+
+      - name: Publish sanitized evidence to Issue 958
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPORT_FILE: ${{ runner.temp }}/vps-db-network-958.md
+        run: |
+          set -euo pipefail
+          test -s "$REPORT_FILE"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/958/comments" \
+            -f body="$(cat "$REPORT_FILE")" >/dev/null
