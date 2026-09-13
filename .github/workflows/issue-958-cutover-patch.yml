@@ -1,0 +1,72 @@
+name: Issue 958 cutover source patch
+
+on:
+  push:
+    branches:
+      - agent/cutover-vps-runtime-958
+    paths:
+      - .github/workflows/issue-958-cutover-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/cutover-vps-runtime-958
+          fetch-depth: 0
+
+      - name: Replace legacy Heroku Công Ty URL with canonical repository variable
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          files = [
+              Path('.github/workflows/resume-delivery-production-only.yml'),
+              Path('.github/workflows/admin-ai-production-config-manual.yml'),
+              Path('.github/workflows/ordering-ai-production-config-manual.yml'),
+              Path('.github/workflows/resume-production-rollout-admin-delivery.yml'),
+              Path('.github/workflows/website-ai-production-config-manual.yml'),
+          ]
+          old = 'https://hung-phat-945da1547594.herokuapp.com'
+          new = '$' + '{{ vars.COMPANY_API_URL }}'
+
+          for path in files:
+              text = path.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected exactly one legacy URL, found {count}')
+              path.write_text(text.replace(old, new))
+
+          for path in files:
+              text = path.read_text()
+              if old in text:
+                  raise SystemExit(f'{path}: legacy URL still present')
+              if new not in text:
+                  raise SystemExit(f'{path}: canonical variable missing')
+
+          Path('.github/workflows/issue-958-cutover-patch.yml').unlink()
+          PY
+
+      - name: Commit one cutover source change
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            .github/workflows/resume-delivery-production-only.yml \
+            .github/workflows/admin-ai-production-config-manual.yml \
+            .github/workflows/ordering-ai-production-config-manual.yml \
+            .github/workflows/resume-production-rollout-admin-delivery.yml \
+            .github/workflows/website-ai-production-config-manual.yml \
+            .github/workflows/issue-958-cutover-patch.yml
+          git diff --cached --check
+          git commit -m 'fix(ops): bỏ URL Heroku khỏi dây production Issue 958'
+          git push origin HEAD:agent/cutover-vps-runtime-958
