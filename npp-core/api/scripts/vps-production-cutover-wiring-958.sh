@@ -93,18 +93,29 @@ assert_status() {
   echo "unexpected_status url=$url status=${code:-none}" >&2
   return 1
 }
+assert_html_status() {
+  local url="$1"; shift
+  local deadline=$((SECONDS+180)) code=""
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    code="$(curl --silent --show-error --location --header 'Accept: text/html' --connect-timeout 5 --max-time 20 --output /dev/null --write-out '%{http_code}' "$url" || true)"
+    for x in "$@"; do [ "$code" = "$x" ] && return 0; done
+    sleep 5
+  done
+  echo "unexpected_html_status url=$url status=${code:-none}" >&2
+  return 1
+}
 assert_status "$company_api_url/health/live" 200
 assert_status "$company_api_url/health/ready" 200
 assert_status "$company_api_url/api/customers" 401
 assert_status "$mcp_api_url/health/live" 200
 assert_status "$mcp_api_url/health/ready" 200
-assert_status 'https://office.nguyenlieuhungphat.com/login' 200
-assert_status 'https://admin.nguyenlieuhungphat.com/' 200 302 307 401
-assert_status 'https://log.nguyenlieuhungphat.com/login' 200
-assert_status 'https://retail.nguyenlieuhungphat.com/' 200
-assert_status 'https://mcp.nguyenlieuhungphat.com/' 200 302 307 401
-assert_status 'https://sales.nguyenlieuhungphat.com/' 200 302 307 401
-assert_status 'https://nguyenlieuhungphat.com/' 200
+assert_html_status 'https://office.nguyenlieuhungphat.com/login' 200
+assert_html_status 'https://admin.nguyenlieuhungphat.com/' 200 302 307 401
+assert_html_status 'https://log.nguyenlieuhungphat.com/login' 200
+assert_html_status 'https://retail.nguyenlieuhungphat.com/' 200
+assert_html_status 'https://mcp.nguyenlieuhungphat.com/' 200 302 307 401
+assert_html_status 'https://sales.nguyenlieuhungphat.com/' 200 302 307 401
+assert_html_status 'https://nguyenlieuhungphat.com/' 200
 
 # Gate F: prove authority after cutover. Heroku stays available for recovery but has no web writers.
 test "$(formation_quantity "$HEROKU_COMPANY_APP")" = 0
