@@ -156,7 +156,7 @@ FROM (
 
   UNION ALL
 
-  SELECT 'schema_count|' || n.nspname || '|' || c.relkind || '|' || count(*)::text
+  SELECT 'schema_count|' || n.nspname || '|' || c.relkind::text || '|' || count(*)::text
   FROM pg_class c
   JOIN pg_namespace n ON n.oid = c.relnamespace
   WHERE n.nspname = ANY (ARRAY['public','shared','mcp','sales','purchasing','inventory','logistics','accounting','reporting'])
@@ -172,7 +172,7 @@ FROM (
   SELECT
     'column|' || quote_ident(n.nspname) || '.' || quote_ident(c.relname) || '|' || a.attnum::text || '|' ||
     quote_ident(a.attname) || '|' || format_type(a.atttypid, a.atttypmod) || '|' || a.attnotnull::text || '|' ||
-    coalesce(nullif(a.attidentity, ''), 'none') || '|' || coalesce(nullif(a.attgenerated, ''), 'none') || '|' ||
+    coalesce(nullif(a.attidentity::text, ''), 'none') || '|' || coalesce(nullif(a.attgenerated::text, ''), 'none') || '|' ||
     md5(coalesce(pg_get_expr(d.adbin, d.adrelid), 'none'))
   FROM pg_attribute a
   JOIN pg_class c ON c.oid = a.attrelid
@@ -191,7 +191,7 @@ FROM (
 
   SELECT
     'constraint|' || quote_ident(n.nspname) || '.' || quote_ident(t.relname) || '|' || quote_ident(c.conname) || '|' ||
-    c.contype || '|' || c.convalidated::text || '|' || md5(pg_get_constraintdef(c.oid, true))
+    c.contype::text || '|' || c.convalidated::text || '|' || md5(pg_get_constraintdef(c.oid, true))
   FROM pg_constraint c
   JOIN pg_class t ON t.oid = c.conrelid
   JOIN pg_namespace n ON n.oid = t.relnamespace
@@ -219,7 +219,7 @@ FROM (
   UNION ALL
 
   SELECT
-    'view|' || quote_ident(n.nspname) || '.' || quote_ident(c.relname) || '|' || c.relkind || '|' || md5(pg_get_viewdef(c.oid, true))
+    'view|' || quote_ident(n.nspname) || '.' || quote_ident(c.relname) || '|' || c.relkind::text || '|' || md5(pg_get_viewdef(c.oid, true))
   FROM pg_class c
   JOIN pg_namespace n ON n.oid = c.relnamespace
   WHERE n.nspname = ANY (ARRAY['public','shared','mcp','sales','purchasing','inventory','logistics','accounting','reporting'])
@@ -276,7 +276,7 @@ FROM (
 
   SELECT
     'policy|' || quote_ident(n.nspname) || '.' || quote_ident(c.relname) || '|' || quote_ident(p.polname) || '|' ||
-    p.polpermissive::text || '|' || p.polcmd || '|' ||
+    p.polpermissive::text || '|' || p.polcmd::text || '|' ||
     md5(coalesce((
       SELECT string_agg(CASE WHEN role_oid = 0 THEN 'public' ELSE pg_get_userbyid(role_oid) END, ',' ORDER BY role_oid)
       FROM unnest(p.polroles) AS roles(role_oid)
@@ -314,7 +314,7 @@ FROM (
 
   SELECT
     'database|encoding|' || pg_encoding_to_char(d.encoding) || '|collate|' || d.datcollate || '|ctype|' || d.datctype ||
-    '|locale_provider|' || d.datlocprovider
+    '|locale_provider|' || d.datlocprovider::text
   FROM pg_database d
   WHERE d.datname = current_database()
 
