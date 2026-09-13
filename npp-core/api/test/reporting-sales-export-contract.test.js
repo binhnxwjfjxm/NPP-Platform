@@ -8,7 +8,7 @@ import {
 
 const readApi = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
-test('Sales export chỉ nhận 6 chiều canonical, XLSX/CSV và whitelist cột theo chiều', () => {
+test('Sales export giữ 6 chiều canonical, thêm ma trận phân loại và whitelist cột theo chiều', () => {
   const valid = normalizeSalesReportingExportSelection({
     dimension: 'products',
     format: 'csv',
@@ -32,8 +32,15 @@ test('Sales export chỉ nhận 6 chiều canonical, XLSX/CSV và whitelist cộ
   assert.equal(invalidColumn.code, 'INVALID_SALES_EXPORT_COLUMNS');
 
   assert.deepEqual(Object.keys(salesReportingExportInternals.DIMENSIONS), [
-    'customers', 'customerGroups', 'channels', 'products', 'productGroups', 'employees',
+    'customers', 'customerGroups', 'channels', 'products', 'productGroups', 'productCustomerMatrix', 'employees',
   ]);
+  const matrixSelection = normalizeSalesReportingExportSelection({
+    dimension: 'productCustomerMatrix',
+    format: 'xlsx',
+    columns: [],
+  });
+  assert.equal(matrixSelection.ok, true);
+  assert.equal(matrixSelection.dynamicColumns, true);
   assert.deepEqual(
     salesReportingExportInternals.flattenRow({ unit: { code: 'THUNG', name: 'Thùng' } }),
     {
