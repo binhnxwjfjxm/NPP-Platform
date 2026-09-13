@@ -119,6 +119,10 @@ FROM (
   WHERE vn.nspname = ANY (ARRAY['public','shared','mcp','sales','purchasing','inventory','logistics','accounting','reporting'])
     AND v.relkind IN ('v','m')
     AND r.oid <> v.oid
+    AND NOT EXISTS (
+      SELECT 1 FROM pg_depend dep
+      WHERE dep.classid = 'pg_class'::regclass AND dep.objid = v.oid AND dep.deptype = 'e'
+    )
 ) AS semantic_lines
 ORDER BY line;
 
@@ -146,6 +150,10 @@ BEGIN
     JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE n.nspname = ANY (ARRAY['public','shared','mcp','sales','purchasing','inventory','logistics','accounting','reporting'])
       AND c.relkind = 'v'
+      AND NOT EXISTS (
+        SELECT 1 FROM pg_depend dep
+        WHERE dep.classid = 'pg_class'::regclass AND dep.objid = c.oid AND dep.deptype = 'e'
+      )
     ORDER BY n.nspname, c.relname
   LOOP
     EXECUTE format(

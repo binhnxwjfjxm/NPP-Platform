@@ -25,6 +25,10 @@ test("VPS DB parity preserves the exact Heroku state instead of repairing source
   assert.match(parity, /PARITY_POLICY=preserve_source_state/);
   assert.match(parity, /PARITY_GATE=PASS/);
 
+  // Provider/extension-owned relations are not business data and must not be row-fingerprinted.
+  assert.match(parity, /dep\.classid = 'pg_class'::regclass AND dep\.objid = c\.oid AND dep\.deptype = 'e'/);
+  assert.doesNotMatch(parity, /pg_stat_statements/);
+
   // Existing Heroku debt is allowed only when the VPS carries the same state.
   assert.doesNotMatch(parity, /VALIDATE CONSTRAINT|ALTER TABLE .*DROP CONSTRAINT|CREATE TRIGGER|DROP TRIGGER/i);
   assert.doesNotMatch(parity, /maintenance:on|maintenance:off|pg:promote/);
