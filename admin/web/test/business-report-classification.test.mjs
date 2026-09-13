@@ -1,81 +1,70 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
-test('Admin Báo cáo Kinh doanh dùng cùng bộ lọc phân loại canonical với Công Ty', () => {
-  const data = read('app/reports/business-report-data.ts');
+test('Admin giữ nguyên các mục báo cáo cũ và chỉ thêm bộ lọc nhóm vào đúng mục', () => {
   const page = read('app/reports/business/page.tsx');
 
-  for (const field of ['productGroupId', 'customerGroupId', 'includeZeroProducts']) {
-    assert.match(data, new RegExp(field));
-    assert.match(page, new RegExp(field));
+  for (const label of ['Khách hàng', 'Loại khách', 'Kênh bán', 'Sản phẩm', 'Nhóm hàng', 'Nhân viên bán hàng']) {
+    assert.match(page, new RegExp(label));
   }
 
-  assert.match(data, /\/api\/reporting\/sales\?/);
-  assert.match(data, /classificationOf\(data\.classification\)/);
-  assert.match(page, /Tất cả nhóm sản phẩm/);
-  assert.match(page, /Tất cả nhóm khách hàng/);
-  assert.match(page, /Hiện sản phẩm không phát sinh/);
-  assert.match(page, /method="get"/);
+  assert.match(page, /selectedDimension === 'customers'/);
+  assert.match(page, /Lọc khách hàng theo nhóm/);
+  assert.match(page, /name="customerGroupId"/);
+  assert.match(page, /selectedDimension === 'products'/);
+  assert.match(page, /Lọc sản phẩm theo nhóm/);
+  assert.match(page, /name="productGroupId"/);
+  assert.match(page, /name="includeZeroProducts"/);
+
+  assert.doesNotMatch(page, /Sản lượng sản phẩm theo nhóm khách hàng/);
+  assert.doesNotMatch(page, /matrixExportHref/);
+  assert.doesNotMatch(page, /classificationFilters/);
 });
 
-test('Admin hiển thị ma trận Sản phẩm × Nhóm khách với tổng và tỷ lệ tách theo ĐVT', () => {
+test('Admin dùng total canonical ở cuối bảng cũ, kể cả giao diện điện thoại', () => {
+  const data = read('app/reports/business-report-data.ts');
   const page = read('app/reports/business/page.tsx');
   const styles = read('app/reports/business/business-workspace.module.css');
 
-  assert.match(page, /Sản lượng sản phẩm theo nhóm khách hàng/);
-  assert.match(page, /matrix\.columns\.map/);
-  assert.match(page, /matrix\.rows\.map/);
-  assert.match(page, /matrix\.totalsByUnit\.flatMap/);
-  assert.match(page, /Tổng \{total\.unit\.name/);
-  assert.match(page, /Tỷ lệ \{total\.unit\.name/);
-  assert.match(page, /Không phát sinh/);
-  assert.match(page, /decimalText\(row\.totalQuantity\)/);
-  assert.match(page, /percentText\(cell\.sharePercent\)/);
-  assert.match(styles, /\.matrixTableWrap/);
-  assert.match(styles, /\.classificationFilters/);
+  assert.match(data, /breakdownTotals:/);
+  assert.match(data, /record\(data\.breakdownTotals\)/);
+  assert.match(page, /report\.breakdownTotals\[selectedDimension\]/);
+  assert.match(page, /<tfoot>/);
+  assert.match(page, /styles\.totalRow/);
+  assert.match(page, /styles\.mobileTotals/);
+  assert.match(styles, /\.totalRow/);
+  assert.match(styles, /\.mobileTotals/);
 });
 
-test('Admin giữ bộ lọc khi đổi kỳ, đổi chiều, mở chi tiết và xuất báo cáo', () => {
+test('Admin chỉ giữ bộ lọc phù hợp khi đổi kỳ, đổi mục và xuất Excel', () => {
   const page = read('app/reports/business/page.tsx');
   const exportRoute = read('app/reports/export/route.ts');
 
-  assert.match(page, /keepClassification = true/);
-  assert.match(page, /report\.filters\.productGroupId/);
-  assert.match(page, /report\.filters\.customerGroupId/);
-  assert.match(page, /report\.filters\.includeZeroProducts/);
-  assert.match(page, /exportQuery\.set\('productGroupId'/);
-  assert.match(page, /exportQuery\.set\('customerGroupId'/);
-  assert.match(page, /exportQuery\.set\('includeZeroProducts', 'true'\)/);
+  assert.match(page, /targetView === 'customers'/);
+  assert.match(page, /targetView === 'products'/);
+  assert.match(page, /selectedDimension === 'customers'.*exportQuery\.set\('customerGroupId'/s);
+  assert.match(page, /selectedDimension === 'products'.*exportQuery\.set\('productGroupId'/s);
+  assert.match(page, /selectedDimension === 'products'.*exportQuery\.set\('includeZeroProducts', 'true'\)/s);
 
   for (const field of ['productGroupId', 'customerGroupId', 'includeZeroProducts']) {
     assert.match(exportRoute, new RegExp(field));
   }
 });
 
-test('Admin xuất bảng phân loại dùng đúng Sales export canonical, không tự dựng Excel trong frontend', () => {
+test('Không còn route hoặc UI xuất ma trận riêng', () => {
   const page = read('app/reports/business/page.tsx');
-  const route = read('app/reports/business/matrix-export/route.ts');
-  const download = read('lib/core-download.ts');
+  const routePath = new URL('../app/reports/business/matrix-export/route.ts', import.meta.url);
 
-  assert.match(page, /\/reports\/business\/matrix-export/);
-  assert.match(route, /dimension: 'productCustomerMatrix'/);
-  assert.match(route, /format: 'xlsx'/);
-  assert.match(route, /requestCoreSalesReportDownload/);
-  assert.match(route, /\/api\/reporting\/sales-export/);
-  assert.match(download, /SALES_EXPORT_PATH = '\/api\/reporting\/sales-export'/);
-  assert.doesNotMatch(page + route, /buildMultiSheetXlsx|writeWorksheet|createWriteStream/);
+  assert.equal(existsSync(routePath), false);
+  assert.doesNotMatch(page, /matrix-export|Xuất bảng phân loại|productCustomerMatrix/);
 });
 
-test('Lô 3 chỉ nối Admin vào contract hiện có, không thêm DB hoặc migration', () => {
+test('Sửa UI báo cáo không thêm DB hoặc migration', () => {
   const data = read('app/reports/business-report-data.ts');
   const page = read('app/reports/business/page.tsx');
-  const route = read('app/reports/business/matrix-export/route.ts');
 
-  assert.doesNotMatch(data + page + route, /CREATE TABLE|ALTER TABLE|database\/migrations|DATABASE_URL/);
-  assert.match(page, /Nhóm khách hàng/);
-  assert.match(page, /Nhóm sản phẩm/);
-  assert.doesNotMatch(page, /Loại khách|Nhóm hàng/);
+  assert.doesNotMatch(data + page, /CREATE TABLE|ALTER TABLE|database\/migrations|DATABASE_URL/);
 });
