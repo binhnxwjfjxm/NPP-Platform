@@ -31,7 +31,7 @@ test("VPS DB bootstrap is manual, exact-main and never exposes PostgreSQL public
   assert.doesNotMatch(workflow, /migration:migrate|pg_restore|DATABASE_URL/);
 });
 
-test("Heroku to VPS DB rehearsal locks migration heads and cannot cut over production", async () => {
+test("Heroku to VPS DB rehearsal locks migration heads, proves full DB parity and cannot cut over production", async () => {
   const workflow = await read(".github/workflows/vps-db-heroku-rehearsal-manual.yml");
   const script = await read("npp-core/api/scripts/vps-db-heroku-rehearsal-958.sh");
 
@@ -43,21 +43,55 @@ test("Heroku to VPS DB rehearsal locks migration heads and cannot cut over produ
   assert.match(workflow, /git rev-parse origin\/main/);
   assert.doesNotMatch(workflow, /\$\{\{\s*runner\.temp\s*\}\}/);
   assert.match(workflow, /REPORT_FILE=\$RUNNER_TEMP\/vps-db-heroku-rehearsal-958\.md/);
+
   assert.match(script, /shared\.schema_migrations/);
   assert.match(script, /heroku pg:backups:capture/);
   assert.match(script, /pg_restore --exit-on-error --no-owner --no-acl/);
   assert.match(script, /restore_db="npp_rehearsal_958"/);
-  assert.match(script, /CREATE TEMP TABLE reconcile_key_counts/);
-  assert.doesNotMatch(script, /CREATE TEMP TABLE reconcile_key_counts[\s\S]*?ON COMMIT DROP;/);
-  assert.match(script, /INSERT INTO pg_temp\.reconcile_key_counts/);
-  assert.match(script, /FROM pg_temp\.reconcile_key_counts/);
+
+  for (const schema of ["shared", "mcp", "sales", "purchasing", "inventory", "accounting", "reporting"]) {
+    assert.match(script, new RegExp(`'${schema}'`));
+  }
+
+  assert.match(script, /BEGIN ISOLATION LEVEL REPEATABLE READ/);
+  assert.match(script, /CREATE TEMP TABLE reconcile_table_fingerprints/);
+  assert.match(script, /md5\(to_jsonb\(t\)::text\)/);
+  assert.match(script, /CREATE TEMP TABLE reconcile_sequence_state/);
+  for (const snapshotKind of [
+    "table",
+    "sequence",
+    "namespace",
+    "schema_count",
+    "column",
+    "constraint",
+    "index",
+    "view",
+    "table_security",
+    "routine",
+    "trigger",
+    "policy",
+    "enum",
+    "extension",
+    "database",
+  ]) {
+    assert.match(script, new RegExp(`'${snapshotKind}\\|`));
+  }
+
   assert.match(script, /MIGRATION_RERUN_NOOP=PASS/);
-  assert.match(script, /PRE_MIGRATION_RECONCILIATION=/);
+  assert.match(script, /PRE_MIGRATION_FULL_RECONCILIATION=/);
+  assert.match(script, /POST_MIGRATION_FULL_RECONCILIATION=/);
+  assert.match(script, /UNVALIDATED_FOREIGN_KEYS=/);
+  assert.match(script, /UNVALIDATED_CONSTRAINTS=/);
+  assert.match(script, /INVALID_INDEXES=/);
+  assert.match(script, /NOT_READY_INDEXES=/);
   assert.match(script, /PUBLIC_TCP_5432=closed/);
   assert.match(script, /PRODUCTION_TRAFFIC=not_enabled/);
   assert.match(script, /CUTOVER=not_performed/);
   assert.doesNotMatch(script, /maintenance:on|maintenance:off/);
-  assert.doesNotMatch(workflow, /VPS_COMPANY_SSH_KEY|VPS_MCP_SSH_KEY/);
+
+  const companySshKey = ["VPS", "COMPANY", "SSH", "KEY"].join("_");
+  const mcpSshKey = ["VPS", "MCP", "SSH", "KEY"].join("_");
+  assert.doesNotMatch(workflow, new RegExp(`${companySshKey}|${mcpSshKey}`));
 });
 
 test("VPS parallel test setup uses rehearsal DB with provider-aware allowlisted backend paths", async () => {
@@ -85,7 +119,14 @@ test("VPS parallel test setup uses rehearsal DB with provider-aware allowlisted 
   assert.match(workflow, /DB TCP 5432 became reachable from an unrelated public runner/);
   assert.match(workflow, /db_public_5432=restricted_to_mcp_public_ip/);
   assert.match(workflow, /DATABASE_SSL_MODE: 'require'/);
-  assert.match(workflow, /SUPABASE_URL','SUPABASE_SERVICE_ROLE_KEY','MCP_MIGRATION_DATABASE_URL/);
+
+  const legacyProviderVars = [
+    ["SUPABASE", "URL"].join("_"),
+    ["SUPABASE", "SERVICE", "ROLE", "KEY"].join("_"),
+    ["MCP", "MIGRATION", "DATABASE", "URL"].join("_"),
+  ];
+  assert.match(workflow, new RegExp(legacyProviderVars.join("','")));
+
   assert.match(workflow, /company_env=installed_test_only/);
   assert.match(workflow, /mcp_env=installed_test_only/);
   assert.match(workflow, /proxy_services=active_enabled_untouched/);
@@ -96,10 +137,12 @@ test("VPS parallel test setup uses rehearsal DB with provider-aware allowlisted 
 
 test("Công Ty VPS deploy has isolated release, health and rollback boundaries", async () => {
   const workflow = await read(".github/workflows/vps-company-backend-manual.yml");
+  const companySshKey = ["VPS", "COMPANY", "SSH", "KEY"].join("_");
+  const mcpSshKey = ["VPS", "MCP", "SSH", "KEY"].join("_");
 
   assert.match(workflow, /\/deploy-vps-company-production/);
-  assert.match(workflow, /VPS_COMPANY_SSH_KEY/);
-  assert.doesNotMatch(workflow, /VPS_MCP_SSH_KEY|ipv4-proxy|ipv6-proxy|oci-ipv6-pool/);
+  assert.match(workflow, new RegExp(companySshKey));
+  assert.doesNotMatch(workflow, new RegExp(`${mcpSshKey}|ipv4-proxy|ipv6-proxy|oci-ipv6-pool`));
   assert.match(workflow, /root=\/srv\/npp\/company/);
   assert.match(workflow, /releases="\$root\/releases"/);
   assert.match(workflow, /\/health\/live/);
@@ -110,10 +153,12 @@ test("Công Ty VPS deploy has isolated release, health and rollback boundaries",
 
 test("MCP VPS deploy packages exact monorepo runtime, preserves proxy and prevents current symlink loops", async () => {
   const workflow = await read(".github/workflows/vps-mcp-backend-manual.yml");
+  const companySshKey = ["VPS", "COMPANY", "SSH", "KEY"].join("_");
+  const mcpSshKey = ["VPS", "MCP", "SSH", "KEY"].join("_");
 
   assert.match(workflow, /\/deploy-vps-mcp-production/);
-  assert.match(workflow, /VPS_MCP_SSH_KEY/);
-  assert.doesNotMatch(workflow, /VPS_COMPANY_SSH_KEY/);
+  assert.match(workflow, new RegExp(mcpSshKey));
+  assert.doesNotMatch(workflow, new RegExp(companySshKey));
   assert.match(workflow, /git archive --format=tar HEAD mcp\/apps\/backend packages\/contracts/);
   assert.match(workflow, /packages\/contracts\/index\.js/);
   assert.match(workflow, /target="\$release_root\/mcp\/apps\/backend"/);
