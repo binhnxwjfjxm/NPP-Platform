@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { readNppWorkforceSessionToken, requestNppInternalAuth } from '../../../../lib/internal-auth-client';
+import { readAdminSessionToken, requestInternalAuth } from '../../../../lib/internal-auth-client';
 
 type CurrentSession = Readonly<{
   loginName?: string | null;
@@ -22,19 +22,19 @@ function bearerToken(request: NextRequest): string | null {
 }
 
 export async function GET(request: NextRequest) {
-  const token = bearerToken(request) || readNppWorkforceSessionToken();
+  const token = bearerToken(request) || readAdminSessionToken();
   if (!token) {
     return noStoreJson({ error: { code: 'UNAUTHORIZED', message: 'Cần đăng nhập', retryable: false } }, 401);
   }
 
-  const result = await requestNppInternalAuth<MeData>('/api/internal-auth/me', {
+  const result = await requestInternalAuth<MeData>('/api/internal-auth/me', {
     method: 'GET',
     token,
   });
   if (!result.ok) {
     return noStoreJson({
       error: {
-        code: result.code ?? 'NPP_AUTH_ME_FAILED',
+        code: result.code ?? 'ADMIN_AUTH_ME_FAILED',
         message: result.message ?? 'Không tải được tài khoản hiện tại',
         retryable: result.retryable === true,
       },
