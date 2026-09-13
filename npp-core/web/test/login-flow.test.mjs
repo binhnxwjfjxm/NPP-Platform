@@ -31,3 +31,14 @@ test('verification keeps credentials in memory, posts only the visible code step
   assert.match(loginStyles, /@keyframes shieldPulse/);
   assert.match(loginStyles, /prefers-reduced-motion/);
 });
+
+test('successful verification sets the session before navigating to a protected page', () => {
+  assert.match(loginPage, /headers: \{ Accept: 'application\/json' \}/);
+  assert.doesNotMatch(loginPage, /response\.redirected/);
+  assert.match(loginPage, /!response\.ok \|\| payload\.ok !== true/);
+  assert.match(loginPage, /window\.location\.assign\(target\)/);
+  assert.match(loginRoute, /wantsJson\(request\)/);
+  assert.match(loginRoute, /requestNppInternalAuth<unknown>\('\/api\/internal-auth\/me'/);
+  assert.match(loginRoute, /jsonReply\(\{ ok: true, returnTo \}, 200\)/);
+  assert.match(loginRoute, /response\.cookies\.set\(NPP_SESSION_COOKIE, token, nppSessionCookieOptions\(expiresAt\)\)/);
+});
