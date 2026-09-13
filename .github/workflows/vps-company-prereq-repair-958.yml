@@ -1,0 +1,184 @@
+name: VPS Công Ty prerequisite repair 958
+
+on:
+  workflow_dispatch:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: vps-company-prereq-repair-958
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.number == 5 &&
+        github.event.comment.body == '/repair-vps-company-prereqs-958' &&
+        (
+          github.actor == 'binhnxwjfjxm' ||
+          github.actor == 'khuongbinhinfo-a11y'
+        )
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      VPS_COMPANY_HOST: ${{ vars.VPS_COMPANY_HOST }}
+      VPS_SSH_USER: ${{ vars.VPS_SSH_USER }}
+
+    steps:
+      - name: Validate exact issue command
+        if: github.event_name == 'issue_comment'
+        shell: bash
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          test "$COMMENT_BODY" = '/repair-vps-company-prereqs-958'
+
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact origin/main SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          test "$(git rev-parse --is-shallow-repository)" = false
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare Công Ty SSH credential
+        id: ssh
+        shell: bash
+        env:
+          VPS_COMPANY_SSH_KEY: ${{ secrets.VPS_COMPANY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$VPS_COMPANY_HOST"
+          test -n "$VPS_SSH_USER"
+          test -n "$VPS_COMPANY_SSH_KEY"
+          umask 077
+          key="$RUNNER_TEMP/company.key"
+          known="$RUNNER_TEMP/company.known"
+          printf '%s\n' "$VPS_COMPANY_SSH_KEY" > "$key"
+          chmod 600 "$key"
+          ssh-keygen -y -f "$key" >/dev/null
+          ssh-keyscan -T 10 -H "$VPS_COMPANY_HOST" > "$known" 2>/dev/null
+          test -s "$known"
+          chmod 600 "$known"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+          echo "known=$known" >> "$GITHUB_OUTPUT"
+
+      - name: Repair only audited Công Ty leftovers
+        id: repair
+        shell: bash
+        env:
+          KEY: ${{ steps.ssh.outputs.key }}
+          KNOWN: ${{ steps.ssh.outputs.known }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/company-prereq-repair.out"
+          ssh -i "$KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN" \
+            "$VPS_SSH_USER@$VPS_COMPANY_HOST" 'bash -s' > "$out" <<'REMOTE'
+          set -euo pipefail
+          sudo -n true
+          test "$(systemctl is-active nginx)" = active
+          sudo -n nginx -t >/dev/null 2>&1
+
+          rollback="$(mktemp)"
+          trap 'rm -f "$rollback"' EXIT
+
+          cleanup_site() {
+            local site="$1" expected_domain="$2" enabled="/etc/nginx/sites-enabled/$1"
+            if [ ! -e "$enabled" ] && [ ! -L "$enabled" ]; then
+              echo "site_${site}=already_absent"
+              return
+            fi
+            test -L "$enabled"
+            local target
+            target="$(readlink -f "$enabled")"
+            case "$target" in
+              /etc/nginx/sites-available/*) ;;
+              *) echo "refuse_unexpected_nginx_target=$site" >&2; exit 21 ;;
+            esac
+            test -f "$target"
+            grep -Fq "$expected_domain" "$target"
+            printf '%s|%s\n' "$enabled" "$target" >> "$rollback"
+            sudo -n rm "$enabled"
+            echo "site_${site}=disabled"
+          }
+
+          cleanup_site api.tocvietlab.studio.conf api.tocvietlab.studio
+          cleanup_site api.vieclamgannha.me.conf api.vieclamgannha.me
+
+          if ! sudo -n nginx -t >/dev/null 2>&1; then
+            while IFS='|' read -r enabled target; do
+              [ -n "$enabled" ] || continue
+              sudo -n ln -s "$target" "$enabled"
+            done < "$rollback"
+            sudo -n nginx -t >/dev/null 2>&1 || true
+            echo nginx_validation_failed_rollback_done >&2
+            exit 22
+          fi
+
+          sudo -n systemctl reload nginx
+          test "$(systemctl is-active nginx)" = active
+          sudo -n nginx -t >/dev/null 2>&1
+
+          sudo -n systemctl reset-failed certbot.service snap.certbot.renew.service 2>/dev/null || true
+          failed="$(systemctl --failed --no-legend --plain 2>/dev/null | awk '{print $1}' | grep -E '^(certbot\.service|snap\.certbot\.renew\.service)$' || true)"
+          test -z "$failed"
+
+          for site in api.tocvietlab.studio.conf api.vieclamgannha.me.conf; do
+            test ! -e "/etc/nginx/sites-enabled/$site"
+            test ! -L "/etc/nginx/sites-enabled/$site"
+          done
+
+          echo 'nginx=active'
+          echo 'nginx_test=PASS'
+          echo 'legacy_sites=absent'
+          echo 'certbot_failed_units=0'
+          echo 'certificate_deletion=none'
+          REMOTE
+          cat "$out"
+          echo "output=$out" >> "$GITHUB_OUTPUT"
+
+      - name: Publish sanitized evidence to Issue 958
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          OUT: ${{ steps.repair.outputs.output }}
+        run: |
+          set -euo pipefail
+          evidence="$(mktemp)"
+          {
+            echo '## Công Ty VPS prerequisite repair — Issue #958'
+            echo
+            echo "- Exact main SHA: \`$SOURCE_SHA\`"
+            echo "- Run ID: \`$GITHUB_RUN_ID\`"
+            echo '- Scope: only two audited legacy nginx symlinks + failed-state reset for two legacy certbot units.'
+            echo '- No certificate deleted. No MCP proxy mutation. No DB/traffic/DNS cutover.'
+            if [ -n "${OUT:-}" ] && [ -f "$OUT" ]; then
+              echo '```text'
+              cat "$OUT"
+              echo '```'
+            fi
+          } > "$evidence"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/958/comments" -f body="$(cat "$evidence")" >/dev/null
+          rm -f "$evidence"
