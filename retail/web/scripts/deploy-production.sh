@@ -6,7 +6,6 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 cd "$REPO_ROOT"
 
 : "${VERCEL_TOKEN:?VERCEL_TOKEN is required}"
-: "${HEROKU_API_KEY:?HEROKU_API_KEY is required}"
 : "${VERCEL_ORG_ID:?VERCEL_ORG_ID is required}"
 : "${VERCEL_PROJECT_ID:?VERCEL_PROJECT_ID is required}"
 : "${GITHUB_OUTPUT:?GITHUB_OUTPUT is required}"
@@ -15,9 +14,8 @@ cd "$REPO_ROOT"
 RETAIL_PROJECT_NAME="${RETAIL_PROJECT_NAME:-npp-retail}"
 RETAIL_ROOT_DIRECTORY="${RETAIL_ROOT_DIRECTORY:-retail/web}"
 RETAIL_DOMAIN="${RETAIL_DOMAIN:-retail.nguyenlieuhungphat.com}"
-CORE_HEROKU_APP_NAME="${CORE_HEROKU_APP_NAME:-hung-phat}"
 
-for secret in "$VERCEL_TOKEN" "$HEROKU_API_KEY"; do echo "::add-mask::$secret"; done
+echo "::add-mask::$VERCEL_TOKEN"
 
 project_json="${RUNNER_TEMP}/retail-project.json"
 status="$(curl --silent --show-error --output "$project_json" --write-out '%{http_code}' \
@@ -30,8 +28,7 @@ test "$VERCEL_PROJECT_ID" = "$project_id"
 test "$(jq -r '.rootDirectory' "$project_json")" = "$RETAIL_ROOT_DIRECTORY"
 test "$(jq -r '.framework' "$project_json")" = nextjs
 
-# Production must configure the provider runtime on the exact verified project
-# before any Vercel pull/build. Bootstrap is configuration-only and does not deploy.
+# Configuration-only bootstrap; it must not deploy.
 GITHUB_OUTPUT= bash retail/web/scripts/bootstrap-project.sh
 runtime_readback_json="${RUNNER_TEMP}/retail-runtime-readback.json"
 status="$(curl --silent --show-error --output "$runtime_readback_json" --write-out '%{http_code}' \
@@ -50,51 +47,36 @@ const config = JSON.parse(await readFile('retail/web/vercel.json', 'utf8'));
 if (config.git?.deploymentEnabled !== false) throw new Error('retail_auto_deploy_not_locked');
 NODE
 
-app_json="${RUNNER_TEMP}/core-app.json"
-curl --fail --silent --show-error \
-  -H 'Accept: application/vnd.heroku+json; version=3' \
-  -H "Authorization: Bearer $HEROKU_API_KEY" \
-  "https://api.heroku.com/apps/$CORE_HEROKU_APP_NAME" > "$app_json"
-core_url="$(jq -r '.web_url // empty' "$app_json")"
-core_url="${core_url%/}"
-test -n "$core_url"
-CORE_URL="$core_url" node --input-type=module <<'NODE'
-const url = new URL(process.env.CORE_URL);
-if (url.protocol !== 'https:' || url.username || url.password) throw new Error('invalid_company_api_url');
-NODE
-echo "::add-mask::$core_url"
-marker="RETAIL_CORE_API_${RANDOM}_${RANDOM}"
-{
-  echo "CORE_API_INTERNAL_URL<<$marker"
-  echo "$core_url"
-  echo "$marker"
-} >> "$GITHUB_ENV"
-export CORE_API_INTERNAL_URL="$core_url"
-
-RETAIL_PROJECT_ID="$project_id" node --input-type=module <<'NODE'
-const response = await fetch(`https://api.vercel.com/v10/projects/${process.env.RETAIL_PROJECT_ID}/env?teamId=${process.env.VERCEL_ORG_ID}&upsert=true`, {
-  method: 'POST',
-  headers: {
-    Authorization: `Bearer ${process.env.VERCEL_TOKEN}`,
-    'Content-Type': 'application/json',
-  },
-  body: JSON.stringify([
-    {
-      key: 'CORE_API_INTERNAL_URL',
-      value: process.env.CORE_API_INTERNAL_URL,
-      type: 'sensitive',
-      target: ['production'],
-    },
-  ]),
-});
-const payload = await response.json().catch(() => null);
-if (!response.ok) throw new Error(`retail_env_upsert_failed:${response.status}:${payload?.error?.code || 'unknown'}`);
-NODE
-
+# Provider target is owned by Vercel production configuration. Never derive or overwrite it from Heroku.
 mkdir -p .vercel
 printf '{"orgId":"%s","projectId":"%s"}\n' "$VERCEL_ORG_ID" "$project_id" > .vercel/project.json
 npx --yes vercel@58.0.0 pull --yes --environment=production --token="$VERCEL_TOKEN" >/dev/null
 test "$(jq -r '.projectId' .vercel/project.json)" = "$project_id"
+test -s .vercel/.env.production.local
+set -a
+# shellcheck disable=SC1091
+source .vercel/.env.production.local
+set +a
+: "${CORE_API_INTERNAL_URL:?Retail production requires CORE_API_INTERNAL_URL in Vercel production env}"
+echo "::add-mask::$CORE_API_INTERNAL_URL"
+CORE_URL="$CORE_API_INTERNAL_URL" node --input-type=module <<'NODE'
+const url = new URL(process.env.CORE_URL);
+if (url.protocol !== 'https:' || url.username || url.password) throw new Error('invalid_company_api_url');
+if (url.hostname.endsWith('.herokuapp.com')) throw new Error('retail_company_api_must_not_point_to_heroku');
+NODE
+
+smoke_company() {
+  local path="$1" deadline=$((SECONDS + 180)) status=""
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    status="$(curl --silent --show-error --connect-timeout 5 --max-time 10 --output /dev/null --write-out '%{http_code}' "$CORE_API_INTERNAL_URL$path" || true)"
+    [ "$status" = 200 ] && return 0
+    sleep 3
+  done
+  echo "Công Ty health smoke failed for $path; last status=${status:-none}." >&2
+  return 1
+}
+smoke_company /health/live
+smoke_company /health/ready
 
 (
   cd retail/web
@@ -110,18 +92,12 @@ smoke_url="https://$RETAIL_DOMAIN"
 domain_ready=false
 for attempt in $(seq 1 12); do
   page="${RUNNER_TEMP}/retail-home.html"
-  code="$(curl --silent --show-error --location --connect-timeout 5 --max-time 15 \
-    -H 'Accept: text/html' --output "$page" --write-out '%{http_code}' "$smoke_url/" || true)"
-  health="$(curl --silent --show-error --connect-timeout 5 --max-time 15 \
-    --output /dev/null --write-out '%{http_code}' "$smoke_url/api/health" || true)"
-  company="$(curl --silent --show-error --connect-timeout 5 --max-time 15 \
-    --output /dev/null --write-out '%{http_code}' "$smoke_url/api/cong-ty/health" || true)"
+  code="$(curl --silent --show-error --location --connect-timeout 5 --max-time 15 -H 'Accept: text/html' --output "$page" --write-out '%{http_code}' "$smoke_url/" || true)"
+  health="$(curl --silent --show-error --connect-timeout 5 --max-time 15 --output /dev/null --write-out '%{http_code}' "$smoke_url/api/health" || true)"
+  company="$(curl --silent --show-error --connect-timeout 5 --max-time 15 --output /dev/null --write-out '%{http_code}' "$smoke_url/api/cong-ty/health" || true)"
   if [ "$code" = 200 ] && [ "$health" = 200 ] && [ "$company" = 200 ] && grep -Fq 'Bán tại quầy' "$page"; then
     asset="$(grep -oE '/_next/static/[^" ]+\.(css|js)' "$page" | head -n 1)"
-    if [ -n "$asset" ] && curl --fail --silent --show-error "$smoke_url$asset" >/dev/null; then
-      domain_ready=true
-      break
-    fi
+    if [ -n "$asset" ] && curl --fail --silent --show-error "$smoke_url$asset" >/dev/null; then domain_ready=true; break; fi
   fi
   echo "Retail canonical domain not ready: attempt=$attempt root=$code health=$health company=$company"
   sleep 5

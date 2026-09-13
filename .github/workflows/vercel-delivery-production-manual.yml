@@ -27,7 +27,6 @@ jobs:
       DELIVERY_PROJECT_NAME: npp-delivery
       DELIVERY_ROOT_DIRECTORY: delivery/web
       DELIVERY_DOMAIN: log.nguyenlieuhungphat.com
-      CORE_HEROKU_APP_NAME: hung-phat
       CORE_PROJECT_ID: prj_vFEAzoxesLqNJIfD8uF4q1kytpvk
       MCP_PROJECT_ID: prj_854SWdJeDEOPezAvvTZzTaRvZUSq
       ADMIN_PROJECT_ID: prj_0hp2A8WyUW4zgglShPTzL70hesVC
@@ -79,7 +78,6 @@ jobs:
         working-directory: delivery/web
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
         run: |
           cd ../..
           bash delivery/web/scripts/deploy-production.sh
@@ -105,6 +103,7 @@ jobs:
           - AUTH_SOURCE: ${{ steps.delivery.outputs.auth_source }}
           - DRIVER_PROFILE_READY: ${{ steps.delivery.outputs.driver_ready }}
           - SETUP_MODE: ${{ steps.delivery.outputs.setup_mode }}
+          - COMPANY_API_SOURCE: Vercel production environment
           - AUTO_DEPLOY: OFF
           - GITHUB_RUN_ID: ${GITHUB_RUN_ID}
           EOT

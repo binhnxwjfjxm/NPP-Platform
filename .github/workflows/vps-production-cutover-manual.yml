@@ -1,0 +1,170 @@
+name: VPS production final cutover 958
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  actions: read
+  issues: write
+
+concurrency:
+  group: vps-production-final-cutover-958
+  cancel-in-progress: false
+
+jobs:
+  cutover:
+    if: >-
+      github.event.issue.number == 5 &&
+      github.event.comment.body == '/cutover-vps-production-958' &&
+      contains(fromJSON('["binhnxwjfjxm","khuongbinhinfo-a11y"]'), github.actor)
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      VPS_DB_HOST: ${{ vars.VPS_DB_HOST }}
+      VPS_COMPANY_HOST: ${{ vars.VPS_COMPANY_HOST }}
+      VPS_MCP_HOST: ${{ vars.VPS_MCP_HOST }}
+      VPS_SSH_USER: ${{ vars.VPS_SSH_USER }}
+
+    steps:
+      - name: Validate exact operator command
+        shell: bash
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          test "$COMMENT_BODY" = '/cutover-vps-production-958'
+
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Lock exact main SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          test "$(git rev-parse --is-shallow-repository)" = "false"
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Require exact-head Foundation CI green
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CUTOVER_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          result="$(gh api --method GET \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/foundation-f0-2.yml/runs?head_sha=$CUTOVER_SHA&event=push&per_page=20")"
+          success="$(jq -r '[.workflow_runs[] | select(.status=="completed" and .conclusion=="success")][0].id // empty' <<<"$result")"
+          test -n "$success"
+          echo "FOUNDATION_EXACT_HEAD_RUN=$success" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install locked repository dependencies
+        working-directory: npp-core/api
+        run: npm --prefix ../.. ci --ignore-scripts
+
+      - name: Install production cutover runner dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -y >/dev/null
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y postgresql-client jq openssh-client >/dev/null
+          curl -fsSL https://cli-assets.heroku.com/install.sh | sh
+          heroku --version
+          psql --version
+          bash -n npp-core/api/scripts/vps-production-cutover-958.sh
+          bash -n npp-core/api/scripts/vps-production-cutover-preflight-958.sh
+          bash -n npp-core/api/scripts/vps-production-cutover-db-958.sh
+          bash -n npp-core/api/scripts/vps-production-cutover-runtime-958.sh
+          bash -n npp-core/api/scripts/vps-production-cutover-deploy-958.sh
+          bash -n npp-core/api/scripts/vps-production-cutover-wiring-958.sh
+
+      - name: Prepare SSH credentials
+        id: ssh
+        shell: bash
+        env:
+          VPS_DB_SSH_KEY: ${{ secrets.VPS_DB_SSH_KEY }}
+          VPS_COMPANY_SSH_KEY: ${{ secrets.VPS_COMPANY_SSH_KEY }}
+          VPS_MCP_SSH_KEY: ${{ secrets.VPS_MCP_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$VPS_DB_HOST"
+          test -n "$VPS_COMPANY_HOST"
+          test -n "$VPS_MCP_HOST"
+          test -n "$VPS_SSH_USER"
+          test -n "$VPS_DB_SSH_KEY"
+          test -n "$VPS_COMPANY_SSH_KEY"
+          test -n "$VPS_MCP_SSH_KEY"
+          umask 077
+          prepare_key() {
+            local raw="$1" host="$2" key="$3" known="$4"
+            printf '%s\n' "$raw" > "$key"
+            chmod 600 "$key"
+            ssh-keygen -y -f "$key" >/dev/null
+            ssh-keyscan -T 10 -H "$host" > "$known" 2>/dev/null
+            test -s "$known"
+            chmod 600 "$known"
+          }
+          prepare_key "$VPS_DB_SSH_KEY" "$VPS_DB_HOST" "$RUNNER_TEMP/vps-db.key" "$RUNNER_TEMP/vps-db-known-hosts"
+          prepare_key "$VPS_COMPANY_SSH_KEY" "$VPS_COMPANY_HOST" "$RUNNER_TEMP/vps-company.key" "$RUNNER_TEMP/vps-company-known-hosts"
+          prepare_key "$VPS_MCP_SSH_KEY" "$VPS_MCP_HOST" "$RUNNER_TEMP/vps-mcp.key" "$RUNNER_TEMP/vps-mcp-known-hosts"
+          echo "db_key=$RUNNER_TEMP/vps-db.key" >> "$GITHUB_OUTPUT"
+          echo "db_known=$RUNNER_TEMP/vps-db-known-hosts" >> "$GITHUB_OUTPUT"
+          echo "company_key=$RUNNER_TEMP/vps-company.key" >> "$GITHUB_OUTPUT"
+          echo "company_known=$RUNNER_TEMP/vps-company-known-hosts" >> "$GITHUB_OUTPUT"
+          echo "mcp_key=$RUNNER_TEMP/vps-mcp.key" >> "$GITHUB_OUTPUT"
+          echo "mcp_known=$RUNNER_TEMP/vps-mcp-known-hosts" >> "$GITHUB_OUTPUT"
+
+      - name: Execute Gates B through F
+        id: cutover
+        shell: bash
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          CUTOVER_SHA: ${{ steps.source.outputs.sha }}
+          DB_KEY: ${{ steps.ssh.outputs.db_key }}
+          DB_KNOWN: ${{ steps.ssh.outputs.db_known }}
+          COMPANY_KEY: ${{ steps.ssh.outputs.company_key }}
+          COMPANY_KNOWN: ${{ steps.ssh.outputs.company_known }}
+          MCP_KEY: ${{ steps.ssh.outputs.mcp_key }}
+          MCP_KNOWN: ${{ steps.ssh.outputs.mcp_known }}
+          REPORT_FILE: ${{ runner.temp }}/vps-production-cutover-958.txt
+        run: bash npp-core/api/scripts/vps-production-cutover-958.sh
+
+      - name: Publish sanitized cutover evidence to Issue 958
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPERATION_STATUS: ${{ job.status }}
+          CUTOVER_SHA: ${{ steps.source.outputs.sha }}
+          REPORT_FILE: ${{ runner.temp }}/vps-production-cutover-958.txt
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/cutover-evidence.md"
+          {
+            echo "## VPS production final cutover — ${OPERATION_STATUS}"
+            echo
+            echo "- CUTOVER_SHA: \`${CUTOVER_SHA:-unknown}\`"
+            echo "- GITHUB_RUN_ID: \`${GITHUB_RUN_ID}\`"
+            echo '- Command: `/cutover-vps-production-958`'
+            echo '- Secret values are not included.'
+            echo
+            echo '```text'
+            if [ -f "$REPORT_FILE" ]; then cat "$REPORT_FILE"; else echo 'REPORT_FILE=missing'; fi
+            echo '```'
+          } > "$evidence"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/958/comments" -f body="$(cat "$evidence")" >/dev/null
