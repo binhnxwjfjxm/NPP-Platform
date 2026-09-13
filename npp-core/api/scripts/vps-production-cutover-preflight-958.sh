@@ -151,20 +151,56 @@ do
 done
 echo 'GATE_B_STAGE=VERCEL_PROJECTS_PASS' >> "$REPORT_FILE"
 
-# A previous interrupted HTTPS attempt can leave the short-lived certificate renewal
-# oneshot in failed state even while nginx and the timer remain healthy. Heal only that
-# exact known unit, and only by proving a real renewal invocation succeeds. Never clear
-# unrelated failed units.
-company_failed_units="$(ssh_run "$COMPANY_KEY" "$COMPANY_KNOWN" "$VPS_COMPANY_HOST" 'systemctl --failed --no-legend --plain 2>/dev/null | awk '\''NF{print $1}'\'' | paste -sd, -')"
-if [ "$company_failed_units" = "npp-ip-cert-renew.service" ]; then
-  ssh_run "$COMPANY_KEY" "$COMPANY_KNOWN" "$VPS_COMPANY_HOST" 'set -euo pipefail; test "$(systemctl is-active npp-ip-cert-renew.timer)" = active; test "$(systemctl is-enabled npp-ip-cert-renew.timer)" = enabled; sudo -n systemctl start npp-ip-cert-renew.service; sudo -n systemctl reset-failed npp-ip-cert-renew.service; test "$(systemctl --failed --no-legend --plain 2>/dev/null | awk '\''NF{c++} END{print c+0}'\'')" = 0'
-  echo 'GATE_B_STAGE=COMPANY_CERT_RENEW_HEALED' >> "$REPORT_FILE"
-elif [ -n "$company_failed_units" ]; then
-  echo 'GATE_B_BLOCKER=COMPANY_UNEXPECTED_FAILED_UNIT' >> "$REPORT_FILE"
-  exit 42
-else
-  echo 'GATE_B_STAGE=COMPANY_SYSTEMD_CLEAN' >> "$REPORT_FILE"
+# The renewal timer belongs only to the Issue #958 IP certificate lineage on each VPS.
+# A global `certbot renew` incorrectly picked up retired certificates left on Công Ty VPS
+# (for example vieclamgannha.me) and failed because those old lineages require the nginx
+# plugin that is intentionally not installed in the isolated NPP Certbot venv. Install a
+# systemd drop-in that scopes the effective ExecStart to the owned lineage. The drop-in
+# is created even before the base unit exists on MCP so the runtime step cannot later
+# regress to global renewal. If the base unit already exists, prove the scoped command
+# succeeds before clearing only its own failed state.
+ensure_cert_renew_scope() {
+  local key="$1" known="$2" host="$3" cert_name="$4"
+  ssh_run "$key" "$known" "$host" "bash -s -- '$cert_name'" <<'REMOTE'
+set -euo pipefail
+cert_name="$1"
+unit="/etc/systemd/system/npp-ip-cert-renew.service"
+dropin_dir="/etc/systemd/system/npp-ip-cert-renew.service.d"
+dropin="$dropin_dir/20-npp-cert-name.conf"
+sudo -n true
+
+unit_exists=no
+if sudo -n test -f "$unit" || systemctl cat npp-ip-cert-renew.service >/dev/null 2>&1; then
+  unit_exists=yes
 fi
+
+sudo -n install -d -m 0755 "$dropin_dir"
+tmp="$(mktemp)"
+cat > "$tmp" <<EOF2
+[Service]
+ExecStart=
+ExecStart=/opt/npp-certbot/bin/certbot renew --quiet --cert-name $cert_name --deploy-hook /usr/local/sbin/npp-certbot-nginx-reload
+EOF2
+sudo -n install -m 0644 "$tmp" "$dropin"
+rm -f "$tmp"
+sudo -n systemctl daemon-reload
+sudo -n grep -Fqx "ExecStart=/opt/npp-certbot/bin/certbot renew --quiet --cert-name $cert_name --deploy-hook /usr/local/sbin/npp-certbot-nginx-reload" "$dropin"
+
+if [ "$unit_exists" = yes ]; then
+  test -x /opt/npp-certbot/bin/certbot
+  test -x /usr/local/sbin/npp-certbot-nginx-reload
+  test "$(systemctl is-active npp-ip-cert-renew.timer)" = active
+  test "$(systemctl is-enabled npp-ip-cert-renew.timer)" = enabled
+  sudo -n systemctl start npp-ip-cert-renew.service
+  sudo -n systemctl reset-failed npp-ip-cert-renew.service
+  test "$(systemctl is-failed npp-ip-cert-renew.service 2>/dev/null || true)" != failed
+fi
+REMOTE
+}
+
+ensure_cert_renew_scope "$COMPANY_KEY" "$COMPANY_KNOWN" "$VPS_COMPANY_HOST" npp-company-production
+ensure_cert_renew_scope "$MCP_KEY" "$MCP_KNOWN" "$VPS_MCP_HOST" npp-mcp-production
+echo 'GATE_B_STAGE=CERT_RENEW_SCOPED' >> "$REPORT_FILE"
 
 for tuple in "$DB_KEY|$DB_KNOWN|$VPS_DB_HOST" "$COMPANY_KEY|$COMPANY_KNOWN|$VPS_COMPANY_HOST" "$MCP_KEY|$MCP_KNOWN|$VPS_MCP_HOST"; do
   IFS='|' read -r key known host <<< "$tuple"
