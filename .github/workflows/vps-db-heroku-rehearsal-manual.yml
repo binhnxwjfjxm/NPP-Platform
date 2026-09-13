@@ -158,6 +158,18 @@ jobs:
           set -euo pipefail
           bash npp-core/api/scripts/vps-db-heroku-rehearsal-958.sh
 
+      - name: Diagnose reconciliation mismatch
+        if: failure() && steps.request.outputs.action == 'rehearse'
+        shell: bash
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          SSH_KEY: ${{ steps.ssh.outputs.key }}
+          KNOWN_HOSTS: ${{ steps.ssh.outputs.known_hosts }}
+        run: |
+          set -euo pipefail
+          bash npp-core/api/scripts/vps-db-reconciliation-diagnose-958.sh
+
       - name: Publish sanitized evidence to Issue 958
         if: always()
         shell: bash
