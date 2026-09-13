@@ -8,6 +8,7 @@ import {
   validateScope,
 } from './reporting-common.js';
 import { salesReport } from './reporting-sales.js';
+import { normalizeSalesClassificationFilters } from './reporting-sales-classification.js';
 import { purchasingReport } from './reporting-purchasing.js';
 import { inventoryReport, normalizeSlowDays } from './reporting-inventory-safe.js';
 import { agingReport, grossMarginReport } from './reporting-finance.js';
@@ -383,6 +384,20 @@ export async function handleReportingRoutes(req, res, options) {
     return true;
   }
 
+  let reportingFilters = normalized;
+  if (family === 'sales' || family === 'sales-export') {
+    const salesFilters = normalizeSalesClassificationFilters({
+      productGroupId: url.searchParams.get('productGroupId'),
+      customerGroupId: url.searchParams.get('customerGroupId'),
+      includeZeroProducts: url.searchParams.get('includeZeroProducts'),
+    }, normalized);
+    if (!salesFilters.ok) {
+      sendNormalizedError(res, salesFilters, options);
+      return true;
+    }
+    reportingFilters = salesFilters;
+  }
+
   const slowDays = family === 'inventory' ? normalizeSlowDays(url.searchParams.get('slowDays')) : undefined;
   if (family === 'inventory' && slowDays === null) {
     sendError(
@@ -396,7 +411,7 @@ export async function handleReportingRoutes(req, res, options) {
 
   let warehouseScope = null;
   if (warehouseScoped) {
-    warehouseScope = validateScope(requestContext, normalized);
+    warehouseScope = validateScope(requestContext, reportingFilters);
     if (!warehouseScope.ok) {
       sendNormalizedError(res, warehouseScope, options);
       return true;
@@ -417,7 +432,7 @@ export async function handleReportingRoutes(req, res, options) {
       res,
       options,
       requestContext,
-      normalized,
+      reportingFilters,
       warehouseScope.warehouseIds,
       selection,
     );
@@ -446,7 +461,7 @@ export async function handleReportingRoutes(req, res, options) {
   try {
     let report;
     if (family === 'sales') {
-      report = await salesReport(options.getPool(), requestContext, normalized, warehouseScope.warehouseIds);
+      report = await salesReport(options.getPool(), requestContext, reportingFilters, warehouseScope.warehouseIds);
     } else if (family === 'purchasing') {
       report = await purchasingReport(options.getPool(), requestContext, normalized, warehouseScope.warehouseIds);
     } else if (family === 'inventory') {

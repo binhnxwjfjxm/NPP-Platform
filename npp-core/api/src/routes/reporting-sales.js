@@ -1,4 +1,9 @@
 import { BUSINESS_TIMEZONE, mapRow, mapRows, reportingInternals } from './reporting-common.js';
+import {
+  buildProductCustomerMatrix,
+  buildSalesClassificationOptions,
+  filterSalesFacts,
+} from './reporting-sales-classification.js';
 
 const SCALE = 1_000_000n;
 const PERCENT_SCALE = 10_000n;
@@ -213,7 +218,7 @@ export async function salesReport(adapter, requestContext, filters, warehouseIds
   const previous = previousPeriod(filters);
   const factParams = [requestContext.installationId, warehouseIds, filters.fromInstant, filters.toExclusiveInstant, filters.warehouseId, previous.fromInstant];
   const currentParams = [requestContext.installationId, warehouseIds, filters.fromInstant, filters.toExclusiveInstant, filters.warehouseId];
-  const [scopeWarehouses, summaryResult, factResult, documentsResult] = await Promise.all([
+  const [scopeWarehouses, summaryResult, factResult, documentsResult, productGroupsResult, customerGroupsResult, catalogProductsResult] = await Promise.all([
     adapter.query(`SELECT warehouse.id AS warehouse_id,
               warehouse.code AS warehouse_code,
               warehouse.name AS warehouse_name
@@ -276,13 +281,56 @@ export async function salesReport(adapter, requestContext, filters, warehouseIds
           AND so.confirmed_at >= $3::timestamptz AND so.confirmed_at < $4::timestamptz
           AND ($5::uuid IS NULL OR so.warehouse_id = $5::uuid) AND so.status IN ('confirmed','closed')
         ORDER BY so.confirmed_at DESC, so.id DESC LIMIT 200`, currentParams),
+    adapter.query(`SELECT category.id, category.code, category.name, category.parent_category_id
+         FROM shared.product_categories category
+        WHERE category.installation_id = $1 AND category.is_active = true
+        ORDER BY category.sort_order, category.code, category.id`, [requestContext.installationId]),
+    adapter.query(`SELECT customer_group.id, customer_group.code, customer_group.name
+         FROM shared.customer_groups customer_group
+        WHERE customer_group.installation_id = $1 AND customer_group.is_active = true
+        ORDER BY customer_group.code, customer_group.id`, [requestContext.installationId]),
+    filters.includeZeroProducts
+      ? adapter.query(`SELECT variant.id AS variant_id, variant.sku, variant.name AS item_name,
+                product.category_id AS product_group_id,
+                category.code AS product_group_code,
+                category.name AS product_group_name,
+                variant.unit_id, unit.code AS unit_code, unit.name AS unit_name
+           FROM shared.product_variants variant
+           JOIN shared.products product
+             ON product.installation_id = variant.installation_id
+            AND product.id = variant.product_id
+           JOIN shared.units_of_measure unit
+             ON unit.installation_id = variant.installation_id
+            AND unit.id = variant.unit_id
+           LEFT JOIN shared.product_categories category
+             ON category.installation_id = product.installation_id
+            AND category.id = product.category_id
+          WHERE variant.installation_id = $1
+            AND variant.is_active = true
+            AND variant.is_sellable = true
+            AND product.is_active = true
+            AND variant.unit_id IS NOT NULL
+            AND ($2::uuid IS NULL OR product.category_id = $2::uuid)
+          ORDER BY category.code NULLS LAST, product.code, variant.sku, variant.id`,
+        [requestContext.installationId, filters.productGroupId])
+      : Promise.resolve({ rows: [] }),
   ]);
 
-  const facts = mapRows(factResult.rows);
-  const summaryCounts = mapRow(summaryResult.rows?.[0] ?? {});
+  const allFacts = mapRows(factResult.rows);
+  const facts = filterSalesFacts(allFacts, filters);
+  const current = currentFacts(facts);
+  const baseSummaryCounts = mapRow(summaryResult.rows?.[0] ?? {});
+  const classificationFiltered = Boolean(filters.productGroupId || filters.customerGroupId);
+  const summaryCounts = classificationFiltered
+    ? Object.freeze({
+        ...baseSummaryCounts,
+        effectiveOrderCount: String(new Set(current.map((fact) => text(fact.salesOrderId)).filter(Boolean)).size),
+        buyerCount: String(new Set(current.map((fact) => text(fact.customerId)).filter(Boolean)).size),
+      })
+    : baseSummaryCounts;
   const revenues = revenueSummary(facts);
   const quantities = quantitySummary(facts);
-  const soldProductCount = String(new Set(currentFacts(facts).map((fact) => text(fact.variantId)).filter(Boolean)).size);
+  const soldProductCount = String(new Set(current.map((fact) => text(fact.variantId)).filter(Boolean)).size);
   const breakdowns = Object.freeze({
     customers: breakdown(facts, 'customers'),
     customerGroups: breakdown(facts, 'customerGroups'),
@@ -291,19 +339,50 @@ export async function salesReport(adapter, requestContext, filters, warehouseIds
     productGroups: breakdown(facts, 'productGroups'),
     employees: breakdown(facts, 'employees'),
   });
-  const reportReconciliation = reconciliation(facts);
+  const reportReconciliation = reconciliation(allFacts);
   const dataQuality = quality(facts);
   const trend = dailyTrend(facts, previous.dayCount);
   const compatibilityCustomerRows = compatibilityCustomers(breakdowns.customers);
+  const classificationOptions = buildSalesClassificationOptions(
+    mapRows(productGroupsResult.rows),
+    mapRows(customerGroupsResult.rows),
+  );
+  const productCustomerMatrix = buildProductCustomerMatrix({
+    facts,
+    catalogRows: mapRows(catalogProductsResult.rows),
+    customerGroups: classificationOptions.customerGroups,
+    filters,
+  });
+  const documentRows = mapRows(documentsResult.rows);
+  const currentOrderIds = classificationFiltered
+    ? new Set(current.map((fact) => text(fact.salesOrderId)).filter(Boolean))
+    : null;
+  const documents = currentOrderIds
+    ? Object.freeze(documentRows.filter((row) => currentOrderIds.has(text(row.salesOrderId))))
+    : documentRows;
 
   return Object.freeze({
-    family: 'sales', contractVersion: '2026-08-30', generatedAt: requestContext.receivedAt, timezone: BUSINESS_TIMEZONE,
-    filters: Object.freeze({ from: filters.from, to: filters.to, warehouseId: filters.warehouseId }),
+    family: 'sales', contractVersion: '2026-09-13', generatedAt: requestContext.receivedAt, timezone: BUSINESS_TIMEZONE,
+    filters: Object.freeze({
+      from: filters.from,
+      to: filters.to,
+      warehouseId: filters.warehouseId,
+      productGroupId: filters.productGroupId ?? null,
+      customerGroupId: filters.customerGroupId ?? null,
+      includeZeroProducts: Boolean(filters.includeZeroProducts),
+    }),
     scopeWarehouses: mapRows(scopeWarehouses.rows),
-    basis: Object.freeze({ date: 'sales.sales_orders.confirmed_at', revenue: 'sum(sales.sales_order_version_lines.line_total), reconciled exactly to latest confirmed/superseded version total', quantity: 'ordered_quantity is only shown on product rows where the product identity is explicit; quantities are never aggregated across different units or unrelated products', employee: 'sales_orders.source_employee_id, otherwise creator user employee mapping; customer responsible employee is not used', historicalDimensions: 'confirmed snapshots when captured; legacy rows explicitly mark current-master fallback instead of silently rewriting history', effectiveStates: Object.freeze(['confirmed', 'closed']) }),
+    basis: Object.freeze({ date: 'sales.sales_orders.confirmed_at', revenue: 'sum(sales.sales_order_version_lines.line_total), reconciled exactly to latest confirmed/superseded version total', quantity: 'ordered_quantity is only shown on product rows where the product identity is explicit; quantities are never aggregated across different units or unrelated products', classification: 'product/customer group filters use confirmed snapshots when available; product-customer quantity matrix totals remain separated by unit', employee: 'sales_orders.source_employee_id, otherwise creator user employee mapping; customer responsible employee is not used', historicalDimensions: 'confirmed snapshots when captured; legacy rows explicitly mark current-master fallback instead of silently rewriting history', effectiveStates: Object.freeze(['confirmed', 'closed']) }),
     comparison: Object.freeze({ current: Object.freeze({ from: filters.from, to: filters.to, dayCount: previous.dayCount }), previous: Object.freeze({ from: previous.from, to: previous.to, dayCount: previous.dayCount }) }),
     summary: Object.freeze({ ...summaryCounts, revenues, quantities, soldProductCount }), breakdowns,
-    reconciliation: reportReconciliation, dataQuality, dailyTrend: trend, documents: mapRows(documentsResult.rows),
+    reconciliation: reportReconciliation,
+    dataQuality,
+    classification: Object.freeze({
+      options: classificationOptions,
+      productCustomerMatrix,
+    }),
+    dailyTrend: trend,
+    documents,
     currencyTotals: Object.freeze(revenues.map((row) => Object.freeze({ currencyCode: row.currencyCode, documentCount: row.documentCount, totalValue: row.revenue }))),
     statusBreakdown: Object.freeze([]),
     topEntities: Object.freeze(compatibilityCustomerRows.slice(0, 10).map((row) => Object.freeze({ currencyCode: row.currencyCode, entityId: row.customerId, entityCode: row.customerCode, entityName: row.customerName, totalValue: row.totalValue }))),

@@ -66,6 +66,13 @@ const DIMENSIONS = Object.freeze({
     ['code', 'name', 'currencyCode', 'revenue', 'productCount', 'sharePercent', 'previousRevenue', 'changePercent', 'source'],
     ['code', 'name', 'currencyCode', 'revenue', 'productCount', 'sharePercent', 'previousRevenue', 'changePercent'],
   ),
+  productCustomerMatrix: Object.freeze({
+    label: 'Sản phẩm theo nhóm khách',
+    slug: 'San-pham-theo-nhom-khach',
+    dynamicColumns: true,
+    allowedColumns: Object.freeze([]),
+    defaultColumns: Object.freeze([]),
+  }),
   employees: dimension(
     'Nhân viên bán hàng',
     'Nhan-vien-ban-hang',
@@ -101,6 +108,19 @@ export function normalizeSalesReportingExportSelection({ dimension: rawDimension
     ? rawColumns.map((value) => String(value ?? '').trim()).filter(Boolean)
     : [];
   if (supplied.length > 32) return invalid('INVALID_SALES_EXPORT_COLUMNS', 'Danh sách cột xuất vượt giới hạn cho phép');
+
+  if (definition.dynamicColumns) {
+    if (supplied.length) return invalid('INVALID_SALES_EXPORT_COLUMNS', 'Bảng phân loại sản phẩm dùng cột nhóm khách từ dữ liệu canonical, không nhận danh sách cột tùy chọn');
+    return Object.freeze({
+      ok: true,
+      dimension: dimensionKey,
+      dimensionLabel: definition.label,
+      dimensionSlug: definition.slug,
+      dynamicColumns: true,
+      format,
+      columns: Object.freeze([]),
+    });
+  }
 
   const selected = supplied.length ? [...new Set(supplied)] : [...definition.defaultColumns];
   if (!selected.length) return invalid('INVALID_SALES_EXPORT_COLUMNS', 'Cần chọn ít nhất một cột để xuất');
@@ -257,6 +277,66 @@ async function writeCsv(filePath, columns, rows) {
   }
 }
 
+function matrixGroupLabel(column) {
+  const code = valueText(column?.code).trim();
+  const name = valueText(column?.name).trim() || 'Chưa phân loại';
+  return code ? `${code} · ${name}` : name;
+}
+
+export function salesProductCustomerMatrixExportShape(matrix) {
+  const matrixColumns = Array.isArray(matrix?.columns) ? matrix.columns : [];
+  const dynamic = matrixColumns.map((column, index) => Object.freeze({
+    key: `customerGroup${index + 1}`,
+    label: matrixGroupLabel(column),
+  }));
+  const columns = Object.freeze([
+    column('code', 'Mã'),
+    column('name', 'Tên sản phẩm'),
+    column('unitName', 'ĐVT'),
+    column('totalQuantity', 'Tổng SL'),
+    ...dynamic,
+  ]);
+
+  const rows = (Array.isArray(matrix?.rows) ? matrix.rows : []).map((row) => {
+    const value = {
+      code: row?.sku ?? '',
+      name: row?.name ?? '',
+      unitName: row?.unit?.name ?? row?.unit?.code ?? '',
+      totalQuantity: row?.totalQuantity ?? '0',
+    };
+    dynamic.forEach((definition, index) => {
+      value[definition.key] = row?.cells?.[index]?.quantity ?? '0';
+    });
+    return Object.freeze(value);
+  });
+
+  for (const total of Array.isArray(matrix?.totalsByUnit) ? matrix.totalsByUnit : []) {
+    const totalRow = {
+      code: '',
+      name: `TỔNG ${total?.unit?.name ?? total?.unit?.code ?? 'ĐVT'}`,
+      unitName: total?.unit?.name ?? total?.unit?.code ?? '',
+      totalQuantity: total?.totalQuantity ?? '0',
+    };
+    dynamic.forEach((definition, index) => {
+      totalRow[definition.key] = total?.cells?.[index]?.quantity ?? '0';
+    });
+    rows.push(Object.freeze(totalRow));
+
+    const percentRow = {
+      code: '',
+      name: `TỶ LỆ ${total?.unit?.name ?? total?.unit?.code ?? 'ĐVT'} (%)`,
+      unitName: total?.unit?.name ?? total?.unit?.code ?? '',
+      totalQuantity: total?.totalQuantity === '0' ? '0%' : '100%',
+    };
+    dynamic.forEach((definition, index) => {
+      percentRow[definition.key] = `${total?.cells?.[index]?.sharePercent ?? '0'}%`;
+    });
+    rows.push(Object.freeze(percentRow));
+  }
+
+  return Object.freeze({ columns, rows: Object.freeze(rows) });
+}
+
 function fileStamp(receivedAt) {
   return new Date(receivedAt ?? Date.now()).toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
 }
@@ -275,16 +355,20 @@ export async function createSalesReportingExport(pool, {
     throw error;
   }
 
-  const rows = (report.breakdowns?.[selection.dimension] ?? []).map(flattenRow);
+  const dynamicShape = selection.dynamicColumns
+    ? salesProductCustomerMatrixExportShape(report.classification?.productCustomerMatrix)
+    : null;
+  const columns = dynamicShape?.columns ?? selection.columns;
+  const rows = dynamicShape?.rows ?? (report.breakdowns?.[selection.dimension] ?? []).map(flattenRow);
   const tempDirectory = await mkdtemp(path.join(tmpdir(), 'npp-sales-report-export-'));
   const extension = selection.format === 'csv' ? 'csv' : 'xlsx';
   const outputPath = path.join(tempDirectory, `sales-report.${extension}`);
   try {
     if (selection.format === 'csv') {
-      await writeCsv(outputPath, selection.columns, rows);
+      await writeCsv(outputPath, columns, rows);
     } else {
       const worksheetPath = path.join(tempDirectory, '00-sales-report.xml');
-      await writeWorksheet(worksheetPath, selection.columns, rows);
+      await writeWorksheet(worksheetPath, columns, rows);
       await buildMultiSheetXlsx(outputPath, [{
         key: selection.dimension,
         sheetName: selection.dimensionLabel,
@@ -316,4 +400,5 @@ export const salesReportingExportInternals = Object.freeze({
   DIMENSIONS,
   SOURCE_LABELS,
   flattenRow,
+  salesProductCustomerMatrixExportShape,
 });

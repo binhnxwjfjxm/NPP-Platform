@@ -20,6 +20,7 @@ import { adminAlertsReport as mcpAlertsReport } from './reporting-mcp-alerts.js'
 import { ALERT_STATUSES, canTransitionAlertStatus } from './reporting-mcp-alert-rules.js';
 import { requiresCanonicalEmployeeMcpScope, resolveReportingMcpScope } from './reporting-mcp-scope-policy.js';
 import { createManagementReportExport } from '../services/reporting-management-export.js';
+import { normalizeSalesClassificationFilters } from './reporting-sales-classification.js';
 
 const ALERT_RESOURCE_TYPE = 'admin-alert';
 const ALERT_ACTION = 'admin.alert.status_changed';
@@ -325,8 +326,16 @@ async function handleExportRequest(req,res,options,url) {
   for(const permissionKey of REPORT_READ_PERMISSIONS[key]) if(!permissionAllowed(options,context,permissionKey)){sendError(res,apiError('FORBIDDEN','Tài khoản hiện tại không có quyền xem đủ dữ liệu của báo cáo này',{},false,403),options.requestId,options.receivedAt);return;}
   const warehouseScoped=!['mcp','people','decisions'].includes(key);
   if(warehouseScoped||key==='decisions'){context=await ensureScopes(options,context);if(!context){sendError(res,apiError('REPORTING_SCOPE_LOOKUP_FAILED','Không tải được phạm vi kho',{},true,503),options.requestId,options.receivedAt);return;}}
-  const filters=normalizeFilters({from:key==='debt'?null:url.searchParams.get('from'),to:key==='debt'?null:url.searchParams.get('to'),warehouseId:warehouseScoped?url.searchParams.get('warehouseId'):null},new Date(options.receivedAt));
+  let filters=normalizeFilters({from:key==='debt'?null:url.searchParams.get('from'),to:key==='debt'?null:url.searchParams.get('to'),warehouseId:warehouseScoped?url.searchParams.get('warehouseId'):null},new Date(options.receivedAt));
   if(!filters.ok){sendError(res,apiError(filters.code,filters.message,filters.details??{},false,filters.statusCode??400),options.requestId,options.receivedAt);return;}
+  if(key==='sales-profit'){
+    filters=normalizeSalesClassificationFilters({
+      productGroupId:url.searchParams.get('productGroupId'),
+      customerGroupId:url.searchParams.get('customerGroupId'),
+      includeZeroProducts:url.searchParams.get('includeZeroProducts'),
+    },filters);
+    if(!filters.ok){sendError(res,apiError(filters.code,filters.message,filters.details??{},false,filters.statusCode??400),options.requestId,options.receivedAt);return;}
+  }
   let warehouseIds=Array.isArray(context.scopes?.warehouseIds)?context.scopes.warehouseIds:[];
   if(warehouseScoped){const scope=validateScope(context,filters);if(!scope.ok){sendError(res,apiError(scope.code,scope.message,scope.details??{},false,scope.statusCode??400),options.requestId,options.receivedAt);return;}warehouseIds=scope.warehouseIds;}
   let fieldScope=null;
