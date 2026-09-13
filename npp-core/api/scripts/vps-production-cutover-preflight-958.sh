@@ -33,6 +33,7 @@ PROJECT_ORDERING="prj_btLk3p4FhmShgKFdRBMq6ZFOagKe"
 
 umask 077
 : > "$REPORT_FILE"
+echo 'GATE_B_STAGE=START' >> "$REPORT_FILE"
 company_cfg="$RUNNER_TEMP/company-heroku.json"
 mcp_cfg="$RUNNER_TEMP/mcp-heroku.json"
 company_env="$RUNNER_TEMP/company-production.env"
@@ -87,7 +88,6 @@ wait_web_quantity() {
   return 1
 }
 
-
 project_env_value() {
   local pid="$1" key="$2" dir file value
   dir="$RUNNER_TEMP/vercel-env-$pid"
@@ -112,6 +112,8 @@ mcp_old_qty="$(formation_quantity "$HEROKU_MCP_APP")"
 [[ "$company_old_qty" =~ ^[0-9]+$ && "$mcp_old_qty" =~ ^[0-9]+$ ]]
 [ "$company_old_qty" -gt 0 ]
 [ "$mcp_old_qty" -gt 0 ]
+echo 'GATE_B_STAGE=HEROKU_FORMATION_PASS' >> "$REPORT_FILE"
+
 opened_writes=false
 vercel_mutated=false
 rollback_before_open() {
@@ -130,6 +132,7 @@ rollback_before_open() {
 trap rollback_before_open EXIT
 
 assert_main_unchanged
+echo 'GATE_B_STAGE=EXACT_MAIN_PASS' >> "$REPORT_FILE"
 
 # Gate B: exact source/provider/VPS preflight.
 for spec in \
@@ -146,20 +149,40 @@ do
   test "$(jq -r '.id' <<<"$project")" = "$pid"
   test "$(jq -r '.name' <<<"$project")" = "$pname"
 done
+echo 'GATE_B_STAGE=VERCEL_PROJECTS_PASS' >> "$REPORT_FILE"
+
+# A previous interrupted HTTPS attempt can leave the short-lived certificate renewal
+# oneshot in failed state even while nginx and the timer remain healthy. Heal only that
+# exact known unit, and only by proving a real renewal invocation succeeds. Never clear
+# unrelated failed units.
+company_failed_units="$(ssh_run "$COMPANY_KEY" "$COMPANY_KNOWN" "$VPS_COMPANY_HOST" 'systemctl --failed --no-legend --plain 2>/dev/null | awk '\''NF{print $1}'\'' | paste -sd, -')"
+if [ "$company_failed_units" = "npp-ip-cert-renew.service" ]; then
+  ssh_run "$COMPANY_KEY" "$COMPANY_KNOWN" "$VPS_COMPANY_HOST" 'set -euo pipefail; test "$(systemctl is-active npp-ip-cert-renew.timer)" = active; test "$(systemctl is-enabled npp-ip-cert-renew.timer)" = enabled; sudo -n systemctl start npp-ip-cert-renew.service; sudo -n systemctl reset-failed npp-ip-cert-renew.service; test "$(systemctl --failed --no-legend --plain 2>/dev/null | awk '\''NF{c++} END{print c+0}'\'')" = 0'
+  echo 'GATE_B_STAGE=COMPANY_CERT_RENEW_HEALED' >> "$REPORT_FILE"
+elif [ -n "$company_failed_units" ]; then
+  echo 'GATE_B_BLOCKER=COMPANY_UNEXPECTED_FAILED_UNIT' >> "$REPORT_FILE"
+  exit 42
+else
+  echo 'GATE_B_STAGE=COMPANY_SYSTEMD_CLEAN' >> "$REPORT_FILE"
+fi
 
 for tuple in "$DB_KEY|$DB_KNOWN|$VPS_DB_HOST" "$COMPANY_KEY|$COMPANY_KNOWN|$VPS_COMPANY_HOST" "$MCP_KEY|$MCP_KNOWN|$VPS_MCP_HOST"; do
   IFS='|' read -r key known host <<< "$tuple"
   ssh_run "$key" "$known" "$host" 'sudo -n true; test "$(systemctl --failed --no-legend --plain 2>/dev/null | awk "NF{c++} END{print c+0}")" = 0'
 done
+echo 'GATE_B_STAGE=SYSTEMD_PASS' >> "$REPORT_FILE"
+
 ssh_run "$DB_KEY" "$DB_KNOWN" "$VPS_DB_HOST" 'test "$(systemctl is-active postgresql)" = active; sudo -n -u postgres psql -XAtqc "show server_version" | grep -Eq "^17\."'
 ssh_run "$COMPANY_KEY" "$COMPANY_KNOWN" "$VPS_COMPANY_HOST" 'test "$(systemctl is-active nginx)" = active; sudo -n nginx -t >/dev/null 2>&1; node --version | grep -Eq "^v20\."'
 ssh_run "$MCP_KEY" "$MCP_KNOWN" "$VPS_MCP_HOST" 'node --version | grep -Eq "^v20\."; for s in ipv4-proxy ipv6-proxy oci-ipv6-pool; do test "$(systemctl is-active "$s")" = active; done; test "$(ss -lntH | awk '\''{n=split($4,a,":");p=a[n]+0;if(p>=3128&&p<=3427)c++}END{print c+0}'\'')" = 300'
+echo 'GATE_B_STAGE=VPS_RUNTIME_PASS' >> "$REPORT_FILE"
 
 # Capture source runtime config privately before freeze.
 heroku_api "/apps/$HEROKU_COMPANY_APP/config-vars" > "$company_cfg"
 heroku_api "/apps/$HEROKU_MCP_APP/config-vars" > "$mcp_cfg"
 for key in DATABASE_URL INSTALLATION_ID BACKEND_API_TOKEN CORE_BOOTSTRAP_ACTOR_ID CORS_ORIGINS; do jq -e --arg k "$key" 'has($k) and (.[$k] | tostring | length > 0)' "$company_cfg" >/dev/null; done
 for key in DATABASE_URL INSTALLATION_ID BACKEND_API_TOKEN CORS_ORIGINS CORE_SALES_API_TOKEN CORE_ONBOARDING_API_TOKEN; do jq -e --arg k "$key" 'has($k) and (.[$k] | tostring | length > 0)' "$mcp_cfg" >/dev/null; done
+echo 'GATE_B_STAGE=SOURCE_CONFIG_PASS' >> "$REPORT_FILE"
 
 company_old_url="$(heroku_api "/apps/$HEROKU_COMPANY_APP" | jq -r '.web_url' | sed 's:/*$::')"
 mcp_old_url="$(heroku_api "/apps/$HEROKU_MCP_APP" | jq -r '.web_url' | sed 's:/*$::')"
@@ -174,5 +197,6 @@ old_delivery_core="$(project_env_value "$PROJECT_DELIVERY" CORE_API_INTERNAL_URL
 old_retail_core="$(project_env_value "$PROJECT_RETAIL" CORE_API_INTERNAL_URL)"
 old_ordering_core="$(project_env_value "$PROJECT_ORDERING" CORE_API_BASE_URL)"
 old_mcp_backend="$(project_env_value "$PROJECT_MCP" BACKEND_API_BASE_URL)"
+echo 'GATE_B_STAGE=VERCEL_BINDINGS_CAPTURED' >> "$REPORT_FILE"
 
 echo 'GATE_B_PREFLIGHT=PASS' >> "$REPORT_FILE"
