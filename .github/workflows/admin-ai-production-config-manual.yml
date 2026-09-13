@@ -27,7 +27,7 @@ jobs:
       DEPLOY_REF: main
       HEROKU_APP_NAME: hung-phat
       HEROKU_FORBIDDEN_APP_NAME: hung-phat-mcp
-      COMPANY_API_URL: https://hung-phat-945da1547594.herokuapp.com
+      COMPANY_API_URL: ${{ vars.COMPANY_API_URL }}
       ADMIN_AI_GATEWAY_BASE_URL: https://www.nguyenlieuhungphat.com
       ADMIN_AI_AGENT_MODEL: gemini-2.5-pro
 
