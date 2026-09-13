@@ -8,7 +8,12 @@ type Filters = Readonly<{
   from: string;
   to: string;
   warehouseId: string;
+  productGroupId: string;
+  customerGroupId: string;
+  includeZeroProducts: boolean;
 }>;
+
+type SalesExportDimension = SalesBreakdownKey | 'productCustomerMatrix';
 
 type ColumnOption = Readonly<{
   key: string;
@@ -16,17 +21,19 @@ type ColumnOption = Readonly<{
 }>;
 
 type Props = Readonly<{
-  dimension: SalesBreakdownKey;
+  dimension: SalesExportDimension;
   filters: Filters;
   disabled?: boolean;
+  buttonLabel?: string;
 }>;
 
-const DIMENSION_LABELS: Readonly<Record<SalesBreakdownKey, string>> = Object.freeze({
+const DIMENSION_LABELS: Readonly<Record<SalesExportDimension, string>> = Object.freeze({
   customers: 'Khách hàng',
-  customerGroups: 'Loại khách',
+  customerGroups: 'Nhóm khách hàng',
   channels: 'Kênh bán',
   products: 'Sản phẩm',
-  productGroups: 'Nhóm hàng',
+  productGroups: 'Nhóm sản phẩm',
+  productCustomerMatrix: 'Sản lượng sản phẩm theo nhóm khách hàng',
   employees: 'Nhân viên bán hàng',
 });
 
@@ -54,21 +61,23 @@ function columns(keys: readonly ColumnKey[]): readonly ColumnOption[] {
   return Object.freeze(keys.map((key) => Object.freeze({ key, label: COLUMN_LABELS[key] })));
 }
 
-const COLUMN_OPTIONS: Readonly<Record<SalesBreakdownKey, readonly ColumnOption[]>> = Object.freeze({
+const COLUMN_OPTIONS: Readonly<Record<SalesExportDimension, readonly ColumnOption[]>> = Object.freeze({
   customers: columns(['code', 'name', 'currencyCode', 'revenue', 'documentCount', 'sharePercent', 'previousRevenue', 'changePercent', 'source']),
   customerGroups: columns(['code', 'name', 'currencyCode', 'revenue', 'customerCount', 'documentCount', 'sharePercent', 'previousRevenue', 'changePercent', 'source']),
   channels: columns(['code', 'name', 'currencyCode', 'revenue', 'documentCount', 'customerCount', 'sharePercent', 'previousRevenue', 'changePercent', 'source']),
   products: columns(['code', 'name', 'currencyCode', 'unitCode', 'unitName', 'quantity', 'revenue', 'sharePercent', 'previousRevenue', 'previousQuantity', 'changePercent', 'source']),
   productGroups: columns(['code', 'name', 'currencyCode', 'revenue', 'productCount', 'sharePercent', 'previousRevenue', 'changePercent', 'source']),
+  productCustomerMatrix: Object.freeze([]),
   employees: columns(['code', 'name', 'currencyCode', 'revenue', 'documentCount', 'customerCount', 'sharePercent', 'previousRevenue', 'changePercent', 'source']),
 });
 
-const DEFAULT_COLUMNS: Readonly<Record<SalesBreakdownKey, readonly string[]>> = Object.freeze({
+const DEFAULT_COLUMNS: Readonly<Record<SalesExportDimension, readonly string[]>> = Object.freeze({
   customers: Object.freeze(['code', 'name', 'currencyCode', 'revenue', 'documentCount', 'sharePercent', 'previousRevenue', 'changePercent']),
   customerGroups: Object.freeze(['code', 'name', 'currencyCode', 'revenue', 'customerCount', 'documentCount', 'sharePercent', 'previousRevenue', 'changePercent']),
   channels: Object.freeze(['code', 'name', 'currencyCode', 'revenue', 'documentCount', 'customerCount', 'sharePercent', 'previousRevenue', 'changePercent']),
   products: Object.freeze(['code', 'name', 'currencyCode', 'unitName', 'quantity', 'revenue', 'sharePercent', 'previousRevenue', 'previousQuantity', 'changePercent']),
   productGroups: Object.freeze(['code', 'name', 'currencyCode', 'revenue', 'productCount', 'sharePercent', 'previousRevenue', 'changePercent']),
+  productCustomerMatrix: Object.freeze([]),
   employees: Object.freeze(['code', 'name', 'currencyCode', 'revenue', 'documentCount', 'customerCount', 'sharePercent', 'previousRevenue', 'changePercent']),
 });
 
@@ -77,7 +86,12 @@ function filenameFromDisposition(value: string | null, fallback: string) {
   return match?.[1] || fallback;
 }
 
-export function SalesReportingExportDialog({ dimension, filters, disabled = false }: Props) {
+export function SalesReportingExportDialog({
+  dimension,
+  filters,
+  disabled = false,
+  buttonLabel = 'Xuất báo cáo',
+}: Props) {
   const [open, setOpen] = useState(false);
   const [format, setFormat] = useState<'xlsx' | 'csv'>('xlsx');
   const [selectedColumns, setSelectedColumns] = useState<readonly string[]>(DEFAULT_COLUMNS[dimension]);
@@ -85,6 +99,7 @@ export function SalesReportingExportDialog({ dimension, filters, disabled = fals
   const [error, setError] = useState('');
 
   const options = COLUMN_OPTIONS[dimension];
+  const dynamicColumns = dimension === 'productCustomerMatrix';
   const selected = useMemo(() => new Set(selectedColumns), [selectedColumns]);
 
   useEffect(() => {
@@ -115,7 +130,7 @@ export function SalesReportingExportDialog({ dimension, filters, disabled = fals
   }
 
   async function exportReport() {
-    if (!selectedColumns.length || exporting) return;
+    if ((!dynamicColumns && !selectedColumns.length) || exporting) return;
     setExporting(true);
     setError('');
     try {
@@ -126,7 +141,12 @@ export function SalesReportingExportDialog({ dimension, filters, disabled = fals
         format,
       });
       if (filters.warehouseId) query.set('warehouseId', filters.warehouseId);
-      for (const key of selectedColumns) query.append('column', key);
+      if (filters.productGroupId) query.set('productGroupId', filters.productGroupId);
+      if (filters.customerGroupId) query.set('customerGroupId', filters.customerGroupId);
+      if (filters.includeZeroProducts) query.set('includeZeroProducts', 'true');
+      if (!dynamicColumns) {
+        for (const key of selectedColumns) query.append('column', key);
+      }
 
       const response = await fetch(`/api/reporting/sales/export?${query.toString()}`, {
         method: 'GET',
@@ -159,7 +179,7 @@ export function SalesReportingExportDialog({ dimension, filters, disabled = fals
   return (
     <>
       <button type="button" className={styles.openButton} onClick={openDialog} disabled={disabled}>
-        Xuất báo cáo
+        {buttonLabel}
       </button>
       {open ? (
         <div className={styles.backdrop} role="presentation" onMouseDown={(event) => {
@@ -175,7 +195,7 @@ export function SalesReportingExportDialog({ dimension, filters, disabled = fals
             </div>
 
             <p className={styles.description}>
-              Xuất toàn bộ dữ liệu của chiều phân tích đang chọn theo kỳ và kho hiện tại, không phụ thuộc số dòng đang hiển thị trên màn hình.
+              Xuất toàn bộ dữ liệu theo kỳ, kho và phân loại đang áp dụng, không phụ thuộc số dòng đang hiển thị trên màn hình.
             </p>
 
             <fieldset className={styles.formatGroup}>
@@ -184,29 +204,37 @@ export function SalesReportingExportDialog({ dimension, filters, disabled = fals
               <label><input type="radio" name="sales-export-format" value="csv" checked={format === 'csv'} onChange={() => setFormat('csv')} /> CSV (.csv)</label>
             </fieldset>
 
-            <div className={styles.columnHeader}>
-              <div><strong>Cột cần xuất</strong><small>{selectedColumns.length}/{options.length} cột</small></div>
-              <div className={styles.quickActions}>
-                <button type="button" onClick={() => setSelectedColumns(options.map((item) => item.key))}>Chọn tất cả</button>
-                <button type="button" onClick={() => setSelectedColumns([])}>Bỏ chọn</button>
-                <button type="button" onClick={() => setSelectedColumns(DEFAULT_COLUMNS[dimension])}>Mặc định</button>
-              </div>
-            </div>
+            {dynamicColumns ? (
+              <p className={styles.description}>
+                Các cột nhóm khách hàng được lấy tự động từ dữ liệu báo cáo; tổng và tỷ lệ được giữ riêng theo từng ĐVT.
+              </p>
+            ) : (
+              <>
+                <div className={styles.columnHeader}>
+                  <div><strong>Cột cần xuất</strong><small>{selectedColumns.length}/{options.length} cột</small></div>
+                  <div className={styles.quickActions}>
+                    <button type="button" onClick={() => setSelectedColumns(options.map((item) => item.key))}>Chọn tất cả</button>
+                    <button type="button" onClick={() => setSelectedColumns([])}>Bỏ chọn</button>
+                    <button type="button" onClick={() => setSelectedColumns(DEFAULT_COLUMNS[dimension])}>Mặc định</button>
+                  </div>
+                </div>
 
-            <div className={styles.columnGrid}>
-              {options.map((option) => (
-                <label key={option.key}>
-                  <input type="checkbox" checked={selected.has(option.key)} onChange={() => toggleColumn(option.key)} />
-                  <span>{option.label}</span>
-                </label>
-              ))}
-            </div>
+                <div className={styles.columnGrid}>
+                  {options.map((option) => (
+                    <label key={option.key}>
+                      <input type="checkbox" checked={selected.has(option.key)} onChange={() => toggleColumn(option.key)} />
+                      <span>{option.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
 
             {error ? <div className={styles.error} role="alert">{error}</div> : null}
 
             <div className={styles.footer}>
               <button type="button" className={styles.cancelButton} onClick={() => setOpen(false)} disabled={exporting}>Hủy</button>
-              <button type="button" className={styles.exportButton} onClick={exportReport} disabled={exporting || selectedColumns.length === 0}>
+              <button type="button" className={styles.exportButton} onClick={exportReport} disabled={exporting || (!dynamicColumns && selectedColumns.length === 0)}>
                 {exporting ? 'Đang tạo file…' : `Xuất ${format === 'xlsx' ? 'Excel' : 'CSV'}`}
               </button>
             </div>

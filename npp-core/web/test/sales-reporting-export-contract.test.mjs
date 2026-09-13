@@ -27,6 +27,22 @@ test('Cửa sổ xuất có Excel, CSV, chọn tất cả, bỏ chọn và cột
   );
 });
 
+test('Bảng phân loại xuất cột nhóm khách động và giữ đúng bộ lọc đang áp dụng', () => {
+  const dialog = read('app/components/sales-reporting-export-dialog.tsx');
+  const gateway = read('lib/sales-reporting-export-gateway.ts');
+
+  assert.match(dialog, /productCustomerMatrix: 'Sản lượng sản phẩm theo nhóm khách hàng'/);
+  assert.match(dialog, /dynamicColumns = dimension === 'productCustomerMatrix'/);
+  assert.match(dialog, /if \(!dynamicColumns\)[\s\S]*query\.append\('column', key\)/);
+  assert.match(dialog, /query\.set\('productGroupId', filters\.productGroupId\)/);
+  assert.match(dialog, /query\.set\('customerGroupId', filters\.customerGroupId\)/);
+  assert.match(dialog, /query\.set\('includeZeroProducts', 'true'\)/);
+  assert.match(dialog, /tổng và tỷ lệ được giữ riêng theo từng ĐVT/);
+  for (const field of ['productGroupId', 'customerGroupId', 'includeZeroProducts']) {
+    assert.match(gateway, new RegExp(field));
+  }
+});
+
 test('Trình duyệt chỉ yêu cầu file từ server, không tự dựng CSV/XLSX từ dòng đang hiển thị', () => {
   const dialog = read('app/components/sales-reporting-export-dialog.tsx');
   assert.match(dialog, /\/api\/reporting\/sales\/export/);
