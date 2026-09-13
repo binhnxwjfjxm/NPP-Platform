@@ -112,7 +112,7 @@ test('8.1 live queries keep canonical source, lifecycle and currency contracts e
   assert.match(sales, /line\.line_total::text/);
   assert.match(sales, /sov\.total::text AS version_total/);
   assert.match(sales, /const revenues = revenueSummary\(facts\)/);
-  assert.match(sales, /const reportReconciliation = reconciliation\(facts\)/);
+  assert.match(sales, /const reportReconciliation = reconciliation\(allFacts\)/);
   assert.match(purchasing, /GROUP BY currency_code/);
   assert.match(sales, /so\.status IN \('confirmed','closed'\)/);
   assert.match(purchasing, /approved','partially_received','fully_received','closed/);

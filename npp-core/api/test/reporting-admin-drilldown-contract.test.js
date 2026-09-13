@@ -8,7 +8,10 @@ test('Admin drill-down extends Sales reporting with bounded customer and documen
   const sales = source('../src/routes/reporting-sales.js');
 
   assert.match(sales, /customers: compatibilityCustomerRows/);
-  assert.match(sales, /documents: mapRows\(documentsResult\.rows\)/);
+  assert.match(sales, /const documentRows = mapRows\(documentsResult\.rows\)/);
+  assert.match(sales, /const currentOrderIds = classificationFiltered/);
+  assert.match(sales, /documentRows\.filter/);
+  assert.match(sales, /documents,/);
   assert.match(sales, /so\.id AS sales_order_id/);
   assert.match(sales, /sov\.customer_id/);
   assert.match(sales, /so\.order_number/);
