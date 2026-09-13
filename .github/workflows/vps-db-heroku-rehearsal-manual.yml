@@ -147,6 +147,7 @@ jobs:
 
       - name: Lock migration head or run restore rehearsal
         id: gate
+        continue-on-error: ${{ steps.request.outputs.action == 'rehearse' }}
         shell: bash
         env:
           HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
@@ -159,7 +160,7 @@ jobs:
           bash npp-core/api/scripts/vps-db-heroku-rehearsal-958.sh
 
       - name: Diagnose reconciliation mismatch
-        if: failure() && steps.request.outputs.action == 'rehearse'
+        if: steps.gate.outcome == 'failure' && steps.request.outputs.action == 'rehearse'
         shell: bash
         env:
           HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
@@ -169,6 +170,18 @@ jobs:
         run: |
           set -euo pipefail
           bash npp-core/api/scripts/vps-db-reconciliation-diagnose-958.sh
+
+      - name: Verify preserved Heroku state on VPS
+        if: steps.request.outputs.action == 'rehearse'
+        shell: bash
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          SSH_KEY: ${{ steps.ssh.outputs.key }}
+          KNOWN_HOSTS: ${{ steps.ssh.outputs.known_hosts }}
+        run: |
+          set -euo pipefail
+          bash npp-core/api/scripts/vps-db-heroku-parity-gate-958.sh
 
       - name: Publish sanitized evidence to Issue 958
         if: always()
