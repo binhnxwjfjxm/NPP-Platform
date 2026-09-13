@@ -202,6 +202,36 @@ ensure_cert_renew_scope "$COMPANY_KEY" "$COMPANY_KNOWN" "$VPS_COMPANY_HOST" npp-
 ensure_cert_renew_scope "$MCP_KEY" "$MCP_KNOWN" "$VPS_MCP_HOST" npp-mcp-production
 echo 'GATE_B_STAGE=CERT_RENEW_SCOPED' >> "$REPORT_FILE"
 
+# A failed legacy/snap Certbot oneshot can remain latched after an earlier attempt even
+# though nginx and the NPP-owned renewal lineage are healthy. Clear only those exact
+# inactive legacy units; never clear the NPP renewal unit here and never hide unrelated
+# systemd failures.
+clear_stale_legacy_certbot_failures() {
+  local key="$1" known="$2" host="$3"
+  ssh_run "$key" "$known" "$host" 'bash -s' <<'REMOTE'
+set -euo pipefail
+sudo -n true
+mapfile -t failed < <(systemctl --failed --no-legend --plain 2>/dev/null | awk 'NF{print $1}')
+for unit in "${failed[@]}"; do
+  case "$unit" in
+    certbot.service|snap.certbot.renew.service)
+      test "$(systemctl is-active "$unit" 2>/dev/null || true)" != active
+      sudo -n systemctl reset-failed "$unit"
+      ;;
+    *)
+      echo "unexpected_failed_unit:$unit" >&2
+      exit 42
+      ;;
+  esac
+done
+test "$(systemctl --failed --no-legend --plain 2>/dev/null | awk 'NF{c++} END{print c+0}')" = 0
+REMOTE
+}
+
+clear_stale_legacy_certbot_failures "$COMPANY_KEY" "$COMPANY_KNOWN" "$VPS_COMPANY_HOST"
+clear_stale_legacy_certbot_failures "$MCP_KEY" "$MCP_KNOWN" "$VPS_MCP_HOST"
+echo 'GATE_B_STAGE=LEGACY_CERTBOT_FAILED_STATE_CLEARED' >> "$REPORT_FILE"
+
 for tuple in "$DB_KEY|$DB_KNOWN|$VPS_DB_HOST" "$COMPANY_KEY|$COMPANY_KNOWN|$VPS_COMPANY_HOST" "$MCP_KEY|$MCP_KNOWN|$VPS_MCP_HOST"; do
   IFS='|' read -r key known host <<< "$tuple"
   ssh_run "$key" "$known" "$host" 'sudo -n true; test "$(systemctl --failed --no-legend --plain 2>/dev/null | awk "NF{c++} END{print c+0}")" = 0'
