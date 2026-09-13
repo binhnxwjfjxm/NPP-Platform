@@ -114,6 +114,31 @@ jobs:
           echo "key=$key" >> "$GITHUB_OUTPUT"
           echo "known_hosts=$known_hosts" >> "$GITHUB_OUTPUT"
 
+      - name: Ensure VPS DB locale compatibility
+        if: steps.request.outputs.action == 'rehearse'
+        shell: bash
+        env:
+          SSH_KEY: ${{ steps.ssh.outputs.key }}
+          KNOWN_HOSTS: ${{ steps.ssh.outputs.known_hosts }}
+        run: |
+          set -euo pipefail
+          ssh \
+            -i "$SSH_KEY" \
+            -o BatchMode=yes \
+            -o ConnectTimeout=10 \
+            -o ConnectionAttempts=1 \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$KNOWN_HOSTS" \
+            "$VPS_SSH_USER@$VPS_DB_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          if ! command -v locale-gen >/dev/null 2>&1; then
+            sudo -n apt-get update -y
+            sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y locales
+          fi
+          sudo -n locale-gen en_US.UTF-8 >/dev/null
+          locale -a | grep -Eiq '^en_US\.(UTF-8|utf8)$'
+          REMOTE
+
       - name: Lock migration head or run restore rehearsal
         id: gate
         shell: bash
