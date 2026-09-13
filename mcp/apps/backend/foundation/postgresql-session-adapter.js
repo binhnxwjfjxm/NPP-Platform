@@ -4,7 +4,8 @@ import { providerPersistence } from "./provider-runtime.js";
 
 export const POSTGRESQL_SESSION_RPC_NAMES = Object.freeze(new Set([
   "mcp_idempotent_open_route_session",
-  "mcp_idempotent_set_session_customer_status"
+  "mcp_idempotent_set_session_customer_status",
+  "mcp_idempotent_update_route_session"
 ]));
 
 function text(value) {
@@ -55,7 +56,7 @@ function requestContext(config, args) {
   });
 }
 
-function sessionResult(row) {
+function sessionResult(row, extra = {}) {
   return {
     id: row.id,
     sessionId: row.id,
@@ -73,7 +74,8 @@ function sessionResult(row) {
     followupCount: row.followup_count,
     note: row.note,
     openedAt: row.opened_at,
-    closedAt: row.closed_at
+    closedAt: row.closed_at,
+    ...extra
   };
 }
 
@@ -109,6 +111,64 @@ function sessionCustomerResult(row) {
   };
 }
 
+async function createSessionReportSnapshot(client, context, session, source = "close_session") {
+  const customers = await client.query(
+    `SELECT * FROM mcp.mcp_session_customers
+     WHERE installation_id = $1 AND session_id = $2
+     ORDER BY sort_order, id`,
+    [context.installation.id, session.id]
+  );
+  const details = customers.rows || [];
+  const overview = {
+    planned: Number(session.planned_customers || 0),
+    visited: Number(session.visited_customers || 0),
+    pending: Math.max(Number(session.planned_customers || 0) - Number(session.visited_customers || 0), 0),
+    orders: Number(session.order_count || 0),
+    tests: Number(session.test_count || 0),
+    reports: Number(session.report_count || 0),
+    followups: Number(session.followup_count || 0)
+  };
+  const snapshot = await client.query(
+    `INSERT INTO mcp.mcp_session_reports (
+       installation_id, session_id, route_id, route_name, session_date, sales,
+       status, kpis, overview, sections, customer_details, snapshot_source, snapshot_at, raw_payload
+     ) VALUES (
+       $1, $2, $3, $4, $5, $6,
+       'draft', $7::jsonb, $8::jsonb, $9::jsonb, $10::jsonb, $11, now(),
+       jsonb_build_object('foundation_context', $12::jsonb)
+     )
+     RETURNING *`,
+    [
+      context.installation.id,
+      session.id,
+      session.route_id,
+      session.route_name,
+      session.session_date,
+      session.sales,
+      json([
+        { key: "planned", value: overview.planned },
+        { key: "visited", value: overview.visited },
+        { key: "orders", value: overview.orders },
+        { key: "tests", value: overview.tests },
+        { key: "reports", value: overview.reports },
+        { key: "followups", value: overview.followups }
+      ]),
+      json(overview),
+      json({ overview, customers: details }),
+      json(details),
+      source,
+      json({ requestId: context.requestId, actorId: context.actor.id })
+    ]
+  );
+  return {
+    id: snapshot.rows[0].id,
+    reportId: snapshot.rows[0].id,
+    sessionId: session.id,
+    snapshotSource: snapshot.rows[0].snapshot_source,
+    snapshotAt: snapshot.rows[0].snapshot_at
+  };
+}
+
 async function finalizeStaleSession(client, context, routeId, requestedDate) {
   const active = await client.query(
     `SELECT *, session_date::text AS session_date_text
@@ -121,7 +181,7 @@ async function finalizeStaleSession(client, context, routeId, requestedDate) {
   if (!session) return;
   if (session.session_date_text >= requestedDate) fail("active_session_already_exists", 409);
 
-  await client.query(
+  const closed = await client.query(
     `WITH stats AS (
        SELECT
          COUNT(*)::integer AS planned,
@@ -149,9 +209,12 @@ async function finalizeStaleSession(client, context, routeId, requestedDate) {
            ),
          updated_at = now()
      FROM stats
-     WHERE session.installation_id = $1 AND session.id = $2`,
+     WHERE session.installation_id = $1 AND session.id = $2
+     RETURNING session.*`,
     [context.installation.id, session.id, requestedDate, json({ requestId: context.requestId, actorId: context.actor.id })]
   );
+  if (!closed.rows?.[0]) fail("session_not_found", 404);
+  await createSessionReportSnapshot(client, context, closed.rows[0], "close_session");
 }
 
 async function openRouteSession(client, args, context) {
@@ -259,11 +322,99 @@ async function setSessionCustomerStatus(client, args, context) {
   return sessionCustomerResult(updated.rows[0]);
 }
 
+async function updateRouteSession(client, args, context) {
+  const sessionId = text(args.p_session_id);
+  if (!sessionId) fail("session_id_required");
+
+  const selected = await client.query(
+    `SELECT *, session_date::text AS session_date_text
+     FROM mcp.mcp_route_sessions
+     WHERE installation_id = $1 AND id = $2
+     FOR UPDATE`,
+    [context.installation.id, sessionId]
+  );
+  const session = selected.rows?.[0];
+  if (!session) fail("session_not_found", 404);
+  if (session.status !== "active") fail("session_read_only", 409);
+
+  let nextStatus = (text(args.p_status) || session.status).toLowerCase();
+  if (nextStatus === "completed") nextStatus = "done";
+  if (!["active", "done", "cancelled"].includes(nextStatus)) fail("invalid_session_status");
+
+  const currentDate = text(session.session_date_text);
+  if (!currentDate || !/^\d{4}-\d{2}-\d{2}$/.test(currentDate)) fail("invalid_session_date");
+  const requestedDate = text(args.p_session_date)?.slice(0, 10) || currentDate;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(requestedDate)) fail("invalid_session_date");
+
+  if (requestedDate !== currentDate) {
+    await client.query(
+      `UPDATE mcp.mcp_visits
+       SET visit_date = $3::date, updated_at = now()
+       WHERE installation_id = $1 AND session_id = $2`,
+      [context.installation.id, session.id, requestedDate]
+    );
+  }
+
+  const updated = await client.query(
+    `WITH stats AS (
+       SELECT
+         COUNT(*)::integer AS planned,
+         COUNT(*) FILTER (WHERE visit_status = 'visited')::integer AS visited,
+         COUNT(*) FILTER (WHERE order_id IS NOT NULL)::integer AS orders,
+         COUNT(*) FILTER (WHERE test_id IS NOT NULL)::integer AS tests,
+         COUNT(*) FILTER (WHERE report_id IS NOT NULL)::integer AS reports,
+         COALESCE(SUM(followup_count), 0)::integer AS followups
+       FROM mcp.mcp_session_customers
+       WHERE installation_id = $1 AND session_id = $2
+     )
+     UPDATE mcp.mcp_route_sessions session
+     SET session_date = $3::date,
+         status = $4,
+         note = CASE WHEN $5::boolean THEN $6 ELSE session.note END,
+         planned_customers = stats.planned,
+         visited_customers = stats.visited,
+         order_count = stats.orders,
+         test_count = stats.tests,
+         report_count = stats.reports,
+         followup_count = stats.followups,
+         closed_at = CASE WHEN $4 IN ('done', 'cancelled') THEN COALESCE(session.closed_at, now()) ELSE NULL END,
+         raw_payload = jsonb_set(
+           COALESCE(session.raw_payload, '{}'::jsonb),
+           '{foundation_context}',
+           $7::jsonb,
+           true
+         ),
+         updated_at = now()
+     FROM stats
+     WHERE session.installation_id = $1 AND session.id = $2
+     RETURNING session.*`,
+    [
+      context.installation.id,
+      session.id,
+      requestedDate,
+      nextStatus,
+      Object.prototype.hasOwnProperty.call(args, "p_note"),
+      text(args.p_note),
+      json(args.p_context || {})
+    ]
+  );
+  const row = updated.rows?.[0];
+  if (!row) fail("session_not_found", 404);
+
+  const snapshot = nextStatus === "done"
+    ? await createSessionReportSnapshot(client, context, row, "close_session")
+    : null;
+  return sessionResult(row, { snapshot });
+}
+
 function repositoryFactory(client) {
   return Object.freeze({
     session: Object.freeze({
       open(args, context) {
         return openRouteSession(client, args, context);
+      },
+      update(args, context) {
+        return updateRouteSession(client, args, context);
       }
     }),
     sessionCustomer: Object.freeze({
@@ -290,6 +441,14 @@ const CONTRACTS = Object.freeze({
     aggregateType: "session_customer",
     aggregateId: "sessionCustomerId",
     mutate: (repositories, args, context) => repositories.sessionCustomer.setStatus(args, context)
+  }),
+  mcp_idempotent_update_route_session: Object.freeze({
+    commandName: "mcp.session.update",
+    permission: "mcp.session.write",
+    eventType: "mcp.session.updated",
+    aggregateType: "route_session",
+    aggregateId: "sessionId",
+    mutate: (repositories, args, context) => repositories.session.update(args, context)
   })
 });
 

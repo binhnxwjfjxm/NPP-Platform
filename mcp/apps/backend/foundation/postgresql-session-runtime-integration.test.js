@@ -7,10 +7,12 @@ import { postgresqlRpc } from "./postgresql-compat-adapter.js";
 import { postgresqlSessionRpc } from "./postgresql-session-adapter.js";
 import { postgresqlDeleteRpc } from "./postgresql-delete-adapter.js";
 import { migrationVerifyWithAdapter, runMcpMigrations } from "./migrations/index.js";
+import { createIdempotencyKey, isValidIdempotencyKey } from "../../../../packages/contracts/index.js";
 
 const { Pool } = pg;
 const databaseUrl = process.env.TEST_DATABASE_URL;
 const installationId = "installation-session-runtime";
+const idempotencyKeys = new Map();
 
 function runtimeConfig() {
   return Object.freeze({
@@ -48,9 +50,14 @@ function runtimeConfig() {
 }
 
 function context(key) {
+  if (!idempotencyKeys.has(key)) {
+    idempotencyKeys.set(key, createIdempotencyKey(`session-runtime-${key}`));
+  }
+  const idempotencyKey = idempotencyKeys.get(key);
+  assert.equal(isValidIdempotencyKey(idempotencyKey), true);
   return {
     requestId: `request-${key}`,
-    idempotencyKey: `session-runtime:${key}`,
+    idempotencyKey,
     receivedAt: "2026-08-02T15:00:00.000Z",
     installationId,
     nppCode: "NPP-SESSION-RUNTIME",
@@ -75,7 +82,7 @@ async function resetMcp(admin) {
 }
 
 test(
-  "PostgreSQL rolls stale sessions, keeps visited KPIs correct and deletes used routes",
+  "PostgreSQL rolls stale sessions, snapshots closed sessions, keeps visited KPIs correct and deletes used routes",
   { skip: !databaseUrl },
   async (t) => {
     const admin = new Pool({ connectionString: databaseUrl });
@@ -169,6 +176,47 @@ test(
       { id: firstSession.sessionId, status: "done", visited: 1, orders: 1 },
       { id: secondSession.sessionId, status: "active", visited: 0, orders: 0 }
     ]);
+
+    const rolloverSnapshot = (await admin.query(
+      `SELECT id, snapshot_source FROM mcp.mcp_session_reports
+       WHERE installation_id = $1 AND session_id = $2
+       ORDER BY created_at DESC LIMIT 1`,
+      [installationId, firstSession.sessionId]
+    )).rows[0];
+    assert.match(rolloverSnapshot.id, /^session_report_/);
+    assert.equal(rolloverSnapshot.snapshot_source, "close_session");
+
+    const closed = data(await postgresqlSessionRpc(config, "mcp_idempotent_update_route_session", {
+      p_session_id: secondSession.sessionId,
+      p_status: "done",
+      p_note: "Đóng phiên kiểm tra",
+      p_context: context("session-close")
+    }));
+    assert.equal(closed.status, "done");
+    assert.match(closed.snapshot?.id || "", /^session_report_/);
+    assert.equal(closed.snapshot?.sessionId, secondSession.sessionId);
+    assert.equal(closed.snapshot?.snapshotSource, "close_session");
+
+    const manualSnapshot = (await admin.query(
+      `SELECT id, session_id, snapshot_source, customer_details
+       FROM mcp.mcp_session_reports
+       WHERE installation_id = $1 AND session_id = $2
+       ORDER BY created_at DESC LIMIT 1`,
+      [installationId, secondSession.sessionId]
+    )).rows[0];
+    assert.equal(manualSnapshot.id, closed.snapshot.id);
+    assert.equal(manualSnapshot.session_id, secondSession.sessionId);
+    assert.equal(manualSnapshot.snapshot_source, "close_session");
+    assert.equal(Array.isArray(manualSnapshot.customer_details), true);
+
+    await assert.rejects(
+      () => postgresqlSessionRpc(config, "mcp_idempotent_update_route_session", {
+        p_session_id: secondSession.sessionId,
+        p_status: "done",
+        p_context: context("session-close-again")
+      }),
+      (error) => error.code === "session_read_only"
+    );
 
     await assert.rejects(
       () => postgresqlDeleteRpc(config, "mcp_delete_route_hard", {
