@@ -8,9 +8,9 @@ test('Admin drill-down extends Sales reporting with bounded customer and documen
   const sales = source('../src/routes/reporting-sales.js');
 
   assert.match(sales, /customers: compatibilityCustomerRows/);
-  assert.match(sales, /const documentRows = mapRows\(documentsResult\.rows\)/);
-  assert.match(sales, /const currentOrderIds = classificationFiltered/);
-  assert.match(sales, /documentRows\.filter/);
+  assert.match(sales, /const documents = mapRows\(documentsResult\.rows\)/);
+  assert.match(sales, /const compatibilityCustomerRows = compatibilityCustomers\(baseCustomerBreakdown\)/);
+  assert.doesNotMatch(sales, /classificationFiltered|documentRows\.filter/);
   assert.match(sales, /documents,/);
   assert.match(sales, /so\.id AS sales_order_id/);
   assert.match(sales, /sov\.customer_id/);
@@ -18,7 +18,7 @@ test('Admin drill-down extends Sales reporting with bounded customer and documen
   assert.match(sales, /slice\(0, 100\)/);
   assert.match(sales, /LIMIT 200/);
   assert.match(sales, /so\.status IN \('confirmed','closed'\)/);
-  assert.match(sales, /customers: breakdown\(facts, 'customers'\)/);
+  assert.match(sales, /customers: breakdown\(customerFacts, 'customers'\)/);
   assert.match(sales, /entityIdentity = identity\(dimension\.id/);
   assert.doesNotMatch(sales, /parseFloat\(|parseInt\(|Number\(/);
 });
