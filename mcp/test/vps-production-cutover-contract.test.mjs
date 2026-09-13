@@ -101,6 +101,16 @@ test('all seven Vercel frontends are accounted for with exact per-consumer wirin
   assert.match(script, /restore_vercel_bindings/);
 });
 
+test('Vercel CLI 58 redeploy uses supported production flags and rollback redeploys current production', async () => {
+  const script = await read('npp-core/api/scripts/vps-production-cutover-wiring-958.sh');
+  assert.match(script, /vercel@58\.0\.0 redeploy "\$old_url" --target=production --token="\$VERCEL_TOKEN"/);
+  assert.match(script, /current_url="\$\(latest_prod_url "\$pid"\)"/);
+  assert.match(script, /vercel@58\.0\.0 redeploy "\$current_url" --target=production --token="\$VERCEL_TOKEN"/);
+  assert.doesNotMatch(script, /vercel@58\.0\.0 redeploy[^\n]*--yes/);
+  assert.match(script, /ROLLBACK_VERCEL_BINDINGS=PASS/);
+  assert.match(script, /ROLLBACK_VERCEL_BINDINGS=FAIL/);
+});
+
 test('Delivery and Retail deployments cannot silently rewire Công Ty back to Heroku', async () => {
   const [deliveryWorkflow, deliveryScript, retailWorkflow, retailScript] = await Promise.all([
     read('.github/workflows/vercel-delivery-production-manual.yml'),

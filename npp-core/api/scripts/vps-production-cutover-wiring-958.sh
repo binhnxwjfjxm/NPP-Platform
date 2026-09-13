@@ -13,9 +13,10 @@ latest_prod_url() {
 redeploy_project() {
   local pid="$1" name="$2" old_url
   old_url="$(latest_prod_url "$pid")"; test -n "$old_url"; printf '%s\t%s\t%s\n' "$pid" "$name" "$old_url" >> "$vercel_state"
-  npx --yes vercel@58.0.0 redeploy "$old_url" --yes --token="$VERCEL_TOKEN" >/dev/null
+  npx --yes vercel@58.0.0 redeploy "$old_url" --target=production --token="$VERCEL_TOKEN" >/dev/null
 }
 restore_vercel_bindings() {
+  local rollback_failed=0 current_url
   upsert_env "$PROJECT_COMPANY" CORE_API_INTERNAL_URL "$old_company_internal"
   upsert_env "$PROJECT_COMPANY" NEXT_PUBLIC_CORE_API_URL "$old_company_public"
   upsert_env "$PROJECT_ADMIN" CORE_API_INTERNAL_URL "$old_admin_core"
@@ -23,7 +24,19 @@ restore_vercel_bindings() {
   upsert_env "$PROJECT_RETAIL" CORE_API_INTERNAL_URL "$old_retail_core"
   upsert_env "$PROJECT_ORDERING" CORE_API_BASE_URL "$old_ordering_core"
   upsert_env "$PROJECT_MCP" BACKEND_API_BASE_URL "$old_mcp_backend"
-  while IFS=$'\t' read -r pid name url; do [ -z "$pid" ] || npx --yes vercel@58.0.0 redeploy "$url" --yes --token="$VERCEL_TOKEN" >/dev/null || true; done < "$vercel_state"
+  while IFS=$'\t' read -r pid name url; do
+    [ -n "$pid" ] || continue
+    current_url="$(latest_prod_url "$pid")" || { rollback_failed=1; continue; }
+    if ! npx --yes vercel@58.0.0 redeploy "$current_url" --target=production --token="$VERCEL_TOKEN" >/dev/null; then
+      rollback_failed=1
+    fi
+  done < "$vercel_state"
+  if [ "$rollback_failed" -eq 0 ]; then
+    echo 'ROLLBACK_VERCEL_BINDINGS=PASS' >> "$REPORT_FILE"
+  else
+    echo 'ROLLBACK_VERCEL_BINDINGS=FAIL' >> "$REPORT_FILE"
+  fi
+  return "$rollback_failed"
 }
 
 # Gate E: wire every backend-consuming frontend; Website is explicitly unchanged because it has no backend binding contract.
