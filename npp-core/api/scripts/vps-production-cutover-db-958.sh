@@ -6,10 +6,15 @@ wait_web_quantity "$HEROKU_COMPANY_APP" 0
 wait_web_quantity "$HEROKU_MCP_APP" 0
 sleep 5
 
-# Reuse the already-reviewed rehearsal reconciliation implementation without executing its main block.
+# Reuse the already-reviewed rehearsal implementation to perform the final restore.
+# The raw rehearsal intentionally remains diagnostic because PostgreSQL major-version
+# deparsers can differ textually while catalog/data semantics are equivalent. The
+# canonical parity gate below is the production authority, matching the owner-approved
+# rehearsal contract from Issue #958 / PR #1021.
 lib="$RUNNER_TEMP/vps-db-lib.sh"
 sed '/^resolve_heroku_database$/,$d' npp-core/api/scripts/vps-db-heroku-rehearsal-958.sh > "$lib"
-REQUESTED_ACTION=rehearse HEROKU_APP_NAME="$HEROKU_COMPANY_APP" SOURCE_SHA="$CUTOVER_SHA" \
+raw_rehearsal_status=0
+if REQUESTED_ACTION=rehearse HEROKU_APP_NAME="$HEROKU_COMPANY_APP" SOURCE_SHA="$CUTOVER_SHA" \
   VPS_DB_HOST="$VPS_DB_HOST" VPS_SSH_USER="$VPS_SSH_USER" SSH_KEY="$DB_KEY" KNOWN_HOSTS="$DB_KNOWN" \
   REPORT_FILE="$RUNNER_TEMP/final-db-reconcile.md" RUNNER_TEMP="$RUNNER_TEMP" bash -c '
     set -euo pipefail
@@ -21,9 +26,42 @@ REQUESTED_ACTION=rehearse HEROKU_APP_NAME="$HEROKU_COMPANY_APP" SOURCE_SHA="$CUT
     migration_head_audit
     test "$(awk -F= '\''$1=="SOURCE_PENDING_CORE_COUNT"{print $2}'\'' "$RUNNER_TEMP/migration-audit.txt")" = 0
     test "$(awk -F= '\''$1=="SOURCE_PENDING_MCP_COUNT"{print $2}'\'' "$RUNNER_TEMP/migration-audit.txt")" = 0
-    run_rehearsal
     printf "%s\n" "$backup_file" > "$RUNNER_TEMP/final-backup-path"
+    run_rehearsal
   ' _ "$lib"
+then
+  :
+else
+  raw_rehearsal_status=$?
+fi
+
+# Always evaluate the canonical semantic parity contract against the production restore.
+# It fails closed on source-window drift, migration drift, normalized catalog mismatch,
+# semantic constraint/trigger/view mismatch, or business-data/view-row mismatch.
+parity_status=0
+if HEROKU_APP_NAME="$HEROKU_COMPANY_APP" SOURCE_SHA="$CUTOVER_SHA" \
+  VPS_DB_HOST="$VPS_DB_HOST" VPS_SSH_USER="$VPS_SSH_USER" SSH_KEY="$DB_KEY" KNOWN_HOSTS="$DB_KNOWN" \
+  REPORT_FILE="$RUNNER_TEMP/final-db-reconcile.md" RUNNER_TEMP="$RUNNER_TEMP" \
+  NPP958_RESTORE_DB="$PRODUCTION_DB" \
+  bash npp-core/api/scripts/vps-db-heroku-parity-gate-958.sh
+then
+  :
+else
+  parity_status=$?
+fi
+
+{
+  echo "GATE_C_RAW_REHEARSAL_STATUS=$raw_rehearsal_status"
+  echo "GATE_C_PARITY_STATUS=$parity_status"
+  if [ -s "$RUNNER_TEMP/final-db-reconcile.md" ]; then
+    grep -E '^(HEROKU_BACKUP_CAPTURE|BACKUP_BYTES|SOURCE_WINDOW_STABLE|MIGRATION_WINDOW_STABLE|RESTORE_DATABASE|PG_RESTORE|RESTORED_REGISTRY_MATCH|PRE_MIGRATION_FULL_RECONCILIATION|PENDING_CORE_COUNT|PENDING_MCP_COUNT|FINAL_REGISTRY_MATCH|MIGRATION_RERUN_NOOP|POST_MIGRATION_FULL_RECONCILIATION|UNVALIDATED_FOREIGN_KEYS|UNVALIDATED_CONSTRAINTS|INVALID_INDEXES|NOT_READY_INDEXES|REHEARSAL_GATE|PARITY_POLICY|PARITY_RESTORE_DATABASE|RAW_DEPARSED_DIFF_OBJECTS|NORMALIZED_CATALOG_PARITY|CONSTRAINT_TRIGGER_VIEW_SEMANTIC_PARITY|SOURCE_INTEGRITY_STATE|PARITY_GATE)=' "$RUNNER_TEMP/final-db-reconcile.md" || true
+  fi
+} >> "$REPORT_FILE"
+
+test "$parity_status" -eq 0
+grep -q '^PARITY_GATE=PASS$' "$RUNNER_TEMP/final-db-reconcile.md"
+grep -q '^PARITY_RESTORE_DATABASE=npp_production$' "$RUNNER_TEMP/final-db-reconcile.md"
+
 backup_file="$(cat "$RUNNER_TEMP/final-backup-path")"
 test -s "$backup_file"
 

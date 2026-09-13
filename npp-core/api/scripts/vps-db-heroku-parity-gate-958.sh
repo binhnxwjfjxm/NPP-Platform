@@ -12,13 +12,21 @@ set -euo pipefail
 
 main_script="npp-core/api/scripts/vps-db-heroku-rehearsal-958.sh"
 original_report="$REPORT_FILE"
+library_report="$RUNNER_TEMP/vps-db-parity-library.tmp"
+export REPORT_FILE="$library_report"
 export REQUESTED_ACTION=rehearse
 export SOURCE_SHA="${SOURCE_SHA:-parity}"
 
 # Reuse canonical connection helpers without executing the rehearsal entrypoint.
+# Use a throwaway report while sourcing because the rehearsal library initializes REPORT_FILE.
 # shellcheck disable=SC1090
 source <(awk '/^resolve_heroku_database$/ {exit} {print}' "$main_script")
 export REPORT_FILE="$original_report"
+restore_db="${NPP958_RESTORE_DB:-$restore_db}"
+case "$restore_db" in
+  npp_rehearsal_958|npp_production) ;;
+  *) echo 'invalid_parity_restore_database' >&2; exit 2 ;;
+esac
 
 source_before="$RUNNER_TEMP/source-before.snapshot"
 source_after="$RUNNER_TEMP/source-after.snapshot"
@@ -233,6 +241,7 @@ raw_diff_count="$(cat "$raw_diff_file")"
   echo
   echo '```text'
   echo 'PARITY_POLICY=preserve_source_state'
+  echo "PARITY_RESTORE_DATABASE=$restore_db"
   echo 'SOURCE_WINDOW_STABLE=yes'
   echo 'MIGRATION_WINDOW_STABLE=yes'
   echo "RAW_DEPARSED_DIFF_OBJECTS=$raw_diff_count"
