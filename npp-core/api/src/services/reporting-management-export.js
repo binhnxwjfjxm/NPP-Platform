@@ -55,7 +55,7 @@ async function createSalesExport(pool, { requestContext, filters, warehouseIds }
       { item: 'Thời điểm xuất', value: requestContext.receivedAt ?? new Date().toISOString() },
     ];
     const sheets = [{ key: 'overview', sheetName: 'Tổng quan Kinh doanh', columns: [column('item','Nội dung'), column('value','Giá trị')], rows: metadata }];
-    for (const [key, name] of dimensions) sheets.push({ key, sheetName: name, columns: BREAKDOWN_COLUMNS, rows: flatten(report.breakdowns?.[key]) });
+    for (const [key, name] of dimensions) sheets.push({ key, sheetName: name, columns: BREAKDOWN_COLUMNS, rows: flatten([...(report.breakdowns?.[key] ?? []), ...(report.breakdownTotals?.[key] ?? [])]) });
     sheets.push({ key: 'trend', sheetName: 'Xu hướng doanh thu', columns: TREND_COLUMNS, rows: safeRows(report.dailyTrend) });
     sheets.push({ key: 'documents', sheetName: 'Đối soát chứng từ', columns: DOC_COLUMNS, rows: safeRows(report.documents) });
     const descriptors = [];
