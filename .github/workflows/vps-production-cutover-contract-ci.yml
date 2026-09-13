@@ -20,6 +20,7 @@ on:
       - docs/operations/vps-production-runtime-manifest.md
       - mcp/test/vps-db-parity-contract.test.mjs
       - mcp/test/vps-production-cutover-contract.test.mjs
+      - mcp/test/vps-production-cutover-browser-smoke.test.mjs
   push:
     branches: [main]
     paths:
@@ -39,6 +40,7 @@ on:
       - docs/operations/vps-production-runtime-manifest.md
       - mcp/test/vps-db-parity-contract.test.mjs
       - mcp/test/vps-production-cutover-contract.test.mjs
+      - mcp/test/vps-production-cutover-browser-smoke.test.mjs
 
 permissions:
   contents: read
@@ -69,6 +71,7 @@ jobs:
         run: |
           node --test mcp/test/vps-db-parity-contract.test.mjs
           node --test mcp/test/vps-production-cutover-contract.test.mjs
+          node --test mcp/test/vps-production-cutover-browser-smoke.test.mjs
       - name: Verify Delivery and Retail regression contracts
         run: |
           node --test delivery/web/test/delivery-production-workflow.test.mjs
