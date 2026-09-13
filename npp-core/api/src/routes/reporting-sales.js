@@ -1,8 +1,8 @@
 import { BUSINESS_TIMEZONE, mapRow, mapRows, reportingInternals } from './reporting-common.js';
 import {
-  buildProductCustomerMatrix,
+  appendZeroProductRows,
   buildSalesClassificationOptions,
-  filterSalesFacts,
+  filterSalesFactsForDimension,
 } from './reporting-sales-classification.js';
 
 const SCALE = 1_000_000n;
@@ -148,6 +148,69 @@ function breakdown(facts, key) {
       comparisonState: row.previousRevenue === 0n && row.currentRevenue > 0n ? 'new' : row.currentRevenue === 0n && row.previousRevenue > 0n ? 'inactive' : 'comparable',
     });
   }));
+}
+
+function breakdownTotals(facts, key) {
+  const keepQuantity = key === 'products';
+  const grouped = new Map();
+  for (const fact of facts) {
+    const currencyCode = text(fact.currencyCode, 'VND');
+    const unit = unitOf(fact);
+    const unitIdentity = keepQuantity ? identity(unit.id, unit.code) : '';
+    const groupKey = `${currencyCode}${keepQuantity ? `|${unitIdentity}` : ''}`;
+    const row = grouped.get(groupKey) ?? {
+      currencyCode,
+      unit: keepQuantity ? unit : Object.freeze({ id: null, code: '', name: '' }),
+      currentRevenue: 0n,
+      currentQuantity: 0n,
+      previousRevenue: 0n,
+      previousQuantity: 0n,
+      documentIds: new Set(),
+      customerIds: new Set(),
+      productIds: new Set(),
+    };
+    const revenue = decimal6(fact.lineTotal);
+    const quantity = decimal6(fact.orderedQuantity);
+    if (fact.period === 'current') {
+      row.currentRevenue += revenue;
+      if (keepQuantity) row.currentQuantity += quantity;
+      if (text(fact.salesOrderId)) row.documentIds.add(text(fact.salesOrderId));
+      if (text(fact.customerId)) row.customerIds.add(text(fact.customerId));
+      if (text(fact.variantId)) row.productIds.add(text(fact.variantId));
+    } else {
+      row.previousRevenue += revenue;
+      if (keepQuantity) row.previousQuantity += quantity;
+    }
+    grouped.set(groupKey, row);
+  }
+
+  return Object.freeze([...grouped.values()].sort((left, right) =>
+    left.currencyCode.localeCompare(right.currencyCode, 'vi')
+      || left.unit.name.localeCompare(right.unit.name, 'vi')
+  ).map((row) => Object.freeze({
+    id: null,
+    code: null,
+    name: keepQuantity ? `Tổng ${row.unit.name || row.unit.code || 'ĐVT'}` : 'Tổng',
+    source: 'total',
+    currencyCode: row.currencyCode,
+    unit: row.unit,
+    revenue: decimalText(row.currentRevenue),
+    quantity: keepQuantity ? decimalText(row.currentQuantity) : '',
+    documentCount: String(row.documentIds.size),
+    customerCount: String(row.customerIds.size),
+    productCount: String(row.productIds.size),
+    sharePercent: row.currentRevenue === 0n ? '0' : '100',
+    previousRevenue: decimalText(row.previousRevenue),
+    previousQuantity: keepQuantity ? decimalText(row.previousQuantity) : '',
+    changePercent: row.previousRevenue === 0n
+      ? null
+      : percentText(row.currentRevenue - row.previousRevenue, row.previousRevenue),
+    comparisonState: row.previousRevenue === 0n && row.currentRevenue > 0n
+      ? 'new'
+      : row.currentRevenue === 0n && row.previousRevenue > 0n
+        ? 'inactive'
+        : 'comparable',
+  })));
 }
 
 function revenueSummary(facts) {
@@ -317,49 +380,47 @@ export async function salesReport(adapter, requestContext, filters, warehouseIds
   ]);
 
   const allFacts = mapRows(factResult.rows);
-  const facts = filterSalesFacts(allFacts, filters);
-  const current = currentFacts(facts);
-  const baseSummaryCounts = mapRow(summaryResult.rows?.[0] ?? {});
-  const classificationFiltered = Boolean(filters.productGroupId || filters.customerGroupId);
-  const summaryCounts = classificationFiltered
-    ? Object.freeze({
-        ...baseSummaryCounts,
-        effectiveOrderCount: String(new Set(current.map((fact) => text(fact.salesOrderId)).filter(Boolean)).size),
-        buyerCount: String(new Set(current.map((fact) => text(fact.customerId)).filter(Boolean)).size),
-      })
-    : baseSummaryCounts;
-  const revenues = revenueSummary(facts);
-  const quantities = quantitySummary(facts);
+  const current = currentFacts(allFacts);
+  const customerFacts = filterSalesFactsForDimension(allFacts, filters, 'customers');
+  const productFacts = filterSalesFactsForDimension(allFacts, filters, 'products');
+  const summaryCounts = mapRow(summaryResult.rows?.[0] ?? {});
+  const revenues = revenueSummary(allFacts);
+  const quantities = quantitySummary(allFacts);
   const soldProductCount = String(new Set(current.map((fact) => text(fact.variantId)).filter(Boolean)).size);
+  const baseCustomerBreakdown = breakdown(allFacts, 'customers');
+  const baseProductBreakdown = breakdown(allFacts, 'products');
+  const filteredProducts = breakdown(productFacts, 'products');
+  const productRows = filters.includeZeroProducts
+    ? appendZeroProductRows(filteredProducts, mapRows(catalogProductsResult.rows), {
+        productGroupId: filters.productGroupId,
+        currencyCode: revenues.length === 1 ? revenues[0].currencyCode : '',
+      })
+    : filteredProducts;
   const breakdowns = Object.freeze({
-    customers: breakdown(facts, 'customers'),
-    customerGroups: breakdown(facts, 'customerGroups'),
-    channels: breakdown(facts, 'channels'),
-    products: breakdown(facts, 'products'),
-    productGroups: breakdown(facts, 'productGroups'),
-    employees: breakdown(facts, 'employees'),
+    customers: breakdown(customerFacts, 'customers'),
+    customerGroups: breakdown(allFacts, 'customerGroups'),
+    channels: breakdown(allFacts, 'channels'),
+    products: productRows,
+    productGroups: breakdown(allFacts, 'productGroups'),
+    employees: breakdown(allFacts, 'employees'),
+  });
+  const breakdownTotalsByDimension = Object.freeze({
+    customers: breakdownTotals(customerFacts, 'customers'),
+    customerGroups: breakdownTotals(allFacts, 'customerGroups'),
+    channels: breakdownTotals(allFacts, 'channels'),
+    products: breakdownTotals(productFacts, 'products'),
+    productGroups: breakdownTotals(allFacts, 'productGroups'),
+    employees: breakdownTotals(allFacts, 'employees'),
   });
   const reportReconciliation = reconciliation(allFacts);
-  const dataQuality = quality(facts);
-  const trend = dailyTrend(facts, previous.dayCount);
-  const compatibilityCustomerRows = compatibilityCustomers(breakdowns.customers);
+  const dataQuality = quality(allFacts);
+  const trend = dailyTrend(allFacts, previous.dayCount);
+  const compatibilityCustomerRows = compatibilityCustomers(baseCustomerBreakdown);
   const classificationOptions = buildSalesClassificationOptions(
     mapRows(productGroupsResult.rows),
     mapRows(customerGroupsResult.rows),
   );
-  const productCustomerMatrix = buildProductCustomerMatrix({
-    facts,
-    catalogRows: mapRows(catalogProductsResult.rows),
-    customerGroups: classificationOptions.customerGroups,
-    filters,
-  });
-  const documentRows = mapRows(documentsResult.rows);
-  const currentOrderIds = classificationFiltered
-    ? new Set(current.map((fact) => text(fact.salesOrderId)).filter(Boolean))
-    : null;
-  const documents = currentOrderIds
-    ? Object.freeze(documentRows.filter((row) => currentOrderIds.has(text(row.salesOrderId))))
-    : documentRows;
+  const documents = mapRows(documentsResult.rows);
 
   return Object.freeze({
     family: 'sales', contractVersion: '2026-09-13', generatedAt: requestContext.receivedAt, timezone: BUSINESS_TIMEZONE,
@@ -372,23 +433,24 @@ export async function salesReport(adapter, requestContext, filters, warehouseIds
       includeZeroProducts: Boolean(filters.includeZeroProducts),
     }),
     scopeWarehouses: mapRows(scopeWarehouses.rows),
-    basis: Object.freeze({ date: 'sales.sales_orders.confirmed_at', revenue: 'sum(sales.sales_order_version_lines.line_total), reconciled exactly to latest confirmed/superseded version total', quantity: 'ordered_quantity is only shown on product rows where the product identity is explicit; quantities are never aggregated across different units or unrelated products', classification: 'product/customer group filters use confirmed snapshots when available; product-customer quantity matrix totals remain separated by unit', employee: 'sales_orders.source_employee_id, otherwise creator user employee mapping; customer responsible employee is not used', historicalDimensions: 'confirmed snapshots when captured; legacy rows explicitly mark current-master fallback instead of silently rewriting history', effectiveStates: Object.freeze(['confirmed', 'closed']) }),
+    basis: Object.freeze({ date: 'sales.sales_orders.confirmed_at', revenue: 'sum(sales.sales_order_version_lines.line_total), reconciled exactly to latest confirmed/superseded version total', quantity: 'ordered_quantity is only shown on product rows where the product identity is explicit; quantities are never aggregated across different units or unrelated products', classification: 'customer group only filters the customer breakdown; product group and zero-product options only filter the product breakdown; summary, trend, documents, reconciliation and other breakdowns remain on the full selected period and warehouse scope', employee: 'sales_orders.source_employee_id, otherwise creator user employee mapping; customer responsible employee is not used', historicalDimensions: 'confirmed snapshots when captured; legacy rows explicitly mark current-master fallback instead of silently rewriting history', effectiveStates: Object.freeze(['confirmed', 'closed']) }),
     comparison: Object.freeze({ current: Object.freeze({ from: filters.from, to: filters.to, dayCount: previous.dayCount }), previous: Object.freeze({ from: previous.from, to: previous.to, dayCount: previous.dayCount }) }),
-    summary: Object.freeze({ ...summaryCounts, revenues, quantities, soldProductCount }), breakdowns,
+    summary: Object.freeze({ ...summaryCounts, revenues, quantities, soldProductCount }),
+    breakdowns,
+    breakdownTotals: breakdownTotalsByDimension,
     reconciliation: reportReconciliation,
     dataQuality,
     classification: Object.freeze({
       options: classificationOptions,
-      productCustomerMatrix,
     }),
     dailyTrend: trend,
     documents,
     currencyTotals: Object.freeze(revenues.map((row) => Object.freeze({ currencyCode: row.currencyCode, documentCount: row.documentCount, totalValue: row.revenue }))),
     statusBreakdown: Object.freeze([]),
     topEntities: Object.freeze(compatibilityCustomerRows.slice(0, 10).map((row) => Object.freeze({ currencyCode: row.currencyCode, entityId: row.customerId, entityCode: row.customerCode, entityName: row.customerName, totalValue: row.totalValue }))),
-    topSkus: Object.freeze(breakdowns.products.slice(0, 10).map((row) => Object.freeze({ currencyCode: row.currencyCode, variantId: row.id, sku: row.code, itemName: row.name, orderedQuantity: row.quantity, unit: row.unit, totalValue: row.revenue }))),
+    topSkus: Object.freeze(baseProductBreakdown.slice(0, 10).map((row) => Object.freeze({ currencyCode: row.currencyCode, variantId: row.id, sku: row.code, itemName: row.name, orderedQuantity: row.quantity, unit: row.unit, totalValue: row.revenue }))),
     customers: compatibilityCustomerRows,
   });
 }
 
-export const reportingSalesInternals = Object.freeze({ shiftDate, previousPeriod, decimal6, decimalText, percentText, breakdown, reconciliation });
+export const reportingSalesInternals = Object.freeze({ shiftDate, previousPeriod, decimal6, decimalText, percentText, breakdown, breakdownTotals, reconciliation });
