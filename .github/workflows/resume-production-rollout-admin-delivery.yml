@@ -31,7 +31,7 @@ jobs:
       CORE_PROJECT_ID: prj_vFEAzoxesLqNJIfD8uF4q1kytpvk
       MCP_PROJECT_ID: prj_854SWdJeDEOPezAvvTZzTaRvZUSq
       WEBSITE_PROJECT_ID: prj_rXqH83GFDHuEGUcQrrv82JBPWnjU
-      CORE_URL: https://hung-phat-945da1547594.herokuapp.com
+      CORE_URL: ${{ vars.COMPANY_API_URL }}
       NPP_URL: https://office.nguyenlieuhungphat.com
       ADMIN_URL: https://admin.nguyenlieuhungphat.com
       DELIVERY_URL: https://log.nguyenlieuhungphat.com
