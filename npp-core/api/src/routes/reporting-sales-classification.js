@@ -70,10 +70,12 @@ function percentText(numerator, denominator) {
 }
 
 function unitOf(row) {
+  const nested = row?.unit && typeof row.unit === 'object' ? row.unit : null;
+  const code = text(nested?.code ?? row?.unitCode, 'Không xác định');
   return Object.freeze({
-    id: normalizedId(row?.unitId),
-    code: text(row?.unitCode, 'Không xác định'),
-    name: text(row?.unitName, text(row?.unitCode, 'Không xác định')),
+    id: normalizedId(nested?.id ?? row?.unitId),
+    code,
+    name: text(nested?.name ?? row?.unitName, code),
   });
 }
 
