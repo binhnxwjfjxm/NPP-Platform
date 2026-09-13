@@ -5,7 +5,7 @@ import { requireNppWorkforceSessionToken } from './internal-auth-client';
 
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 const REQUEST_TIMEOUT_MS = 300_000;
-const ALLOWED_QUERY = new Set(['from', 'to', 'warehouseId', 'dimension', 'format', 'column']);
+const ALLOWED_QUERY = new Set(['from', 'to', 'warehouseId', 'productGroupId', 'customerGroupId', 'includeZeroProducts', 'dimension', 'format', 'column']);
 const ACCEPTED_CONTENT_TYPES = Object.freeze([
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'text/csv',
