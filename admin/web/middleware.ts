@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ADMIN_SESSION_COOKIE, safeAdminReturnTo } from './lib/admin-session';
 
-const PUBLIC_PATHS = new Set(['/login', '/api/auth/login', '/api/auth/logout']);
+const SESSION_CHECK_PATH = '/api/auth/me';
+const PUBLIC_PATHS = new Set(['/login', '/api/auth/login', '/api/auth/logout', SESSION_CHECK_PATH]);
 
 function deny(request: NextRequest, status: 401 | 503, code: string, message: string) {
   const headers = new Headers({ 'Cache-Control': 'no-store' });
@@ -35,29 +36,21 @@ function clearInvalidSession(response: NextResponse) {
   return response;
 }
 
-function coreBaseUrl(): string | null {
-  const raw = process.env.CORE_API_INTERNAL_URL?.trim();
-  if (!raw) return null;
-  try {
-    const url = new URL(raw);
-    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return null;
-    if (process.env.NODE_ENV === 'production' && url.protocol !== 'https:') return null;
-    url.pathname = url.pathname.replace(/\/$/, '');
-    url.search = '';
-    url.hash = '';
-    return url.toString().replace(/\/$/, '');
-  } catch {
-    return null;
-  }
+function sessionCheckUrl(request: NextRequest) {
+  const url = request.nextUrl.clone();
+  url.pathname = SESSION_CHECK_PATH;
+  url.search = '';
+  url.hash = '';
+  return url;
 }
 
-async function sessionIsActive(token: string): Promise<'active' | 'invalid' | 'unavailable'> {
-  const baseUrl = coreBaseUrl();
-  if (!baseUrl) return 'unavailable';
+async function sessionIsActive(request: NextRequest, token: string): Promise<'active' | 'invalid' | 'unavailable'> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 3_000);
+  const timeout = setTimeout(() => controller.abort(), 5_000);
   try {
-    const response = await fetch(`${baseUrl}/api/internal-auth/me`, {
+    // Edge only talks to the same-origin Node route. That Node route owns the
+    // /api/internal-auth/me VPS hop, avoiding direct Edge-to-VPS auth traffic.
+    const response = await fetch(sessionCheckUrl(request), {
       method: 'GET',
       cache: 'no-store',
       signal: controller.signal,
@@ -90,7 +83,7 @@ export async function middleware(request: NextRequest) {
     return deny(request, 401, 'UNAUTHORIZED', 'Cần đăng nhập');
   }
 
-  const state = await sessionIsActive(sessionToken);
+  const state = await sessionIsActive(request, sessionToken);
   if (state === 'active') return NextResponse.next();
   if (state === 'invalid') {
     const response = isBrowserNavigation(request)
