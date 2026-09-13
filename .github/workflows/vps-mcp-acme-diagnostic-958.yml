@@ -95,21 +95,23 @@ jobs:
             for s in ipv4-proxy ipv6-proxy oci-ipv6-pool; do
               test "$(systemctl is-active "$s")" = active
             done
-            test "$(ss -lntH | awk '{n=split($4,a,\":\");p=a[n]+0;if(p>=3128&&p<=3427)c++}END{print c+0}')" = 300
+            test "$(ss -lntH | awk '{n=split($4,a,":");p=a[n]+0;if(p>=3128&&p<=3427)c++}END{print c+0}')" = 300
           }
           verify_proxy
           echo 'PROXY_BOUNDARY=PASS'
           echo "NGINX_ACTIVE=$(systemctl is-active nginx 2>/dev/null || true)"
-          echo "LISTEN_80=$(ss -lntH | awk '{n=split($4,a,\":\");if(a[n]+0==80)f=1}END{print f?\"yes\":\"no\"}')"
-          echo "LISTEN_443=$(ss -lntH | awk '{n=split($4,a,\":\");if(a[n]+0==443)f=1}END{print f?\"yes\":\"no\"}')"
+          echo "LISTEN_80=$(ss -lntH | awk '{n=split($4,a,":");if(a[n]+0==80)f=1}END{print f?"yes":"no"}')"
+          echo "LISTEN_443=$(ss -lntH | awk '{n=split($4,a,":");if(a[n]+0==443)f=1}END{print f?"yes":"no"}')"
           echo 'UFW_80_443_BEGIN'
           sudo -n ufw status numbered 2>/dev/null | grep -E '(^Status:|80/tcp|443/tcp)' || true
           echo 'UFW_80_443_END'
           sudo -n install -d -m 0755 /var/www/npp-acme/.well-known/acme-challenge
           printf '%s\n' "$token" | sudo -n tee "/var/www/npp-acme/.well-known/acme-challenge/$token" >/dev/null
-          local_body="$(curl -fsS --max-time 5 -H "Host: $public_ip" "http://127.0.0.1/.well-known/acme-challenge/$token")"
-          test "$local_body" = "$token"
-          echo 'LOCAL_HTTP01_WEBROOT=PASS'
+          if local_body="$(curl -fsS --max-time 5 -H "Host: $public_ip" "http://127.0.0.1/.well-known/acme-challenge/$token" 2>/dev/null)" && [ "$local_body" = "$token" ]; then
+            echo 'LOCAL_HTTP01_WEBROOT=PASS'
+          else
+            echo 'LOCAL_HTTP01_WEBROOT=FAIL'
+          fi
           echo 'CERTBOT_FAILURE_BEGIN'
           sudo -n grep -E 'Challenge failed|Some challenges have failed|Detail:|Invalid response|Timeout during connect|Connection refused|unauthorized|connection' /var/log/letsencrypt/letsencrypt.log 2>/dev/null | tail -n 20 || true
           echo 'CERTBOT_FAILURE_END'
@@ -129,6 +131,7 @@ jobs:
             echo 'OCI_INSTANCE_METADATA=FAIL'
           fi
           verify_proxy
+          echo 'PROXY_BOUNDARY_AFTER=PASS'
           REMOTE
 
       - name: Probe HTTP-01 from GitHub runner
