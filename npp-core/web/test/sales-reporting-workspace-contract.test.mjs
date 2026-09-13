@@ -17,7 +17,7 @@ test('Báo cáo bán hàng hiển thị đủ 6 chiều canonical và dùng cont
   for (const key of ['customers', 'customerGroups', 'channels', 'products', 'productGroups', 'employees']) {
     assert.match(workspace, new RegExp(`key: '${key}'`));
   }
-  for (const label of ['Khách hàng', 'Nhóm khách hàng', 'Kênh bán', 'Sản phẩm', 'Nhóm sản phẩm', 'Nhân viên bán hàng']) {
+  for (const label of ['Khách hàng', 'Loại khách', 'Kênh bán', 'Sản phẩm', 'Nhóm hàng', 'Nhân viên bán hàng']) {
     assert.match(workspace, new RegExp(label));
   }
 
@@ -50,24 +50,27 @@ test('Bộ lọc bán hàng gửi kỳ, kho và phân loại theo lựa chọn n
 });
 
 
-test('Lô 2 hiển thị ma trận sản lượng sản phẩm theo nhóm khách và tách tổng theo từng ĐVT', () => {
+test('Nhóm khách và nhóm sản phẩm chỉ là bộ lọc của các mục cũ, bảng có dòng Tổng', () => {
   const workspace = read('app/components/sales-reporting-workspace.tsx');
   const styles = read('app/components/sales-reporting-workspace.module.css');
   const types = read('lib/sales-reporting-types.ts');
 
-  assert.match(workspace, /Sản lượng sản phẩm theo nhóm khách hàng/);
-  assert.match(workspace, /productCustomerMatrix\?\.columns/);
-  assert.match(workspace, /productCustomerMatrix\?\.rows/);
-  assert.match(workspace, /totalsByUnit\.flatMap/);
-  assert.match(workspace, /Tổng \{total\.unit\.name/);
-  assert.match(workspace, /Tỷ lệ \{total\.unit\.name/);
-  assert.match(workspace, /Không phát sinh/);
-  assert.match(workspace, /dimension="productCustomerMatrix"/);
-  assert.match(workspace, /buttonLabel="Xuất bảng phân loại"/);
-  assert.match(types, /SalesReportingClassification/);
-  assert.match(types, /SalesProductCustomerMatrixRow/);
-  assert.match(styles, /\.matrixTableWrap/);
-  assert.match(styles, /\.classificationToolbar/);
+  assert.match(workspace, /activeDimension === 'customers'/);
+  assert.match(workspace, /Lọc khách hàng theo nhóm/);
+  assert.match(workspace, /activeDimension === 'products'/);
+  assert.match(workspace, /Lọc sản phẩm theo nhóm/);
+  assert.match(workspace, /Hiện sản phẩm không phát sinh/);
+  assert.match(workspace, /report\?\.breakdownTotals\[activeDimension\]/);
+  assert.match(workspace, /<tfoot>/);
+  assert.match(workspace, /styles\.totalRow/);
+  assert.match(styles, /\.dimensionFilterBar/);
+  assert.match(styles, /\.totalRow/);
+  assert.match(types, /breakdownTotals:/);
+
+  assert.doesNotMatch(workspace, /Sản lượng sản phẩm theo nhóm khách hàng/);
+  assert.doesNotMatch(workspace, /dimension="productCustomerMatrix"/);
+  assert.doesNotMatch(workspace, /classificationToolbar/);
+  assert.doesNotMatch(types, /SalesProductCustomerMatrixRow/);
 });
 
 test('Nền Báo cáo bán hàng giữ so kỳ, tỷ trọng, đối soát và cảnh báo', () => {
