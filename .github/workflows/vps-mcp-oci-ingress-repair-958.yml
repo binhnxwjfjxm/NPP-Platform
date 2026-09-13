@@ -1,0 +1,360 @@
+name: VPS MCP OCI ingress repair 958
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  actions: read
+  issues: write
+
+concurrency:
+  group: vps-mcp-oci-ingress-repair-958
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    if: >-
+      github.event.issue.number == 5 &&
+      github.event.comment.body == '/repair-vps-mcp-oci-ingress-958' &&
+      contains(fromJSON('["binhnxwjfjxm","khuongbinhinfo-a11y"]'), github.actor)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VPS_MCP_HOST: ${{ vars.VPS_MCP_HOST }}
+      VPS_SSH_USER: ${{ vars.VPS_SSH_USER }}
+
+    steps:
+      - name: Validate exact operator command
+        shell: bash
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          test "$COMMENT_BODY" = '/repair-vps-mcp-oci-ingress-958'
+
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Lock exact main SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          test "$(git rev-parse --is-shallow-repository)" = false
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Require exact-head Foundation CI green
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          result="$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/workflows/foundation-f0-2.yml/runs?head_sha=$SOURCE_SHA&event=push&per_page=20")"
+          success="$(jq -r '[.workflow_runs[] | select(.status=="completed" and .conclusion=="success")][0].id // empty' <<<"$result")"
+          test -n "$success"
+          echo "FOUNDATION_EXACT_HEAD_RUN=$success" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Prepare SSH
+        id: ssh
+        shell: bash
+        env:
+          VPS_MCP_SSH_KEY: ${{ secrets.VPS_MCP_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$VPS_MCP_HOST"
+          test -n "$VPS_SSH_USER"
+          test -n "$VPS_MCP_SSH_KEY"
+          umask 077
+          key="$RUNNER_TEMP/mcp.key"
+          known="$RUNNER_TEMP/mcp.known"
+          printf '%s\n' "$VPS_MCP_SSH_KEY" > "$key"
+          chmod 600 "$key"
+          ssh-keygen -y -f "$key" >/dev/null
+          ssh-keyscan -T 10 -H "$VPS_MCP_HOST" > "$known" 2>/dev/null
+          test -s "$known"
+          chmod 600 "$known"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+          echo "known=$known" >> "$GITHUB_OUTPUT"
+
+      - name: Repair OCI ingress without touching proxy listeners
+        id: repair
+        shell: bash
+        env:
+          MCP_KEY: ${{ steps.ssh.outputs.key }}
+          MCP_KNOWN: ${{ steps.ssh.outputs.known }}
+        run: |
+          set -euo pipefail
+          report="$RUNNER_TEMP/oci-ingress-repair.txt"
+          token="npp958-oci-${GITHUB_RUN_ID}"
+          echo "REPORT_FILE=$report" >> "$GITHUB_ENV"
+          echo "PROBE_TOKEN=$token" >> "$GITHUB_ENV"
+          : > "$report"
+          ssh -i "$MCP_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$MCP_KNOWN" \
+            "$VPS_SSH_USER@$VPS_MCP_HOST" "bash -s -- '$VPS_MCP_HOST' '$token'" >> "$report" <<'REMOTE'
+          set -euo pipefail
+          expected_public_ip="$1"
+          token="$2"
+
+          proxy_count() {
+            ss -lntH | awk '{n=split($4,a,":");p=a[n]+0;if(p>=3128&&p<=3427)c++}END{print c+0}'
+          }
+          verify_proxy() {
+            for s in ipv4-proxy ipv6-proxy oci-ipv6-pool; do
+              test "$(systemctl is-active "$s")" = active
+            done
+            test "$(proxy_count)" = 300
+          }
+
+          verify_proxy
+          echo 'PROXY_BOUNDARY_BEFORE=PASS'
+
+          sudo -n apt-get update -y >/dev/null
+          sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y python3-venv >/dev/null
+          if [ ! -x /opt/npp-oci-sdk/bin/python ]; then
+            sudo -n python3 -m venv /opt/npp-oci-sdk
+          fi
+          sudo -n /opt/npp-oci-sdk/bin/pip install -q 'oci>=2.185,<3'
+
+          cat > /tmp/npp-oci-ingress-repair-958.py <<'PY'
+          import json
+          import os
+          import sys
+          import urllib.request
+          import oci
+
+          expected_ip = sys.argv[1]
+
+          req = urllib.request.Request(
+              'http://169.254.169.254/opc/v2/vnics/',
+              headers={'Authorization': 'Bearer Oracle'},
+          )
+          with urllib.request.urlopen(req, timeout=5) as response:
+              metadata = json.load(response)
+          if not isinstance(metadata, list) or not metadata:
+              raise RuntimeError('oci_metadata_vnic_missing')
+          primary = next((item for item in metadata if item.get('nicIndex') == 0), metadata[0])
+          vnic_id = primary.get('vnicId')
+          if not vnic_id:
+              raise RuntimeError('oci_metadata_vnic_id_missing')
+
+          attempts = []
+          client = None
+          auth_mode = None
+          config_path = os.path.expanduser('~/.oci/config')
+          if os.path.isfile(config_path):
+              try:
+                  cfg = oci.config.from_file(file_location=config_path)
+                  candidate = oci.core.VirtualNetworkClient(cfg)
+                  candidate.get_vnic(vnic_id)
+                  client = candidate
+                  auth_mode = 'user_config'
+              except Exception as exc:
+                  attempts.append('user_config:' + type(exc).__name__)
+          if client is None:
+              try:
+                  signer = oci.auth.signers.InstancePrincipalsSecurityTokenSigner()
+                  candidate = oci.core.VirtualNetworkClient(config={}, signer=signer)
+                  candidate.get_vnic(vnic_id)
+                  client = candidate
+                  auth_mode = 'instance_principal'
+              except Exception as exc:
+                  attempts.append('instance_principal:' + type(exc).__name__)
+          if client is None:
+              print('OCI_AUTH=FAIL')
+              print('OCI_AUTH_ATTEMPTS=' + ','.join(attempts))
+              raise RuntimeError('oci_authorization_unavailable')
+
+          vnic = client.get_vnic(vnic_id).data
+          if vnic.public_ip != expected_ip:
+              raise RuntimeError('oci_vnic_public_ip_mismatch')
+          print('OCI_AUTH=' + auth_mode)
+          print('OCI_VNIC_PUBLIC_IP_MATCH=yes')
+          print('OCI_VNIC_NSG_COUNT=' + str(len(vnic.nsg_ids or [])))
+
+          def port_range_allows(options, port):
+              if options is None or options.destination_port_range is None:
+                  return True
+              r = options.destination_port_range
+              return r.min <= port <= r.max
+
+          def ingress_allows(rule, port):
+              return (
+                  getattr(rule, 'direction', 'INGRESS') == 'INGRESS'
+                  and str(getattr(rule, 'protocol', '')) == '6'
+                  and getattr(rule, 'source', None) == '0.0.0.0/0'
+                  and port_range_allows(getattr(rule, 'tcp_options', None), port)
+              )
+
+          def add_rule_details(port):
+              return oci.core.models.AddSecurityRuleDetails(
+                  direction='INGRESS',
+                  protocol='6',
+                  source='0.0.0.0/0',
+                  source_type='CIDR_BLOCK',
+                  is_stateless=False,
+                  tcp_options=oci.core.models.TcpOptions(
+                      destination_port_range=oci.core.models.PortRange(min=port, max=port)
+                  ),
+                  description='NPP Issue 958 production HTTPS ingress',
+              )
+
+          nsg_ids = list(vnic.nsg_ids or [])
+          if nsg_ids:
+              if len(nsg_ids) == 1:
+                  target_nsg = nsg_ids[0]
+              else:
+                  candidates = []
+                  for nsg_id in nsg_ids:
+                      rules = client.list_network_security_group_security_rules(nsg_id).data
+                      if any(ingress_allows(rule, 22) or ingress_allows(rule, 3000) or ingress_allows(rule, 3128) for rule in rules):
+                          candidates.append(nsg_id)
+                  if len(candidates) != 1:
+                      raise RuntimeError('oci_nsg_target_ambiguous')
+                  target_nsg = candidates[0]
+              rules = client.list_network_security_group_security_rules(target_nsg).data
+              missing = [port for port in (80, 443) if not any(ingress_allows(rule, port) for rule in rules)]
+              if missing:
+                  details = oci.core.models.AddNetworkSecurityGroupSecurityRulesDetails(
+                      security_rules=[add_rule_details(port) for port in missing]
+                  )
+                  client.add_network_security_group_security_rules(target_nsg, details)
+              after = client.list_network_security_group_security_rules(target_nsg).data
+              if not all(any(ingress_allows(rule, port) for rule in after) for port in (80, 443)):
+                  raise RuntimeError('oci_nsg_ingress_verify_failed')
+              print('OCI_INGRESS_TARGET=NSG')
+              print('OCI_INGRESS_ADDED=' + (','.join(map(str, missing)) if missing else 'none'))
+          else:
+              subnet = client.get_subnet(vnic.subnet_id).data
+              security_list_ids = list(subnet.security_list_ids or [])
+              if not security_list_ids:
+                  raise RuntimeError('oci_security_list_missing')
+              if len(security_list_ids) == 1:
+                  target_sl = security_list_ids[0]
+              else:
+                  candidates = []
+                  for sl_id in security_list_ids:
+                      sl = client.get_security_list(sl_id).data
+                      if any(ingress_allows(rule, 22) or ingress_allows(rule, 3000) or ingress_allows(rule, 3128) for rule in (sl.ingress_security_rules or [])):
+                          candidates.append(sl_id)
+                  if len(candidates) != 1:
+                      raise RuntimeError('oci_security_list_target_ambiguous')
+                  target_sl = candidates[0]
+              response = client.get_security_list(target_sl)
+              sl = response.data
+              ingress = list(sl.ingress_security_rules or [])
+              missing = [port for port in (80, 443) if not any(ingress_allows(rule, port) for rule in ingress)]
+              for port in missing:
+                  ingress.append(
+                      oci.core.models.IngressSecurityRule(
+                          protocol='6',
+                          source='0.0.0.0/0',
+                          source_type='CIDR_BLOCK',
+                          is_stateless=False,
+                          tcp_options=oci.core.models.TcpOptions(
+                              destination_port_range=oci.core.models.PortRange(min=port, max=port)
+                          ),
+                          description='NPP Issue 958 production HTTPS ingress',
+                      )
+                  )
+              if missing:
+                  details = oci.core.models.UpdateSecurityListDetails(
+                      display_name=sl.display_name,
+                      egress_security_rules=list(sl.egress_security_rules or []),
+                      ingress_security_rules=ingress,
+                      defined_tags=sl.defined_tags,
+                      freeform_tags=sl.freeform_tags,
+                  )
+                  client.update_security_list(target_sl, details, if_match=response.headers.get('etag'))
+              after = client.get_security_list(target_sl).data
+              if not all(any(ingress_allows(rule, port) for rule in (after.ingress_security_rules or [])) for port in (80, 443)):
+                  raise RuntimeError('oci_security_list_ingress_verify_failed')
+              print('OCI_INGRESS_TARGET=SECURITY_LIST')
+              print('OCI_INGRESS_ADDED=' + (','.join(map(str, missing)) if missing else 'none'))
+
+          print('OCI_INGRESS_80_443=PASS')
+          PY
+
+          /opt/npp-oci-sdk/bin/python /tmp/npp-oci-ingress-repair-958.py "$expected_public_ip"
+          rm -f /tmp/npp-oci-ingress-repair-958.py
+
+          sudo -n install -d -m 0755 /var/www/npp-acme/.well-known/acme-challenge
+          printf '%s\n' "$token" | sudo -n tee "/var/www/npp-acme/.well-known/acme-challenge/$token" >/dev/null
+          local_body="$(curl -fsS --max-time 5 -H "Host: $expected_public_ip" "http://127.0.0.1/.well-known/acme-challenge/$token")"
+          test "$local_body" = "$token"
+          echo 'LOCAL_HTTP01_WEBROOT=PASS'
+
+          verify_proxy
+          echo 'PROXY_BOUNDARY_AFTER=PASS'
+          REMOTE
+
+      - name: Verify public HTTP-01 ingress from GitHub runner
+        id: external
+        shell: bash
+        run: |
+          set -euo pipefail
+          body="$RUNNER_TEMP/oci-ingress-probe-body"
+          code="$(curl -sS --connect-timeout 10 --max-time 20 -o "$body" -w '%{http_code}' \
+            "http://$VPS_MCP_HOST/.well-known/acme-challenge/$PROBE_TOKEN")"
+          echo "EXTERNAL_HTTP_STATUS=$code" >> "$REPORT_FILE"
+          test "$code" = 200
+          grep -qxF "$PROBE_TOKEN" "$body"
+          echo 'EXTERNAL_HTTP01=PASS' >> "$REPORT_FILE"
+
+      - name: Cleanup remote probe and verify proxy boundary
+        if: always()
+        id: cleanup
+        shell: bash
+        env:
+          MCP_KEY: ${{ steps.ssh.outputs.key }}
+          MCP_KNOWN: ${{ steps.ssh.outputs.known }}
+        run: |
+          set -euo pipefail
+          ssh -i "$MCP_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$MCP_KNOWN" \
+            "$VPS_SSH_USER@$VPS_MCP_HOST" "bash -s -- '$PROBE_TOKEN'" <<'REMOTE'
+          set -euo pipefail
+          token="$1"
+          sudo -n rm -f "/var/www/npp-acme/.well-known/acme-challenge/$token"
+          for s in ipv4-proxy ipv6-proxy oci-ipv6-pool; do
+            test "$(systemctl is-active "$s")" = active
+          done
+          test "$(ss -lntH | awk '{n=split($4,a,":");p=a[n]+0;if(p>=3128&&p<=3427)c++}END{print c+0}')" = 300
+          REMOTE
+
+      - name: Publish sanitized repair evidence to Issue 958
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          REPAIR_OUTCOME: ${{ steps.repair.outcome }}
+          EXTERNAL_OUTCOME: ${{ steps.external.outcome }}
+          CLEANUP_OUTCOME: ${{ steps.cleanup.outcome }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/oci-ingress-repair-evidence.md"
+          {
+            echo '## VPS MCP OCI ingress repair'
+            echo
+            echo "- SOURCE_SHA: \`${SOURCE_SHA:-unknown}\`"
+            echo "- GITHUB_RUN_ID: \`${GITHUB_RUN_ID}\`"
+            echo "- Repair: \`${REPAIR_OUTCOME:-unknown}\`"
+            echo "- External HTTP-01: \`${EXTERNAL_OUTCOME:-unknown}\`"
+            echo "- Proxy-boundary cleanup: \`${CLEANUP_OUTCOME:-unknown}\`"
+            echo '- Scope: append TCP 80/443 only; existing OCI rules preserved.'
+            echo '- Secret values and OCI resource IDs are not included.'
+            echo
+            echo '```text'
+            if [ -f "$REPORT_FILE" ]; then cat "$REPORT_FILE"; else echo 'REPORT_FILE=missing'; fi
+            echo '```'
+          } > "$evidence"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/958/comments" -f body="$(cat "$evidence")" >/dev/null
