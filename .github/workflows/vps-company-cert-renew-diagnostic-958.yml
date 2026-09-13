@@ -1,0 +1,164 @@
+name: VPS Công Ty certificate renewal diagnostic 958
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: vps-company-cert-renew-diagnostic-958
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    if: >-
+      github.event.issue.number == 5 &&
+      github.event.comment.body == '/diagnose-vps-company-cert-renew-958' &&
+      (
+        github.actor == 'binhnxwjfjxm' ||
+        github.actor == 'khuongbinhinfo-a11y'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VPS_COMPANY_HOST: ${{ vars.VPS_COMPANY_HOST }}
+      VPS_SSH_USER: ${{ vars.VPS_SSH_USER }}
+
+    steps:
+      - name: Validate command
+        shell: bash
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          test "$COMMENT_BODY" = '/diagnose-vps-company-cert-renew-958'
+
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact origin/main SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          test "$(git rev-parse --is-shallow-repository)" = false
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare Công Ty SSH credential
+        id: ssh
+        shell: bash
+        env:
+          VPS_COMPANY_SSH_KEY: ${{ secrets.VPS_COMPANY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$VPS_COMPANY_HOST"
+          test -n "$VPS_SSH_USER"
+          test -n "$VPS_COMPANY_SSH_KEY"
+          umask 077
+          key="$RUNNER_TEMP/company.key"
+          known="$RUNNER_TEMP/company.known"
+          printf '%s\n' "$VPS_COMPANY_SSH_KEY" > "$key"
+          chmod 600 "$key"
+          ssh-keygen -y -f "$key" >/dev/null
+          ssh-keyscan -T 10 -H "$VPS_COMPANY_HOST" > "$known" 2>/dev/null
+          test -s "$known"
+          chmod 600 "$known"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+          echo "known=$known" >> "$GITHUB_OUTPUT"
+
+      - name: Collect certificate renewal diagnostics
+        id: diag
+        shell: bash
+        env:
+          KEY: ${{ steps.ssh.outputs.key }}
+          KNOWN: ${{ steps.ssh.outputs.known }}
+        run: |
+          set -euo pipefail
+          report="$RUNNER_TEMP/company-cert-renew-diagnostic.txt"
+          : > "$report"
+          ssh -i "$KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN" \
+            "$VPS_SSH_USER@$VPS_COMPANY_HOST" 'bash -s' > "$report" <<'REMOTE'
+          set -euo pipefail
+          sudo -n true
+          echo "NGINX_ACTIVE=$(systemctl is-active nginx 2>/dev/null || true)"
+          echo "NGINX_TEST=$(sudo -n nginx -t >/dev/null 2>&1 && echo PASS || echo FAIL)"
+          echo "LISTEN_80=$(ss -lntH | awk '{n=split($4,a,":");if(a[n]+0==80)f=1}END{print f?"yes":"no"}')"
+          echo "LISTEN_443=$(ss -lntH | awk '{n=split($4,a,":");if(a[n]+0==443)f=1}END{print f?"yes":"no"}')"
+          echo "RENEW_TIMER_ACTIVE=$(systemctl is-active npp-ip-cert-renew.timer 2>/dev/null || true)"
+          echo "RENEW_TIMER_ENABLED=$(systemctl is-enabled npp-ip-cert-renew.timer 2>/dev/null || true)"
+          echo "RENEW_SERVICE_RESULT=$(systemctl show npp-ip-cert-renew.service -p Result --value 2>/dev/null || true)"
+          echo "RENEW_SERVICE_EXEC_STATUS=$(systemctl show npp-ip-cert-renew.service -p ExecMainStatus --value 2>/dev/null || true)"
+          echo 'RENEW_SERVICE_STATUS_BEGIN'
+          sudo -n systemctl status npp-ip-cert-renew.service --no-pager -l 2>&1 | tail -n 30 || true
+          echo 'RENEW_SERVICE_STATUS_END'
+          echo 'RENEW_SERVICE_JOURNAL_BEGIN'
+          sudo -n journalctl -u npp-ip-cert-renew.service -n 100 --no-pager -o cat 2>/dev/null \
+            | grep -Ei 'certbot|renew|error|fail|certificate|challenge|rate|profile|invalid|unauthor|timeout|connection|hook|nginx|acme|traceback|exception' \
+            | tail -n 80 || true
+          echo 'RENEW_SERVICE_JOURNAL_END'
+          echo 'LETSENCRYPT_LOG_BEGIN'
+          sudo -n grep -Ei 'certbot|renew|error|fail|certificate|challenge|rate|profile|invalid|unauthor|timeout|connection|hook|nginx|acme|traceback|exception' \
+            /var/log/letsencrypt/letsencrypt.log 2>/dev/null | tail -n 100 || true
+          echo 'LETSENCRYPT_LOG_END'
+          echo 'RENEWAL_CONFIG_SAFE_BEGIN'
+          if sudo -n test -d /etc/letsencrypt/renewal; then
+            for f in /etc/letsencrypt/renewal/*.conf; do
+              sudo -n test -f "$f" || continue
+              echo "FILE=$(basename "$f")"
+              sudo -n grep -E '^(version|archive_dir|cert|privkey|chain|fullchain|server|authenticator|webroot_path|key_type|preferred_profile|renew_before_expiry)[[:space:]]*=' "$f" 2>/dev/null || true
+            done
+          fi
+          echo 'RENEWAL_CONFIG_SAFE_END'
+          echo 'CERT_DATES_BEGIN'
+          if sudo -n test -s /etc/letsencrypt/live/npp-company-production/fullchain.pem; then
+            sudo -n openssl x509 -in /etc/letsencrypt/live/npp-company-production/fullchain.pem -noout -subject -issuer -dates 2>/dev/null || true
+          fi
+          echo 'CERT_DATES_END'
+          echo "FAILED_UNITS=$(systemctl --failed --no-legend --plain 2>/dev/null | awk '{print $1}' | paste -sd, -)"
+          REMOTE
+          echo "report=$report" >> "$GITHUB_OUTPUT"
+
+      - name: Probe current public HTTP and HTTPS
+        shell: bash
+        env:
+          REPORT: ${{ steps.diag.outputs.report }}
+        run: |
+          set -euo pipefail
+          http_code="$(curl -sS --connect-timeout 5 --max-time 12 -o /dev/null -w '%{http_code}' "http://$VPS_COMPANY_HOST/.well-known/acme-challenge/npp958-diagnostic-missing" || true)"
+          https_code="$(curl -k -sS --connect-timeout 5 --max-time 12 -o /dev/null -w '%{http_code}' "https://$VPS_COMPANY_HOST/health/live" || true)"
+          echo "EXTERNAL_HTTP_STATUS=${http_code:-000}" >> "$REPORT"
+          echo "EXTERNAL_HTTPS_HEALTH_STATUS=${https_code:-000}" >> "$REPORT"
+
+      - name: Publish sanitized evidence to Issue 958
+        if: always() && steps.diag.outputs.report != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          REPORT: ${{ steps.diag.outputs.report }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/company-cert-renew-evidence.md"
+          {
+            echo '## Công Ty VPS certificate renewal diagnostic — Issue #958'
+            echo
+            echo "- Exact main SHA: \`${SOURCE_SHA:-unknown}\`"
+            echo "- Run ID: \`$GITHUB_RUN_ID\`"
+            echo '- Scope: read-only service/journal/certificate diagnostics plus external probes; no deploy, restart, migration, Vercel or Heroku mutation.'
+            echo '- Secret values are not included.'
+            echo
+            echo '```text'
+            cat "$REPORT"
+            echo '```'
+          } > "$evidence"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/958/comments" -f body="$(cat "$evidence")" >/dev/null
