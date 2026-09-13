@@ -30,7 +30,7 @@ jobs:
       VERCEL_ORG_ID: team_hBA8rX68UHC8ogvREkOyQlJ2
       VERCEL_PROJECT_ID: prj_rXqH83GFDHuEGUcQrrv82JBPWnjU
       VERCEL_PROJECT_NAME: nguyenlieuhungphat
-      COMPANY_API_URL: https://hung-phat-945da1547594.herokuapp.com
+      COMPANY_API_URL: ${{ vars.COMPANY_API_URL }}
       WEBSITE_AI_ACTOR_ID: service:website-ai
       DIALOGFLOW_CX_PROJECT_ID: hck-agent-chat-prod
       DIALOGFLOW_CX_LOCATION: global
