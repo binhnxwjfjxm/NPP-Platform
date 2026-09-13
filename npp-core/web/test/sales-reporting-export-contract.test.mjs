@@ -27,17 +27,18 @@ test('Cửa sổ xuất có Excel, CSV, chọn tất cả, bỏ chọn và cột
   );
 });
 
-test('Bảng phân loại xuất cột nhóm khách động và giữ đúng bộ lọc đang áp dụng', () => {
+test('Export chỉ truyền bộ lọc phù hợp với mục đang xem, không còn loại ma trận riêng', () => {
   const dialog = read('app/components/sales-reporting-export-dialog.tsx');
   const gateway = read('lib/sales-reporting-export-gateway.ts');
 
-  assert.match(dialog, /productCustomerMatrix: 'Sản lượng sản phẩm theo nhóm khách hàng'/);
-  assert.match(dialog, /dynamicColumns = dimension === 'productCustomerMatrix'/);
-  assert.match(dialog, /if \(!dynamicColumns\)[\s\S]*query\.append\('column', key\)/);
+  assert.match(dialog, /dimension === 'products'/);
   assert.match(dialog, /query\.set\('productGroupId', filters\.productGroupId\)/);
-  assert.match(dialog, /query\.set\('customerGroupId', filters\.customerGroupId\)/);
   assert.match(dialog, /query\.set\('includeZeroProducts', 'true'\)/);
-  assert.match(dialog, /tổng và tỷ lệ được giữ riêng theo từng ĐVT/);
+  assert.match(dialog, /dimension === 'customers'/);
+  assert.match(dialog, /query\.set\('customerGroupId', filters\.customerGroupId\)/);
+  assert.match(dialog, /query\.append\('column', key\)/);
+  assert.doesNotMatch(dialog, /productCustomerMatrix/);
+  assert.doesNotMatch(dialog, /dynamicColumns/);
   for (const field of ['productGroupId', 'customerGroupId', 'includeZeroProducts']) {
     assert.match(gateway, new RegExp(field));
   }
