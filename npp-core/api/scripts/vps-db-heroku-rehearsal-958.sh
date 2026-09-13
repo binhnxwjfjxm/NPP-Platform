@@ -32,73 +32,332 @@ backup_file="$RUNNER_TEMP/npp-958-${GITHUB_RUN_ID:-local}.dump"
 
 write_snapshot_sql() {
   cat > "$snapshot_sql" <<'SQL'
-CREATE TEMP TABLE reconcile_key_counts (
+\set ON_ERROR_STOP on
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+SET LOCAL TIME ZONE 'UTC';
+SET LOCAL datestyle = 'ISO, YMD';
+SET LOCAL intervalstyle = 'postgres';
+SET LOCAL bytea_output = 'hex';
+SET LOCAL extra_float_digits = 3;
+
+CREATE TEMP TABLE reconcile_table_fingerprints (
   relation_name text PRIMARY KEY,
-  row_count bigint NOT NULL
-);
+  row_count bigint NOT NULL,
+  hash_sum_a numeric NOT NULL,
+  hash_sum_b numeric NOT NULL,
+  hash_min text NOT NULL,
+  hash_max text NOT NULL
+) ON COMMIT DROP;
+
 DO $snapshot$
 DECLARE
-  relation_name text;
-  relation_oid regclass;
-  relation_count bigint;
+  relation record;
+  row_count bigint;
+  hash_sum_a numeric;
+  hash_sum_b numeric;
+  hash_min text;
+  hash_max text;
 BEGIN
-  FOREACH relation_name IN ARRAY ARRAY[
-    'shared.customers',
-    'shared.products',
-    'shared.product_variants',
-    'sales.sales_orders',
-    'sales.sales_order_version_lines',
-    'inventory.inventory_movements',
-    'inventory.inventory_movement_lines',
-    'purchasing.purchase_orders',
-    'purchasing.goods_receipts',
-    'accounting.receivable_documents',
-    'accounting.payable_documents',
-    'mcp.idempotency_records',
-    'mcp.audit_events',
-    'mcp.outbox_events'
-  ]
+  FOR relation IN
+    SELECT n.nspname AS schema_name, c.relname AS relation_name
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = ANY (ARRAY['public','shared','mcp','sales','purchasing','inventory','logistics','accounting','reporting'])
+      AND c.relkind IN ('r','m')
+      AND NOT EXISTS (
+        SELECT 1
+        FROM pg_depend dep
+        WHERE dep.classid = 'pg_class'::regclass
+          AND dep.objid = c.oid
+          AND dep.deptype = 'e'
+      )
+    ORDER BY n.nspname, c.relname
   LOOP
-    relation_oid := to_regclass(relation_name);
-    IF relation_oid IS NOT NULL THEN
-      EXECUTE format('SELECT count(*) FROM %s', relation_oid) INTO relation_count;
-      INSERT INTO pg_temp.reconcile_key_counts(relation_name, row_count)
-      VALUES (relation_name, relation_count);
-    END IF;
+    EXECUTE format(
+      $sql$
+      WITH row_hashes AS (
+        SELECT md5(to_jsonb(t)::text) AS row_hash
+        FROM %I.%I AS t
+      )
+      SELECT
+        count(*)::bigint,
+        coalesce(sum((('x' || substr(row_hash, 1, 15))::bit(60)::bigint)::numeric), 0),
+        coalesce(sum((('x' || substr(row_hash, 17, 15))::bit(60)::bigint)::numeric), 0),
+        coalesce(min(row_hash), 'none'),
+        coalesce(max(row_hash), 'none')
+      FROM row_hashes
+      $sql$,
+      relation.schema_name,
+      relation.relation_name
+    ) INTO row_count, hash_sum_a, hash_sum_b, hash_min, hash_max;
+
+    INSERT INTO pg_temp.reconcile_table_fingerprints(
+      relation_name, row_count, hash_sum_a, hash_sum_b, hash_min, hash_max
+    ) VALUES (
+      format('%s.%s', relation.schema_name, relation.relation_name),
+      row_count, hash_sum_a, hash_sum_b, hash_min, hash_max
+    );
   END LOOP;
 END
 $snapshot$;
+
+CREATE TEMP TABLE reconcile_sequence_state (
+  relation_name text PRIMARY KEY,
+  last_value text NOT NULL,
+  is_called text NOT NULL
+) ON COMMIT DROP;
+
+DO $sequences$
+DECLARE
+  sequence_row record;
+  seq_last text;
+  seq_called text;
+BEGIN
+  FOR sequence_row IN
+    SELECT n.nspname AS schema_name, c.relname AS relation_name
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = ANY (ARRAY['public','shared','mcp','sales','purchasing','inventory','logistics','accounting','reporting'])
+      AND c.relkind = 'S'
+      AND NOT EXISTS (
+        SELECT 1
+        FROM pg_depend dep
+        WHERE dep.classid = 'pg_class'::regclass
+          AND dep.objid = c.oid
+          AND dep.deptype = 'e'
+      )
+    ORDER BY n.nspname, c.relname
+  LOOP
+    EXECUTE format('SELECT last_value::text, is_called::text FROM %I.%I', sequence_row.schema_name, sequence_row.relation_name)
+      INTO seq_last, seq_called;
+    INSERT INTO pg_temp.reconcile_sequence_state(relation_name, last_value, is_called)
+    VALUES (format('%s.%s', sequence_row.schema_name, sequence_row.relation_name), seq_last, seq_called);
+  END LOOP;
+END
+$sequences$;
+
 SELECT line
 FROM (
-  SELECT 'key|' || relation_name || '|' || row_count::text AS line
-  FROM pg_temp.reconcile_key_counts
+  SELECT
+    'table|' || relation_name || '|' || row_count::text || '|' || hash_sum_a::text || '|' ||
+    hash_sum_b::text || '|' || hash_min || '|' || hash_max AS line
+  FROM pg_temp.reconcile_table_fingerprints
+
   UNION ALL
-  SELECT 'schema|' || n.nspname || '|' || count(*)::text
+
+  SELECT 'sequence|' || relation_name || '|' || last_value || '|' || is_called
+  FROM pg_temp.reconcile_sequence_state
+
+  UNION ALL
+
+  SELECT 'namespace|' || n.nspname
+  FROM pg_namespace n
+  WHERE n.nspname = ANY (ARRAY['public','shared','mcp','sales','purchasing','inventory','logistics','accounting','reporting'])
+
+  UNION ALL
+
+  SELECT 'schema_count|' || n.nspname || '|' || c.relkind || '|' || count(*)::text
   FROM pg_class c
   JOIN pg_namespace n ON n.oid = c.relnamespace
-  WHERE n.nspname IN ('shared','mcp','sales','purchasing','inventory','accounting','reporting')
+  WHERE n.nspname = ANY (ARRAY['public','shared','mcp','sales','purchasing','inventory','logistics','accounting','reporting'])
     AND c.relkind IN ('r','p','v','m','S')
-  GROUP BY n.nspname
+    AND NOT EXISTS (
+      SELECT 1 FROM pg_depend dep
+      WHERE dep.classid = 'pg_class'::regclass AND dep.objid = c.oid AND dep.deptype = 'e'
+    )
+  GROUP BY n.nspname, c.relkind
+
   UNION ALL
+
+  SELECT
+    'column|' || quote_ident(n.nspname) || '.' || quote_ident(c.relname) || '|' || a.attnum::text || '|' ||
+    quote_ident(a.attname) || '|' || format_type(a.atttypid, a.atttypmod) || '|' || a.attnotnull::text || '|' ||
+    coalesce(nullif(a.attidentity, ''), 'none') || '|' || coalesce(nullif(a.attgenerated, ''), 'none') || '|' ||
+    md5(coalesce(pg_get_expr(d.adbin, d.adrelid), 'none'))
+  FROM pg_attribute a
+  JOIN pg_class c ON c.oid = a.attrelid
+  JOIN pg_namespace n ON n.oid = c.relnamespace
+  LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+  WHERE n.nspname = ANY (ARRAY['public','shared','mcp','sales','purchasing','inventory','logistics','accounting','reporting'])
+    AND c.relkind IN ('r','p','m','v')
+    AND a.attnum > 0
+    AND NOT a.attisdropped
+    AND NOT EXISTS (
+      SELECT 1 FROM pg_depend dep
+      WHERE dep.classid = 'pg_class'::regclass AND dep.objid = c.oid AND dep.deptype = 'e'
+    )
+
+  UNION ALL
+
+  SELECT
+    'constraint|' || quote_ident(n.nspname) || '.' || quote_ident(t.relname) || '|' || quote_ident(c.conname) || '|' ||
+    c.contype || '|' || c.convalidated::text || '|' || md5(pg_get_constraintdef(c.oid, true))
+  FROM pg_constraint c
+  JOIN pg_class t ON t.oid = c.conrelid
+  JOIN pg_namespace n ON n.oid = t.relnamespace
+  WHERE n.nspname = ANY (ARRAY['public','shared','mcp','sales','purchasing','inventory','logistics','accounting','reporting'])
+    AND NOT EXISTS (
+      SELECT 1 FROM pg_depend dep
+      WHERE dep.classid = 'pg_class'::regclass AND dep.objid = t.oid AND dep.deptype = 'e'
+    )
+
+  UNION ALL
+
+  SELECT
+    'index|' || quote_ident(n.nspname) || '.' || quote_ident(t.relname) || '|' || quote_ident(i.relname) || '|' ||
+    x.indisvalid::text || '|' || x.indisready::text || '|' || md5(pg_get_indexdef(i.oid))
+  FROM pg_index x
+  JOIN pg_class i ON i.oid = x.indexrelid
+  JOIN pg_class t ON t.oid = x.indrelid
+  JOIN pg_namespace n ON n.oid = t.relnamespace
+  WHERE n.nspname = ANY (ARRAY['public','shared','mcp','sales','purchasing','inventory','logistics','accounting','reporting'])
+    AND NOT EXISTS (
+      SELECT 1 FROM pg_depend dep
+      WHERE dep.classid = 'pg_class'::regclass AND dep.objid = t.oid AND dep.deptype = 'e'
+    )
+
+  UNION ALL
+
+  SELECT
+    'view|' || quote_ident(n.nspname) || '.' || quote_ident(c.relname) || '|' || c.relkind || '|' || md5(pg_get_viewdef(c.oid, true))
+  FROM pg_class c
+  JOIN pg_namespace n ON n.oid = c.relnamespace
+  WHERE n.nspname = ANY (ARRAY['public','shared','mcp','sales','purchasing','inventory','logistics','accounting','reporting'])
+    AND c.relkind IN ('v','m')
+    AND NOT EXISTS (
+      SELECT 1 FROM pg_depend dep
+      WHERE dep.classid = 'pg_class'::regclass AND dep.objid = c.oid AND dep.deptype = 'e'
+    )
+
+  UNION ALL
+
+  SELECT
+    'table_security|' || quote_ident(n.nspname) || '.' || quote_ident(c.relname) || '|' ||
+    c.relrowsecurity::text || '|' || c.relforcerowsecurity::text
+  FROM pg_class c
+  JOIN pg_namespace n ON n.oid = c.relnamespace
+  WHERE n.nspname = ANY (ARRAY['public','shared','mcp','sales','purchasing','inventory','logistics','accounting','reporting'])
+    AND c.relkind IN ('r','p')
+    AND NOT EXISTS (
+      SELECT 1 FROM pg_depend dep
+      WHERE dep.classid = 'pg_class'::regclass AND dep.objid = c.oid AND dep.deptype = 'e'
+    )
+
+  UNION ALL
+
+  SELECT
+    'routine|' || quote_ident(n.nspname) || '.' || quote_ident(p.proname) || '(' || pg_get_function_identity_arguments(p.oid) || ')|' ||
+    md5(pg_get_functiondef(p.oid))
+  FROM pg_proc p
+  JOIN pg_namespace n ON n.oid = p.pronamespace
+  WHERE n.nspname = ANY (ARRAY['public','shared','mcp','sales','purchasing','inventory','logistics','accounting','reporting'])
+    AND p.prokind IN ('f','p')
+    AND NOT EXISTS (
+      SELECT 1 FROM pg_depend dep
+      WHERE dep.classid = 'pg_proc'::regclass AND dep.objid = p.oid AND dep.deptype = 'e'
+    )
+
+  UNION ALL
+
+  SELECT
+    'trigger|' || quote_ident(n.nspname) || '.' || quote_ident(c.relname) || '|' || quote_ident(t.tgname) || '|' ||
+    md5(pg_get_triggerdef(t.oid, true))
+  FROM pg_trigger t
+  JOIN pg_class c ON c.oid = t.tgrelid
+  JOIN pg_namespace n ON n.oid = c.relnamespace
+  WHERE n.nspname = ANY (ARRAY['public','shared','mcp','sales','purchasing','inventory','logistics','accounting','reporting'])
+    AND NOT t.tgisinternal
+    AND NOT EXISTS (
+      SELECT 1 FROM pg_depend dep
+      WHERE dep.classid = 'pg_class'::regclass AND dep.objid = c.oid AND dep.deptype = 'e'
+    )
+
+  UNION ALL
+
+  SELECT
+    'policy|' || quote_ident(n.nspname) || '.' || quote_ident(c.relname) || '|' || quote_ident(p.polname) || '|' ||
+    p.polpermissive::text || '|' || p.polcmd || '|' ||
+    md5(coalesce((
+      SELECT string_agg(CASE WHEN role_oid = 0 THEN 'public' ELSE pg_get_userbyid(role_oid) END, ',' ORDER BY role_oid)
+      FROM unnest(p.polroles) AS roles(role_oid)
+    ), 'none')) || '|' ||
+    md5(coalesce(pg_get_expr(p.polqual, p.polrelid), 'none')) || '|' ||
+    md5(coalesce(pg_get_expr(p.polwithcheck, p.polrelid), 'none'))
+  FROM pg_policy p
+  JOIN pg_class c ON c.oid = p.polrelid
+  JOIN pg_namespace n ON n.oid = c.relnamespace
+  WHERE n.nspname = ANY (ARRAY['public','shared','mcp','sales','purchasing','inventory','logistics','accounting','reporting'])
+    AND NOT EXISTS (
+      SELECT 1 FROM pg_depend dep
+      WHERE dep.classid = 'pg_class'::regclass AND dep.objid = c.oid AND dep.deptype = 'e'
+    )
+
+  UNION ALL
+
+  SELECT
+    'enum|' || quote_ident(n.nspname) || '.' || quote_ident(t.typname) || '|' || e.enumsortorder::text || '|' || e.enumlabel
+  FROM pg_type t
+  JOIN pg_namespace n ON n.oid = t.typnamespace
+  JOIN pg_enum e ON e.enumtypid = t.oid
+  WHERE n.nspname = ANY (ARRAY['public','shared','mcp','sales','purchasing','inventory','logistics','accounting','reporting'])
+    AND NOT EXISTS (
+      SELECT 1 FROM pg_depend dep
+      WHERE dep.classid = 'pg_type'::regclass AND dep.objid = t.oid AND dep.deptype = 'e'
+    )
+
+  UNION ALL
+
+  SELECT 'extension|' || extname || '|' || extversion
+  FROM pg_extension
+
+  UNION ALL
+
+  SELECT
+    'database|encoding|' || pg_encoding_to_char(d.encoding) || '|collate|' || d.datcollate || '|ctype|' || d.datctype ||
+    '|locale_provider|' || d.datlocprovider
+  FROM pg_database d
+  WHERE d.datname = current_database()
+
+  UNION ALL
+
   SELECT 'integrity|unvalidated_foreign_keys|' || count(*)::text
   FROM pg_constraint c
   JOIN pg_class t ON t.oid = c.conrelid
   JOIN pg_namespace n ON n.oid = t.relnamespace
-  WHERE n.nspname IN ('shared','mcp','sales','purchasing','inventory','accounting','reporting')
+  WHERE n.nspname = ANY (ARRAY['public','shared','mcp','sales','purchasing','inventory','logistics','accounting','reporting'])
     AND c.contype = 'f'
     AND NOT c.convalidated
+
   UNION ALL
+
+  SELECT 'integrity|unvalidated_constraints|' || count(*)::text
+  FROM pg_constraint c
+  JOIN pg_class t ON t.oid = c.conrelid
+  JOIN pg_namespace n ON n.oid = t.relnamespace
+  WHERE n.nspname = ANY (ARRAY['public','shared','mcp','sales','purchasing','inventory','logistics','accounting','reporting'])
+    AND c.contype IN ('f','c')
+    AND NOT c.convalidated
+
+  UNION ALL
+
   SELECT 'integrity|invalid_indexes|' || count(*)::text
   FROM pg_index i
   JOIN pg_class t ON t.oid = i.indrelid
   JOIN pg_namespace n ON n.oid = t.relnamespace
-  WHERE n.nspname IN ('shared','mcp','sales','purchasing','inventory','accounting','reporting')
+  WHERE n.nspname = ANY (ARRAY['public','shared','mcp','sales','purchasing','inventory','logistics','accounting','reporting'])
     AND NOT i.indisvalid
+
   UNION ALL
-  SELECT 'extension|' || extname || '|present'
-  FROM pg_extension
+
+  SELECT 'integrity|not_ready_indexes|' || count(*)::text
+  FROM pg_index i
+  JOIN pg_class t ON t.oid = i.indrelid
+  JOIN pg_namespace n ON n.oid = t.relnamespace
+  WHERE n.nspname = ANY (ARRAY['public','shared','mcp','sales','purchasing','inventory','logistics','accounting','reporting'])
+    AND NOT i.indisready
 ) snapshot
 ORDER BY line;
+COMMIT;
 SQL
 }
 
@@ -246,22 +505,51 @@ preflight_vps_db() {
 set -euo pipefail
 sudo -n true
 version="$(sudo -n -u postgres psql -XAtqc 'show server_version')"
-case "$version" in 17.*) ;; *) exit 20 ;; esac
+case "$version" in 17.*) ;; *) echo 'unexpected_postgresql_version' >&2; exit 20 ;; esac
 test "$(systemctl is-active postgresql)" = active
+private_ip="$(ip -4 route get 1.1.1.1 | awk 'NR==1 {for(i=1;i<=NF;i++) if($i=="src") {print $(i+1); exit}}')"
+case "$private_ip" in
+  10.*|192.168.*|172.1[6-9].*|172.2[0-9].*|172.3[01].*) ;;
+  *) echo 'db_private_ip_not_rfc1918' >&2; exit 21 ;;
+esac
 listen_addresses="$(sudo -n -u postgres psql -XAtqc 'show listen_addresses')"
-test "$listen_addresses" = "127.0.0.1,::1"
+has_v4=no
+has_v6=no
+has_private=no
+IFS=',' read -r -a addresses <<< "$listen_addresses"
+for endpoint in "${addresses[@]}"; do
+  endpoint="${endpoint//[[:space:]]/}"
+  case "$endpoint" in
+    127.0.0.1) has_v4=yes ;;
+    ::1) has_v6=yes ;;
+    "$private_ip") has_private=yes ;;
+    *) echo 'unexpected_postgresql_listener_scope' >&2; exit 22 ;;
+  esac
+done
+test "$has_v4" = yes
+test "$has_v6" = yes
+test "$has_private" = yes
 listeners="$(ss -lntH | awk '$4 ~ /:5432$/ {print $4}')"
 test -n "$listeners"
 while IFS= read -r endpoint; do
   case "$endpoint" in
-    127.0.0.1:5432|'[::1]':5432|::1:5432) ;;
-    *) echo "non_loopback_5432_listener=$endpoint" >&2; exit 21 ;;
+    127.0.0.1:5432|'[::1]':5432|::1:5432|"$private_ip:5432") ;;
+    *) echo 'unexpected_live_5432_listener' >&2; exit 23 ;;
   esac
-done <<<"$listeners"
-test "$(systemctl --failed --no-legend --plain 2>/dev/null | wc -l)" = 0
+done <<< "$listeners"
+parse_errors="$(sudo -n -u postgres psql -XAtqc "SELECT count(*) FROM pg_hba_file_rules WHERE error IS NOT NULL")"
+test "$parse_errors" = 0
+ufw_status="$(sudo -n ufw status 2>/dev/null || true)"
+if grep -Eiq '5432(/tcp)?[[:space:]]+ALLOW[[:space:]]+(Anywhere|0\.0\.0\.0/0|::/0)' <<< "$ufw_status"; then
+  echo 'broad_5432_firewall_rule' >&2
+  exit 24
+fi
+test "$(systemctl --failed --no-legend --plain 2>/dev/null | awk 'NF{c++} END{print c+0}')" = 0
 echo "postgresql_version=$version"
 echo "postgresql_service=active"
-echo "tcp_5432_scope=loopback_only"
+echo "tcp_5432_scope=loopback_and_private_only"
+echo "pg_hba_parse_errors=0"
+echo "broad_5432_firewall_rule=absent"
 echo "failed_units=0"
 echo "production_traffic=not_enabled"
 REMOTE
@@ -322,6 +610,11 @@ writeFileSync(process.env.BUNDLE_META, [
 NODE
 }
 
+snapshot_count() {
+  local prefix="$1" file="$2"
+  grep -c "^${prefix}|" "$file" || true
+}
+
 run_rehearsal() {
   : "${VPS_DB_HOST:?VPS_DB_HOST is required}"
   : "${VPS_SSH_USER:?VPS_SSH_USER is required}"
@@ -331,6 +624,13 @@ run_rehearsal() {
   assert_public_5432_closed
   preflight_vps_db
   write_snapshot_sql
+
+  source_db_meta="$RUNNER_TEMP/source-db-meta.tsv"
+  heroku_psql -F $'\t' -c "SELECT pg_encoding_to_char(encoding), datcollate, datctype FROM pg_database WHERE datname = current_database()" > "$source_db_meta"
+  IFS=$'\t' read -r source_encoding source_collate source_ctype < "$source_db_meta"
+  test -n "$source_encoding"
+  test -n "$source_collate"
+  test -n "$source_ctype"
 
   snapshot_source "$source_before"
 
@@ -360,10 +660,18 @@ run_rehearsal() {
   remote_dump="/tmp/npp-958-${GITHUB_RUN_ID:-local}.dump"
   scp_to_vps "$backup_file" "$remote_dump"
 
-  ssh_base "bash -s -- '$restore_db' '$remote_dump'" <<'REMOTE'
+  q_db="$(printf '%q' "$restore_db")"
+  q_dump="$(printf '%q' "$remote_dump")"
+  q_encoding="$(printf '%q' "$source_encoding")"
+  q_collate="$(printf '%q' "$source_collate")"
+  q_ctype="$(printf '%q' "$source_ctype")"
+  ssh_base "bash -s -- $q_db $q_dump $q_encoding $q_collate $q_ctype" <<'REMOTE'
 set -euo pipefail
 db="$1"
 dump="$2"
+encoding="$3"
+collate="$4"
+ctype="$5"
 cleanup() {
   sudo -n rm -f "$dump"
 }
@@ -375,7 +683,7 @@ version="$(sudo -n -u postgres psql -XAtqc 'show server_version')"
 case "$version" in 17.*) ;; *) exit 30 ;; esac
 sudo -n -u postgres psql -XAt -v ON_ERROR_STOP=1 postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$db' AND pid <> pg_backend_pid();" >/dev/null
 sudo -n -u postgres dropdb --if-exists "$db"
-sudo -n -u postgres createdb "$db"
+sudo -n -u postgres createdb --template=template0 --encoding="$encoding" --lc-collate="$collate" --lc-ctype="$ctype" "$db"
 sudo -n -u postgres pg_restore --exit-on-error --no-owner --no-acl --dbname="$db" "$dump"
 REMOTE
 
@@ -387,9 +695,9 @@ REMOTE
   fi
 
   snapshot_remote "$restored_before_migrate"
-  pre_migration_data_match=no
+  pre_migration_full_match=no
   if [ "$source_window_stable" = yes ] && cmp -s "$source_after" "$restored_before_migrate"; then
-    pre_migration_data_match=yes
+    pre_migration_full_match=yes
   fi
 
   first_bundle="$RUNNER_TEMP/rehearsal-migrations-first.sql"
@@ -415,19 +723,41 @@ REMOTE
   run_remote_postgres_sql_file "$remote_noop_bundle"
 
   snapshot_remote "$restored_after_migrate"
+  post_migration_full_match=no
+  if [ "$source_window_stable" = yes ] && cmp -s "$source_after" "$restored_after_migrate"; then
+    post_migration_full_match=yes
+  fi
+
   unvalidated_fks="$(awk -F'|' '$1=="integrity" && $2=="unvalidated_foreign_keys"{print $3}' "$restored_after_migrate")"
+  unvalidated_constraints="$(awk -F'|' '$1=="integrity" && $2=="unvalidated_constraints"{print $3}' "$restored_after_migrate")"
   invalid_indexes="$(awk -F'|' '$1=="integrity" && $2=="invalid_indexes"{print $3}' "$restored_after_migrate")"
+  not_ready_indexes="$(awk -F'|' '$1=="integrity" && $2=="not_ready_indexes"{print $3}' "$restored_after_migrate")"
+
+  table_count="$(snapshot_count table "$restored_after_migrate")"
+  sequence_count="$(snapshot_count sequence "$restored_after_migrate")"
+  column_count="$(snapshot_count column "$restored_after_migrate")"
+  constraint_count="$(snapshot_count constraint "$restored_after_migrate")"
+  index_count="$(snapshot_count index "$restored_after_migrate")"
+  view_count="$(snapshot_count view "$restored_after_migrate")"
+  routine_count="$(snapshot_count routine "$restored_after_migrate")"
+  trigger_count="$(snapshot_count trigger "$restored_after_migrate")"
+  policy_count="$(snapshot_count policy "$restored_after_migrate")"
+  enum_count="$(snapshot_count enum "$restored_after_migrate")"
 
   assert_public_5432_closed
+  preflight_vps_db
 
   rehearsal_gate=PASS
   if [ "$source_window_stable" != yes ] ||
      [ "$migration_window_stable" != yes ] ||
      [ "$restored_registry_match" != yes ] ||
-     [ "$pre_migration_data_match" != yes ] ||
+     [ "$pre_migration_full_match" != yes ] ||
      [ "$final_registry_match" != yes ] ||
+     [ "$post_migration_full_match" != yes ] ||
      [ "${unvalidated_fks:-1}" != 0 ] ||
-     [ "${invalid_indexes:-1}" != 0 ]; then
+     [ "${unvalidated_constraints:-1}" != 0 ] ||
+     [ "${invalid_indexes:-1}" != 0 ] ||
+     [ "${not_ready_indexes:-1}" != 0 ]; then
     rehearsal_gate=FAIL
   fi
 
@@ -442,12 +772,26 @@ REMOTE
     echo "RESTORE_DATABASE=$restore_db"
     echo "PG_RESTORE=PASS"
     echo "RESTORED_REGISTRY_MATCH=$restored_registry_match"
-    echo "PRE_MIGRATION_RECONCILIATION=$pre_migration_data_match"
+    echo "PRE_MIGRATION_FULL_RECONCILIATION=$pre_migration_full_match"
     cat "$first_meta"
     echo "FINAL_REGISTRY_MATCH=$final_registry_match"
     echo "MIGRATION_RERUN_NOOP=PASS"
+    echo "POST_MIGRATION_FULL_RECONCILIATION=$post_migration_full_match"
+    echo "RECONCILED_TABLES=$table_count"
+    echo "RECONCILED_SEQUENCES=$sequence_count"
+    echo "RECONCILED_COLUMNS=$column_count"
+    echo "RECONCILED_CONSTRAINTS=$constraint_count"
+    echo "RECONCILED_INDEXES=$index_count"
+    echo "RECONCILED_VIEWS=$view_count"
+    echo "RECONCILED_ROUTINES=$routine_count"
+    echo "RECONCILED_TRIGGERS=$trigger_count"
+    echo "RECONCILED_POLICIES=$policy_count"
+    echo "RECONCILED_ENUM_VALUES=$enum_count"
     echo "UNVALIDATED_FOREIGN_KEYS=${unvalidated_fks:-unknown}"
+    echo "UNVALIDATED_CONSTRAINTS=${unvalidated_constraints:-unknown}"
     echo "INVALID_INDEXES=${invalid_indexes:-unknown}"
+    echo "NOT_READY_INDEXES=${not_ready_indexes:-unknown}"
+    echo "DB_PRIVATE_NETWORK_GATE=PASS"
     echo "PUBLIC_TCP_5432=closed"
     echo "PRODUCTION_TRAFFIC=not_enabled"
     echo "CUTOVER=not_performed"
