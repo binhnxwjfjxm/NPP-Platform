@@ -54,11 +54,16 @@ test('breakdown quản trị không nhân bản kênh/nhóm theo ĐVT và chỉ 
 
 test('contract Kinh doanh có đủ 6 chiều và nhân viên lấy từ đơn/người tạo', async () => {
   const source = await readApi('src/routes/reporting-sales.js');
-  for (const key of ['customers', 'customerGroups', 'channels', 'products', 'productGroups', 'employees']) assert.match(source, new RegExp(`${key}: breakdown`));
+  for (const key of ['customers', 'customerGroups', 'channels', 'products', 'productGroups', 'employees']) assert.match(source, new RegExp(`${key}:`));
   for (const field of ['previousRevenue', 'previousQuantity', 'changePercent', 'sharePercent', 'documentCount', 'customerCount', 'productCount']) assert.match(source, new RegExp(field));
   assert.match(source, /keepQuantity = key === 'products'/);
   assert.match(source, /Chưa phân loại/);
   assert.match(source, /soldProductCount/);
+  assert.match(source, /breakdownTotals: breakdownTotalsByDimension/);
+  assert.match(source, /customers: breakdown\(customerFacts, 'customers'\)/);
+  assert.match(source, /products: productRows/);
+  assert.match(source, /dailyTrend\(allFacts/);
+  assert.match(source, /quality\(allFacts\)/);
   assert.match(source, /line\.line_total/);
   assert.match(source, /line\.ordered_quantity/);
   assert.match(source, /so\.source_employee_id/);
@@ -82,6 +87,7 @@ test('Excel Kinh doanh dùng cùng breakdown canonical và fail-closed khi đố
   const exporter = await readApi('src/services/reporting-management-export.js');
   assert.match(exporter, /salesReport\(/);
   assert.match(exporter, /report\.breakdowns/);
+  assert.match(exporter, /report\.breakdownTotals/);
   assert.match(exporter, /report\.reconciliation\?\.ok !== true/);
   for (const label of ['Loại khách', 'Khách hàng', 'SKU', 'Nhóm hàng', 'Kênh bán', 'Nhân viên']) assert.match(exporter, new RegExp(label));
   assert.match(exporter, /Không cộng gộp sản lượng giữa các ĐVT khác nhau/);

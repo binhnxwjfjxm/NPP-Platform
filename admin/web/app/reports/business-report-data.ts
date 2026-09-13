@@ -7,12 +7,8 @@ type JsonRecord = Record<string, unknown>;
 
 export type BusinessClassificationOption = { id: string; code: string | null; name: string };
 export type BusinessProductGroupOption = BusinessClassificationOption & { parentCategoryId: string | null };
-export type BusinessMatrixColumn = { key: string; id: string | null; code: string | null; name: string; source: string };
-export type BusinessMatrixCell = { columnKey: string; customerGroupId: string | null; quantity: string; sharePercent: string };
-export type BusinessMatrixRow = { variantId: string | null; sku: string | null; name: string; productGroup: { id: string | null; code: string | null; name: string; source: string }; unit: { id: string | null; code: string; name: string }; totalQuantity: string; cells: BusinessMatrixCell[]; hasActivity: boolean };
-export type BusinessMatrixTotal = { unit: { id: string | null; code: string; name: string }; totalQuantity: string; cells: BusinessMatrixCell[] };
 export type BusinessReportFilters = { productGroupId: string | null; customerGroupId: string | null; includeZeroProducts: boolean };
-export type BusinessClassification = { options: { productGroups: BusinessProductGroupOption[]; customerGroups: BusinessClassificationOption[] }; productCustomerMatrix: { includeZeroProducts: boolean; columns: BusinessMatrixColumn[]; rows: BusinessMatrixRow[]; totalsByUnit: BusinessMatrixTotal[] } };
+export type BusinessClassification = { options: { productGroups: BusinessProductGroupOption[]; customerGroups: BusinessClassificationOption[] } };
 
 export type BusinessBreakdownKey = 'customerGroups' | 'customers' | 'products' | 'productGroups' | 'channels' | 'employees';
 export type BusinessRow = {
@@ -44,6 +40,7 @@ export type BusinessReport = {
   summary: JsonRecord;
   comparison: JsonRecord;
   breakdowns: Record<BusinessBreakdownKey, BusinessRow[]>;
+  breakdownTotals: Record<BusinessBreakdownKey, BusinessRow[]>;
   classification: BusinessClassification;
   trend: JsonRecord[];
   reconciliation: JsonRecord;
@@ -55,10 +52,7 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
 const EMPTY_BREAKDOWNS: Record<BusinessBreakdownKey, BusinessRow[]> = {
   customerGroups: [], customers: [], products: [], productGroups: [], channels: [], employees: [],
 };
-const EMPTY_CLASSIFICATION: BusinessClassification = {
-  options: { productGroups: [], customerGroups: [] },
-  productCustomerMatrix: { includeZeroProducts: false, columns: [], rows: [], totalsByUnit: [] },
-};
+const EMPTY_CLASSIFICATION: BusinessClassification = { options: { productGroups: [], customerGroups: [] } };
 
 function isRecord(value: unknown): value is JsonRecord { return Boolean(value) && typeof value === 'object' && !Array.isArray(value); }
 function record(value: unknown): JsonRecord { return isRecord(value) ? value : {}; }
@@ -66,8 +60,14 @@ function rows<T = JsonRecord>(value: unknown): T[] { return Array.isArray(value)
 function optionalUuid(value: unknown): string | null { const normalized = String(value ?? '').trim(); return UUID_PATTERN.test(normalized) ? normalized.toLowerCase() : null; }
 function booleanFlag(value: unknown): boolean { return value === true || String(value ?? '').trim().toLowerCase() === 'true'; }
 function classificationOf(value: unknown): BusinessClassification {
-  const classification = record(value); const options = record(classification.options); const matrix = record(classification.productCustomerMatrix);
-  return { options: { productGroups: rows<BusinessProductGroupOption>(options.productGroups), customerGroups: rows<BusinessClassificationOption>(options.customerGroups) }, productCustomerMatrix: { includeZeroProducts: matrix.includeZeroProducts === true, columns: rows<BusinessMatrixColumn>(matrix.columns), rows: rows<BusinessMatrixRow>(matrix.rows), totalsByUnit: rows<BusinessMatrixTotal>(matrix.totalsByUnit) } };
+  const classification = record(value);
+  const options = record(classification.options);
+  return {
+    options: {
+      productGroups: rows<BusinessProductGroupOption>(options.productGroups),
+      customerGroups: rows<BusinessClassificationOption>(options.customerGroups),
+    },
+  };
 }
 
 export async function loadBusinessReport(rawPeriod?: string, rawFilters: { productGroupId?: string; customerGroupId?: string; includeZeroProducts?: string | boolean } = {}): Promise<BusinessReport> {
@@ -97,11 +97,18 @@ export async function loadBusinessReport(rawPeriod?: string, rawFilters: { produ
         customerGroups: rows<BusinessRow>(breakdowns.customerGroups), customers: rows<BusinessRow>(breakdowns.customers), products: rows<BusinessRow>(breakdowns.products),
         productGroups: rows<BusinessRow>(breakdowns.productGroups), channels: rows<BusinessRow>(breakdowns.channels), employees: rows<BusinessRow>(breakdowns.employees),
       },
+      breakdownTotals: (() => {
+        const totals = record(data.breakdownTotals);
+        return {
+          customerGroups: rows<BusinessRow>(totals.customerGroups), customers: rows<BusinessRow>(totals.customers), products: rows<BusinessRow>(totals.products),
+          productGroups: rows<BusinessRow>(totals.productGroups), channels: rows<BusinessRow>(totals.channels), employees: rows<BusinessRow>(totals.employees),
+        };
+      })(),
       classification: classificationOf(data.classification),
       trend: rows(data.dailyTrend), documents: rows(data.documents), warnings,
     };
   } catch (error) {
     const state = error instanceof CoreApiError && error.statusCode === 403 ? 'forbidden' : 'error';
-    return { period, from: range.from, to: range.to, generatedAt: null, state, message: state === 'forbidden' ? 'Tài khoản hiện tại không có quyền xem Báo cáo Kinh doanh.' : 'Không thể tải Báo cáo Kinh doanh hoặc dữ liệu chưa đối soát khớp.', filters: requestedFilters, summary: {}, comparison: {}, breakdowns: EMPTY_BREAKDOWNS, classification: EMPTY_CLASSIFICATION, trend: [], reconciliation: {}, documents: [], warnings: [] };
+    return { period, from: range.from, to: range.to, generatedAt: null, state, message: state === 'forbidden' ? 'Tài khoản hiện tại không có quyền xem Báo cáo Kinh doanh.' : 'Không thể tải Báo cáo Kinh doanh hoặc dữ liệu chưa đối soát khớp.', filters: requestedFilters, summary: {}, comparison: {}, breakdowns: EMPTY_BREAKDOWNS, breakdownTotals: EMPTY_BREAKDOWNS, classification: EMPTY_CLASSIFICATION, trend: [], reconciliation: {}, documents: [], warnings: [] };
   }
 }

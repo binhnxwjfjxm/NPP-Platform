@@ -46,10 +46,10 @@ const EMPTY_FILTERS: Filters = Object.freeze({
 
 const DIMENSIONS: readonly DimensionOption[] = Object.freeze([
   Object.freeze({ key: 'customers', label: 'Khách hàng' }),
-  Object.freeze({ key: 'customerGroups', label: 'Nhóm khách hàng' }),
+  Object.freeze({ key: 'customerGroups', label: 'Loại khách' }),
   Object.freeze({ key: 'channels', label: 'Kênh bán' }),
   Object.freeze({ key: 'products', label: 'Sản phẩm' }),
-  Object.freeze({ key: 'productGroups', label: 'Nhóm sản phẩm' }),
+  Object.freeze({ key: 'productGroups', label: 'Nhóm hàng' }),
   Object.freeze({ key: 'employees', label: 'Nhân viên bán hàng' }),
 ]);
 
@@ -337,6 +337,22 @@ export function SalesReportingWorkspace() {
     setSelectedRow(null);
   }
 
+  function applyDimensionFilter() {
+    setSelectedRow(null);
+    void load(draft);
+  }
+
+  function clearDimensionFilter() {
+    const next = activeDimension === 'customers'
+      ? Object.freeze({ ...draft, customerGroupId: '' })
+      : activeDimension === 'products'
+        ? Object.freeze({ ...draft, productGroupId: '', includeZeroProducts: false })
+        : draft;
+    setDraft(next);
+    setSelectedRow(null);
+    void load(next);
+  }
+
   function saveView() {
     window.localStorage.setItem(SAVED_VIEW_KEY, JSON.stringify({
       dimension: activeDimension,
@@ -357,7 +373,7 @@ export function SalesReportingWorkspace() {
   const warnings = report?.dataQuality.warnings ?? [];
   const productGroupOptions = report?.classification.options.productGroups ?? [];
   const customerGroupOptions = report?.classification.options.customerGroups ?? [];
-  const productCustomerMatrix = report?.classification.productCustomerMatrix;
+  const totals = report?.breakdownTotals[activeDimension] ?? [];
   const currencies = useMemo(
     () => Array.from(new Set(rows.map((row) => row.currencyCode).filter(Boolean))).sort(),
     [rows],
@@ -371,6 +387,10 @@ export function SalesReportingWorkspace() {
       return [row.code, row.name].filter(Boolean).some((value) => String(value).toLocaleLowerCase('vi').includes(needle));
     });
   }, [rows, analysisSearch, currencyFilter, comparisonFilter]);
+  const visibleTotals = useMemo(
+    () => currencyFilter ? totals.filter((row) => row.currencyCode === currencyFilter) : totals,
+    [totals, currencyFilter],
+  );
   const trendSeries = useMemo(() => {
     const grouped = new Map<string, SalesReportingTrendRow[]>();
     for (const row of report?.dailyTrend ?? []) {
@@ -410,7 +430,7 @@ export function SalesReportingWorkspace() {
           <div className={styles.filterHeading}>
             <div>
               <p className={styles.eyebrow}>Bộ lọc báo cáo</p>
-              <h2>Thời gian, kho và phân loại</h2>
+              <h2>Thời gian và kho</h2>
             </div>
             <small>{periodDescription}</small>
           </div>
@@ -466,52 +486,7 @@ export function SalesReportingWorkspace() {
             </div>
           </div>
 
-          <div className={styles.classificationToolbar} aria-label="Phân loại báo cáo">
-            <label>
-              <span>Nhóm sản phẩm</span>
-              <select
-                value={draft.productGroupId}
-                disabled={busy}
-                onChange={(event) => setDraft((current) => ({ ...current, productGroupId: event.target.value }))}
-              >
-                <option value="">Tất cả nhóm sản phẩm</option>
-                {productGroupOptions.map((group) => (
-                  <option key={group.id} value={group.id}>
-                    {[group.code, group.name].filter(Boolean).join(' — ')}
-                  </option>
-                ))}
-              </select>
-            </label>
 
-            <label>
-              <span>Nhóm khách hàng</span>
-              <select
-                value={draft.customerGroupId}
-                disabled={busy}
-                onChange={(event) => setDraft((current) => ({ ...current, customerGroupId: event.target.value }))}
-              >
-                <option value="">Tất cả nhóm khách hàng</option>
-                {customerGroupOptions.map((group) => (
-                  <option key={group.id} value={group.id}>
-                    {[group.code, group.name].filter(Boolean).join(' — ')}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className={styles.zeroProductToggle}>
-              <input
-                type="checkbox"
-                checked={draft.includeZeroProducts}
-                disabled={busy}
-                onChange={(event) => setDraft((current) => ({ ...current, includeZeroProducts: event.target.checked }))}
-              />
-              <span>
-                Hiện sản phẩm không phát sinh
-                <small>Giữ sản phẩm đang kinh doanh với sản lượng bằng 0 trong bảng phân loại.</small>
-              </span>
-            </label>
-          </div>
         </form>
 
         {error ? <div className={styles.error} role="alert">{error}</div> : null}
@@ -546,94 +521,6 @@ export function SalesReportingWorkspace() {
           </article>
         </section>
 
-        <section className={styles.panel} aria-labelledby="sales-classification-title">
-          <div className={styles.sectionHeading}>
-            <div>
-              <p className={styles.eyebrow}>Phân loại bán hàng</p>
-              <h2 id="sales-classification-title">Sản lượng sản phẩm theo nhóm khách hàng</h2>
-            </div>
-            <SalesReportingExportDialog
-              dimension="productCustomerMatrix"
-              filters={applied}
-              disabled={busy || !report}
-              buttonLabel="Xuất bảng phân loại"
-            />
-          </div>
-
-          <p className={styles.helperText}>
-            Mỗi dòng là một sản phẩm theo đúng ĐVT; mỗi cột là một nhóm khách hàng. Tổng cuối bảng tách riêng từng ĐVT để không cộng lẫn sản lượng khác đơn vị.
-          </p>
-
-          <div className={styles.matrixTableWrap}>
-            <table className={styles.matrixTable}>
-              <thead>
-                <tr>
-                  <BusinessTableSequenceHeader />
-                  <th>Sản phẩm</th>
-                  <th>Nhóm sản phẩm</th>
-                  <th>ĐVT</th>
-                  <th>Tổng SL</th>
-                  {(productCustomerMatrix?.columns ?? []).map((column) => (
-                    <th key={column.key}>
-                      <span>{column.name}</span>
-                      <small>{column.code || 'Chưa có mã'}</small>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {(productCustomerMatrix?.rows ?? []).map((row, rowIndex) => (
-                  <tr key={`${row.variantId ?? row.sku ?? row.name}-${row.unit.id ?? row.unit.code}`}>
-                    <BusinessTableSequenceCell rowIndex={rowIndex} />
-                    <td>
-                      <strong>{row.name}</strong>
-                      <small>{row.sku || 'Chưa có mã sản phẩm'}{row.hasActivity ? '' : ' · Không phát sinh'}</small>
-                    </td>
-                    <td>
-                      {row.productGroup.name}
-                      <small>{row.productGroup.code || 'Chưa có mã nhóm'}</small>
-                    </td>
-                    <td>{row.unit.name || row.unit.code}</td>
-                    <td><strong>{formatDecimal(row.totalQuantity)}</strong></td>
-                    {row.cells.map((cell) => (
-                      <td key={cell.columnKey}>{formatDecimal(cell.quantity)}</td>
-                    ))}
-                  </tr>
-                ))}
-                {!busy && !(productCustomerMatrix?.rows.length) ? (
-                  <tr>
-                    <td colSpan={5 + (productCustomerMatrix?.columns.length ?? 0)} className={styles.empty}>
-                      Không có sản phẩm phù hợp bộ lọc phân loại trong kỳ.
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-              {(productCustomerMatrix?.totalsByUnit.length ?? 0) > 0 ? (
-                <tfoot>
-                  {productCustomerMatrix?.totalsByUnit.flatMap((total) => [
-                    <tr key={`total-${total.unit.id ?? total.unit.code}`} className={styles.matrixTotalRow}>
-                      <td />
-                      <td colSpan={3}><strong>Tổng {total.unit.name || total.unit.code}</strong></td>
-                      <td><strong>{formatDecimal(total.totalQuantity)}</strong></td>
-                      {total.cells.map((cell) => (
-                        <td key={cell.columnKey}><strong>{formatDecimal(cell.quantity)}</strong></td>
-                      ))}
-                    </tr>,
-                    <tr key={`percent-${total.unit.id ?? total.unit.code}`} className={styles.matrixPercentRow}>
-                      <td />
-                      <td colSpan={3}>Tỷ lệ {total.unit.name || total.unit.code}</td>
-                      <td>{total.totalQuantity === '0' ? '0%' : '100%'}</td>
-                      {total.cells.map((cell) => (
-                        <td key={cell.columnKey}>{percent(cell.sharePercent)}</td>
-                      ))}
-                    </tr>,
-                  ])}
-                </tfoot>
-              ) : null}
-            </table>
-          </div>
-        </section>
-
         <section className={styles.panel} aria-labelledby="sales-analysis-title">
           <div className={styles.sectionHeading}>
             <div>
@@ -664,6 +551,59 @@ export function SalesReportingWorkspace() {
               </button>
             ))}
           </div>
+
+          {activeDimension === 'customers' ? (
+            <div className={styles.dimensionFilterBar} aria-label="Lọc khách hàng theo nhóm">
+              <label>
+                <span>Nhóm khách hàng</span>
+                <select
+                  value={draft.customerGroupId}
+                  disabled={busy}
+                  onChange={(event) => setDraft((current) => ({ ...current, customerGroupId: event.target.value }))}
+                >
+                  <option value="">Tất cả nhóm khách hàng</option>
+                  {customerGroupOptions.map((group) => (
+                    <option key={group.id} value={group.id}>{[group.code, group.name].filter(Boolean).join(' — ')}</option>
+                  ))}
+                </select>
+              </label>
+              <div className={styles.dimensionFilterActions}>
+                <button type="button" onClick={clearDimensionFilter} disabled={busy || !applied.customerGroupId}>Xóa lọc nhóm</button>
+                <button type="button" className={styles.primaryButton} onClick={applyDimensionFilter} disabled={busy}>Lọc khách hàng</button>
+              </div>
+            </div>
+          ) : null}
+
+          {activeDimension === 'products' ? (
+            <div className={styles.dimensionFilterBar} aria-label="Lọc sản phẩm theo nhóm">
+              <label>
+                <span>Nhóm sản phẩm</span>
+                <select
+                  value={draft.productGroupId}
+                  disabled={busy}
+                  onChange={(event) => setDraft((current) => ({ ...current, productGroupId: event.target.value }))}
+                >
+                  <option value="">Tất cả nhóm sản phẩm</option>
+                  {productGroupOptions.map((group) => (
+                    <option key={group.id} value={group.id}>{[group.code, group.name].filter(Boolean).join(' — ')}</option>
+                  ))}
+                </select>
+              </label>
+              <label className={styles.zeroProductInline}>
+                <input
+                  type="checkbox"
+                  checked={draft.includeZeroProducts}
+                  disabled={busy}
+                  onChange={(event) => setDraft((current) => ({ ...current, includeZeroProducts: event.target.checked }))}
+                />
+                <span>Hiện sản phẩm không phát sinh</span>
+              </label>
+              <div className={styles.dimensionFilterActions}>
+                <button type="button" onClick={clearDimensionFilter} disabled={busy || (!applied.productGroupId && !applied.includeZeroProducts)}>Xóa lọc nhóm</button>
+                <button type="button" className={styles.primaryButton} onClick={applyDimensionFilter} disabled={busy}>Lọc sản phẩm</button>
+              </div>
+            </div>
+          ) : null}
 
           <div className={styles.analysisTools}>
             <label>
@@ -738,6 +678,22 @@ export function SalesReportingWorkspace() {
                   </td></tr>
                 ) : null}
               </tbody>
+              {visibleTotals.length ? (
+                <tfoot>
+                  {visibleTotals.map((row) => (
+                    <tr className={styles.totalRow} key={`total-${activeDimension}-${row.currencyCode}-${row.unit?.id ?? row.unit?.code ?? ''}`}>
+                      <td aria-hidden="true" />
+                      <td><strong>{row.name}</strong><small>{row.currencyCode}</small></td>
+                      <td><strong>{formatMoney(row.revenue, row.currencyCode)}</strong></td>
+                      <td><strong>{metricValue(row, activeDimension)}</strong></td>
+                      <td>{percent(row.sharePercent)}</td>
+                      <td>{previousValue(row, activeDimension)}</td>
+                      <td><span className={styles.changeBadge}>{rowChange(row)}</span></td>
+                      <td>—</td>
+                    </tr>
+                  ))}
+                </tfoot>
+              ) : null}
             </table>
           </div>
 

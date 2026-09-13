@@ -8,7 +8,7 @@ import {
 
 const readApi = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
-test('Sales export giữ 6 chiều canonical, thêm ma trận phân loại và whitelist cột theo chiều', () => {
+test('Sales export giữ đúng 6 chiều cũ và whitelist cột theo chiều', () => {
   const valid = normalizeSalesReportingExportSelection({
     dimension: 'products',
     format: 'csv',
@@ -32,15 +32,15 @@ test('Sales export giữ 6 chiều canonical, thêm ma trận phân loại và w
   assert.equal(invalidColumn.code, 'INVALID_SALES_EXPORT_COLUMNS');
 
   assert.deepEqual(Object.keys(salesReportingExportInternals.DIMENSIONS), [
-    'customers', 'customerGroups', 'channels', 'products', 'productGroups', 'productCustomerMatrix', 'employees',
+    'customers', 'customerGroups', 'channels', 'products', 'productGroups', 'employees',
   ]);
   const matrixSelection = normalizeSalesReportingExportSelection({
     dimension: 'productCustomerMatrix',
     format: 'xlsx',
     columns: [],
   });
-  assert.equal(matrixSelection.ok, true);
-  assert.equal(matrixSelection.dynamicColumns, true);
+  assert.equal(matrixSelection.ok, false);
+  assert.equal(matrixSelection.code, 'INVALID_SALES_EXPORT_DIMENSION');
   assert.deepEqual(
     salesReportingExportInternals.flattenRow({ unit: { code: 'THUNG', name: 'Thùng' } }),
     {
@@ -78,6 +78,7 @@ test('Sales export mặc định cột an toàn và không tự lấy documents 
     'code', 'name', 'currencyCode', 'revenue', 'documentCount', 'sharePercent', 'previousRevenue', 'changePercent',
   ]);
   assert.match(source, /report\.breakdowns\?\.\[selection\.dimension\]/);
+  assert.match(source, /report\.breakdownTotals\?\.\[selection\.dimension\]/);
   assert.doesNotMatch(source, /report\.documents/);
   assert.match(source, /report\.reconciliation\?\.ok !== true/);
   assert.match(source, /buildMultiSheetXlsx/);

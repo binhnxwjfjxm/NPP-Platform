@@ -85,59 +85,10 @@ export type SalesProductGroupOption = SalesClassificationOption & Readonly<{
   parentCategoryId: string | null;
 }>;
 
-export type SalesProductCustomerMatrixColumn = Readonly<{
-  key: string;
-  id: string | null;
-  code: string | null;
-  name: string;
-  source: string;
-}>;
-
-export type SalesProductCustomerMatrixCell = Readonly<{
-  columnKey: string;
-  customerGroupId: string | null;
-  quantity: string;
-  sharePercent: string;
-}>;
-
-export type SalesProductCustomerMatrixRow = Readonly<{
-  variantId: string | null;
-  sku: string | null;
-  name: string;
-  productGroup: Readonly<{
-    id: string | null;
-    code: string | null;
-    name: string;
-    source: string;
-  }>;
-  unit: SalesReportingUnit;
-  totalQuantity: string;
-  cells: readonly SalesProductCustomerMatrixCell[];
-  hasActivity: boolean;
-}>;
-
-export type SalesProductCustomerMatrixTotal = Readonly<{
-  unit: SalesReportingUnit;
-  totalQuantity: string;
-  cells: readonly SalesProductCustomerMatrixCell[];
-}>;
-
 export type SalesReportingClassification = Readonly<{
   options: Readonly<{
     productGroups: readonly SalesProductGroupOption[];
     customerGroups: readonly SalesClassificationOption[];
-  }>;
-  productCustomerMatrix: Readonly<{
-    basis: Readonly<{
-      rows: string;
-      columns: string;
-      quantity: string;
-      totalRule: string;
-    }>;
-    includeZeroProducts: boolean;
-    columns: readonly SalesProductCustomerMatrixColumn[];
-    rows: readonly SalesProductCustomerMatrixRow[];
-    totalsByUnit: readonly SalesProductCustomerMatrixTotal[];
   }>;
 }>;
 
@@ -163,6 +114,7 @@ export type SalesReportingDashboard = Readonly<{
   }>;
   summary: SalesReportingSummary;
   breakdowns: Readonly<Record<SalesBreakdownKey, readonly SalesBreakdownRow[]>>;
+  breakdownTotals: Readonly<Record<SalesBreakdownKey, readonly SalesBreakdownRow[]>>;
   reconciliation: Readonly<{
     ok: boolean;
     checkedOrderCount: string;
