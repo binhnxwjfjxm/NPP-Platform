@@ -158,6 +158,60 @@ export function filterSalesFacts(facts, filters) {
   }));
 }
 
+
+export function filterSalesFactsForDimension(facts, filters, dimension) {
+  const source = facts ?? [];
+  if (dimension === 'customers') {
+    const customerGroupId = normalizedId(filters?.customerGroupId);
+    if (!customerGroupId) return Object.freeze([...source]);
+    return Object.freeze(source.filter((fact) => normalizedId(fact?.customerGroupId) === customerGroupId));
+  }
+  if (dimension === 'products') {
+    const productGroupId = normalizedId(filters?.productGroupId);
+    if (!productGroupId) return Object.freeze([...source]);
+    return Object.freeze(source.filter((fact) => normalizedId(fact?.productGroupId) === productGroupId));
+  }
+  return Object.freeze([...source]);
+}
+
+export function appendZeroProductRows(rows, catalogRows, { productGroupId = null, currencyCode = '' } = {}) {
+  const selectedProductGroupId = normalizedId(productGroupId);
+  const output = [...(rows ?? [])];
+  const existing = new Set(output.map(productRowIdentity));
+
+  for (const catalogRow of catalogRows ?? []) {
+    if (selectedProductGroupId && normalizedId(catalogRow?.productGroupId) !== selectedProductGroupId) continue;
+    const key = productRowIdentity(catalogRow);
+    if (existing.has(key)) continue;
+    output.push(Object.freeze({
+      id: normalizedId(catalogRow?.variantId ?? catalogRow?.id),
+      code: text(catalogRow?.sku ?? catalogRow?.code) || null,
+      name: text(catalogRow?.itemName ?? catalogRow?.name, 'Sản phẩm chưa xác định'),
+      source: 'current-master-zero',
+      currencyCode: text(currencyCode),
+      unit: unitOf(catalogRow),
+      revenue: '0',
+      quantity: '0',
+      documentCount: '0',
+      customerCount: '0',
+      productCount: '1',
+      sharePercent: '0',
+      previousRevenue: '0',
+      previousQuantity: '0',
+      changePercent: null,
+      comparisonState: 'comparable',
+    }));
+    existing.add(key);
+  }
+
+  return Object.freeze(output.sort((left, right) => {
+    const leftActive = left.revenue !== '0' || left.quantity !== '0';
+    const rightActive = right.revenue !== '0' || right.quantity !== '0';
+    if (leftActive !== rightActive) return leftActive ? -1 : 1;
+    return String(left.name).localeCompare(String(right.name), 'vi');
+  }));
+}
+
 export function buildSalesClassificationOptions(productGroups, customerGroups) {
   const normalizedProductGroups = (productGroups ?? []).map((row) => Object.freeze({
     id: normalizedId(row?.id),
