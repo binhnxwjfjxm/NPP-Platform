@@ -111,6 +111,13 @@ test('Vercel CLI 58 redeploy uses supported production flags and rollback redepl
   assert.match(script, /ROLLBACK_VERCEL_BINDINGS=FAIL/);
 });
 
+test('nginx open ingress keeps nginx proxy variables literal under nounset', async () => {
+  const script = await read('npp-core/api/scripts/vps-production-cutover-wiring-958.sh');
+  const safeOpenBody = `open) body='proxy_pass http://127.0.0.1:'"$port"'; proxy_http_version 1.1; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto https; proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;' ;;`;
+  assert.ok(script.includes(safeOpenBody));
+  assert.doesNotMatch(script, /open\) body="proxy_pass/);
+});
+
 test('Delivery and Retail deployments cannot silently rewire Công Ty back to Heroku', async () => {
   const [deliveryWorkflow, deliveryScript, retailWorkflow, retailScript] = await Promise.all([
     read('.github/workflows/vercel-delivery-production-manual.yml'),

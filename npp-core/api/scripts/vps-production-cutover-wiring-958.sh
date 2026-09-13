@@ -63,7 +63,7 @@ set_ingress_mode() {
 set -euo pipefail
 mode="$1"; port="$2"; site="$3"; guard="$4"; cert="/etc/letsencrypt/live/$site/fullchain.pem"; pkey="/etc/letsencrypt/live/$site/privkey.pem"
 verify_proxy(){ [ "$guard" != yes ] || { for s in ipv4-proxy ipv6-proxy oci-ipv6-pool; do test "$(systemctl is-active "$s")" = active; done; test "$(ss -lntH | awk '{n=split($4,a,":");p=a[n]+0;if(p>=3128&&p<=3427)c++}END{print c+0}')" = 300; }; }
-case "$mode" in freeze) body='return 503;' ;; open) body="proxy_pass http://127.0.0.1:${port}; proxy_http_version 1.1; proxy_set_header Host \\$host; proxy_set_header X-Forwarded-Proto https; proxy_set_header X-Forwarded-For \\$proxy_add_x_forwarded_for;" ;; *) exit 70;; esac
+case "$mode" in freeze) body='return 503;' ;; open) body='proxy_pass http://127.0.0.1:'"$port"'; proxy_http_version 1.1; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto https; proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;' ;; *) exit 70;; esac
 conf="$(mktemp)"; cat > "$conf" <<EOF2
 server {
  listen 443 ssl default_server; listen [::]:443 ssl default_server; server_name _;
