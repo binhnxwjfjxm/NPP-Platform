@@ -69,6 +69,7 @@ function metric(row: BusinessRow, dimension: BusinessBreakdownKey): string {
 
 function rowName(row: BusinessRow, dimension: BusinessBreakdownKey): string {
   const name = String(row.name ?? '').trim();
+  if (row.source === 'total') return name || 'Tổng';
   if ((dimension === 'customerGroups' || dimension === 'productGroups') && (!row.id || name === 'Không xác định')) return 'Chưa phân loại';
   return name || 'Chưa có tên';
 }
