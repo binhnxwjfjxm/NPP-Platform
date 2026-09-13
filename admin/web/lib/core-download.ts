@@ -4,7 +4,8 @@ import { randomUUID } from 'node:crypto';
 import { readAdminSessionToken } from './internal-auth-client';
 
 const DOWNLOAD_TIMEOUT_MS = 30_000;
-const EXPORT_PATH = '/api/reporting/management-export';
+const MANAGEMENT_EXPORT_PATH = '/api/reporting/management-export';
+const SALES_EXPORT_PATH = '/api/reporting/sales-export';
 
 export class CoreDownloadError extends Error {
   constructor(
@@ -28,22 +29,22 @@ function baseUrl(): string {
   return url.toString().replace(/\/$/, '');
 }
 
-function safeExportPath(path: string): string {
-  if (!path.startsWith(`${EXPORT_PATH}?`) || path.includes('..') || /[\r\n]/.test(path)) throw new CoreDownloadError('ADMIN_CORE_PATH_INVALID', 'Đường xuất báo cáo không hợp lệ', 400);
+function safeExportPath(path: string, root: string): string {
+  if (!path.startsWith(`${root}?`) || path.includes('..') || /[\r\n]/.test(path)) throw new CoreDownloadError('ADMIN_CORE_PATH_INVALID', 'Đường xuất báo cáo không hợp lệ', 400);
   return path;
 }
 
-export async function requestCoreReportDownload(path: string): Promise<Response> {
+async function requestDownload(path: string, root: string, accept: string): Promise<Response> {
   const token = readAdminSessionToken();
   if (!token) throw new CoreDownloadError('UNAUTHORIZED', 'Cần đăng nhập', 401);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
   try {
-    const response = await fetch(`${baseUrl()}${safeExportPath(path)}`, {
+    const response = await fetch(`${baseUrl()}${safeExportPath(path, root)}`, {
       method: 'GET', cache: 'no-store', signal: controller.signal,
       headers: {
         Authorization: `Bearer ${token}`,
-        Accept: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        Accept: accept,
         'x-request-id': `admin_export_${randomUUID()}`,
       },
     });
@@ -58,4 +59,12 @@ export async function requestCoreReportDownload(path: string): Promise<Response>
   } finally {
     clearTimeout(timeout);
   }
+}
+
+export async function requestCoreReportDownload(path: string): Promise<Response> {
+  return requestDownload(path, MANAGEMENT_EXPORT_PATH, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+}
+
+export async function requestCoreSalesReportDownload(path: string): Promise<Response> {
+  return requestDownload(path, SALES_EXPORT_PATH, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
 }

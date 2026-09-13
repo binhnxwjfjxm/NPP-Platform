@@ -8,10 +8,10 @@ import styles from './business-workspace.module.css';
 
 const dimensions: Array<{ key: BusinessBreakdownKey; label: string }> = [
   { key: 'customers', label: 'Khách hàng' },
-  { key: 'customerGroups', label: 'Loại khách' },
+  { key: 'customerGroups', label: 'Nhóm khách hàng' },
   { key: 'channels', label: 'Kênh bán' },
   { key: 'products', label: 'Sản phẩm' },
-  { key: 'productGroups', label: 'Nhóm hàng' },
+  { key: 'productGroups', label: 'Nhóm sản phẩm' },
   { key: 'employees', label: 'Nhân viên bán hàng' },
 ];
 
@@ -25,13 +25,27 @@ function number(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function decimalText(value: unknown, maxFractionDigits = 6): string {
+  const normalized = String(value ?? '0').trim();
+  const match = /^(-?)(\d+)(?:\.(\d+))?$/.exec(normalized);
+  if (!match) return normalized || '0';
+  const [, sign, integer, fraction = ''] = match;
+  const grouped = integer.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  const trimmed = fraction.slice(0, Math.max(0, maxFractionDigits)).replace(/0+$/, '');
+  return `${sign}${grouped}${trimmed ? `.${trimmed}` : ''}`;
+}
+
 function money(value: unknown, currency: string): string {
-  return `${new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 2 }).format(number(value))} ${currency}`;
+  return `${decimalText(value, 2)} ${currency}`;
 }
 
 function quantity(value: unknown, unit: { code?: string; name?: string }): string {
   const label = unit.name || unit.code || 'ĐVT chưa xác định';
-  return `${new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 6 }).format(number(value))} ${label}`;
+  return `${decimalText(value, 6)} ${label}`;
+}
+
+function percentText(value: unknown): string {
+  return `${decimalText(value, 2)}%`;
 }
 
 function metricLabel(dimension: BusinessBreakdownKey): string {
@@ -65,9 +79,11 @@ function previousValue(row: BusinessRow, dimension: BusinessBreakdownKey): strin
 }
 
 function change(row: BusinessRow): string {
-  if (row.changePercent !== null && row.changePercent !== '') {
-    const parsed = Number(row.changePercent);
-    if (Number.isFinite(parsed)) return `${parsed > 0 ? '+' : ''}${new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 2 }).format(parsed)}%`;
+  const normalized = String(row.changePercent ?? '').trim();
+  if (/^-?\d+(?:\.\d+)?$/.test(normalized)) {
+    const nonZero = !/^-?0+(?:\.0+)?$/.test(normalized);
+    const prefix = nonZero && !normalized.startsWith('-') ? '+' : '';
+    return `${prefix}${percentText(normalized)}`;
   }
   if (row.comparisonState === 'new') return 'Mới phát sinh';
   if (row.comparisonState === 'inactive') return 'Không phát sinh kỳ này';
@@ -75,9 +91,9 @@ function change(row: BusinessRow): string {
 }
 
 function changeTone(row: BusinessRow): 'up' | 'down' | 'neutral' {
-  const parsed = Number(row.changePercent);
-  if (!Number.isFinite(parsed) || parsed === 0) return 'neutral';
-  return parsed > 0 ? 'up' : 'down';
+  const normalized = String(row.changePercent ?? '').trim();
+  if (!/^-?\d+(?:\.\d+)?$/.test(normalized) || /^-?0+(?:\.0+)?$/.test(normalized)) return 'neutral';
+  return normalized.startsWith('-') ? 'down' : 'up';
 }
 
 function rowToken(row: BusinessRow, index: number): string {
@@ -110,9 +126,20 @@ function trendSeries(points: Record<string, unknown>[]) {
 export default async function BusinessReportPage({
   searchParams,
 }: {
-  searchParams?: { period?: string; view?: string; item?: string };
+  searchParams?: {
+    period?: string;
+    view?: string;
+    item?: string;
+    productGroupId?: string;
+    customerGroupId?: string;
+    includeZeroProducts?: string;
+  };
 }) {
-  const report = await loadBusinessReport(searchParams?.period);
+  const report = await loadBusinessReport(searchParams?.period, {
+    productGroupId: searchParams?.productGroupId,
+    customerGroupId: searchParams?.customerGroupId,
+    includeZeroProducts: searchParams?.includeZeroProducts,
+  });
   const requestedDimension = searchParams?.view;
   const selectedDimension = dimensions.some((item) => item.key === requestedDimension)
     ? requestedDimension as BusinessBreakdownKey
@@ -122,11 +149,20 @@ export default async function BusinessReportPage({
   const revenues = Array.isArray(report.summary.revenues) ? report.summary.revenues as Record<string, unknown>[] : [];
   const rows = report.breakdowns[selectedDimension] ?? [];
   const series = trendSeries(report.trend);
+  const productGroupOptions = report.classification.options.productGroups;
+  const customerGroupOptions = report.classification.options.customerGroups;
+  const matrix = report.classification.productCustomerMatrix;
 
-  const queryHref = (values: Record<string, string | undefined>) => {
+  const queryHref = (values: Record<string, string | undefined>, keepClassification = true) => {
     const query = new URLSearchParams();
+    if (keepClassification) {
+      if (report.filters.productGroupId) query.set('productGroupId', report.filters.productGroupId);
+      if (report.filters.customerGroupId) query.set('customerGroupId', report.filters.customerGroupId);
+      if (report.filters.includeZeroProducts) query.set('includeZeroProducts', 'true');
+    }
     for (const [key, value] of Object.entries(values)) {
       if (value) query.set(key, value);
+      else query.delete(key);
     }
     return `/reports/business?${query.toString()}`;
   };
@@ -138,10 +174,26 @@ export default async function BusinessReportPage({
     item: rowToken(row, index),
   });
   const closeDetailHref = dimensionHref(selectedDimension);
+  const clearClassificationHref = queryHref({ period: report.period, view: selectedDimension }, false);
   const selectedRowIndex = rows.findIndex((row, index) => rowToken(row, index) === searchParams?.item);
   const selectedRow = selectedRowIndex >= 0 ? rows[selectedRowIndex] : null;
 
-  const exportHref = `/reports/export?${new URLSearchParams({ report: 'sales-profit', from: report.from, to: report.to }).toString()}`;
+  const exportQuery = new URLSearchParams({ report: 'sales-profit', from: report.from, to: report.to });
+  const matrixExportQuery = new URLSearchParams({ from: report.from, to: report.to });
+  if (report.filters.productGroupId) {
+    exportQuery.set('productGroupId', report.filters.productGroupId);
+    matrixExportQuery.set('productGroupId', report.filters.productGroupId);
+  }
+  if (report.filters.customerGroupId) {
+    exportQuery.set('customerGroupId', report.filters.customerGroupId);
+    matrixExportQuery.set('customerGroupId', report.filters.customerGroupId);
+  }
+  if (report.filters.includeZeroProducts) {
+    exportQuery.set('includeZeroProducts', 'true');
+    matrixExportQuery.set('includeZeroProducts', 'true');
+  }
+  const exportHref = `/reports/export?${exportQuery.toString()}`;
+  const matrixExportHref = `/reports/business/matrix-export?${matrixExportQuery.toString()}`;
   const reconciliationHref = `/reports/business/reconciliation?${new URLSearchParams({ period: report.period }).toString()}`;
   const tone = report.state === 'ready' ? 'ok' : report.state === 'partial' ? 'partial' : report.state === 'forbidden' ? 'forbidden' : 'error';
 
@@ -165,6 +217,37 @@ export default async function BusinessReportPage({
           <AdminFilterChip key={period} href={periodHref(period)} label={period} active={report.period === period} />
         ))}
       </AdminToolbar>
+
+      <form className={styles.classificationFilters} method="get" action="/reports/business" aria-label="Phân loại Báo cáo Kinh doanh">
+        <input type="hidden" name="period" value={report.period} />
+        <input type="hidden" name="view" value={selectedDimension} />
+        <label>
+          <span>Nhóm sản phẩm</span>
+          <select name="productGroupId" defaultValue={report.filters.productGroupId ?? ''}>
+            <option value="">Tất cả nhóm sản phẩm</option>
+            {productGroupOptions.map((group) => (
+              <option key={group.id} value={group.id}>{[group.code, group.name].filter(Boolean).join(' — ')}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Nhóm khách hàng</span>
+          <select name="customerGroupId" defaultValue={report.filters.customerGroupId ?? ''}>
+            <option value="">Tất cả nhóm khách hàng</option>
+            {customerGroupOptions.map((group) => (
+              <option key={group.id} value={group.id}>{[group.code, group.name].filter(Boolean).join(' — ')}</option>
+            ))}
+          </select>
+        </label>
+        <label className={styles.zeroProducts}>
+          <input type="checkbox" name="includeZeroProducts" value="true" defaultChecked={report.filters.includeZeroProducts} />
+          <span>Hiện sản phẩm không phát sinh</span>
+        </label>
+        <div className={styles.classificationActions}>
+          <Link href={clearClassificationHref}>Xóa lọc</Link>
+          <button type="submit">Áp dụng</button>
+        </div>
+      </form>
 
       {report.state === 'ready' ? (
         <div className={styles.dataStatus} role="status">
@@ -193,6 +276,65 @@ export default async function BusinessReportPage({
         <AdminKpiCard label="Đơn đã chốt" value={text(report.summary.effectiveOrderCount)} note="Đơn xác nhận hoặc hoàn tất." />
         <AdminKpiCard label="Khách mua" value={text(report.summary.buyerCount)} note="Khách có đơn hiệu lực." />
       </AdminKpiGrid>
+
+      <section className={`card ${styles.matrixPanel}`} aria-labelledby="business-matrix-title">
+        <div className={styles.sectionHeading}>
+          <div>
+            <span>Phân loại bán hàng</span>
+            <h2 id="business-matrix-title">Sản lượng sản phẩm theo nhóm khách hàng</h2>
+          </div>
+          <a className={baseStyles.toolbarAction} href={matrixExportHref}>Xuất bảng phân loại</a>
+        </div>
+        <p className={styles.matrixNote}>Mỗi dòng là một sản phẩm theo đúng ĐVT. Tổng cuối bảng được tách theo từng ĐVT để không cộng lẫn Thùng, Kg, Bịch hoặc đơn vị khác.</p>
+        <div className={styles.matrixTableWrap}>
+          <table className={styles.matrixTable}>
+            <thead>
+              <tr>
+                <th>Sản phẩm</th>
+                <th>Nhóm sản phẩm</th>
+                <th>ĐVT</th>
+                <th>Tổng SL</th>
+                {matrix.columns.map((column) => (
+                  <th key={column.key}>
+                    <span>{column.name}</span>
+                    <small>{column.code || 'Chưa có mã'}</small>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {matrix.rows.map((row) => (
+                <tr key={`${row.variantId ?? row.sku ?? row.name}-${row.unit.id ?? row.unit.code}`}>
+                  <td><strong>{row.name}</strong><small>{row.sku || 'Chưa có mã'}{row.hasActivity ? '' : ' · Không phát sinh'}</small></td>
+                  <td>{row.productGroup.name}<small>{row.productGroup.code || 'Chưa có mã nhóm'}</small></td>
+                  <td>{row.unit.name || row.unit.code}</td>
+                  <td><strong>{decimalText(row.totalQuantity)}</strong></td>
+                  {row.cells.map((cell) => <td key={cell.columnKey}>{decimalText(cell.quantity)}</td>)}
+                </tr>
+              ))}
+              {!matrix.rows.length ? (
+                <tr><td className={styles.matrixEmpty} colSpan={4 + matrix.columns.length}>Không có sản phẩm phù hợp bộ lọc phân loại trong kỳ.</td></tr>
+              ) : null}
+            </tbody>
+            {matrix.totalsByUnit.length ? (
+              <tfoot>
+                {matrix.totalsByUnit.flatMap((total) => [
+                  <tr key={`total-${total.unit.id ?? total.unit.code}`} className={styles.matrixTotal}>
+                    <td colSpan={3}><strong>Tổng {total.unit.name || total.unit.code}</strong></td>
+                    <td><strong>{decimalText(total.totalQuantity)}</strong></td>
+                    {total.cells.map((cell) => <td key={cell.columnKey}><strong>{decimalText(cell.quantity)}</strong></td>)}
+                  </tr>,
+                  <tr key={`percent-${total.unit.id ?? total.unit.code}`} className={styles.matrixPercent}>
+                    <td colSpan={3}>Tỷ lệ {total.unit.name || total.unit.code}</td>
+                    <td>{total.totalQuantity === '0' ? '0%' : '100%'}</td>
+                    {total.cells.map((cell) => <td key={cell.columnKey}>{percentText(cell.sharePercent)}</td>)}
+                  </tr>,
+                ])}
+              </tfoot>
+            ) : null}
+          </table>
+        </div>
+      </section>
 
       <section className={`card ${styles.trendPanel}`} aria-labelledby="business-trend-title">
         <div className={styles.sectionHeading}>
@@ -279,7 +421,7 @@ export default async function BusinessReportPage({
                           </td>
                           <td>{money(row.revenue, row.currencyCode)}</td>
                           <td>{metric(row, selectedDimension)}</td>
-                          <td>{text(row.sharePercent)}%</td>
+                          <td>{percentText(row.sharePercent)}</td>
                           <td>
                             <strong>{money(row.previousRevenue, row.currencyCode)}</strong>
                             {selectedDimension === 'products' ? <small>{quantity(row.previousQuantity, row.unit)}</small> : null}
@@ -308,7 +450,7 @@ export default async function BusinessReportPage({
                     <div className={styles.mobileDetail}>
                       <dl className={styles.mobileDetailList}>
                         <div><dt>{metricLabel(selectedDimension)}</dt><dd>{metric(row, selectedDimension)}</dd></div>
-                        <div><dt>Tỷ trọng</dt><dd>{text(row.sharePercent)}%</dd></div>
+                        <div><dt>Tỷ trọng</dt><dd>{percentText(row.sharePercent)}</dd></div>
                         <div><dt>Kỳ trước</dt><dd>{previousValue(row, selectedDimension)}</dd></div>
                         <div><dt>Thay đổi</dt><dd>{change(row)}</dd></div>
                       </dl>
@@ -337,7 +479,7 @@ export default async function BusinessReportPage({
               <dl className={styles.detailList}>
                 <div><dt>Doanh thu</dt><dd>{money(selectedRow.revenue, selectedRow.currencyCode)}</dd></div>
                 <div><dt>{metricLabel(selectedDimension)}</dt><dd>{metric(selectedRow, selectedDimension)}</dd></div>
-                <div><dt>Tỷ trọng</dt><dd>{text(selectedRow.sharePercent)}%</dd></div>
+                <div><dt>Tỷ trọng</dt><dd>{percentText(selectedRow.sharePercent)}</dd></div>
                 <div><dt>Kỳ trước</dt><dd>{previousValue(selectedRow, selectedDimension)}</dd></div>
                 <div><dt>Thay đổi</dt><dd>{change(selectedRow)}</dd></div>
               </dl>

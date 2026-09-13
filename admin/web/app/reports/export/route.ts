@@ -2,6 +2,7 @@ import { CoreDownloadError, requestCoreReportDownload } from '../../../lib/core-
 
 const REPORTS = new Set(['executive', 'sales-profit', 'debt', 'inventory', 'delivery-cod', 'mcp', 'people', 'decisions']);
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export async function GET(request: Request) {
   const incoming = new URL(request.url);
@@ -17,6 +18,17 @@ export async function GET(request: Request) {
   }
   const warehouseId = String(incoming.searchParams.get('warehouseId') ?? '').trim();
   if (warehouseId) query.set('warehouseId', warehouseId);
+
+  if (report === 'sales-profit') {
+    const productGroupId = String(incoming.searchParams.get('productGroupId') ?? '').trim();
+    const customerGroupId = String(incoming.searchParams.get('customerGroupId') ?? '').trim();
+    const includeZeroProducts = String(incoming.searchParams.get('includeZeroProducts') ?? '').trim().toLowerCase();
+    if (productGroupId && !UUID.test(productGroupId)) return Response.json({ error: { message: 'Nhóm sản phẩm không hợp lệ' } }, { status: 400, headers: { 'Cache-Control': 'no-store' } });
+    if (customerGroupId && !UUID.test(customerGroupId)) return Response.json({ error: { message: 'Nhóm khách hàng không hợp lệ' } }, { status: 400, headers: { 'Cache-Control': 'no-store' } });
+    if (productGroupId) query.set('productGroupId', productGroupId);
+    if (customerGroupId) query.set('customerGroupId', customerGroupId);
+    if (includeZeroProducts === 'true') query.set('includeZeroProducts', 'true');
+  }
 
   try {
     const upstream = await requestCoreReportDownload(`/api/reporting/management-export?${query.toString()}`);
