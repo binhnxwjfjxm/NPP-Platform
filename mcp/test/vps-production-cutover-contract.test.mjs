@@ -29,7 +29,7 @@ test('Issue 958 final cutover is manual-only, exact-main and gated by exact-head
   assert.doesNotMatch(workflow, /^\s{2}(?:push|pull_request|workflow_dispatch):\s*$/m);
 });
 
-test('final DB cutover reuses reconciliation but targets a dedicated production database', async () => {
+test('final DB cutover reuses canonical semantic parity and targets a dedicated production database', async () => {
   const [script, rehearsal] = await Promise.all([
     readCutover(),
     read('npp-core/api/scripts/vps-db-heroku-rehearsal-958.sh'),
@@ -42,6 +42,12 @@ test('final DB cutover reuses reconciliation but targets a dedicated production 
   assert.match(script, /restore_db="npp_production"/);
   assert.match(script, /SOURCE_PENDING_CORE_COUNT/);
   assert.match(script, /SOURCE_PENDING_MCP_COUNT/);
+  assert.match(script, /vps-db-heroku-parity-gate-958\.sh/);
+  assert.match(script, /NPP958_RESTORE_DB="\$PRODUCTION_DB"/);
+  assert.match(script, /PARITY_GATE=PASS/);
+  assert.match(script, /PARITY_RESTORE_DATABASE=npp_production/);
+  assert.match(script, /GATE_C_RAW_REHEARSAL_STATUS/);
+  assert.match(script, /GATE_C_PARITY_STATUS/);
   assert.match(script, /heroku.*formation\/web/);
   assert.match(script, /set_web_quantity "\$HEROKU_COMPANY_APP" 0/);
   assert.match(script, /set_web_quantity "\$HEROKU_MCP_APP" 0/);

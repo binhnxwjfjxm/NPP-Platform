@@ -25,6 +25,14 @@ test("VPS DB parity preserves the exact Heroku state instead of repairing source
   assert.match(parity, /PARITY_POLICY=preserve_source_state/);
   assert.match(parity, /PARITY_GATE=PASS/);
 
+  // Production cutover must be able to reuse the same canonical parity contract
+  // against npp_production without letting the sourced rehearsal library erase evidence.
+  assert.match(parity, /vps-db-parity-library\.tmp/);
+  assert.match(parity, /export REPORT_FILE="\$library_report"/);
+  assert.match(parity, /restore_db="\$\{NPP958_RESTORE_DB:-\$restore_db\}"/);
+  assert.match(parity, /npp_rehearsal_958\|npp_production/);
+  assert.match(parity, /PARITY_RESTORE_DATABASE=\$restore_db/);
+
   // Provider/extension-owned relations are not business data and must not be row-fingerprinted.
   assert.match(parity, /dep\.classid = 'pg_class'::regclass AND dep\.objid = c\.oid AND dep\.deptype = 'e'/);
   assert.doesNotMatch(parity, /pg_stat_statements/);

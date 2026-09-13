@@ -14,9 +14,11 @@ on:
       - npp-core/api/scripts/vps-production-cutover-deploy-958.sh
       - npp-core/api/scripts/vps-production-cutover-wiring-958.sh
       - npp-core/api/scripts/vps-db-heroku-rehearsal-958.sh
+      - npp-core/api/scripts/vps-db-heroku-parity-gate-958.sh
       - delivery/web/scripts/deploy-production.sh
       - retail/web/scripts/deploy-production.sh
       - docs/operations/vps-production-runtime-manifest.md
+      - mcp/test/vps-db-parity-contract.test.mjs
       - mcp/test/vps-production-cutover-contract.test.mjs
   push:
     branches: [main]
@@ -31,9 +33,11 @@ on:
       - npp-core/api/scripts/vps-production-cutover-runtime-958.sh
       - npp-core/api/scripts/vps-production-cutover-deploy-958.sh
       - npp-core/api/scripts/vps-production-cutover-wiring-958.sh
+      - npp-core/api/scripts/vps-db-heroku-parity-gate-958.sh
       - delivery/web/scripts/deploy-production.sh
       - retail/web/scripts/deploy-production.sh
       - docs/operations/vps-production-runtime-manifest.md
+      - mcp/test/vps-db-parity-contract.test.mjs
       - mcp/test/vps-production-cutover-contract.test.mjs
 
 permissions:
@@ -58,10 +62,13 @@ jobs:
           bash -n npp-core/api/scripts/vps-production-cutover-runtime-958.sh
           bash -n npp-core/api/scripts/vps-production-cutover-deploy-958.sh
           bash -n npp-core/api/scripts/vps-production-cutover-wiring-958.sh
+          bash -n npp-core/api/scripts/vps-db-heroku-parity-gate-958.sh
           bash -n delivery/web/scripts/deploy-production.sh
           bash -n retail/web/scripts/deploy-production.sh
-      - name: Verify cutover contract
-        run: node --test mcp/test/vps-production-cutover-contract.test.mjs
+      - name: Verify cutover and DB parity contracts
+        run: |
+          node --test mcp/test/vps-db-parity-contract.test.mjs
+          node --test mcp/test/vps-production-cutover-contract.test.mjs
       - name: Verify Delivery and Retail regression contracts
         run: |
           node --test delivery/web/test/delivery-production-workflow.test.mjs
