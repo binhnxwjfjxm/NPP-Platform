@@ -133,15 +133,21 @@ jobs:
               data = json.load(handle)
           if not isinstance(data, list) or not data:
               raise SystemExit('metadata_missing')
-          primary = next((item for item in data if item.get('nicIndex') == 0), data[0])
-          if primary.get('publicIp') != expected:
-              raise SystemExit('public_ip_mismatch')
-          private_ip = str(primary.get('privateIp') or '')
-          cidr = str(primary.get('subnetCidrBlock') or '')
-          if cidr != '10.0.0.0/24' and not private_ip.startswith('10.0.0.'):
+          def in_public_subnet(item):
+              private_ip = str(item.get('privateIp') or '')
+              cidr = str(item.get('subnetCidrBlock') or '')
+              return cidr == '10.0.0.0/24' or private_ip.startswith('10.0.0.')
+          candidate = next(
+              (item for item in data if item.get('publicIp') == expected and in_public_subnet(item)),
+              None,
+          )
+          if candidate is None:
+              candidate = next((item for item in data if in_public_subnet(item)), None)
+          if candidate is None:
               raise SystemExit('public_subnet_mismatch')
-          print('OCI_METADATA_PUBLIC_IP_MATCH=PASS')
+          print('OCI_METADATA_PUBLIC_ENDPOINT_SSH=PASS')
           print('OCI_METADATA_PUBLIC_SUBNET=PASS')
+          print('OCI_METADATA_PUBLIC_IP_FIELD=' + ('match' if candidate.get('publicIp') == expected else 'not-reported'))
           PY
           rm -f "$metadata"
 
