@@ -58,13 +58,55 @@ EOF2
 sudo -n install -m 0644 "$conf" "/etc/nginx/sites-available/$site.conf"; rm -f "$conf"
 # Remove only the known Issue #958 test endpoint. Never delete unrelated nginx sites.
 sudo -n rm -f /etc/nginx/sites-enabled/npp958-company-test.conf
-# Fail closed if an unrelated default 443 server would conflict with the production endpoint.
-if sudo -n nginx -T 2>/dev/null | grep -E '^[[:space:]]*listen[[:space:]]+.*443.*default_server' | grep -vF "$site.conf" | grep -q .; then
+
+# Make the HTTPS install idempotent. A prior interrupted cutover can leave this exact
+# production site enabled; remove its symlink from the candidate set before checking for
+# unrelated default 443 listeners, then recreate it below. On MCP, the audited Ubuntu
+# `default` symlink is the only old 443 default and is not part of the proxy runtime; retire
+# only that exact symlink, preserving its source file and proving the 300 proxy listeners
+# before and after. Any other default 443 listener remains a hard blocker.
+own_enabled="/etc/nginx/sites-enabled/$site.conf"
+own_target="/etc/nginx/sites-available/$site.conf"
+own_was_enabled=no
+if [ -L "$own_enabled" ]; then
+  test "$(readlink -f "$own_enabled")" = "$own_target"
+  sudo -n rm "$own_enabled"
+  own_was_enabled=yes
+elif [ -e "$own_enabled" ]; then
+  echo unexpected_existing_production_site >&2
+  exit 50
+fi
+
+default_disabled=no
+default_target=""
+if [ "$proxy_guard" = yes ] && [ -L /etc/nginx/sites-enabled/default ]; then
+  default_target="$(readlink -f /etc/nginx/sites-enabled/default)"
+  test "$default_target" = /etc/nginx/sites-available/default
+  sudo -n rm /etc/nginx/sites-enabled/default
+  default_disabled=yes
+  verify_proxy
+fi
+
+restore_previous_sites() {
+  if [ "$own_was_enabled" = yes ]; then sudo -n ln -sfn "$own_target" "$own_enabled"; fi
+  if [ "$default_disabled" = yes ]; then sudo -n ln -sfn "$default_target" /etc/nginx/sites-enabled/default; fi
+}
+
+if sudo -n nginx -T 2>/dev/null | grep -E '^[[:space:]]*listen[[:space:]]+.*443.*default_server' | grep -q .; then
+  restore_previous_sites
   echo unexpected_existing_default_443 >&2
   exit 51
 fi
-sudo -n ln -sfn "/etc/nginx/sites-available/$site.conf" "/etc/nginx/sites-enabled/$site.conf"
-sudo -n nginx -t >/dev/null; sudo -n systemctl reload nginx
+
+sudo -n ln -sfn "$own_target" "$own_enabled"
+if ! sudo -n nginx -t >/dev/null 2>&1; then
+  sudo -n rm -f "$own_enabled"
+  restore_previous_sites
+  echo production_nginx_validation_failed >&2
+  exit 52
+fi
+sudo -n systemctl reload nginx
+verify_proxy
 sudo -n tee /usr/local/sbin/npp-certbot-nginx-reload >/dev/null <<'EOF2'
 #!/bin/sh
 set -eu
