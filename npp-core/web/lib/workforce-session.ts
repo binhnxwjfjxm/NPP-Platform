@@ -1,4 +1,4 @@
-export const NPP_SESSION_COOKIE = 'hp_npp_session';
+export const NPP_SESSION_COOKIE = 'hp_company_session';
 
 export function nppSessionCookieOptions(expiresAt?: string) {
   const parsed = expiresAt ? new Date(expiresAt) : null;
