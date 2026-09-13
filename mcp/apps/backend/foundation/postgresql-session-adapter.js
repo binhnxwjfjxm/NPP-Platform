@@ -327,7 +327,8 @@ async function updateRouteSession(client, args, context) {
   if (!sessionId) fail("session_id_required");
 
   const selected = await client.query(
-    `SELECT * FROM mcp.mcp_route_sessions
+    `SELECT *, session_date::text AS session_date_text
+     FROM mcp.mcp_route_sessions
      WHERE installation_id = $1 AND id = $2
      FOR UPDATE`,
     [context.installation.id, sessionId]
@@ -340,10 +341,12 @@ async function updateRouteSession(client, args, context) {
   if (nextStatus === "completed") nextStatus = "done";
   if (!["active", "done", "cancelled"].includes(nextStatus)) fail("invalid_session_status");
 
-  const requestedDate = text(args.p_session_date)?.slice(0, 10) || String(session.session_date).slice(0, 10);
+  const currentDate = text(session.session_date_text);
+  if (!currentDate || !/^\d{4}-\d{2}-\d{2}$/.test(currentDate)) fail("invalid_session_date");
+  const requestedDate = text(args.p_session_date)?.slice(0, 10) || currentDate;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(requestedDate)) fail("invalid_session_date");
 
-  if (requestedDate !== String(session.session_date).slice(0, 10)) {
+  if (requestedDate !== currentDate) {
     await client.query(
       `UPDATE mcp.mcp_visits
        SET visit_date = $3::date, updated_at = now()
