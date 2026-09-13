@@ -19,8 +19,9 @@ jobs:
         with:
           ref: agent/cutover-vps-runtime-958
           fetch-depth: 0
+          persist-credentials: false
 
-      - name: Replace legacy Heroku Công Ty URL with canonical repository variable
+      - name: Prepare complete source patch
         shell: bash
         run: |
           set -euo pipefail
@@ -40,33 +41,78 @@ jobs:
           for path in files:
               text = path.read_text()
               count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f'{path}: expected exactly one legacy URL, found {count}')
-              path.write_text(text.replace(old, new))
+              if count == 1:
+                  path.write_text(text.replace(old, new))
+              elif count == 0 and new in text:
+                  pass
+              else:
+                  raise SystemExit(f'{path}: unexpected legacy/canonical state')
 
           for path in files:
               text = path.read_text()
-              if old in text:
-                  raise SystemExit(f'{path}: legacy URL still present')
-              if new not in text:
-                  raise SystemExit(f'{path}: canonical variable missing')
+              if old in text or new not in text:
+                  raise SystemExit(f'{path}: cutover source contract failed')
 
           Path('.github/workflows/issue-958-cutover-patch.yml').unlink()
           PY
+          git diff --check
 
-      - name: Commit one cutover source change
+      - name: Upload detached commit object
+        id: commit
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add \
-            .github/workflows/resume-delivery-production-only.yml \
-            .github/workflows/admin-ai-production-config-manual.yml \
-            .github/workflows/ordering-ai-production-config-manual.yml \
-            .github/workflows/resume-production-rollout-admin-delivery.yml \
-            .github/workflows/website-ai-production-config-manual.yml \
-            .github/workflows/issue-958-cutover-patch.yml
-          git diff --cached --check
-          git commit -m 'fix(ops): bỏ URL Heroku khỏi dây production Issue 958'
-          git push origin HEAD:agent/cutover-vps-runtime-958
+          node --input-type=module <<'NODE'
+          import { readFileSync, existsSync } from 'node:fs';
+          import { execFileSync } from 'node:child_process';
+
+          const repo = process.env.GITHUB_REPOSITORY;
+          const token = process.env.GH_TOKEN;
+          const baseCommit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+          const baseTree = execFileSync('git', ['rev-parse', 'HEAD^{tree}'], { encoding: 'utf8' }).trim();
+          const paths = [
+            '.github/workflows/resume-delivery-production-only.yml',
+            '.github/workflows/admin-ai-production-config-manual.yml',
+            '.github/workflows/ordering-ai-production-config-manual.yml',
+            '.github/workflows/resume-production-rollout-admin-delivery.yml',
+            '.github/workflows/website-ai-production-config-manual.yml',
+            '.github/workflows/issue-958-cutover-patch.yml',
+          ];
+
+          async function api(path, body) {
+            const response = await fetch(`https://api.github.com/repos/${repo}${path}`, {
+              method: 'POST',
+              headers: {
+                authorization: `Bearer ${token}`,
+                accept: 'application/vnd.github+json',
+                'x-github-api-version': '2022-11-28',
+                'content-type': 'application/json',
+              },
+              body: JSON.stringify(body),
+            });
+            const payload = await response.json().catch(() => null);
+            if (!response.ok) throw new Error(`github_api_failed:${path}:${response.status}:${payload?.message || 'unknown'}`);
+            return payload;
+          }
+
+          const tree = [];
+          for (const path of paths) {
+            if (!existsSync(path)) {
+              tree.push({ path, mode: '100644', type: 'blob', sha: null });
+              continue;
+            }
+            const content = readFileSync(path).toString('base64');
+            const blob = await api('/git/blobs', { content, encoding: 'base64' });
+            tree.push({ path, mode: '100644', type: 'blob', sha: blob.sha });
+          }
+
+          const newTree = await api('/git/trees', { base_tree: baseTree, tree });
+          const commit = await api('/git/commits', {
+            message: 'fix(ops): bỏ URL Heroku khỏi dây production Issue 958',
+            tree: newTree.sha,
+            parents: [baseCommit],
+          });
+          console.log(`PREPARED_COMMIT_SHA=${commit.sha}`);
+          NODE
