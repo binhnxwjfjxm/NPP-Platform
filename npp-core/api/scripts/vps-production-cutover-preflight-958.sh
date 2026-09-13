@@ -110,8 +110,17 @@ done
 company_old_qty="$(formation_quantity "$HEROKU_COMPANY_APP")"
 mcp_old_qty="$(formation_quantity "$HEROKU_MCP_APP")"
 [[ "$company_old_qty" =~ ^[0-9]+$ && "$mcp_old_qty" =~ ^[0-9]+$ ]]
-[ "$company_old_qty" -gt 0 ]
-[ "$mcp_old_qty" -gt 0 ]
+# A previous cutover failure after write-open deliberately leaves both Heroku web
+# formations stopped while VPS ingress is re-frozen. That 0/0 state is a valid and
+# safer resume point. Mixed 0/>0 formation is rejected to avoid split authority.
+if [ "$company_old_qty" -eq 0 ] || [ "$mcp_old_qty" -eq 0 ]; then
+  test "$company_old_qty" -eq 0
+  test "$mcp_old_qty" -eq 0
+  echo 'GATE_B_STAGE=HEROKU_RECOVERY_STOPPED' >> "$REPORT_FILE"
+else
+  test "$company_old_qty" -gt 0
+  test "$mcp_old_qty" -gt 0
+fi
 echo 'GATE_B_STAGE=HEROKU_FORMATION_PASS' >> "$REPORT_FILE"
 
 opened_writes=false

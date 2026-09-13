@@ -58,6 +58,16 @@ test('final DB cutover reuses canonical semantic parity and targets a dedicated 
   assert.doesNotMatch(script, /PRODUCTION_DB="npp_rehearsal_958"/);
 });
 
+test('cutover resumes safely when both Heroku web formations were intentionally stopped by prior recovery', async () => {
+  const script = await read('npp-core/api/scripts/vps-production-cutover-preflight-958.sh');
+  assert.match(script, /if \[ "\$company_old_qty" -eq 0 \] \|\| \[ "\$mcp_old_qty" -eq 0 \]; then/);
+  assert.match(script, /test "\$company_old_qty" -eq 0/);
+  assert.match(script, /test "\$mcp_old_qty" -eq 0/);
+  assert.match(script, /GATE_B_STAGE=HEROKU_RECOVERY_STOPPED/);
+  assert.match(script, /else\n  test "\$company_old_qty" -gt 0\n  test "\$mcp_old_qty" -gt 0/);
+  assert.doesNotMatch(script, /\[ "\$company_old_qty" -gt 0 \]\n\[ "\$mcp_old_qty" -gt 0 \]/);
+});
+
 test('production HTTPS is trusted, renewable and starts frozen', async () => {
   const script = await readCutover();
   assert.match(script, /certbot>=5\.4,<6/);
