@@ -7,6 +7,12 @@ import styles from './login.module.css';
 type VerificationState = 'owner_code_required' | 'machine_code_required';
 type LoginMode = 'credentials' | VerificationState;
 type SubmitState = 'idle' | 'loading' | 'success';
+type LoginReply = Readonly<{
+  ok?: boolean;
+  returnTo?: string;
+  error?: string;
+  state?: string;
+}>;
 
 type LoginPageProps = Readonly<{
   searchParams?: Readonly<{ error?: string; state?: string; returnTo?: string }>;
@@ -77,32 +83,33 @@ export default function LoginPage({ searchParams }: LoginPageProps) {
         method: 'POST',
         body: formData,
         credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
       });
+      const payload = await response.json().catch(() => null) as LoginReply | null;
 
-      if (!response.redirected) {
+      if (!payload) {
         setSubmitState('idle');
         setError('Không thể hoàn tất đăng nhập. Vui lòng thử lại.');
         return;
       }
 
-      const target = new URL(response.url, window.location.origin);
-      if (target.pathname === '/login' || target.pathname.endsWith('/login')) {
-        const nextState = parseVerificationState(target.searchParams.get('state'));
-        const errorKey = target.searchParams.get('error');
+      const nextState = parseVerificationState(payload.state);
+      if (nextState) {
         setSubmitState('idle');
+        enterVerification(nextState, payload.error || null);
+        return;
+      }
 
-        if (nextState) {
-          enterVerification(nextState, errorKey);
-          return;
-        }
-
+      if (!response.ok || payload.ok !== true) {
+        setSubmitState('idle');
         setMode('credentials');
-        setError(errorMessage(errorKey));
+        setError(errorMessage(payload.error));
         return;
       }
 
       setSubmitState('success');
-      window.setTimeout(() => window.location.assign(response.url || returnTo), 260);
+      const target = safeNppReturnTo(payload.returnTo || returnTo);
+      window.setTimeout(() => window.location.assign(target), 260);
     } catch {
       setSubmitState('idle');
       setError('Không thể kết nối hệ thống xác thực. Vui lòng thử lại.');
