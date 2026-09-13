@@ -1,0 +1,191 @@
+name: VPS MCP ACME diagnostic 958
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: vps-mcp-acme-diagnostic-958
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    if: >-
+      github.event.issue.number == 5 &&
+      github.event.comment.body == '/diagnose-vps-mcp-acme-958' &&
+      (
+        github.actor == 'binhnxwjfjxm' ||
+        github.actor == 'khuongbinhinfo-a11y'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VPS_MCP_HOST: ${{ vars.VPS_MCP_HOST }}
+      VPS_SSH_USER: ${{ vars.VPS_SSH_USER }}
+
+    steps:
+      - name: Validate command
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: test "$COMMENT_BODY" = '/diagnose-vps-mcp-acme-958'
+
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact origin/main SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          test "$(git rev-parse --is-shallow-repository)" = false
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare SSH
+        id: ssh
+        shell: bash
+        env:
+          VPS_MCP_SSH_KEY: ${{ secrets.VPS_MCP_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$VPS_MCP_HOST"
+          test -n "$VPS_SSH_USER"
+          test -n "$VPS_MCP_SSH_KEY"
+          umask 077
+          key="$RUNNER_TEMP/mcp.key"
+          known="$RUNNER_TEMP/mcp.known"
+          printf '%s\n' "$VPS_MCP_SSH_KEY" > "$key"
+          chmod 600 "$key"
+          ssh-keygen -y -f "$key" >/dev/null
+          ssh-keyscan -T 10 -H "$VPS_MCP_HOST" > "$known" 2>/dev/null
+          test -s "$known"
+          chmod 600 "$known"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+          echo "known=$known" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare remote probe and collect local diagnostics
+        id: remote
+        shell: bash
+        env:
+          MCP_KEY: ${{ steps.ssh.outputs.key }}
+          MCP_KNOWN: ${{ steps.ssh.outputs.known }}
+        run: |
+          set -euo pipefail
+          report="$RUNNER_TEMP/mcp-acme-diagnostic.txt"
+          token="npp958-${GITHUB_RUN_ID}"
+          echo "REPORT_FILE=$report" >> "$GITHUB_ENV"
+          echo "PROBE_TOKEN=$token" >> "$GITHUB_ENV"
+          : > "$report"
+          ssh -i "$MCP_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$MCP_KNOWN" \
+            "$VPS_SSH_USER@$VPS_MCP_HOST" "bash -s -- '$VPS_MCP_HOST' '$token'" >> "$report" <<'REMOTE'
+          set -euo pipefail
+          public_ip="$1"
+          token="$2"
+          verify_proxy() {
+            for s in ipv4-proxy ipv6-proxy oci-ipv6-pool; do
+              test "$(systemctl is-active "$s")" = active
+            done
+            test "$(ss -lntH | awk '{n=split($4,a,\":\");p=a[n]+0;if(p>=3128&&p<=3427)c++}END{print c+0}')" = 300
+          }
+          verify_proxy
+          echo 'PROXY_BOUNDARY=PASS'
+          echo "NGINX_ACTIVE=$(systemctl is-active nginx 2>/dev/null || true)"
+          echo "LISTEN_80=$(ss -lntH | awk '{n=split($4,a,\":\");if(a[n]+0==80)f=1}END{print f?\"yes\":\"no\"}')"
+          echo "LISTEN_443=$(ss -lntH | awk '{n=split($4,a,\":\");if(a[n]+0==443)f=1}END{print f?\"yes\":\"no\"}')"
+          echo 'UFW_80_443_BEGIN'
+          sudo -n ufw status numbered 2>/dev/null | grep -E '(^Status:|80/tcp|443/tcp)' || true
+          echo 'UFW_80_443_END'
+          sudo -n install -d -m 0755 /var/www/npp-acme/.well-known/acme-challenge
+          printf '%s\n' "$token" | sudo -n tee "/var/www/npp-acme/.well-known/acme-challenge/$token" >/dev/null
+          local_body="$(curl -fsS --max-time 5 -H "Host: $public_ip" "http://127.0.0.1/.well-known/acme-challenge/$token")"
+          test "$local_body" = "$token"
+          echo 'LOCAL_HTTP01_WEBROOT=PASS'
+          echo 'CERTBOT_FAILURE_BEGIN'
+          sudo -n grep -E 'Challenge failed|Some challenges have failed|Detail:|Invalid response|Timeout during connect|Connection refused|unauthorized|connection' /var/log/letsencrypt/letsencrypt.log 2>/dev/null | tail -n 20 || true
+          echo 'CERTBOT_FAILURE_END'
+          if command -v oci >/dev/null 2>&1; then
+            echo 'OCI_CLI=present'
+            if oci iam region list --auth instance_principal >/dev/null 2>&1; then
+              echo 'OCI_INSTANCE_PRINCIPAL=PASS'
+            else
+              echo 'OCI_INSTANCE_PRINCIPAL=FAIL'
+            fi
+          else
+            echo 'OCI_CLI=missing'
+          fi
+          if curl -fsS --max-time 3 -H 'Authorization: Bearer Oracle' http://169.254.169.254/opc/v2/vnics/ >/dev/null; then
+            echo 'OCI_INSTANCE_METADATA=PASS'
+          else
+            echo 'OCI_INSTANCE_METADATA=FAIL'
+          fi
+          verify_proxy
+          REMOTE
+
+      - name: Probe HTTP-01 from GitHub runner
+        id: external
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          body="$RUNNER_TEMP/mcp-acme-probe-body"
+          code="$(curl -sS --connect-timeout 5 --max-time 15 -o "$body" -w '%{http_code}' \
+            "http://$VPS_MCP_HOST/.well-known/acme-challenge/$PROBE_TOKEN" || true)"
+          echo "EXTERNAL_HTTP_STATUS=${code:-000}" >> "$REPORT_FILE"
+          if [ "$code" = 200 ] && grep -qxF "$PROBE_TOKEN" "$body"; then
+            echo 'EXTERNAL_HTTP01=PASS' >> "$REPORT_FILE"
+          else
+            echo 'EXTERNAL_HTTP01=FAIL' >> "$REPORT_FILE"
+            exit 1
+          fi
+
+      - name: Cleanup remote probe
+        if: always()
+        shell: bash
+        env:
+          MCP_KEY: ${{ steps.ssh.outputs.key }}
+          MCP_KNOWN: ${{ steps.ssh.outputs.known }}
+        run: |
+          set -euo pipefail
+          ssh -i "$MCP_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$MCP_KNOWN" \
+            "$VPS_SSH_USER@$VPS_MCP_HOST" "sudo -n rm -f '/var/www/npp-acme/.well-known/acme-challenge/$PROBE_TOKEN'"
+
+      - name: Publish sanitized evidence to Issue 958
+        if: always() && env.REPORT_FILE != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          EXTERNAL_OUTCOME: ${{ steps.external.outcome }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/mcp-acme-evidence.md"
+          {
+            echo '## VPS MCP ACME diagnostic'
+            echo
+            echo "- SOURCE_SHA: \`${SOURCE_SHA:-unknown}\`"
+            echo "- GITHUB_RUN_ID: \`${GITHUB_RUN_ID}\`"
+            echo "- External HTTP-01 probe outcome: \`${EXTERNAL_OUTCOME:-unknown}\`"
+            echo '- Secret values are not included.'
+            echo
+            echo '```text'
+            cat "$REPORT_FILE"
+            echo '```'
+          } > "$evidence"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/958/comments" -f body="$(cat "$evidence")" >/dev/null
+
+      - name: Enforce diagnostic collection
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ steps.remote.outcome }}" = success
