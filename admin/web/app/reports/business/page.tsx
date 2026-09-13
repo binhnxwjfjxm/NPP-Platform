@@ -8,10 +8,10 @@ import styles from './business-workspace.module.css';
 
 const dimensions: Array<{ key: BusinessBreakdownKey; label: string }> = [
   { key: 'customers', label: 'Khách hàng' },
-  { key: 'customerGroups', label: 'Nhóm khách hàng' },
+  { key: 'customerGroups', label: 'Loại khách' },
   { key: 'channels', label: 'Kênh bán' },
   { key: 'products', label: 'Sản phẩm' },
-  { key: 'productGroups', label: 'Nhóm sản phẩm' },
+  { key: 'productGroups', label: 'Nhóm hàng' },
   { key: 'employees', label: 'Nhân viên bán hàng' },
 ];
 
@@ -151,13 +151,16 @@ export default async function BusinessReportPage({
   const series = trendSeries(report.trend);
   const productGroupOptions = report.classification.options.productGroups;
   const customerGroupOptions = report.classification.options.customerGroups;
-  const matrix = report.classification.productCustomerMatrix;
+  const totals = report.breakdownTotals[selectedDimension] ?? [];
 
-  const queryHref = (values: Record<string, string | undefined>, keepClassification = true) => {
+  const queryHref = (values: Record<string, string | undefined>, keepContext = true) => {
     const query = new URLSearchParams();
-    if (keepClassification) {
+    const targetView = (values.view ?? selectedDimension) as BusinessBreakdownKey;
+    if (keepContext && targetView === 'customers' && report.filters.customerGroupId) {
+      query.set('customerGroupId', report.filters.customerGroupId);
+    }
+    if (keepContext && targetView === 'products') {
       if (report.filters.productGroupId) query.set('productGroupId', report.filters.productGroupId);
-      if (report.filters.customerGroupId) query.set('customerGroupId', report.filters.customerGroupId);
       if (report.filters.includeZeroProducts) query.set('includeZeroProducts', 'true');
     }
     for (const [key, value] of Object.entries(values)) {
@@ -174,26 +177,18 @@ export default async function BusinessReportPage({
     item: rowToken(row, index),
   });
   const closeDetailHref = dimensionHref(selectedDimension);
-  const clearClassificationHref = queryHref({ period: report.period, view: selectedDimension }, false);
   const selectedRowIndex = rows.findIndex((row, index) => rowToken(row, index) === searchParams?.item);
   const selectedRow = selectedRowIndex >= 0 ? rows[selectedRowIndex] : null;
 
   const exportQuery = new URLSearchParams({ report: 'sales-profit', from: report.from, to: report.to });
-  const matrixExportQuery = new URLSearchParams({ from: report.from, to: report.to });
-  if (report.filters.productGroupId) {
-    exportQuery.set('productGroupId', report.filters.productGroupId);
-    matrixExportQuery.set('productGroupId', report.filters.productGroupId);
-  }
-  if (report.filters.customerGroupId) {
+  if (selectedDimension === 'customers' && report.filters.customerGroupId) {
     exportQuery.set('customerGroupId', report.filters.customerGroupId);
-    matrixExportQuery.set('customerGroupId', report.filters.customerGroupId);
   }
-  if (report.filters.includeZeroProducts) {
-    exportQuery.set('includeZeroProducts', 'true');
-    matrixExportQuery.set('includeZeroProducts', 'true');
+  if (selectedDimension === 'products') {
+    if (report.filters.productGroupId) exportQuery.set('productGroupId', report.filters.productGroupId);
+    if (report.filters.includeZeroProducts) exportQuery.set('includeZeroProducts', 'true');
   }
   const exportHref = `/reports/export?${exportQuery.toString()}`;
-  const matrixExportHref = `/reports/business/matrix-export?${matrixExportQuery.toString()}`;
   const reconciliationHref = `/reports/business/reconciliation?${new URLSearchParams({ period: report.period }).toString()}`;
   const tone = report.state === 'ready' ? 'ok' : report.state === 'partial' ? 'partial' : report.state === 'forbidden' ? 'forbidden' : 'error';
 
@@ -217,37 +212,6 @@ export default async function BusinessReportPage({
           <AdminFilterChip key={period} href={periodHref(period)} label={period} active={report.period === period} />
         ))}
       </AdminToolbar>
-
-      <form className={styles.classificationFilters} method="get" action="/reports/business" aria-label="Phân loại Báo cáo Kinh doanh">
-        <input type="hidden" name="period" value={report.period} />
-        <input type="hidden" name="view" value={selectedDimension} />
-        <label>
-          <span>Nhóm sản phẩm</span>
-          <select name="productGroupId" defaultValue={report.filters.productGroupId ?? ''}>
-            <option value="">Tất cả nhóm sản phẩm</option>
-            {productGroupOptions.map((group) => (
-              <option key={group.id} value={group.id}>{[group.code, group.name].filter(Boolean).join(' — ')}</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>Nhóm khách hàng</span>
-          <select name="customerGroupId" defaultValue={report.filters.customerGroupId ?? ''}>
-            <option value="">Tất cả nhóm khách hàng</option>
-            {customerGroupOptions.map((group) => (
-              <option key={group.id} value={group.id}>{[group.code, group.name].filter(Boolean).join(' — ')}</option>
-            ))}
-          </select>
-        </label>
-        <label className={styles.zeroProducts}>
-          <input type="checkbox" name="includeZeroProducts" value="true" defaultChecked={report.filters.includeZeroProducts} />
-          <span>Hiện sản phẩm không phát sinh</span>
-        </label>
-        <div className={styles.classificationActions}>
-          <Link href={clearClassificationHref}>Xóa lọc</Link>
-          <button type="submit">Áp dụng</button>
-        </div>
-      </form>
 
       {report.state === 'ready' ? (
         <div className={styles.dataStatus} role="status">
@@ -276,65 +240,6 @@ export default async function BusinessReportPage({
         <AdminKpiCard label="Đơn đã chốt" value={text(report.summary.effectiveOrderCount)} note="Đơn xác nhận hoặc hoàn tất." />
         <AdminKpiCard label="Khách mua" value={text(report.summary.buyerCount)} note="Khách có đơn hiệu lực." />
       </AdminKpiGrid>
-
-      <section className={`card ${styles.matrixPanel}`} aria-labelledby="business-matrix-title">
-        <div className={styles.sectionHeading}>
-          <div>
-            <span>Phân loại bán hàng</span>
-            <h2 id="business-matrix-title">Sản lượng sản phẩm theo nhóm khách hàng</h2>
-          </div>
-          <a className={baseStyles.toolbarAction} href={matrixExportHref}>Xuất bảng phân loại</a>
-        </div>
-        <p className={styles.matrixNote}>Mỗi dòng là một sản phẩm theo đúng ĐVT. Tổng cuối bảng được tách theo từng ĐVT để không cộng lẫn Thùng, Kg, Bịch hoặc đơn vị khác.</p>
-        <div className={styles.matrixTableWrap}>
-          <table className={styles.matrixTable}>
-            <thead>
-              <tr>
-                <th>Sản phẩm</th>
-                <th>Nhóm sản phẩm</th>
-                <th>ĐVT</th>
-                <th>Tổng SL</th>
-                {matrix.columns.map((column) => (
-                  <th key={column.key}>
-                    <span>{column.name}</span>
-                    <small>{column.code || 'Chưa có mã'}</small>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {matrix.rows.map((row) => (
-                <tr key={`${row.variantId ?? row.sku ?? row.name}-${row.unit.id ?? row.unit.code}`}>
-                  <td><strong>{row.name}</strong><small>{row.sku || 'Chưa có mã'}{row.hasActivity ? '' : ' · Không phát sinh'}</small></td>
-                  <td>{row.productGroup.name}<small>{row.productGroup.code || 'Chưa có mã nhóm'}</small></td>
-                  <td>{row.unit.name || row.unit.code}</td>
-                  <td><strong>{decimalText(row.totalQuantity)}</strong></td>
-                  {row.cells.map((cell) => <td key={cell.columnKey}>{decimalText(cell.quantity)}</td>)}
-                </tr>
-              ))}
-              {!matrix.rows.length ? (
-                <tr><td className={styles.matrixEmpty} colSpan={4 + matrix.columns.length}>Không có sản phẩm phù hợp bộ lọc phân loại trong kỳ.</td></tr>
-              ) : null}
-            </tbody>
-            {matrix.totalsByUnit.length ? (
-              <tfoot>
-                {matrix.totalsByUnit.flatMap((total) => [
-                  <tr key={`total-${total.unit.id ?? total.unit.code}`} className={styles.matrixTotal}>
-                    <td colSpan={3}><strong>Tổng {total.unit.name || total.unit.code}</strong></td>
-                    <td><strong>{decimalText(total.totalQuantity)}</strong></td>
-                    {total.cells.map((cell) => <td key={cell.columnKey}><strong>{decimalText(cell.quantity)}</strong></td>)}
-                  </tr>,
-                  <tr key={`percent-${total.unit.id ?? total.unit.code}`} className={styles.matrixPercent}>
-                    <td colSpan={3}>Tỷ lệ {total.unit.name || total.unit.code}</td>
-                    <td>{total.totalQuantity === '0' ? '0%' : '100%'}</td>
-                    {total.cells.map((cell) => <td key={cell.columnKey}>{percentText(cell.sharePercent)}</td>)}
-                  </tr>,
-                ])}
-              </tfoot>
-            ) : null}
-          </table>
-        </div>
-      </section>
 
       <section className={`card ${styles.trendPanel}`} aria-labelledby="business-trend-title">
         <div className={styles.sectionHeading}>
@@ -392,6 +297,50 @@ export default async function BusinessReportPage({
           ))}
         </nav>
 
+        {selectedDimension === 'customers' ? (
+          <form className={styles.dimensionFilters} method="get" action="/reports/business" aria-label="Lọc khách hàng theo nhóm">
+            <input type="hidden" name="period" value={report.period} />
+            <input type="hidden" name="view" value="customers" />
+            <label>
+              <span>Nhóm khách hàng</span>
+              <select name="customerGroupId" defaultValue={report.filters.customerGroupId ?? ''}>
+                <option value="">Tất cả nhóm khách hàng</option>
+                {customerGroupOptions.map((group) => (
+                  <option key={group.id} value={group.id}>{[group.code, group.name].filter(Boolean).join(' — ')}</option>
+                ))}
+              </select>
+            </label>
+            <div className={styles.dimensionFilterActions}>
+              <Link href={queryHref({ period: report.period, view: 'customers' }, false)}>Xóa lọc</Link>
+              <button type="submit">Lọc khách hàng</button>
+            </div>
+          </form>
+        ) : null}
+
+        {selectedDimension === 'products' ? (
+          <form className={styles.dimensionFilters} method="get" action="/reports/business" aria-label="Lọc sản phẩm theo nhóm">
+            <input type="hidden" name="period" value={report.period} />
+            <input type="hidden" name="view" value="products" />
+            <label>
+              <span>Nhóm sản phẩm</span>
+              <select name="productGroupId" defaultValue={report.filters.productGroupId ?? ''}>
+                <option value="">Tất cả nhóm sản phẩm</option>
+                {productGroupOptions.map((group) => (
+                  <option key={group.id} value={group.id}>{[group.code, group.name].filter(Boolean).join(' — ')}</option>
+                ))}
+              </select>
+            </label>
+            <label className={styles.zeroProducts}>
+              <input type="checkbox" name="includeZeroProducts" value="true" defaultChecked={report.filters.includeZeroProducts} />
+              <span>Hiện sản phẩm không phát sinh</span>
+            </label>
+            <div className={styles.dimensionFilterActions}>
+              <Link href={queryHref({ period: report.period, view: 'products' }, false)}>Xóa lọc</Link>
+              <button type="submit">Lọc sản phẩm</button>
+            </div>
+          </form>
+        ) : null}
+
         <div className={`${styles.analysisLayout} ${selectedRow ? styles.withDetail : ''}`}>
           {rows.length ? (
             <>
@@ -431,6 +380,20 @@ export default async function BusinessReportPage({
                       );
                     })}
                   </tbody>
+                  {totals.length ? (
+                    <tfoot>
+                      {totals.map((row, index) => (
+                        <tr className={styles.totalRow} key={`total-${rowToken(row, index)}`}>
+                          <td><strong>{rowName(row, selectedDimension)}</strong><small>{row.currencyCode}</small></td>
+                          <td><strong>{money(row.revenue, row.currencyCode)}</strong></td>
+                          <td><strong>{metric(row, selectedDimension)}</strong></td>
+                          <td>{percentText(row.sharePercent)}</td>
+                          <td><strong>{money(row.previousRevenue, row.currencyCode)}</strong>{selectedDimension === 'products' ? <small>{quantity(row.previousQuantity, row.unit)}</small> : null}</td>
+                          <td><span className={styles.changeBadge}>{change(row)}</span></td>
+                        </tr>
+                      ))}
+                    </tfoot>
+                  ) : null}
                 </table>
               </div>
 
@@ -461,6 +424,16 @@ export default async function BusinessReportPage({
                   </details>
                 ))}
               </div>
+              {totals.length ? (
+                <div className={styles.mobileTotals} aria-label="Tổng báo cáo">
+                  {totals.map((row, index) => (
+                    <div key={`mobile-total-${rowToken(row, index)}`}>
+                      <strong>{rowName(row, selectedDimension)}</strong>
+                      <span>{money(row.revenue, row.currencyCode)} · {metric(row, selectedDimension)}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </>
           ) : (
             <p className={styles.emptyText}>Không phát sinh dữ liệu trong mục này.</p>
