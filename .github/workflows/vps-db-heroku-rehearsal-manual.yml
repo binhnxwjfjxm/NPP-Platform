@@ -137,6 +137,12 @@ jobs:
           fi
           sudo -n locale-gen en_US.UTF-8 >/dev/null
           locale -a | grep -Eiq '^en_US\.(UTF-8|utf8)$'
+          sudo -n systemctl restart postgresql
+          test "$(systemctl is-active postgresql)" = active
+          probe_db="npp_locale_probe_958"
+          sudo -n -u postgres dropdb --if-exists "$probe_db" >/dev/null 2>&1 || true
+          sudo -n -u postgres createdb --template=template0 --encoding=UTF8 --lc-collate=en_US.UTF-8 --lc-ctype=en_US.UTF-8 "$probe_db"
+          sudo -n -u postgres dropdb "$probe_db"
           REMOTE
 
       - name: Lock migration head or run restore rehearsal
