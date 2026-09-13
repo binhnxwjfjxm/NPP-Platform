@@ -103,7 +103,7 @@ test(
 
     const route = data(await supabaseRpc(runtimeConfig, "mcp_idempotent_create_route", {
       p_route_name: "Tuyến kiểm tra PostgreSQL",
-      p_area: "API Smoke",
+      p_area: "Kiểm tra tích hợp",
       p_weekday: 5,
       p_note: "test action integration",
       p_context: context("route-create")
@@ -113,7 +113,7 @@ test(
     const routeCustomer = data(await supabaseRpc(runtimeConfig, "mcp_idempotent_add_route_customer", {
       p_route_id: route.routeId,
       p_customer_name: "Điểm bán kiểm tra",
-      p_area: "API Smoke",
+      p_area: "Kiểm tra tích hợp",
       p_sort_order: 1,
       p_include_active_session: false,
       p_context: context("route-customer-create")
@@ -122,8 +122,8 @@ test(
 
     const session = data(await supabaseRpc(runtimeConfig, "mcp_idempotent_open_route_session", {
       p_route_id: route.routeId,
-      p_session_date: "2099-12-31",
-      p_owner: "API Smoke",
+      p_session_date: "2030-12-31",
+      p_owner: "Kiểm tra tích hợp",
       p_context: context("session-open")
     }));
     assert.match(session.sessionId, /^session_/);
@@ -138,13 +138,13 @@ test(
     const createArgs = {
       p_session_customer_id: sessionCustomer.id,
       p_file_id: null,
-      p_file_title: "API Smoke Test",
+      p_file_title: "Kiểm tra PostgreSQL",
       p_results: [{
-        productName: "API Smoke Product",
+        productName: "Sản phẩm kiểm tra PostgreSQL",
         status: "ok",
         note: "Đạt"
       }],
-      p_note: "API smoke test",
+      p_note: "integration test",
       p_status: "tested",
       p_context: context("test-create")
     };
@@ -192,7 +192,7 @@ test(
     assert.equal(stored.result_id, created.testId);
     assert.equal(stored.file_id, created.fileId);
     assert.equal(stored.test_customer_id, created.testCustomerId);
-    assert.equal(stored.product_name, "API Smoke Product");
+    assert.equal(stored.product_name, "Sản phẩm kiểm tra PostgreSQL");
     assert.equal(stored.result_status, "ok");
     assert.equal(stored.result_session_customer_id, sessionCustomer.id);
     assert.equal(Number(stored.planned_customers), 1);
@@ -205,7 +205,7 @@ test(
       [installationId, created.fileId]
     )).rows[0];
     assert.equal(testProduct.id, stored.test_file_product_id);
-    assert.equal(testProduct.product_name, "API Smoke Product");
+    assert.equal(testProduct.product_name, "Sản phẩm kiểm tra PostgreSQL");
 
     const counts = (await admin.query(
       `SELECT

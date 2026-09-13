@@ -94,8 +94,8 @@ async function resolveTestFile(client, args, context, customer) {
      ) VALUES (
        $1, $2, $3::date, $4, 'active', $5,
        jsonb_build_object(
-         'session_customer_id', $6,
-         'route_id', $7,
+         'session_customer_id', $6::text,
+         'route_id', $7::text,
          'foundation_context', $8::jsonb
        )
      )
@@ -135,7 +135,7 @@ async function resolveTestCustomer(client, args, context, customer, file) {
            status = $8,
            note = COALESCE($9, note),
            raw_payload = COALESCE(raw_payload, '{}'::jsonb) || jsonb_build_object(
-             'session_customer_id', $3,
+             'session_customer_id', $3::text,
              'foundation_context', $10::jsonb
            ),
            updated_at = now()
@@ -164,8 +164,8 @@ async function resolveTestCustomer(client, args, context, customer, file) {
      ) VALUES (
        $1, $2, $3, $4, $5, $6, $7, $8,
        jsonb_build_object(
-         'session_customer_id', $9,
-         'route_customer_id', $10,
+         'session_customer_id', $9::text,
+         'route_customer_id', $10::text,
          'foundation_context', $11::jsonb
        )
      )
@@ -294,7 +294,7 @@ async function ensureVisit(client, args, context, customer) {
        $10::numeric, $11::numeric, $12::numeric, $13, $14,
        jsonb_build_object(
          'source', 'mcp_test_from_session_customer',
-         'session_customer_id', $3,
+         'session_customer_id', $3::text,
          'foundation_context', $15::jsonb
        )
      )
@@ -387,8 +387,8 @@ async function createTest(client, args, context) {
          $1, $2, $3, $4, $5,
          $6, $7,
          jsonb_build_object(
-           'session_customer_id', $8,
-           'test_file_product_id', $4,
+           'session_customer_id', $8::text,
+           'test_file_product_id', $4::text,
            'foundation_context', $9::jsonb
          )
        )
@@ -418,8 +418,8 @@ async function createTest(client, args, context) {
          status_reason = NULL,
          note = COALESCE($4, note),
          raw_payload = COALESCE(raw_payload, '{}'::jsonb) || jsonb_build_object(
-           'latest_test_id', $3,
-           'latest_test_file_id', $5,
+           'latest_test_id', $3::text,
+           'latest_test_file_id', $5::text,
            'foundation_context', $6::jsonb
          ),
          updated_at = now()
