@@ -7,7 +7,7 @@ const read = (path) => readFile(new URL(path, root), 'utf8');
 
 test('Lập đơn không còn tính lại toàn bộ đơn mỗi lần thêm hàng hoặc đổi một số lượng', async () => {
   const form = await read('app/sales/sales-orders/SalesOrderCommercialForm.tsx');
-  assert.match(form, /const SEARCH_DELAY_MS = 200;/);
+  assert.match(form, /const SEARCH_DELAY_MS = 0;/);
   assert.match(form, /const REPRICE_CONCURRENCY = 4;/);
   assert.match(form, /runWithConcurrency/);
   assert.match(form, /quantitySnapshotRef/);

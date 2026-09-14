@@ -5,6 +5,11 @@ import {
 } from '@npp/contracts';
 import { formatExactDecimal } from '../../../lib/decimal-display.js';
 import type { SalesOrder, SalesOrderVersion } from '../../../lib/sales-order-types';
+import {
+  configureSalesOrderSkuCatalogDefaults,
+  readSalesOrderSkuSearchCache,
+  warmSalesOrderSkuCatalog,
+} from './sales-order-sku-local-cache';
 
 export const collectionLabels: Record<string, string> = {
   PREPAID: 'Đã trả trước',
@@ -195,6 +200,13 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
   const requestInit = withCanonicalSalesOrderNumbers(path, previewInit);
   validateDraftDiscountIntent(path, requestInit);
   const requestMethod = methodOf(requestInit);
+
+  if (requestMethod === 'GET' && path === '/api/sales-orders/entry-settings') {
+    void warmSalesOrderSkuCatalog();
+  }
+  const cachedSkuSearch = await readSalesOrderSkuSearchCache<T>(path, requestInit);
+  if (cachedSkuSearch !== null) return cachedSkuSearch;
+
   const response = await fetch(path, {
     ...requestInit,
     cache: 'no-store',
@@ -234,6 +246,10 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
       payload?.error?.details ?? {},
       response.status,
     );
+  }
+  if (requestMethod === 'GET' && path === '/api/sales-orders/entry-settings') {
+    configureSalesOrderSkuCatalogDefaults(payload.data);
+    void warmSalesOrderSkuCatalog();
   }
   return payload.data as T;
 }
