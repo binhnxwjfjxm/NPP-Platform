@@ -53,6 +53,10 @@ const MCP_CUSTOMER_VERIFICATION_REVIEW_REASON_SQL = readFileSync(
   new URL("./sql/013_mcp_customer_verification_review_reason.sql", import.meta.url),
   "utf8"
 );
+const MCP_CUSTOMER_READ_BOUNDARY_SQL = readFileSync(
+  new URL("./sql/014_mcp_customer_read_boundary.sql", import.meta.url),
+  "utf8"
+);
 
 export const MCP_MIGRATIONS = Object.freeze([
   Object.freeze({ id: "mcp_001_write_foundation", sql: MCP_WRITE_FOUNDATION_SQL }),
@@ -67,11 +71,13 @@ export const MCP_MIGRATIONS = Object.freeze([
   Object.freeze({ id: "mcp_010_customer_verification", sql: MCP_CUSTOMER_VERIFICATION_SQL }),
   Object.freeze({ id: "mcp_011_legacy_customer_linkage_repair", sql: MCP_LEGACY_CUSTOMER_LINKAGE_REPAIR_SQL }),
   Object.freeze({ id: "mcp_012_report_settings_installation_repair", sql: MCP_REPORT_SETTINGS_INSTALLATION_REPAIR_SQL }),
-  Object.freeze({ id: "mcp_013_customer_verification_review_reason", sql: MCP_CUSTOMER_VERIFICATION_REVIEW_REASON_SQL })
+  Object.freeze({ id: "mcp_013_customer_verification_review_reason", sql: MCP_CUSTOMER_VERIFICATION_REVIEW_REASON_SQL }),
+  Object.freeze({ id: "mcp_014_customer_read_boundary", sql: MCP_CUSTOMER_READ_BOUNDARY_SQL })
 ]);
 
 const MCP_READ_MODELS = Object.freeze([
   "accounts",
+  "customer_addresses",
   "market_reports",
   "mcp_archive_intents",
   "mcp_followups",
@@ -94,7 +100,8 @@ const MCP_READ_MODELS = Object.freeze([
   "test_customer_results",
   "test_customers",
   "test_file_products",
-  "test_files"
+  "test_files",
+  "workforce_employees"
 ]);
 
 function migrationError(code) {

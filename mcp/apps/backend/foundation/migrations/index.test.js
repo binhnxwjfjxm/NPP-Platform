@@ -42,7 +42,8 @@ const EXPECTED_MIGRATIONS = [
   "mcp_010_customer_verification",
   "mcp_011_legacy_customer_linkage_repair",
   "mcp_012_report_settings_installation_repair",
-  "mcp_013_customer_verification_review_reason"
+  "mcp_013_customer_verification_review_reason",
+  "mcp_014_customer_read_boundary"
 ];
 
 test("MCP migrations use a unique registry namespace and apply once in one locked transaction", async () => {
@@ -73,6 +74,8 @@ test("MCP migrations use a unique registry namespace and apply once in one locke
     ),
     true
   );
+  assert.equal(adapter.calls.some((call) => call.text.includes("CREATE OR REPLACE VIEW mcp.workforce_employees")), true);
+  assert.equal(adapter.calls.some((call) => call.text.includes("CREATE OR REPLACE VIEW mcp.customer_addresses")), true);
   assert.equal(adapter.calls.some((call) => call.text.includes("Exact source counts: 7 groups, 53 items")), true);
   assert.equal(adapter.calls.some((call) => call.text.includes("mcp_report_settings_installation_repair_source_mismatch")), true);
   assert.equal(adapter.calls.some((call) => call.text.includes("ON DELETE CASCADE")), true);
@@ -346,6 +349,21 @@ test("MCP customer verification review reason repair is canonical and additive",
   assert.match(sql, /ALTER TABLE mcp\.mcp_route_customers/);
   assert.match(sql, /ADD COLUMN IF NOT EXISTS customer_onboarding_review_reason text NULL/);
   assert.doesNotMatch(sql, /\b(?:UPDATE|DELETE|TRUNCATE)\b/i);
+});
+
+test("MCP customer read boundary migration is canonical and grants only MCP read models", () => {
+  const sql = MCP_MIGRATIONS[13].sql;
+  const canonicalSql = readFileSync(
+    new URL("../../../../../database/migrations/mcp/014_mcp_customer_read_boundary.sql", import.meta.url),
+    "utf8"
+  );
+  assert.equal(sql, canonicalSql);
+  assert.match(sql, /CREATE OR REPLACE VIEW mcp\.workforce_employees/);
+  assert.match(sql, /CREATE OR REPLACE VIEW mcp\.customer_addresses/);
+  assert.match(sql, /GRANT SELECT ON TABLE mcp\.accounts, mcp\.products/);
+  assert.match(sql, /mcp\.workforce_employees, mcp\.customer_addresses TO %I/);
+  assert.doesNotMatch(sql, /GRANT[^\n]+ON TABLE shared\./i);
+  assert.doesNotMatch(sql, /GRANT SELECT ON ALL TABLES/i);
 });
 
 test("migration failure rolls back and preserves the original error", async () => {
