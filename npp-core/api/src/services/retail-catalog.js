@@ -12,6 +12,8 @@ const RETAIL_CHANNEL = Object.freeze({
   name: 'Retail',
   description: 'Kênh hệ thống bán trực tiếp tại quầy.',
 });
+const RETAIL_PRICE_BATCH_LIMIT = 100;
+const RETAIL_PRICE_BATCH_CONCURRENCY = 4;
 
 function failure(code, message, retryable = false, details = {}) {
   return Object.freeze({ ok: false, code, message, retryable, details });
@@ -165,6 +167,60 @@ export async function searchRetailCatalog(client, {
   });
 }
 
+function retailPricePayload(payload, retailChannel) {
+  return {
+    variantId: payload.variantId,
+    quantity: payload.quantity ?? '1',
+    currencyCode: 'VND',
+    channelId: retailChannel.id,
+    allowMissingBasePrice: true,
+    ...(payload.customerId ? { customerId: payload.customerId } : {}),
+  };
+}
+
+function retailPriceResult(result, { variantId, quantity }, retailChannel) {
+  if (!result.ok) {
+    const status = result.code === 'BASE_PRICE_NOT_FOUND'
+      ? 'MANUAL_PRICE_REQUIRED'
+      : result.code === 'VARIANT_NOT_PRICEABLE'
+        ? 'NOT_PRICEABLE'
+        : 'ERROR';
+    return Object.freeze({
+      variantId,
+      quantity,
+      status,
+      code: result.code,
+      message: result.message,
+      retryable: Boolean(result.retryable),
+      channelCode: retailChannel.code,
+    });
+  }
+
+  if (result.resolution?.resolutionStatus === 'MANUAL_PRICE_REQUIRED') {
+    return Object.freeze({
+      variantId,
+      quantity,
+      status: 'MANUAL_PRICE_REQUIRED',
+      code: result.resolution.code ?? 'BASE_PRICE_NOT_FOUND',
+      message: result.resolution.message ?? 'Chưa có giá Công Ty.',
+      retryable: false,
+      channelCode: retailChannel.code,
+    });
+  }
+
+  return Object.freeze({
+    variantId,
+    quantity,
+    status: 'OK',
+    finalUnitPriceMinor: result.resolution.finalUnitPriceMinor,
+    lineTotalMinor: result.resolution.lineTotalMinor,
+    resolutionFingerprint: result.resolution.resolutionFingerprint,
+    channelId: retailChannel.id,
+    channelCode: retailChannel.code,
+    channelName: retailChannel.name,
+  });
+}
+
 export async function resolveRetailPrice(client, {
   requestContext,
   payload,
@@ -174,28 +230,64 @@ export async function resolveRetailPrice(client, {
   }
   const retailChannel = await ensureRetailChannel(client, requestContext);
   if (!retailChannel.ok) return retailChannel;
+  const quantity = String(payload?.quantity ?? '1');
   const result = await pricingService.resolvePrice(client, {
     installationId: requestContext.installationId,
-    payload: {
-      variantId: payload.variantId,
-      quantity: payload.quantity ?? '1',
-      currencyCode: 'VND',
-      channelId: retailChannel.channel.id,
-      ...(payload.customerId ? { customerId: payload.customerId } : {}),
-    },
+    payload: retailPricePayload({ ...payload, quantity }, retailChannel.channel),
   });
   if (!result.ok) return result;
   return Object.freeze({
     ok: true,
-    resolution: Object.freeze({
-      finalUnitPriceMinor: result.resolution.finalUnitPriceMinor,
-      lineTotalMinor: result.resolution.lineTotalMinor,
-      resolutionFingerprint: result.resolution.resolutionFingerprint,
-      channelId: retailChannel.channel.id,
-      channelCode: retailChannel.channel.code,
-      channelName: retailChannel.channel.name,
-    }),
+    resolution: retailPriceResult(result, { variantId: payload.variantId, quantity }, retailChannel.channel),
   });
+}
+
+export async function resolveRetailPrices(client, {
+  requestContext,
+  payload,
+}) {
+  const items = Array.isArray(payload?.items) ? payload.items : null;
+  if (!items || items.length === 0 || items.length > RETAIL_PRICE_BATCH_LIMIT) {
+    return failure('INVALID_PRICE_ITEMS', `Danh sách tính giá phải có từ 1 đến ${RETAIL_PRICE_BATCH_LIMIT} sản phẩm`);
+  }
+  const normalized = items.map((item) => ({
+    variantId: String(item?.variantId ?? '').trim(),
+    quantity: String(item?.quantity ?? '1').trim() || '1',
+  }));
+  if (normalized.some((item) => !UUID_PATTERN.test(item.variantId))) {
+    return failure('INVALID_PRICE_ITEMS', 'Danh sách sản phẩm cần tính giá không hợp lệ');
+  }
+
+  const retailChannel = await ensureRetailChannel(client, requestContext);
+  if (!retailChannel.ok) return retailChannel;
+  const customerId = payload?.customerId ? String(payload.customerId).trim() : '';
+  const resolutions = new Array(normalized.length);
+  let cursor = 0;
+  let fatalResult = null;
+
+  async function worker() {
+    while (true) {
+      if (fatalResult) return;
+      const index = cursor;
+      cursor += 1;
+      if (index >= normalized.length) return;
+      const item = normalized[index];
+      const result = await pricingService.resolvePrice(client, {
+        installationId: requestContext.installationId,
+        payload: retailPricePayload({ ...item, ...(customerId ? { customerId } : {}) }, retailChannel.channel),
+      });
+      if (!result.ok && !['BASE_PRICE_NOT_FOUND', 'VARIANT_NOT_PRICEABLE'].includes(result.code)) {
+        fatalResult = result;
+        return;
+      }
+      resolutions[index] = retailPriceResult(result, item, retailChannel.channel);
+    }
+  }
+
+  const workerCount = Math.min(RETAIL_PRICE_BATCH_CONCURRENCY, normalized.length);
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  if (fatalResult) return fatalResult;
+  return Object.freeze({ ok: true, resolutions: Object.freeze(resolutions) });
 }
 
 export async function previewRetailAvailability(client, {

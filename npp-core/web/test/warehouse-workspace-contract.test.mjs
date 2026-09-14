@@ -37,3 +37,15 @@ test('legacy location route points into the warehouse layout and history is inte
   assert.match(history, /Lịch sử sơ đồ kho/);
   assert.doesNotMatch(history, /Lịch sử quản lý vị trí/);
 });
+
+
+test('warehouse workspace refreshes canonical versions after route changes and STALE_VERSION without retrying a mutation', () => {
+  assert.match(workspace, /useEffect\(\(\) => \{[\s\S]*setWarehouses\(initialData\.warehouses\)/);
+  assert.match(workspace, /class WarehouseApiError extends Error/);
+  assert.match(workspace, /payload\.error\?\.code/);
+  assert.match(workspace, /reason\.code !== 'STALE_VERSION'/);
+  assert.match(workspace, /Đã tải bản mới nhất; vui lòng kiểm tra rồi thực hiện lại/);
+  assert.match(workspace, /if \(await recoverStaleVersion\(saveError\)\) return/);
+  assert.match(workspace, /if \(await recoverStaleVersion\(toggleError\)\) return/);
+  assert.doesNotMatch(workspace, /STALE_VERSION[\s\S]{0,500}method: 'PATCH'/);
+});
