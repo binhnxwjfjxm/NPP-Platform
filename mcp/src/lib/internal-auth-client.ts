@@ -56,7 +56,7 @@ export async function requestMcpInternalAuth<T>(
     const code = (error as Error)?.message === "MCP_CORE_HTTPS_REQUIRED"
       ? "MCP_CORE_HTTPS_REQUIRED"
       : "MCP_CORE_NOT_CONFIGURED";
-    return { ok: false, status: 503, code, message: "Kết nối NPP Core chưa được cấu hình", retryable: false };
+    return { ok: false, status: 503, code, message: "Kết nối Công Ty chưa được cấu hình", retryable: false };
   }
 
   const controller = new AbortController();
@@ -75,22 +75,22 @@ export async function requestMcpInternalAuth<T>(
       ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) })
     });
     const payload = await response.json().catch(() => null) as Envelope<T> | null;
-    if (!payload) return { ok: false, status: 502, code: "MCP_CORE_RESPONSE_INVALID", message: "Phản hồi từ NPP Core không hợp lệ" };
+    if (!payload) return { ok: false, status: 502, code: "MCP_CORE_RESPONSE_INVALID", message: "Phản hồi từ Công Ty không hợp lệ" };
     if (!response.ok) {
       return {
         ok: false,
         status: response.status,
         code: payload.error?.code || "MCP_CORE_REQUEST_FAILED",
-        message: payload.error?.message || "Yêu cầu tới NPP Core không thành công",
+        message: payload.error?.message || "Yêu cầu tới Công Ty không thành công",
         retryable: payload.error?.retryable === true
       };
     }
     if (!Object.prototype.hasOwnProperty.call(payload, "data")) {
-      return { ok: false, status: 502, code: "MCP_CORE_RESPONSE_INVALID", message: "Phản hồi từ NPP Core không hợp lệ" };
+      return { ok: false, status: 502, code: "MCP_CORE_RESPONSE_INVALID", message: "Phản hồi từ Công Ty không hợp lệ" };
     }
     return { ok: true, status: response.status, data: payload.data as T };
   } catch {
-    return { ok: false, status: 503, code: "MCP_CORE_UNAVAILABLE", message: "NPP Core tạm thời chưa sẵn sàng", retryable: true };
+    return { ok: false, status: 503, code: "MCP_CORE_UNAVAILABLE", message: "Công Ty tạm thời chưa sẵn sàng", retryable: true };
   } finally {
     clearTimeout(timeout);
   }

@@ -26,14 +26,18 @@ function httpUrl(name, { optional = false, httpsInProduction = false } = {}) {
   } catch {
     throw new Error(`invalid_${name.toLowerCase()}`);
   }
-  if (!/^https?:$/.test(parsed.protocol)) throw new Error(`invalid_${name.toLowerCase()}`);
-  if (httpsInProduction && process.env.NODE_ENV === "production" && parsed.protocol !== "https:") {
+  if (!/^https?:$/.test(parsed.protocol) || parsed.username || parsed.password) {
+    throw new Error(`invalid_${name.toLowerCase()}`);
+  }
+  const loopback = new Set(["127.0.0.1", "localhost", "::1"]).has(parsed.hostname);
+  if (httpsInProduction && process.env.NODE_ENV === "production" && parsed.protocol !== "https:" && !loopback) {
     throw new Error(`${name.toLowerCase()}_https_required`);
   }
   return parsed.toString();
 }
 
-httpUrl("BACKEND_API_BASE_URL");
+httpUrl("CORE_API_INTERNAL_URL", { httpsInProduction: true });
+httpUrl("BACKEND_API_BASE_URL", { httpsInProduction: true });
 const token = required("BACKEND_API_TOKEN");
 if (token.length < 32 || /replace|change[-_ ]?me|example|dev[-_ ]?only/i.test(token)) {
   throw new Error("invalid_backend_api_token");

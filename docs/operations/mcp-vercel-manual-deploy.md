@@ -2,67 +2,58 @@
 
 ## Boundary
 
-MCP Field frontend and NPP Core frontend are independent deployment targets.
+MCP Field là frontend Vercel độc lập. Sau Issue #958, frontend này có hai dependency server-side khác nhau:
 
-- Core command on Issue #5: `/deploy-vercel-production`
-- MCP Field command on Issue #5: `/deploy-vercel-mcp-production`
-- Both commands deploy the exact current `main` SHA.
-- Neither command deploys a Heroku backend.
-- MCP remains on its legacy pass-through runtime until a separate audited cutover is approved.
-- Automatic Vercel deployments remain disabled.
+```text
+MCP Field -> CORE_API_INTERNAL_URL -> Công Ty VPS (đăng nhập/phiên nhân sự)
+MCP Field -> BACKEND_API_BASE_URL -> MCP VPS (nghiệp vụ MCP)
+```
 
-## Pinned deployment identity
+- Công Ty frontend: `/deploy-vercel-production` trên Issue #5.
+- MCP Field: `/deploy-vercel-mcp-production` trên Issue #5.
+- Cả hai chỉ deploy exact current `main` sau CI xanh.
+- Automatic Vercel deployments luôn OFF.
+- Deploy MCP Field không deploy/restart backend Công Ty, backend MCP, PostgreSQL hoặc hệ proxy.
 
-The MCP workflow pins its non-secret deployment identity directly in source:
+## Production identity
 
 ```text
 Vercel team: team_hBA8rX68UHC8ogvREkOyQlJ2
 MCP project: prj_854SWdJeDEOPezAvvTZzTaRvZUSq
-User-facing production domain: https://mcp.nguyenlieuhungphat.com
+Production domain: https://mcp.nguyenlieuhungphat.com
 Root directory: mcp
 ```
 
-The workflow rejects the NPP Core project ID and verifies the linked Vercel project and root directory before building. The exact Vercel deployment URL may be protected by Vercel Authentication, so it is used for deployment identity and reachability checks; page content and static assets are verified on the public user-facing production domain.
+Provider target sau cutover:
 
-## Required GitHub Actions secrets
+- `CORE_API_INTERNAL_URL` lấy từ `VPS_COMPANY_HOST` và phải là HTTPS Công Ty production.
+- `BACKEND_API_BASE_URL` lấy từ `VPS_MCP_HOST` và phải là HTTPS MCP production.
+- `BACKEND_API_TOKEN` là server secret đã lưu trong Vercel production; deploy path chỉ kiểm metadata tồn tại, không đọc/in giá trị và không lấy lại từ Heroku.
+- `MCP_LEGACY_ACTOR_ID` vẫn là service actor non-secret hiện hữu cho các route tương thích.
 
-Store the current MCP legacy runtime values under these repository secret names:
+Không dùng Heroku API, Supabase service role, `DATABASE_URL` hoặc secret database trong frontend deploy.
+
+## Manual rollout
+
+1. Merge MCP frontend change vào `main` khi exact-head CI xanh.
+2. Xác nhận `VPS_COMPANY_HOST` và `VPS_MCP_HOST` GitHub variables đang là production target đã audit.
+3. Comment chính xác `/deploy-vercel-mcp-production` trên Issue #5.
+4. Workflow kiểm health Công Ty/MCP, khóa hai URL production, kiểm `BACKEND_API_TOKEN` tồn tại trong Vercel production, rồi remote-build exact `main`.
+5. Smoke domain production gồm login, static asset, route bảo vệ và login connectivity tới Công Ty.
+6. Ghi exact deployed SHA/deployment URL vào Issue #5.
+
+## Repair auth wiring sau cutover
+
+Nếu MCP Field đang chạy đúng source nhưng mất dây xác thực sang Công Ty, dùng lệnh riêng:
 
 ```text
-VERCEL_TOKEN
-MCP_BACKEND_API_BASE_URL
-MCP_BACKEND_API_TOKEN
-MCP_SUPABASE_URL
-MCP_SUPABASE_ANON_KEY
+/repair-mcp-auth-wiring-production
 ```
 
-`MCP_LEGACY_ACTOR_ID` is pinned in the workflow as the non-secret value `service:mcp-plan:mcp-v1`.
+Lệnh này chỉ:
 
-The workflow validates the five runtime values, masks them, upserts them as encrypted Production variables on the dedicated `mcp-field` project, and exports them only to the guarded build process. When a source is missing, the Issue #5 report identifies the missing GitHub secret name without printing any value.
+- cập nhật `CORE_API_INTERNAL_URL` của project MCP Field về Công Ty VPS production;
+- redeploy **deployment production hiện tại** để nạp binding mới;
+- smoke login connectivity.
 
-Do not commit or paste secret values. Do not add `DATABASE_URL` or `SUPABASE_SERVICE_ROLE_KEY` to Vercel.
-
-## Vercel project contract
-
-```text
-Project: mcp-field
-Root directory: mcp
-Framework: Next.js
-Git automatic deployments: OFF
-Production branch source: main through the guarded GitHub workflow only
-Backend owner during this transition: existing MCP legacy VPS runtime
-Database/read owner during this transition: existing MCP Supabase project
-```
-
-The dedicated frontend project receives only the runtime values required by the existing pass-through application. It must not receive PostgreSQL credentials, Supabase service-role credentials, Heroku credentials, or unrelated provider secrets.
-
-## Manual rollout sequence
-
-1. Merge an MCP frontend change to `main` after CI is green.
-2. Confirm the five required GitHub Actions secrets are present and current.
-3. Run `Manual Vercel MCP production deploy` in GitHub Actions or comment `/deploy-vercel-mcp-production` on Issue #5.
-4. Verify exact `origin/main`, the dedicated project link, root `mcp`, and Auto Deploy OFF.
-5. Verify the exact deployment is reachable, then verify `/`, `/mcp`, `/routes`, `/visits`, `/field-checks`, and one `/_next/static/` asset on `https://mcp.nguyenlieuhungphat.com`.
-6. Record the deployed SHA and exact deployment URL.
-
-A Core-only change uses `/deploy-vercel-production` and does not trigger this workflow. Heroku MCP deployment and future VPS/PostgreSQL cutover remain separate operations.
+Nó không đổi `BACKEND_API_BASE_URL`, không đổi token, không deploy source mới, không restart backend/DB/proxy.

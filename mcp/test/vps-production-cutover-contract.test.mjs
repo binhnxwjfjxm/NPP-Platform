@@ -99,6 +99,7 @@ test('all seven Vercel frontends are accounted for with exact per-consumer wirin
   assert.match(script, /project_env_value "\$PROJECT_DELIVERY" CORE_API_INTERNAL_URL/);
   assert.match(script, /project_env_value "\$PROJECT_RETAIL" CORE_API_INTERNAL_URL/);
   assert.match(script, /project_env_value "\$PROJECT_ORDERING" CORE_API_BASE_URL/);
+  assert.match(script, /project_env_value "\$PROJECT_MCP" CORE_API_INTERNAL_URL/);
   assert.match(script, /project_env_value "\$PROJECT_MCP" BACKEND_API_BASE_URL/);
   assert.match(script, /upsert_env "\$PROJECT_COMPANY" CORE_API_INTERNAL_URL "\$company_api_url"/);
   assert.match(script, /upsert_env "\$PROJECT_COMPANY" NEXT_PUBLIC_CORE_API_URL "\$company_api_url"/);
@@ -106,7 +107,9 @@ test('all seven Vercel frontends are accounted for with exact per-consumer wirin
   assert.match(script, /upsert_env "\$PROJECT_DELIVERY" CORE_API_INTERNAL_URL "\$company_api_url"/);
   assert.match(script, /upsert_env "\$PROJECT_RETAIL" CORE_API_INTERNAL_URL "\$company_api_url"/);
   assert.match(script, /upsert_env "\$PROJECT_ORDERING" CORE_API_BASE_URL "\$company_api_url"/);
+  assert.match(script, /upsert_env "\$PROJECT_MCP" CORE_API_INTERNAL_URL "\$company_api_url"/);
   assert.match(script, /upsert_env "\$PROJECT_MCP" BACKEND_API_BASE_URL "\$mcp_api_url"/);
+  assert.match(script, /upsert_env "\$PROJECT_MCP" CORE_API_INTERNAL_URL "\$old_mcp_core"/);
   assert.match(script, /WEBSITE_BACKEND_BINDING=not_applicable/);
   assert.match(script, /restore_vercel_bindings/);
 });
@@ -172,6 +175,7 @@ test('runtime manifest locks target topology and Gate B through F completion con
     'PRODUCTION_TRAFFIC_CUTOVER=true',
     'PROXY_LISTENER_COUNT=300',
   ]) assert.ok(doc.includes(marker), marker);
+  assert.match(doc, /MCP Field[^\n]+CORE_API_INTERNAL_URL[^\n]+BACKEND_API_BASE_URL/);
   assert.match(doc, /Website[^\n]+không có backend binding/);
   assert.match(doc, /ưu tiên hơn.*Heroku/s);
 });

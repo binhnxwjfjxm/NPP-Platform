@@ -20,7 +20,7 @@ function errorMessage(error?: string | null): string | null {
   if (!error || error === "owner_challenge_required") return null;
   if (error === "owner_code_invalid") return "Mã xác minh chưa đúng. Vui lòng thử lại.";
   if (error === "owner_challenge_unavailable") return "Chưa thể gửi mã xác minh cho tài khoản này.";
-  if (error === "auth_unavailable") return "NPP Core tạm thời chưa sẵn sàng. Vui lòng thử lại.";
+  if (error === "auth_unavailable") return "Công Ty tạm thời chưa sẵn sàng. Vui lòng thử lại.";
   return "Tên đăng nhập/email hoặc mật khẩu chưa đúng.";
 }
 
@@ -119,7 +119,7 @@ export default function LoginPage({ searchParams }: Props) {
     event.preventDefault();
 
     if (mode === "machine_code_required") {
-      setError("Backend hiện chưa cung cấp contract xác minh thiết bị cho trạng thái này.");
+      setError("Hệ thống hiện chưa hỗ trợ xác minh thiết bị cho trạng thái này.");
       return;
     }
 
@@ -158,7 +158,7 @@ export default function LoginPage({ searchParams }: Props) {
           {mode === "credentials" ? (
             <div className={`${styles.loginStage} ${leavingCredentials ? styles.loginStageExit : ""}`}>
               <h1 id="mcp-login-title">Đăng nhập nhân viên</h1>
-              <p>Dùng tài khoản nhân sự NPP Core. Owner có thể dùng email Owner đã đăng ký.</p>
+              <p>Dùng tài khoản nhân sự Công Ty. Owner có thể dùng email Owner đã đăng ký.</p>
               {error ? <p className={styles.error} role="alert">{error}</p> : null}
 
               <form className={styles.form} action="/api/auth/login" method="post" onSubmit={handleCredentialsSubmit}>
@@ -230,7 +230,7 @@ export default function LoginPage({ searchParams }: Props) {
               </form>
             </div>
           )}
-          <p className={styles.note}>Phiên đăng nhập được giữ bằng cookie HttpOnly và được NPP Core xác minh lại.</p>
+          <p className={styles.note}>Phiên đăng nhập được giữ bằng cookie HttpOnly và được Công Ty xác minh lại.</p>
         </div>
       </section>
     </main>
