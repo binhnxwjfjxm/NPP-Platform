@@ -45,7 +45,7 @@ jobs:
         run: |
           set -euo pipefail
           npm ci --ignore-scripts
-          npm --prefix retail/web ci --ignore-scripts
+          npm --prefix retail/web install --ignore-scripts --no-package-lock
 
       - name: Verify backend Retail batch
         shell: bash
