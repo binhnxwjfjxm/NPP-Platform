@@ -128,12 +128,15 @@ export async function updateWarehouse(client, {
      SET name = $1,
          warehouse_type = $2,
          allow_negative_stock = $3,
-         updated_at = GREATEST(date_trunc('milliseconds', clock_timestamp()), updated_at + interval '1 millisecond'),
+         updated_at = date_trunc('milliseconds', GREATEST(clock_timestamp(), updated_at + interval '1 millisecond')),
          updated_by = $4
      WHERE id = $5 AND installation_id = $6`;
 
   if (expectedUpdatedAt) {
-    query += ` AND updated_at = $7`;
+    // The API/JSON contract exposes timestamps at millisecond precision. Legacy/restored
+    // rows may retain PostgreSQL microseconds, so compare at the same canonical precision
+    // instead of rejecting a fresh client as STALE_VERSION.
+    query += ` AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $7::timestamptz)`;
     params.push(expectedUpdatedAt);
   }
 
@@ -147,12 +150,12 @@ export async function updateWarehouseActiveStatus(client, { id, installationId, 
   const params = [isActive, updatedBy, id, installationId];
   let query = `UPDATE shared.warehouses
      SET is_active = $1,
-         updated_at = GREATEST(date_trunc('milliseconds', clock_timestamp()), updated_at + interval '1 millisecond'),
+         updated_at = date_trunc('milliseconds', GREATEST(clock_timestamp(), updated_at + interval '1 millisecond')),
          updated_by = $2
      WHERE id = $3 AND installation_id = $4`;
 
   if (expectedUpdatedAt) {
-    query += ` AND updated_at = $5`;
+    query += ` AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $5::timestamptz)`;
     params.push(expectedUpdatedAt);
   }
 
