@@ -55,6 +55,8 @@ function clearInvalidSession(response: NextResponse) {
 
 function sessionCheckUrl(request: NextRequest) {
   const url = request.nextUrl.clone();
+  const loopback = new Set(["127.0.0.1", "localhost", "::1"]).has(url.hostname);
+  if (loopback) url.protocol = "http:";
   url.pathname = SESSION_CHECK_PATH;
   url.search = "";
   url.hash = "";

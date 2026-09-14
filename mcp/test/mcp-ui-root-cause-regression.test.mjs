@@ -90,6 +90,8 @@ test("MCP protected navigation verifies the session through the same-origin Node
   assert.match(middleware, /Authorization: `Bearer \$\{token\}`/);
   assert.doesNotMatch(middleware, /CORE_API_INTERNAL_URL/);
   assert.doesNotMatch(middleware, /fetch\(`\$\{baseUrl\}\/api\/internal-auth\/me`/);
+  assert.match(middleware, /new Set\(\["127\.0\.0\.1", "localhost", "::1"\]\)\.has\(url\.hostname\)/);
+  assert.match(middleware, /if \(loopback\) url\.protocol = "http:"/);
   assert.match(authMeRoute, /function bearerToken\(request: NextRequest\)/);
   assert.match(authMeRoute, /bearerToken\(request\) \|\| readMcpSessionToken\(\)/);
   assert.match(authMeRoute, /requestMcpInternalAuth<CoreMe>\("\/api\/internal-auth\/me"/);
