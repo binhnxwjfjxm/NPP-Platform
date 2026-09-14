@@ -17,7 +17,7 @@ const historyGateway = source('../../web/lib/warehouse-location-mode-history-gat
 test('Lô 3 removes SKU location authority from operator UI and product files', () => {
   assert.match(policyPage, /TrackingPolicyWorkspace/);
   assert.doesNotMatch(policyWorkspace, /locationRequired|Bắt buộc vị trí/);
-  assert.match(policyWorkspace, /Quản lý vị trí được thiết lập tại Kho hàng/);
+  assert.match(policyWorkspace, /Vị trí được quản lý tại Cơ cấu Công Ty → Kho hàng/);
   assert.doesNotMatch(dataExchangeModel.match(/PRODUCT_COLUMNS = \[[\s\S]*?\] as const/)?.[0] ?? '', /locationRequired/);
   assert.match(productExchange, /filter\(\(column\) => column !== 'locationRequired'\)/);
   assert.match(productExchange, /locationRequired: false/);
