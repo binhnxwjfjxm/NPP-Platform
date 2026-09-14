@@ -44,10 +44,11 @@ test('Lô B search backend nhận đủ context, batch giá và không đẩy ph
   assert.match(entry, /defaultWarehouseId/);
 });
 
-test('Lô B giữ tương thích cho caller tìm SKU cũ không gửi preview context', async () => {
+test('Lô B caller không gửi preview context vẫn dùng tìm SKU Công Ty tối ưu', async () => {
   const service = await read('src/services/sales-order-search-preview.js');
-  assert.match(service, /const previewContextRequested = Boolean/);
-  assert.match(service, /if \(!previewContextRequested\) \{[\s\S]*return legacy\.searchSalesOrderSkuOptions/);
+  assert.match(service, /import \* as skuSearchService from '\.\/sales-order-sku-search\.js'/);
+  assert.match(service, /if \(!previewContextRequested\) \{[\s\S]*return skuSearchService\.searchSalesOrderSkuOptions/);
+  assert.doesNotMatch(service, /legacy\.searchSalesOrderSkuOptions/);
 });
 
 test('Lô B phân biệt không quản lý tồn với hết hàng và trả đúng số đang giữ', () => {

@@ -29,10 +29,11 @@ test('mở đơn cũ không tự fan-out sku-search và variants cho từng dòn
   );
 });
 
-test('tính lại nhiều dòng không bắn price-preview song song vào backend', () => {
+test('tính lại nhiều dòng giới hạn đồng thời thay vì bắn toàn bộ price-preview cùng lúc', () => {
   assert.doesNotMatch(form, /Promise\.all\(snapshot\.map/);
+  assert.match(form, /const REPRICE_CONCURRENCY = 4;/);
   assert.match(
     form,
-    /for \(const line of snapshot\) \{[\s\S]*?const resolution = await priceFor\(/,
+    /const results = await runWithConcurrency\(snapshot, REPRICE_CONCURRENCY, async \(line\) => \{[\s\S]*?const resolution = await priceFor\(/,
   );
 });

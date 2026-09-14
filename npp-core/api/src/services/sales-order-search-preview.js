@@ -1,4 +1,4 @@
-import * as legacy from './sales-order-entry-legacy.js';
+import * as skuSearchService from './sales-order-sku-search.js';
 import * as appliedPriceService from './sales-order-applied-price.js';
 import * as commercialRepository from '../db/repositories/sales-order-commercial.js';
 import * as salesOrderRepository from '../db/repositories/sales-order.js';
@@ -9,6 +9,15 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
 
 function failure(code, message, retryable = false, details = {}) {
   return Object.freeze({ ok: false, code, message, retryable, details });
+}
+
+function poolSnapshot(client) {
+  const count = (value) => Number.isInteger(value) && value >= 0 ? value : 0;
+  return {
+    poolTotal: count(client?.totalCount),
+    poolIdle: count(client?.idleCount),
+    poolWaiting: count(client?.waitingCount),
+  };
 }
 
 function scopedWarehouseIds(requestContext) {
@@ -263,7 +272,7 @@ export async function searchSalesOrderSkuOptions(client, {
     || String(pricingAt ?? '').trim(),
   );
   if (!previewContextRequested) {
-    return legacy.searchSalesOrderSkuOptions(client, { requestContext, search, limit, offset });
+    return skuSearchService.searchSalesOrderSkuOptions(client, { requestContext, search, limit, offset });
   }
 
   const resolvedContext = await resolvePreviewContext(client, {
@@ -271,7 +280,7 @@ export async function searchSalesOrderSkuOptions(client, {
   });
   if (!resolvedContext.ok) return resolvedContext;
 
-  const base = await legacy.searchSalesOrderSkuOptions(client, {
+  const base = await skuSearchService.searchSalesOrderSkuOptions(client, {
     requestContext,
     search,
     limit,
@@ -309,22 +318,43 @@ export async function getSalesOrderSkuPreviews(client, {
   priceSelectionMode = 'STANDARD',
   pricingAt,
 }) {
+  const startedAt = Date.now();
   const ids = normalizeVariantIds(variantIds);
   if (!ids || ids.length === 0) return failure('INVALID_SALES_ORDER_SEARCH_VARIANTS', 'Danh sách hàng hóa không hợp lệ');
+
+  const contextStartedAt = Date.now();
   const resolvedContext = await resolvePreviewContext(client, {
     requestContext, warehouseId, salesChannelId, customerId, priceSelectionMode, pricingAt,
   });
+  const contextMs = Date.now() - contextStartedAt;
   if (!resolvedContext.ok) return resolvedContext;
+
+  const orderableStartedAt = Date.now();
   const orderableIds = await salesOrderRepository.listOrderableSalesVariantIds(client, {
     installationId: requestContext.installationId,
     variantIds: ids,
   });
+  const orderableMs = Date.now() - orderableStartedAt;
+
+  const previewStartedAt = Date.now();
   const previews = await previewByVariantId(client, {
     requestContext,
     previewContext: resolvedContext.context,
     variantIds: orderableIds,
   });
-  return Object.freeze({ ok: true, previews: Object.freeze(orderableIds.map((id) => previews.get(id))) });
+  const previewMs = Date.now() - previewStartedAt;
+  const result = Object.freeze({ ok: true, previews: Object.freeze(orderableIds.map((id) => previews.get(id))) });
+  console.info(JSON.stringify({
+    event: 'sales_order_sku_previews_latency',
+    durationMs: Date.now() - startedAt,
+    contextMs,
+    orderableMs,
+    previewMs,
+    requestedCount: ids.length,
+    resultCount: orderableIds.length,
+    ...poolSnapshot(client),
+  }));
+  return result;
 }
 
 export const salesOrderSearchPreviewInternals = Object.freeze({
