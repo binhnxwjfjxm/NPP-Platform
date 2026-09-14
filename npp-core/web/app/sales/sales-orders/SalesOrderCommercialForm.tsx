@@ -36,7 +36,7 @@ import styles from './sales-orders.module.css';
 
 export type SalesOrderFormMode = 'create' | 'draft' | 'amendment' | 'manual-edit';
 
-const SEARCH_DELAY_MS = 200;
+const SEARCH_DELAY_MS = 0;
 const SEARCH_PAGE_SIZE = 30;
 const REPRICE_DELAY_MS = 320;
 const REPRICE_CONCURRENCY = 4;
