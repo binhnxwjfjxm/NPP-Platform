@@ -191,38 +191,39 @@ export async function revokeAllUserSessions(client, {
 }
 
 export async function loadUserAuthorization(client, { installationId, userId }) {
-  const [rolesResult, scopesResult, ownerResult] = await Promise.all([
-    client.query(
-      `SELECT
-         r.code AS role_code,
-         r.web_login_challenge_required,
-         rp.permission_key
-       FROM shared.user_roles ur
-       JOIN shared.roles r
-         ON r.installation_id = ur.installation_id
-        AND r.id = ur.role_id
-        AND r.is_active = true
-       LEFT JOIN shared.role_permissions rp
-         ON rp.installation_id = r.installation_id
-        AND rp.role_id = r.id
-       WHERE ur.installation_id = $1 AND ur.user_id = $2
-       ORDER BY r.code, rp.permission_key`,
-      [installationId, userId],
-    ),
-    client.query(
-      `SELECT scope_type, scope_id
-       FROM shared.user_scopes
-       WHERE installation_id = $1 AND user_id = $2
-       ORDER BY scope_type, scope_id`,
-      [installationId, userId],
-    ),
-    client.query(
-      `SELECT owner_kind
-       FROM shared.security_owner_bindings
-       WHERE installation_id = $1 AND user_id = $2`,
-      [installationId, userId],
-    ),
-  ]);
+  // Keep authorization reads sequential when `client` is a Pool. Running these with
+  // Promise.all lets one HTTP request consume three pool connections at once and can
+  // starve unrelated business requests under burst traffic.
+  const rolesResult = await client.query(
+    `SELECT
+       r.code AS role_code,
+       r.web_login_challenge_required,
+       rp.permission_key
+     FROM shared.user_roles ur
+     JOIN shared.roles r
+       ON r.installation_id = ur.installation_id
+      AND r.id = ur.role_id
+      AND r.is_active = true
+     LEFT JOIN shared.role_permissions rp
+       ON rp.installation_id = r.installation_id
+      AND rp.role_id = r.id
+     WHERE ur.installation_id = $1 AND ur.user_id = $2
+     ORDER BY r.code, rp.permission_key`,
+    [installationId, userId],
+  );
+  const scopesResult = await client.query(
+    `SELECT scope_type, scope_id
+     FROM shared.user_scopes
+     WHERE installation_id = $1 AND user_id = $2
+     ORDER BY scope_type, scope_id`,
+    [installationId, userId],
+  );
+  const ownerResult = await client.query(
+    `SELECT owner_kind
+     FROM shared.security_owner_bindings
+     WHERE installation_id = $1 AND user_id = $2`,
+    [installationId, userId],
+  );
 
   const roles = [];
   const permissionKeys = [];
@@ -254,21 +255,20 @@ export async function loadUserAuthorization(client, { installationId, userId }) 
 
 export async function loadInstallationOwnerScopes(client, { installationId }) {
   // Installation-wide authorization includes inactive org records so historical documents
-  // remain visible after a branch or warehouse is retired.
-  const [branches, warehouses] = await Promise.all([
-    client.query(
-      `SELECT id FROM shared.branches
-       WHERE installation_id = $1
-       ORDER BY id`,
-      [installationId],
-    ),
-    client.query(
-      `SELECT id FROM shared.warehouses
-       WHERE installation_id = $1
-       ORDER BY id`,
-      [installationId],
-    ),
-  ]);
+  // remain visible after a branch or warehouse is retired. Keep these reads sequential for
+  // the same pool-pressure reason as loadUserAuthorization.
+  const branches = await client.query(
+    `SELECT id FROM shared.branches
+     WHERE installation_id = $1
+     ORDER BY id`,
+    [installationId],
+  );
+  const warehouses = await client.query(
+    `SELECT id FROM shared.warehouses
+     WHERE installation_id = $1
+     ORDER BY id`,
+    [installationId],
+  );
   return {
     branchIds: (branches.rows ?? []).map((row) => String(row.id)),
     warehouseIds: (warehouses.rows ?? []).map((row) => String(row.id)),
@@ -332,7 +332,7 @@ export async function getSecurityOwnerBindingForUser(client, { installationId, u
 
 export async function getSecurityOwnerBindingForEmployee(client, { installationId, employeeId }) {
   const result = await client.query(
-    `SELECT b.user_id, b.owner_kind
+    `SELECT b.user_id, owner_kind
      FROM shared.security_owner_bindings b
      JOIN shared.users u
        ON u.installation_id = b.installation_id
