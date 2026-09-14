@@ -1,5 +1,6 @@
 import { createIdempotencyKey } from '@npp/contracts';
 import { test, expect, type APIRequestContext } from '@playwright/test';
+import { configureInventoryTrackingPolicy } from './support/inventory-tracking-policy';
 import { configureWarehouseLocationMode } from './support/warehouse-location-mode';
 
 function uniqueSuffix() {
@@ -77,16 +78,12 @@ async function createLotRequiredFixture(request: APIRequestContext) {
   });
   expect(response.status()).toBe(200);
 
-  response = await request.put(`/api/inventory/tracking-policies/${variant.id}`, {
-    headers: { 'Idempotency-Key': key('tracking-policy') },
-    data: {
-      baseVariantId: variant.id,
-      lotTrackingMode: 'REQUIRED',
-      expiryTrackingMode: 'NONE',
-      locationRequired: true,
-    },
+  await configureInventoryTrackingPolicy(request, {
+    baseVariantId: variant.id,
+    lotTrackingMode: 'REQUIRED',
+    expiryTrackingMode: 'NONE',
+    locationRequired: true,
   });
-  expect(response.status()).toBe(200);
 
   response = await request.post('/api/purchase-orders', {
     headers: { 'Idempotency-Key': key('po-create') },

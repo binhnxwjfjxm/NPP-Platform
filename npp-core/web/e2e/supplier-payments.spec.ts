@@ -1,4 +1,5 @@
 import { test, expect, type APIRequestContext } from '@playwright/test';
+import { configureInventoryTrackingPolicy } from './support/inventory-tracking-policy';
 import { configureWarehouseLocationMode } from './support/warehouse-location-mode';
 
 function suffix() {
@@ -63,16 +64,12 @@ async function createFixture(request: APIRequestContext, code: string) {
   });
   expect(response.status()).toBe(200);
 
-  response = await request.put(`/api/inventory/tracking-policies/${variant.id}`, {
-    headers: { 'Idempotency-Key': `sp-policy-${code}` },
-    data: {
-      baseVariantId: variant.id,
-      lotTrackingMode: 'NONE',
-      expiryTrackingMode: 'NONE',
-      locationRequired: true,
-    },
+  await configureInventoryTrackingPolicy(request, {
+    baseVariantId: variant.id,
+    lotTrackingMode: 'NONE',
+    expiryTrackingMode: 'NONE',
+    locationRequired: true,
   });
-  expect(response.status()).toBe(200);
 
   response = await request.post('/api/purchase-orders', {
     headers: { 'Idempotency-Key': `sp-po-create-${code}` },
