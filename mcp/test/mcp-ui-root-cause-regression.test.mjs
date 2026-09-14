@@ -9,7 +9,9 @@ const groupStyles = await readFile("src/app/mcp-setting/groups/page.module.css",
 const canonicalSettingsPage = await readFile("src/features/mcp-settings/McpReportSettingsPage.tsx", "utf8");
 const loginPage = await readFile("src/app/login/page.tsx", "utf8");
 const loginRoute = await readFile("src/app/api/auth/login/route.ts", "utf8");
+const authMeRoute = await readFile("src/app/api/auth/me/route.ts", "utf8");
 const loginStyles = await readFile("src/app/login/login.module.css", "utf8");
+const middleware = await readFile("src/middleware.ts", "utf8");
 
 test("mobile browser chrome uses the canvas theme instead of creating a second brown bottom row", () => {
   assert.match(layout, /themeColor:\s*"#F7F3ED"/);
@@ -80,4 +82,17 @@ test("MCP verification screen keeps credentials in memory and gives the same mot
   assert.match(loginStyles, /@keyframes codeShake/);
   assert.match(loginStyles, /@keyframes shieldPulse/);
   assert.match(loginStyles, /prefers-reduced-motion/);
+});
+
+test("MCP protected navigation verifies the session through the same-origin Node auth boundary", () => {
+  assert.match(middleware, /const SESSION_CHECK_PATH = "\/api\/auth\/me"/);
+  assert.match(middleware, /fetch\(sessionCheckUrl\(request\)/);
+  assert.match(middleware, /Authorization: `Bearer \$\{token\}`/);
+  assert.doesNotMatch(middleware, /CORE_API_INTERNAL_URL/);
+  assert.doesNotMatch(middleware, /fetch\(`\$\{baseUrl\}\/api\/internal-auth\/me`/);
+  assert.match(middleware, /new Set\(\["127\.0\.0\.1", "localhost", "::1"\]\)\.has\(url\.hostname\)/);
+  assert.match(middleware, /if \(loopback\) url\.protocol = "http:"/);
+  assert.match(authMeRoute, /function bearerToken\(request: NextRequest\)/);
+  assert.match(authMeRoute, /bearerToken\(request\) \|\| readMcpSessionToken\(\)/);
+  assert.match(authMeRoute, /requestMcpInternalAuth<CoreMe>\("\/api\/internal-auth\/me"/);
 });

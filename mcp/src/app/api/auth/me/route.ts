@@ -1,3 +1,4 @@
+import { NextRequest } from "next/server";
 import { readMcpSessionToken, requestMcpInternalAuth } from "@/lib/internal-auth-client";
 
 type CoreMe = Readonly<{
@@ -14,8 +15,14 @@ type CoreMe = Readonly<{
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
-  const token = readMcpSessionToken();
+function bearerToken(request: NextRequest): string | null {
+  const header = request.headers.get("authorization")?.trim() || "";
+  const match = /^Bearer\s+(.+)$/i.exec(header);
+  return match?.[1]?.trim() || null;
+}
+
+export async function GET(request: NextRequest) {
+  const token = bearerToken(request) || readMcpSessionToken();
   if (!token) {
     return Response.json({ error: { code: "UNAUTHORIZED", message: "Cần đăng nhập" } }, { status: 401, headers: { "Cache-Control": "no-store" } });
   }

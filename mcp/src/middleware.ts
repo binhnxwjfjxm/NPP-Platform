@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { encodeMcpInternalAuthorization, isMcpInstallationOwner, type McpWorkforceUser } from "./lib/mcp-auth";
 import { MCP_SESSION_COOKIE, safeMcpReturnTo } from "./lib/mcp-session";
 
+const SESSION_CHECK_PATH = "/api/auth/me";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 type MePayload = Readonly<{
@@ -52,21 +53,14 @@ function clearInvalidSession(response: NextResponse) {
   return response;
 }
 
-function coreBaseUrl(): string | null {
-  const raw = process.env.CORE_API_INTERNAL_URL?.trim();
-  if (!raw) return null;
-  try {
-    const url = new URL(raw);
-    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) return null;
-    const loopback = new Set(["127.0.0.1", "localhost", "::1"]).has(url.hostname);
-    if (process.env.NODE_ENV === "production" && url.protocol !== "https:" && !loopback) return null;
-    url.pathname = url.pathname.replace(/\/$/, "");
-    url.search = "";
-    url.hash = "";
-    return url.toString().replace(/\/$/, "");
-  } catch {
-    return null;
-  }
+function sessionCheckUrl(request: NextRequest) {
+  const url = request.nextUrl.clone();
+  const loopback = new Set(["127.0.0.1", "localhost", "::1"]).has(url.hostname);
+  if (loopback) url.protocol = "http:";
+  url.pathname = SESSION_CHECK_PATH;
+  url.search = "";
+  url.hash = "";
+  return url;
 }
 
 function stringList(value: unknown): string[] {
@@ -108,13 +102,11 @@ function hasCapability(user: McpWorkforceUser, permission: string) {
   return user.permissions.some((value) => String(value || "").trim().toLowerCase() === required);
 }
 
-async function resolveSession(token: string): Promise<SessionState> {
-  const baseUrl = coreBaseUrl();
-  if (!baseUrl) return { state: "unavailable" };
+async function resolveSession(request: NextRequest, token: string): Promise<SessionState> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 3_000);
+  const timeout = setTimeout(() => controller.abort(), 5_000);
   try {
-    const response = await fetch(`${baseUrl}/api/internal-auth/me`, {
+    const response = await fetch(sessionCheckUrl(request), {
       method: "GET",
       cache: "no-store",
       signal: controller.signal,
@@ -160,7 +152,7 @@ export async function middleware(request: NextRequest) {
     return deny(request, 401, "UNAUTHORIZED", "Cần đăng nhập");
   }
 
-  const resolved = await resolveSession(sessionToken);
+  const resolved = await resolveSession(request, sessionToken);
   if (resolved.state === "active") {
     const permission = requiredPermission(request);
     if (permission && !hasCapability(resolved.user, permission)) {
