@@ -1,4 +1,5 @@
 import { test, expect, type APIRequestContext } from '@playwright/test';
+import { configureInventoryTrackingPolicy } from './support/inventory-tracking-policy';
 import { configureWarehouseLocationMode } from './support/warehouse-location-mode';
 
 function uniqueSuffix() {
@@ -49,11 +50,12 @@ async function createFixture(request: APIRequestContext, suffix: string) {
     data: { unitId: unit.id, conversionToBase: '1', expectedUpdatedAt: baseVariant.updated_at },
   });
   expect(response.status()).toBe(200);
-  response = await request.put(`/api/inventory/tracking-policies/${baseVariant.id}`, {
-    headers: { 'Idempotency-Key': `inventory-policy-${suffix}` },
-    data: { baseVariantId: baseVariant.id, lotTrackingMode: 'REQUIRED', expiryTrackingMode: 'OPTIONAL', locationRequired: true },
+  await configureInventoryTrackingPolicy(request, {
+    baseVariantId: baseVariant.id,
+    lotTrackingMode: 'REQUIRED',
+    expiryTrackingMode: 'OPTIONAL',
+    locationRequired: true,
   });
-  expect(response.status()).toBe(200);
 
   return { warehouse, location, baseVariant, sourceVariant };
 }
@@ -81,12 +83,12 @@ test.describe('Kho vận', () => {
     const policyPage = page.getByTestId('inventory-tracking-policies-page');
     await expect(policyPage).toBeVisible();
     await expect(policyPage.getByRole('table')).toContainText(fixture.baseVariant.sku);
-    const skuSelect = policyPage.getByLabel('SKU hàng hóa');
+    const skuSelect = policyPage.getByLabel('SKU tồn chuẩn');
     const skuOption = skuSelect.locator(`option[value="${fixture.baseVariant.id}"]`);
     await expect(skuOption).toContainText(fixture.baseVariant.sku);
     await skuSelect.selectOption(fixture.baseVariant.id);
     await expect(skuSelect).toHaveValue(fixture.baseVariant.id);
-    await expect(policyPage.getByRole('heading', { name: 'Tạo hoặc sửa chính sách', exact: true })).toBeVisible();
+    await expect(policyPage.getByRole('heading', { name: 'Thiết lập quản lý lô và hạn dùng', exact: true })).toBeVisible();
 
     await page.goto('/inventory/opening-balances');
     const warehouseSelect = page.getByTestId('inventory-opening-warehouse-select');

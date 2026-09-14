@@ -11,7 +11,7 @@ import type {
   UnitOfMeasure,
   VariantUnitForm,
 } from '../../lib/product-types';
-import type { InventoryBalance } from '../../lib/inventory-types';
+import type { InventoryBalance, InventoryTrackingPolicy } from '../../lib/inventory-types';
 import type { PriceList, PriceListItem } from '../../lib/pricing-types';
 import { productSearchMatches } from '../../lib/product-search-contract';
 import ProductImageControl from './product-image-control';
@@ -54,6 +54,11 @@ type VariantDraft = {
   weightUomCode: 'G' | 'KG';
 };
 
+type TrackingPolicyDraft = {
+  lotTrackingMode: 'NONE' | 'REQUIRED';
+  expiryTrackingMode: 'NONE' | 'OPTIONAL' | 'REQUIRED';
+};
+
 const EMPTY_PRODUCT: ProductDraft = {
   code: '',
   name: '',
@@ -78,6 +83,11 @@ const EMPTY_VARIANT: VariantDraft = {
   isActive: true,
   weightValue: '',
   weightUomCode: 'G',
+};
+
+const EMPTY_TRACKING_POLICY: TrackingPolicyDraft = {
+  lotTrackingMode: 'NONE',
+  expiryTrackingMode: 'NONE',
 };
 
 const EMPTY_UNIT: VariantUnitForm = {
@@ -208,6 +218,7 @@ export default function ProductQuickSetupWorkspace({
   const [variantId, setVariantId] = useState('');
   const [creatingVariant, setCreatingVariant] = useState(false);
   const [variantDraft, setVariantDraft] = useState<VariantDraft>(EMPTY_VARIANT);
+  const [trackingPolicyDraft, setTrackingPolicyDraft] = useState<TrackingPolicyDraft>(EMPTY_TRACKING_POLICY);
   const [unitDraft, setUnitDraft] = useState<VariantUnitForm>(EMPTY_UNIT);
 
   const [barcodes, setBarcodes] = useState<ProductBarcode[]>([]);
@@ -278,6 +289,17 @@ export default function ProductQuickSetupWorkspace({
     return result;
   }
 
+  async function putJson<T>(operation: string, url: string, body: unknown): Promise<T> {
+    const pending = postKey(operation, url, body);
+    const result = await requestJson<T>(url, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': pending.key },
+      body: JSON.stringify(body),
+    });
+    pendingPostKeys.current.delete(pending.fingerprint);
+    return result;
+  }
+
   async function loadVariants(nextProductId: string, preferredVariantId = '') {
     setVariants([]);
     setVariantId('');
@@ -316,6 +338,7 @@ export default function ProductQuickSetupWorkspace({
     setVariants([]);
     setVariantId('');
     setCreatingVariant(false);
+    setTrackingPolicyDraft(EMPTY_TRACKING_POLICY);
     setBarcodes([]);
     setBalances([]);
   }
@@ -328,6 +351,7 @@ export default function ProductQuickSetupWorkspace({
     setBarcodeDraft('');
     setBarcodes([]);
     setPriceAmount('');
+    setTrackingPolicyDraft(EMPTY_TRACKING_POLICY);
     setVariantDraft({
       ...EMPTY_VARIANT,
       variantKind: variants.length === 0 ? 'BASE' : 'CARTON',
@@ -498,6 +522,7 @@ export default function ProductQuickSetupWorkspace({
         ...(selectedVariant && !creatingVariant ? { expectedUpdatedAt: selectedVariant.updated_at } : {}),
       };
 
+      const creatingNewVariant = !(selectedVariant && !creatingVariant);
       const saved = selectedVariant && !creatingVariant
         ? await requestJson<ProductVariant>(`/api/products/${selectedProduct.id}/variants/${selectedVariant.id}`, {
             method: 'PATCH',
@@ -510,6 +535,26 @@ export default function ProductQuickSetupWorkspace({
             body,
           );
 
+      let policyWarning = '';
+      if (creatingNewVariant && saved.is_inventory_base
+          && (trackingPolicyDraft.lotTrackingMode !== 'NONE' || trackingPolicyDraft.expiryTrackingMode !== 'NONE')) {
+        try {
+          const current = await requestJson<InventoryTrackingPolicy>(`/api/inventory/tracking-policies/${saved.id}`);
+          await putJson<InventoryTrackingPolicy>(
+            'product.quick.inventory-policy.save',
+            `/api/inventory/tracking-policies/${saved.id}`,
+            {
+              baseVariantId: saved.id,
+              lotTrackingMode: trackingPolicyDraft.lotTrackingMode,
+              expiryTrackingMode: trackingPolicyDraft.lotTrackingMode === 'NONE' ? 'NONE' : trackingPolicyDraft.expiryTrackingMode,
+              expectedVersion: current.version,
+            },
+          );
+        } catch (policyError) {
+          policyWarning = `Đã tạo SKU ${saved.sku} với mặc định không quản lý lô/hạn dùng, nhưng chưa lưu được lựa chọn quản lý lô/hạn. Mở “Chính sách quản lý lô” để hoàn tất. ${policyError instanceof Error ? policyError.message : ''}`.trim();
+        }
+      }
+
       const nextVariants = selectedVariant && !creatingVariant
         ? variants.map((item) => item.id === saved.id ? saved : item)
         : [...variants, saved].sort((left, right) => left.sku.localeCompare(right.sku));
@@ -518,7 +563,8 @@ export default function ProductQuickSetupWorkspace({
       setCreatingVariant(false);
       setVariantDraft(variantToDraft(saved));
       setUnitDraft(variantToUnitDraft(saved));
-      setNotice(selectedVariant && !creatingVariant ? 'Đã cập nhật SKU.' : 'Đã tạo SKU. Tiếp tục gắn đơn vị, quy đổi và giá.');
+      setTrackingPolicyDraft(EMPTY_TRACKING_POLICY);
+      setNotice(policyWarning || (selectedVariant && !creatingVariant ? 'Đã cập nhật SKU.' : 'Đã tạo SKU. Tiếp tục gắn đơn vị, quy đổi và giá.'));
     } catch (errorValue) {
       setError(errorValue instanceof Error ? errorValue.message : 'Không thể lưu SKU.');
     } finally {
@@ -686,7 +732,7 @@ export default function ProductQuickSetupWorkspace({
         <div>
           <span className={styles.eyebrow}>Thao tác nhanh</span>
           <h2>Thiết lập nhanh sản phẩm &amp; SKU</h2>
-          <p>Tạo sản phẩm → tạo SKU → gắn đơn vị/quy đổi → mã vạch → giá, dùng nguyên dữ liệu nghiệp vụ hiện có.</p>
+          <p>Tạo sản phẩm → tạo SKU → chọn lô/hạn cho SKU tồn chuẩn → gắn đơn vị/quy đổi → mã vạch → giá.</p>
         </div>
         <button type="button" className={styles.primaryButton} onClick={startProductCreate} disabled={busy}>
           + Tạo sản phẩm
@@ -805,11 +851,54 @@ export default function ProductQuickSetupWorkspace({
                       <label>Khối lượng<div className={styles.inlineInput}><input inputMode="decimal" value={variantDraft.weightValue} onChange={(event) => setVariantDraft({ ...variantDraft, weightValue: event.target.value.replace(',', '.') })} /><select value={variantDraft.weightUomCode} onChange={(event) => setVariantDraft({ ...variantDraft, weightUomCode: event.target.value as 'G' | 'KG' })}><option value="G">G</option><option value="KG">KG</option></select></div></label>
                     </div>
                     <div className={styles.checks}>
-                      <label><input type="checkbox" checked={variantDraft.isInventoryBase} onChange={(event) => setVariantDraft({ ...variantDraft, isInventoryBase: event.target.checked, variantKind: event.target.checked ? 'BASE' : variantDraft.variantKind })} /> SKU tồn chuẩn</label>
+                      <label><input type="checkbox" checked={variantDraft.isInventoryBase} onChange={(event) => {
+                        const checked = event.target.checked;
+                        setVariantDraft({ ...variantDraft, isInventoryBase: checked, variantKind: checked ? 'BASE' : variantDraft.variantKind });
+                        if (!checked) setTrackingPolicyDraft(EMPTY_TRACKING_POLICY);
+                      }} /> SKU tồn chuẩn</label>
                       <label><input type="checkbox" checked={variantDraft.isSellable} onChange={(event) => setVariantDraft({ ...variantDraft, isSellable: event.target.checked })} /> Được phép bán</label>
                       <label><input type="checkbox" checked={variantDraft.isCatalogVisible} onChange={(event) => setVariantDraft({ ...variantDraft, isCatalogVisible: event.target.checked })} /> Hiển thị bán hàng</label>
                       <label><input type="checkbox" checked={variantDraft.isActive} onChange={(event) => setVariantDraft({ ...variantDraft, isActive: event.target.checked })} /> Đang sử dụng</label>
                     </div>
+                    {creatingVariant && variantDraft.isInventoryBase ? (
+                      <>
+                        <div className={styles.grid2}>
+                          <label>Quản lý lô
+                            <select
+                              value={trackingPolicyDraft.lotTrackingMode}
+                              onChange={(event) => {
+                                const value = event.target.value as TrackingPolicyDraft['lotTrackingMode'];
+                                setTrackingPolicyDraft((current) => ({
+                                  ...current,
+                                  lotTrackingMode: value,
+                                  expiryTrackingMode: value === 'NONE' ? 'NONE' : current.expiryTrackingMode,
+                                }));
+                              }}
+                            >
+                              <option value="NONE">Không quản lý theo lô</option>
+                              <option value="REQUIRED">Bắt buộc quản lý theo lô</option>
+                            </select>
+                          </label>
+                          <label>Hạn sử dụng
+                            <select
+                              value={trackingPolicyDraft.expiryTrackingMode}
+                              disabled={trackingPolicyDraft.lotTrackingMode === 'NONE'}
+                              onChange={(event) => setTrackingPolicyDraft((current) => ({ ...current, expiryTrackingMode: event.target.value as TrackingPolicyDraft['expiryTrackingMode'] }))}
+                            >
+                              <option value="NONE">Không quản lý hạn sử dụng</option>
+                              <option value="OPTIONAL">Có thể nhập hạn sử dụng</option>
+                              <option value="REQUIRED">Bắt buộc nhập hạn sử dụng</option>
+                            </select>
+                          </label>
+                        </div>
+                        <p className={styles.muted}>SKU tồn chuẩn luôn được tạo kèm chính sách. Mặc định là không quản lý lô và hạn sử dụng.</p>
+                      </>
+                    ) : null}
+                    {selectedVariant?.is_inventory_base && !creatingVariant ? (
+                      <div className={styles.warning}>
+                        Lô và hạn sử dụng của SKU tồn chuẩn được quản lý tại <a className={styles.textLink} href="/inventory/tracking-policies">Chính sách quản lý lô</a>.
+                      </div>
+                    ) : null}
                     <div className={styles.actions}>
                       <button type="button" className={styles.primaryButton} onClick={() => void saveVariant()} disabled={busy}>
                         {selectedVariant && !creatingVariant ? 'Lưu SKU' : 'Tạo SKU'}

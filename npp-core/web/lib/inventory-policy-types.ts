@@ -8,4 +8,5 @@ export type InventoryTrackingPolicyCandidate = {
   product_name: string;
   product_active: boolean;
   has_policy: boolean;
+  related_variant_search_text: string;
 };

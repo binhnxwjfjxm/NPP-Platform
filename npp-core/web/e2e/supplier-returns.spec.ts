@@ -1,4 +1,5 @@
 import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
+import { configureInventoryTrackingPolicy } from './support/inventory-tracking-policy';
 import { configureWarehouseLocationMode } from './support/warehouse-location-mode';
 
 function uniqueSuffix() {
@@ -87,16 +88,12 @@ async function createFixture(request: APIRequestContext, suffix: string) {
   });
   expect(response.status()).toBe(200);
 
-  response = await request.put(`/api/inventory/tracking-policies/${baseVariant.id}`, {
-    headers: { 'Idempotency-Key': `sr-policy-${suffix}` },
-    data: {
-      baseVariantId: baseVariant.id,
-      lotTrackingMode: 'NONE',
-      expiryTrackingMode: 'NONE',
-      locationRequired: true,
-    },
+  await configureInventoryTrackingPolicy(request, {
+    baseVariantId: baseVariant.id,
+    lotTrackingMode: 'NONE',
+    expiryTrackingMode: 'NONE',
+    locationRequired: true,
   });
-  expect(response.status()).toBe(200);
 
   const poCreate = await request.post('/api/purchase-orders', {
     headers: { 'Idempotency-Key': `sr-po-create-${suffix}` },

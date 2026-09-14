@@ -1,5 +1,6 @@
 import { createIdempotencyKey } from '@npp/contracts';
 import { test, expect, type APIRequestContext } from '@playwright/test';
+import { configureInventoryTrackingPolicy } from '../support/inventory-tracking-policy';
 import { configureWarehouseLocationMode } from '../support/warehouse-location-mode';
 
 function uniqueSuffix() {
@@ -45,16 +46,12 @@ async function createOrderableVariant(
   });
   expect(response.status()).toBe(200);
 
-  response = await request.put(`/api/inventory/tracking-policies/${variant.id}`, {
-    headers: { 'Idempotency-Key': key(`policy-${discriminator}`) },
-    data: {
-      baseVariantId: variant.id,
-      lotTrackingMode: 'NONE',
-      expiryTrackingMode: 'NONE',
-      locationRequired: true,
-    },
+  await configureInventoryTrackingPolicy(request, {
+    baseVariantId: variant.id,
+    lotTrackingMode: 'NONE',
+    expiryTrackingMode: 'NONE',
+    locationRequired: true,
   });
-  expect(response.status()).toBe(200);
   return variant;
 }
 
