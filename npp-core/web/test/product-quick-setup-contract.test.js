@@ -13,7 +13,7 @@ test('product workspace exposes quick setup as a first-class tab on the existing
   assert.match(workspace, /<ProductQuickSetupWorkspace[\s\S]*products=\{products\}[\s\S]*categories=\{categories\}[\s\S]*brands=\{brands\}[\s\S]*units=\{initialUnits\}/);
 });
 
-test('quick setup reuses canonical product, unit, barcode, pricing and inventory APIs', async () => {
+test('quick setup reuses canonical product, unit, barcode, pricing, tracking-policy and inventory APIs', async () => {
   const quick = await source('../app/products/product-quick-setup-workspace.tsx');
   for (const contract of [
     '/api/products',
@@ -22,6 +22,7 @@ test('quick setup reuses canonical product, unit, barcode, pricing and inventory
     '/barcodes',
     '/api/price-lists',
     '/items',
+    '/api/inventory/tracking-policies/',
     '/api/inventory/balances',
   ]) {
     assert.ok(quick.includes(contract), `missing canonical contract ${contract}`);
@@ -30,14 +31,29 @@ test('quick setup reuses canonical product, unit, barcode, pricing and inventory
   assert.doesNotMatch(quick, /supabase|S3Client|PutObjectCommand|R2_ACCESS|CLOUDFLARE/i);
 });
 
-test('quick setup uses the shared idempotency generator and reuses keys while a POST is pending', async () => {
+test('quick setup uses the shared idempotency generator and reuses keys while a mutation is pending', async () => {
   const quick = await source('../app/products/product-quick-setup-workspace.tsx');
   assert.match(quick, /import \{ createIdempotencyKey \} from '@npp\/contracts'/);
   assert.match(quick, /pendingPostKeys = useRef\(new Map<string, string>\(\)\)/);
   assert.match(quick, /pendingPostKeys\.current\.get\(fingerprint\)/);
   assert.match(quick, /createIdempotencyKey\(operation\)/);
   assert.match(quick, /headers: \{ 'Content-Type': 'application\/json', 'Idempotency-Key': pending\.key \}/);
+  assert.match(quick, /async function putJson/);
   assert.doesNotMatch(quick, /Idempotency-Key': `|Idempotency-Key": `|Math\.random\(/);
+});
+
+test('SKU tồn chuẩn được tạo với lựa chọn quản lý lô và hạn dùng ngay trong thiết lập nhanh', async () => {
+  const quick = await source('../app/products/product-quick-setup-workspace.tsx');
+  assert.match(quick, /type TrackingPolicyDraft/);
+  assert.match(quick, /lotTrackingMode: 'NONE'/);
+  assert.match(quick, /expiryTrackingMode: 'NONE'/);
+  assert.match(quick, />Quản lý lô/);
+  assert.match(quick, />Hạn sử dụng/);
+  assert.match(quick, /creatingVariant && variantDraft\.isInventoryBase/);
+  assert.match(quick, /product\.quick\.inventory-policy\.save/);
+  assert.match(quick, /expectedVersion: current\.version/);
+  assert.match(quick, /Mặc định là không quản lý lô và hạn sử dụng/);
+  assert.match(quick, /href="\/inventory\/tracking-policies"/);
 });
 
 test('price editing stays inside existing price lists and refuses ambiguous direct-price rows', async () => {
@@ -71,5 +87,5 @@ test('quick setup UI uses office language and keeps advanced destinations reacha
   assert.doesNotMatch(quick, /\bCore\b|\bNPP\b/);
   assert.match(quick, /Quản lý giá đầy đủ/);
   assert.match(quick, /Mở tra cứu tồn kho/);
-  assert.match(quick, /Tạo sản phẩm → tạo SKU → gắn đơn vị\/quy đổi → mã vạch → giá/);
+  assert.match(quick, /Tạo sản phẩm → tạo SKU → chọn lô\/hạn cho SKU tồn chuẩn → gắn đơn vị\/quy đổi → mã vạch → giá/);
 });

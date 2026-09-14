@@ -31,7 +31,7 @@ type Draft = Readonly<{
 type Envelope<T> = Readonly<{ data?: T; error?: { message?: string } }>;
 
 function emptyDraft(baseVariantId = ''): Draft {
-  return { baseVariantId, lotTrackingMode: 'REQUIRED', expiryTrackingMode: 'OPTIONAL', expectedVersion: '' };
+  return { baseVariantId, lotTrackingMode: 'NONE', expiryTrackingMode: 'NONE', expectedVersion: '' };
 }
 
 function lotLabel(value: InventoryTrackingPolicy['lot_tracking_mode']) {
@@ -82,15 +82,20 @@ export default function TrackingPolicyWorkspace({ initialPolicies, initialCandid
   const pendingKeys = useRef(new Map<string, string>());
   const term = normalizeSearch(search);
 
-  const filtered = useMemo(() => policies.filter((policy) => !term || matchTerm(
-    policy.base_sku,
-    policy.base_variant_name,
-    policy.product_code,
-    policy.product_name,
-  ).includes(term)), [policies, term]);
+  const policyByVariantId = useMemo(
+    () => new Map(policies.map((policy) => [policy.base_variant_id, policy])),
+    [policies],
+  );
+  const filteredCandidates = useMemo(() => candidates.filter((candidate) => !term || matchTerm(
+    candidate.base_sku,
+    candidate.base_variant_name,
+    candidate.product_code,
+    candidate.product_name,
+    candidate.related_variant_search_text,
+  ).includes(term)), [candidates, term]);
 
   function choose(baseVariantId: string) {
-    const current = policies.find((policy) => policy.base_variant_id === baseVariantId);
+    const current = policyByVariantId.get(baseVariantId);
     setDraft(current ? {
       baseVariantId: current.base_variant_id,
       lotTrackingMode: current.lot_tracking_mode,
@@ -120,13 +125,13 @@ export default function TrackingPolicyWorkspace({ initialPolicies, initialCandid
 
   async function save() {
     if (!draft.baseVariantId) {
-      setError('Hãy chọn SKU trước khi lưu chính sách.');
+      setError('Hãy chọn SKU tồn chuẩn trước khi lưu chính sách.');
       return;
     }
     const body = {
       baseVariantId: draft.baseVariantId,
       lotTrackingMode: draft.lotTrackingMode,
-      expiryTrackingMode: draft.expiryTrackingMode,
+      expiryTrackingMode: draft.lotTrackingMode === 'NONE' ? 'NONE' : draft.expiryTrackingMode,
       ...(draft.expectedVersion ? { expectedVersion: Number(draft.expectedVersion) } : {}),
     };
     const fingerprint = JSON.stringify(body);
@@ -167,14 +172,14 @@ export default function TrackingPolicyWorkspace({ initialPolicies, initialCandid
   return (
     <AppShell
       title="Chính sách quản lý lô"
-      subtitle="Thiết lập quản lý lô và hạn sử dụng theo SKU. Quản lý vị trí được thiết lập tại Kho hàng."
+      subtitle="Thiết lập quản lý lô và hạn sử dụng theo SKU tồn chuẩn. Có thể tìm bằng bất kỳ SKU nào của cùng sản phẩm."
       kicker="Tồn kho và lô hàng"
     >
       <div className={styles.page} data-testid="inventory-tracking-policies-page">
         <section className={`${styles.hero} ${styles.compactHero}`}>
           <div className={styles.heroControls}>
             <div className={styles.toolbar}>
-              <input className={styles.searchInput} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tìm theo SKU hoặc tên hàng" />
+              <input className={styles.searchInput} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tìm SKU bất kỳ, SKU tồn chuẩn hoặc tên hàng" />
             </div>
             <div className={styles.actionRow}>
               <button type="button" className={styles.primaryAction} disabled={busy} onClick={() => void refresh()}>{busy ? 'Đang xử lý...' : 'Làm mới dữ liệu'}</button>
@@ -187,50 +192,70 @@ export default function TrackingPolicyWorkspace({ initialPolicies, initialCandid
         <section className={styles.section}>
           <div className={styles.twoColumnForm}>
             <div className={styles.panel}>
-              <h3 className={styles.panelTitle}>Danh sách chính sách</h3>
+              <h3 className={styles.panelTitle}>SKU tồn chuẩn và chính sách</h3>
               <div className={styles.tableWrap}>
                 <table className={styles.table}>
-                  <thead><tr><BusinessTableSequenceHeader /><th>SKU</th><th>Lô</th><th>Hạn dùng</th><th></th></tr></thead>
+                  <thead><tr><BusinessTableSequenceHeader /><th>SKU tồn chuẩn</th><th>Trạng thái</th><th>Lô</th><th>Hạn dùng</th><th></th></tr></thead>
                   <tbody>
-                    {filtered.length === 0 ? <tr><td colSpan={5} className={styles.subtle}>Chưa có chính sách lô.</td></tr> : filtered.map((policy, rowIndex) => (
-                      <tr key={policy.base_variant_id}>
-                        <BusinessTableSequenceCell rowIndex={rowIndex} />
-                        <td><div className={styles.mono}>{policy.base_sku}</div><div className={styles.subtle}>{policy.product_code} · {policy.product_name}</div></td>
-                        <td><span className={styles.pill}>{lotLabel(policy.lot_tracking_mode)}</span></td>
-                        <td><span className={styles.pill}>{expiryLabel(policy.expiry_tracking_mode)}</span></td>
-                        <td><button type="button" className={styles.miniButton} onClick={() => choose(policy.base_variant_id)}>Sửa</button></td>
-                      </tr>
-                    ))}
+                    {filteredCandidates.length === 0 ? <tr><td colSpan={6} className={styles.subtle}>Không có SKU tồn chuẩn phù hợp.</td></tr> : filteredCandidates.map((candidate, rowIndex) => {
+                      const policy = policyByVariantId.get(candidate.base_variant_id);
+                      return (
+                        <tr key={candidate.base_variant_id}>
+                          <BusinessTableSequenceCell rowIndex={rowIndex} />
+                          <td><div className={styles.mono}>{candidate.base_sku}</div><div className={styles.subtle}>{candidate.product_code} · {candidate.product_name}</div></td>
+                          <td><span className={styles.pill}>{policy ? 'Đã thiết lập' : 'Chưa thiết lập'}</span></td>
+                          <td>{policy ? <span className={styles.pill}>{lotLabel(policy.lot_tracking_mode)}</span> : <span className={styles.subtle}>—</span>}</td>
+                          <td>{policy ? <span className={styles.pill}>{expiryLabel(policy.expiry_tracking_mode)}</span> : <span className={styles.subtle}>—</span>}</td>
+                          <td><button type="button" className={styles.miniButton} onClick={() => choose(candidate.base_variant_id)}>{policy ? 'Sửa' : 'Thiết lập'}</button></td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
             </div>
 
             <form className={styles.panel} onSubmit={(event) => { event.preventDefault(); void save(); }}>
-              <h3 className={styles.panelTitle}>Tạo hoặc sửa chính sách</h3>
-              <p className={styles.panelCopy}>Vị trí không còn thiết lập theo SKU. Muốn thay đổi cách quản lý vị trí, vào Cơ cấu Công Ty → Kho hàng.</p>
+              <h3 className={styles.panelTitle}>Thiết lập quản lý lô và hạn dùng</h3>
+              <p className={styles.panelCopy}>Vị trí được quản lý tại Cơ cấu Công Ty → Kho hàng. Chính sách ở đây chỉ quyết định lô và hạn sử dụng cho SKU tồn chuẩn.</p>
               <div className={styles.formGrid}>
                 <label className={styles.field}>
-                  <span>SKU hàng hóa</span>
+                  <span>SKU tồn chuẩn</span>
                   <select className={styles.selectInput} value={draft.baseVariantId} onChange={(event) => choose(event.target.value)}>
-                    <option value="">Chọn SKU</option>
+                    <option value="">Chọn SKU tồn chuẩn</option>
                     {candidates.map((candidate) => (
                       <option key={candidate.base_variant_id} value={candidate.base_variant_id} disabled={!candidate.base_variant_active || !candidate.product_active}>
-                        {candidate.base_sku} — {candidate.product_name}{candidate.has_policy ? ' · đã có chính sách' : ''}
+                        {candidate.base_sku} — {candidate.product_name}{candidate.has_policy ? ' · đã thiết lập' : ' · chưa thiết lập'}
                       </option>
                     ))}
                   </select>
                 </label>
                 <label className={styles.field}>
                   <span>Quản lý lô</span>
-                  <select className={styles.selectInput} value={draft.lotTrackingMode} onChange={(event) => setDraft((current) => ({ ...current, lotTrackingMode: event.target.value as Draft['lotTrackingMode'] }))}>
+                  <select
+                    className={styles.selectInput}
+                    value={draft.lotTrackingMode}
+                    onChange={(event) => {
+                      const value = event.target.value as Draft['lotTrackingMode'];
+                      setDraft((current) => ({
+                        ...current,
+                        lotTrackingMode: value,
+                        expiryTrackingMode: value === 'NONE' ? 'NONE' : current.expiryTrackingMode,
+                      }));
+                    }}
+                  >
                     <option value="NONE">Không quản lý theo lô</option>
                     <option value="REQUIRED">Bắt buộc quản lý theo lô</option>
                   </select>
                 </label>
                 <label className={styles.field}>
                   <span>Hạn sử dụng</span>
-                  <select className={styles.selectInput} value={draft.expiryTrackingMode} onChange={(event) => setDraft((current) => ({ ...current, expiryTrackingMode: event.target.value as Draft['expiryTrackingMode'] }))}>
+                  <select
+                    className={styles.selectInput}
+                    value={draft.expiryTrackingMode}
+                    disabled={draft.lotTrackingMode === 'NONE'}
+                    onChange={(event) => setDraft((current) => ({ ...current, expiryTrackingMode: event.target.value as Draft['expiryTrackingMode'] }))}
+                  >
                     <option value="NONE">Không quản lý hạn sử dụng</option>
                     <option value="OPTIONAL">Có thể nhập hạn sử dụng</option>
                     <option value="REQUIRED">Bắt buộc nhập hạn sử dụng</option>

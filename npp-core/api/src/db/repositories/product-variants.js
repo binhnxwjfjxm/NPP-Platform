@@ -12,6 +12,25 @@ const BASE_SELECT = `SELECT ${PRODUCT_VARIANT_COLUMNS}
   LEFT JOIN shared.units_of_measure u
     ON u.installation_id = pv.installation_id AND u.id = pv.unit_id`;
 
+async function ensureDefaultTrackingPolicy(client, { installationId, baseVariantId, actorId }) {
+  await client.query(
+    `INSERT INTO inventory.product_tracking_policies (
+       installation_id,
+       base_variant_id,
+       lot_tracking_mode,
+       expiry_tracking_mode,
+       location_required,
+       version,
+       created_at,
+       created_by,
+       updated_at,
+       updated_by
+     ) VALUES ($1, $2, 'NONE', 'NONE', false, 1, now(), $3, now(), $3)
+     ON CONFLICT (installation_id, base_variant_id) DO NOTHING`,
+    [installationId, baseVariantId, actorId],
+  );
+}
+
 export async function getProductVariantByIdForInstallation(client, { id, installationId }) {
   const result = await client.query(
     `${BASE_SELECT}
@@ -80,6 +99,13 @@ export async function insertProductVariant(client, {
       now, now, createdBy, createdBy],
   );
   if (!result.rows[0]) return null;
+  if (isInventoryBase) {
+    await ensureDefaultTrackingPolicy(client, {
+      installationId,
+      baseVariantId: variantId,
+      actorId: createdBy,
+    });
+  }
   return getProductVariantByIdForInstallation(client, { id: variantId, installationId });
 }
 
@@ -114,6 +140,13 @@ export async function updateProductVariant(client, {
       weightValue, weightUomCode, updatedBy, id, installationId],
   );
   if (!result.rows[0]) return null;
+  if (isInventoryBase) {
+    await ensureDefaultTrackingPolicy(client, {
+      installationId,
+      baseVariantId: id,
+      actorId: updatedBy,
+    });
+  }
   return getProductVariantByIdForInstallation(client, { id, installationId });
 }
 
