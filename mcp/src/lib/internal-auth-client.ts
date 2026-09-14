@@ -32,7 +32,8 @@ export function mcpCoreBaseUrl(): string {
   if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) {
     throw new Error("MCP_CORE_NOT_CONFIGURED");
   }
-  if (process.env.NODE_ENV === "production" && url.protocol !== "https:") {
+  const loopback = new Set(["127.0.0.1", "localhost", "::1"]).has(url.hostname);
+  if (process.env.NODE_ENV === "production" && url.protocol !== "https:" && !loopback) {
     throw new Error("MCP_CORE_HTTPS_REQUIRED");
   }
   url.pathname = url.pathname.replace(/\/$/, "");
