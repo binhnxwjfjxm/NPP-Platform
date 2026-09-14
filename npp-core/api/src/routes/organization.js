@@ -18,6 +18,49 @@ function createError(code, message, details = {}, retryable = false, statusCode 
   return { code, message, details, retryable, statusCode };
 }
 
+const NOT_FOUND_SERVICE_CODES = new Set([
+  'NOT_FOUND',
+  'BRANCH_NOT_FOUND',
+  'WAREHOUSE_NOT_FOUND',
+]);
+
+const CONFLICT_SERVICE_CODES = new Set([
+  'DUPLICATE_CODE',
+  'CANNOT_DEACTIVATE',
+  'CONFLICT',
+  'STALE_VERSION',
+  'DOMAIN_CONFLICT',
+  'BRANCH_INACTIVE',
+  'WAREHOUSE_INACTIVE',
+]);
+
+const CONFLICT_DETAIL_CODES = new Set([
+  'ACTIVE_DEPENDENTS',
+  'STALE_VERSION',
+  'DOMAIN_CONFLICT',
+]);
+
+function statusForServiceResult(result) {
+  const code = typeof result?.code === 'string' ? result.code : '';
+  const conflictCode = typeof result?.details?.conflictCode === 'string'
+    ? result.details.conflictCode
+    : '';
+
+  if (NOT_FOUND_SERVICE_CODES.has(code) || code.endsWith('_NOT_FOUND')) return 404;
+  if (CONFLICT_SERVICE_CODES.has(code) || CONFLICT_DETAIL_CODES.has(conflictCode)) return 409;
+  return 400;
+}
+
+function serviceResultError(result, statusCode = statusForServiceResult(result)) {
+  return createError(
+    result?.code || 'INVALID_REQUEST',
+    result?.message || 'Request could not be completed',
+    result?.details ?? {},
+    Boolean(result?.retryable),
+    statusCode,
+  );
+}
+
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function parseUrl(pathname) {
@@ -469,7 +512,7 @@ export async function handleOrganizationRoutes(req, res, options) {
   return false; // Not handled
 }
 
-export { requireIdempotencyKey };
+export { requireIdempotencyKey, statusForServiceResult, serviceResultError };
 
 // ============================================================
 // WAREHOUSE HANDLERS
@@ -972,7 +1015,7 @@ async function handlePatchLocationById(req, res, { requestContext, getPool, requ
   } catch (error) {
     if (error?.serviceResult) {
       const result = error.serviceResult;
-      const statusCode = result.code === 'NOT_FOUND' ? 404 : 400;
+      const statusCode = statusForServiceResult(result);
       sendError(res, serviceResultError(result, statusCode), requestId, receivedAt);
       return;
     }
