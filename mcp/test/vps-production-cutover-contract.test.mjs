@@ -138,14 +138,21 @@ test('Delivery and Retail deployments cannot silently rewire Công Ty back to He
   for (const source of [deliveryWorkflow, deliveryScript, retailWorkflow, retailScript]) {
     assert.doesNotMatch(source, /HEROKU_API_KEY|CORE_HEROKU_APP_NAME|api\.heroku\.com/);
   }
-  for (const script of [deliveryScript, retailScript]) {
-    assert.match(script, /vercel@58\.0\.0 pull --yes --environment=production/);
-    assert.match(script, /\.vercel\/\.env\.production\.local/);
-    assert.match(script, /CORE_API_INTERNAL_URL/);
-    assert.match(script, /hostname\.endsWith\('\.herokuapp\.com'\)/);
-    assert.match(script, /\/health\/live/);
-    assert.match(script, /\/health\/ready/);
-  }
+
+  assert.match(deliveryScript, /vercel@58\.0\.0 pull --yes --environment=production/);
+  assert.match(deliveryScript, /\.vercel\/\.env\.production\.local/);
+  assert.match(deliveryScript, /CORE_API_INTERNAL_URL/);
+  assert.match(deliveryScript, /hostname\.endsWith\('\.herokuapp\.com'\)/);
+  assert.match(deliveryScript, /\/health\/live/);
+  assert.match(deliveryScript, /\/health\/ready/);
+
+  assert.match(retailScript, /v10\/projects\/\$project_id\/env\?teamId=\$VERCEL_ORG_ID/);
+  assert.match(retailScript, /entry\?\.key === 'CORE_API_INTERNAL_URL'/);
+  assert.match(retailScript, /entry\.target\.includes\('production'\)/);
+  assert.match(retailScript, /matches\[0\]\.type === 'plain'/);
+  assert.match(retailScript, /vercel@58\.0\.0 deploy --prod --yes/);
+  assert.match(retailScript, /\/api\/cong-ty\/health/);
+  assert.doesNotMatch(retailScript, /vercel@58\.0\.0 pull --yes --environment=production|\.vercel\/\.env\.production\.local|--prebuilt/);
 });
 
 test('runtime manifest locks target topology and Gate B through F completion contract', async () => {

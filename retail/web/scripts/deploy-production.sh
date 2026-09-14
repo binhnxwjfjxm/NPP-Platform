@@ -47,36 +47,29 @@ const config = JSON.parse(await readFile('retail/web/vercel.json', 'utf8'));
 if (config.git?.deploymentEnabled !== false) throw new Error('retail_auto_deploy_not_locked');
 NODE
 
-# Provider target is owned by Vercel production configuration. Never derive or overwrite it from Heroku.
-mkdir -p .vercel
-printf '{"orgId":"%s","projectId":"%s"}\n' "$VERCEL_ORG_ID" "$project_id" > .vercel/project.json
-npx --yes vercel@58.0.0 pull --yes --environment=production --token="$VERCEL_TOKEN" >/dev/null
-test "$(jq -r '.projectId' .vercel/project.json)" = "$project_id"
-test -s .vercel/.env.production.local
-set -a
-# shellcheck disable=SC1091
-source .vercel/.env.production.local
-set +a
-: "${CORE_API_INTERNAL_URL:?Retail production requires CORE_API_INTERNAL_URL in Vercel production env}"
-echo "::add-mask::$CORE_API_INTERNAL_URL"
-CORE_URL="$CORE_API_INTERNAL_URL" node --input-type=module <<'NODE'
-const url = new URL(process.env.CORE_URL);
-if (url.protocol !== 'https:' || url.username || url.password) throw new Error('invalid_company_api_url');
-if (url.hostname.endsWith('.herokuapp.com')) throw new Error('retail_company_api_must_not_point_to_heroku');
+# Provider target is owned by Vercel production configuration. The cutover stores
+# CORE_API_INTERNAL_URL as a Sensitive value, so the deploy path must validate only
+# its metadata here and let Vercel inject the value during the remote production build.
+env_metadata_json="${RUNNER_TEMP}/retail-production-env-metadata.json"
+status="$(curl --silent --show-error --output "$env_metadata_json" --write-out '%{http_code}' \
+  -H "Authorization: Bearer $VERCEL_TOKEN" \
+  "https://api.vercel.com/v10/projects/$project_id/env?teamId=$VERCEL_ORG_ID")"
+test "$status" = 200
+ENV_METADATA_JSON="$env_metadata_json" node --input-type=module <<'NODE'
+import { readFileSync } from 'node:fs';
+const payload = JSON.parse(readFileSync(process.env.ENV_METADATA_JSON, 'utf8'));
+const matches = (Array.isArray(payload.envs) ? payload.envs : []).filter((entry) => (
+  entry?.key === 'CORE_API_INTERNAL_URL'
+  && Array.isArray(entry.target)
+  && entry.target.includes('production')
+));
+if (matches.length !== 1) throw new Error('retail_company_api_production_binding_missing_or_ambiguous');
+if (matches[0].type === 'plain') throw new Error('retail_company_api_binding_must_not_be_plain');
 NODE
 
-smoke_company() {
-  local path="$1" deadline=$((SECONDS + 180)) status=""
-  while [ "$SECONDS" -lt "$deadline" ]; do
-    status="$(curl --silent --show-error --connect-timeout 5 --max-time 10 --output /dev/null --write-out '%{http_code}' "$CORE_API_INTERNAL_URL$path" || true)"
-    [ "$status" = 200 ] && return 0
-    sleep 3
-  done
-  echo "Công Ty health smoke failed for $path; last status=${status:-none}." >&2
-  return 1
-}
-smoke_company /health/live
-smoke_company /health/ready
+mkdir -p .vercel
+printf '{"orgId":"%s","projectId":"%s"}\n' "$VERCEL_ORG_ID" "$project_id" > .vercel/project.json
+test "$(jq -r '.projectId' .vercel/project.json)" = "$project_id"
 
 (
   cd retail/web
@@ -84,8 +77,9 @@ smoke_company /health/ready
   npm run verify
 )
 
-npx --yes vercel@58.0.0 build --prod --token="$VERCEL_TOKEN"
-deployment_url="$(npx --yes vercel@58.0.0 deploy --prebuilt --prod --token="$VERCEL_TOKEN")"
+# Do not prebuild locally: Sensitive production env values are intentionally not
+# readable through `vercel pull`. A remote production build receives them inside Vercel.
+deployment_url="$(npx --yes vercel@58.0.0 deploy --prod --yes --token="$VERCEL_TOKEN")"
 test -n "$deployment_url"
 
 smoke_url="https://$RETAIL_DOMAIN"
