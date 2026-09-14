@@ -271,6 +271,7 @@ old_admin_core="$(project_env_value "$PROJECT_ADMIN" CORE_API_INTERNAL_URL)"
 old_delivery_core="$(project_env_value "$PROJECT_DELIVERY" CORE_API_INTERNAL_URL)"
 old_retail_core="$(project_env_value "$PROJECT_RETAIL" CORE_API_INTERNAL_URL)"
 old_ordering_core="$(project_env_value "$PROJECT_ORDERING" CORE_API_BASE_URL)"
+old_mcp_core="$(project_env_value "$PROJECT_MCP" CORE_API_INTERNAL_URL)"
 old_mcp_backend="$(project_env_value "$PROJECT_MCP" BACKEND_API_BASE_URL)"
 echo 'GATE_B_STAGE=VERCEL_BINDINGS_CAPTURED' >> "$REPORT_FILE"
 

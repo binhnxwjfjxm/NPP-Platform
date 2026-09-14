@@ -23,6 +23,7 @@ restore_vercel_bindings() {
   upsert_env "$PROJECT_DELIVERY" CORE_API_INTERNAL_URL "$old_delivery_core"
   upsert_env "$PROJECT_RETAIL" CORE_API_INTERNAL_URL "$old_retail_core"
   upsert_env "$PROJECT_ORDERING" CORE_API_BASE_URL "$old_ordering_core"
+  upsert_env "$PROJECT_MCP" CORE_API_INTERNAL_URL "$old_mcp_core"
   upsert_env "$PROJECT_MCP" BACKEND_API_BASE_URL "$old_mcp_backend"
   while IFS=$'\t' read -r pid name url; do
     [ -n "$pid" ] || continue
@@ -46,6 +47,7 @@ upsert_env "$PROJECT_ADMIN" CORE_API_INTERNAL_URL "$company_api_url"
 upsert_env "$PROJECT_DELIVERY" CORE_API_INTERNAL_URL "$company_api_url"
 upsert_env "$PROJECT_RETAIL" CORE_API_INTERNAL_URL "$company_api_url"
 upsert_env "$PROJECT_ORDERING" CORE_API_BASE_URL "$company_api_url"
+upsert_env "$PROJECT_MCP" CORE_API_INTERNAL_URL "$company_api_url"
 upsert_env "$PROJECT_MCP" BACKEND_API_BASE_URL "$mcp_api_url"
 vercel_mutated=true
 for spec in "$PROJECT_COMPANY:npp-platform" "$PROJECT_ADMIN:admin-mcp-npp" "$PROJECT_DELIVERY:npp-delivery" "$PROJECT_RETAIL:npp-retail" "$PROJECT_ORDERING:customer-ordering" "$PROJECT_MCP:mcp-field"; do

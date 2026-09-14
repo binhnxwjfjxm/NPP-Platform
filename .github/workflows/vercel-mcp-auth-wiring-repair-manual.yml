@@ -1,0 +1,177 @@
+name: Repair MCP auth wiring production
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  actions: read
+  issues: write
+
+concurrency:
+  group: repair-mcp-auth-wiring-production
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    if: >-
+      github.event.issue.number == 5 &&
+      github.event.comment.body == '/repair-mcp-auth-wiring-production' &&
+      contains(fromJSON('["binhnxwjfjxm","khuongbinhinfo-a11y"]'), github.actor)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      VERCEL_ORG_ID: team_hBA8rX68UHC8ogvREkOyQlJ2
+      VERCEL_PROJECT_ID: prj_854SWdJeDEOPezAvvTZzTaRvZUSq
+      MCP_PRODUCTION_URL: https://mcp.nguyenlieuhungphat.com
+      VPS_COMPANY_HOST: ${{ vars.VPS_COMPANY_HOST }}
+      VPS_MCP_HOST: ${{ vars.VPS_MCP_HOST }}
+
+    steps:
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Lock exact main SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Require exact-head Foundation CI green
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          result="$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/workflows/foundation-f0-2.yml/runs?head_sha=$TARGET_SHA&event=push&per_page=20")"
+          success="$(jq -r '[.workflow_runs[] | select(.status=="completed" and .conclusion=="success")][0].id // empty' <<<"$result")"
+          test -n "$success"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Preflight production endpoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$VPS_COMPANY_HOST"
+          test -n "$VPS_MCP_HOST"
+          company_url="https://$VPS_COMPANY_HOST"
+          mcp_url="https://$VPS_MCP_HOST"
+          for url in "$company_url/health/live" "$company_url/health/ready" "$mcp_url/health/live" "$mcp_url/health/ready"; do
+            code="$(curl --silent --show-error --connect-timeout 5 --max-time 20 --output /dev/null --write-out '%{http_code}' "$url" || true)"
+            test "$code" = 200
+          done
+          auth_code="$(curl --silent --show-error --connect-timeout 5 --max-time 20 --output /dev/null --write-out '%{http_code}' "$company_url/api/internal-auth/me" || true)"
+          test "$auth_code" = 401
+          echo "COMPANY_API_URL=$company_url" >> "$GITHUB_ENV"
+
+      - name: Verify MCP provider bindings before repair
+        id: provider
+        shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$VERCEL_TOKEN"
+          echo "::add-mask::$VERCEL_TOKEN"
+          metadata="$RUNNER_TEMP/mcp-env-before.json"
+          status="$(curl --silent --show-error --output "$metadata" --write-out '%{http_code}' \
+            -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v10/projects/$VERCEL_PROJECT_ID/env?teamId=$VERCEL_ORG_ID")"
+          test "$status" = 200
+          ENV_METADATA="$metadata" node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          const payload = JSON.parse(readFileSync(process.env.ENV_METADATA, "utf8"));
+          const envs = Array.isArray(payload.envs) ? payload.envs : [];
+          for (const key of ["BACKEND_API_BASE_URL", "BACKEND_API_TOKEN"]) {
+            const matches = envs.filter((entry) => entry?.key === key && Array.isArray(entry.target) && entry.target.includes("production"));
+            if (matches.length !== 1) throw new Error(`${key.toLowerCase()}_production_binding_missing_or_ambiguous`);
+            if (matches[0].type === "plain") throw new Error(`${key.toLowerCase()}_must_not_be_plain`);
+          }
+          NODE
+          current="$(curl --fail --silent --show-error \
+            -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v6/deployments?projectId=$VERCEL_PROJECT_ID&target=production&state=READY&limit=1&teamId=$VERCEL_ORG_ID" \
+            | jq -r '.deployments[0].url // empty')"
+          test -n "$current"
+          echo "deployment=https://$current" >> "$GITHUB_OUTPUT"
+
+      - name: Repair only MCP Công Ty auth binding
+        shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -euo pipefail
+          body="$(jq -nc --arg value "$COMPANY_API_URL" '[{key:"CORE_API_INTERNAL_URL",value:$value,type:"sensitive",target:["production"]}]')"
+          status="$(curl --silent --show-error --output "$RUNNER_TEMP/mcp-auth-binding-upsert.json" --write-out '%{http_code}' \
+            -X POST \
+            -H "Authorization: Bearer $VERCEL_TOKEN" \
+            -H 'Content-Type: application/json' \
+            --data "$body" \
+            "https://api.vercel.com/v10/projects/$VERCEL_PROJECT_ID/env?teamId=$VERCEL_ORG_ID&upsert=true")"
+          case "$status" in 200|201) ;; *) exit 1 ;; esac
+
+      - name: Redeploy current MCP production source only
+        id: redeploy
+        shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          CURRENT_DEPLOYMENT: ${{ steps.provider.outputs.deployment }}
+        run: |
+          set -euo pipefail
+          url="$(npx --yes vercel@58.0.0 redeploy "$CURRENT_DEPLOYMENT" --target=production --token="$VERCEL_TOKEN")"
+          test -n "$url"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke repaired MCP login connectivity
+        shell: bash
+        run: |
+          set -euo pipefail
+          ready=false
+          for attempt in $(seq 1 12); do
+            login_code="$(curl --silent --show-error --connect-timeout 5 --max-time 20 -H 'Accept: text/html' --output /dev/null --write-out '%{http_code}' "$MCP_PRODUCTION_URL/login" || true)"
+            if [ "$login_code" = 200 ]; then ready=true; break; fi
+            sleep 5
+          done
+          test "$ready" = true
+          headers="$RUNNER_TEMP/mcp-auth-repair-headers.txt"
+          status="$(curl --silent --show-error --connect-timeout 5 --max-time 20 \
+            --request POST \
+            --header 'Content-Type: application/x-www-form-urlencoded' \
+            --data-urlencode 'username=__mcp_auth_repair_never_exists__' \
+            --data-urlencode 'password=not-a-real-password' \
+            --data-urlencode 'returnTo=/customers' \
+            --dump-header "$headers" \
+            --output /dev/null \
+            --write-out '%{http_code}' \
+            "$MCP_PRODUCTION_URL/api/auth/login" || true)"
+          test "$status" = 303
+          location="$(awk 'BEGIN{IGNORECASE=1} /^location:/{sub(/^[^:]*:[[:space:]]*/,""); sub(/\r$/,""); print; exit}' "$headers")"
+          case "$location" in
+            *error=invalid_credentials*) ;;
+            *auth_unavailable*) echo 'mcp_company_auth_still_unavailable' >&2; exit 1 ;;
+            *) echo 'unexpected_mcp_login_redirect' >&2; exit 1 ;;
+          esac
+
+      - name: Publish sanitized repair evidence
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          gh issue comment 1058 --body "MCP auth wiring repair: ${JOB_STATUS}. Source contract SHA: ${{ steps.source.outputs.sha }}. Production change scope: only MCP Field CORE_API_INTERNAL_URL + redeploy of the existing MCP production source. Công Ty/MCP backend, PostgreSQL and the 300 proxy listeners were not restarted or mutated."

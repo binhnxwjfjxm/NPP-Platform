@@ -62,16 +62,18 @@ Không dùng CA test `npp958-company.test` cho production. Không mang `NODE_EXT
 | Frontend | Vercel project | Production binding sau cutover |
 | --- | --- | --- |
 | Công Ty | `npp-platform` | `CORE_API_INTERNAL_URL` + `NEXT_PUBLIC_CORE_API_URL` -> Công Ty VPS HTTPS |
-| MCP Field | `mcp-field` | `BACKEND_API_BASE_URL` -> MCP VPS HTTPS |
+| MCP Field | `mcp-field` | `CORE_API_INTERNAL_URL` -> Công Ty VPS HTTPS **và** `BACKEND_API_BASE_URL` -> MCP VPS HTTPS |
 | Admin | `admin-mcp-npp` | `CORE_API_INTERNAL_URL` -> Công Ty VPS HTTPS |
 | Delivery | `npp-delivery` | `CORE_API_INTERNAL_URL` -> Công Ty VPS HTTPS |
 | Retail | `npp-retail` | `CORE_API_INTERNAL_URL` -> Công Ty VPS HTTPS |
 | Customer Ordering | `customer-ordering` | `CORE_API_BASE_URL` -> Công Ty VPS HTTPS |
 | Website | `nguyenlieuhungphat` | không có backend binding trong contract hiện tại; giữ nguyên |
 
+MCP Field có **hai dependency độc lập**: đăng nhập/phiên nhân sự đi qua Công Ty, còn nghiệp vụ MCP đi qua backend MCP. Không được chỉ cấu hình một trong hai rồi coi frontend MCP đã hoàn tất cutover.
+
 Mỗi binding cũ phải được đọc từ Vercel production trước mutation. Nếu fail trước lúc mở write, rollback phải trả đúng từng giá trị cũ, không giả định tất cả bằng cùng một URL Heroku.
 
-Delivery và Retail production deploy **không được** gọi Heroku API để tự tìm lại Công Ty URL. Hai deploy path này phải dùng `CORE_API_INTERNAL_URL` đã được cấu hình trong Vercel production và fail closed nếu nó còn trỏ `*.herokuapp.com`.
+Delivery và Retail production deploy **không được** gọi Heroku API để tự tìm lại Công Ty URL. MCP Field production deploy cũng **không được** gọi Heroku API để tự tìm lại Công Ty hoặc MCP URL; hai URL phải lấy từ provider VPS production đã khóa và `BACKEND_API_TOKEN` tiếp tục thuộc Vercel server-side secret store.
 
 ## 6. Manual-only final workflow
 
