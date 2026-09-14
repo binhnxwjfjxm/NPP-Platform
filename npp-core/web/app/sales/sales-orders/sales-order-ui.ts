@@ -6,6 +6,7 @@ import {
 import { formatExactDecimal } from '../../../lib/decimal-display.js';
 import type { SalesOrder, SalesOrderVersion } from '../../../lib/sales-order-types';
 import {
+  configureSalesOrderSkuCatalogDefaults,
   readSalesOrderSkuSearchCache,
   rememberSalesOrderSkuSearchRows,
   warmSalesOrderSkuCatalog,
@@ -246,6 +247,9 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
       payload?.error?.details ?? {},
       response.status,
     );
+  }
+  if (requestMethod === 'GET' && path === '/api/sales-orders/entry-settings') {
+    configureSalesOrderSkuCatalogDefaults(payload.data);
   }
   if (requestMethod === 'GET' && path.startsWith('/api/sales-orders/sku-search?')) {
     rememberSalesOrderSkuSearchRows(payload.data);

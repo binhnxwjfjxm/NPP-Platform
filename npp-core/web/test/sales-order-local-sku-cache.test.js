@@ -29,6 +29,16 @@ test('Làm ấm catalog tải tuần tự, có trần và tự bỏ local nếu 
   assert.match(helper, /savedAt: memorySavedAt, rows: memoryRows/);
 });
 
+test('Local SKU chỉ dùng sau khi nhận thuế mặc định hiện hành và luôn phủ thuế mới lên cache', async () => {
+  const helper = await read('app/sales/sales-orders/sales-order-sku-local-cache.ts');
+  const ui = await read('app/sales/sales-orders/sales-order-ui.ts');
+
+  assert.match(helper, /configureSalesOrderSkuCatalogDefaults/);
+  assert.match(helper, /!currentTaxDefaults\) return null/);
+  assert.match(helper, /matches\.map\(\(row\) => Object\.freeze\(\{ \.\.\.row, \.\.\.currentTaxDefaults \}\)\)/);
+  assert.match(ui, /configureSalesOrderSkuCatalogDefaults\(payload\.data\)/);
+});
+
 test('Tìm SKU dùng local trước, nhưng vẫn fallback backend và làm ấm cache từ cấu hình lập đơn', async () => {
   const ui = await read('app/sales/sales-orders/sales-order-ui.ts');
 

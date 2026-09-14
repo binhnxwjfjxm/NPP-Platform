@@ -1,6 +1,7 @@
 import type { SalesOrderSkuSearchOption } from '../../../lib/sales-order-types';
 
 type SalesOrderSkuCatalogRow = Omit<SalesOrderSkuSearchOption, 'pricePreview' | 'inventoryPreview'>;
+type CatalogTaxDefaults = Pick<SalesOrderSkuCatalogRow, 'defaultTaxMode' | 'defaultTaxRate'>;
 
 type CatalogRecord = Readonly<{
   savedAt: number;
@@ -28,6 +29,7 @@ let persistedLoadPromise: Promise<void> | null = null;
 let warmPromise: Promise<void> | null = null;
 let lastWarmAttemptAt = 0;
 let catalogDisabledForSession = false;
+let currentTaxDefaults: CatalogTaxDefaults | null = null;
 
 function normalizeSearchText(value: unknown): string {
   return String(value ?? '')
@@ -85,6 +87,24 @@ export function searchSalesOrderSkuCatalog(
       return String(left.id ?? '').localeCompare(String(right.id ?? ''));
     })
     .slice(safeOffset, safeOffset + safeLimit);
+}
+
+export function configureSalesOrderSkuCatalogDefaults(value: unknown): void {
+  if (!value || typeof value !== 'object') {
+    currentTaxDefaults = null;
+    return;
+  }
+  const candidate = value as { defaultTaxMode?: unknown; defaultTaxRate?: unknown };
+  const mode = String(candidate.defaultTaxMode ?? '').trim().toUpperCase();
+  const rate = String(candidate.defaultTaxRate ?? '').trim();
+  if (!['EXCLUSIVE', 'INCLUSIVE'].includes(mode) || !/^(?:0|[1-9]\d*)(?:\.\d{1,6})?$/.test(rate)) {
+    currentTaxDefaults = null;
+    return;
+  }
+  currentTaxDefaults = Object.freeze({
+    defaultTaxMode: mode as SalesOrderSkuCatalogRow['defaultTaxMode'],
+    defaultTaxRate: rate,
+  });
 }
 
 function parseSkuSearchRequest(path: string, init: RequestInit): SkuSearchRequest | null {
@@ -243,7 +263,7 @@ export async function readSalesOrderSkuSearchCache<T>(
   init: RequestInit = {},
 ): Promise<T | null> {
   const request = parseSkuSearchRequest(path, init);
-  if (!request || catalogDisabledForSession) return null;
+  if (!request || catalogDisabledForSession || !currentTaxDefaults) return null;
   await loadPersistedCatalog();
   if (!memoryRows?.length) {
     void warmSalesOrderSkuCatalog();
@@ -255,7 +275,7 @@ export async function readSalesOrderSkuSearchCache<T>(
   }
   const matches = searchSalesOrderSkuCatalog(memoryRows, request.term, request.limit, request.offset);
   if (matches.length === 0) return null;
-  return matches as T;
+  return matches.map((row) => Object.freeze({ ...row, ...currentTaxDefaults })) as T;
 }
 
 export function rememberSalesOrderSkuSearchRows(value: unknown): void {
