@@ -1,0 +1,198 @@
+name: Công Ty warehouse 500 read-only diagnostic
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  diagnose:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'agent/warehouse-500-inventory-zero-audit'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      VPS_COMPANY_HOST: ${{ vars.VPS_COMPANY_HOST }}
+      VPS_DB_HOST: ${{ vars.VPS_DB_HOST }}
+      VPS_SSH_USER: ${{ vars.VPS_SSH_USER }}
+
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prepare read-only SSH credentials
+        shell: bash
+        env:
+          VPS_COMPANY_SSH_KEY: ${{ secrets.VPS_COMPANY_SSH_KEY }}
+          VPS_DB_SSH_KEY: ${{ secrets.VPS_DB_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$VPS_COMPANY_HOST"
+          test -n "$VPS_DB_HOST"
+          test -n "$VPS_SSH_USER"
+          test -n "$VPS_COMPANY_SSH_KEY"
+          test -n "$VPS_DB_SSH_KEY"
+
+          umask 077
+          prepare_key() {
+            local raw="$1" host="$2" slug="$3"
+            local key="$RUNNER_TEMP/${slug}.key"
+            local known="$RUNNER_TEMP/${slug}.known"
+            printf '%s\n' "$raw" > "$key"
+            chmod 600 "$key"
+            ssh-keygen -y -f "$key" >/dev/null
+            ssh-keyscan -T 10 -H "$host" > "$known" 2>/dev/null
+            test -s "$known"
+            chmod 600 "$known"
+          }
+
+          prepare_key "$VPS_COMPANY_SSH_KEY" "$VPS_COMPANY_HOST" company
+          prepare_key "$VPS_DB_SSH_KEY" "$VPS_DB_HOST" db
+
+      - name: Collect Công Ty runtime evidence without mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/company.raw"
+          ssh \
+            -i "$RUNNER_TEMP/company.key" \
+            -o BatchMode=yes \
+            -o ConnectTimeout=10 \
+            -o ConnectionAttempts=1 \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/company.known" \
+            "$VPS_SSH_USER@$VPS_COMPANY_HOST" 'bash -s' > "$out" <<'REMOTE'
+          set -euo pipefail
+          service=npp-company-api.service
+          echo 'COMPANY_RUNTIME_BEGIN'
+          echo "service_state=$(systemctl is-active "$service" 2>/dev/null || true)"
+          echo "active_release=$(readlink -f /srv/npp/company/current 2>/dev/null | awk -F/ '{print $NF}')"
+          echo 'journal_window_begin'
+          sudo -n journalctl -u "$service" \
+            --since '2026-09-14 05:15:00 UTC' \
+            --until '2026-09-14 05:20:00 UTC' \
+            --no-pager -o short-iso-precise 2>/dev/null \
+            | grep -Ei 'audit_outbox_transaction_failed|database_checked_out_client_error|database_pool_idle_client_error|warehouse|error|fail|exception|timeout|cancel|permission|constraint|connection|ECONN|ETIMEDOUT|EPIPE|42501|57014|235[0-9A-Z]{2}' \
+            | tail -n 200 || true
+          echo 'journal_window_end'
+          echo 'nginx_window_begin'
+          sudo -n grep -E '14/Sep/2026:05:(16|17|18|19):' /var/log/nginx/access.log 2>/dev/null \
+            | grep -F '/api/warehouses/499cb31b-37db-4f63-a0ac-ad4e14a57357' \
+            | tail -n 40 || true
+          echo 'nginx_window_end'
+          echo 'COMPANY_RUNTIME_END'
+          REMOTE
+          test -s "$out"
+
+      - name: Collect production DB privilege and transaction evidence without mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/db.raw"
+          ssh \
+            -i "$RUNNER_TEMP/db.key" \
+            -o BatchMode=yes \
+            -o ConnectTimeout=10 \
+            -o ConnectionAttempts=1 \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/db.known" \
+            "$VPS_SSH_USER@$VPS_DB_HOST" 'bash -s' > "$out" <<'REMOTE'
+          set -euo pipefail
+          sudo -n -u postgres psql -XAt -v ON_ERROR_STOP=1 npp_production <<'SQL'
+          SELECT 'DB_RUNTIME_BEGIN';
+          SELECT 'role_exists=' || EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'npp_company_runtime');
+          SELECT 'shared_usage=' || has_schema_privilege('npp_company_runtime', 'shared', 'USAGE');
+          SELECT 'warehouses_select=' || has_table_privilege('npp_company_runtime', 'shared.warehouses', 'SELECT');
+          SELECT 'warehouses_update=' || has_table_privilege('npp_company_runtime', 'shared.warehouses', 'UPDATE');
+          SELECT 'warehouses_allow_negative_update=' || has_column_privilege('npp_company_runtime', 'shared.warehouses', 'allow_negative_stock', 'UPDATE');
+          SELECT 'audit_select=' || has_table_privilege('npp_company_runtime', 'shared.core_audit_records', 'SELECT');
+          SELECT 'audit_insert=' || has_table_privilege('npp_company_runtime', 'shared.core_audit_records', 'INSERT');
+          SELECT 'warehouse_columns=' || string_agg(attname, ',' ORDER BY attnum)
+            FROM pg_attribute
+           WHERE attrelid = 'shared.warehouses'::regclass
+             AND attnum > 0
+             AND NOT attisdropped;
+          SELECT 'warehouse_triggers=' || COALESCE(string_agg(tgname, ',' ORDER BY tgname), 'none')
+            FROM pg_trigger
+           WHERE tgrelid = 'shared.warehouses'::regclass
+             AND NOT tgisinternal;
+          SELECT 'warehouse_unvalidated_constraints=' || count(*)
+            FROM pg_constraint
+           WHERE conrelid = 'shared.warehouses'::regclass
+             AND NOT convalidated;
+          SELECT 'audit_unvalidated_constraints=' || count(*)
+            FROM pg_constraint
+           WHERE conrelid = 'shared.core_audit_records'::regclass
+             AND NOT convalidated;
+          SELECT 'warehouse_audit_rows_in_failure_window=' || count(*)
+            FROM shared.core_audit_records
+           WHERE resource_type = 'warehouse'
+             AND resource_id = '499cb31b-37db-4f63-a0ac-ad4e14a57357'
+             AND occurred_at >= timestamptz '2026-09-14 05:15:00+00'
+             AND occurred_at < timestamptz '2026-09-14 05:20:00+00';
+          SELECT 'warehouse_audit_actions_in_failure_window=' || COALESCE(string_agg(action || '@' || to_char(occurred_at AT TIME ZONE 'UTC', 'HH24:MI:SS.MS'), ',' ORDER BY occurred_at), 'none')
+            FROM shared.core_audit_records
+           WHERE resource_type = 'warehouse'
+             AND resource_id = '499cb31b-37db-4f63-a0ac-ad4e14a57357'
+             AND occurred_at >= timestamptz '2026-09-14 05:15:00+00'
+             AND occurred_at < timestamptz '2026-09-14 05:20:00+00';
+          SELECT 'company_current_connections=' || count(*)
+            FROM pg_stat_activity
+           WHERE usename = 'npp_company_runtime';
+          SELECT 'company_current_waiting_connections=' || count(*)
+            FROM pg_stat_activity
+           WHERE usename = 'npp_company_runtime'
+             AND wait_event IS NOT NULL;
+          SELECT 'DB_RUNTIME_END';
+          SQL
+          REMOTE
+          test -s "$out"
+
+      - name: Sanitize and publish diagnostic evidence to this PR
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          report="$RUNNER_TEMP/warehouse-500-diagnostic.md"
+          python3 - "$RUNNER_TEMP/company.raw" "$RUNNER_TEMP/db.raw" "$report" <<'PY'
+          import os, pathlib, re, sys
+
+          company_path, db_path, report_path = map(pathlib.Path, sys.argv[1:])
+          sections = []
+          for label, path in [('Công Ty runtime', company_path), ('Production DB', db_path)]:
+              text = path.read_text(errors='replace') if path.exists() else f'{label}=collection_failed_or_missing\n'
+              text = re.sub(r'(?i)(postgres(?:ql)?|https?)://\S+', '[redacted-url]', text)
+              text = re.sub(r'(?i)(authorization:\s*bearer\s+)\S+', r'\1[redacted]', text)
+              text = re.sub(r'(?i)\b(password|token|secret|api[_-]?key)\s*[=:]\s*\S+', r'\1=[redacted]', text)
+              text = re.sub(r'(?<![A-Za-z0-9])(?:\d{1,3}\.){3}\d{1,3}(?![A-Za-z0-9])', '<ip>', text)
+              sections.append((label, text.strip() or '(không có dòng phù hợp)'))
+
+          with report_path.open('w') as handle:
+              handle.write('## Audit lỗi sửa kho 500 — chỉ đọc\n\n')
+              handle.write(f'- PR head: `{os.environ.get("PR_HEAD_SHA", "unknown")}`\n')
+              handle.write('- Cửa sổ sự cố: `2026-09-14 05:15–05:20 UTC` (12:15–12:20 GMT+7).\n')
+              handle.write('- Không deploy, restart, migration, SQL ghi dữ liệu hoặc sửa cấu hình.\n')
+              for label, text in sections:
+                  handle.write(f'\n### {label}\n```text\n{text}\n```\n')
+          PY
+          cat "$report" >> "$GITHUB_STEP_SUMMARY"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
+            -f body="$(cat "$report")" >/dev/null

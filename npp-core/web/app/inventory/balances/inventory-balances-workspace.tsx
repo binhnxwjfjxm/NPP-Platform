@@ -84,6 +84,11 @@ function quantityToScaled(value: string): bigint {
   return sign * (whole * QUANTITY_SCALE + fraction);
 }
 
+function hasDisplayableBalance(balance: InventoryBalance): boolean {
+  return quantityToScaled(balance.on_hand_quantity) !== 0n
+    || quantityToScaled(balance.reserved_quantity) !== 0n;
+}
+
 function scaledToQuantity(value: bigint): string {
   const sign = value < 0n ? '-' : '';
   const absolute = value < 0n ? -value : value;
@@ -234,7 +239,7 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
   const [notice, setNotice] = useState<Notice>(null);
 
   const normalizedSearch = normalizeSearch(search);
-  const filteredBalances = useMemo(() => balances.filter((balance) => !normalizedSearch || matchTerm(
+  const filteredBalances = useMemo(() => balances.filter((balance) => hasDisplayableBalance(balance) && (!normalizedSearch || matchTerm(
     balance.product_name,
     balance.product_code,
     balance.warehouse_code,
@@ -251,7 +256,7 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
     balance.package_unit_name,
     balance.lot_code,
     balance.expiry_date,
-  ).includes(normalizedSearch)), [balances, normalizedSearch]);
+  ).includes(normalizedSearch))), [balances, normalizedSearch]);
   const pageCount = Math.max(1, Math.ceil(filteredBalances.length / INVENTORY_TABLE_PAGE_SIZE));
   const effectivePage = Math.min(page, pageCount - 1);
   const pageStart = effectivePage * INVENTORY_TABLE_PAGE_SIZE;
@@ -333,7 +338,7 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
       setSelectedBalance((current) => current
         ? next.find((item) => balanceKey(item) === balanceKey(current)) ?? null
         : null);
-      setNotice({ kind: 'success', message: `Đã làm mới ${next.length} dòng tồn kho.` });
+      setNotice({ kind: 'success', message: `Đã làm mới ${next.filter(hasDisplayableBalance).length} dòng tồn kho.` });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Không tải được dữ liệu tồn kho');
     } finally {

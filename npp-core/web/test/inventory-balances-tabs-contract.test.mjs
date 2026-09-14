@@ -13,6 +13,16 @@ test('Tra cứu tồn kho renders Tồn kho and Lịch sử kho as exclusive tab
   assert.equal(inventory.includes('inventory-drilldown-panel'), false);
 });
 
+test('Tồn kho hides empty projection rows without removing warehouse history lookup', () => {
+  assert.match(inventory, /function hasDisplayableBalance\(balance: InventoryBalance\): boolean/);
+  assert.match(
+    inventory,
+    /quantityToScaled\(balance\.on_hand_quantity\) !== 0n\s*\|\|\s*quantityToScaled\(balance\.reserved_quantity\) !== 0n/,
+  );
+  assert.match(inventory, /balances\.filter\(\(balance\) => hasDisplayableBalance\(balance\) && \(!normalizedSearch/);
+  assert.match(inventory, /const candidate = balances\.find\(\(balance\) => \{/);
+});
+
 test('Lịch sử kho always uses canonical warehouse scope', () => {
   assert.ok(inventory.includes('/api/inventory/balances/history?'));
   assert.ok(inventory.includes("scope: 'warehouse'"));
