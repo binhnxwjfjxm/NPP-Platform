@@ -36,9 +36,10 @@ import styles from './sales-orders.module.css';
 
 export type SalesOrderFormMode = 'create' | 'draft' | 'amendment' | 'manual-edit';
 
-const SEARCH_DELAY_MS = 120;
+const SEARCH_DELAY_MS = 200;
 const SEARCH_PAGE_SIZE = 30;
 const REPRICE_DELAY_MS = 320;
+const REPRICE_CONCURRENCY = 4;
 const SCALE = 1_000_000n;
 const HUNDRED = 100n * SCALE;
 
@@ -364,6 +365,28 @@ function withPendingSearchPreview(option: Omit<SalesOrderSkuSearchOption, 'price
   };
 }
 
+async function runWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  task: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  async function worker() {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await task(items[index]);
+    }
+  }
+  const workers = Array.from(
+    { length: Math.min(Math.max(1, limit), items.length) },
+    () => worker(),
+  );
+  await Promise.all(workers);
+  return results;
+}
+
 function pricingSummary(line: LineDraft): string {
   if (!line.pricingFingerprint) return 'Chưa có giá Công Ty';
   if (line.priceSteps.some((step) => step.kind === 'HISTORY_REFERENCE')) return 'Giá lần mua trước';
@@ -460,8 +483,9 @@ export default function SalesOrderCommercialForm(props: Props) {
   const variantRefs = useRef(new Map<string, HTMLSelectElement>());
   const pricingContextRef = useRef('');
   const preserveSavedPricingOnInitialOpenRef = useRef(props.mode !== 'create' && Boolean(version?.lines?.length));
-  const quantitySignatureRef = useRef('');
-  const pricingRunRef = useRef(0);
+  const quantitySnapshotRef = useRef(new Map(lines.map((line) => [line.clientLineId, line.quantity])));
+  const quantityRepricePendingRef = useRef(new Set<string>());
+  const pricingGenerationRef = useRef(new Map<string, number>());
   const skuSearchRunRef = useRef(0);
   const lineProductResolveRef = useRef(new Set<string>());
   const variantProductLoadRef = useRef(new Set<string>());
@@ -572,27 +596,26 @@ export default function SalesOrderCommercialForm(props: Props) {
     });
   }, []);
 
-  const repriceAll = useCallback(async (
+  const repriceLines = useCallback(async (
+    snapshot: LineDraft[],
     effectiveAt: string,
     mode = customerMode,
     selectedCustomerId = customerId,
     channelId = salesChannelId,
     appliedPriceMode = priceSelectionMode,
   ) => {
-    const snapshot = [...linesRef.current];
     if (snapshot.length === 0 || !channelId) return;
-    const run = ++pricingRunRef.current;
-    setLines((current) => current.map((line) => ({ ...line, resolvingPrice: true, priceError: null, pricingErrorCode: null })));
-    const results: Array<{
-      clientLineId: string;
-      baseUnitPriceMinor: string;
-      systemUnitPriceMinor: string;
-      pricingFingerprint: string;
-      priceSteps: SalesPriceStep[];
-      priceError: string | null;
-      pricingErrorCode: string | null;
-    }> = [];
-    for (const line of snapshot) {
+    const lineGenerations = new Map(snapshot.map((line) => {
+      const generation = (pricingGenerationRef.current.get(line.clientLineId) ?? 0) + 1;
+      pricingGenerationRef.current.set(line.clientLineId, generation);
+      return [line.clientLineId, generation] as const;
+    }));
+    const lineIds = new Set(snapshot.map((line) => line.clientLineId));
+    setLines((current) => current.map((line) => lineIds.has(line.clientLineId)
+      ? { ...line, resolvingPrice: true, priceError: null, pricingErrorCode: null }
+      : line));
+    const results = await runWithConcurrency(snapshot, REPRICE_CONCURRENCY, async (line) => {
+      const pricingGeneration = lineGenerations.get(line.clientLineId) ?? 0;
       try {
         const resolution = await priceFor({
           variantId: line.variantId,
@@ -603,36 +626,53 @@ export default function SalesOrderCommercialForm(props: Props) {
           appliedPriceMode,
           effectiveAt,
         });
-        results.push({
+        return {
           clientLineId: line.clientLineId,
+          pricingGeneration,
           baseUnitPriceMinor: resolution.baseUnitPriceMinor,
           systemUnitPriceMinor: resolution.systemUnitPriceMinor ?? resolution.finalUnitPriceMinor,
           pricingFingerprint: resolution.resolutionFingerprint,
           priceSteps: resolution.steps,
           priceError: null,
           pricingErrorCode: null,
-        });
+        };
       } catch (error) {
         const details = pricingErrorDetails(error);
-        results.push({
+        return {
           clientLineId: line.clientLineId,
+          pricingGeneration,
           baseUnitPriceMinor: line.baseUnitPriceMinor,
           systemUnitPriceMinor: line.systemUnitPriceMinor,
           pricingFingerprint: '',
           priceSteps: [],
           priceError: details.message,
           pricingErrorCode: details.code,
-        });
+        };
       }
-      if (run !== pricingRunRef.current) return;
-    }
-    if (run !== pricingRunRef.current) return;
+    });
     const byLineId = new Map(results.map((result) => [result.clientLineId, result]));
     setLines((current) => current.map((line) => {
       const result = byLineId.get(line.clientLineId);
-      return result ? { ...line, ...result, resolvingPrice: false } : line;
+      if (!result || pricingGenerationRef.current.get(line.clientLineId) !== result.pricingGeneration) return line;
+      const { pricingGeneration: _pricingGeneration, ...lineResult } = result;
+      return { ...line, ...lineResult, resolvingPrice: false };
     }));
   }, [customerId, customerMode, priceFor, priceSelectionMode, salesChannelId]);
+
+  const repriceAll = useCallback(async (
+    effectiveAt: string,
+    mode = customerMode,
+    selectedCustomerId = customerId,
+    channelId = salesChannelId,
+    appliedPriceMode = priceSelectionMode,
+  ) => repriceLines(
+    [...linesRef.current],
+    effectiveAt,
+    mode,
+    selectedCustomerId,
+    channelId,
+    appliedPriceMode,
+  ), [customerId, customerMode, priceSelectionMode, repriceLines, salesChannelId]);
 
   const loadProductVariants = useCallback(async (productId: string) => {
     if (variantProductLoadRef.current.has(productId)) return;
@@ -856,19 +896,26 @@ export default function SalesOrderCommercialForm(props: Props) {
   const quantitySignature = lines.map((line) => `${line.clientLineId}:${line.quantity}`).join('|');
   useEffect(() => {
     if (!entrySettings || !salesChannelId) return;
-    if (!quantitySignatureRef.current) {
-      quantitySignatureRef.current = quantitySignature;
-      return;
+    const nextSnapshot = new Map(lines.map((line) => [line.clientLineId, line.quantity]));
+    for (const [clientLineId, quantity] of nextSnapshot) {
+      const previousQuantity = quantitySnapshotRef.current.get(clientLineId);
+      if (previousQuantity !== undefined && previousQuantity !== quantity) {
+        quantityRepricePendingRef.current.add(clientLineId);
+      }
     }
-    if (quantitySignatureRef.current === quantitySignature) return;
-    quantitySignatureRef.current = quantitySignature;
+    quantitySnapshotRef.current = nextSnapshot;
+    if (quantityRepricePendingRef.current.size === 0) return;
     const timer = window.setTimeout(() => {
+      const pendingIds = new Set(quantityRepricePendingRef.current);
+      quantityRepricePendingRef.current.clear();
+      const changedLines = linesRef.current.filter((line) => pendingIds.has(line.clientLineId));
+      if (changedLines.length === 0) return;
       const effectiveAt = new Date().toISOString();
       setPricingAt(effectiveAt);
-      void repriceAll(effectiveAt);
+      void repriceLines(changedLines, effectiveAt);
     }, REPRICE_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [entrySettings, quantitySignature, repriceAll, salesChannelId]);
+  }, [entrySettings, quantitySignature, repriceLines, salesChannelId]);
 
   function focusLineQuantity(clientLineId: string) {
     window.setTimeout(() => {
