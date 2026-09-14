@@ -7,8 +7,10 @@ on:
       - .github/workflows/vercel-mcp-production-manual.yml
       - .github/workflows/heroku-npp-backend-manual.yml
       - .github/workflows/heroku-mcp-backend-manual.yml
+      - .github/workflows/vps-production-migration-135-manual.yml
       - .github/workflows/manual-production-deploy-matrix-ci.yml
       - mcp/test/manual-production-deploy-matrix.test.mjs
+      - mcp/test/vps-production-migration-135.test.mjs
   push:
     branches:
       - agent/manual-production-deploy-matrix
@@ -17,8 +19,10 @@ on:
       - .github/workflows/vercel-mcp-production-manual.yml
       - .github/workflows/heroku-npp-backend-manual.yml
       - .github/workflows/heroku-mcp-backend-manual.yml
+      - .github/workflows/vps-production-migration-135-manual.yml
       - .github/workflows/manual-production-deploy-matrix-ci.yml
       - mcp/test/manual-production-deploy-matrix.test.mjs
+      - mcp/test/vps-production-migration-135.test.mjs
   workflow_dispatch:
 
 permissions:
@@ -37,5 +41,7 @@ jobs:
         with:
           node-version: 20
 
-      - name: Verify four-way manual deployment boundary
-        run: node --test mcp/test/manual-production-deploy-matrix.test.mjs
+      - name: Verify manual production boundaries
+        run: |
+          node --test mcp/test/manual-production-deploy-matrix.test.mjs
+          node --test mcp/test/vps-production-migration-135.test.mjs
