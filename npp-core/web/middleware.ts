@@ -3,6 +3,12 @@ import { NPP_SESSION_COOKIE, safeNppReturnTo } from './lib/workforce-session';
 
 const SESSION_CHECK_PATH = '/api/auth/me';
 const PUBLIC_PATHS = new Set(['/login', '/api/auth/login', '/api/auth/logout', SESSION_CHECK_PATH]);
+const BACKEND_AUTHORIZED_API_PREFIXES = Object.freeze([
+  '/api/sales-orders',
+  '/api/customers',
+  '/api/products',
+  '/api/document-print-templates',
+]);
 
 function deny(request: NextRequest, status: 401 | 503, code: string, message: string) {
   const headers = new Headers({ 'Cache-Control': 'no-store' });
@@ -44,12 +50,19 @@ function sessionCheckUrl(request: NextRequest) {
   return url;
 }
 
+function backendAuthorizesApi(pathname: string) {
+  return BACKEND_AUTHORIZED_API_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+}
+
 async function sessionState(request: NextRequest, token: string): Promise<'active' | 'invalid' | 'unavailable'> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 5_000);
   try {
-    // Edge only talks to the same-origin Node route. That Node route owns the
-    // /api/internal-auth/me VPS hop, avoiding direct Edge-to-VPS auth traffic.
+    // Page navigation still uses the same-origin Node auth boundary. Business API
+    // families listed above already forward this same opaque session to Công Ty,
+    // where canonical authentication and authorization run before business work.
     const response = await fetch(sessionCheckUrl(request), {
       method: 'GET',
       cache: 'no-store',
@@ -87,6 +100,11 @@ export async function middleware(request: NextRequest) {
       ? loginRedirect(request)
       : deny(request, 401, 'UNAUTHORIZED', 'Cần đăng nhập để tiếp tục');
   }
+
+  // Do not duplicate canonical backend authentication for request-heavy business
+  // APIs. A cookie is still required here; the route gateway forwards it and the
+  // Công Ty backend remains deny-by-default for revoked/invalid sessions.
+  if (backendAuthorizesApi(request.nextUrl.pathname)) return NextResponse.next();
 
   const state = await sessionState(request, token);
   if (state === 'active') return NextResponse.next();
