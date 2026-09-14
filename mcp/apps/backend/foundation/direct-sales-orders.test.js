@@ -43,8 +43,9 @@ function persistence({ customers = [customerRow()], addresses = [{ id: addressId
   return {
     withTransaction: async (fn) => fn({
       query: async (sql) => {
-        if (sql.includes("FROM shared.customers AS customer")) return { rows: customers };
-        if (sql.includes("FROM shared.customer_addresses AS address")) return { rows: addresses };
+        if (sql.includes("shared.")) throw new Error(`direct shared read forbidden: ${sql}`);
+        if (sql.includes("FROM mcp.accounts AS customer")) return { rows: customers };
+        if (sql.includes("FROM mcp.customer_addresses AS address")) return { rows: addresses };
         if (sql.includes("FROM mcp.mcp_route_customers AS rc")) return { rows: links };
         throw new Error(`unexpected query: ${sql}`);
       }

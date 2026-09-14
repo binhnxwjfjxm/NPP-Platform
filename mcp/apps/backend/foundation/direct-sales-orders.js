@@ -110,7 +110,7 @@ async function resolveOrderCustomer(persistence, context, customerId, customerAd
 
     const addressResult = await client.query(
       `SELECT address.id
-       FROM shared.customer_addresses AS address
+       FROM mcp.customer_addresses AS address
        WHERE address.installation_id = $1
          AND address.customer_id = $2::uuid
          AND address.id = $3::uuid
