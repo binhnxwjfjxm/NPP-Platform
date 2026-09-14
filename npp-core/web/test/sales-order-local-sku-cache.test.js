@@ -32,14 +32,20 @@ test('Lần đầu tải full; các lần sau chỉ hỏi delta theo cursor và 
   assert.doesNotMatch(helper, /CATALOG_REFRESH_MS|memorySavedAt|cache.*expired/i);
 });
 
-test('Khi local đã có catalog, tìm không thấy vẫn trả rỗng local chứ không quay về backend search', async () => {
+test('Khi local không thấy SKU thì rơi về backend search và đồng bộ lại catalog nền', async () => {
   const helper = await read('app/sales/sales-orders/sales-order-sku-local-cache.ts');
   const ui = await read('app/sales/sales-orders/sales-order-ui.ts');
+  const missStart = helper.indexOf('const matches = searchSalesOrderSkuCatalog');
+  const missEnd = helper.indexOf('return matches.map(toSearchOption) as T', missStart);
+  assert.ok(missStart >= 0 && missEnd > missStart);
+  const missFlow = helper.slice(missStart, missEnd);
 
-  assert.match(helper, /if \(memoryRows === null\) \{/);
-  assert.match(helper, /return matches\.map\(toSearchOption\) as T/);
+  assert.match(missFlow, /if \(matches\.length === 0\) \{/);
+  assert.match(missFlow, /void warmSalesOrderSkuCatalog\(true\)/);
+  assert.match(missFlow, /return null/);
   assert.match(ui, /const cachedSkuSearch = await readSalesOrderSkuSearchCache<T>\(path, requestInit\)/);
   assert.match(ui, /if \(cachedSkuSearch !== null\) return cachedSkuSearch/);
+  assert.match(ui, /const response = await fetch\(path/);
   assert.doesNotMatch(ui, /rememberSalesOrderSkuSearchRows/);
 });
 

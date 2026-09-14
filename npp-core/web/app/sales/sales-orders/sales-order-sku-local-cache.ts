@@ -341,6 +341,10 @@ export async function readSalesOrderSkuSearchCache<T>(
     void warmSalesOrderSkuCatalog();
   }
   const matches = searchSalesOrderSkuCatalog(memoryRows, request.term, request.limit, request.offset);
+  if (matches.length === 0) {
+    void warmSalesOrderSkuCatalog(true);
+    return null;
+  }
   return matches.map(toSearchOption) as T;
 }
 
