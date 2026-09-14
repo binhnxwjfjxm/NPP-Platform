@@ -1,7 +1,7 @@
 'use client';
 
 import { canonicalDecimalString, canonicalVndMinorString } from '@npp/contracts';
-import { useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
 import { createPortal } from 'react-dom';
 import type { SalesOrder, SalesOrderVersion } from '../../../lib/sales-order-types';
 import SalesOrderCommercialForm from './SalesOrderCommercialForm';
@@ -156,10 +156,10 @@ export default function SalesOrderForm(props: SalesOrderFormProps) {
     [copyVersion, editorTarget],
   );
 
-  const handleError = (message: string) => {
+  const handleError = useCallback((message: string) => {
     setInlineError(message || null);
-    props.onError(message);
-  };
+    onErrorRef.current(message);
+  }, []);
 
   if (copyLoading) {
     return (

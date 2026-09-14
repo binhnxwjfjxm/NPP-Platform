@@ -70,6 +70,21 @@ test('delivery address is optional and the order form does not add a separate on
   assert.doesNotMatch(form, /api\/customers\/\$\{created\.id\}\/addresses/);
 });
 
+test('sales order wrapper keeps the error callback stable so gateway errors cannot retrigger child loading effects', async () => {
+  const [wrapper, form] = await Promise.all([
+    read('app/sales/sales-orders/SalesOrderForm.tsx'),
+    read('app/sales/sales-orders/SalesOrderCommercialForm.tsx'),
+  ]);
+
+  assert.match(wrapper, /useCallback/);
+  assert.match(wrapper, /const handleError = useCallback\(\(message: string\) => \{/);
+  assert.match(wrapper, /onErrorRef\.current\(message\)/);
+  assert.match(wrapper, /\}, \[\]\);/);
+  assert.doesNotMatch(wrapper, /const handleError = \(message: string\) =>/);
+  assert.match(form, /apiRequest<CustomerAddress\[]>\(`\/api\/customers\/\$\{customerId\}\/addresses`\)/);
+  assert.match(form, /\[collectionPolicy, customerId, customerMode, hasVersionDirectDestination, onError, priceSelectionMode\]/);
+});
+
 test('sales order preview makes product name primary and removes SKU text from the commercial line preview', async () => {
   const detail = await read('app/sales/sales-orders/SalesOrderDetail.tsx');
   assert.match(detail, /<span>Sản phẩm<\/span>/);
