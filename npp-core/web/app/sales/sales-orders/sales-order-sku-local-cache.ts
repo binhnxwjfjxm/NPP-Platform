@@ -17,10 +17,9 @@ const CACHE_DB_NAME = 'npp-company-sales-local-cache-v1';
 const CACHE_STORE = 'sales';
 const CACHE_KEY = 'sales-order-sku-catalog-v1';
 const CATALOG_PAGE_SIZE = 50;
-const CATALOG_BATCH_PAGES = 4;
-const MAX_CATALOG_ROWS = 5000;
-const CATALOG_REFRESH_MS = 60_000;
-const CATALOG_RETRY_BACKOFF_MS = 30_000;
+const MAX_CATALOG_ROWS = 2000;
+const CATALOG_REFRESH_MS = 30 * 60_000;
+const CATALOG_RETRY_BACKOFF_MS = 5 * 60_000;
 
 let memoryRows: SalesOrderSkuCatalogRow[] | null = null;
 let memorySavedAt = 0;
@@ -28,6 +27,7 @@ let persistedLoaded = false;
 let persistedLoadPromise: Promise<void> | null = null;
 let warmPromise: Promise<void> | null = null;
 let lastWarmAttemptAt = 0;
+let catalogDisabledForSession = false;
 
 function normalizeSearchText(value: unknown): string {
   return String(value ?? '')
@@ -189,29 +189,23 @@ async function fetchCatalogPage(offset: number): Promise<SalesOrderSkuCatalogRow
 
 async function fetchCompleteCatalog(): Promise<SalesOrderSkuCatalogRow[] | null> {
   const rows: SalesOrderSkuCatalogRow[] = [];
-  let complete = false;
-
-  for (let batchOffset = 0; batchOffset < MAX_CATALOG_ROWS; batchOffset += CATALOG_PAGE_SIZE * CATALOG_BATCH_PAGES) {
-    const offsets = Array.from({ length: CATALOG_BATCH_PAGES }, (_, index) => batchOffset + index * CATALOG_PAGE_SIZE)
-      .filter((offset) => offset < MAX_CATALOG_ROWS);
-    const pages = await Promise.all(offsets.map((offset) => fetchCatalogPage(offset)));
-    for (const page of pages) {
-      rows.push(...page);
-      if (page.length < CATALOG_PAGE_SIZE) {
-        complete = true;
-        break;
+  for (let offset = 0; offset < MAX_CATALOG_ROWS; offset += CATALOG_PAGE_SIZE) {
+    const page = await fetchCatalogPage(offset);
+    rows.push(...page);
+    if (page.length < CATALOG_PAGE_SIZE) {
+      const deduplicated = new Map<string, SalesOrderSkuCatalogRow>();
+      for (const row of rows) {
+        if (row?.id) deduplicated.set(row.id, row);
       }
+      return [...deduplicated.values()];
     }
-    if (complete) break;
   }
 
-  if (!complete) {
-    const overflow = await fetchCatalogPage(MAX_CATALOG_ROWS);
-    if (overflow.length > 0) return null;
-    complete = true;
+  const overflow = await fetchCatalogPage(MAX_CATALOG_ROWS);
+  if (overflow.length > 0) {
+    catalogDisabledForSession = true;
+    return null;
   }
-
-  if (!complete) return null;
   const deduplicated = new Map<string, SalesOrderSkuCatalogRow>();
   for (const row of rows) {
     if (row?.id) deduplicated.set(row.id, row);
@@ -229,7 +223,7 @@ async function refreshCatalog(): Promise<void> {
 }
 
 export async function warmSalesOrderSkuCatalog(force = false): Promise<void> {
-  if (typeof window === 'undefined') return;
+  if (typeof window === 'undefined' || catalogDisabledForSession) return;
   await loadPersistedCatalog();
   const now = Date.now();
   if (!force && memoryRows && now - memorySavedAt < CATALOG_REFRESH_MS) return;
@@ -249,7 +243,7 @@ export async function readSalesOrderSkuSearchCache<T>(
   init: RequestInit = {},
 ): Promise<T | null> {
   const request = parseSkuSearchRequest(path, init);
-  if (!request) return null;
+  if (!request || catalogDisabledForSession) return null;
   await loadPersistedCatalog();
   if (!memoryRows?.length) {
     void warmSalesOrderSkuCatalog();
@@ -276,7 +270,6 @@ export function rememberSalesOrderSkuSearchRows(value: unknown): void {
   }
   if (!changed) return;
   memoryRows = [...byId.values()];
-  memorySavedAt = Date.now();
   void writePersistedRecord(Object.freeze({ savedAt: memorySavedAt, rows: memoryRows }));
 }
 
