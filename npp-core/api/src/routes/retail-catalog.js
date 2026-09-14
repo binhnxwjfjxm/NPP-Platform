@@ -392,6 +392,24 @@ export async function handleRetailCatalogRoutes(req, res, options) {
     return true;
   }
 
+  if (url.pathname === '/api/retail/prices' && req.method === 'POST') {
+    const context = await authorize(req, res, options, options.PERMISSIONS.corePriceRead);
+    if (!context) return true;
+    const payload = await requestBody(req, res, options);
+    if (payload === null) return true;
+    try {
+      const result = await retailCatalogService.resolveRetailPrices(options.getPool(), {
+        requestContext: context,
+        payload,
+      });
+      if (!result.ok) sendServiceError(res, result, options);
+      else sendSuccess(res, result.resolutions, options.requestId, options.receivedAt);
+    } catch {
+      sendError(res, apiError('RETAIL_PRICE_UNAVAILABLE', 'Chưa thể tính giá bán', {}, true, 503), options.requestId, options.receivedAt);
+    }
+    return true;
+  }
+
   if (url.pathname === '/api/retail/price' && req.method === 'POST') {
     const context = await authorize(req, res, options, options.PERMISSIONS.corePriceRead);
     if (!context) return true;

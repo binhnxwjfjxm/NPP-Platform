@@ -17,7 +17,9 @@ test('Retail price được resolve server-side bằng cùng kênh RETAIL', () =
   const route = source('../src/routes/retail-catalog.js');
   assert.match(service, /export async function resolveRetailPrice/);
   assert.match(service, /pricingService\.resolvePrice/);
-  assert.match(service, /channelId: retailChannel\.channel\.id/);
+  assert.match(service, /channelId: retailChannel\.id/);
+  assert.match(service, /retailPricePayload\(\{ \.\.\.payload, quantity \}, retailChannel\.channel\)/);
+  assert.match(service, /allowMissingBasePrice: true/);
   assert.match(route, /url\.pathname === '\/api\/retail\/price'/);
   assert.match(route, /corePriceRead/);
 });

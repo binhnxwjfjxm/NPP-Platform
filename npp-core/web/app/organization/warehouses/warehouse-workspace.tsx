@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createIdempotencyKey } from '@npp/contracts';
 import { AppShell } from '../../components/app-shell';
@@ -30,7 +30,19 @@ type Props = Readonly<{
   initialWarehouseId?: string;
 }>;
 
-type ApiEnvelope<T> = { data?: T; error?: { message?: string; details?: unknown } };
+type ApiEnvelope<T> = { data?: T; error?: { code?: string; message?: string; details?: unknown } };
+class WarehouseApiError extends Error {
+  readonly code: string;
+  readonly status: number;
+  readonly details: unknown;
+  constructor(code: string, message: string, status: number, details?: unknown) {
+    super(message);
+    this.name = 'WarehouseApiError';
+    this.code = code;
+    this.status = status;
+    this.details = details;
+  }
+}
 type Notice = { kind: 'success' | 'error'; message: string } | null;
 type WarehouseDraft = { branchId: string; code: string; name: string; warehouseType: string; allowNegativeStock: boolean };
 type LocationDraft = { warehouseId: string; code: string; name: string; locationType: string };
@@ -95,7 +107,14 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
     },
   });
   const payload = await response.json().catch(() => ({})) as ApiEnvelope<T>;
-  if (!response.ok || payload.data === undefined) throw new Error(payload.error?.message || 'Không thể tải dữ liệu kho.');
+  if (!response.ok || payload.data === undefined) {
+    throw new WarehouseApiError(
+      payload.error?.code ?? 'WAREHOUSE_REQUEST_FAILED',
+      payload.error?.message ?? 'Không thể tải dữ liệu kho.',
+      response.status,
+      payload.error?.details,
+    );
+  }
   return payload.data;
 }
 
@@ -121,6 +140,21 @@ export default function WarehouseWorkspace({ initialData, initialError = null, i
   const [confirmState, setConfirmState] = useState<ConfirmState>(null);
   const [locationModeState, setLocationModeState] = useState<LocationModeState>(null);
   const mutationKeys = useRef(new Map<string, string>());
+
+  useEffect(() => {
+    setBranches(initialData.branches);
+    setWarehouses(initialData.warehouses);
+    setLocations(initialData.locations);
+    setSelectedWarehouseId((current) => {
+      if (current && initialData.warehouses.some((warehouse) => warehouse.id === current)) return current;
+      if (initialWarehouseId && initialData.warehouses.some((warehouse) => warehouse.id === initialWarehouseId)) return initialWarehouseId;
+      return initialData.warehouses.find((warehouse) => warehouse.is_active)?.id ?? initialData.warehouses[0]?.id ?? '';
+    });
+    setWarehouseEditorId(null);
+    setLocationEditor(null);
+    setConfirmState(null);
+    setLocationModeState(null);
+  }, [initialData, initialWarehouseId]);
 
   const branchMap = useMemo(() => new Map(branches.map((branch) => [branch.id, branch])), [branches]);
   const normalizedSearch = normalizeSearch(search);
@@ -155,6 +189,16 @@ export default function WarehouseWorkspace({ initialData, initialError = null, i
     } finally {
       setBusy(null);
     }
+  }
+
+  async function recoverStaleVersion(reason: unknown) {
+    if (!(reason instanceof WarehouseApiError) || reason.code !== 'STALE_VERSION') return false;
+    setWarehouseEditorId(null);
+    setLocationEditor(null);
+    setConfirmState(null);
+    setLocationModeState(null);
+    await loadAll('Dữ liệu vừa thay đổi. Đã tải bản mới nhất; vui lòng kiểm tra rồi thực hiện lại.');
+    return true;
   }
 
   function operationKey(identity: string, scope: string) {
@@ -213,7 +257,7 @@ export default function WarehouseWorkspace({ initialData, initialError = null, i
     setBusy('edit-warehouse');
     setError(null);
     try {
-      await requestJson(`/api/organization/warehouses/${current.id}`, {
+      const updated = await requestJson<Warehouse>(`/api/organization/warehouses/${current.id}`, {
         method: 'PATCH',
         body: JSON.stringify({
           branchId: warehouseDraft.branchId,
@@ -224,9 +268,11 @@ export default function WarehouseWorkspace({ initialData, initialError = null, i
           expectedUpdatedAt: current.updated_at,
         }),
       });
+      setWarehouses((items) => items.map((item) => item.id === updated.id ? updated : item));
       setWarehouseEditorId(null);
       await loadAll('Đã cập nhật kho hàng.');
     } catch (saveError) {
+      if (await recoverStaleVersion(saveError)) return;
       setError(saveError instanceof Error ? saveError.message : 'Không cập nhật được kho');
       setBusy(null);
     }
@@ -259,15 +305,19 @@ export default function WarehouseWorkspace({ initialData, initialError = null, i
     setBusy(current ? 'edit-location' : 'create-location');
     setError(null);
     try {
-      await requestJson(path, {
+      const saved = await requestJson<WarehouseLocation>(path, {
         method: current ? 'PATCH' : 'POST',
         headers: current ? undefined : { 'Idempotency-Key': operationKey(identity, 'organization-create') },
         body: JSON.stringify(current ? { ...payload, expectedUpdatedAt: current.updated_at } : payload),
       });
       if (!current) mutationKeys.current.delete(identity);
+      setLocations((items) => current
+        ? items.map((item) => item.id === saved.id ? saved : item)
+        : [...items, saved]);
       setLocationEditor(null);
       await loadAll(current ? 'Đã cập nhật khu vực trong kho.' : 'Đã thêm khu vực vào sơ đồ kho.');
     } catch (saveError) {
+      if (await recoverStaleVersion(saveError)) return;
       setError(saveError instanceof Error ? saveError.message : 'Không lưu được khu vực trong kho');
       setBusy(null);
     }
@@ -285,13 +335,21 @@ export default function WarehouseWorkspace({ initialData, initialError = null, i
     setBusy('toggle-status');
     setError(null);
     try {
-      await requestJson(path, {
+      const updated = await requestJson<Warehouse | WarehouseLocation>(path, {
         method: 'PATCH',
         body: JSON.stringify({ isActive: confirmState.nextActive, expectedUpdatedAt: source.updated_at }),
       });
+      if (confirmState.resource === 'warehouse') {
+        const warehouse = updated as Warehouse;
+        setWarehouses((items) => items.map((item) => item.id === warehouse.id ? warehouse : item));
+      } else {
+        const location = updated as WarehouseLocation;
+        setLocations((items) => items.map((item) => item.id === location.id ? location : item));
+      }
       setConfirmState(null);
       await loadAll(confirmState.nextActive ? 'Đã đưa vào sử dụng.' : 'Đã ngừng sử dụng.');
     } catch (toggleError) {
+      if (await recoverStaleVersion(toggleError)) return;
       setError(toggleError instanceof Error ? toggleError.message : 'Không đổi được trạng thái');
       setBusy(null);
     }
