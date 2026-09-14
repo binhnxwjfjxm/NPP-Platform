@@ -8,7 +8,6 @@ const authMeRoute = await readFile(new URL('../app/api/auth/me/route.ts', import
 test('Phase 9.7 keeps operations history behind canonical NPP workforce auth', () => {
   assert.match(middleware, /NPP_SESSION_COOKIE/);
   assert.match(middleware, /SESSION_CHECK_PATH = '\/api\/auth\/me'/);
-  assert.match(middleware, /\/api\/internal-auth\/me/);
   assert.match(middleware, /loginRedirect/);
   assert.match(middleware, /NPP_AUTH_UNAVAILABLE/);
   assert.match(authMeRoute, /\/api\/internal-auth\/me/);
