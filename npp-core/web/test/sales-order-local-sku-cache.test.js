@@ -9,14 +9,24 @@ test('Công Ty giữ catalog SKU local ngắn hạn và không lưu giá/tồn v
   const helper = await read('app/sales/sales-orders/sales-order-sku-local-cache.ts');
 
   assert.match(helper, /indexedDB\.open\(CACHE_DB_NAME, 1\)/);
-  assert.match(helper, /const CATALOG_REFRESH_MS = 60_000;/);
-  assert.match(helper, /const MAX_CATALOG_ROWS = 5000;/);
+  assert.match(helper, /const CATALOG_REFRESH_MS = 30 \* 60_000;/);
+  assert.match(helper, /const MAX_CATALOG_ROWS = 2000;/);
   assert.match(helper, /type SalesOrderSkuCatalogRow = Omit<SalesOrderSkuSearchOption, 'pricePreview' \| 'inventoryPreview'>/);
   assert.match(helper, /searchSalesOrderSkuCatalog/);
   assert.match(helper, /tokens\.every\(\(token\) => fields\.some\(\(field\) => field\.includes\(token\)\)\)/);
   assert.match(helper, /if \(Date\.now\(\) - memorySavedAt >= CATALOG_REFRESH_MS\) \{/);
   assert.doesNotMatch(helper, /\/api\/sales-orders\/sku-previews/);
   assert.doesNotMatch(helper, /\/api\/sales-orders\/price-preview/);
+});
+
+test('Làm ấm catalog tải tuần tự, có trần và tự bỏ local nếu danh mục vượt giới hạn', async () => {
+  const helper = await read('app/sales/sales-orders/sales-order-sku-local-cache.ts');
+
+  assert.match(helper, /for \(let offset = 0; offset < MAX_CATALOG_ROWS; offset \+= CATALOG_PAGE_SIZE\)/);
+  assert.doesNotMatch(helper, /Promise\.all\(offsets/);
+  assert.match(helper, /const overflow = await fetchCatalogPage\(MAX_CATALOG_ROWS\)/);
+  assert.match(helper, /catalogDisabledForSession = true/);
+  assert.match(helper, /savedAt: memorySavedAt, rows: memoryRows/);
 });
 
 test('Tìm SKU dùng local trước, nhưng vẫn fallback backend và làm ấm cache từ cấu hình lập đơn', async () => {
