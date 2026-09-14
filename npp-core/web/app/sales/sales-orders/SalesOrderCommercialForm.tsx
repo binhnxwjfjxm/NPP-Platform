@@ -459,6 +459,7 @@ export default function SalesOrderCommercialForm(props: Props) {
   const priceRefs = useRef(new Map<string, HTMLInputElement>());
   const variantRefs = useRef(new Map<string, HTMLSelectElement>());
   const pricingContextRef = useRef('');
+  const preserveSavedPricingOnInitialOpenRef = useRef(props.mode !== 'create' && Boolean(version?.lines?.length));
   const quantitySignatureRef = useRef('');
   const pricingRunRef = useRef(0);
   const skuSearchRunRef = useRef(0);
@@ -582,7 +583,16 @@ export default function SalesOrderCommercialForm(props: Props) {
     if (snapshot.length === 0 || !channelId) return;
     const run = ++pricingRunRef.current;
     setLines((current) => current.map((line) => ({ ...line, resolvingPrice: true, priceError: null, pricingErrorCode: null })));
-    const results = await Promise.all(snapshot.map(async (line) => {
+    const results: Array<{
+      clientLineId: string;
+      baseUnitPriceMinor: string;
+      systemUnitPriceMinor: string;
+      pricingFingerprint: string;
+      priceSteps: SalesPriceStep[];
+      priceError: string | null;
+      pricingErrorCode: string | null;
+    }> = [];
+    for (const line of snapshot) {
       try {
         const resolution = await priceFor({
           variantId: line.variantId,
@@ -593,7 +603,7 @@ export default function SalesOrderCommercialForm(props: Props) {
           appliedPriceMode,
           effectiveAt,
         });
-        return {
+        results.push({
           clientLineId: line.clientLineId,
           baseUnitPriceMinor: resolution.baseUnitPriceMinor,
           systemUnitPriceMinor: resolution.systemUnitPriceMinor ?? resolution.finalUnitPriceMinor,
@@ -601,10 +611,10 @@ export default function SalesOrderCommercialForm(props: Props) {
           priceSteps: resolution.steps,
           priceError: null,
           pricingErrorCode: null,
-        };
+        });
       } catch (error) {
         const details = pricingErrorDetails(error);
-        return {
+        results.push({
           clientLineId: line.clientLineId,
           baseUnitPriceMinor: line.baseUnitPriceMinor,
           systemUnitPriceMinor: line.systemUnitPriceMinor,
@@ -612,9 +622,10 @@ export default function SalesOrderCommercialForm(props: Props) {
           priceSteps: [],
           priceError: details.message,
           pricingErrorCode: details.code,
-        };
+        });
       }
-    }));
+      if (run !== pricingRunRef.current) return;
+    }
     if (run !== pricingRunRef.current) return;
     const byLineId = new Map(results.map((result) => [result.clientLineId, result]));
     setLines((current) => current.map((line) => {
@@ -697,13 +708,6 @@ export default function SalesOrderCommercialForm(props: Props) {
       }));
     }
   }, [loadProductVariants]);
-
-  useEffect(() => {
-    for (const line of lines) {
-      if (line.productId) void loadProductVariants(line.productId);
-      else void resolveLineProduct(line);
-    }
-  }, [lines, loadProductVariants, resolveLineProduct]);
 
   useEffect(() => {
     apiRequest<SalesOrderEntrySettings>('/api/sales-orders/entry-settings')
@@ -840,6 +844,10 @@ export default function SalesOrderCommercialForm(props: Props) {
     const signature = `${customerMode}:${customerId}:${salesChannelId}:${priceSelectionMode}`;
     if (pricingContextRef.current === signature) return;
     pricingContextRef.current = signature;
+    if (preserveSavedPricingOnInitialOpenRef.current) {
+      preserveSavedPricingOnInitialOpenRef.current = false;
+      return;
+    }
     const effectiveAt = new Date().toISOString();
     setPricingAt(effectiveAt);
     void repriceAll(effectiveAt, customerMode, customerId, salesChannelId, priceSelectionMode);
@@ -1586,6 +1594,10 @@ export default function SalesOrderCommercialForm(props: Props) {
                     aria-label={`Chọn ĐVT cho ${line.sku}`}
                     value={line.variantId}
                     disabled={line.resolvingPrice || choiceState?.loading === true}
+                    onFocus={() => {
+                      if (line.productId) void loadProductVariants(line.productId);
+                      else void resolveLineProduct(line);
+                    }}
                     onChange={(event) => void changeLineVariant(line.clientLineId, event.target.value)}
                   >
                     {!hasCurrentOption && <option value={line.variantId}>{line.unitCode || 'ĐVT'}</option>}
