@@ -32,7 +32,8 @@ export function deliveryCoreBaseUrl(): string {
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
     throw new Error('DELIVERY_CORE_NOT_CONFIGURED');
   }
-  if (process.env.NODE_ENV === 'production' && url.protocol !== 'https:') {
+  const loopback = new Set(['127.0.0.1', 'localhost', '::1']).has(url.hostname);
+  if (process.env.NODE_ENV === 'production' && url.protocol !== 'https:' && !loopback) {
     throw new Error('DELIVERY_CORE_HTTPS_REQUIRED');
   }
   url.pathname = url.pathname.replace(/\/$/, '');
@@ -62,7 +63,7 @@ export async function requestDeliveryInternalAuth<T>(
     const code = (error as Error)?.message === 'DELIVERY_CORE_HTTPS_REQUIRED'
       ? 'DELIVERY_CORE_HTTPS_REQUIRED'
       : 'DELIVERY_CORE_NOT_CONFIGURED';
-    return { ok: false, status: 503, code, message: 'Kết nối NPP Core chưa được cấu hình', retryable: false };
+    return { ok: false, status: 503, code, message: 'Kết nối Công Ty chưa được cấu hình', retryable: false };
   }
 
   const controller = new AbortController();
@@ -82,23 +83,23 @@ export async function requestDeliveryInternalAuth<T>(
     });
     const payload = await response.json().catch(() => null) as Envelope<T> | null;
     if (!payload) {
-      return { ok: false, status: 502, code: 'DELIVERY_CORE_RESPONSE_INVALID', message: 'Phản hồi từ NPP Core không hợp lệ' };
+      return { ok: false, status: 502, code: 'DELIVERY_CORE_RESPONSE_INVALID', message: 'Phản hồi từ Công Ty không hợp lệ' };
     }
     if (!response.ok) {
       return {
         ok: false,
         status: response.status,
         code: payload.error?.code || 'DELIVERY_CORE_REQUEST_FAILED',
-        message: payload.error?.message || 'Yêu cầu tới NPP Core không thành công',
+        message: payload.error?.message || 'Yêu cầu tới Công Ty không thành công',
         retryable: payload.error?.retryable === true,
       };
     }
     if (!Object.prototype.hasOwnProperty.call(payload, 'data')) {
-      return { ok: false, status: 502, code: 'DELIVERY_CORE_RESPONSE_INVALID', message: 'Phản hồi từ NPP Core không hợp lệ' };
+      return { ok: false, status: 502, code: 'DELIVERY_CORE_RESPONSE_INVALID', message: 'Phản hồi từ Công Ty không hợp lệ' };
     }
     return { ok: true, status: response.status, data: payload.data as T };
   } catch {
-    return { ok: false, status: 503, code: 'DELIVERY_CORE_UNAVAILABLE', message: 'NPP Core tạm thời chưa sẵn sàng', retryable: true };
+    return { ok: false, status: 503, code: 'DELIVERY_CORE_UNAVAILABLE', message: 'Công Ty tạm thời chưa sẵn sàng', retryable: true };
   } finally {
     clearTimeout(timeout);
   }

@@ -6,6 +6,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
   issues: write
 
 concurrency:
@@ -31,6 +32,7 @@ jobs:
       MCP_PROJECT_ID: prj_854SWdJeDEOPezAvvTZzTaRvZUSq
       ADMIN_PROJECT_ID: prj_0hp2A8WyUW4zgglShPTzL70hesVC
       WEBSITE_PROJECT_ID: prj_rXqH83GFDHuEGUcQrrv82JBPWnjU
+      VPS_COMPANY_HOST: ${{ vars.VPS_COMPANY_HOST }}
 
     steps:
       - name: Validate exact issue command
@@ -56,6 +58,17 @@ jobs:
           sha="$(git rev-parse HEAD)"
           test "$sha" = "$(git rev-parse origin/main)"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Require exact-head Foundation CI green
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          result="$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/workflows/foundation-f0-2.yml/runs?head_sha=$TARGET_SHA&event=push&per_page=20")"
+          success="$(jq -r '[.workflow_runs[] | select(.status=="completed" and .conclusion=="success")][0].id // empty' <<<"$result")"
+          test -n "$success"
 
       - name: Setup Node 24
         uses: actions/setup-node@v4
@@ -101,9 +114,10 @@ jobs:
           - DOMAIN: ${DELIVERY_DOMAIN}
           - DOMAIN_READY: ${{ steps.delivery.outputs.domain_ready }}
           - AUTH_SOURCE: ${{ steps.delivery.outputs.auth_source }}
+          - AUTH_CONNECTIVITY: ${{ steps.delivery.outputs.auth_connectivity }}
           - DRIVER_PROFILE_READY: ${{ steps.delivery.outputs.driver_ready }}
           - SETUP_MODE: ${{ steps.delivery.outputs.setup_mode }}
-          - COMPANY_API_SOURCE: Vercel production environment
+          - COMPANY_API_SOURCE: VPS canonical binding synchronized to Vercel production
           - AUTO_DEPLOY: OFF
           - GITHUB_RUN_ID: ${GITHUB_RUN_ID}
           EOT

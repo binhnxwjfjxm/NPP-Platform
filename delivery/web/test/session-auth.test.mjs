@@ -14,6 +14,7 @@ const podApi = read('lib/pod-api.ts');
 const frame = read('app/DeliveryAppFrame.tsx');
 const loginPage = read('app/login/page.tsx');
 const loginRoute = read('app/api/auth/login/route.ts');
+const authMeRoute = read('app/api/auth/me/route.ts');
 const logoutRoute = read('app/api/auth/logout/route.ts');
 
 test('Delivery PWA stores only the opaque canonical Core workforce session in an HttpOnly cookie', () => {
@@ -26,15 +27,29 @@ test('Delivery PWA stores only the opaque canonical Core workforce session in an
   assert.match(authClient, /token\?\.startsWith\('nppusr\.'/);
 });
 
-test('Delivery middleware resolves employee identity from Core /me and overwrites browser-owned identity headers', () => {
-  assert.match(middleware, /\/api\/internal-auth\/me/);
+test('Delivery middleware verifies the workforce session through the same-origin Node auth boundary', () => {
+  assert.match(middleware, /const SESSION_CHECK_PATH = '\/api\/auth\/me'/);
+  assert.match(middleware, /PUBLIC_PATHS = new Set\(\['\/login', '\/api\/auth\/login', '\/api\/auth\/logout', SESSION_CHECK_PATH\]\)/);
+  assert.match(middleware, /fetch\(sessionCheckUrl\(request\)/);
   assert.match(middleware, /Authorization:\s*`Bearer \$\{token\}`/);
   assert.match(middleware, /encodeDeliveryInternalAuthorization/);
   assert.match(middleware, /headers\.set\('authorization'/);
   assert.match(middleware, /headers\.delete\('x-npp-delivery-employee-id'\)/);
   assert.match(middleware, /clearInvalidSession/);
+  assert.doesNotMatch(middleware, /CORE_API_INTERNAL_URL/);
+  assert.doesNotMatch(middleware, /fetch\(`\$\{baseUrl\}\/api\/internal-auth\/me`/);
   assert.doesNotMatch(middleware, /DELIVERY_WEB_USERS_JSON|DELIVERY_CORE_API_TOKEN|DELIVERY_SETUP_USERNAME|DELIVERY_SETUP_PASSWORD/);
   assert.match(auth, /INTERNAL_IDENTITY_VERSION = 'v2'/);
+});
+
+test('Delivery same-origin /me route forwards bearer or cookie session to Công Ty without middleware recursion', () => {
+  assert.match(authMeRoute, /function bearerToken\(request: NextRequest\)/);
+  assert.match(authMeRoute, /bearerToken\(request\) \|\| readDeliverySessionToken\(\)/);
+  assert.match(authMeRoute, /requestDeliveryInternalAuth<CoreMe>\('\/api\/internal-auth\/me'/);
+  assert.match(authMeRoute, /'Cache-Control': 'no-store'/);
+  assert.match(authClient, /new Set\(\['127\.0\.0\.1', 'localhost', '::1'\]\)\.has\(url\.hostname\)/);
+  assert.match(authClient, /url\.protocol !== 'https:' && !loopback/);
+  assert.doesNotMatch(authClient, /NPP Core/);
 });
 
 test('Delivery login and logout use canonical Core internal-auth and retain professional branded login', () => {
