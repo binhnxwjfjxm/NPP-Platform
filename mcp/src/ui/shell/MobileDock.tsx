@@ -1,96 +1,62 @@
-"use client";
+import test from "node:test";
+import assert from "node:assert/strict";
+import { access, readFile } from "node:fs/promises";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useState, type CSSProperties, type HTMLAttributes } from "react";
-import { NavIcon } from "./NavIcon";
-import type { NavItem } from "./navigation";
+const dock = await readFile("src/ui/shell/MobileDock.tsx", "utf8");
+const launchpad = await readFile("src/ui/shell/MobileHomeLaunchpad.tsx", "utf8");
+const ordersData = await readFile("src/lib/api/orders-data.ts", "utf8");
+const geometry = await readFile("src/app/mobile-app-geometry.css", "utf8");
+const experience = await readFile("src/app/mobile-app-experience.css", "utf8");
 
-type MobileDockProps = HTMLAttributes<HTMLElement> & {
-  items: NavItem[];
-};
+test("bottom dock uses fast client navigation to enter visits and keeps document-level escape only inside visit flow", () => {
+  assert.match(dock, /import Link from "next\/link"/);
+  assert.match(dock, /function isVisitFlow\(pathname: string\)/);
+  assert.match(dock, /const documentNavigation = isVisitFlow\(pathname\)/);
+  assert.doesNotMatch(dock, /const documentNavigation = primary \|\| isVisitFlow\(pathname\)/);
+  assert.match(dock, /<a[\s\S]*?data-document-navigation="true"[\s\S]*?href=\{item\.href\}/);
+  assert.match(dock, /<Link[\s\S]*?data-client-navigation="true"[\s\S]*?href=\{item\.href\}[\s\S]*?prefetch=\{false\}/);
+  assert.doesNotMatch(dock, /preventDefault|setTimeout/);
+});
 
-function isItemActive(pathname: string, href: string) {
-  if (href === "/") return pathname === "/";
-  if (href === "/visits") return pathname === "/visits" || pathname.startsWith("/visits/") || pathname.startsWith("/mcp/sessions/");
-  return pathname === href || pathname.startsWith(`${href}/`);
-}
-
-function isVisitFlow(pathname: string) {
-  return pathname === "/visits"
-    || pathname.startsWith("/visits/")
-    || pathname === "/mcp/sessions"
-    || pathname.startsWith("/mcp/sessions/");
-}
-
-export function MobileDock({ items, style, ...props }: MobileDockProps) {
-  const pathname = usePathname();
-  const activeIndex = Math.max(0, items.findIndex((item) => isItemActive(pathname, item.href)));
-  const [intentIndex, setIntentIndex] = useState<number | null>(null);
-  const visualIndex = intentIndex ?? activeIndex;
-  const dockStyle = {
-    ...style,
-    "--mobile-dock-index": visualIndex,
-    "--mobile-dock-offset": `${visualIndex * 100}%`
-  } as CSSProperties;
-
-  return (
-    <nav {...props} className="mobile-app-dock" style={dockStyle} aria-label="Điều hướng tác nghiệp">
-      <span className="mobile-app-dock-indicator" aria-hidden="true" />
-      {items.map((item, index) => {
-        const active = isItemActive(pathname, item.href);
-        const primary = item.href === "/visits";
-        const intended = intentIndex === index;
-        const documentNavigation = primary || isVisitFlow(pathname);
-        const className = `mobile-app-dock-link bottom-nav-link${active ? " active" : ""}${primary ? " primary" : ""}`;
-        const content = (
-          <>
-            <span className="mobile-app-dock-icon nav-icon" aria-hidden="true"><NavIcon name={item.icon} width="22" height="22" /></span>
-            <span className="mobile-app-dock-label nav-label">{item.shortLabel}</span>
-          </>
-        );
-        const interactionProps = {
-          onBlur: () => setIntentIndex(null),
-          onFocus: () => setIntentIndex(index),
-          onPointerCancel: () => setIntentIndex(null),
-          onPointerDown: () => setIntentIndex(index)
-        };
-
-        if (documentNavigation) {
-          return (
-            <a
-              aria-current={active ? "page" : undefined}
-              className={className}
-              data-document-navigation="true"
-              data-interaction-feedback="selection"
-              data-motion-intent={intended ? "true" : undefined}
-              data-primary-action={primary ? "true" : undefined}
-              href={item.href}
-              key={item.href}
-              {...interactionProps}
-            >
-              {content}
-            </a>
-          );
-        }
-
-        return (
-          <Link
-            aria-current={active ? "page" : undefined}
-            className={className}
-            data-client-navigation="true"
-            data-interaction-feedback="selection"
-            data-motion-intent={intended ? "true" : undefined}
-            data-primary-action={primary ? "true" : undefined}
-            href={item.href}
-            key={item.href}
-            prefetch={false}
-            {...interactionProps}
-          >
-            {content}
-          </Link>
-        );
-      })}
-    </nav>
+test("visits entry owns local-first redirect decisions without a route loading boundary", async () => {
+  await assert.rejects(
+    access("src/app/visits/loading.tsx"),
+    (error) => error && error.code === "ENOENT"
   );
-}
+});
+
+test("home shortcuts avoid background route storms and enter visits with client navigation", () => {
+  assert.match(launchpad, /<Link className="mobile-home-primary-action" data-client-navigation="true" href="\/visits" prefetch=\{false\}>/);
+  assert.match(launchpad, /<Link href=\{item\.href\} key=\{item\.href\} prefetch=\{false\}>/);
+  assert.doesNotMatch(launchpad, /data-document-navigation="true" href="\/visits"/);
+  assert.doesNotMatch(launchpad, /prefetch=\{item\.href !== "\/orders"\}/);
+});
+
+test("orders read only fetches item rows for orders that are actually loaded", () => {
+  assert.match(ordersData, /select: "id,order_code,order_date,created_at,customer_name,raw_payload,area,sales,source_type,subtotal,discount_total,grand_total,status"/);
+  assert.match(ordersData, /const orderIds = \[\.\.\.new Set\(orderRows\.map/);
+  assert.match(ordersData, /filters: \{ order_id: `in\.\(\$\{orderIds\.join\(","\)\}\)` \}/);
+  assert.doesNotMatch(ordersData, /Promise\.all\(\[\s*backendReadRows<Row>\("orders"[\s\S]*backendReadRows<Row>\("order_items"/);
+});
+
+test("dock motion starts on interaction intent without delaying navigation", () => {
+  assert.match(dock, /--mobile-dock-index/);
+  assert.match(dock, /--mobile-dock-offset/);
+  assert.match(dock, /onPointerDown: \(\) => setIntentIndex\(index\)/);
+  assert.match(dock, /data-motion-intent=\{intended \? "true" : undefined\}/);
+  assert.match(dock, /data-interaction-feedback="selection"/);
+  assert.doesNotMatch(dock, /className="mobile-app-dock bottom-nav"/);
+  assert.match(geometry, /transition:\s*transform 175ms[\s\S]*opacity 140ms/);
+  assert.match(geometry, /transition:\s*transform 155ms[\s\S]*opacity 135ms/);
+  assert.match(geometry, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.doesNotMatch(geometry, /transition:[^;]*(height|box-shadow|backdrop-filter|filter)/);
+});
+
+test("modern dock geometry has one canonical owner and lighter compositing", () => {
+  assert.match(geometry, /Canonical geometry \+ motion owner/);
+  assert.match(geometry, /grid-template-columns:\s*repeat\(5, minmax\(0, 1fr\)\)/);
+  assert.match(geometry, /env\(safe-area-inset-bottom\)/);
+  assert.match(geometry, /backdrop-filter:\s*blur\(10px\) saturate\(1\.08\) !important/);
+  assert.doesNotMatch(experience, /\.mobile-app-dock\s*\{[^}]*grid-template-columns/);
+  assert.doesNotMatch(experience, /\.mobile-app-dock\s*\{[^}]*backdrop-filter/);
+});
