@@ -29,13 +29,15 @@ test("orders route keeps the existing order control center but reads its list lo
   assert.match(page, /"\+ Tạo đơn"/);
 });
 
-test("create-order entry reuses cached canonical Công Ty customers instead of blocking the form on a new fetch", () => {
+test("create-order entry reuses cached canonical Công Ty customers and keeps customer picking search-first", () => {
   assert.match(compatibilitySheet, /CoreOrderCreateLoader/);
   assert.match(loader, /useMcpLocalResource<OrderCustomerItem\[]>\("customers"\)/);
   assert.doesNotMatch(loader, /fetch\("\/api\/backend\/core-customers"/);
   assert.doesNotMatch(loader, /customer-verifications/);
   assert.doesNotMatch(loader, /approved|linked_existing/);
   assert.match(sheet, /Chọn khách Công Ty/);
+  assert.match(sheet, /Tìm khách Công Ty/);
+  assert.match(sheet, /placeholder="Tên, SĐT, địa chỉ hoặc mã khách"/);
   assert.match(sheet, /Khách đang hoạt động, có địa chỉ và thuộc phạm vi được phép bán/);
   assert.match(sheet, /Chưa có khách Công Ty đủ điều kiện/);
   assert.doesNotMatch(sheet, /Chỉ khách đã mở|Mở \/ liên kết mã|đã mở mã/);
@@ -72,15 +74,12 @@ test("Công Ty order submit keeps canonical idempotency and never sends browser 
   assert.doesNotMatch(submissionBody, /unitPrice|customerMode|manualCustomer|setSales|setStatus/);
 });
 
-test("catalog uses Ordering-style left filter rail without copying Ordering purchase-mode logic", () => {
-  assert.match(sheet, /data-order-filter-rail/);
-  assert.match(sheet, /Nhóm sản phẩm/);
-  assert.match(sheet, /Nhãn hàng/);
-  assert.match(sheet, /selectCategory\(category\)/);
-  assert.match(sheet, /selectBrand\(brand\)/);
+test("catalog keeps quick search full-width and retires the left filter rail from the UI", () => {
+  assert.match(sheet, /Tìm sản phẩm/);
   assert.doesNotMatch(sheet, /Mua lẻ|Mua thùng|purchaseMode/);
-  assert.match(catalogStyles, /\.catalogLayout\s*\{[\s\S]*grid-template-columns:\s*142px minmax\(0, 1fr\)/);
-  assert.match(catalogStyles, /\.filterRail\s*\{/);
+  assert.match(catalogStyles, /\.catalogLayout\s*\{[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\)/);
+  assert.match(catalogStyles, /\.filterRail\s*\{[\s\S]*display:\s*none/);
+  assert.doesNotMatch(catalogStyles, /grid-template-columns:\s*(?:142px|100px|88px) minmax\(0, 1fr\)/);
 });
 
 test("each MCP product stays one card with flat Lẻ-Thùng rows and compact plus action", () => {
