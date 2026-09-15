@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { userFacingError } from "@/lib/ui/user-facing-error";
 import { idempotentMutationFetch } from "@/lib/api/idempotent-fetch";
+import { dispatchMcpLocalReadRefresh } from "@/lib/local-read/use-mcp-shell";
 import { BottomSheet } from "@/ui/overlay/BottomSheet";
 
 type SessionRow = {
@@ -249,7 +249,6 @@ export function McpSessionsManagerSafe({
     status: string;
   };
 }) {
-  const router = useRouter();
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [editing, setEditing] = useState<SessionRow | null>(null);
   const [deleting, setDeleting] = useState<SessionRow | null>(null);
@@ -295,7 +294,7 @@ export function McpSessionsManagerSafe({
           body: JSON.stringify(draft)
         });
         setEditing(null);
-        router.refresh();
+        dispatchMcpLocalReadRefresh();
       } catch (error) {
         setMessage(friendlyError(error, "Không cập nhật được phiên"));
       }
@@ -313,7 +312,7 @@ export function McpSessionsManagerSafe({
         await callApi(actionUrl(deleting.id), { method: "DELETE" });
         setDeleting(null);
         setMessage(`Đã xóa phiên rỗng ${deletedLabel}.`);
-        router.refresh();
+        dispatchMcpLocalReadRefresh();
       } catch (error) {
         setMessage(friendlyError(error, "Không xóa được phiên"));
       }
@@ -337,7 +336,7 @@ export function McpSessionsManagerSafe({
           "session-report.snapshot.create"
         );
         setMessage(`Đã tạo lại báo cáo phiên ${session.routeName} · ${session.sessionDate}`);
-        router.refresh();
+        dispatchMcpLocalReadRefresh();
       } catch (error) {
         setMessage(friendlyError(error, "Không tạo lại được báo cáo phiên"));
       } finally {

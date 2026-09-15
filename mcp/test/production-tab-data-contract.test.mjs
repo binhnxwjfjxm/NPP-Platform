@@ -92,6 +92,7 @@ test("action plan reads followups through the backend provider", () => {
 test("MCP recent sessions open local-first and keep the extended-range live fallback", () => {
   const page = read("src/app/mcp/sessions/page.tsx");
   const localPage = read("src/features/mcp/McpSessionsLocalPage.tsx");
+  const manager = read("src/features/mcp/McpSessionsManagerSafe.tsx");
   const route = read("src/app/api/mcp-sessions/route.ts");
   const loader = read("src/lib/mcp-sessions/load-mcp-sessions.ts");
 
@@ -100,6 +101,8 @@ test("MCP recent sessions open local-first and keep the extended-range live fall
   assert.match(localPage, /useMcpShellSnapshot\(\)/);
   assert.match(localPage, /needsExtendedRange/);
   assert.match(localPage, /fetch\(`\/api\/mcp-sessions\?/);
+  assert.match(manager, /dispatchMcpLocalReadRefresh/);
+  assert.doesNotMatch(manager, /router\.refresh\(\)/);
   assert.match(route, /loadMcpSessions/);
   assert.match(loader, /import "server-only";/);
   assert.match(loader, /restRows<SessionTableRow>/);
@@ -109,6 +112,8 @@ test("MCP overview, routes and points use the shared local-first shell", () => {
   const rootPage = read("src/app/page.tsx");
   const overview = read("src/app/mcp/page.tsx");
   const routes = read("src/app/routes/page.tsx");
+  const master = read("src/features/mcp/McpMasterView.tsx");
+  const photos = read("src/features/mcp/OutletPhotoManager.tsx");
   const hook = read("src/lib/local-read/use-mcp-shell.ts");
   const apiRoute = read("src/app/api/local-read/mcp-shell/route.ts");
   const serverLoader = read("src/lib/local-read/mcp-shell-server.ts");
@@ -121,6 +126,10 @@ test("MCP overview, routes and points use the shared local-first shell", () => {
   assert.match(routes, /McpRoutesLocalPage/);
   assert.doesNotMatch(overview, /loadRoutesData\(\)/);
   assert.doesNotMatch(routes, /loadRoutesData\(\)|loadRouteCustomersData\(\)/);
+  assert.match(master, /dispatchMcpLocalReadRefresh/);
+  assert.doesNotMatch(master, /router\.refresh\(\)/);
+  assert.match(photos, /dispatchMcpLocalReadRefresh/);
+  assert.doesNotMatch(photos, /router\.refresh\(\)/);
   assert.match(hook, /createLocalReadCache/);
   assert.match(hook, /readLocalFirst/);
   assert.match(hook, /REFRESH_MS = 30_000/);

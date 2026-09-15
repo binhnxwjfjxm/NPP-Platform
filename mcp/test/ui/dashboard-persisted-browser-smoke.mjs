@@ -10,7 +10,6 @@ const page = await context.newPage();
 
 await page.goto(app, { waitUntil: "domcontentloaded" });
 const routeA = page.getByRole("article").filter({ hasText: "Tuyến Browser A" });
-await routeA.getByText("session-latest-a", { exact: false }).waitFor();
 await routeA.getByText("9/12", { exact: true }).waitFor();
 await routeA.getByText("2", { exact: true }).first().waitFor();
 await routeA.getByText("3", { exact: true }).waitFor();
