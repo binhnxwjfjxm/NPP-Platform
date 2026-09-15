@@ -11,6 +11,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 type Resource = "control-tower" | "proposals" | "alerts" | "reports";
+type ReportPeriod = ReturnType<typeof normalizeReportPeriod>;
 
 const REPORT_DOMAINS = new Set<ReportDomain>(["executive", "debt", "inventory", "delivery-cod", "mcp", "people", "decisions"]);
 
@@ -18,7 +19,7 @@ function safePart(value: string) {
   return value.replace(/[^A-Za-z0-9._-]/g, "_") || "all";
 }
 
-function resourceName(resource: Resource, period: string, tab: ReportDomain, warehouseId: string | null) {
+function resourceName(resource: Resource, period: ReportPeriod, tab: ReportDomain, warehouseId: string | null) {
   const suffix = period === "Hôm nay" ? "today" : period === "7 ngày" ? "7d" : period === "Quý này" ? "quarter" : "month";
   if (resource === "proposals") return "proposals";
   if (resource === "reports") return `reports.${safePart(tab)}.${safePart(warehouseId || "all")}.${suffix}`;
@@ -41,9 +42,9 @@ function parseReportDomain(value: string | null): ReportDomain {
   return REPORT_DOMAINS.has(value as ReportDomain) ? value as ReportDomain : "executive";
 }
 
-async function loadResource(resource: Resource, period: string, tab: ReportDomain, warehouseId: string | null) {
+async function loadResource(resource: Resource, period: ReportPeriod, tab: ReportDomain, warehouseId: string | null) {
   if (resource === "proposals") return loadProposals();
-  if (resource === "control-tower") return loadControlTower(resolveReportRange(normalizeReportPeriod(period)));
+  if (resource === "control-tower") return loadControlTower(resolveReportRange(period));
   if (resource === "reports") return loadLotCPresentation(tab, period, warehouseId);
   const alerts = await loadAlertCenter(period);
   if (alerts.message) {
