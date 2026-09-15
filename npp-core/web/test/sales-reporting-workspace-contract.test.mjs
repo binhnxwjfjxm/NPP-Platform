@@ -41,7 +41,7 @@ test('Bộ lọc bán hàng gửi kỳ, kho và phân loại theo lựa chọn n
   assert.match(workspace, /query\.set\('includeZeroProducts', 'true'\)/);
   assert.match(workspace, /classification\.options\.productGroups/);
   assert.match(workspace, /classification\.options\.customerGroups/);
-  assert.match(workspace, /Tất cả kho được cấp quyền/);
+  assert.match(workspace, /Tất cả kho/);
   assert.match(workspace, /Tất cả nhóm sản phẩm/);
   assert.match(workspace, /Tất cả nhóm khách hàng/);
   for (const field of ['productGroupId', 'customerGroupId', 'includeZeroProducts']) {
@@ -49,21 +49,19 @@ test('Bộ lọc bán hàng gửi kỳ, kho và phân loại theo lựa chọn n
   }
 });
 
-
-test('Nhóm khách và nhóm sản phẩm chỉ là bộ lọc của các mục cũ, bảng có dòng Tổng', () => {
+test('Nhóm khách và nhóm sản phẩm vẫn là bộ lọc theo chiều, bảng có dòng Tổng', () => {
   const workspace = read('app/components/sales-reporting-workspace.tsx');
   const styles = read('app/components/sales-reporting-workspace.module.css');
   const types = read('lib/sales-reporting-types.ts');
 
   assert.match(workspace, /activeDimension === 'customers'/);
-  assert.match(workspace, /Lọc khách hàng theo nhóm/);
+  assert.match(workspace, /Nhóm khách/);
   assert.match(workspace, /activeDimension === 'products'/);
-  assert.match(workspace, /Lọc sản phẩm theo nhóm/);
-  assert.match(workspace, /Hiện sản phẩm không phát sinh/);
+  assert.match(workspace, /Nhóm sản phẩm/);
+  assert.match(workspace, /Hiện mã không phát sinh/);
   assert.match(workspace, /report\?\.breakdownTotals\[activeDimension\]/);
   assert.match(workspace, /<tfoot>/);
   assert.match(workspace, /styles\.totalRow/);
-  assert.match(styles, /\.dimensionFilterBar/);
   assert.match(styles, /\.totalRow/);
   assert.match(types, /breakdownTotals:/);
 
@@ -77,25 +75,28 @@ test('Nền Báo cáo bán hàng giữ so kỳ, tỷ trọng, đối soát và c
   const workspace = read('app/components/sales-reporting-workspace.tsx');
   assert.match(workspace, /previousRevenue/);
   assert.match(workspace, /sharePercent/);
-  assert.match(workspace, /report\?\.reconciliation/);
+  assert.match(workspace, /report\.reconciliation/);
   assert.match(workspace, /dataQuality\.warnings/);
-  assert.match(workspace, /Xu hướng theo ngày/);
+  assert.match(workspace, /Doanh thu theo ngày/);
   assert.match(workspace, /Doanh thu kỳ trước/);
+  assert.match(workspace, /warningDetails/);
   assert.doesNotMatch(workspace, /Ngày tương ứng kỳ trước/);
 });
 
-test('Đổi chiều phân tích giữ vùng bảng ổn định, không điều hướng hoặc remount trang', () => {
+test('Lô 2 đổi 6 tab thành dropdown và đổi chiều tại chỗ, không điều hướng/remount', () => {
   const workspace = read('app/components/sales-reporting-workspace.tsx');
   const styles = read('app/components/sales-reporting-workspace.module.css');
-  assert.match(workspace, /onClick=\{\(\) => \{[\s\S]*setActiveDimension\(item\.key\)/);
+  assert.match(workspace, /<span>Chiều phân tích<\/span>/);
+  assert.match(workspace, /<select value=\{activeDimension\} onChange=\{\(event\) => changeDimension\(event\.target\.value\)\}>/);
+  assert.match(workspace, /setActiveDimension\(value\)/);
+  assert.doesNotMatch(workspace, /role="tablist"|role="tab"/);
   assert.doesNotMatch(workspace, /router\.push|window\.location|href=\{dimension/);
   assert.match(styles, /\.analysisTableWrap[\s\S]*height: clamp\(/);
   assert.match(workspace, /BusinessTableSequenceHeader/);
   assert.match(workspace, /BusinessTableSequenceCell/);
 });
 
-
-test('Lô 3 có preset kỳ, biểu đồ xu hướng, chi tiết và bộ lọc phân tích nâng cao', () => {
+test('Preset kỳ, biểu đồ xu hướng, chi tiết và bộ lọc phân tích nâng cao vẫn còn', () => {
   const workspace = read('app/components/sales-reporting-workspace.tsx');
   for (const label of ['Hôm nay', '7 ngày', 'Tháng này', 'Tháng trước']) {
     assert.match(workspace, new RegExp(label));
@@ -109,11 +110,11 @@ test('Lô 3 có preset kỳ, biểu đồ xu hướng, chi tiết và bộ lọc
   assert.match(workspace, /currencyFilter/);
   assert.match(workspace, /comparisonFilter/);
   assert.match(workspace, /selectedRow/);
-  assert.match(workspace, /Xem/);
+  assert.match(workspace, />Xem<\/button>/);
   assert.match(workspace, /Chi tiết/);
 });
 
-test('Lô 3 lưu chế độ xem phía trình duyệt, không thêm API hoặc persistence server', () => {
+test('Lưu chế độ xem vẫn ở trình duyệt, không thêm API/persistence server', () => {
   const workspace = read('app/components/sales-reporting-workspace.tsx');
   assert.match(workspace, /SAVED_VIEW_KEY/);
   assert.match(workspace, /window\.localStorage\.getItem/);
@@ -122,23 +123,38 @@ test('Lô 3 lưu chế độ xem phía trình duyệt, không thêm API hoặc p
   assert.doesNotMatch(workspace, /fetch\([^)]*saved|\/api\/reporting\/sales\/view/);
 });
 
-test('Lô 3 giữ UX responsive cho công cụ phân tích, chi tiết và biểu đồ', () => {
-  const styles = read('app/components/sales-reporting-workspace.module.css');
-  assert.match(styles, /\.analysisTools/);
-  assert.match(styles, /\.detailGrid/);
-  assert.match(styles, /\.trendGrid/);
-  assert.match(styles, /@media \(max-width: 640px\)[\s\S]*\.analysisTools/);
-  assert.match(styles, /\.trendChart/);
-});
-
-
-test('Báo cáo bán hàng gom bộ lọc desktop một hàng và ưu tiên số liệu tổng', () => {
+test('Lô 2 gom filter một hàng desktop, KPI thấp và nội dung chính theo tỷ lệ 75/25', () => {
   const workspace = read('app/components/sales-reporting-workspace.tsx');
   const styles = read('app/components/sales-reporting-workspace.module.css');
+
   assert.match(workspace, /styles\.filterToolbar/);
-  assert.match(styles, /\.filterToolbar[\s\S]*grid-template-columns: max-content/);
-  assert.match(styles, /\.summaryGrid article[\s\S]*min-height: 92px/);
-  assert.match(styles, /\.cardValue,[\s\S]*font-size: 2rem/);
-  assert.match(workspace, /formatDecimal\(value, 2\)/);
-  assert.match(workspace, /percent\(row\.sharePercent\)/);
+  assert.match(styles, /\.filterToolbar[\s\S]*display: flex/);
+  assert.match(styles, /\.filterToolbar[\s\S]*overflow-x: auto/);
+  assert.match(styles, /\.summaryGrid article[\s\S]*min-height: 68px/);
+  assert.match(styles, /\.cardValue,[\s\S]*font-size: 1\.45rem/);
+  assert.match(workspace, /styles\.mainGrid/);
+  assert.match(styles, /\.mainGrid[\s\S]*grid-template-columns: minmax\(0, 3fr\) minmax\(260px, 1fr\)/);
+  assert.match(workspace, /styles\.analysisPanel/);
+  assert.match(workspace, /styles\.trendPanel/);
+});
+
+test('Lô 2 bỏ heading/tab/card thừa nhưng giữ trạng thái đối soát và cảnh báo dạng gọn', () => {
+  const workspace = read('app/components/sales-reporting-workspace.tsx');
+
+  assert.doesNotMatch(workspace, /<p className=\{styles\.eyebrow\}>Phân tích<\/p>/);
+  assert.doesNotMatch(workspace, /Xem theo \{selectedDimension\.label\.toLowerCase\(\)\}/);
+  assert.doesNotMatch(workspace, /<h2>Khớp với đơn bán hàng<\/h2>/);
+  assert.doesNotMatch(workspace, /<h2>Điểm cần lưu ý<\/h2>/);
+  assert.match(workspace, /Đối soát:/);
+  assert.match(workspace, /chênh lệch/);
+  assert.match(workspace, /cảnh báo/);
+});
+
+test('Responsive giữ filter, bảng chi tiết và biểu đồ ổn trên màn hình nhỏ', () => {
+  const styles = read('app/components/sales-reporting-workspace.module.css');
+  assert.match(styles, /@media \(max-width: 980px\)[\s\S]*\.mainGrid/);
+  assert.match(styles, /@media \(max-width: 640px\)[\s\S]*\.filterToolbar/);
+  assert.match(styles, /\.detailGrid/);
+  assert.match(styles, /\.trendGrid/);
+  assert.match(styles, /\.trendChart/);
 });
