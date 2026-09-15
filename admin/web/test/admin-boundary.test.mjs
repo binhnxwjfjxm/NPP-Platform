@@ -12,7 +12,8 @@ test('admin keeps standalone frontend with shared Công Ty backend and auth', as
   assert.match(core, /CORE_API_INTERNAL_URL/);
   assert.match(core, /employeeSessionToken/);
   assert.doesNotMatch(core, /CORE_API_SERVER_TOKEN|DATABASE_URL|SUPABASE_SERVICE_ROLE_KEY/);
-  assert.match(middleware, /\/api\/internal-auth\/me/);
+  assert.match(middleware, /request\.cookies\.get\(ADMIN_SESSION_COOKIE\)/);
+  assert.doesNotMatch(middleware, /\/api\/internal-auth\/me|sessionIsActive|await fetch/);
 });
 
 test('admin shell exposes exactly four management destinations with proposal wording', async () => {

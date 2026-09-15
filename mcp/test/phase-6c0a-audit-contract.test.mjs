@@ -69,13 +69,16 @@ test("dependency inventory is complete enough to drive the next audit", async ()
 
 test("the active UI chain remains distinct from legacy and dead-code findings", async () => {
   const visits = await readFile(mcpUrl("src/app/visits/page.tsx"), "utf8");
+  const localVisits = await readFile(mcpUrl("src/features/mcp/VisitsLocalPage.tsx"), "utf8");
   const pageExport = await readFile(mcpUrl("src/features/mcp/MCPPage.tsx"), "utf8");
   const entry = await readFile(mcpUrl("src/features/mcp/MCPPageEntryReportReady.tsx"), "utf8");
   const compact = await readFile(mcpUrl("src/features/mcp/McpSessionCompactView.tsx"), "utf8");
   const finalView = await readFile(mcpUrl("src/features/mcp/McpSessionCompactViewFinal2.tsx"), "utf8");
   const lineCard = await readFile(mcpUrl("src/features/mcp/McpLineCard.tsx"), "utf8");
 
-  assert.match(visits, /from "@\/features\/mcp\/MCPPage"/);
+  assert.match(visits, /VisitsLocalPage/);
+  assert.match(localVisits, /from "@\/features\/mcp\/MCPPage"/);
+  assert.match(localVisits, /useMcpVisitDay/);
   assert.match(pageExport, /MCPPageEntryReportReady/);
   assert.match(entry, /McpSessionCompactView/);
   assert.match(compact, /McpSessionCompactViewFinal2/);

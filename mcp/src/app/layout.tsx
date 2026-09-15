@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { InteractionFeedbackProvider } from "@/ui/feedback/InteractionFeedbackProvider";
+import { McpProductCatalogWarmup } from "@/features/orders/McpProductCatalogWarmup";
 import { McpLocalIdentityProvider } from "@/lib/local-read/mcp-local-identity";
 import { mcpLocalCacheUserIdFromSession } from "@/lib/local-read/mcp-local-identity-server";
 import "./globals.css";
@@ -63,6 +64,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="vi">
       <body>
         <McpLocalIdentityProvider userId={cacheUserId}>
+          <McpProductCatalogWarmup />
           <InteractionFeedbackProvider>{children}</InteractionFeedbackProvider>
         </McpLocalIdentityProvider>
       </body>

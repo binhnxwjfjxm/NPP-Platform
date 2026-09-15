@@ -41,7 +41,10 @@ export function MobileDock({ items, style, ...props }: MobileDockProps) {
         const active = isItemActive(pathname, item.href);
         const primary = item.href === "/visits";
         const intended = intentIndex === index;
-        const documentNavigation = primary || isVisitFlow(pathname);
+        // Entering Đi tuyến is now local-first and must stay inside the current
+        // document. While already inside a visit/session flow we keep the
+        // existing fresh-document escape for leaving operational state.
+        const documentNavigation = isVisitFlow(pathname);
         const className = `mobile-app-dock-link bottom-nav-link${active ? " active" : ""}${primary ? " primary" : ""}`;
         const content = (
           <>

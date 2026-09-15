@@ -14,7 +14,7 @@ const loginRoute = read('app/api/auth/login/route.ts');
 const authMeRoute = read('app/api/auth/me/route.ts');
 const logoutRoute = read('app/api/auth/logout/route.ts');
 
-test('Admin PWA stores only the opaque Core employee session in an HttpOnly cookie', () => {
+test('Admin PWA stores only the opaque Công Ty employee session in an HttpOnly cookie', () => {
   assert.match(session, /ADMIN_SESSION_COOKIE = 'hp_admin_session'/);
   assert.match(session, /httpOnly:\s*true/);
   assert.match(session, /sameSite:\s*'lax'/);
@@ -25,13 +25,17 @@ test('Admin PWA stores only the opaque Core employee session in an HttpOnly cook
   assert.doesNotMatch(coreApi, /CORE_API_SERVER_TOKEN/);
 });
 
-test('Admin browser navigation validates the employee session through the same-origin Node auth boundary', () => {
+test('Admin browser navigation is cookie-gated locally and does not block every tab on a Công Ty auth round-trip', () => {
   assert.match(middleware, /PUBLIC_PATHS/);
   assert.match(middleware, /loginRedirect/);
-  assert.match(middleware, /SESSION_CHECK_PATH = '\/api\/auth\/me'/);
-  assert.match(middleware, /Authorization:\s*`Bearer \$\{token\}`/);
   assert.match(middleware, /ADMIN_SESSION_COOKIE/);
+  assert.match(middleware, /return NextResponse\.next\(\);/);
+  assert.doesNotMatch(middleware, /SESSION_CHECK_PATH|sessionIsActive|sessionCheckUrl/);
+  assert.doesNotMatch(middleware, /await fetch|Authorization:\s*`Bearer/);
   assert.doesNotMatch(middleware, /CORE_API_INTERNAL_URL/);
+
+  // Fresh reads and writes still validate the canonical employee session at
+  // their protected API boundary; only route navigation loses the duplicate gate.
   assert.match(authMeRoute, /\/api\/internal-auth\/me/);
   assert.match(authMeRoute, /bearerToken\(request\) \|\| readAdminSessionToken\(\)/);
   assert.doesNotMatch(middleware, /WWW-Authenticate|Basic realm|CORE_WEB_ADMIN_USERNAME|CORE_WEB_ADMIN_PASSWORD/);
@@ -42,7 +46,7 @@ test('Admin browser navigation validates the employee session through the same-o
   assert.match(loginPage, /email của chính tài khoản/);
 });
 
-test('Admin login and logout proxy the canonical Core internal-auth lifecycle without exposing the token to browser JavaScript', () => {
+test('Admin login and logout proxy the canonical Công Ty internal-auth lifecycle without exposing the token to browser JavaScript', () => {
   assert.match(loginRoute, /\/api\/internal-auth\/login/);
   assert.match(loginRoute, /ADMIN_INTERNAL_SOURCE_APP/);
   assert.match(loginRoute, /response\.cookies\.set/);

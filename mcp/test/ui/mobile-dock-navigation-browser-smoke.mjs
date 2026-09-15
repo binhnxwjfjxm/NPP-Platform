@@ -89,13 +89,13 @@ try {
   assert.equal(routeDock.values.some((item) => item.href === "/routes"), false, "route management must leave the mobile dock");
   assert.deepEqual(
     routeDock.values.map((item) => item.documentNavigation),
-    [null, "true", null, null, null],
-    "normal destinations must use client navigation while Đi tuyến keeps the document-level redirect boundary"
+    [null, null, null, null, null],
+    "all daily destinations, including Đi tuyến, must enter with client navigation outside an active visit flow"
   );
   assert.deepEqual(
     routeDock.values.map((item) => item.clientNavigation),
-    ["true", null, "true", "true", "true"],
-    "normal destinations must be marked as client navigation"
+    ["true", "true", "true", "true", "true"],
+    "daily destinations must be marked as client navigation before a visit starts"
   );
   const motionIndices = await verifyDockMotion(page, routeDock.dock, routeDock.links);
 
@@ -120,24 +120,21 @@ try {
   await page.goto(`${appBase}/routes`, { waitUntil: "domcontentloaded" });
   const dock = (await readDock(page)).dock;
   const visitLink = dock.getByRole("link", { name: "Đi tuyến", exact: true });
-  const visitResponsePromise = page.waitForResponse((response) => {
-    return response.request().isNavigationRequest() && pathname(response.url()) === "/visits";
-  });
+  await page.evaluate(() => { window.__mcpNavigationMarker = "visit-client-entry"; });
   await visitLink.click();
-  const visitResponse = await visitResponsePromise;
-  assert.equal(
-    visitResponse.status(),
-    307,
-    `/visits entry must redirect before streaming a shell; status=${visitResponse.status()}`
-  );
   await page.waitForURL((url) => url.pathname === "/routes");
+  assert.equal(
+    await page.evaluate(() => window.__mcpNavigationMarker),
+    "visit-client-entry",
+    "Đi tuyến must resolve the no-session redirect without reloading the browser document"
+  );
   assert.equal(pathname(page.url()), "/routes", "no active session must land on route preparation");
 
   await page.goto(`${appBase}/visits?routeId=route-active&date=2099-12-30`, { waitUntil: "domcontentloaded" });
   assert.equal(pathname(page.url()), "/visits", "active visit setup must remain on /visits");
   const sessionDock = await readDock(page);
   for (const item of sessionDock.values) {
-    assert.equal(item.documentNavigation, "true", "visit flow must retain a fresh-document escape for every dock destination");
+    assert.equal(item.documentNavigation, "true", "leaving an active visit must retain a fresh-document escape");
   }
   const ordersLink = sessionDock.dock.getByRole("link", { name: "Đơn", exact: true });
   await page.setExtraHTTPHeaders(unauthenticatedHeaders);
@@ -156,10 +153,10 @@ try {
   result.motionIndices = motionIndices;
   result.reducedMotion = "PASS";
   result.normalClientNavigation = "PASS";
+  result.visitClientEntry = "PASS";
   result.customerDestination = "/login";
   result.customerAuthGate = "PASS";
   result.proxyHttpsBoundary = "PASS";
-  result.entryRedirectStatus = visitResponse.status();
   result.noActiveDestination = "/routes";
   result.visitEscapeDestination = "/login";
   result.ordersAuthReturnTo = "/orders";

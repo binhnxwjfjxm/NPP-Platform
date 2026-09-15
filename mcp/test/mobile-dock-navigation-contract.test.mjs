@@ -8,25 +8,27 @@ const ordersData = await readFile("src/lib/api/orders-data.ts", "utf8");
 const geometry = await readFile("src/app/mobile-app-geometry.css", "utf8");
 const experience = await readFile("src/app/mobile-app-experience.css", "utf8");
 
-test("bottom dock uses fast client navigation except where visit flow needs a document-level escape", () => {
+test("bottom dock uses fast client navigation to enter visits and keeps document-level escape only inside visit flow", () => {
   assert.match(dock, /import Link from "next\/link"/);
   assert.match(dock, /function isVisitFlow\(pathname: string\)/);
-  assert.match(dock, /const documentNavigation = primary \|\| isVisitFlow\(pathname\)/);
+  assert.match(dock, /const documentNavigation = isVisitFlow\(pathname\)/);
+  assert.doesNotMatch(dock, /const documentNavigation = primary \|\| isVisitFlow\(pathname\)/);
   assert.match(dock, /<a[\s\S]*?data-document-navigation="true"[\s\S]*?href=\{item\.href\}/);
   assert.match(dock, /<Link[\s\S]*?data-client-navigation="true"[\s\S]*?href=\{item\.href\}[\s\S]*?prefetch=\{false\}/);
   assert.doesNotMatch(dock, /preventDefault|setTimeout/);
 });
 
-test("visits entry resolves redirects before a route shell can stream", async () => {
+test("visits entry owns local-first redirect decisions without a route loading boundary", async () => {
   await assert.rejects(
     access("src/app/visits/loading.tsx"),
     (error) => error && error.code === "ENOENT"
   );
 });
 
-test("home shortcuts avoid background route storms while visits keeps native redirect handling", () => {
-  assert.match(launchpad, /<a className="mobile-home-primary-action" data-document-navigation="true" href="\/visits">/);
+test("home shortcuts avoid background route storms and enter visits with client navigation", () => {
+  assert.match(launchpad, /<Link className="mobile-home-primary-action" data-client-navigation="true" href="\/visits" prefetch=\{false\}>/);
   assert.match(launchpad, /<Link href=\{item\.href\} key=\{item\.href\} prefetch=\{false\}>/);
+  assert.doesNotMatch(launchpad, /data-document-navigation="true" href="\/visits"/);
   assert.doesNotMatch(launchpad, /prefetch=\{item\.href !== "\/orders"\}/);
 });
 

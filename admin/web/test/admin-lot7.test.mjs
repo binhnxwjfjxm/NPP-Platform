@@ -17,7 +17,8 @@ test('Lô 7 keeps signed-out and deep-link access fail-closed with office wordin
 
   assert.match(middleware, /loginRedirect\(request\)/);
   assert.match(middleware, /safeAdminReturnTo/);
-  assert.match(middleware, /\/api\/internal-auth\/me/);
+  assert.match(middleware, /request\.cookies\.get\(ADMIN_SESSION_COOKIE\)/);
+  assert.doesNotMatch(middleware, /\/api\/internal-auth\/me|sessionIsActive|await fetch/);
   assert.match(middleware, /deny\(request, 401/);
   assert.match(middleware, /deny\(request, 503/);
   assert.match(middleware, /matcher:/);
