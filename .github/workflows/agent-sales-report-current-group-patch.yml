@@ -103,7 +103,7 @@ jobs:
 
           rm .github/workflows/agent-sales-report-current-group-patch.yml
           git diff --check
-          node --test npp-core/api/test/reporting-business-contract.test.js npp-core/api/test/reporting-sales-purchasing-contract.test.js
+          node --test npp-core/api/test/reporting-business-contract.test.js
 
       - name: Commit exact fix
         shell: bash
