@@ -30,18 +30,22 @@ jobs:
           source_path = Path('npp-core/api/src/routes/reporting-sales.js')
           source = source_path.read_text()
 
-          old_sql = """              CASE WHEN sov.customer_group_snapshot_captured THEN sov.customer_group_id_snapshot ELSE customer.group_id END AS customer_group_id,
-              CASE WHEN sov.customer_group_snapshot_captured THEN sov.customer_group_code_snapshot ELSE customer_group.code END AS customer_group_code,
-              CASE WHEN sov.customer_group_snapshot_captured THEN sov.customer_group_name_snapshot ELSE customer_group.name END AS customer_group_name,
-              CASE WHEN sov.customer_group_snapshot_captured THEN 'snapshot' WHEN customer_group.id IS NOT NULL THEN 'legacy-current-master' ELSE 'legacy-unavailable' END AS customer_group_source,
-"""
-          new_sql = """              customer.group_id AS customer_group_id,
-              customer_group.code AS customer_group_code,
-              customer_group.name AS customer_group_name,
-              CASE WHEN customer_group.id IS NOT NULL THEN 'current-master' ELSE 'current-unclassified' END AS customer_group_source,
-              sov.customer_group_snapshot_captured,
-              sov.customer_group_id_snapshot, sov.customer_group_code_snapshot, sov.customer_group_name_snapshot,
-"""
+          old_sql = "\n".join([
+              "              CASE WHEN sov.customer_group_snapshot_captured THEN sov.customer_group_id_snapshot ELSE customer.group_id END AS customer_group_id,",
+              "              CASE WHEN sov.customer_group_snapshot_captured THEN sov.customer_group_code_snapshot ELSE customer_group.code END AS customer_group_code,",
+              "              CASE WHEN sov.customer_group_snapshot_captured THEN sov.customer_group_name_snapshot ELSE customer_group.name END AS customer_group_name,",
+              "              CASE WHEN sov.customer_group_snapshot_captured THEN 'snapshot' WHEN customer_group.id IS NOT NULL THEN 'legacy-current-master' ELSE 'legacy-unavailable' END AS customer_group_source,",
+              "",
+          ])
+          new_sql = "\n".join([
+              "              customer.group_id AS customer_group_id,",
+              "              customer_group.code AS customer_group_code,",
+              "              customer_group.name AS customer_group_name,",
+              "              CASE WHEN customer_group.id IS NOT NULL THEN 'current-master' ELSE 'current-unclassified' END AS customer_group_source,",
+              "              sov.customer_group_snapshot_captured,",
+              "              sov.customer_group_id_snapshot, sov.customer_group_code_snapshot, sov.customer_group_name_snapshot,",
+              "",
+          ])
           if source.count(old_sql) != 1:
               raise SystemExit(f'expected customer-group SQL block once, found {source.count(old_sql)}')
           source = source.replace(old_sql, new_sql, 1)
