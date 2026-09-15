@@ -1,0 +1,111 @@
+name: Agent patch sales report current customer group
+
+on:
+  push:
+    branches:
+      - agent/sales-report-current-customer-group
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/sales-report-current-customer-group
+          fetch-depth: 0
+
+      - name: Apply exact reporting fix and regression test
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          source_path = Path('npp-core/api/src/routes/reporting-sales.js')
+          source = source_path.read_text()
+
+          old_sql = """              CASE WHEN sov.customer_group_snapshot_captured THEN sov.customer_group_id_snapshot ELSE customer.group_id END AS customer_group_id,
+              CASE WHEN sov.customer_group_snapshot_captured THEN sov.customer_group_code_snapshot ELSE customer_group.code END AS customer_group_code,
+              CASE WHEN sov.customer_group_snapshot_captured THEN sov.customer_group_name_snapshot ELSE customer_group.name END AS customer_group_name,
+              CASE WHEN sov.customer_group_snapshot_captured THEN 'snapshot' WHEN customer_group.id IS NOT NULL THEN 'legacy-current-master' ELSE 'legacy-unavailable' END AS customer_group_source,
+"""
+          new_sql = """              customer.group_id AS customer_group_id,
+              customer_group.code AS customer_group_code,
+              customer_group.name AS customer_group_name,
+              CASE WHEN customer_group.id IS NOT NULL THEN 'current-master' ELSE 'current-unclassified' END AS customer_group_source,
+              sov.customer_group_snapshot_captured,
+              sov.customer_group_id_snapshot, sov.customer_group_code_snapshot, sov.customer_group_name_snapshot,
+"""
+          if source.count(old_sql) != 1:
+              raise SystemExit(f'expected customer-group SQL block once, found {source.count(old_sql)}')
+          source = source.replace(old_sql, new_sql, 1)
+
+          old_quality = "const customerGroupLegacyFallbackCount = current.filter((row) => row.customerGroupSource !== 'snapshot').length;"
+          new_quality = "const customerGroupLegacyFallbackCount = current.filter((row) => row.customerGroupSnapshotCaptured !== true).length;"
+          if source.count(old_quality) != 1:
+              raise SystemExit('customer-group quality contract changed unexpectedly')
+          source = source.replace(old_quality, new_quality, 1)
+
+          old_warning = "Một phần đơn cũ chưa có ảnh chụp Loại khách; báo cáo đang ghi rõ phần dùng danh mục hiện tại để tham chiếu."
+          new_warning = "Một phần đơn cũ chưa có ảnh chụp Loại khách để truy vết lịch sử; phân tích Nhóm khách vẫn dùng danh mục khách hàng hiện tại."
+          if source.count(old_warning) != 1:
+              raise SystemExit('customer-group warning contract changed unexpectedly')
+          source = source.replace(old_warning, new_warning, 1)
+
+          old_basis = "classification: 'customer group only filters the customer breakdown; product group and zero-product options only filter the product breakdown; summary, trend, documents, reconciliation and other breakdowns remain on the full selected period and warehouse scope'"
+          new_basis = "classification: 'customer group uses the current customer master and only filters the customer breakdown; product group and zero-product options only filter the product breakdown; summary, trend, documents, reconciliation and other breakdowns remain on the full selected period and warehouse scope'"
+          if source.count(old_basis) != 1:
+              raise SystemExit('classification basis changed unexpectedly')
+          source = source.replace(old_basis, new_basis, 1)
+
+          old_history = "historicalDimensions: 'confirmed snapshots when captured; legacy rows explicitly mark current-master fallback instead of silently rewriting history'"
+          new_history = "historicalDimensions: 'customer group analysis uses the current customer master; confirmed customer-group snapshots remain immutable for audit; product group and unit history still use confirmed snapshots when captured with explicit legacy fallback'"
+          if source.count(old_history) != 1:
+              raise SystemExit('historical dimension basis changed unexpectedly')
+          source = source.replace(old_history, new_history, 1)
+          source_path.write_text(source)
+
+          test_path = Path('npp-core/api/test/reporting-business-contract.test.js')
+          test_source = test_path.read_text()
+          marker = "test('migration 120 snapshot forward và giữ rõ dữ liệu legacy', async () => {"
+          if test_source.count(marker) != 1:
+              raise SystemExit('reporting business test insertion point changed unexpectedly')
+          regression = r'''test('Nhóm khách của Báo cáo bán hàng dùng danh mục hiện tại và vẫn giữ snapshot để truy vết', async () => {
+  const source = await readApi('src/routes/reporting-sales.js');
+  assert.match(source, /customer\.group_id AS customer_group_id/);
+  assert.match(source, /customer_group\.code AS customer_group_code/);
+  assert.match(source, /customer_group\.name AS customer_group_name/);
+  assert.match(source, /sov\.customer_group_snapshot_captured/);
+  assert.match(source, /sov\.customer_group_id_snapshot, sov\.customer_group_code_snapshot, sov\.customer_group_name_snapshot/);
+  assert.match(source, /row\.customerGroupSnapshotCaptured !== true/);
+  assert.doesNotMatch(source, /CASE WHEN sov\.customer_group_snapshot_captured THEN sov\.customer_group_id_snapshot ELSE customer\.group_id END AS customer_group_id/);
+  assert.match(source, /customer group analysis uses the current customer master/);
+  assert.match(source, /confirmed customer-group snapshots remain immutable for audit/);
+});
+
+'''
+          test_source = test_source.replace(marker, regression + marker, 1)
+          test_path.write_text(test_source)
+          PY
+
+          rm .github/workflows/agent-sales-report-current-group-patch.yml
+          git diff --check
+          node --test npp-core/api/test/reporting-business-contract.test.js npp-core/api/test/reporting-sales-purchasing-contract.test.js
+
+      - name: Commit exact fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add npp-core/api/src/routes/reporting-sales.js npp-core/api/test/reporting-business-contract.test.js .github/workflows/agent-sales-report-current-group-patch.yml
+          git diff --cached --check
+          test -n "$(git diff --cached --name-only)"
+          git commit -m 'fix(company): báo cáo dùng nhóm khách hiện tại'
+          git push origin HEAD:agent/sales-report-current-customer-group
