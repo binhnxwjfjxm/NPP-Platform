@@ -25,15 +25,15 @@
 
 .catalogLayout {
   display: grid;
-  grid-template-columns: 142px minmax(0, 1fr);
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
   min-height: 0;
   flex: 1 1 auto;
   overflow: hidden;
 }
 
 .filterRail {
-  display: flex;
+  display: none;
   min-height: 0;
   flex-direction: column;
   gap: 4px;
@@ -274,8 +274,8 @@
 
 @media (max-width: 900px) {
   .catalogLayout {
-    grid-template-columns: 100px minmax(0, 1fr);
-    gap: 6px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
   }
 
   .filterRail {
@@ -335,8 +335,8 @@
 
 @media (max-width: 420px) {
   .catalogLayout {
-    grid-template-columns: 88px minmax(0, 1fr);
-    gap: 5px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
   }
 
   .filterButton {
