@@ -40,7 +40,7 @@ test('phím mũi tên chỉnh SL và Tab đi thẳng sang đơn giá mà không 
   assert.ok(form.includes("event.key === 'ArrowUp' ? 'Tăng số lượng ' : 'Giảm số lượng '"));
   assert.ok(form.includes('action.click();'));
   assert.ok(form.includes("if (event.key === 'Tab')"));
-  assert.ok(form.includes('input[aria-label^=\\"${PRICE_INPUT_PREFIX}\\"]'));
+  assert.ok(form.includes('input[aria-label^="${PRICE_INPUT_PREFIX}"]'));
   assert.ok(form.includes('focusAndSelect(priceInput);'));
 });
 
