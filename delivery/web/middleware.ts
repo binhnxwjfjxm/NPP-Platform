@@ -3,8 +3,9 @@ import { encodeDeliveryInternalAuthorization } from './lib/delivery-auth';
 import { DELIVERY_CAPABILITY_HEADERS, type DeliveryCapabilities } from './lib/delivery-capabilities';
 import { DELIVERY_SESSION_COOKIE, safeDeliveryReturnTo } from './lib/delivery-session';
 
+const SESSION_CHECK_PATH = '/api/auth/me';
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const PUBLIC_PATHS = new Set(['/login', '/api/auth/login', '/api/auth/logout']);
+const PUBLIC_PATHS = new Set(['/login', '/api/auth/login', '/api/auth/logout', SESSION_CHECK_PATH]);
 
 const CORE_PERMISSIONS = Object.freeze({
   viewTrips: 'core.delivery-trip.driver-read',
@@ -61,20 +62,14 @@ function clearInvalidSession(response: NextResponse) {
   return response;
 }
 
-function coreBaseUrl(): string | null {
-  const raw = process.env.CORE_API_INTERNAL_URL?.trim();
-  if (!raw) return null;
-  try {
-    const url = new URL(raw);
-    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return null;
-    if (process.env.NODE_ENV === 'production' && url.protocol !== 'https:') return null;
-    url.pathname = url.pathname.replace(/\/$/, '');
-    url.search = '';
-    url.hash = '';
-    return url.toString().replace(/\/$/, '');
-  } catch {
-    return null;
-  }
+function sessionCheckUrl(request: NextRequest) {
+  const url = request.nextUrl.clone();
+  const loopback = new Set(['127.0.0.1', 'localhost', '::1']).has(url.hostname);
+  if (loopback) url.protocol = 'http:';
+  url.pathname = SESSION_CHECK_PATH;
+  url.search = '';
+  url.hash = '';
+  return url;
 }
 
 function deriveCapabilities(payload: MePayload): DeliveryCapabilities {
@@ -95,13 +90,11 @@ function deriveCapabilities(payload: MePayload): DeliveryCapabilities {
   });
 }
 
-async function resolveSession(token: string): Promise<SessionState> {
-  const baseUrl = coreBaseUrl();
-  if (!baseUrl) return { state: 'unavailable' };
+async function resolveSession(request: NextRequest, token: string): Promise<SessionState> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 3_000);
+  const timeout = setTimeout(() => controller.abort(), 5_000);
   try {
-    const response = await fetch(`${baseUrl}/api/internal-auth/me`, {
+    const response = await fetch(sessionCheckUrl(request), {
       method: 'GET',
       cache: 'no-store',
       signal: controller.signal,
@@ -142,16 +135,16 @@ export async function middleware(request: NextRequest) {
 
   const forwardedProtocol = request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim();
   if (process.env.NODE_ENV === 'production' && forwardedProtocol !== 'https' && request.nextUrl.protocol !== 'https:') {
-    return deny(request, 503, 'DELIVERY_HTTPS_REQUIRED', 'Delivery access requires HTTPS');
+    return deny(request, 503, 'DELIVERY_HTTPS_REQUIRED', 'Truy cập Giao nhận yêu cầu kết nối HTTPS');
   }
 
   const sessionToken = request.cookies.get(DELIVERY_SESSION_COOKIE)?.value?.trim();
   if (!sessionToken) {
     if (isBrowserNavigation(request)) return loginRedirect(request);
-    return deny(request, 401, 'UNAUTHORIZED', 'Authentication required');
+    return deny(request, 401, 'UNAUTHORIZED', 'Cần đăng nhập');
   }
 
-  const resolved = await resolveSession(sessionToken);
+  const resolved = await resolveSession(request, sessionToken);
   if (resolved.state === 'active') {
     const headers = new Headers(request.headers);
     headers.set('authorization', encodeDeliveryInternalAuthorization(resolved.user));
@@ -162,10 +155,10 @@ export async function middleware(request: NextRequest) {
   if (resolved.state === 'invalid') {
     const response = isBrowserNavigation(request)
       ? loginRedirect(request)
-      : deny(request, 401, 'UNAUTHORIZED', 'Authentication required');
+      : deny(request, 401, 'UNAUTHORIZED', 'Cần đăng nhập');
     return clearInvalidSession(response);
   }
-  return deny(request, 503, 'DELIVERY_AUTH_UNAVAILABLE', 'NPP Core authentication is temporarily unavailable');
+  return deny(request, 503, 'DELIVERY_AUTH_UNAVAILABLE', 'Xác thực Công Ty tạm thời chưa sẵn sàng');
 }
 
 export const config = {

@@ -72,7 +72,8 @@ test('PWA public assets bypass workforce session gate while application pages re
   assert.match(middleware, /manifest\.webmanifest\|sw\.js\|offline\.html\|icons\//);
   assert.match(middleware, /logo-transparent\.png/);
   assert.match(middleware, /DELIVERY_SESSION_COOKIE/);
-  assert.match(middleware, /\/api\/internal-auth\/me/);
+  assert.match(middleware, /SESSION_CHECK_PATH = '\/api\/auth\/me'/);
+  assert.doesNotMatch(middleware, /\/api\/internal-auth\/me/);
   assert.match(middleware, /UNAUTHORIZED/);
   assert.doesNotMatch(middleware, /WWW-Authenticate|Basic realm/);
 });

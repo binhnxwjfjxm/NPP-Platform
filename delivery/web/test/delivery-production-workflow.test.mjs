@@ -20,11 +20,14 @@ test('Delivery production workflow stays manual-only and deploys canonical workf
     "github.event.comment.body == '/deploy-vercel-delivery-production'",
     'ref: ${{ env.DEPLOY_REF }}',
     'git rev-parse origin/main',
+    'actions: read',
+    'foundation-f0-2.yml/runs?head_sha=$TARGET_SHA&event=push',
     'VERCEL_ORG_ID: team_hBA8rX68UHC8ogvREkOyQlJ2',
     'VERCEL_PROJECT_ID: prj_aqsb62CiXpN1a1u3vU9P8SOKw2Ux',
     'DELIVERY_PROJECT_NAME: npp-delivery',
     'DELIVERY_ROOT_DIRECTORY: delivery/web',
     'DELIVERY_DOMAIN: log.nguyenlieuhungphat.com',
+    'VPS_COMPANY_HOST: ${{ vars.VPS_COMPANY_HOST }}',
   ]) assert.ok(workflow.includes(marker), `workflow missing ${marker}`);
 
   assert.doesNotMatch(workflow, /workflow_dispatch:/);
@@ -46,23 +49,33 @@ test('Delivery production workflow stays manual-only and deploys canonical workf
   }
 
   for (const marker of [
-    'CORE_API_INTERNAL_URL',
+    'VPS_COMPANY_HOST',
+    'CORE_API_INTERNAL_URL="https://${VPS_COMPANY_HOST}"',
     'NEXT_PUBLIC_APP_LOGO_URL',
     'deploymentEnabled !== false',
     'api.vercel.com/v11/projects',
-    'api.vercel.com/v10/projects/$project_id/domains',
+    'api.vercel.com/v10/projects/$project_id/env?teamId=$VERCEL_ORG_ID&upsert=true',
+    "entry?.key === 'CORE_API_INTERNAL_URL'",
+    "entry.target.includes('production')",
+    "matches[0].type === 'plain'",
     'vercel@58.0.0 build --prod',
     'vercel@58.0.0 deploy --prebuilt --prod',
     'npm ci --ignore-scripts',
     '/health/live',
     '/health/ready',
+    '/api/internal-auth/me',
+    '/api/auth/me',
+    '__delivery_auth_smoke_never_exists__',
+    'error=invalid_credentials',
+    'auth_unavailable',
     'deployment_reachable=false',
     '200|301|302|303|307|308|401|403',
     'smoke_url="https://$DELIVERY_DOMAIN"',
     'Welcome to Hung Phat Operations.',
     'test "$domain_ready" = true',
     'curl --fail --silent --show-error "$smoke_url$asset"',
-    'auth_source=core-workforce-session',
+    'auth_source=company-workforce-session',
+    'auth_connectivity=passed',
     'setup_mode=false',
   ]) assert.ok(script.includes(marker), `script missing ${marker}`);
 
@@ -70,6 +83,7 @@ test('Delivery production workflow stays manual-only and deploys canonical workf
   assert.doesNotMatch(script, /html=.*\$deployment_url\/login/);
   assert.doesNotMatch(script, /\$deployment_url\$asset/);
   assert.doesNotMatch(script, /DATABASE_URL|DELIVERY_FRONTEND_API_TOKEN|DELIVERY_CORE_API_TOKEN|DELIVERY_WEB_USERS_JSON|DELIVERY_SETUP_MODE|DELIVERY_SETUP_USERNAME|DELIVERY_SETUP_PASSWORD|x-npp-delivery-employee-id/);
+  assert.doesNotMatch(script, /HEROKU_API_KEY|CORE_HEROKU_APP_NAME|api\.heroku\.com/);
   assert.doesNotMatch(script, /vercel@latest/);
   assert.doesNotMatch(script, /npm install/);
 });

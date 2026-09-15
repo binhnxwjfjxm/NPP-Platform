@@ -9,6 +9,7 @@ cd "$REPO_ROOT"
 : "${VERCEL_ORG_ID:?VERCEL_ORG_ID is required}"
 : "${GITHUB_OUTPUT:?GITHUB_OUTPUT is required}"
 : "${GITHUB_ENV:?GITHUB_ENV is required}"
+: "${VPS_COMPANY_HOST:?VPS_COMPANY_HOST is required}"
 
 DELIVERY_PROJECT_NAME="${DELIVERY_PROJECT_NAME:-npp-delivery}"
 DELIVERY_ROOT_DIRECTORY="${DELIVERY_ROOT_DIRECTORY:-delivery/web}"
@@ -17,8 +18,19 @@ CORE_PROJECT_ID="${CORE_PROJECT_ID:-prj_vFEAzoxesLqNJIfD8uF4q1kytpvk}"
 MCP_PROJECT_ID="${MCP_PROJECT_ID:-prj_854SWdJeDEOPezAvvTZzTaRvZUSq}"
 ADMIN_PROJECT_ID="${ADMIN_PROJECT_ID:-prj_0hp2A8WyUW4zgglShPTzL70hesVC}"
 WEBSITE_PROJECT_ID="${WEBSITE_PROJECT_ID:-prj_rXqH83GFDHuEGUcQrrv82JBPWnjU}"
+CORE_API_INTERNAL_URL="https://${VPS_COMPANY_HOST}"
+export CORE_API_INTERNAL_URL
 
 echo "::add-mask::$VERCEL_TOKEN"
+echo "::add-mask::$CORE_API_INTERNAL_URL"
+
+CORE_URL="$CORE_API_INTERNAL_URL" node --input-type=module <<'NODE'
+const url = new URL(process.env.CORE_URL);
+if (url.protocol !== 'https:' || url.username || url.password || url.pathname !== '/' || url.search || url.hash) {
+  throw new Error('invalid_company_api_url');
+}
+if (url.hostname.endsWith('.herokuapp.com')) throw new Error('delivery_company_api_must_not_point_to_heroku');
+NODE
 
 smoke_company() {
   local path="$1" deadline=$((SECONDS + 180)) status=""
@@ -30,6 +42,11 @@ smoke_company() {
   echo "Công Ty health smoke failed for $path; last status=${status:-none}." >&2
   return 1
 }
+
+smoke_company /health/live
+smoke_company /health/ready
+auth_status="$(curl --silent --show-error --connect-timeout 5 --max-time 20 --output /dev/null --write-out '%{http_code}' "$CORE_API_INTERNAL_URL/api/internal-auth/me" || true)"
+test "$auth_status" = 401
 
 project_json="${RUNNER_TEMP}/delivery-project.json"
 settings_json="${RUNNER_TEMP}/delivery-settings.json"
@@ -61,15 +78,33 @@ const config = JSON.parse(await readFile('delivery/web/vercel.json', 'utf8'));
 if (config.git?.deploymentEnabled !== false) throw new Error('delivery_auto_deploy_not_locked');
 NODE
 
-# Keep the logo default managed here. The Công Ty API target is provider state and must never be re-derived from Heroku.
-DELIVERY_PROJECT_ID="$project_id" node --input-type=module <<'NODE'
-const response = await fetch(`https://api.vercel.com/v10/projects/${process.env.DELIVERY_PROJECT_ID}/env?teamId=${process.env.VERCEL_ORG_ID}&upsert=true`, {
-  method: 'POST',
-  headers: { Authorization: `Bearer ${process.env.VERCEL_TOKEN}`, 'Content-Type': 'application/json' },
-  body: JSON.stringify([{ key: 'NEXT_PUBLIC_APP_LOGO_URL', value: '/logo-transparent.png', type: 'sensitive', target: ['production'] }]),
-});
-const payload = await response.json().catch(() => null);
-if (!response.ok) throw new Error(`delivery_env_upsert_failed:${response.status}:${payload?.error?.code || 'unknown'}`);
+# Keep the Delivery production binding canonical after the VPS cutover. Never derive it from Heroku.
+env_body="$(jq -nc \
+  --arg core "$CORE_API_INTERNAL_URL" \
+  '[
+    {key:"CORE_API_INTERNAL_URL",value:$core,type:"sensitive",target:["production"]},
+    {key:"NEXT_PUBLIC_APP_LOGO_URL",value:"/logo-transparent.png",type:"sensitive",target:["production"]}
+  ]')"
+status="$(curl --silent --show-error --output "$RUNNER_TEMP/delivery-env-upsert.json" --write-out '%{http_code}' \
+  -X POST \
+  -H "Authorization: Bearer $VERCEL_TOKEN" \
+  -H 'Content-Type: application/json' \
+  --data "$env_body" \
+  "https://api.vercel.com/v10/projects/$project_id/env?teamId=$VERCEL_ORG_ID&upsert=true")"
+case "$status" in 200|201) ;; *) exit 1 ;; esac
+
+env_metadata="$RUNNER_TEMP/delivery-env-metadata.json"
+status="$(curl --silent --show-error --output "$env_metadata" --write-out '%{http_code}' \
+  -H "Authorization: Bearer $VERCEL_TOKEN" \
+  "https://api.vercel.com/v10/projects/$project_id/env?teamId=$VERCEL_ORG_ID")"
+test "$status" = 200
+ENV_METADATA="$env_metadata" node --input-type=module <<'NODE'
+import { readFileSync } from 'node:fs';
+const payload = JSON.parse(readFileSync(process.env.ENV_METADATA, 'utf8'));
+const envs = Array.isArray(payload.envs) ? payload.envs : [];
+const matches = envs.filter((entry) => entry?.key === 'CORE_API_INTERNAL_URL' && Array.isArray(entry.target) && entry.target.includes('production'));
+if (matches.length !== 1) throw new Error('delivery_company_api_production_binding_missing_or_ambiguous');
+if (matches[0].type === 'plain') throw new Error('delivery_company_api_production_binding_must_not_be_plain');
 NODE
 
 lookup="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
@@ -89,19 +124,6 @@ printf '{"orgId":"%s","projectId":"%s"}\n' "$VERCEL_ORG_ID" "$project_id" > .ver
 npx --yes vercel@58.0.0 pull --yes --environment=production --token="$VERCEL_TOKEN" >/dev/null
 test "$(jq -r '.projectId' .vercel/project.json)" = "$project_id"
 test -s .vercel/.env.production.local
-set -a
-# shellcheck disable=SC1091
-source .vercel/.env.production.local
-set +a
-: "${CORE_API_INTERNAL_URL:?Delivery production requires CORE_API_INTERNAL_URL in Vercel production env}"
-echo "::add-mask::$CORE_API_INTERNAL_URL"
-CORE_URL="$CORE_API_INTERNAL_URL" node --input-type=module <<'NODE'
-const url = new URL(process.env.CORE_URL);
-if (url.protocol !== 'https:' || url.username || url.password) throw new Error('invalid_company_api_url');
-if (url.hostname.endsWith('.herokuapp.com')) throw new Error('delivery_company_api_must_not_point_to_heroku');
-NODE
-smoke_company /health/live
-smoke_company /health/ready
 
 npm ci --ignore-scripts
 (
@@ -137,11 +159,34 @@ for attempt in $(seq 1 12); do
 done
 test "$domain_ready" = true
 
+auth_me_status="$(curl --silent --show-error --connect-timeout 5 --max-time 20 --output /dev/null --write-out '%{http_code}' "$smoke_url/api/auth/me" || true)"
+test "$auth_me_status" = 401
+
+login_headers="$RUNNER_TEMP/delivery-auth-smoke-headers.txt"
+login_status="$(curl --silent --show-error --connect-timeout 5 --max-time 20 \
+  --request POST \
+  --header 'Content-Type: application/x-www-form-urlencoded' \
+  --data-urlencode 'username=__delivery_auth_smoke_never_exists__' \
+  --data-urlencode 'password=not-a-real-password' \
+  --data-urlencode 'returnTo=/' \
+  --dump-header "$login_headers" \
+  --output /dev/null \
+  --write-out '%{http_code}' \
+  "$smoke_url/api/auth/login" || true)"
+test "$login_status" = 303
+location="$(awk 'BEGIN{IGNORECASE=1} /^location:/{sub(/^[^:]*:[[:space:]]*/,""); sub(/\r$/,""); print; exit}' "$login_headers")"
+case "$location" in
+  *error=invalid_credentials*) ;;
+  *auth_unavailable*) echo 'delivery_company_auth_unavailable' >&2; exit 1 ;;
+  *) echo 'unexpected_delivery_login_redirect' >&2; exit 1 ;;
+esac
+
 {
   echo "project_id=$project_id"
   echo "deployment_url=$deployment_url"
   echo "domain_ready=$domain_ready"
-  echo "auth_source=core-workforce-session"
+  echo "auth_source=company-workforce-session"
+  echo "auth_connectivity=passed"
   echo "driver_ready=runtime-authorized"
   echo "setup_mode=false"
 } >> "$GITHUB_OUTPUT"

@@ -6,6 +6,7 @@ const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf
 
 const packageSource = read('package.json');
 const middlewareSource = read('middleware.ts');
+const authMeSource = read('app/api/auth/me/route.ts');
 const authSource = read('lib/delivery-auth.ts');
 const sessionSource = read('lib/delivery-session.ts');
 const authClientSource = read('lib/internal-auth-client.ts');
@@ -28,10 +29,13 @@ test('Delivery frontend is a standalone mobile Next app with Auto Deploy OFF', (
   assert.match(manifestSource, /orientation: 'portrait'/);
 });
 
-test('Delivery identity comes only from canonical Core workforce session', () => {
+test('Delivery identity comes only from canonical Công Ty workforce session', () => {
   assert.match(sessionSource, /hp_delivery_session/);
   assert.match(authClientSource, /\/api\/internal-auth/);
-  assert.match(middlewareSource, /\/api\/internal-auth\/me/);
+  assert.match(middlewareSource, /SESSION_CHECK_PATH = '\/api\/auth\/me'/);
+  assert.match(authMeSource, /\/api\/internal-auth\/me/);
+  assert.doesNotMatch(middlewareSource, /\/api\/internal-auth\/me/);
+  assert.doesNotMatch(middlewareSource, /CORE_API_INTERNAL_URL/);
   assert.match(authSource, /INTERNAL_IDENTITY_VERSION = 'v2'/);
   assert.match(authSource, /employeeId/);
   assert.doesNotMatch(authSource + sessionSource + middlewareSource, /DELIVERY_WEB_USERS_JSON|DELIVERY_SETUP_PASSWORD|DELIVERY_CORE_API_TOKEN/);
