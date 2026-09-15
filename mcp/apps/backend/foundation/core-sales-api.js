@@ -78,7 +78,6 @@ function catalogBusinessGroup(item) {
   const identities = categoryIdentity(item);
   const exactGroup = BUSINESS_CATALOG_GROUPS.find((group) => identities.includes(normalizeCatalogText(group.label)));
   if (exactGroup) return exactGroup.label;
-
   for (const label of BUSINESS_CATALOG_MATCH_ORDER) {
     const group = BUSINESS_CATALOG_GROUPS.find((candidate) => candidate.label === label);
     if (group && identities.some((identity) => group.terms.some((term) => matchesCatalogTerm(identity, term)))) return group.label;
@@ -189,11 +188,7 @@ async function loadCompleteCatalog(search, context, config, fetchImpl) {
   const unique = new Map();
   let offset = 0;
   for (let page = 0; page < MAX_CATALOG_PAGES; page += 1) {
-    const batch = await searchCoreSalesSkus(search, context, config, {
-      fetchImpl,
-      limit: CATALOG_PAGE_SIZE,
-      offset
-    });
+    const batch = await searchCoreSalesSkus(search, context, config, { fetchImpl, limit: CATALOG_PAGE_SIZE, offset });
     for (const item of batch) {
       const key = String(item?.id || "").trim() || `${item?.productId || ""}:${item?.sku || ""}`;
       if (!unique.has(key)) unique.set(key, item);
@@ -224,17 +219,16 @@ async function searchProducts(url, context, config, fetchImpl) {
   const search = url.searchParams.get("q") || url.searchParams.get("search") || "";
   const options = url.searchParams.get("catalog") === "all"
     ? await loadCompleteCatalog(search, context, config, fetchImpl)
-    : await searchCoreSalesSkus(
-      search,
-      context,
-      config,
-      {
-        fetchImpl,
-        limit: boundedLimit(url.searchParams.get("limit")),
-        offset: Math.max(0, Number(url.searchParams.get("offset")) || 0)
-      }
-    );
-  return response(await mapCatalogOptions(filterCatalogOptions(options, url), context, config, fetchImpl));
+    : await searchCoreSalesSkus(search, context, config, {
+      fetchImpl,
+      limit: boundedLimit(url.searchParams.get("limit")),
+      offset: Math.max(0, Number(url.searchParams.get("offset")) || 0)
+    });
+  const filtered = filterCatalogOptions(options, url);
+  if (url.searchParams.get("includePrice") === "false") {
+    return response(filtered.map((item) => mapSkuOption(item, null)));
+  }
+  return response(await mapCatalogOptions(filtered, context, config, fetchImpl));
 }
 
 async function loadProductVariants(productId, url, context, config, fetchImpl) {
@@ -259,31 +253,16 @@ async function loadDirectOrders(context, config, fetchImpl) {
 async function saveDirectOrder(req, context, config, fetchImpl) {
   authorizeCoreSales(context, config, CORE_SALES_CREATE_PERMISSION);
   const body = await readJsonBody(req);
-  return response(await createDirectMcpSalesOrder(body, context, config, {
-    fetchImpl,
-    idempotencyKey: context.idempotencyKey
-  }), 201);
+  return response(await createDirectMcpSalesOrder(body, context, config, { fetchImpl, idempotencyKey: context.idempotencyKey }), 201);
 }
 
 export async function handleCoreSalesApi(req, url, context, config, { fetchImpl = fetch } = {}) {
   const method = String(req.method || "GET").toUpperCase();
   const pathname = url.pathname;
-
-  if (method === "GET" && pathname === "/api/core-sales/products/search") {
-    return searchProducts(url, context, config, fetchImpl);
-  }
-
+  if (method === "GET" && pathname === "/api/core-sales/products/search") return searchProducts(url, context, config, fetchImpl);
   const variantsMatch = pathname.match(/^\/api\/core-sales\/products\/([^/]+)\/variants$/);
-  if (method === "GET" && variantsMatch) {
-    return loadProductVariants(decodeURIComponent(variantsMatch[1]), url, context, config, fetchImpl);
-  }
-
-  if (pathname === "/api/core-sales/orders" && method === "GET") {
-    return loadDirectOrders(context, config, fetchImpl);
-  }
-  if (pathname === "/api/core-sales/orders" && method === "POST") {
-    return saveDirectOrder(req, context, config, fetchImpl);
-  }
-
+  if (method === "GET" && variantsMatch) return loadProductVariants(decodeURIComponent(variantsMatch[1]), url, context, config, fetchImpl);
+  if (pathname === "/api/core-sales/orders" && method === "GET") return loadDirectOrders(context, config, fetchImpl);
+  if (pathname === "/api/core-sales/orders" && method === "POST") return saveDirectOrder(req, context, config, fetchImpl);
   return null;
 }

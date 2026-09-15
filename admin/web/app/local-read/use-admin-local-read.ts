@@ -1,27 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createLocalReadCache } from "../../../../packages/shared-utils/browser-local-read-cache.js";
-import type { LocalReadDelta, LocalReadIdentity, LocalReadScope } from "../../../../packages/shared-utils/browser-local-read-cache.js";
+import type { LocalReadDelta, LocalReadScope } from "../../../../packages/shared-utils/browser-local-read-cache.js";
+import { adminLocalIdentity, currentAdminLocalUserId, useAdminLocalUserId } from "./admin-local-identity";
 
-const APP = "admin-mcp-npp";
 const SCHEMA_VERSION = 1;
 const REFRESH_MS = 30_000;
 const cache = createLocalReadCache<AdminLocalReadRow>();
+const memory = new Map<string, { data: unknown; savedAt: string | null }>();
 
-export type AdminLocalReadKind = "control-tower" | "proposals" | "alerts";
+export type AdminLocalReadKind = "control-tower" | "proposals" | "alerts" | "reports";
 type AdminLocalReadRow = { id: string; data: unknown };
-type AuthMePayload = { data?: { cacheUserId?: string | null } };
-
-function installationNamespace() {
-  const hostname = typeof window === "undefined" ? "local" : window.location.hostname.toLowerCase();
-  const safe = hostname.replace(/[^a-z0-9._-]/g, "_") || "local";
-  return `origin.${safe}`;
-}
-
-function identity(userId: string): LocalReadIdentity {
-  return { app: APP, installationId: installationNamespace(), userId };
-}
+export type AdminLocalReadOptions = { tab?: string | null; warehouseId?: string | null };
 
 function periodKey(period: string) {
   if (period === "Hôm nay") return "today";
@@ -30,13 +21,24 @@ function periodKey(period: string) {
   return "month";
 }
 
-function resourceName(kind: AdminLocalReadKind, period: string) {
+function reportQualifier(options?: AdminLocalReadOptions) {
+  const tab = String(options?.tab || "executive").replace(/[^A-Za-z0-9._-]/g, "_");
+  const warehouse = String(options?.warehouseId || "all").replace(/[^A-Za-z0-9._-]/g, "_");
+  return `${tab}.${warehouse}`;
+}
+
+function resourceName(kind: AdminLocalReadKind, period: string, options?: AdminLocalReadOptions) {
   if (kind === "proposals") return "proposals";
+  if (kind === "reports") return `reports.${reportQualifier(options)}.${periodKey(period)}`;
   return `${kind}.${periodKey(period)}`;
 }
 
-function scope(userId: string, kind: AdminLocalReadKind, period: string): LocalReadScope {
-  return { ...identity(userId), resource: resourceName(kind, period), schemaVersion: SCHEMA_VERSION };
+function memoryKey(userId: string, resource: string) {
+  return `${userId}:${resource}`;
+}
+
+function scope(userId: string, kind: AdminLocalReadKind, period: string, options?: AdminLocalReadOptions): LocalReadScope {
+  return { ...adminLocalIdentity(userId), resource: resourceName(kind, period, options), schemaVersion: SCHEMA_VERSION };
 }
 
 function dataFromRecord<T>(record: { rows: AdminLocalReadRow[] } | null | undefined, resource: string): T | null {
@@ -44,22 +46,12 @@ function dataFromRecord<T>(record: { rows: AdminLocalReadRow[] } | null | undefi
   return (row?.data as T | undefined) ?? null;
 }
 
-async function currentCacheUserId() {
-  const response = await fetch("/api/auth/me", { method: "GET", cache: "no-store", headers: { Accept: "application/json" } });
-  const payload = await response.json().catch(() => null) as AuthMePayload | null;
-  const userId = String(payload?.data?.cacheUserId || "").trim();
-  if (!response.ok || !userId) throw new Error(response.status === 401 ? "UNAUTHORIZED" : "ADMIN_AUTH_UNAVAILABLE");
-  return userId;
-}
-
-async function fetchDelta(kind: AdminLocalReadKind, period: string, cursor: string | null): Promise<LocalReadDelta<AdminLocalReadRow>> {
+async function fetchDelta(kind: AdminLocalReadKind, period: string, options: AdminLocalReadOptions | undefined, cursor: string | null): Promise<LocalReadDelta<AdminLocalReadRow>> {
   const query = new URLSearchParams({ resource: kind, period });
+  if (options?.tab) query.set("tab", options.tab);
+  if (options?.warehouseId) query.set("warehouseId", options.warehouseId);
   if (cursor) query.set("cursor", cursor);
-  const response = await fetch(`/api/local-read/admin-data?${query.toString()}`, {
-    method: "GET",
-    cache: "no-store",
-    headers: { Accept: "application/json" },
-  });
+  const response = await fetch(`/api/local-read/admin-data?${query.toString()}`, { method: "GET", cache: "no-store", headers: { Accept: "application/json" } });
   const payload = await response.json().catch(() => null) as LocalReadDelta<AdminLocalReadRow> | { error?: { code?: string } } | null;
   if (!response.ok || !payload || !("cursor" in payload) || !("upserts" in payload)) {
     const code = payload && "error" in payload ? payload.error?.code : undefined;
@@ -71,46 +63,57 @@ async function fetchDelta(kind: AdminLocalReadKind, period: string, cursor: stri
 }
 
 export async function clearAdminLocalReadForCurrentUser() {
+  const userId = currentAdminLocalUserId();
   try {
-    const userId = await currentCacheUserId();
-    await cache.clearIdentity(identity(userId));
+    if (userId) await cache.clearIdentity(adminLocalIdentity(userId));
   } catch {
-    // Logout must continue even if the local cache or current-session check is unavailable.
+    // Logout must continue even if IndexedDB is unavailable.
+  } finally {
+    memory.clear();
   }
 }
 
-export function useAdminLocalRead<T>(kind: AdminLocalReadKind, period = "Tháng này") {
-  const [data, setData] = useState<T | null>(null);
-  const [source, setSource] = useState<"local" | "live" | null>(null);
-  const [loading, setLoading] = useState(true);
+export function useAdminLocalRead<T>(kind: AdminLocalReadKind, period = "Tháng này", options?: AdminLocalReadOptions) {
+  const userId = useAdminLocalUserId();
+  const stableOptions = useMemo(() => ({ tab: options?.tab ?? null, warehouseId: options?.warehouseId ?? null }), [options?.tab, options?.warehouseId]);
+  const resource = resourceName(kind, period, stableOptions);
+  const key = userId ? memoryKey(userId, resource) : "";
+  const remembered = key ? memory.get(key) : undefined;
+  const [data, setData] = useState<T | null>(() => (remembered?.data as T | undefined) ?? null);
+  const [source, setSource] = useState<"local" | "live" | null>(() => remembered ? "local" : null);
+  const [loading, setLoading] = useState(() => Boolean(userId && !remembered));
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [savedAt, setSavedAt] = useState<string | null>(() => remembered?.savedAt ?? null);
   const scopeRef = useRef<LocalReadScope | null>(null);
   const aliveRef = useRef(true);
 
-  const resource = resourceName(kind, period);
+  const applyRecord = useCallback((record: { rows: AdminLocalReadRow[]; savedAt: string } | null | undefined, nextSource: "local" | "live") => {
+    if (!key) return false;
+    const nextData = dataFromRecord<T>(record, resource);
+    if (nextData === null) return false;
+    memory.set(key, { data: nextData, savedAt: record?.savedAt ?? null });
+    if (!aliveRef.current) return true;
+    setData(nextData);
+    setSource(nextSource);
+    setSavedAt(record?.savedAt ?? null);
+    setLoading(false);
+    return true;
+  }, [key, resource]);
 
   const refresh = useCallback(async () => {
     const activeScope = scopeRef.current;
     if (!activeScope) return;
     setRefreshing(true);
     try {
-      const next = await cache.refresh(activeScope, (cursor) => fetchDelta(kind, period, cursor));
-      if (!aliveRef.current) return;
-      const nextData = dataFromRecord<T>(next, resource);
-      if (nextData !== null) {
-        setData(nextData);
-        setSource("live");
-        setSavedAt(next.savedAt);
-        setError(null);
-      }
+      const next = await cache.refresh(activeScope, (cursor) => fetchDelta(kind, period, stableOptions, cursor));
+      if (applyRecord(next, "live")) setError(null);
     } catch (cause) {
       if (!aliveRef.current) return;
       const message = cause instanceof Error ? cause.message : "ADMIN_LOCAL_READ_UNAVAILABLE";
       if (message === "FORBIDDEN") {
         await cache.clearResource(activeScope);
-        if (!aliveRef.current) return;
+        if (key) memory.delete(key);
         setData(null);
         setSource(null);
       }
@@ -119,72 +122,56 @@ export function useAdminLocalRead<T>(kind: AdminLocalReadKind, period = "Tháng 
     } finally {
       if (aliveRef.current) setRefreshing(false);
     }
-  }, [kind, period, resource]);
+  }, [applyRecord, key, kind, period, stableOptions]);
 
   useEffect(() => {
     aliveRef.current = true;
     scopeRef.current = null;
-    setData(null);
-    setSource(null);
+    if (!userId) {
+      setData(null);
+      setSource(null);
+      setSavedAt(null);
+      setLoading(false);
+      return () => { aliveRef.current = false; };
+    }
+    const activeKey = memoryKey(userId, resource);
+    const existing = memory.get(activeKey);
+    setData((existing?.data as T | undefined) ?? null);
+    setSource(existing ? "local" : null);
     setError(null);
-    setSavedAt(null);
-    setLoading(true);
+    setSavedAt(existing?.savedAt ?? null);
+    setLoading(!existing);
     let timer: ReturnType<typeof setInterval> | null = null;
 
     const start = async () => {
+      const activeScope = scope(userId, kind, period, stableOptions);
+      scopeRef.current = activeScope;
+      const localFirst = await cache.readLocalFirst(activeScope, (cursor) => fetchDelta(kind, period, stableOptions, cursor));
+      if (!aliveRef.current) return;
+      applyRecord(localFirst.cached, "local");
       try {
-        const userId = await currentCacheUserId();
+        const fresh = await localFirst.refresh;
         if (!aliveRef.current) return;
-        const activeScope = scope(userId, kind, period);
-        scopeRef.current = activeScope;
-        const localFirst = await cache.readLocalFirst(activeScope, (cursor) => fetchDelta(kind, period, cursor));
-        if (!aliveRef.current) return;
-        const cachedData = dataFromRecord<T>(localFirst.cached, resource);
-        if (cachedData !== null) {
-          setData(cachedData);
-          setSource("local");
-          setSavedAt(localFirst.cached?.savedAt ?? null);
-          setLoading(false);
-        }
-        try {
-          const fresh = await localFirst.refresh;
-          if (!aliveRef.current) return;
-          const freshData = dataFromRecord<T>(fresh, resource);
-          if (freshData !== null) {
-            setData(freshData);
-            setSource("live");
-            setSavedAt(fresh.savedAt);
-            setError(null);
-          }
-        } catch (cause) {
-          if (!aliveRef.current) return;
-          const message = cause instanceof Error ? cause.message : "ADMIN_LOCAL_READ_UNAVAILABLE";
-          if (message === "FORBIDDEN") {
-            await cache.clearResource(activeScope);
-            if (!aliveRef.current) return;
-            setData(null);
-            setSource(null);
-          }
-          setError(message);
-          if (message === "UNAUTHORIZED") window.location.assign("/login");
-        } finally {
-          if (aliveRef.current) setLoading(false);
-        }
-        timer = setInterval(() => {
-          if (document.visibilityState === "visible") void refresh();
-        }, REFRESH_MS);
+        if (applyRecord(fresh, "live")) setError(null);
       } catch (cause) {
         if (!aliveRef.current) return;
-        const message = cause instanceof Error ? cause.message : "ADMIN_AUTH_UNAVAILABLE";
+        const message = cause instanceof Error ? cause.message : "ADMIN_LOCAL_READ_UNAVAILABLE";
+        if (message === "FORBIDDEN") {
+          await cache.clearResource(activeScope);
+          memory.delete(activeKey);
+          setData(null);
+          setSource(null);
+        }
         setError(message);
-        setLoading(false);
         if (message === "UNAUTHORIZED") window.location.assign("/login");
+      } finally {
+        if (aliveRef.current) setLoading(false);
       }
+      if (!aliveRef.current) return;
+      timer = setInterval(() => { if (document.visibilityState === "visible") void refresh(); }, REFRESH_MS);
     };
 
-    const onVisible = () => {
-      if (document.visibilityState === "visible") void refresh();
-    };
+    const onVisible = () => { if (document.visibilityState === "visible") void refresh(); };
     document.addEventListener("visibilitychange", onVisible);
     void start();
     return () => {
@@ -192,7 +179,7 @@ export function useAdminLocalRead<T>(kind: AdminLocalReadKind, period = "Tháng 
       if (timer) clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [kind, period, refresh, resource]);
+  }, [applyRecord, kind, period, refresh, resource, stableOptions, userId]);
 
   return { data, source, loading, refreshing, error, savedAt, refresh };
 }
