@@ -320,6 +320,10 @@ export function SalesReportingWorkspace() {
 
   function resetFilters() {
     setDraft(EMPTY_FILTERS);
+    setAnalysisSearch('');
+    setCurrencyFilter('');
+    setComparisonFilter('all');
+    setSelectedRow(null);
     void load(EMPTY_FILTERS, true);
   }
 
@@ -330,27 +334,12 @@ export function SalesReportingWorkspace() {
     void load(next);
   }
 
-  function clearAnalysisFilters() {
-    setAnalysisSearch('');
+  function changeDimension(value: string) {
+    if (!isBreakdownKey(value)) return;
+    setActiveDimension(value);
     setCurrencyFilter('');
     setComparisonFilter('all');
     setSelectedRow(null);
-  }
-
-  function applyDimensionFilter() {
-    setSelectedRow(null);
-    void load(draft);
-  }
-
-  function clearDimensionFilter() {
-    const next = activeDimension === 'customers'
-      ? Object.freeze({ ...draft, customerGroupId: '' })
-      : activeDimension === 'products'
-        ? Object.freeze({ ...draft, productGroupId: '', includeZeroProducts: false })
-        : draft;
-    setDraft(next);
-    setSelectedRow(null);
-    void load(next);
   }
 
   function saveView() {
@@ -368,7 +357,6 @@ export function SalesReportingWorkspace() {
   const rows = report?.breakdowns[activeDimension] ?? [];
   const revenueRows = report?.summary.revenues ?? [];
   const warehouses = report?.scopeWarehouses ?? [];
-  const currentPeriod = report?.comparison.current;
   const previousPeriod = report?.comparison.previous;
   const warnings = report?.dataQuality.warnings ?? [];
   const productGroupOptions = report?.classification.options.productGroups ?? [];
@@ -402,7 +390,7 @@ export function SalesReportingWorkspace() {
   }, [report?.dailyTrend]);
 
   const periodDescription = useMemo(() => {
-    if (!applied.from || !applied.to) return 'Mặc định tháng hiện tại theo giờ Việt Nam';
+    if (!applied.from || !applied.to) return 'Tháng hiện tại · giờ Việt Nam';
     return `${applied.from} → ${applied.to}`;
   }, [applied.from, applied.to]);
 
@@ -427,135 +415,69 @@ export function SalesReportingWorkspace() {
     >
       <div className={styles.workspace} data-testid="sales-reporting-workspace" aria-busy={busy}>
         <form className={styles.filters} onSubmit={applyFilters} aria-label="Bộ lọc Báo cáo bán hàng">
-          <div className={styles.filterHeading}>
-            <div>
-              <p className={styles.eyebrow}>Bộ lọc báo cáo</p>
-              <h2>Thời gian và kho</h2>
-            </div>
-            <small>{periodDescription}</small>
-          </div>
-
           <div className={styles.filterToolbar}>
-            <div className={styles.presetRow} aria-label="Chọn nhanh kỳ báo cáo">
-              {PERIOD_PRESETS.map((preset) => (
-                <button key={preset.key} type="button" onClick={() => applyPreset(preset.key)} disabled={busy}>
-                  {preset.label}
-                </button>
-              ))}
-            </div>
-
-            <div className={styles.filterGrid}>
-              <label>
-                <span>Từ ngày</span>
-                <input
-                  type="date"
-                  value={draft.from}
-                  disabled={busy}
-                  onChange={(event) => setDraft((current) => ({ ...current, from: event.target.value }))}
-                />
-              </label>
-              <label>
-                <span>Đến ngày</span>
-                <input
-                  type="date"
-                  value={draft.to}
-                  disabled={busy}
-                  onChange={(event) => setDraft((current) => ({ ...current, to: event.target.value }))}
-                />
-              </label>
-              <label>
-                <span>Kho</span>
-                <select
-                  value={draft.warehouseId}
-                  disabled={busy}
-                  onChange={(event) => setDraft((current) => ({ ...current, warehouseId: event.target.value }))}
-                >
-                  <option value="">Tất cả kho được cấp quyền</option>
-                  {warehouses.map((warehouse) => (
-                    <option key={warehouse.warehouseId} value={warehouse.warehouseId}>
-                      {warehouse.warehouseCode} — {warehouse.warehouseName}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            <div className={styles.filterActions}>
-              <button type="button" className={styles.secondaryButton} onClick={resetFilters} disabled={busy}>Đặt lại</button>
-              <button type="submit" className={styles.primaryButton} disabled={busy}>{busy ? 'Đang cập nhật…' : 'Áp dụng'}</button>
-            </div>
-          </div>
-
-
-        </form>
-
-        {error ? <div className={styles.error} role="alert">{error}</div> : null}
-        {busy && !report ? <div className={styles.loading}>Đang tải báo cáo bán hàng…</div> : null}
-
-        {report ? (
-          <>
-        <section className={styles.summaryGrid} aria-label="Tổng hợp bán hàng">
-          <article className={styles.revenueCard}>
-            <span className={styles.cardLabel}>Doanh thu</span>
-            {revenueRows.length ? revenueRows.map((row) => (
-              <div className={styles.revenueLine} key={row.currencyCode}>
-                <strong>{formatMoney(row.revenue, row.currencyCode)}</strong>
-                <small>Kỳ trước {formatMoney(row.previousRevenue, row.currencyCode)} · {percent(row.changePercent)}</small>
-              </div>
-            )) : <strong className={styles.cardValue}>0</strong>}
-          </article>
-          <article>
-            <span className={styles.cardLabel}>Đơn đã chốt</span>
-            <strong className={styles.cardValue}>{formatDecimal(report?.summary.effectiveOrderCount)}</strong>
-            <small>Đơn đã xác nhận hoặc đã đóng trong kỳ.</small>
-          </article>
-          <article>
-            <span className={styles.cardLabel}>Khách mua</span>
-            <strong className={styles.cardValue}>{formatDecimal(report?.summary.buyerCount)}</strong>
-            <small>Khách có đơn bán hàng hiệu lực trong kỳ.</small>
-          </article>
-          <article>
-            <span className={styles.cardLabel}>Mặt hàng đã bán</span>
-            <strong className={styles.cardValue}>{formatDecimal(report?.summary.soldProductCount)}</strong>
-            <small>Sản lượng được giữ theo đúng từng sản phẩm và đơn vị tính.</small>
-          </article>
-        </section>
-
-        <section className={styles.panel} aria-labelledby="sales-analysis-title">
-          <div className={styles.sectionHeading}>
-            <div>
-              <p className={styles.eyebrow}>Phân tích</p>
-              <h2 id="sales-analysis-title">Xem theo {selectedDimension.label.toLowerCase()}</h2>
-            </div>
-            {currentPeriod && previousPeriod ? (
-              <small>Kỳ trước: {previousPeriod.from} → {previousPeriod.to}</small>
-            ) : null}
-          </div>
-
-          <div className={styles.dimensionTabs} role="tablist" aria-label="Chiều phân tích Báo cáo bán hàng">
-            {DIMENSIONS.map((item) => (
-              <button
-                key={item.key}
-                type="button"
-                role="tab"
-                aria-selected={item.key === activeDimension}
-                className={item.key === activeDimension ? styles.activeTab : styles.tab}
-                onClick={() => {
-                  setActiveDimension(item.key);
-                  setCurrencyFilter('');
-                  setComparisonFilter('all');
-                  setSelectedRow(null);
+            <label className={styles.filterControl}>
+              <span>Kỳ nhanh</span>
+              <select
+                defaultValue=""
+                disabled={busy}
+                onChange={(event) => {
+                  const key = event.currentTarget.value as (typeof PERIOD_PRESETS)[number]['key'];
+                  if (PERIOD_PRESETS.some((preset) => preset.key === key)) applyPreset(key);
+                  event.currentTarget.selectedIndex = 0;
                 }}
               >
-                {item.label}
-              </button>
-            ))}
-          </div>
+                <option value="">Chọn kỳ</option>
+                {PERIOD_PRESETS.map((preset) => <option key={preset.key} value={preset.key}>{preset.label}</option>)}
+              </select>
+            </label>
 
-          {activeDimension === 'customers' ? (
-            <div className={styles.dimensionFilterBar} aria-label="Lọc khách hàng theo nhóm">
-              <label>
-                <span>Nhóm khách hàng</span>
+            <label className={styles.filterControl}>
+              <span>Từ ngày</span>
+              <input
+                type="date"
+                value={draft.from}
+                disabled={busy}
+                onChange={(event) => setDraft((current) => ({ ...current, from: event.target.value }))}
+              />
+            </label>
+
+            <label className={styles.filterControl}>
+              <span>Đến ngày</span>
+              <input
+                type="date"
+                value={draft.to}
+                disabled={busy}
+                onChange={(event) => setDraft((current) => ({ ...current, to: event.target.value }))}
+              />
+            </label>
+
+            <label className={`${styles.filterControl} ${styles.warehouseControl}`}>
+              <span>Kho</span>
+              <select
+                value={draft.warehouseId}
+                disabled={busy}
+                onChange={(event) => setDraft((current) => ({ ...current, warehouseId: event.target.value }))}
+              >
+                <option value="">Tất cả kho</option>
+                {warehouses.map((warehouse) => (
+                  <option key={warehouse.warehouseId} value={warehouse.warehouseId}>
+                    {warehouse.warehouseCode} — {warehouse.warehouseName}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className={`${styles.filterControl} ${styles.dimensionControl}`}>
+              <span>Chiều phân tích</span>
+              <select value={activeDimension} onChange={(event) => changeDimension(event.target.value)}>
+                {DIMENSIONS.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
+              </select>
+            </label>
+
+            {activeDimension === 'customers' ? (
+              <label className={`${styles.filterControl} ${styles.groupControl}`}>
+                <span>Nhóm khách</span>
                 <select
                   value={draft.customerGroupId}
                   disabled={busy}
@@ -567,62 +489,44 @@ export function SalesReportingWorkspace() {
                   ))}
                 </select>
               </label>
-              <div className={styles.dimensionFilterActions}>
-                <button type="button" onClick={clearDimensionFilter} disabled={busy || !applied.customerGroupId}>Xóa lọc nhóm</button>
-                <button type="button" className={styles.primaryButton} onClick={applyDimensionFilter} disabled={busy}>Lọc khách hàng</button>
-              </div>
-            </div>
-          ) : null}
+            ) : null}
 
-          {activeDimension === 'products' ? (
-            <div className={styles.dimensionFilterBar} aria-label="Lọc sản phẩm theo nhóm">
-              <label>
-                <span>Nhóm sản phẩm</span>
-                <select
-                  value={draft.productGroupId}
-                  disabled={busy}
-                  onChange={(event) => setDraft((current) => ({ ...current, productGroupId: event.target.value }))}
-                >
-                  <option value="">Tất cả nhóm sản phẩm</option>
-                  {productGroupOptions.map((group) => (
-                    <option key={group.id} value={group.id}>{[group.code, group.name].filter(Boolean).join(' — ')}</option>
-                  ))}
-                </select>
-              </label>
-              <label className={styles.zeroProductInline}>
-                <input
-                  type="checkbox"
-                  checked={draft.includeZeroProducts}
-                  disabled={busy}
-                  onChange={(event) => setDraft((current) => ({ ...current, includeZeroProducts: event.target.checked }))}
-                />
-                <span>Hiện sản phẩm không phát sinh</span>
-              </label>
-              <div className={styles.dimensionFilterActions}>
-                <button type="button" onClick={clearDimensionFilter} disabled={busy || (!applied.productGroupId && !applied.includeZeroProducts)}>Xóa lọc nhóm</button>
-                <button type="button" className={styles.primaryButton} onClick={applyDimensionFilter} disabled={busy}>Lọc sản phẩm</button>
-              </div>
-            </div>
-          ) : null}
+            {activeDimension === 'products' ? (
+              <>
+                <label className={`${styles.filterControl} ${styles.groupControl}`}>
+                  <span>Nhóm sản phẩm</span>
+                  <select
+                    value={draft.productGroupId}
+                    disabled={busy}
+                    onChange={(event) => setDraft((current) => ({ ...current, productGroupId: event.target.value }))}
+                  >
+                    <option value="">Tất cả nhóm sản phẩm</option>
+                    {productGroupOptions.map((group) => (
+                      <option key={group.id} value={group.id}>{[group.code, group.name].filter(Boolean).join(' — ')}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className={styles.zeroProductInline}>
+                  <input
+                    type="checkbox"
+                    checked={draft.includeZeroProducts}
+                    disabled={busy}
+                    onChange={(event) => setDraft((current) => ({ ...current, includeZeroProducts: event.target.checked }))}
+                  />
+                  <span>Hiện mã không phát sinh</span>
+                </label>
+              </>
+            ) : null}
 
-          <div className={styles.analysisTools}>
-            <label>
-              <span>Tìm trong danh sách</span>
-              <input
-                type="search"
-                value={analysisSearch}
-                placeholder={`Mã hoặc tên ${selectedDimension.label.toLowerCase()}`}
-                onChange={(event) => setAnalysisSearch(event.target.value.slice(0, 80))}
-              />
-            </label>
-            <label>
+            <label className={styles.filterControl}>
               <span>Tiền tệ</span>
               <select value={currencyFilter} onChange={(event) => setCurrencyFilter(event.target.value)}>
                 <option value="">Tất cả</option>
                 {currencies.map((currency) => <option key={currency} value={currency}>{currency}</option>)}
               </select>
             </label>
-            <label>
+
+            <label className={`${styles.filterControl} ${styles.comparisonControl}`}>
               <span>So với kỳ trước</span>
               <select value={comparisonFilter} onChange={(event) => setComparisonFilter(event.target.value as ComparisonFilter)}>
                 <option value="all">Tất cả</option>
@@ -631,178 +535,213 @@ export function SalesReportingWorkspace() {
                 <option value="inactive">Không phát sinh kỳ này</option>
               </select>
             </label>
-            <div className={styles.analysisToolActions}>
-              <button type="button" onClick={clearAnalysisFilters}>Xóa lọc</button>
-              <button type="button" onClick={saveView}>Lưu chế độ xem</button>
+
+            <label className={`${styles.filterControl} ${styles.searchControl}`}>
+              <span>Tìm trong danh sách</span>
+              <input
+                type="search"
+                value={analysisSearch}
+                placeholder={`Mã hoặc tên ${selectedDimension.label.toLowerCase()}`}
+                onChange={(event) => setAnalysisSearch(event.target.value.slice(0, 80))}
+              />
+            </label>
+
+            <div className={styles.filterActions}>
+              <button type="button" className={styles.secondaryButton} onClick={resetFilters} disabled={busy}>Xóa lọc</button>
+              <button type="submit" className={styles.primaryButton} disabled={busy}>{busy ? 'Đang cập nhật…' : 'Áp dụng'}</button>
             </div>
           </div>
-          {savedNotice ? <div className={styles.savedNotice} role="status">{savedNotice}</div> : null}
-
-          <div className={styles.analysisTableWrap}>
-            <table>
-              <thead>
-                <tr>
-                  <BusinessTableSequenceHeader />
-                  <th>{selectedDimension.label}</th>
-                  <th>Doanh thu</th>
-                  <th>{metricLabel(activeDimension)}</th>
-                  <th>Tỷ trọng</th>
-                  <th>Kỳ trước</th>
-                  <th>Thay đổi</th>
-                  <th>Chi tiết</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredRows.map((row, rowIndex) => (
-                  <tr key={`${activeDimension}-${row.id ?? row.code ?? row.name}-${row.currencyCode}-${row.unit?.id ?? row.unit?.code ?? ''}`}>
-                    <BusinessTableSequenceCell rowIndex={rowIndex} />
-                    <td>
-                      <strong>{row.name}</strong>
-                      <small>{[row.code, row.currencyCode].filter(Boolean).join(' · ')}</small>
-                    </td>
-                    <td>{formatMoney(row.revenue, row.currencyCode)}</td>
-                    <td>{metricValue(row, activeDimension)}</td>
-                    <td>{percent(row.sharePercent)}</td>
-                    <td>{previousValue(row, activeDimension)}</td>
-                    <td><span className={styles.changeBadge}>{rowChange(row)}</span></td>
-                    <td>
-                      <button type="button" className={styles.detailButton} onClick={() => setSelectedRow(row)}>
-                        Xem
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {!busy && filteredRows.length === 0 ? (
-                  <tr><td colSpan={8} className={styles.empty}>
-                    {rows.length ? 'Không có dòng nào khớp bộ lọc phân tích.' : 'Không có dữ liệu cho chiều phân tích này trong kỳ.'}
-                  </td></tr>
-                ) : null}
-              </tbody>
-              {visibleTotals.length ? (
-                <tfoot>
-                  {visibleTotals.map((row) => (
-                    <tr className={styles.totalRow} key={`total-${activeDimension}-${row.currencyCode}-${row.unit?.id ?? row.unit?.code ?? ''}`}>
-                      <td aria-hidden="true" />
-                      <td><strong>{row.name}</strong><small>{row.currencyCode}</small></td>
-                      <td><strong>{formatMoney(row.revenue, row.currencyCode)}</strong></td>
-                      <td><strong>{metricValue(row, activeDimension)}</strong></td>
-                      <td>{percent(row.sharePercent)}</td>
-                      <td>{previousValue(row, activeDimension)}</td>
-                      <td><span className={styles.changeBadge}>{rowChange(row)}</span></td>
-                      <td>—</td>
-                    </tr>
-                  ))}
-                </tfoot>
-              ) : null}
-            </table>
+          <div className={styles.filterFooter}>
+            <span>{periodDescription}</span>
+            <button type="button" onClick={saveView}>Lưu chế độ xem</button>
+            {savedNotice ? <span className={styles.savedNotice} role="status">{savedNotice}</span> : null}
           </div>
+        </form>
 
-          {selectedRow ? (
-            <aside className={styles.detailPanel} aria-label={`Chi tiết ${selectedDimension.label.toLowerCase()}`}>
-              <div className={styles.detailHeading}>
-                <div>
-                  <p className={styles.eyebrow}>Chi tiết</p>
-                  <h3>{selectedRow.name}</h3>
-                  <small>{[selectedRow.code, selectedRow.currencyCode].filter(Boolean).join(' · ')}</small>
+        {error ? <div className={styles.error} role="alert">{error}</div> : null}
+        {busy && !report ? <div className={styles.loading}>Đang tải báo cáo bán hàng…</div> : null}
+
+        {report ? (
+          <>
+            <section className={styles.summaryGrid} aria-label="Tổng hợp bán hàng">
+              <article className={styles.revenueCard}>
+                <span className={styles.cardLabel}>Doanh thu</span>
+                {revenueRows.length ? revenueRows.map((row) => (
+                  <div className={styles.revenueLine} key={row.currencyCode}>
+                    <strong>{formatMoney(row.revenue, row.currencyCode)}</strong>
+                    <small>Kỳ trước {formatMoney(row.previousRevenue, row.currencyCode)} · {percent(row.changePercent)}</small>
+                  </div>
+                )) : <strong className={styles.cardValue}>0</strong>}
+              </article>
+              <article>
+                <span className={styles.cardLabel}>Đơn đã chốt</span>
+                <strong className={styles.cardValue}>{formatDecimal(report.summary.effectiveOrderCount)}</strong>
+              </article>
+              <article>
+                <span className={styles.cardLabel}>Khách mua</span>
+                <strong className={styles.cardValue}>{formatDecimal(report.summary.buyerCount)}</strong>
+              </article>
+              <article>
+                <span className={styles.cardLabel}>Mặt hàng đã bán</span>
+                <strong className={styles.cardValue}>{formatDecimal(report.summary.soldProductCount)}</strong>
+              </article>
+            </section>
+
+            <div className={styles.mainGrid}>
+              <section className={`${styles.panel} ${styles.analysisPanel}`} aria-label={`Chi tiết ${selectedDimension.label.toLowerCase()}`}>
+                <div className={styles.panelHeading}>
+                  <div>
+                    <h2>Chi tiết {selectedDimension.label.toLowerCase()}</h2>
+                    <small>{filteredRows.length} dòng đang hiển thị</small>
+                  </div>
+                  <div className={styles.statusStrip}>
+                    <span className={report.reconciliation.ok ? styles.okBadge : styles.attentionBadge}>
+                      Đối soát: {report.reconciliation.ok ? 'Đã khớp' : 'Cần kiểm tra'}
+                    </span>
+                    <span className={styles.statusBadge} title={`Đã kiểm ${formatDecimal(report.reconciliation.checkedOrderCount)} đơn · Chênh lệch ${formatDecimal(report.reconciliation.mismatchCount)}`}>
+                      {formatDecimal(report.reconciliation.mismatchCount)} chênh lệch
+                    </span>
+                    {warnings.length ? (
+                      <details className={styles.warningDetails}>
+                        <summary>{warnings.length} cảnh báo</summary>
+                        <ul>{warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
+                      </details>
+                    ) : <span className={styles.okBadge}>Dữ liệu ổn</span>}
+                  </div>
                 </div>
-                <button type="button" onClick={() => setSelectedRow(null)} aria-label="Đóng chi tiết">Đóng</button>
-              </div>
-              <dl className={styles.detailGrid}>
-                <div><dt>Doanh thu</dt><dd>{formatMoney(selectedRow.revenue, selectedRow.currencyCode)}</dd></div>
-                <div><dt>Kỳ trước</dt><dd>{formatMoney(selectedRow.previousRevenue, selectedRow.currencyCode)}</dd></div>
-                <div><dt>Thay đổi</dt><dd>{rowChange(selectedRow)}</dd></div>
-                <div><dt>Tỷ trọng</dt><dd>{percent(selectedRow.sharePercent)}</dd></div>
-                <div><dt>Số đơn</dt><dd>{formatDecimal(selectedRow.documentCount)}</dd></div>
-                <div><dt>Số khách</dt><dd>{formatDecimal(selectedRow.customerCount)}</dd></div>
-                <div><dt>Số sản phẩm</dt><dd>{formatDecimal(selectedRow.productCount)}</dd></div>
-                <div><dt>Sản lượng</dt><dd>{formatDecimal(selectedRow.quantity)} {selectedRow.unit?.name || selectedRow.unit?.code || ''}</dd></div>
-              </dl>
-            </aside>
-          ) : null}
-        </section>
 
-        <section className={styles.panel} aria-labelledby="sales-trend-title">
-          <div className={styles.sectionHeading}>
-            <div>
-              <p className={styles.eyebrow}>Xu hướng theo ngày</p>
-              <h2 id="sales-trend-title">Doanh thu theo ngày</h2>
-            </div>
-            <small>Giữ riêng từng loại tiền</small>
-          </div>
-          {trendSeries.length ? (
-            <div className={styles.trendGrid}>
-              {trendSeries.map((series) => (
-                <TrendChart key={series.currencyCode} currencyCode={series.currencyCode} rows={series.rows} />
-              ))}
-            </div>
-          ) : null}
+                <div className={styles.analysisTableWrap}>
+                  <table>
+                    <thead>
+                      <tr>
+                        <BusinessTableSequenceHeader />
+                        <th>{selectedDimension.label}</th>
+                        <th>Doanh thu</th>
+                        <th>{metricLabel(activeDimension)}</th>
+                        <th>Tỷ trọng</th>
+                        <th>Kỳ trước</th>
+                        <th>Thay đổi</th>
+                        <th>Chi tiết</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredRows.map((row, rowIndex) => (
+                        <tr key={`${activeDimension}-${row.id ?? row.code ?? row.name}-${row.currencyCode}-${row.unit?.id ?? row.unit?.code ?? ''}`}>
+                          <BusinessTableSequenceCell rowIndex={rowIndex} />
+                          <td>
+                            <strong>{row.name}</strong>
+                            <small>{[row.code, row.currencyCode].filter(Boolean).join(' · ')}</small>
+                          </td>
+                          <td>{formatMoney(row.revenue, row.currencyCode)}</td>
+                          <td>{metricValue(row, activeDimension)}</td>
+                          <td>{percent(row.sharePercent)}</td>
+                          <td>{previousValue(row, activeDimension)}</td>
+                          <td><span className={styles.changeBadge}>{rowChange(row)}</span></td>
+                          <td>
+                            <button type="button" className={styles.detailButton} onClick={() => setSelectedRow(row)}>Xem</button>
+                          </td>
+                        </tr>
+                      ))}
+                      {!busy && filteredRows.length === 0 ? (
+                        <tr><td colSpan={8} className={styles.empty}>
+                          {rows.length ? 'Không có dòng nào khớp bộ lọc phân tích.' : 'Không có dữ liệu cho chiều phân tích này trong kỳ.'}
+                        </td></tr>
+                      ) : null}
+                    </tbody>
+                    {visibleTotals.length ? (
+                      <tfoot>
+                        {visibleTotals.map((row) => (
+                          <tr className={styles.totalRow} key={`total-${activeDimension}-${row.currencyCode}-${row.unit?.id ?? row.unit?.code ?? ''}`}>
+                            <td aria-hidden="true" />
+                            <td><strong>{row.name}</strong><small>{row.currencyCode}</small></td>
+                            <td><strong>{formatMoney(row.revenue, row.currencyCode)}</strong></td>
+                            <td><strong>{metricValue(row, activeDimension)}</strong></td>
+                            <td>{percent(row.sharePercent)}</td>
+                            <td>{previousValue(row, activeDimension)}</td>
+                            <td><span className={styles.changeBadge}>{rowChange(row)}</span></td>
+                            <td>—</td>
+                          </tr>
+                        ))}
+                      </tfoot>
+                    ) : null}
+                  </table>
+                </div>
 
-          <div className={styles.tableWrap}>
-            <table>
-              <thead>
-                <tr>
-                  <BusinessTableSequenceHeader />
-                  <th>Ngày</th>
-                  <th>Tiền tệ</th>
-                  <th>Doanh thu</th>
-                  <th>Doanh thu kỳ trước</th>
-                  <th>Thay đổi</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(report?.dailyTrend ?? []).map((row, rowIndex) => (
-                  <tr key={`${row.businessDate}-${row.currencyCode}`}>
-                    <BusinessTableSequenceCell rowIndex={rowIndex} />
-                    <td>{row.businessDate}</td>
-                    <td>{row.currencyCode}</td>
-                    <td>{formatMoney(row.revenue, row.currencyCode)}</td>
-                    <td>{formatMoney(row.previousRevenue, row.currencyCode)}</td>
-                    <td>{percent(row.changePercent)}</td>
-                  </tr>
-                ))}
-                {!busy && !(report?.dailyTrend.length) ? (
-                  <tr><td colSpan={6} className={styles.empty}>Không có doanh thu theo ngày trong kỳ.</td></tr>
+                {selectedRow ? (
+                  <aside className={styles.detailPanel} aria-label={`Chi tiết ${selectedDimension.label.toLowerCase()}`}>
+                    <div className={styles.detailHeading}>
+                      <div>
+                        <p className={styles.eyebrow}>Chi tiết</p>
+                        <h3>{selectedRow.name}</h3>
+                        <small>{[selectedRow.code, selectedRow.currencyCode].filter(Boolean).join(' · ')}</small>
+                      </div>
+                      <button type="button" onClick={() => setSelectedRow(null)} aria-label="Đóng chi tiết">Đóng</button>
+                    </div>
+                    <dl className={styles.detailGrid}>
+                      <div><dt>Doanh thu</dt><dd>{formatMoney(selectedRow.revenue, selectedRow.currencyCode)}</dd></div>
+                      <div><dt>Kỳ trước</dt><dd>{formatMoney(selectedRow.previousRevenue, selectedRow.currencyCode)}</dd></div>
+                      <div><dt>Thay đổi</dt><dd>{rowChange(selectedRow)}</dd></div>
+                      <div><dt>Tỷ trọng</dt><dd>{percent(selectedRow.sharePercent)}</dd></div>
+                      <div><dt>Số đơn</dt><dd>{formatDecimal(selectedRow.documentCount)}</dd></div>
+                      <div><dt>Số khách</dt><dd>{formatDecimal(selectedRow.customerCount)}</dd></div>
+                      <div><dt>Số sản phẩm</dt><dd>{formatDecimal(selectedRow.productCount)}</dd></div>
+                      <div><dt>Sản lượng</dt><dd>{formatDecimal(selectedRow.quantity)} {selectedRow.unit?.name || selectedRow.unit?.code || ''}</dd></div>
+                    </dl>
+                  </aside>
                 ) : null}
-              </tbody>
-            </table>
-          </div>
-        </section>
+              </section>
 
-        <div className={styles.twoColumns}>
-          <section className={styles.panel} aria-label="Đối soát báo cáo">
-            <div className={styles.sectionHeading}>
-              <div>
-                <p className={styles.eyebrow}>Đối soát</p>
-                <h2>Khớp với đơn bán hàng</h2>
-              </div>
-              <span className={styles.okBadge}>{report?.reconciliation.ok ? 'Đã khớp' : 'Cần kiểm tra'}</span>
+              <section className={`${styles.panel} ${styles.trendPanel}`} aria-labelledby="sales-trend-title">
+                <div className={styles.panelHeading}>
+                  <div>
+                    <h2 id="sales-trend-title">Doanh thu theo ngày</h2>
+                    <small>{previousPeriod ? `Kỳ trước ${previousPeriod.from} → ${previousPeriod.to}` : 'Giữ riêng từng loại tiền'}</small>
+                  </div>
+                </div>
+
+                {trendSeries.length ? (
+                  <div className={styles.trendGrid}>
+                    {trendSeries.map((series) => (
+                      <TrendChart key={series.currencyCode} currencyCode={series.currencyCode} rows={series.rows} />
+                    ))}
+                  </div>
+                ) : <p className={styles.goodState}>Không có doanh thu theo ngày trong kỳ.</p>}
+
+                <div className={styles.trendTableWrap}>
+                  <table>
+                    <thead>
+                      <tr>
+                        <BusinessTableSequenceHeader />
+                        <th>Ngày</th>
+                        <th>Tiền tệ</th>
+                        <th>Doanh thu</th>
+                        <th>Doanh thu kỳ trước</th>
+                        <th>Thay đổi</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {report.dailyTrend.map((row, rowIndex) => (
+                        <tr key={`${row.businessDate}-${row.currencyCode}`}>
+                          <BusinessTableSequenceCell rowIndex={rowIndex} />
+                          <td>{row.businessDate}</td>
+                          <td>{row.currencyCode}</td>
+                          <td>{formatMoney(row.revenue, row.currencyCode)}</td>
+                          <td>{formatMoney(row.previousRevenue, row.currencyCode)}</td>
+                          <td>{percent(row.changePercent)}</td>
+                        </tr>
+                      ))}
+                      {!busy && !report.dailyTrend.length ? (
+                        <tr><td colSpan={6} className={styles.empty}>Không có doanh thu theo ngày trong kỳ.</td></tr>
+                      ) : null}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
             </div>
-            <dl className={styles.factList}>
-              <div><dt>Đơn đã kiểm</dt><dd>{formatDecimal(report?.reconciliation.checkedOrderCount)}</dd></div>
-              <div><dt>Chênh lệch</dt><dd>{formatDecimal(report?.reconciliation.mismatchCount)}</dd></div>
-            </dl>
-            <p className={styles.helperText}>Doanh thu được đối chiếu với phiên bản đơn đã xác nhận hoặc thay thế gần nhất trong đúng kỳ và phạm vi kho.</p>
-          </section>
 
-          <section className={styles.panel} aria-label="Cảnh báo chất lượng dữ liệu">
-            <div className={styles.sectionHeading}>
-              <div>
-                <p className={styles.eyebrow}>Chất lượng dữ liệu</p>
-                <h2>Điểm cần lưu ý</h2>
-              </div>
-              <span>{warnings.length} cảnh báo</span>
-            </div>
-            {warnings.length ? (
-              <ul className={styles.warningList}>{warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
-            ) : (
-              <p className={styles.goodState}>Không có cảnh báo chất lượng dữ liệu trong kỳ đang xem.</p>
-            )}
-          </section>
-        </div>
-
-        <p className={styles.lineage}>
-          Số liệu lấy từ đơn bán hàng hiệu lực và các ảnh chụp nghiệp vụ đã lưu khi xác nhận. Báo cáo chỉ dùng phạm vi kho tài khoản hiện tại được cấp.
-        </p>
+            <p className={styles.lineage}>
+              Số liệu lấy từ đơn bán hàng hiệu lực và các ảnh chụp nghiệp vụ đã lưu khi xác nhận. Báo cáo chỉ dùng phạm vi kho tài khoản hiện tại được cấp.
+            </p>
           </>
         ) : null}
       </div>
