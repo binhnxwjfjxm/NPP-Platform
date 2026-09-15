@@ -32,7 +32,7 @@ test("create mode cannot request customer profile before an id exists", () => {
   assert.match(browserSmoke, /create mode must not call customer-profile before routeCustomerId exists/);
 });
 
-test("manager owns private read, preview, add, delete, retry and refresh", () => {
+test("manager owns private read, preview, add, delete, retry and local-first refresh", () => {
   assert.match(manager, /customer-profile\?routeCustomerId=/);
   assert.match(manager, /capture="environment"/);
   assert.match(manager, /type="file" accept="image\/\*" multiple/);
@@ -43,7 +43,8 @@ test("manager owns private read, preview, add, delete, retry and refresh", () =>
   assert.match(manager, /"Thử lại"/);
   assert.match(manager, /disabled=\{busy \|\| remaining <= 0\}/);
   assert.match(manager, /await loadProfile\(\)/);
-  assert.match(manager, /router\.refresh\(\)/);
+  assert.match(manager, /dispatchMcpLocalReadRefresh\(\)/);
+  assert.doesNotMatch(manager, /router\.refresh\(\)/);
   assert.match(manager, /await onChanged\?\.\(\)/);
   assert.doesNotMatch(`${manager}\n${client}\n${backend}`, /outlet-media\/replace/);
 });

@@ -123,7 +123,7 @@ export function useMcpShellSnapshot() {
             setError(null);
           }
         } catch (cause) {
-          if (!cached && aliveRef.current) setError(cause instanceof Error ? cause.message : "MCP_LOCAL_READ_UNAVAILABLE");
+          if (aliveRef.current) setError(cause instanceof Error ? cause.message : "MCP_LOCAL_READ_UNAVAILABLE");
         } finally {
           if (aliveRef.current) setLoading(false);
         }
