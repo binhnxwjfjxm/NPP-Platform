@@ -4,11 +4,12 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./index.js"
+    ".": "./index.js",
+    "./browser-local-read-cache": "./browser-local-read-cache.js"
   },
   "scripts": {
-    "build": "node --check index.js",
-    "test": "node --test test/shared-utils.test.js",
+    "build": "node --check index.js && node --check browser-local-read-cache.js",
+    "test": "node --test test/shared-utils.test.js test/browser-local-read-cache.test.js",
     "verify": "npm run build && npm run test"
   }
 }
