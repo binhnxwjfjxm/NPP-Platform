@@ -1,99 +1,125 @@
-"use client";
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import test from 'node:test';
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useState, type CSSProperties, type HTMLAttributes } from "react";
-import { NavIcon } from "./NavIcon";
-import type { NavItem } from "./navigation";
+const root = new URL('../', import.meta.url);
+const read = async (path) => readFile(new URL(path, root), 'utf8');
 
-type MobileDockProps = HTMLAttributes<HTMLElement> & {
-  items: NavItem[];
-};
+test('Lô 7 keeps signed-out and deep-link access fail-closed with office wording', async () => {
+  const [middleware, login, menu, coreApi, internalAuth, shell] = await Promise.all([
+    read('middleware.ts'),
+    read('app/login/page.tsx'),
+    read('app/menu/page.tsx'),
+    read('lib/core-api.ts'),
+    read('lib/internal-auth-client.ts'),
+    read('app/admin-shell.tsx'),
+  ]);
 
-function isItemActive(pathname: string, href: string) {
-  if (href === "/") return pathname === "/";
-  if (href === "/visits") return pathname === "/visits" || pathname.startsWith("/visits/") || pathname.startsWith("/mcp/sessions/");
-  return pathname === href || pathname.startsWith(`${href}/`);
-}
+  assert.match(middleware, /loginRedirect\(request\)/);
+  assert.match(middleware, /safeAdminReturnTo/);
+  assert.match(middleware, /request\.cookies\.get\(ADMIN_SESSION_COOKIE\)/);
+  assert.doesNotMatch(middleware, /\/api\/internal-auth\/me|sessionIsActive|await fetch/);
+  assert.match(middleware, /deny\(request, 401/);
+  assert.match(middleware, /deny\(request, 503/);
+  assert.match(middleware, /matcher:/);
+  assert.match(login, /Hệ thống Công Ty tạm thời chưa sẵn sàng/);
+  assert.match(menu, /hệ thống Công Ty/);
+  assert.match(shell, /alt="Logo Hưng Phát"/);
 
-function isVisitFlow(pathname: string) {
-  return pathname === "/visits"
-    || pathname.startsWith("/visits/")
-    || pathname === "/mcp/sessions"
-    || pathname.startsWith("/mcp/sessions/");
-}
+  const userFacing = `${middleware}\n${login}\n${menu}\n${coreApi}\n${internalAuth}\n${shell}`;
+  assert.doesNotMatch(userFacing, /NPP Core|Backend hiện|contract xác minh|cookie HttpOnly|Security\/Implementation Owner|hệ thống Core|Hưng Phát Company/);
+});
 
-export function MobileDock({ items, style, ...props }: MobileDockProps) {
-  const pathname = usePathname();
-  const activeIndex = Math.max(0, items.findIndex((item) => isItemActive(pathname, item.href)));
-  const [intentIndex, setIntentIndex] = useState<number | null>(null);
-  const visualIndex = intentIndex ?? activeIndex;
-  const dockStyle = {
-    ...style,
-    "--mobile-dock-index": visualIndex,
-    "--mobile-dock-offset": `${visualIndex * 100}%`
-  } as CSSProperties;
+test('Lô 7 distinguishes forbidden unavailable and empty states without fake zero counts', async () => {
+  const [proposalList, proposalDetail, alertList, alertDetail] = await Promise.all([
+    read('app/approvals/approvals-local.tsx'),
+    read('app/approvals/[approvalId]/page.tsx'),
+    read('app/alerts/alerts-local.tsx'),
+    read('app/alerts/[alertId]/page.tsx'),
+  ]);
 
-  return (
-    <nav {...props} className="mobile-app-dock" style={dockStyle} aria-label="Điều hướng tác nghiệp">
-      <span className="mobile-app-dock-indicator" aria-hidden="true" />
-      {items.map((item, index) => {
-        const active = isItemActive(pathname, item.href);
-        const primary = item.href === "/visits";
-        const intended = intentIndex === index;
-        // Entering Đi tuyến is now local-first and must stay inside the current
-        // document. While already inside a visit/session flow we keep the
-        // existing fresh-document escape for leaving operational state.
-        const documentNavigation = isVisitFlow(pathname);
-        const className = `mobile-app-dock-link bottom-nav-link${active ? " active" : ""}${primary ? " primary" : ""}`;
-        const content = (
-          <>
-            <span className="mobile-app-dock-icon nav-icon" aria-hidden="true"><NavIcon name={item.icon} width="22" height="22" /></span>
-            <span className="mobile-app-dock-label nav-label">{item.shortLabel}</span>
-          </>
-        );
-        const interactionProps = {
-          onBlur: () => setIntentIndex(null),
-          onFocus: () => setIntentIndex(index),
-          onPointerCancel: () => setIntentIndex(null),
-          onPointerDown: () => setIntentIndex(index)
-        };
+  assert.match(proposalList, /read\.error === "FORBIDDEN"/);
+  assert.match(proposalList, /không có quyền xem đề xuất quản trị/);
+  assert.match(proposalDetail, /statusCode === 403/);
+  assert.match(proposalDetail, /không có quyền xem đề xuất quản trị/);
 
-        if (documentNavigation) {
-          return (
-            <a
-              aria-current={active ? "page" : undefined}
-              className={className}
-              data-document-navigation="true"
-              data-interaction-feedback="selection"
-              data-motion-intent={intended ? "true" : undefined}
-              data-primary-action={primary ? "true" : undefined}
-              href={item.href}
-              key={item.href}
-              {...interactionProps}
-            >
-              {content}
-            </a>
-          );
-        }
+  assert.match(alertList, /data\.domainAccess\[selectedDomain\]/);
+  assert.match(alertList, /!selectedAccess\.available/);
+  assert.match(alertList, /Chưa thể mở nhóm cảnh báo này/);
+  assert.doesNotMatch(alertList, /unavailableTabs/);
+  assert.doesNotMatch(alertList, /badge:'0'|badge: '0'/);
+  assert.match(alertList, /activeAlerts \? activeAlerts\.length : "—"/);
+  assert.match(alertList, /data \? data\.rules\.length : "—"/);
 
-        return (
-          <Link
-            aria-current={active ? "page" : undefined}
-            className={className}
-            data-client-navigation="true"
-            data-interaction-feedback="selection"
-            data-motion-intent={intended ? "true" : undefined}
-            data-primary-action={primary ? "true" : undefined}
-            href={item.href}
-            key={item.href}
-            prefetch={false}
-            {...interactionProps}
-          >
-            {content}
-          </Link>
-        );
-      })}
-    </nav>
-  );
-}
+  const messageBranch = alertDetail.indexOf('if (!alert && data.message)');
+  const notFoundBranch = alertDetail.indexOf('if (!alert) notFound()');
+  assert.ok(messageBranch >= 0 && notFoundBranch > messageBranch, 'source/permission errors must be handled before genuine 404');
+});
+
+test('Lô 7 decision reporting uses real proposal and alert sources', async () => {
+  const data = await read('app/reports/report-data.ts');
+  assert.match(data, /source: 'Đề xuất và cảnh báo quản trị của Công Ty'/);
+  assert.match(data, /loadSource\('\/api\/management-proposals'\)/);
+  assert.match(data, /loadSource\(withRange\('\/api\/reporting\/admin-alerts'/);
+  assert.match(data, /buildDecisions\(range, proposals, alerts\)/);
+  assert.match(data, /proposalSource\.ok \? String\(pending\) : 'Chưa có dữ liệu'/);
+  assert.match(data, /alertSource\.ok \? String\(openAlerts\) : 'Chưa có dữ liệu'/);
+  assert.doesNotMatch(data, /source: 'Chưa có nguồn đề xuất chính thức'|Chưa có nguồn đề xuất và cảnh báo chính thức/);
+});
+
+test('Lô 7 preserves Overview detail back-flow with a safe internal return target', async () => {
+  const [overview, detail, session] = await Promise.all([
+    read('app/admin-overview-local.tsx'),
+    read('app/reports/[reportId]/page.tsx'),
+    read('lib/admin-session.ts'),
+  ]);
+  assert.match(overview, /new URLSearchParams\(\{ period, returnTo: overviewHref\(period\) \}\)/);
+  assert.match(detail, /safeAdminReturnTo\(returnTo\)/);
+  assert.match(detail, /Quay lại Tổng quan/);
+  assert.match(detail, /safeReturnTo\.startsWith\('\/\?period='\)/);
+  assert.match(session, /!candidate\.startsWith\('\/\/'\)/);
+});
+
+test('Lô 7 provides loading error not-found mobile and keyboard states', async () => {
+  const [layout, loading, errorPage, notFound, closeoutCss, focusCss] = await Promise.all([
+    read('app/layout.tsx'),
+    read('app/loading.tsx'),
+    read('app/error.tsx'),
+    read('app/not-found.tsx'),
+    read('app/admin-closeout.css'),
+    read('app/hung-phat-warm-gold.css'),
+  ]);
+  assert.match(layout, /admin-closeout\.css/);
+  assert.match(loading, /role="status"/);
+  assert.match(loading, /aria-live="polite"/);
+  assert.match(errorPage, /role="alert"/);
+  assert.match(errorPage, /Thử lại/);
+  assert.doesNotMatch(errorPage, /error\.message|error\.stack|digest/);
+  assert.match(notFound, /Không tìm thấy nội dung/);
+  assert.match(notFound, /Về Tổng quan/);
+  assert.match(closeoutCss, /@media\s*\(max-width:\s*430px\)/);
+  assert.doesNotMatch(closeoutCss, /\.approvalDecisionBar/);
+  assert.match(closeoutCss, /\.adminRouteStateAction\s*\{[\s\S]*min-height:\s*44px/);
+  assert.match(closeoutCss, /\.alertComparison\s*\{[\s\S]*grid-template-columns:\s*1fr/);
+  assert.match(focusCss, /button:focus-visible/);
+  assert.match(focusCss, /a:focus-visible/);
+  assert.match(focusCss, /summary:focus-visible/);
+  assert.match(focusCss, /prefers-reduced-motion/);
+});
+
+test('Lô 7 connected Admin screens do not import preview fixtures', async () => {
+  const files = await Promise.all([
+    read('app/page.tsx'),
+    read('app/admin-overview-local.tsx'),
+    read('app/approvals/page.tsx'),
+    read('app/approvals/approvals-local.tsx'),
+    read('app/approvals/[approvalId]/page.tsx'),
+    read('app/alerts/page.tsx'),
+    read('app/alerts/alerts-local.tsx'),
+    read('app/alerts/[alertId]/page.tsx'),
+    read('app/reports/page.tsx'),
+    read('app/reports/[reportId]/page.tsx'),
+    read('app/reports/report-data.ts'),
+  ]);
+  assert.doesNotMatch(files.join('\n'), /report-preview-data|alert-preview-data|approvalFixtures|adminPreviewNotice|Dữ liệu minh họa/);
+});
