@@ -23,12 +23,12 @@ test('UI polish maps report state to semantic badge tones instead of hard-coded 
 
 test('UI polish removes fake period controls from alert rules and duplicate overview navigation', async () => {
   const [alerts, overview] = await Promise.all([
-    read('app/alerts/page.tsx'),
-    read('app/page.tsx'),
+    read('app/alerts/alerts-local.tsx'),
+    read('app/admin-overview-local.tsx'),
   ]);
 
-  assert.match(alerts, /\{activeTab !== 'rules' \? \(\s*<AdminToolbar label="Kỳ cảnh báo">/);
-  assert.match(alerts, /\{activeTab === 'rules' \? \(\s*<AdminKpiGrid label="Tóm tắt quy tắc cảnh báo">/);
+  assert.match(alerts, /\{activeTab !== "rules" \? \(\s*<AdminToolbar label="Kỳ cảnh báo">/);
+  assert.match(alerts, /\{activeTab === "rules" \? \(\s*<AdminKpiGrid label="Tóm tắt quy tắc cảnh báo">/);
   assert.match(alerts, /label="Quy tắc mức cao"/);
   assert.match(alerts, /label="Nhóm dữ liệu"/);
   assert.doesNotMatch(overview, /Trung tâm quản trị|adminOverviewActions|adminOverviewAction/);

@@ -1,5 +1,8 @@
+import { createHash } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { readAdminSessionToken, requestInternalAuth } from '../../../../lib/internal-auth-client';
+
+export const runtime = 'nodejs';
 
 type CurrentSession = Readonly<{
   loginName?: string | null;
@@ -19,6 +22,11 @@ function bearerToken(request: NextRequest): string | null {
   const header = request.headers.get('authorization')?.trim() || '';
   const match = /^Bearer\s+(.+)$/i.exec(header);
   return match?.[1]?.trim() || null;
+}
+
+function cacheUserId(loginName: string | null) {
+  if (!loginName) return null;
+  return `admin.${createHash('sha256').update(loginName.toLowerCase()).digest('hex').slice(0, 32)}`;
 }
 
 export async function GET(request: NextRequest) {
@@ -42,10 +50,12 @@ export async function GET(request: NextRequest) {
   }
 
   const session = result.data?.session;
+  const loginName = session?.loginName?.trim() || null;
   return noStoreJson({
     data: {
       employeeFullName: session?.employeeFullName?.trim() || null,
-      loginName: session?.loginName?.trim() || null,
+      loginName,
+      cacheUserId: cacheUserId(loginName),
     },
   });
 }

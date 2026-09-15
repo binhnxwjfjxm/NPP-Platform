@@ -3,15 +3,19 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const listPage = await readFile('app/approvals/page.tsx', 'utf8');
+const listLocal = await readFile('app/approvals/approvals-local.tsx', 'utf8');
+const localRoute = await readFile('app/api/local-read/admin-data/route.ts', 'utf8');
 const detailPage = await readFile('app/approvals/[approvalId]/page.tsx', 'utf8');
 const decisionDialog = await readFile('app/approvals/proposal-decision-dialog.tsx', 'utf8');
 const data = await readFile('app/approvals/proposal-data.ts', 'utf8');
 const actions = await readFile('app/approvals/actions.ts', 'utf8');
 
-test('Lô 5 replaces proposal fixtures with real Công Ty API data', () => {
-  assert.doesNotMatch(listPage, /approval-fixtures|approvalFixtures|Dữ liệu minh họa/);
+test('Lô 5 keeps real Công Ty proposal data behind the local-first read cache', () => {
+  assert.doesNotMatch(`${listPage}\n${listLocal}`, /approval-fixtures|approvalFixtures|Dữ liệu minh họa/);
   assert.doesNotMatch(detailPage, /approval-fixtures|approvalFixtures|Dữ liệu minh họa/);
-  assert.match(listPage, /loadProposals\(\)/);
+  assert.match(listPage, /ApprovalsLocal/);
+  assert.match(listLocal, /useAdminLocalRead<ProposalItem\[]>\("proposals"\)/);
+  assert.match(localRoute, /if \(resource === "proposals"\) return loadProposals\(\)/);
   assert.match(detailPage, /loadProposal\(params\.approvalId\)/);
   assert.match(data, /\/api\/management-proposals/);
 });
@@ -32,9 +36,10 @@ test('Lô 5 decisions keep office language and canonical idempotency contract', 
 });
 
 test('Lô 5 does not hide source or permission failure behind fake zero proposal counts', () => {
-  assert.match(listPage, /statusCode === 403/);
-  assert.match(listPage, /Không thể tải danh sách đề xuất/);
+  assert.match(listLocal, /read\.error === "FORBIDDEN"/);
+  assert.match(listLocal, /Không thể tải danh sách đề xuất/);
+  assert.match(listLocal, /Đang dùng dữ liệu đã lưu/);
   assert.match(detailPage, /statusCode === 403/);
   assert.match(detailPage, /Không thể tải đề xuất/);
-  assert.doesNotMatch(listPage, /proposals \?\? \[\]/);
+  assert.doesNotMatch(listLocal, /proposals \?\? \[\]/);
 });
