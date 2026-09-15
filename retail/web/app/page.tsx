@@ -1,3 +1,3 @@
 'use client';
 
-export { default } from './retail-workspace';
+export { default } from './retail-root';
