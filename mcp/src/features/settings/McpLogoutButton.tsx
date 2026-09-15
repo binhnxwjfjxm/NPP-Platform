@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { clearMcpProductCatalogForCurrentUser } from "@/features/orders/mcp-product-local-cache";
 import { clearMcpLocalReadForCurrentUser } from "@/lib/local-read/use-mcp-shell";
 
 export function McpLogoutButton() {
@@ -10,7 +11,10 @@ export function McpLogoutButton() {
     if (pending) return;
     setPending(true);
     try {
-      await clearMcpLocalReadForCurrentUser();
+      await Promise.all([
+        clearMcpLocalReadForCurrentUser(),
+        clearMcpProductCatalogForCurrentUser()
+      ]);
       await fetch("/api/auth/logout", { method: "POST", cache: "no-store", redirect: "manual" }).catch(() => null);
     } finally {
       window.location.assign("/login");

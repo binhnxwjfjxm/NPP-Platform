@@ -8,6 +8,7 @@ import {
   compareCatalogProducts,
   groupCatalogCategories
 } from "./order-catalog-priority";
+import { loadMcpProductPrices, searchMcpProductCatalog } from "./mcp-product-local-cache";
 import catalogStyles from "./OrderCatalogQuick.module.css";
 import styles from "./OrderCreateSheet.module.css";
 
@@ -254,26 +255,33 @@ export function CoreOrderCreateSheet({
     setLoadingProducts(true);
     setProductError(null);
     try {
-      const params = new URLSearchParams({ q: query.trim(), limit: "100" });
-      if (category) params.set("category", category);
-      if (brand) params.set("brand", brand);
-      const response = await fetch(`/api/products/search?${params.toString()}`, {
-        cache: "no-store",
-        headers: { Accept: "application/json" }
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(apiErrorMessage(payload, "Không tải được sản phẩm Công Ty"));
-      const nextProducts = normalizeCatalogItems((payload as { data?: unknown }).data);
+      const local = await searchMcpProductCatalog(query, category, brand, 100);
+      const nextProducts = normalizeCatalogItems(local.items);
       if (requestId !== productRequestRef.current) return;
       setProducts(nextProducts);
-      setCategoryOptions((current) => mergeOptions(current, nextProducts.map((item) => item.category)));
-      setBrandOptions((current) => mergeOptions(current, nextProducts.map((item) => item.brand)));
+      setCategoryOptions((current) => mergeOptions(current, local.categories));
+      setBrandOptions((current) => mergeOptions(current, local.brands));
+      setLoadingProducts(false);
+
+      if (!query.trim() || nextProducts.length === 0) return;
+      try {
+        const prices = await loadMcpProductPrices(query, category, brand);
+        setItems((current) => current.map((item) => prices.has(item.variantId)
+          ? { ...item, price: prices.get(item.variantId) ?? null }
+          : item));
+        if (requestId !== productRequestRef.current) return;
+        setProducts((current) => current.map((item) => prices.has(item.variantId)
+          ? { ...item, price: prices.get(item.variantId) ?? null }
+          : item));
+      } catch {
+        // SKU results stay usable immediately. Price is secondary and Công Ty
+        // remains authoritative when the order is created.
+      }
     } catch (error) {
       if (requestId !== productRequestRef.current) return;
       setProducts([]);
+      setLoadingProducts(false);
       setProductError(error instanceof Error ? error.message : "Không tải được sản phẩm Công Ty");
-    } finally {
-      if (requestId === productRequestRef.current) setLoadingProducts(false);
     }
   }, []);
 
@@ -306,10 +314,7 @@ export function CoreOrderCreateSheet({
 
   useEffect(() => {
     if (!open) return;
-    const timer = window.setTimeout(() => {
-      void loadProducts(productSearch, productCategory, productBrand);
-    }, 250);
-    return () => window.clearTimeout(timer);
+    void loadProducts(productSearch, productCategory, productBrand);
   }, [loadProducts, open, productBrand, productCategory, productSearch]);
 
   function announceQuantity(product: ProductCatalogItem, nextQuantity: number) {
