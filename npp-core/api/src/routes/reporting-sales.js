@@ -259,12 +259,12 @@ function reconciliation(facts) {
 
 function quality(facts) {
   const current = currentFacts(facts);
-  const customerGroupLegacyFallbackCount = current.filter((row) => row.customerGroupSource !== 'snapshot').length;
+  const customerGroupLegacyFallbackCount = current.filter((row) => row.customerGroupSnapshotCaptured !== true).length;
   const productGroupLegacyFallbackCount = current.filter((row) => row.productGroupSource !== 'snapshot').length;
   const unitNameLegacyFallbackCount = current.filter((row) => row.unitNameSource !== 'snapshot').length;
   const unattributedEmployeeCount = current.filter((row) => row.employeeSource === 'unavailable').length;
   const warnings = [];
-  if (customerGroupLegacyFallbackCount) warnings.push('Một phần đơn cũ chưa có ảnh chụp Loại khách; báo cáo đang ghi rõ phần dùng danh mục hiện tại để tham chiếu.');
+  if (customerGroupLegacyFallbackCount) warnings.push('Một phần đơn cũ chưa có ảnh chụp Loại khách để truy vết lịch sử; phân tích Nhóm khách vẫn dùng danh mục khách hàng hiện tại.');
   if (productGroupLegacyFallbackCount) warnings.push('Một phần dòng hàng cũ chưa có ảnh chụp Nhóm hàng; báo cáo đang ghi rõ phần dùng danh mục hiện tại để tham chiếu.');
   if (unitNameLegacyFallbackCount) warnings.push('Một phần dòng hàng cũ chưa có tên ĐVT lịch sử; báo cáo đang ghi rõ phần dùng tên ĐVT hiện tại để tham chiếu.');
   if (unattributedEmployeeCount) warnings.push('Có dòng doanh thu chưa xác định được Nhân viên bán hàng từ nguồn đơn/người tạo.');
@@ -302,10 +302,12 @@ export async function salesReport(adapter, requestContext, filters, warehouseIds
               so.id AS sales_order_id, so.order_number, so.source_employee_id, so.created_by,
               sov.id AS sales_order_version_id, sov.currency_code, sov.total::text AS version_total,
               sov.customer_id, sov.customer_code_snapshot AS customer_code, sov.customer_name_snapshot AS customer_name,
-              CASE WHEN sov.customer_group_snapshot_captured THEN sov.customer_group_id_snapshot ELSE customer.group_id END AS customer_group_id,
-              CASE WHEN sov.customer_group_snapshot_captured THEN sov.customer_group_code_snapshot ELSE customer_group.code END AS customer_group_code,
-              CASE WHEN sov.customer_group_snapshot_captured THEN sov.customer_group_name_snapshot ELSE customer_group.name END AS customer_group_name,
-              CASE WHEN sov.customer_group_snapshot_captured THEN 'snapshot' WHEN customer_group.id IS NOT NULL THEN 'legacy-current-master' ELSE 'legacy-unavailable' END AS customer_group_source,
+              customer.group_id AS customer_group_id,
+              customer_group.code AS customer_group_code,
+              customer_group.name AS customer_group_name,
+              CASE WHEN customer_group.id IS NOT NULL THEN 'current-master' ELSE 'current-unclassified' END AS customer_group_source,
+              sov.customer_group_snapshot_captured,
+              sov.customer_group_id_snapshot, sov.customer_group_code_snapshot, sov.customer_group_name_snapshot,
               sov.sales_channel_id, sov.sales_channel_code_snapshot AS sales_channel_code, sov.sales_channel_name_snapshot AS sales_channel_name,
               line.variant_id, line.sku_snapshot AS sku, line.item_name_snapshot AS item_name,
               CASE WHEN line.reporting_dimension_snapshot_captured THEN line.product_category_id_snapshot ELSE product.category_id END AS product_group_id,
@@ -433,7 +435,7 @@ export async function salesReport(adapter, requestContext, filters, warehouseIds
       includeZeroProducts: Boolean(filters.includeZeroProducts),
     }),
     scopeWarehouses: mapRows(scopeWarehouses.rows),
-    basis: Object.freeze({ date: 'sales.sales_orders.confirmed_at', revenue: 'sum(sales.sales_order_version_lines.line_total), reconciled exactly to latest confirmed/superseded version total', quantity: 'ordered_quantity is only shown on product rows where the product identity is explicit; quantities are never aggregated across different units or unrelated products', classification: 'customer group only filters the customer breakdown; product group and zero-product options only filter the product breakdown; summary, trend, documents, reconciliation and other breakdowns remain on the full selected period and warehouse scope', employee: 'sales_orders.source_employee_id, otherwise creator user employee mapping; customer responsible employee is not used', historicalDimensions: 'confirmed snapshots when captured; legacy rows explicitly mark current-master fallback instead of silently rewriting history', effectiveStates: Object.freeze(['confirmed', 'closed']) }),
+    basis: Object.freeze({ date: 'sales.sales_orders.confirmed_at', revenue: 'sum(sales.sales_order_version_lines.line_total), reconciled exactly to latest confirmed/superseded version total', quantity: 'ordered_quantity is only shown on product rows where the product identity is explicit; quantities are never aggregated across different units or unrelated products', classification: 'customer group uses the current customer master and only filters the customer breakdown; product group and zero-product options only filter the product breakdown; summary, trend, documents, reconciliation and other breakdowns remain on the full selected period and warehouse scope', employee: 'sales_orders.source_employee_id, otherwise creator user employee mapping; customer responsible employee is not used', historicalDimensions: 'customer group analysis uses the current customer master; confirmed customer-group snapshots remain immutable for audit; product group and unit history still use confirmed snapshots when captured with explicit legacy fallback', effectiveStates: Object.freeze(['confirmed', 'closed']) }),
     comparison: Object.freeze({ current: Object.freeze({ from: filters.from, to: filters.to, dayCount: previous.dayCount }), previous: Object.freeze({ from: previous.from, to: previous.to, dayCount: previous.dayCount }) }),
     summary: Object.freeze({ ...summaryCounts, revenues, quantities, soldProductCount }),
     breakdowns,
