@@ -33,9 +33,13 @@ test('Lô 3 keeps report drill-down facts but uses shared state and KPI chrome',
   assert.doesNotMatch(page, /styles\.detailMetrics|styles\.detailMetric|styles\.sourceBadge/);
 });
 
-test('Lô 3 migrates alerts, rules and history to shared filters, KPI, badges and states', async () => {
-  const page = await read('app/alerts/page.tsx');
+test('Lô 3 keeps alerts, rules and history on shared filters, KPI, badges and states after local-first split', async () => {
+  const [wrapper, page] = await Promise.all([
+    read('app/alerts/page.tsx'),
+    read('app/alerts/alerts-local.tsx'),
+  ]);
 
+  assert.match(wrapper, /AlertsLocal/);
   for (const name of ['AdminToolbar', 'AdminFilterChip', 'AdminKpiGrid', 'AdminKpiCard', 'AdminStatusBadge', 'AdminStatePanel']) {
     assert.match(page, new RegExp(`<${name}`));
   }
@@ -43,6 +47,7 @@ test('Lô 3 migrates alerts, rules and history to shared filters, KPI, badges an
   assert.match(page, /alertHref\(activeTab, candidate\)/);
   assert.match(page, /aria-label="Lịch sử cảnh báo"/);
   assert.match(page, /aria-label="Quy tắc cảnh báo"/);
+  assert.match(page, /useAdminLocalRead<AlertCenterData>\("alerts", period\)/);
   assert.doesNotMatch(page, /alertSummaryStrip|alertSeverity|alertStatus|alertEmpty|compactWarning/);
 });
 

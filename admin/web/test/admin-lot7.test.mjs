@@ -31,13 +31,13 @@ test('Lô 7 keeps signed-out and deep-link access fail-closed with office wordin
 
 test('Lô 7 distinguishes forbidden unavailable and empty states without fake zero counts', async () => {
   const [proposalList, proposalDetail, alertList, alertDetail] = await Promise.all([
-    read('app/approvals/page.tsx'),
+    read('app/approvals/approvals-local.tsx'),
     read('app/approvals/[approvalId]/page.tsx'),
-    read('app/alerts/page.tsx'),
+    read('app/alerts/alerts-local.tsx'),
     read('app/alerts/[alertId]/page.tsx'),
   ]);
 
-  assert.match(proposalList, /statusCode === 403/);
+  assert.match(proposalList, /read\.error === "FORBIDDEN"/);
   assert.match(proposalList, /không có quyền xem đề xuất quản trị/);
   assert.match(proposalDetail, /statusCode === 403/);
   assert.match(proposalDetail, /không có quyền xem đề xuất quản trị/);
@@ -47,8 +47,8 @@ test('Lô 7 distinguishes forbidden unavailable and empty states without fake ze
   assert.match(alertList, /Chưa thể mở nhóm cảnh báo này/);
   assert.doesNotMatch(alertList, /unavailableTabs/);
   assert.doesNotMatch(alertList, /badge:'0'|badge: '0'/);
-  assert.match(alertList, /activeAlerts \? activeAlerts\.length : '—'/);
-  assert.match(alertList, /sourceReady \? data\.rules\.length : '—'/);
+  assert.match(alertList, /activeAlerts \? activeAlerts\.length : "—"/);
+  assert.match(alertList, /data \? data\.rules\.length : "—"/);
 
   const messageBranch = alertDetail.indexOf('if (!alert && data.message)');
   const notFoundBranch = alertDetail.indexOf('if (!alert) notFound()');
@@ -68,7 +68,7 @@ test('Lô 7 decision reporting uses real proposal and alert sources', async () =
 
 test('Lô 7 preserves Overview detail back-flow with a safe internal return target', async () => {
   const [overview, detail, session] = await Promise.all([
-    read('app/page.tsx'),
+    read('app/admin-overview-local.tsx'),
     read('app/reports/[reportId]/page.tsx'),
     read('lib/admin-session.ts'),
   ]);
@@ -109,9 +109,12 @@ test('Lô 7 provides loading error not-found mobile and keyboard states', async 
 test('Lô 7 connected Admin screens do not import preview fixtures', async () => {
   const files = await Promise.all([
     read('app/page.tsx'),
+    read('app/admin-overview-local.tsx'),
     read('app/approvals/page.tsx'),
+    read('app/approvals/approvals-local.tsx'),
     read('app/approvals/[approvalId]/page.tsx'),
     read('app/alerts/page.tsx'),
+    read('app/alerts/alerts-local.tsx'),
     read('app/alerts/[alertId]/page.tsx'),
     read('app/reports/page.tsx'),
     read('app/reports/[reportId]/page.tsx'),

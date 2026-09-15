@@ -11,7 +11,7 @@ const companyGateway = readFileSync(new URL('../../web/lib/management-proposal-g
 const companyPage = readFileSync(new URL('../../web/app/management/proposals/page.tsx', import.meta.url), 'utf8');
 const companyForm = readFileSync(new URL('../../web/app/management/proposals/proposal-forms.tsx', import.meta.url), 'utf8');
 const companyActions = readFileSync(new URL('../../web/app/management/proposals/actions.ts', import.meta.url), 'utf8');
-const adminList = readFileSync(new URL('../../../admin/web/app/approvals/page.tsx', import.meta.url), 'utf8');
+const adminList = readFileSync(new URL('../../../admin/web/app/approvals/approvals-local.tsx', import.meta.url), 'utf8');
 const adminData = readFileSync(new URL('../../../admin/web/app/approvals/proposal-data.ts', import.meta.url), 'utf8');
 const adminDetail = readFileSync(new URL('../../../admin/web/app/approvals/[approvalId]/page.tsx', import.meta.url), 'utf8');
 

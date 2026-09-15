@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const alertDataPath = new URL('../app/alerts/alert-data.ts', import.meta.url);
-const alertsPagePath = new URL('../app/alerts/page.tsx', import.meta.url);
+const alertsPagePath = new URL('../app/alerts/alerts-local.tsx', import.meta.url);
 const alertDetailPath = new URL('../app/alerts/[alertId]/page.tsx', import.meta.url);
 const reportsPagePath = new URL('../app/reports/page.tsx', import.meta.url);
 const exportRoutePath = new URL('../app/reports/export/route.ts', import.meta.url);

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { AdminIcon } from './admin-icons';
+import { AdminLogoutForm } from './admin-logout-form';
 
 type AdminSection = 'overview' | 'approvals' | 'alerts' | 'reports';
 export type AdminContentWidth = 'wide' | 'focused' | 'special';
@@ -74,12 +75,7 @@ export function AdminShell({
                 <span className="menuIcon"><AdminIcon name="info" size={20} /></span>
                 <span><strong>Thông tin ứng dụng</strong><small>Cài đặt ứng dụng và phạm vi sử dụng</small></span>
               </Link>
-              <form action="/api/auth/logout" method="post">
-                <button className="menuItem adminLogoutItem" type="submit">
-                  <span className="menuIcon"><AdminIcon name="lock" size={20} /></span>
-                  <span><strong>Đăng xuất</strong><small>Kết thúc phiên quản trị hiện tại</small></span>
-                </button>
-              </form>
+              <AdminLogoutForm />
             </div>
           </details>
         </div>
