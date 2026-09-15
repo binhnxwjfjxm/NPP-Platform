@@ -642,7 +642,7 @@ export default function ManualInboundWorkspace() {
     }
   }
 
-  const directRows = rows.filter((row) => !rowIsEmpty(row));
+  const directRows = rows.filter((row) => !rowIsEmpty(row)).slice().reverse();
 
   return <AppShell title="Nhập kho thủ công" kicker="Kho">
     <div className={styles.workspaceGrid}>
@@ -702,7 +702,7 @@ export default function ManualInboundWorkspace() {
                   const resolved = resolvedItems[actualIndex + 1];
                   const matches = resolved?.sku === row.sku.trim().toUpperCase();
                   return <tr key={`${actualIndex}-${row.sku}`}>
-                    <BusinessTableSequenceCell rowIndex={index} />
+                    <BusinessTableSequenceCell rowIndex={index} value={actualIndex + 1} />
                     <td className={styles.skuCell}>{row.sku}</td>
                     <td className={styles.productNameCell}>{matches ? (resolved.productName || '—') : 'Kiểm tra để nhận diện'}{matches && resolved?.unitCost ? <small>Giá vốn hiện hành: {formatCost(resolved.unitCost)} đ</small> : null}</td>
                     <td className={styles.unitCell}>{matches ? (resolved.sourceUnitCode || '—') : '—'}</td>
