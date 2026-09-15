@@ -1,7 +1,6 @@
 "use client";
 
 import { ChangeEvent, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   MAX_OUTLET_PHOTOS,
   buildOutletPhotoDrafts,
@@ -12,6 +11,7 @@ import {
   type OutletMediaLocation,
   type OutletPhotoDraft
 } from "./outlet-media-client";
+import { dispatchMcpLocalReadRefresh } from "@/lib/local-read/use-mcp-shell";
 import styles from "./McpCustomerProfileSheet.module.css";
 
 type OutletPhotoMedia = {
@@ -66,7 +66,6 @@ export function OutletPhotoManager({
   onBusyChange?: (busy: boolean) => void;
   onChanged?: () => void | Promise<void>;
 }) {
-  const router = useRouter();
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const draftsRef = useRef<OutletPhotoDraft[]>([]);
@@ -205,7 +204,7 @@ export function OutletPhotoManager({
       });
 
       await loadProfile();
-      router.refresh();
+      dispatchMcpLocalReadRefresh();
       await onChanged?.();
       setMessage(
         failed.size
@@ -225,7 +224,7 @@ export function OutletPhotoManager({
     try {
       await outletMediaJson("/api/backend/outlet-media/delete", { mediaId });
       await loadProfile();
-      router.refresh();
+      dispatchMcpLocalReadRefresh();
       await onChanged?.();
       setMessage("Đã xóa ảnh điểm bán.");
     } catch (error) {

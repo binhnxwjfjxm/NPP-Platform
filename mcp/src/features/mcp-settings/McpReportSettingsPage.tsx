@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition } from "react";
+import type { RefObject } from "react";
 import { AppShell } from "@/ui/shell/AppShell";
 import { PageHeader } from "@/ui/layout/PageHeader";
 import { userFacingError } from "@/lib/ui/user-facing-error";
@@ -41,7 +42,7 @@ type Draft = {
 type DraftFieldsProps = {
   draft: Draft;
   onChange: (patch: Partial<Draft>) => void;
-  autoFocus?: boolean;
+  firstFieldRef: RefObject<HTMLInputElement>;
 };
 
 const emptyDraft: Draft = { label: "", value: "", category: "", brandName: "", sortOrder: "0" };
@@ -56,13 +57,13 @@ function draftFor(item: SettingItem): Draft {
   };
 }
 
-function DraftFields({ draft, onChange, autoFocus = false }: DraftFieldsProps) {
+function DraftFields({ draft, onChange, firstFieldRef }: DraftFieldsProps) {
   return (
     <div className={styles.formGrid}>
       <label className="form-field">
         <small>Tên mẫu</small>
         <input
-          autoFocus={autoFocus}
+          ref={firstFieldRef}
           value={draft.label}
           onChange={(event) => onChange({ label: event.target.value })}
           placeholder="Nhập tên đối thủ, thương hiệu hoặc lựa chọn"
@@ -148,11 +149,20 @@ export function McpReportSettingsPage({ activeHref = "/mcp-setting" }: { activeH
   const [loading, setLoading] = useState(true);
   const [pending, startTransition] = useTransition();
   const dialogScrollTopRef = useRef(0);
+  const dialogFirstFieldRef = useRef<HTMLInputElement>(null);
 
   const activeGroup = useMemo(() => groups.find((group) => group.id === activeGroupId) || groups[0], [groups, activeGroupId]);
   const activeItems = activeGroup?.items || [];
   const activeCount = activeItems.filter((item) => item.status === "active").length;
   const dialogMode = creating ? "create" : editingItem ? "edit" : null;
+
+  useLayoutEffect(() => {
+    if (!dialogMode) return;
+    const scrollTop = dialogScrollTopRef.current;
+    dialogFirstFieldRef.current?.focus({ preventScroll: true });
+    const node = appScrollRegion();
+    if (node && node.scrollTop !== scrollTop) node.scrollTop = scrollTop;
+  }, [dialogMode]);
 
   async function loadSettings({ showLoading = true }: { showLoading?: boolean } = {}) {
     if (showLoading) setLoading(true);
@@ -407,7 +417,7 @@ export function McpReportSettingsPage({ activeHref = "/mcp-setting" }: { activeH
 
             <div className={styles.body}>
               {message ? <p className="page-subtitle order-message" role="status">{message}</p> : null}
-              <DraftFields draft={dialogDraft} onChange={updateDialogDraft} autoFocus />
+              <DraftFields draft={dialogDraft} onChange={updateDialogDraft} firstFieldRef={dialogFirstFieldRef} />
             </div>
 
             <footer className={styles.actions}>

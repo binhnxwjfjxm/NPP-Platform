@@ -1,0 +1,7 @@
+export type McpShellSessionRow = { id: string; routeId: string; routeName: string; sessionDate: string; status: string; note?: string; salesOwner: string; plannedCustomers: number; visitedCustomers: number; orderCount: number; testCount: number; reportCount: number; followupCount: number };
+export type McpShellRouteHealth = { routeName: string; area: string; planned: number; visited: number; orders: number; followups: number; status: "good" | "watch" | "risk"; sessionId: string | null; sessionState: string };
+export type McpShellAction = { title: string; description: string; priority: "high" | "medium"; owner: string };
+export type McpShellLatestReport = { id: string; routeName: string; sessionDate: string; planned: number; visited: number; orders: number; tests: number; observations: number; followups: number };
+export type McpShellDashboard = { kpis: Array<{ label: string; value: string | number; hint: string; trend: string }>; routeHealth: McpShellRouteHealth[]; actions: McpShellAction[]; latestSession: McpShellSessionRow | null; latestReport: McpShellLatestReport | null };
+export type McpShellSnapshot = { generatedAt: string; routesData: import("@/features/routes/routes.types").RoutesData; routeCustomersData: import("@/features/mcp/route-customers.types").RouteCustomersData; dashboard: McpShellDashboard; recentSessions: { days: number; sessions: McpShellSessionRow[]; routes: Array<{ id: string; name: string }> } };
+export type McpShellCacheRow = { id: "mcp-shell"; snapshot: McpShellSnapshot };

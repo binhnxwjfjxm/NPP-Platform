@@ -6,6 +6,7 @@ import { buildGoogleMapsUrl } from "@/features/mcp/route-customers.types";
 import type { RouteCustomersData, RouteCustomerItem, RouteCustomerStatus } from "@/features/mcp/route-customers.types";
 import type { RoutesData, RouteItem, RouteStatus } from "@/features/routes/routes.types";
 import { createIdempotencyKey, idempotentMutationFetch } from "@/lib/api/idempotent-fetch";
+import { dispatchMcpLocalReadRefresh } from "@/lib/local-read/use-mcp-shell";
 import { userFacingError } from "@/lib/ui/user-facing-error";
 import { OperationalListCard } from "@/ui/cards/OperationalListCard";
 import { FilterBar } from "@/ui/layout/FilterBar";
@@ -195,7 +196,7 @@ export function McpMasterView({ activeHref, routesData, routeCustomersData }: { 
     navigator.geolocation.getCurrentPosition((pos) => { const lat = pos.coords.latitude; const lng = pos.coords.longitude; const accuracy = pos.coords.accuracy; resetCustomerIntent(); setCustomerDraft((current) => ({ ...current, geoLat: String(lat), geoLng: String(lng), geoAccuracy: Number.isFinite(accuracy) ? String(Math.round(accuracy)) : current.geoAccuracy })); setMessage(`Đã lấy định vị: ${lat.toFixed(6)}, ${lng.toFixed(6)}. Bấm Lưu điểm bán để ghi vào tuyến.`); }, (error) => { setMessage(error.message || "Không lấy được vị trí. Vui lòng kiểm tra quyền định vị của trình duyệt."); }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
   }
 
-  function submitRouteEditor() { if (!routeEditorMode) return; startSaving(async () => { try { setMessage(null); if (routeEditorMode === "create") { if (!routeDraft.routeName.trim()) throw new Error("Cần nhập tên tuyến"); const response = await idempotentMutationFetch("/api/routes", { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify(routeDraft) }, { operation: "route.create" }); const payload = await response.json().catch(() => ({})); if (!response.ok) throw new Error(apiError(payload, "Không tạo được tuyến")); } else if (routeEditorMode === "edit" && routeEditorRoute) { if (!routeDraft.routeName.trim()) throw new Error("Cần nhập tên tuyến"); const response = await idempotentMutationFetch(`/api/routes/${encodeURIComponent(routeEditorRoute.id)}`, { method: "PATCH", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify(routeDraft) }, { operation: "route.update" }); const payload = await response.json().catch(() => ({})); if (!response.ok) throw new Error(apiError(payload, "Không sửa được tuyến")); } else if (routeEditorMode === "delete" && routeEditorRoute) { const response = await fetch(`/api/routes/${encodeURIComponent(routeEditorRoute.id)}/archive`, { method: "POST", headers: { Accept: "application/json" } }); const payload = await response.json().catch(() => ({})); if (!response.ok) throw new Error(apiError(payload, "Không xóa được tuyến")); if (selectedRoute?.id === routeEditorRoute.id) setSelectedRoute(null); } setRouteEditorMode(null); setRouteEditorRoute(null); router.refresh(); } catch (error) { setMessage(userFacingError(error, "Không lưu được tuyến. Vui lòng thử lại.")); } }); }
+  function submitRouteEditor() { if (!routeEditorMode) return; startSaving(async () => { try { setMessage(null); if (routeEditorMode === "create") { if (!routeDraft.routeName.trim()) throw new Error("Cần nhập tên tuyến"); const response = await idempotentMutationFetch("/api/routes", { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify(routeDraft) }, { operation: "route.create" }); const payload = await response.json().catch(() => ({})); if (!response.ok) throw new Error(apiError(payload, "Không tạo được tuyến")); } else if (routeEditorMode === "edit" && routeEditorRoute) { if (!routeDraft.routeName.trim()) throw new Error("Cần nhập tên tuyến"); const response = await idempotentMutationFetch(`/api/routes/${encodeURIComponent(routeEditorRoute.id)}`, { method: "PATCH", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify(routeDraft) }, { operation: "route.update" }); const payload = await response.json().catch(() => ({})); if (!response.ok) throw new Error(apiError(payload, "Không sửa được tuyến")); } else if (routeEditorMode === "delete" && routeEditorRoute) { const response = await fetch(`/api/routes/${encodeURIComponent(routeEditorRoute.id)}/archive`, { method: "POST", headers: { Accept: "application/json" } }); const payload = await response.json().catch(() => ({})); if (!response.ok) throw new Error(apiError(payload, "Không xóa được tuyến")); if (selectedRoute?.id === routeEditorRoute.id) setSelectedRoute(null); } setRouteEditorMode(null); setRouteEditorRoute(null); dispatchMcpLocalReadRefresh(); } catch (error) { setMessage(userFacingError(error, "Không lưu được tuyến. Vui lòng thử lại.")); } }); }
 
   async function persistNewRouteCustomer(choice: CustomerIntentChoice) {
     if (!selectedRoute) throw new Error("Cần chọn tuyến gốc");
@@ -234,7 +235,7 @@ export function McpMasterView({ activeHref, routesData, routeCustomersData }: { 
     setActiveSessionPrompt(null);
     setCustomerEditorMode(null);
     setCustomerEditorCustomer(null);
-    router.refresh();
+    dispatchMcpLocalReadRefresh();
   }
 
   function runCustomerCreate(choice: CustomerIntentChoice) {
@@ -305,7 +306,7 @@ export function McpMasterView({ activeHref, routesData, routeCustomersData }: { 
         }
         setCustomerEditorMode(null);
         setCustomerEditorCustomer(null);
-        router.refresh();
+        dispatchMcpLocalReadRefresh();
       } catch (error) {
         setMessage(userFacingError(error, "Không lưu được điểm bán. Vui lòng thử lại."));
       }

@@ -1,23 +1,7 @@
-import { MCPPage } from "@/features/mcp/MCPPage";
-import { loadRouteCustomersData, loadRoutesData } from "@/lib/api/routes-data";
-import { isInternalSmokeRecord, visibleRouteIds, withoutInternalSmokeRows } from "@/lib/data/internal-smoke";
+import { McpRoutesLocalPage } from "@/features/mcp/McpRoutesLocalPage";
 
-export default async function Page() {
-  const [routesData, routeCustomersData] = await Promise.all([
-    loadRoutesData(),
-    loadRouteCustomersData()
-  ]);
-  const routes = withoutInternalSmokeRows(routesData.routes);
-  const routeIds = visibleRouteIds(routes);
-  const customers = routeCustomersData.customers.filter((customer) => (
-    routeIds.has(customer.routeId) && !isInternalSmokeRecord(customer)
-  ));
+export const dynamic = "force-dynamic";
 
-  return (
-    <MCPPage
-      activeHref="/routes"
-      routesData={{ ...routesData, routes }}
-      routeCustomersData={{ ...routeCustomersData, customers }}
-    />
-  );
+export default function Page() {
+  return <McpRoutesLocalPage key={Date.now()} />;
 }

@@ -1,5 +1,5 @@
-import { DashboardPage } from "@/features/dashboard/DashboardPage";
+import { McpDashboardLocalPage } from "@/features/dashboard/McpDashboardLocalPage";
 
 export default function HomePage() {
-  return <DashboardPage />;
+  return <McpDashboardLocalPage />;
 }

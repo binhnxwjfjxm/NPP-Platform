@@ -1,0 +1,10 @@
+export type LocalReadIdentity = { app: string; installationId: string; userId: string };
+export type LocalReadScope = LocalReadIdentity & { resource: string; schemaVersion?: number };
+export type LocalReadRecord<Row = unknown> = { schemaVersion: number; scope: Required<LocalReadScope>; cursor: string; rows: Row[]; savedAt: string };
+export type LocalReadDelta<Row = unknown> = { cursor: string; full: boolean; upserts: Row[]; removeIds: string[] };
+export type LocalReadStorage = { get(key: string): Promise<unknown | null>; put(key: string, value: unknown): Promise<boolean>; delete(key: string): Promise<boolean>; keys(prefix?: string): Promise<string[]> };
+export function createIndexedDbLocalReadStorage(options?: { indexedDBFactory?: IDBFactory; databaseName?: string }): LocalReadStorage;
+export function createLocalReadCache<Row = unknown>(options?: { storage?: LocalReadStorage; getRowId?: (row: Row) => unknown; now?: () => string }): { read(scope: LocalReadScope): Promise<LocalReadRecord<Row> | null>; applyDelta(scope: LocalReadScope, delta: LocalReadDelta<Row>): Promise<LocalReadRecord<Row>>; refresh(scope: LocalReadScope, fetchDelta: (cursor: string | null) => Promise<LocalReadDelta<Row>>): Promise<LocalReadRecord<Row>>; readLocalFirst(scope: LocalReadScope, fetchDelta: (cursor: string | null) => Promise<LocalReadDelta<Row>>): Promise<{ cached: LocalReadRecord<Row> | null; refresh: Promise<LocalReadRecord<Row>> }>; clearResource(scope: LocalReadScope): Promise<boolean>; clearIdentity(identity: LocalReadIdentity): Promise<void>; ensureIdentity(identity: LocalReadIdentity): Promise<void> };
+export function buildLocalReadCacheKey(scope: LocalReadScope): string;
+export function applyLocalReadDelta<Row = unknown>(currentRecord: LocalReadRecord<Row> | null, delta: LocalReadDelta<Row>, options: { scope: LocalReadScope; getRowId?: (row: Row) => unknown; now?: () => string }): LocalReadRecord<Row>;
+export function assertLocalReadCacheSafe<T>(value: T): T;

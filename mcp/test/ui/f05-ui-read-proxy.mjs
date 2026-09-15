@@ -1,4 +1,5 @@
 import http from "node:http";
+import { createHash } from "node:crypto";
 
 const port = Number(process.env.F05_UI_READ_PROXY_PORT || 3110);
 const upstreamBaseUrl = process.env.F05_UI_MOCK_BACKEND_URL || "http://127.0.0.1:3109";
@@ -30,7 +31,9 @@ function routeRows(routes) {
     id: route.id,
     route_name: route.name,
     area: route.area,
-    active: route.status !== "paused"
+    active: route.status !== "paused",
+    sales: route.salesOwner || null,
+    updated_at: "2099-12-30T08:00:00.000Z"
   }));
 }
 
@@ -50,7 +53,7 @@ function routeCustomerRows(customers) {
     geo_lng: customer.gps?.lng ?? null,
     geo_accuracy: customer.gps?.accuracyMeters ?? null,
     geo_captured_at: customer.gps?.updatedAt ?? null,
-    updated_at: customer.gps?.updatedAt ?? null
+    updated_at: customer.gps?.updatedAt ?? "2099-12-30T08:00:00.000Z"
   }));
 }
 
@@ -77,7 +80,8 @@ function sessionCustomerRows(lines) {
     checkin_lng: line.checkinLng ?? null,
     checkin_accuracy: line.checkinAccuracy ?? null,
     checkin_source: line.checkinSource || null,
-    created_at: "2099-12-30T08:00:00.000Z"
+    created_at: "2099-12-30T08:00:00.000Z",
+    updated_at: line.checkinAt || "2099-12-30T08:00:00.000Z"
   }));
 }
 
@@ -221,6 +225,9 @@ async function readTable(table) {
       planned_customers: 1,
       visited_customers: 0,
       order_count: 0,
+      test_count: 0,
+      report_count: 0,
+      followup_count: 0,
       status: "active",
       opened_at: "2099-12-30T08:00:00.000Z",
       created_at: "2099-12-30T08:00:00.000Z",
@@ -239,6 +246,47 @@ async function readTable(table) {
   if (table === "orders") return orderRows();
   if (table === "order_items") return orderItemRows();
   throw new Error(`unsupported_read_table_${table}`);
+}
+
+async function localReadPayload(request, url) {
+  const [routes, routeCustomers, sessions, sessionCustomers] = await Promise.all([
+    readTable("mcp_routes"),
+    readTable("mcp_route_customers"),
+    readTable("mcp_route_sessions"),
+    readTable("mcp_session_customers")
+  ]);
+  const cursor = createHash("sha256")
+    .update(JSON.stringify({ routes, routeCustomers, sessions, sessionCustomers }))
+    .digest("hex");
+  const requestedCursor = String(url.searchParams.get("cursor") || "").trim();
+  const unchanged = requestedCursor === cursor;
+  const aggregate = sessionCustomers.length ? [{
+    session_id: "session-active",
+    planned: sessionCustomers.length,
+    visited: sessionCustomers.filter((row) => row.visit_status === "visited").length,
+    orders: sessionCustomers.filter((row) => row.order_id).length,
+    tests: sessionCustomers.filter((row) => row.test_id).length,
+    reports: sessionCustomers.filter((row) => row.report_id).length,
+    followups: sessionCustomers.reduce((sum, row) => sum + Number(row.followup_count || 0), 0)
+  }] : [];
+  return {
+    data: {
+      cursor,
+      unchanged,
+      snapshot: unchanged ? null : {
+        generatedAt: new Date().toISOString(),
+        recentSessionDays: 45,
+        routes,
+        routeCustomers,
+        latestSessions: sessions,
+        latestReports: [],
+        recentSessions: sessions,
+        recentSessionAggregates: aggregate
+      }
+    },
+    requestId: String(request.headers["x-request-id"] || "ui-smoke-local-read"),
+    receivedAt: new Date().toISOString()
+  };
 }
 
 async function forward(request, response, url) {
@@ -263,6 +311,9 @@ const server = http.createServer(async (request, response) => {
   try {
     if (request.method === "GET" && url.pathname === "/api/internal-auth/me") {
       return json(response, 200, { data: workforceMe() });
+    }
+    if (request.method === "GET" && url.pathname === "/api/local-read/mcp-shell") {
+      return json(response, 200, await localReadPayload(request, url));
     }
     if (request.method === "GET" && url.pathname === "/api/customer-verifications") {
       return json(response, 200, { data: { items: [] } });
