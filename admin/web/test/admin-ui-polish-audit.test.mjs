@@ -7,14 +7,14 @@ const read = (path) => readFile(new URL(path, root), 'utf8');
 
 test('UI polish maps report state to semantic badge tones instead of hard-coded success color', async () => {
   const [page, css] = await Promise.all([
-    read('app/reports/page.tsx'),
+    read('app/reports/ReportsLocal.tsx'),
     read('app/reports/report-center.module.css'),
   ]);
 
   assert.match(page, /function reportStatusTone\(state: ReportState\): AdminStatusTone/);
-  assert.match(page, /state === 'ready'\) return 'success'/);
-  assert.match(page, /state === 'partial'\) return 'attention'/);
-  assert.match(page, /state === 'forbidden' \|\| state === 'error'\) return 'danger'/);
+  assert.match(page, /state === "ready"\) return "success"/);
+  assert.match(page, /state === "partial"\) return "attention"/);
+  assert.match(page, /state === "forbidden" \|\| state === "error"\) return "danger"/);
   assert.match(page, /<AdminStatusBadge tone=\{reportStatusTone\(item\.state\)\} className=\{styles\.reportStatusBadge\}>\{item\.stateLabel\}<\/AdminStatusBadge>/);
   assert.doesNotMatch(css, /\.delta\{/);
   assert.match(css, /\.reportStatusBadge\{grid-column:2;grid-row:1\/span 2;align-self:center\}/);

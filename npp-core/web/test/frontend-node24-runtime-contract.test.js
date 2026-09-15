@@ -19,6 +19,10 @@ test('frontend Vercel runtimes use Node 24 while backend root stays on Node 20',
     retailProduction,
     retailBootstrap,
     retailScript,
+    adminCi,
+    mcpF05,
+    mcpOrderCreate,
+    mcpSessionActions,
   ] = await Promise.all([
     readJson('package.json'),
     readJson('npp-core/web/package.json'),
@@ -31,6 +35,10 @@ test('frontend Vercel runtimes use Node 24 while backend root stays on Node 20',
     readText('.github/workflows/vercel-retail-production-manual.yml'),
     readText('retail/web/scripts/bootstrap-project.sh'),
     readText('retail/web/scripts/deploy-production.sh'),
+    readText('.github/workflows/admin-web-ci.yml'),
+    readText('.github/workflows/f05-ui-browser-smoke.yml'),
+    readText('.github/workflows/order-create-browser-smoke.yml'),
+    readText('.github/workflows/mcp-session-actions-browser-smoke.yml'),
   ]);
 
   assert.equal(rootPackage.engines?.node, '20.x');
@@ -43,6 +51,10 @@ test('frontend Vercel runtimes use Node 24 while backend root stays on Node 20',
     ['Delivery production workflow', deliveryProduction],
     ['Retail CI', retailCi],
     ['Retail production workflow', retailProduction],
+    ['Admin CI', adminCi],
+    ['MCP F05 browser smoke', mcpF05],
+    ['MCP order browser smoke', mcpOrderCreate],
+    ['MCP session actions browser smoke', mcpSessionActions],
   ]) {
     assert.match(source, /node-version:\s*24/, `${label} must use Node 24`);
   }
@@ -72,7 +84,21 @@ test('frontend Vercel runtimes use Node 24 while backend root stays on Node 20',
     ['Retail production workflow', retailProduction],
     ['Retail Vercel bootstrap', retailBootstrap],
     ['Retail production deploy', retailScript],
+    ['Admin CI', adminCi],
+    ['MCP F05 browser smoke', mcpF05],
+    ['MCP order browser smoke', mcpOrderCreate],
+    ['MCP session actions browser smoke', mcpSessionActions],
   ]) {
     assert.doesNotMatch(source, /node-version:\s*20|nodeVersion:"20\.x"/, `${label} must not pin Node 20`);
+  }
+
+  for (const [label, source] of [
+    ['Admin CI', adminCi],
+    ['MCP F05 browser smoke', mcpF05],
+    ['MCP order browser smoke', mcpOrderCreate],
+    ['MCP session actions browser smoke', mcpSessionActions],
+  ]) {
+    assert.match(source, /actions\/checkout@v7/);
+    assert.match(source, /actions\/setup-node@v7/);
   }
 });

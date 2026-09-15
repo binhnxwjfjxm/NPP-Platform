@@ -52,7 +52,8 @@ assert.equal(await page.getByText(/Mở \/ liên kết mã/).count(), 0, "order 
 
 await page.getByRole("radio", { name: /UI Existing Customer/ }).click();
 await page.getByRole("button", { name: /Tiếp tục với UI Existing Customer/ }).click();
-const productSearch = page.getByRole("textbox", { name: "Tìm sản phẩm", exact: true });
+const productSearch = page.getByPlaceholder("Tên, nhãn, SKU, quy cách...");
+await productSearch.waitFor({ state: "visible" });
 await productSearch.fill("Dâu");
 await page.getByRole("button", { name: /Thêm Siro Hưng Phát, Dâu/ }).click();
 await productSearch.fill("Trà Lài");

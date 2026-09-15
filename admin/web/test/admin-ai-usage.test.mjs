@@ -8,7 +8,7 @@ const read = (path) => readFile(new URL(path, root), 'utf8');
 test('Admin AI usage stays inside Báo cáo instead of changing the owner-locked top navigation', async () => {
   const [shell, reports, aiPage] = await Promise.all([
     read('app/admin-shell.tsx'),
-    read('app/reports/page.tsx'),
+    read('app/reports/ReportsLocal.tsx'),
     read('app/reports/ai-usage/page.tsx'),
   ]);
 

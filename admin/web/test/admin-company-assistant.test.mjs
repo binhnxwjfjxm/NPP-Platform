@@ -7,7 +7,7 @@ function source(relative) {
 }
 
 test('Trợ lý Công Ty stays inside Báo cáo and does not create a fifth top-level Admin section', () => {
-  const reports = source('app/reports/page.tsx');
+  const reports = source('app/reports/ReportsLocal.tsx');
   const shell = source('app/admin-shell.tsx');
   const page = source('app/reports/company-assistant/page.tsx');
   assert.match(reports, /href: '\/reports\/company-assistant'/);
