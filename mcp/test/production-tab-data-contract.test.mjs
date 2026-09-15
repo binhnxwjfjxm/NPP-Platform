@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { handleLocalReadApi } from "../apps/backend/foundation/local-read-api.js";
 
 const root = resolve(import.meta.dirname, "..");
 const read = (path) => readFileSync(resolve(root, path), "utf8");
@@ -13,6 +14,7 @@ test("customer tab enforces route-owned outlets and scoped company customers", (
   const service = read("apps/backend/foundation/customer-verification.js");
   const access = read("apps/backend/foundation/customer-route-access.js");
   const settings = read("src/features/settings/SettingsPage.tsx");
+  const logout = read("src/features/settings/McpLogoutButton.tsx");
 
   assert.match(page, /loadOwnedRouteCustomersData\(\)/);
   assert.doesNotMatch(page, /loadRouteCustomersData\(\)/);
@@ -29,8 +31,9 @@ test("customer tab enforces route-owned outlets and scoped company customers", (
   assert.match(access, /route\.sales/);
   assert.match(access, /mcp\.installation-owner/);
   assert.doesNotMatch(access, /rc\.responsible_employee_id\s*=/);
-  assert.doesNotMatch(page, /\/api\/auth\/logout/);
-  assert.match(settings, /\/api\/auth\/logout/);
+  assert.match(settings, /McpLogoutButton/);
+  assert.match(logout, /clearMcpLocalReadForCurrentUser/);
+  assert.match(logout, /\/api\/auth\/logout/);
 });
 
 test("orders tab restores management UI and merges canonical owned Core orders into the feed", () => {
@@ -86,35 +89,78 @@ test("action plan reads followups through the backend provider", () => {
   assert.doesNotMatch(loader, /\/api\/actions\/data/);
 });
 
-test("MCP sessions page never self-fetches its Vercel deployment", () => {
+test("MCP recent sessions open local-first and keep the extended-range live fallback", () => {
   const page = read("src/app/mcp/sessions/page.tsx");
+  const localPage = read("src/features/mcp/McpSessionsLocalPage.tsx");
   const route = read("src/app/api/mcp-sessions/route.ts");
   const loader = read("src/lib/mcp-sessions/load-mcp-sessions.ts");
 
-  assert.match(page, /loadMcpSessions\(filters\)/);
-  assert.doesNotMatch(page, /\bfetch\s*\(/);
-  assert.doesNotMatch(page, /headers\(\)/);
-  assert.doesNotMatch(page, /getRequestBaseUrl/);
+  assert.match(page, /McpSessionsLocalPage/);
+  assert.doesNotMatch(page, /loadMcpSessions\(filters\)/);
+  assert.match(localPage, /useMcpShellSnapshot\(\)/);
+  assert.match(localPage, /needsExtendedRange/);
+  assert.match(localPage, /fetch\(`\/api\/mcp-sessions\?/);
   assert.match(route, /loadMcpSessions/);
   assert.match(loader, /import "server-only";/);
   assert.match(loader, /restRows<SessionTableRow>/);
 });
 
-test("MCP overview and routes use the PostgreSQL backend read boundary", () => {
+test("MCP overview, routes and points use the shared local-first shell", () => {
+  const rootPage = read("src/app/page.tsx");
   const overview = read("src/app/mcp/page.tsx");
   const routes = read("src/app/routes/page.tsx");
-  const loader = read("src/lib/api/routes-data.ts");
+  const hook = read("src/lib/local-read/use-mcp-shell.ts");
+  const apiRoute = read("src/app/api/local-read/mcp-shell/route.ts");
+  const serverLoader = read("src/lib/local-read/mcp-shell-server.ts");
+  const gateway = read("apps/backend/foundation/gateway.js");
+  const backend = read("apps/backend/foundation/local-read-api.js");
+  const sharedCache = read("../packages/shared-utils/browser-local-read-cache.js");
 
-  assert.match(overview, /loadRoutesData\(\)/);
-  assert.doesNotMatch(overview, /createApiClient/);
-  assert.match(routes, /loadRoutesData\(\)/);
-  assert.match(routes, /loadRouteCustomersData\(\)/);
-  assert.doesNotMatch(routes, /createApiClient/);
-  assert.match(loader, /backendReadRows<RouteRow>\("mcp_routes"/);
-  assert.match(loader, /backendReadRows<RouteCustomerRow>\("mcp_route_customers"/);
-  assert.match(loader, /backendReadRows<RouteSessionRow>\("mcp_route_sessions"/);
-  assert.doesNotMatch(loader, /\/api\/routes\/data/);
-  assert.doesNotMatch(loader, /\/api\/routes\/customers\/data/);
+  assert.match(rootPage, /McpDashboardLocalPage/);
+  assert.match(overview, /McpHomeLocalPage/);
+  assert.match(routes, /McpRoutesLocalPage/);
+  assert.doesNotMatch(overview, /loadRoutesData\(\)/);
+  assert.doesNotMatch(routes, /loadRoutesData\(\)|loadRouteCustomersData\(\)/);
+  assert.match(hook, /createLocalReadCache/);
+  assert.match(hook, /readLocalFirst/);
+  assert.match(hook, /REFRESH_MS = 30_000/);
+  assert.match(apiRoute, /loadMcpShellDelta/);
+  assert.match(serverLoader, /\/api\/local-read\/mcp-shell/);
+  assert.match(gateway, /handleLocalReadApi/);
+  assert.match(backend, /DISTINCT ON \(route_id\)/);
+  assert.match(backend, /CURRENT_DATE - \$2::integer/);
+  assert.match(backend, /GROUP BY session_id/);
+  assert.match(sharedCache, /app: requiredText\(input\.app/);
+  assert.match(sharedCache, /installationId: requiredText\(input\.installationId/);
+  assert.match(sharedCache, /userId: requiredText\(input\.userId/);
+  assert.match(sharedCache, /assertLocalReadCacheSafe/);
+});
+
+test("MCP local-read backend stops after cursor check when nothing changed", async () => {
+  const queries = [];
+  const persistence = {
+    async assertReady() {},
+    async withTransaction(work) {
+      return work({
+        async query(sql, values) {
+          queries.push({ sql: String(sql), values });
+          return { rows: [{ cursor: "cursor-same" }] };
+        }
+      });
+    }
+  };
+  const result = await handleLocalReadApi(
+    { method: "GET", headers: {} },
+    new URL("http://mcp.local/api/local-read/mcp-shell?cursor=cursor-same"),
+    { installation: { id: "installation-a" } },
+    {},
+    { persistence }
+  );
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.payload.data.unchanged, true);
+  assert.equal(result.payload.data.snapshot, null);
+  assert.equal(queries.length, 1);
+  assert.deepEqual(queries[0].values, ["installation-a"]);
 });
 
 test("legacy report settings GET reads PostgreSQL while writes keep the guarded backend mutation route", () => {
