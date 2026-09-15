@@ -7,7 +7,7 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
 const PAGE_SIZE = 1000;
 const MAX_ROWS = 100_000;
 const SCALE = 12;
-const SCALE_FACTOR = 10n ** BigInt(SCALE);
+const SCALE_FACTOR = BigInt(10) ** BigInt(SCALE);
 
 type Warehouse = {
   id: string;
@@ -63,7 +63,7 @@ function errorResponse(error: unknown, id: string) {
 function decimalToScaled(value: unknown) {
   const text = String(value ?? '0').trim();
   const match = /^(-?)(\d+)(?:\.(\d{1,12}))?$/.exec(text);
-  if (!match) return 0n;
+  if (!match) return BigInt(0);
   const whole = BigInt(match[2]);
   const fraction = BigInt((match[3] ?? '').padEnd(SCALE, '0') || '0');
   const scaled = whole * SCALE_FACTOR + fraction;
@@ -71,7 +71,7 @@ function decimalToScaled(value: unknown) {
 }
 
 function scaledToDecimal(value: bigint) {
-  const negative = value < 0n;
+  const negative = value < BigInt(0);
   const absolute = negative ? -value : value;
   const whole = absolute / SCALE_FACTOR;
   const fraction = String(absolute % SCALE_FACTOR).padStart(SCALE, '0').replace(/0+$/, '');
@@ -105,8 +105,8 @@ function aggregate(rows: InventoryBalance[]) {
       variantId,
       productName: String(row.product_name ?? row.base_variant_name ?? 'Sản phẩm').trim() || 'Sản phẩm',
       sku: String(row.base_sku ?? '').trim() || '—',
-      onHandScaled: 0n,
-      reservedScaled: 0n,
+      onHandScaled: BigInt(0),
+      reservedScaled: BigInt(0),
     };
     current.onHandScaled += decimalToScaled(row.on_hand_quantity);
     current.reservedScaled += decimalToScaled(row.reserved_quantity);
