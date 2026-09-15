@@ -72,6 +72,19 @@ test('contract Kinh doanh có đủ 6 chiều và nhân viên lấy từ đơn/n
   assert.match(source, /SALES_REPORT_RECONCILIATION_FAILED/);
 });
 
+test('Nhóm khách của Báo cáo bán hàng dùng danh mục hiện tại và vẫn giữ snapshot để truy vết', async () => {
+  const source = await readApi('src/routes/reporting-sales.js');
+  assert.match(source, /customer\.group_id AS customer_group_id/);
+  assert.match(source, /customer_group\.code AS customer_group_code/);
+  assert.match(source, /customer_group\.name AS customer_group_name/);
+  assert.match(source, /sov\.customer_group_snapshot_captured/);
+  assert.match(source, /sov\.customer_group_id_snapshot, sov\.customer_group_code_snapshot, sov\.customer_group_name_snapshot/);
+  assert.match(source, /row\.customerGroupSnapshotCaptured !== true/);
+  assert.doesNotMatch(source, /CASE WHEN sov\.customer_group_snapshot_captured THEN sov\.customer_group_id_snapshot ELSE customer\.group_id END AS customer_group_id/);
+  assert.match(source, /customer group analysis uses the current customer master/);
+  assert.match(source, /confirmed customer-group snapshots remain immutable for audit/);
+});
+
 test('migration 120 snapshot forward và giữ rõ dữ liệu legacy', async () => {
   const [migration, registry] = await Promise.all([
     readRepo('database/migrations/sales/120_reporting_sales_dimension_snapshots.sql'),
