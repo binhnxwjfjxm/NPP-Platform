@@ -69,6 +69,7 @@ jobs:
 
       - name: Build MCP frontend
         env:
+          CORE_API_INTERNAL_URL: http://127.0.0.1:3004
           BACKEND_API_BASE_URL: http://127.0.0.1:3001
           BACKEND_API_TOKEN: 0123456789abcdef0123456789abcdef
           MCP_LEGACY_ACTOR_ID: service:ci:mcp-v1

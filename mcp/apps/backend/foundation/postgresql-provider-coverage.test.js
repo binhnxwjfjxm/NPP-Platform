@@ -53,7 +53,8 @@ test("every active Supabase RPC contract has a PostgreSQL implementation", () =>
 test("canonical and runtime cutover migrations remain byte-identical", () => {
   for (const name of [
     "003_mcp_legacy_write_contract.sql",
-    "004_mcp_profile_media_contract.sql"
+    "004_mcp_profile_media_contract.sql",
+    "014_mcp_customer_read_boundary.sql"
   ]) {
     const canonical = readFileSync(join(here, `../../../../database/migrations/mcp/${name}`), "utf8");
     const runtime = source(`migrations/sql/${name}`);

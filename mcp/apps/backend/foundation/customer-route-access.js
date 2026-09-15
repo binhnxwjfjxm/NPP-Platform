@@ -41,7 +41,7 @@ const EMPLOYEE_MATCH = `
 const UNIQUE_ROUTE_EMPLOYEE_MATCH = `
   (
     SELECT count(*)
-    FROM shared.employees AS other_employee
+    FROM mcp.workforce_employees AS other_employee
     WHERE other_employee.installation_id = rc.installation_id
       AND other_employee.is_active = true
       AND (
@@ -55,7 +55,7 @@ const UNIQUE_ROUTE_EMPLOYEE_MATCH = `
 const EMPLOYEE_ACCESS = `
   EXISTS (
     SELECT 1
-    FROM shared.employees AS employee
+    FROM mcp.workforce_employees AS employee
     WHERE employee.installation_id = rc.installation_id
       AND employee.id = $2::uuid
       AND employee.is_active = true
@@ -73,14 +73,14 @@ export async function loadAccessibleRouteCustomer(client, context, routeCustomer
        route.sales AS route_sales,
        EXISTS (
          SELECT 1
-         FROM shared.employees AS employee
+         FROM mcp.workforce_employees AS employee
          WHERE employee.installation_id = rc.installation_id
            AND employee.id = $3::uuid
            AND employee.is_active = true
        ) AS employee_active,
        EXISTS (
          SELECT 1
-         FROM shared.employees AS employee
+         FROM mcp.workforce_employees AS employee
          WHERE employee.installation_id = rc.installation_id
            AND employee.id = $3::uuid
            AND employee.is_active = true
@@ -92,7 +92,7 @@ export async function loadAccessibleRouteCustomer(client, context, routeCustomer
        ) AS route_employee_match,
        (
          SELECT count(*)::integer
-         FROM shared.employees AS other_employee
+         FROM mcp.workforce_employees AS other_employee
          WHERE other_employee.installation_id = rc.installation_id
            AND other_employee.is_active = true
            AND (
@@ -149,11 +149,11 @@ export async function listAccessibleCoreCustomerLinks(client, context) {
      JOIN mcp.mcp_routes AS route
        ON route.installation_id = rc.installation_id
       AND route.id = rc.route_id
-     JOIN shared.customers AS customer
+     JOIN mcp.accounts AS customer
        ON customer.installation_id = rc.installation_id
       AND customer.id::text = rc.core_customer_id
-      AND customer.is_active = true
-     JOIN shared.customer_addresses AS address
+      AND customer.active = true
+     JOIN mcp.customer_addresses AS address
        ON address.installation_id = customer.installation_id
       AND address.customer_id = customer.id
       AND address.id::text = rc.core_customer_address_id
@@ -175,20 +175,20 @@ export async function listAccessibleCoreCustomers(client, context) {
   const result = await client.query(
     `SELECT
        customer.id,
-       customer.code AS customer_code,
+       customer.customer_code,
        customer.name,
        customer.phone,
        customer.email,
-       customer.is_active,
-       customer.responsible_employee_id,
+       customer.active AS is_active,
+       customer.sales_owner AS responsible_employee_id,
        customer.updated_at,
        address.id AS default_address_id,
        address.label AS default_address_label,
        address.address_line1 AS default_address_line1
-     FROM shared.customers AS customer
+     FROM mcp.accounts AS customer
      LEFT JOIN LATERAL (
        SELECT candidate.id, candidate.label, candidate.address_line1
-       FROM shared.customer_addresses AS candidate
+       FROM mcp.customer_addresses AS candidate
        WHERE candidate.installation_id = customer.installation_id
          AND candidate.customer_id = customer.id
          AND candidate.is_active = true
@@ -196,21 +196,21 @@ export async function listAccessibleCoreCustomers(client, context) {
        LIMIT 1
      ) AS address ON true
      WHERE customer.installation_id = $1
-       AND customer.is_active = true
+       AND customer.active = true
        AND (
          $3::boolean = true
          OR (
-           customer.responsible_employee_id = $2::uuid
+           customer.sales_owner = $2::text
            AND EXISTS (
              SELECT 1
-             FROM shared.employees AS employee
+             FROM mcp.workforce_employees AS employee
              WHERE employee.installation_id = customer.installation_id
                AND employee.id = $2::uuid
                AND employee.is_active = true
            )
          )
        )
-     ORDER BY customer.name, customer.code, customer.id`,
+     ORDER BY customer.name, customer.customer_code, customer.id`,
     [customerAccessInstallationId(context), employeeId, isInstallationOwner(context)]
   );
   return result.rows || [];

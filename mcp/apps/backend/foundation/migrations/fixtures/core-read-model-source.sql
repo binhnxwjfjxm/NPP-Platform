@@ -31,6 +31,18 @@ CREATE TABLE IF NOT EXISTS shared.customers (
   updated_by text NOT NULL DEFAULT 'fixture'
 );
 
+CREATE TABLE IF NOT EXISTS shared.customer_addresses (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  installation_id text NOT NULL,
+  customer_id uuid NOT NULL REFERENCES shared.customers(id) ON DELETE CASCADE,
+  label text,
+  address_line1 text NOT NULL DEFAULT '',
+  is_default boolean NOT NULL DEFAULT false,
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS shared.customer_media (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   installation_id text NOT NULL,
