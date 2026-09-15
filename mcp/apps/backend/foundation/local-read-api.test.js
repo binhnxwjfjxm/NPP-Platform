@@ -30,7 +30,7 @@ function persistenceWithRows(cursor = "cursor-a") {
           if (source.includes("FROM mcp.mcp_route_customers")) return { rows: [{ id: "rc-1", route_id: "route-1", customer_name: "Điểm bán 1", active: true }] };
           if (source.includes("DISTINCT ON (route_id)")) return { rows: [{ id: "session-1", route_id: "route-1", route_name: "Tuyến 1", session_date: "2026-09-15", status: "active" }] };
           if (source.includes("FROM mcp.mcp_route_sessions") && source.includes("CURRENT_DATE")) return { rows: [{ id: "session-1", route_id: "route-1", route_name: "Tuyến 1", session_date: "2026-09-15", status: "active" }] };
-          if (source.includes("DISTINCT ON (session_id)")) return { rows: [{ id: "report-1", session_id: "session-1", overview: { planned: 1, visited: 1 } }] };
+          if (source.includes("DISTINCT ON (session_id)")) return { rows: [{ id: "report-1", session_id: "session-1", overview: { planned: 1, visited: 1 }, sections: { orders: [{ id: "o-1" }] } }] };
           if (source.includes("GROUP BY session_id")) return { rows: [{ session_id: "session-1", planned: 1, visited: 1, orders: 0, tests: 0, reports: 1, followups: 0 }] };
           throw new Error(`unexpected_query:${source}`);
         }
@@ -51,11 +51,18 @@ test("MCP local read is installation-scoped, bounded and aggregated", async () =
   assert.equal(result.payload.data.snapshot.recentSessions.length, 1);
   assert.equal(result.payload.data.snapshot.recentSessionAggregates.length, 1);
   for (const query of state.queries) assert.equal(query.values[0], "installation-a");
+  const cursorQuery = state.queries[0];
+  assert.match(cursorQuery.sql, /WITH route_state AS/);
+  assert.match(cursorQuery.sql, /route_customer_state AS/);
+  assert.match(cursorQuery.sql, /session_customer_state AS/);
   const recent = state.queries.find((item) => item.sql.includes("CURRENT_DATE"));
   assert.ok(recent);
   assert.match(recent.sql, /LIMIT \$3/);
   assert.deepEqual(recent.values, ["installation-a", localReadApiInternals.RECENT_SESSION_DAYS, localReadApiInternals.RECENT_SESSION_LIMIT]);
   assert.ok(state.queries.some((item) => item.sql.includes("DISTINCT ON (route_id)")));
+  const reportQuery = state.queries.find((item) => item.sql.includes("DISTINCT ON (session_id)"));
+  assert.ok(reportQuery);
+  assert.match(reportQuery.sql, /overview, sections, snapshot_at/);
   assert.ok(state.queries.some((item) => item.sql.includes("GROUP BY session_id")));
 });
 

@@ -15,18 +15,35 @@ function localReadError(code, statusCode = 400) {
 
 async function readCursor(client, installationId) {
   const result = await client.query(
-    `SELECT md5(concat_ws('|',
-       COALESCE((SELECT MAX(updated_at)::text FROM mcp.mcp_routes WHERE installation_id = $1), ''),
-       (SELECT COUNT(*)::text FROM mcp.mcp_routes WHERE installation_id = $1),
-       COALESCE((SELECT MAX(updated_at)::text FROM mcp.mcp_route_customers WHERE installation_id = $1), ''),
-       (SELECT COUNT(*)::text FROM mcp.mcp_route_customers WHERE installation_id = $1),
-       COALESCE((SELECT MAX(updated_at)::text FROM mcp.mcp_route_sessions WHERE installation_id = $1), ''),
-       (SELECT COUNT(*)::text FROM mcp.mcp_route_sessions WHERE installation_id = $1),
-       COALESCE((SELECT MAX(updated_at)::text FROM mcp.mcp_session_customers WHERE installation_id = $1), ''),
-       (SELECT COUNT(*)::text FROM mcp.mcp_session_customers WHERE installation_id = $1),
-       COALESCE((SELECT MAX(updated_at)::text FROM mcp.mcp_session_reports WHERE installation_id = $1), ''),
-       (SELECT COUNT(*)::text FROM mcp.mcp_session_reports WHERE installation_id = $1)
-     )) AS cursor`,
+    `WITH route_state AS (
+       SELECT MAX(updated_at)::text AS max_updated, COUNT(*)::text AS row_count
+         FROM mcp.mcp_routes
+        WHERE installation_id = $1
+     ), route_customer_state AS (
+       SELECT MAX(updated_at)::text AS max_updated, COUNT(*)::text AS row_count
+         FROM mcp.mcp_route_customers
+        WHERE installation_id = $1
+     ), session_state AS (
+       SELECT MAX(updated_at)::text AS max_updated, COUNT(*)::text AS row_count
+         FROM mcp.mcp_route_sessions
+        WHERE installation_id = $1
+     ), session_customer_state AS (
+       SELECT MAX(updated_at)::text AS max_updated, COUNT(*)::text AS row_count
+         FROM mcp.mcp_session_customers
+        WHERE installation_id = $1
+     ), report_state AS (
+       SELECT MAX(updated_at)::text AS max_updated, COUNT(*)::text AS row_count
+         FROM mcp.mcp_session_reports
+        WHERE installation_id = $1
+     )
+     SELECT md5(concat_ws('|',
+       COALESCE(route_state.max_updated, ''), route_state.row_count,
+       COALESCE(route_customer_state.max_updated, ''), route_customer_state.row_count,
+       COALESCE(session_state.max_updated, ''), session_state.row_count,
+       COALESCE(session_customer_state.max_updated, ''), session_customer_state.row_count,
+       COALESCE(report_state.max_updated, ''), report_state.row_count
+     )) AS cursor
+       FROM route_state, route_customer_state, session_state, session_customer_state, report_state`,
     [installationId]
   );
   const cursor = text(result.rows?.[0]?.cursor);
@@ -83,7 +100,7 @@ async function readSnapshot(client, installationId) {
     ? await client.query(
         `SELECT DISTINCT ON (session_id)
                 id, session_id, route_id, route_name, session_date, sales, status,
-                overview, snapshot_at, created_at, updated_at
+                overview, sections, snapshot_at, created_at, updated_at
            FROM mcp.mcp_session_reports
           WHERE installation_id = $1
             AND session_id = ANY($2::text[])

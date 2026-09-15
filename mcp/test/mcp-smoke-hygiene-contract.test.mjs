@@ -6,6 +6,7 @@ const [
   filterSource,
   routesPage,
   mcpHome,
+  localShellServer,
   dashboardOverview,
   sessionLoader,
   cleanupScript,
@@ -16,6 +17,7 @@ const [
   readFile(new URL("../src/lib/data/internal-smoke.ts", import.meta.url), "utf8"),
   readFile(new URL("../src/app/routes/page.tsx", import.meta.url), "utf8"),
   readFile(new URL("../src/app/mcp/page.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../src/lib/local-read/mcp-shell-server.ts", import.meta.url), "utf8"),
   readFile(new URL("../src/features/dashboard/persisted-overview.ts", import.meta.url), "utf8"),
   readFile(new URL("../src/lib/mcp-sessions/load-mcp-sessions.ts", import.meta.url), "utf8"),
   readFile(new URL("../ops/cleanup-f05-smoke-fixtures.mjs", import.meta.url), "utf8"),
@@ -30,11 +32,16 @@ test("internal F05 smoke names are recognized only by the exact reserved prefix"
   assert.doesNotMatch(filterSource, /includes\(prefix\)/);
 });
 
-test("route management and MCP home remove smoke routes before rendering totals or cards", () => {
-  assert.match(routesPage, /withoutInternalSmokeRows\([A-Za-z][A-Za-z0-9]*\.routes\)/);
-  assert.match(routesPage, /routeIds\.has\(customer\.routeId\)/);
-  assert.match(routesPage, /!isInternalSmokeRecord\(customer\)/);
-  assert.match(mcpHome, /withoutInternalSmokeRows\([A-Za-z][A-Za-z0-9]*\.routes\)/);
+test("route management and MCP home remove smoke rows in the shared local read model", () => {
+  assert.match(routesPage, /McpRoutesLocalPage/);
+  assert.match(mcpHome, /McpHomeLocalPage/);
+  assert.match(localShellServer, /const routes = visibleRows\(/);
+  assert.match(localShellServer, /const routeIds = new Set\(/);
+  assert.match(localShellServer, /const customers = visibleRows\([\s\S]*?routeIds\.has\(text\(row\.route_id\)\)/);
+  assert.match(localShellServer, /const latestSessions = visibleRows\([\s\S]*?routeIds\.has\(text\(row\.route_id\)\)/);
+  assert.match(localShellServer, /const latestSessionIds = new Set\(/);
+  assert.match(localShellServer, /const latestReports = visibleRows\([\s\S]*?latestSessionIds\.has\(text\(row\.session_id\)\)/);
+  assert.match(localShellServer, /const recentSessions = visibleRows\([\s\S]*?routeIds\.has\(text\(row\.route_id\)\)/);
 });
 
 test("dashboard removes smoke facts before latest-session and report selection", () => {
