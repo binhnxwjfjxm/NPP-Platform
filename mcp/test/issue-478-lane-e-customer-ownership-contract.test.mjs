@@ -26,18 +26,22 @@ test("Công Ty owner role is propagated as a narrow installation-owner claim", (
 
   assert.match(auth, /system:security-owner/);
   assert.match(auth, /system:implementation-owner/);
-  assert.match(auth, /"v3"/);
+  assert.match(auth, /"v3"|"v4"/);
   assert.match(loader, /roles: stringList\(result\.data\.roles\)/);
   assert.match(context, /mcp\.installation-owner/);
-  assert.match(context, /new Set\(\["v2", "v3"\]\)/);
+  assert.match(context, /new Set\(\["v2", "v3"\]\)|"v4"/);
 });
 
-test("customer page uses the scoped route-customer boundary and stale detail URLs render business UI", () => {
+test("customer page keeps the scoped route-customer boundary through the local-first shell and stale detail URLs render business UI", () => {
   const accounts = source("src/features/accounts/AccountsPage.tsx");
+  const local = source("src/features/accounts/AccountsLocalPage.tsx");
   const detail = source("src/app/customers/onboarding/[routeCustomerId]/page.tsx");
 
-  assert.match(accounts, /loadOwnedRouteCustomersData/);
-  assert.doesNotMatch(accounts, /loadRouteCustomersData/);
+  assert.match(accounts, /AccountsLocalPage/);
+  assert.match(local, /useMcpShellSnapshot/);
+  assert.match(local, /useMcpLocalResource<CoreCustomerItem\[]>\("customers"\)/);
+  assert.match(local, /accountsFromRouteCustomers/);
+  assert.doesNotMatch(accounts, /loadOwnedRouteCustomersData|loadRouteCustomersData/);
   assert.doesNotMatch(detail, /notFound/);
   assert.match(detail, /Không thể mở điểm bán/);
   assert.match(detail, /phân công phụ trách vừa thay đổi/);

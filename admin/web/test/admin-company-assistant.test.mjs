@@ -7,11 +7,11 @@ function source(relative) {
 }
 
 test('Trợ lý Công Ty stays inside Báo cáo and does not create a fifth top-level Admin section', () => {
-  const reports = source('app/reports/page.tsx');
+  const reports = source('app/reports/ReportsLocal.tsx');
   const shell = source('app/admin-shell.tsx');
   const page = source('app/reports/company-assistant/page.tsx');
-  assert.match(reports, /href: '\/reports\/company-assistant'/);
-  assert.match(reports, /label: 'Trợ lý Công Ty'/);
+  assert.match(reports, /href:\s*["']\/reports\/company-assistant["']/);
+  assert.match(reports, /label:\s*["']Trợ lý Công Ty["']/);
   assert.match(page, /activeSection="reports"/);
   assert.match(page, /href: '\/reports\/ai-usage'/);
   assert.match(page, /chỉ mở quyền đọc/);

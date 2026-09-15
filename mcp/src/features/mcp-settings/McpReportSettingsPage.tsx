@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition } from "react";
-import type { RefObject } from "react";
+import type { MouseEvent, RefObject } from "react";
 import { AppShell } from "@/ui/shell/AppShell";
 import { PageHeader } from "@/ui/layout/PageHeader";
 import { userFacingError } from "@/lib/ui/user-facing-error";
@@ -191,6 +191,10 @@ export function McpReportSettingsPage({ activeHref = "/mcp-setting" }: { activeH
     return () => document.removeEventListener("keydown", closeOnEscape);
   }, [dialogMode, pending]);
 
+  function preserveTriggerFocus(event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+  }
+
   function openCreator() {
     dialogScrollTopRef.current = appScrollRegion()?.scrollTop || 0;
     setMessage(null);
@@ -354,6 +358,7 @@ export function McpReportSettingsPage({ activeHref = "/mcp-setting" }: { activeH
         <button
           className={styles.addButton}
           type="button"
+          onMouseDown={preserveTriggerFocus}
           onClick={openCreator}
           disabled={pending || loading || !activeGroup}
           aria-haspopup="dialog"
@@ -381,7 +386,7 @@ export function McpReportSettingsPage({ activeHref = "/mcp-setting" }: { activeH
                 {item.category || "Không nhóm"} · {item.brandName || "Chưa có thương hiệu"} · thứ tự {item.sortOrder}
               </p>
               <div className={styles.itemActions}>
-                <button className={styles.actionButton} type="button" onClick={() => openEditor(item)} disabled={pending} aria-label="Sửa" title="Sửa">
+                <button className={styles.actionButton} type="button" onMouseDown={preserveTriggerFocus} onClick={() => openEditor(item)} disabled={pending} aria-label="Sửa" title="Sửa">
                   <span aria-hidden="true">✎</span>
                 </button>
                 <button

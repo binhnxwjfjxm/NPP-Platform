@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
 import { PwaRegister } from './pwa-register';
+import { AdminLocalIdentityProvider } from './local-read/admin-local-identity';
+import { adminLocalCacheUserIdFromSession } from './local-read/admin-local-identity-server';
 import './globals.css';
 import './hung-phat-warm-gold.css';
 import './admin-mobile-app.css';
@@ -28,15 +30,11 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  width: 'device-width',
-  initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
-  viewportFit: 'cover',
-  colorScheme: 'light',
-  themeColor: '#2b180b',
+  width: 'device-width', initialScale: 1, maximumScale: 1, userScalable: false,
+  viewportFit: 'cover', colorScheme: 'light', themeColor: '#2b180b',
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
-  return <html lang="vi"><body><PwaRegister />{children}</body></html>;
+  const cacheUserId = adminLocalCacheUserIdFromSession();
+  return <html lang="vi"><body><AdminLocalIdentityProvider userId={cacheUserId}><PwaRegister />{children}</AdminLocalIdentityProvider></body></html>;
 }

@@ -5,7 +5,8 @@ import test from 'node:test';
 const alertDataPath = new URL('../app/alerts/alert-data.ts', import.meta.url);
 const alertsPagePath = new URL('../app/alerts/alerts-local.tsx', import.meta.url);
 const alertDetailPath = new URL('../app/alerts/[alertId]/page.tsx', import.meta.url);
-const reportsPagePath = new URL('../app/reports/page.tsx', import.meta.url);
+const reportsWrapperPath = new URL('../app/reports/page.tsx', import.meta.url);
+const reportsPagePath = new URL('../app/reports/ReportsLocal.tsx', import.meta.url);
 const exportRoutePath = new URL('../app/reports/export/route.ts', import.meta.url);
 const downloadPath = new URL('../lib/core-download.ts', import.meta.url);
 
@@ -25,13 +26,14 @@ test('Admin Lô D renders real multi-domain alerts instead of fixed placeholders
 });
 
 test('Admin Lô D exposes official Excel export through the server-side Công Ty gateway', async () => {
-  const [page, route, download] = await Promise.all([
+  const [wrapper, page, route, download] = await Promise.all([
+    readFile(reportsWrapperPath, 'utf8'),
     readFile(reportsPagePath, 'utf8'),
     readFile(exportRoutePath, 'utf8'),
     readFile(downloadPath, 'utf8'),
   ]);
   assert.match(page, /Xuất báo cáo Excel/);
-  assert.match(page, /resolveReportRange/);
+  assert.match(wrapper, /resolveReportRange/);
   assert.match(page, /warehouseId/);
   assert.match(route, /management-export/);
   assert.match(route, /Content-Disposition/);

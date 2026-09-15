@@ -62,7 +62,7 @@ test('Lô 5 preserves proposal, alert, report and MCP management contracts', asy
     read('app/approvals/[approvalId]/page.tsx'),
     read('app/approvals/proposal-decision-dialog.tsx'),
     read('app/alerts/[alertId]/page.tsx'),
-    read('app/reports/page.tsx'),
+    read('app/reports/ReportsLocal.tsx'),
     read('test/mcp-supervision-ux.test.mjs'),
   ]);
 
@@ -81,8 +81,8 @@ test('Lô 5 preserves proposal, alert, report and MCP management contracts', asy
   for (const name of ['AdminIconTabs', 'AdminToolbar', 'AdminFilterChip', 'AdminStatePanel', 'AdminKpiGrid', 'AdminKpiCard']) assert.match(reports, new RegExp(`<${name}`));
   assert.match(reports, /Xuất báo cáo Excel/);
   assert.match(reports, /Theo dõi số liệu quản trị từ Công Ty và MCP/);
-  assert.match(reports, /state === 'error'/);
-  assert.match(reports, /state === 'forbidden'/);
+  assert.match(reports, /state === "error"/);
+  assert.match(reports, /state === "forbidden"/);
 
   assert.match(mcpRegression, /const PAGE_SIZE = 25/);
   assert.match(mcpRegression, /name="q"/);

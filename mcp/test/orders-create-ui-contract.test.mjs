@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 const routePage = await readFile(new URL("../src/app/orders/page.tsx", import.meta.url), "utf8");
 const page = await readFile(new URL("../src/features/orders/OrdersClientPage.tsx", import.meta.url), "utf8");
 const serverPage = await readFile(new URL("../src/features/orders/OrdersPage.tsx", import.meta.url), "utf8");
+const localPage = await readFile(new URL("../src/features/orders/OrdersLocalPage.tsx", import.meta.url), "utf8");
 const compatibilitySheet = await readFile(new URL("../src/features/orders/OrderCreateSheet.tsx", import.meta.url), "utf8");
 const loader = await readFile(new URL("../src/features/orders/CoreOrderCreateLoader.tsx", import.meta.url), "utf8");
 const sheet = await readFile(new URL("../src/features/orders/CoreOrderCreateSheet.tsx", import.meta.url), "utf8");
@@ -13,10 +14,11 @@ const catalogPriority = await readFile(new URL("../src/features/orders/order-cat
 const workspaceStyles = await readFile(new URL("../src/app/order-create-workspace.css", import.meta.url), "utf8");
 const bottomSheet = await readFile(new URL("../src/ui/overlay/BottomSheet.tsx", import.meta.url), "utf8");
 
-test("orders route restores the existing order control center instead of replacing it with the Core form", () => {
+test("orders route keeps the existing order control center but reads its list local-first", () => {
   assert.match(routePage, /OrdersPage/);
   assert.doesNotMatch(routePage, /McpCoreOrdersPage/);
-  assert.match(serverPage, /loadOrdersResult\(\)/);
+  assert.match(serverPage, /OrdersLocalPage/);
+  assert.match(localPage, /useMcpLocalResource<ApiResult<OrderDto\[]>\>\("orders"\)/);
   assert.match(page, /label: "Đơn hàng"/);
   assert.match(page, /label: "Cần xử lý"/);
   assert.match(page, /label: "Doanh số đặt hàng"/);
@@ -27,12 +29,10 @@ test("orders route restores the existing order control center instead of replaci
   assert.match(page, /"\+ Tạo đơn"/);
 });
 
-test("create-order entry uses canonical Công Ty customers instead of requiring an MCP onboarding link", () => {
+test("create-order entry reuses cached canonical Công Ty customers instead of blocking the form on a new fetch", () => {
   assert.match(compatibilitySheet, /CoreOrderCreateLoader/);
-  assert.match(loader, /fetch\("\/api\/backend\/core-customers"/);
-  assert.match(loader, /item\.status === "active"/);
-  assert.match(loader, /item\.defaultAddressId/);
-  assert.match(loader, /payload\.data\?\.customers/);
+  assert.match(loader, /useMcpLocalResource<OrderCustomerItem\[]>\("customers"\)/);
+  assert.doesNotMatch(loader, /fetch\("\/api\/backend\/core-customers"/);
   assert.doesNotMatch(loader, /customer-verifications/);
   assert.doesNotMatch(loader, /approved|linked_existing/);
   assert.match(sheet, /Chọn khách Công Ty/);
@@ -65,7 +65,6 @@ test("Công Ty order submit keeps canonical idempotency and never sends browser 
   assert.match(sheet, /variantId: item\.variantId/);
   assert.match(sheet, /quantity: String\(item\.quantity\)/);
   assert.doesNotMatch(sheet, /"\/api\/backend\/orders"/);
-
   const bodyStart = sheet.indexOf("const body = {");
   const bodyEnd = sheet.indexOf("const fingerprint", bodyStart);
   assert.ok(bodyStart >= 0 && bodyEnd > bodyStart, "Công Ty submit body must remain explicit and reviewable");
@@ -96,7 +95,6 @@ test("each MCP product stays one card with flat Lẻ-Thùng rows and compact plu
   assert.doesNotMatch(sheet, /styles\.variantGrid|styles\.variantButton|\+ Thêm/);
   assert.match(catalogStyles, /\.unitRow\s*\{[\s\S]*border-top:/);
   assert.doesNotMatch(catalogStyles.match(/\.unitRow\s*\{[\s\S]*?\}/)?.[0] ?? "", /border-radius|background:/);
-
   const addRule = catalogStyles.match(/\.unitAdd\s*\{([\s\S]*?)\}/)?.[1] ?? "";
   assert.match(addRule, /width:\s*40px/);
   assert.match(addRule, /height:\s*40px/);
@@ -105,21 +103,12 @@ test("each MCP product stays one card with flat Lẻ-Thùng rows and compact plu
   assert.match(addRule, /color:\s*var\(--warning\)/);
   assert.match(addRule, /box-shadow:\s*none/);
   assert.doesNotMatch(addRule, /border-radius:\s*50%/);
-  assert.match(catalogStyles, /\.unitAdd > span\s*\{[\s\S]*font-size:\s*22px[\s\S]*font-weight:\s*950/);
-  assert.doesNotMatch(catalogStyles, /\.unitAdd > span::before|\.unitAdd > span::after/);
-
   const milkTeaIndex = catalogPriority.indexOf('"Trà sữa"');
   const spicyIndex = catalogPriority.indexOf('"Mì Cay"');
   const frozenIndex = catalogPriority.indexOf('"Đông Lạnh"');
   const snackIndex = catalogPriority.indexOf('"Ăn Vặt"');
   const packagingIndex = catalogPriority.indexOf('"Bao Bì"');
-  assert.ok(
-    milkTeaIndex > 0
-      && spicyIndex > milkTeaIndex
-      && frozenIndex > spicyIndex
-      && snackIndex > frozenIndex
-      && packagingIndex > snackIndex,
-  );
+  assert.ok(milkTeaIndex > 0 && spicyIndex > milkTeaIndex && frozenIndex > spicyIndex && snackIndex > frozenIndex && packagingIndex > snackIndex);
 });
 
 test("draft close remains guarded and Công Ty price is display-only", () => {

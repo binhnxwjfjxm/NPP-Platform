@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { InteractionFeedbackProvider } from "@/ui/feedback/InteractionFeedbackProvider";
+import { McpLocalIdentityProvider } from "@/lib/local-read/mcp-local-identity";
+import { mcpLocalCacheUserIdFromSession } from "@/lib/local-read/mcp-local-identity-server";
 import "./globals.css";
 import "./mobile.css";
 import "./order-create-workspace.css";
@@ -41,19 +43,9 @@ export const metadata: Metadata = {
   title: "NPP MCP Field",
   description: "Ứng dụng tác nghiệp thị trường của NPP Hưng Phát.",
   applicationName: "NPP MCP Field",
-  icons: {
-    icon: "/api/pwa-icon?size=192",
-    shortcut: "/api/pwa-icon?size=192",
-    apple: "/api/pwa-icon?size=512"
-  },
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: "default",
-    title: "NPP MCP"
-  },
-  other: {
-    "mobile-web-app-capable": "yes"
-  },
+  icons: { icon: "/api/pwa-icon?size=192", shortcut: "/api/pwa-icon?size=192", apple: "/api/pwa-icon?size=512" },
+  appleWebApp: { capable: true, statusBarStyle: "default", title: "NPP MCP" },
+  other: { "mobile-web-app-capable": "yes" },
   formatDetection: { telephone: false }
 };
 
@@ -66,5 +58,14 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return <html lang="vi"><body><InteractionFeedbackProvider>{children}</InteractionFeedbackProvider></body></html>;
+  const cacheUserId = mcpLocalCacheUserIdFromSession();
+  return (
+    <html lang="vi">
+      <body>
+        <McpLocalIdentityProvider userId={cacheUserId}>
+          <InteractionFeedbackProvider>{children}</InteractionFeedbackProvider>
+        </McpLocalIdentityProvider>
+      </body>
+    </html>
+  );
 }

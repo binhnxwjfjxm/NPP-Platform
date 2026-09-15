@@ -8,7 +8,7 @@ const read = (path) => readFile(new URL(path, root), 'utf8');
 test('Admin AI usage stays inside Báo cáo instead of changing the owner-locked top navigation', async () => {
   const [shell, reports, aiPage] = await Promise.all([
     read('app/admin-shell.tsx'),
-    read('app/reports/page.tsx'),
+    read('app/reports/ReportsLocal.tsx'),
     read('app/reports/ai-usage/page.tsx'),
   ]);
 
@@ -16,8 +16,8 @@ test('Admin AI usage stays inside Báo cáo instead of changing the owner-locked
     assert.match(shell, new RegExp(`label: '${label}'`));
   }
   assert.doesNotMatch(shell, /label: 'AI'|label: 'Trợ lý'/);
-  assert.match(reports, /href: '\/reports\/ai-usage'/);
-  assert.match(reports, /label: 'AI \/ tín dụng'/);
+  assert.match(reports, /href:\s*["']\/reports\/ai-usage["']/);
+  assert.match(reports, /label:\s*["']AI \/ tín dụng["']/);
   assert.match(aiPage, /activeSection="reports"/);
 });
 

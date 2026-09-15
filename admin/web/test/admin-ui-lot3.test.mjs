@@ -7,7 +7,7 @@ const read = (path) => readFile(new URL(path, root), 'utf8');
 
 test('Lô 3 migrates the report center to shared toolbar, KPI and state primitives', async () => {
   const [page, css] = await Promise.all([
-    read('app/reports/page.tsx'),
+    read('app/reports/ReportsLocal.tsx'),
     read('app/reports/report-center.module.css'),
   ]);
 

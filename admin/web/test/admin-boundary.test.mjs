@@ -49,7 +49,7 @@ test('admin main read surfaces keep management taxonomy without browser-side bus
     read('app/approvals/approvals-local.tsx'),
     read('app/alerts/page.tsx'),
     read('app/alerts/alerts-local.tsx'),
-    read('app/reports/page.tsx'),
+    read('app/reports/ReportsLocal.tsx'),
   ]);
   for (const label of ['Tất cả','Thương mại','Khách hàng & công nợ','Ngoại lệ vận hành','MCP','Lịch sử']) assert.match(proposals,new RegExp(label.replace(/[&]/g,'\\&')));
   assert.doesNotMatch(proposals, /label: "Kho"|label: "Giao vận & COD"/);
@@ -127,7 +127,7 @@ test('alert center uses live multi-domain data, canonical lifecycle and office l
 });
 
 test('management reports use office language and server-side Công Ty/MCP reporting sources', async () => {
-  const [page, detail, data, css] = await Promise.all([read('app/reports/page.tsx'), read('app/reports/[reportId]/page.tsx'), read('app/reports/report-data.ts'), read('app/reports/report-center.module.css')]);
+  const [page, detail, data, css] = await Promise.all([read('app/reports/ReportsLocal.tsx'), read('app/reports/[reportId]/page.tsx'), read('app/reports/report-data.ts'), read('app/reports/report-center.module.css')]);
   for (const label of ['Hôm nay','7 ngày','Tháng này','Quý này']) assert.match(data,new RegExp(label));
   for (const label of ['Xu hướng kỳ','Diễn biến từ số liệu thật','Điểm cần chú ý']) assert.match(page,new RegExp(label));
   assert.match(page,/\/reports\/\$\{item\.id\}/);
