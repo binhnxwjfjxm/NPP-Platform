@@ -1,0 +1,341 @@
+name: VPS MCP production migration 014
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/vps-mcp-migration-014-manual.yml
+      - mcp/test/vps-mcp-migration-014-contract.test.mjs
+      - database/migrations/mcp/014_mcp_customer_read_boundary.sql
+      - mcp/apps/backend/foundation/migrations/sql/014_mcp_customer_read_boundary.sql
+      - mcp/apps/backend/foundation/migrations/index.js
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vps-production-db-migration
+  cancel-in-progress: false
+
+jobs:
+  contract:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout pull request
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Validate migration 014 production gate
+        run: node --test mcp/test/vps-mcp-migration-014-contract.test.mjs
+
+  migrate-production:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 5 &&
+      github.event.comment.body == '/migrate-vps-mcp-production-014' &&
+      (github.actor == 'binhnxwjfjxm' || github.actor == 'khuongbinhinfo-a11y')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      issues: write
+    env:
+      VPS_DB_HOST: ${{ vars.VPS_DB_HOST }}
+      VPS_SSH_USER: ${{ vars.VPS_SSH_USER }}
+      PRODUCTION_DB_NAME: npp_production
+      MCP_RUNTIME_ROLE: mcp_runtime
+      MIGRATION_ID: mcp_014_customer_read_boundary
+      PREDECESSOR_ID: mcp_013_customer_verification_review_reason
+
+    steps:
+      - name: Validate exact issue command
+        shell: bash
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          test "$COMMENT_BODY" = '/migrate-vps-mcp-production-014'
+
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact main and migration contract
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          cmp \
+            database/migrations/mcp/014_mcp_customer_read_boundary.sql \
+            mcp/apps/backend/foundation/migrations/sql/014_mcp_customer_read_boundary.sql
+          grep -Fq 'mcp_014_customer_read_boundary' mcp/apps/backend/foundation/migrations/index.js
+          grep -Fq 'mcp.workforce_employees' database/migrations/mcp/014_mcp_customer_read_boundary.sql
+          grep -Fq 'mcp.customer_addresses' database/migrations/mcp/014_mcp_customer_read_boundary.sql
+          grep -Fq 'shared.grant_mcp_runtime_access' database/migrations/mcp/014_mcp_customer_read_boundary.sql
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare DB VPS SSH
+        id: ssh
+        shell: bash
+        env:
+          VPS_DB_SSH_KEY: ${{ secrets.VPS_DB_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$VPS_DB_HOST"
+          test -n "$VPS_SSH_USER"
+          test -n "$VPS_DB_SSH_KEY"
+          umask 077
+          key="$RUNNER_TEMP/vps-db.key"
+          known="$RUNNER_TEMP/vps-db-known-hosts"
+          printf '%s\n' "$VPS_DB_SSH_KEY" > "$key"
+          chmod 600 "$key"
+          ssh-keygen -y -f "$key" >/dev/null
+          ssh-keyscan -T 10 -H "$VPS_DB_HOST" > "$known" 2>/dev/null
+          test -s "$known"
+          chmod 600 "$known"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+          echo "known=$known" >> "$GITHUB_OUTPUT"
+
+      - name: Stage exact migration on DB VPS
+        id: stage
+        shell: bash
+        env:
+          KEY: ${{ steps.ssh.outputs.key }}
+          KNOWN: ${{ steps.ssh.outputs.known }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          remote_sql="/tmp/npp-mcp-014-${SOURCE_SHA}.sql"
+          scp -q \
+            -i "$KEY" \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$KNOWN" \
+            database/migrations/mcp/014_mcp_customer_read_boundary.sql \
+            "$VPS_SSH_USER@$VPS_DB_HOST:$remote_sql"
+          echo "remote_sql=$remote_sql" >> "$GITHUB_OUTPUT"
+
+      - name: Backup, restore rehearsal, migrate and verify production
+        id: migrate
+        shell: bash
+        env:
+          KEY: ${{ steps.ssh.outputs.key }}
+          KNOWN: ${{ steps.ssh.outputs.known }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          REMOTE_SQL: ${{ steps.stage.outputs.remote_sql }}
+          RUN_ID_VALUE: ${{ github.run_id }}
+          RUN_ATTEMPT_VALUE: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          report="$RUNNER_TEMP/mcp-014-production-report.txt"
+          ssh \
+            -i "$KEY" \
+            -o BatchMode=yes \
+            -o ConnectTimeout=10 \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$KNOWN" \
+            "$VPS_SSH_USER@$VPS_DB_HOST" \
+            "bash -s -- '$SOURCE_SHA' '$REMOTE_SQL' '$RUN_ID_VALUE' '$RUN_ATTEMPT_VALUE' '$PRODUCTION_DB_NAME' '$MCP_RUNTIME_ROLE' '$MIGRATION_ID' '$PREDECESSOR_ID'" \
+            > "$report" <<'REMOTE'
+          set -euo pipefail
+          source_sha="$1"
+          migration_file="$2"
+          run_id="$3"
+          run_attempt="$4"
+          production_db="$5"
+          runtime_role="$6"
+          migration_id="$7"
+          predecessor_id="$8"
+          rehearsal_db="npp_mcp014_rehearsal_${run_id}_${run_attempt}"
+          backup_dir="/var/backups/npp/mcp-migrations"
+          backup_file="$backup_dir/${production_db}-before-${migration_id}-${source_sha}.dump"
+          before_counts="/tmp/${migration_id}-${run_id}-before.counts"
+          rehearsal_before="/tmp/${migration_id}-${run_id}-rehearsal-before.counts"
+          rehearsal_after="/tmp/${migration_id}-${run_id}-rehearsal-after.counts"
+          production_after="/tmp/${migration_id}-${run_id}-production-after.counts"
+
+          cleanup() {
+            sudo -n -u postgres dropdb --if-exists "$rehearsal_db" >/dev/null 2>&1 || true
+            rm -f "$before_counts" "$rehearsal_before" "$rehearsal_after" "$production_after" "$migration_file" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          scalar() {
+            local db="$1"
+            local sql="$2"
+            sudo -n -u postgres psql -XAt -v ON_ERROR_STOP=1 -d "$db" -c "$sql"
+          }
+
+          snapshot_counts() {
+            local db="$1"
+            local output="$2"
+            sudo -n -u postgres psql -XAt -v ON_ERROR_STOP=1 -d "$db" <<'SQL' | sort > "$output"
+          SELECT format(
+            'SELECT %L || count(*)::text FROM %I.%I;',
+            schemaname || '.' || tablename || '=',
+            schemaname,
+            tablename
+          )
+          FROM pg_tables
+          WHERE schemaname = 'mcp'
+          ORDER BY tablename;
+          \gexec
+          SQL
+          }
+
+          apply_migration() {
+            local db="$1"
+            local applied
+            applied="$(scalar "$db" "SELECT count(*) FROM shared.schema_migrations WHERE id = '$migration_id';")"
+            test "$applied" = "0" -o "$applied" = "1"
+            if [ "$applied" = "0" ]; then
+              {
+                echo 'BEGIN;'
+                echo "SELECT pg_advisory_xact_lock(hashtext('npp-platform:mcp-migrations'));"
+                cat "$migration_file"
+                printf "\nINSERT INTO shared.schema_migrations (id) VALUES ('%s');\n" "$migration_id"
+                printf "SELECT shared.grant_mcp_runtime_access('%s'::name);\n" "$runtime_role"
+                echo 'COMMIT;'
+              } | sudo -n -u postgres psql -X -v ON_ERROR_STOP=1 -d "$db" >/dev/null
+              echo applied
+            else
+              sudo -n -u postgres psql -X -v ON_ERROR_STOP=1 -d "$db" \
+                -c "SELECT shared.grant_mcp_runtime_access('$runtime_role'::name);" >/dev/null
+              echo already_applied
+            fi
+          }
+
+          verify_target() {
+            local db="$1"
+            test "$(scalar "$db" "SELECT count(*) FROM shared.schema_migrations WHERE id = '$migration_id';")" = "1"
+            test "$(scalar "$db" "SELECT (to_regclass('mcp.workforce_employees') IS NOT NULL)::int;")" = "1"
+            test "$(scalar "$db" "SELECT (to_regclass('mcp.customer_addresses') IS NOT NULL)::int;")" = "1"
+            test "$(scalar "$db" "SELECT (to_regprocedure('shared.grant_mcp_runtime_access(name)') IS NOT NULL)::int;")" = "1"
+            test "$(scalar "$db" "SELECT has_schema_privilege('$runtime_role', 'mcp', 'USAGE')::int;")" = "1"
+            test "$(scalar "$db" "SELECT has_table_privilege('$runtime_role', 'mcp.workforce_employees', 'SELECT')::int;")" = "1"
+            test "$(scalar "$db" "SELECT has_table_privilege('$runtime_role', 'mcp.customer_addresses', 'SELECT')::int;")" = "1"
+            test "$(scalar "$db" "SELECT has_table_privilege('$runtime_role', 'shared.employees', 'SELECT')::int;")" = "0"
+            test "$(scalar "$db" "SELECT has_table_privilege('$runtime_role', 'shared.customers', 'SELECT')::int;")" = "0"
+            test "$(scalar "$db" "SELECT has_table_privilege('$runtime_role', 'shared.customer_addresses', 'SELECT')::int;")" = "0"
+            sudo -n -u postgres psql -XAt -v ON_ERROR_STOP=1 -d "$db" <<SQL >/dev/null
+          BEGIN;
+          SET LOCAL ROLE $runtime_role;
+          SELECT count(*) FROM mcp.workforce_employees;
+          SELECT count(*) FROM mcp.customer_addresses;
+          ROLLBACK;
+          SQL
+          }
+
+          test -r "$migration_file"
+          command -v psql >/dev/null
+          command -v pg_dump >/dev/null
+          command -v pg_restore >/dev/null
+          sudo -n -u postgres pg_isready -q
+          test "$(scalar postgres "SELECT count(*) FROM pg_database WHERE datname = '$production_db';")" = "1"
+          test "$(scalar "$production_db" "SELECT (to_regclass('shared.schema_migrations') IS NOT NULL)::int;")" = "1"
+          test "$(scalar "$production_db" "SELECT count(*) FROM shared.schema_migrations WHERE id = '$predecessor_id';")" = "1"
+          test "$(scalar "$production_db" "SELECT count(*) FROM pg_roles WHERE rolname = '$runtime_role';")" = "1"
+
+          expected_ids='mcp_001_write_foundation mcp_002_domain_read_models mcp_003_legacy_write_contract mcp_004_profile_media_contract mcp_005_session_runtime_contract mcp_006_customer_onboarding_sync mcp_007_core_sales_order_sync mcp_008_legacy_report_settings_seed mcp_009_customer_media_link mcp_010_customer_verification mcp_011_legacy_customer_linkage_repair mcp_012_report_settings_installation_repair mcp_013_customer_verification_review_reason'
+          for id in $expected_ids; do
+            test "$(scalar "$production_db" "SELECT count(*) FROM shared.schema_migrations WHERE id = '$id';")" = "1"
+          done
+          current_count="$(scalar "$production_db" "SELECT count(*) FROM shared.schema_migrations WHERE id LIKE 'mcp_%';")"
+          test "$current_count" = "13" -o "$current_count" = "14"
+
+          db_bytes="$(scalar "$production_db" "SELECT pg_database_size(current_database());")"
+          free_bytes="$(df -PB1 /var/lib/postgresql | awk 'NR==2 {print $4}')"
+          required_bytes=$((db_bytes * 2 + 1073741824))
+          test "$free_bytes" -gt "$required_bytes"
+
+          sudo -n mkdir -p "$backup_dir"
+          sudo -n chown postgres:postgres "$backup_dir"
+          sudo -n chmod 700 "$backup_dir"
+          sudo -n -u postgres pg_dump \
+            --format=custom \
+            --no-owner \
+            --no-privileges \
+            --file="$backup_file" \
+            "$production_db"
+          sudo -n test -s "$backup_file"
+          backup_sha256="$(sudo -n sha256sum "$backup_file" | awk '{print $1}')"
+          backup_size="$(sudo -n stat -c '%s' "$backup_file")"
+
+          snapshot_counts "$production_db" "$before_counts"
+          sudo -n -u postgres dropdb --if-exists "$rehearsal_db" >/dev/null
+          sudo -n -u postgres createdb "$rehearsal_db"
+          sudo -n -u postgres pg_restore \
+            --dbname="$rehearsal_db" \
+            --no-owner \
+            --no-privileges \
+            "$backup_file"
+          snapshot_counts "$rehearsal_db" "$rehearsal_before"
+          cmp "$before_counts" "$rehearsal_before"
+
+          rehearsal_result="$(apply_migration "$rehearsal_db")"
+          verify_target "$rehearsal_db"
+          snapshot_counts "$rehearsal_db" "$rehearsal_after"
+          cmp "$rehearsal_before" "$rehearsal_after"
+          test "$(apply_migration "$rehearsal_db")" = "already_applied"
+          verify_target "$rehearsal_db"
+
+          production_result="$(apply_migration "$production_db")"
+          verify_target "$production_db"
+          snapshot_counts "$production_db" "$production_after"
+          cmp "$before_counts" "$production_after"
+          test "$(apply_migration "$production_db")" = "already_applied"
+          verify_target "$production_db"
+          snapshot_counts "$production_db" "$production_after"
+          cmp "$before_counts" "$production_after"
+
+          echo "SOURCE_SHA=$source_sha"
+          echo "MCP_MIGRATION_ID=$migration_id"
+          echo "MCP_REHEARSAL_RESULT=$rehearsal_result"
+          echo "MCP_PRODUCTION_RESULT=$production_result"
+          echo "MCP_LOGICAL_BACKUP_SHA256=$backup_sha256"
+          echo "MCP_LOGICAL_BACKUP_SIZE_BYTES=$backup_size"
+          echo "MCP_BACKUP_RESTORE_REHEARSAL=PASS"
+          echo "MCP_ROW_COUNT_RECONCILIATION=PASS"
+          echo "MCP_RUNTIME_READ_MODEL_GRANTS=PASS"
+          echo "MCP_DIRECT_SHARED_READS=DENIED"
+          echo "MCP_MIGRATION_RERUN=NOOP"
+          REMOTE
+          cat "$report" >> "$GITHUB_STEP_SUMMARY"
+          echo "report=$report" >> "$GITHUB_OUTPUT"
+
+      - name: Publish sanitized migration evidence to Issue 958
+        if: always() && steps.migrate.outputs.report != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPORT_FILE: ${{ steps.migrate.outputs.report }}
+          OPERATION_STATUS: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/mcp-014-evidence.md"
+          {
+            echo "## MCP migration 014 on VPS production — ${OPERATION_STATUS}"
+            echo
+            echo '```text'
+            cat "$REPORT_FILE"
+            echo '```'
+            echo
+            echo "Run ID: $GITHUB_RUN_ID"
+          } > "$evidence"
+          gh api \
+            --method POST \
+            "repos/$GITHUB_REPOSITORY/issues/958/comments" \
+            -f body="$(cat "$evidence")" \
+            >/dev/null
