@@ -11,13 +11,13 @@ const action = read('../app/inventory/inventory-export-action.tsx');
 const route = read('../app/api/inventory/export/route.ts');
 const model = read('../lib/inventory-data-export-model.ts');
 
-test('LÃ´ Kho 3 chá»‰ gáº¯n xuáº¥t dá»¯ liá»‡u vÃ o ba mÃ n Ä‘Ã£ audit', () => {
-  assert.match(shell, /pathname === '\/inventory\/balances'/);
-  assert.match(shell, /pathname === '\/inventory\/lots'/);
-  assert.match(shell, /pathname === '\/inventory\/tracking-policies'/);
+test('LÃ´ Kho 3 chá»‰ gáº¯n xuáº¥t dá»¯ liá»‡u vÃ o ba mÃ n Ä‘Ã£ audit mÃ  khÃ´ng phá»¥ thuá»™c route', () => {
+  assert.match(shell, /title === 'Tra cá»©u tá»“n kho'/);
+  assert.match(shell, /title === 'LÃ´ hÃ ng'/);
+  assert.match(shell, /title === 'ChÃ­nh sÃ¡ch quáº£n lÃ½ lÃ´'/);
   assert.match(shell, /<InventoryExportAction scope=\{exportScope\}/);
-  assert.doesNotMatch(shell, /pathname === '\/inventory\/adjustments'/);
-  assert.doesNotMatch(shell, /pathname === '\/inventory\/stocktakes'/);
+  assert.doesNotMatch(shell, /usePathname/);
+  assert.doesNotMatch(shell, /\/inventory\/adjustments|\/inventory\/stocktakes/);
 });
 
 test('há»™p xuáº¥t dÃ¹ng Excel CSV, láº¥y tÃ¬m kiáº¿m hiá»‡n táº¡i vÃ  Ä‘á»ƒ server táº¡o file', () => {
@@ -56,12 +56,4 @@ test('file xuáº¥t chá»‰ dÃ¹ng cá»™t nghiá»‡p vá»¥, khÃ´ng Ä‘Æ°a khÃ³a ná»™i bá»™
   assert.doesNotMatch(model, /key: 'warehouseId'/);
   assert.doesNotMatch(model, /key: 'baseVariantId'/);
   assert.doesNotMatch(model, /key: 'lotId'/);
-  assert.doesNotMatch(model, /key: 'createdBy'/);
-});
-
-test('xuáº¥t chÃ­nh sÃ¡ch lÃ´ bao gá»“m cáº£ SKU Ä‘Ã£ vÃ  chÆ°a thiáº¿t láº­p nhÆ°ng khÃ´ng thÃªm bulk mutation', () => {
-  assert.match(model, /policy \? 'ÄÃ£ thiáº¿t láº­p' : 'ChÆ°a thiáº¿t láº­p'/);
-  assert.match(route, /policyByVariantId/);
-  assert.match(route, /candidates\s*\.map/);
-  assert.doesNotMatch(action, /method:\s*'POST'|method:\s*'PUT'|method:\s*'PATCH'/);
-});
+  assert.m‘½•Í9½Ñ5…Ñ ¡µ½‘•°°€½­•äè€É•…Ñ•‘	äœ¼¤ì)ô¤ì()Ñ•ÍĞ á×†ê•Ğ£µ¹ Ï… ³Ğ‰…¼Ÿ†îM´†êŒM-TƒGŒÛ€£Á„Ñ¡§†êıĞ³†êµÀ¹£Á¹œ­£Ñ¹œÑ£©´‰Õ±¬µÕÑ…Ñ¥½¸œ°€ ¤€ôøì(€…ÍÍ•ÉĞ¹µ…Ñ ¡µ½‘•°°€½Á½±¥äpü€ŸCŒÑ¡§†êıĞ³†êµÀœ€è€£Á„Ñ¡§†êıĞ³†êµÀœ¼¤ì(€…ÍÍ•ÉĞ¹µ…Ñ ¡É½ÕÑ”°€½Á½±¥å	åY…É¥…¹Ñ%¼¤ì(€…ÍÍ•ÉĞ¹µ…Ñ ¡É½ÕÑ”°€½…¹‘¥‘…Ñ•ÍqÌ©p¹µ…À¼¤ì(€…ÍÍ•ÉĞ¹‘½•Í9½Ñ5…Ñ ¡…Ñ¥½¸°€½µ•Ñ¡½éqÌ¨A=MPñµ•Ñ¡½éqÌ¨AUPñµ•Ñ¡½éqÌ¨AQ œ¼¤ì)ô¤ì(

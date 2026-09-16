@@ -1,7 +1,6 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
 import type { ComponentProps } from 'react';
 import type { InventoryExportScope } from '../../lib/inventory-data-export-model';
 import InventoryExportAction from '../inventory/inventory-export-action';
@@ -33,10 +32,10 @@ function UserAccessTabs({ active }: { active: UserAccessTab }) {
   );
 }
 
-function inventoryExportScope(pathname: string): InventoryExportScope | null {
-  if (pathname === '/inventory/balances') return 'balances';
-  if (pathname === '/inventory/lots') return 'lots';
-  if (pathname === '/inventory/tracking-policies') return 'tracking-policies';
+function inventoryExportScope(title: string): InventoryExportScope | null {
+  if (title === 'Tra cứu tồn kho') return 'balances';
+  if (title === 'Lô hàng') return 'lots';
+  if (title === 'Chính sách quản lý lô') return 'tracking-policies';
   return null;
 }
 
@@ -48,13 +47,12 @@ function inventoryExportScope(pathname: string): InventoryExportScope | null {
  * persistent sidebar contract.
  */
 export function AppShell({ children, ...props }: AppShellProps) {
-  const pathname = usePathname();
   const userTab: UserAccessTab | null = props.title === 'Người dùng'
     ? 'accounts'
     : props.title === 'Phạm vi chi nhánh & kho'
       ? 'scopes'
       : null;
-  const exportScope = inventoryExportScope(pathname);
+  const exportScope = inventoryExportScope(props.title);
   const combinedActions = (props.actions != null || exportScope !== null) ? (
     <>
       {props.actions}
