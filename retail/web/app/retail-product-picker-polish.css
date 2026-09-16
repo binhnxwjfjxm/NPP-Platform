@@ -67,6 +67,11 @@
   background: #f7fbf8;
 }
 
+.retail-issue675 .product-sheet .lot7-product-row:focus-visible {
+  outline: 3px solid rgba(24, 134, 76, .32);
+  outline-offset: 2px;
+}
+
 .retail-issue675 .product-sheet .lot7-product-row.selected {
   border-color: #62b77f;
   background: #f6fbf7;

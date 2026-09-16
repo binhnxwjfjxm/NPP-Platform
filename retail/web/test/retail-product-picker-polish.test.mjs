@@ -27,10 +27,11 @@ test('Retail product card keeps current height, enlarges text and moves price pl
   assert.match(css, /\.product-copy em \{[\s\S]*grid-column: 2;[\s\S]*grid-row: 2;/);
 });
 
-test('Retail search result hides plus-minus buttons and shows read-only quantity for repeated taps', async () => {
+test('Retail search result hides plus-minus buttons, shows tap quantity and keeps keyboard focus visible', async () => {
   const css = await read('app/retail-product-picker-polish.css');
   assert.match(css, /\.lot7-product-row \.add-product,[\s\S]*\.lot7-product-row \.quantity-stepper button \{\s*display: none !important;/);
   assert.match(css, /\.lot7-product-row \.quantity-stepper output \{[\s\S]*background: var\(--green-dark\)/);
   assert.match(css, /\.quantity-stepper output::before \{\s*content: '×';/);
   assert.match(css, /\.lot7-product-row \{[\s\S]*cursor: pointer;/);
+  assert.match(css, /\.lot7-product-row:focus-visible \{[\s\S]*outline:/);
 });

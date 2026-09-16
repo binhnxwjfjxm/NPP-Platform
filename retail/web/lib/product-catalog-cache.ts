@@ -14,21 +14,30 @@ type CacheMeta = {
   refreshedAt: number;
 };
 
-const DB_NAME = 'npp-retail-catalog';
+const LEGACY_DB_NAME = 'npp-retail-catalog';
+const DB_NAME_PREFIX = 'npp-retail-catalog-v2-';
 const DB_VERSION = 1;
 const PRODUCT_STORE = 'products';
 const META_STORE = 'meta';
 const CACHE_META_KEY = 'catalog';
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const CACHE_SCOPE_PATTERN = /^[a-f0-9]{32}$/;
 
 function indexedDbAvailable() {
   return typeof window !== 'undefined' && 'indexedDB' in window;
 }
 
-function openDatabase(): Promise<IDBDatabase | null> {
+function databaseName(scope: string) {
+  const normalized = String(scope ?? '').trim().toLowerCase();
+  return CACHE_SCOPE_PATTERN.test(normalized) ? `${DB_NAME_PREFIX}${normalized}` : '';
+}
+
+function openDatabase(scope: string): Promise<IDBDatabase | null> {
   if (!indexedDbAvailable()) return Promise.resolve(null);
+  const name = databaseName(scope);
+  if (!name) return Promise.resolve(null);
   return new Promise((resolve, reject) => {
-    const request = window.indexedDB.open(DB_NAME, DB_VERSION);
+    const request = window.indexedDB.open(name, DB_VERSION);
     request.onupgradeneeded = () => {
       const db = request.result;
       if (!db.objectStoreNames.contains(PRODUCT_STORE)) {
@@ -51,6 +60,19 @@ function normalize(value: string | null | undefined) {
     .trim();
 }
 
+function productRank(product: RetailCachedProduct, query: string) {
+  const sku = normalize(product.sku);
+  const barcode = normalize(product.barcode);
+  const name = normalize(product.productName);
+  const code = normalize(product.productCode);
+  if (!query) return 4;
+  if (sku === query || barcode === query) return 0;
+  if (sku.startsWith(query) || barcode.startsWith(query)) return 1;
+  if (name.startsWith(query) || code.startsWith(query)) return 2;
+  if (sku.includes(query) || barcode.includes(query) || name.includes(query) || code.includes(query)) return 3;
+  return null;
+}
+
 function transactionDone(transaction: IDBTransaction) {
   return new Promise<void>((resolve, reject) => {
     transaction.oncomplete = () => resolve();
@@ -59,9 +81,19 @@ function transactionDone(transaction: IDBTransaction) {
   });
 }
 
-export async function cacheRetailProducts(products: RetailCachedProduct[]) {
+export async function removeLegacyRetailProductCache() {
+  if (!indexedDbAvailable()) return;
+  await new Promise<void>((resolve) => {
+    const request = window.indexedDB.deleteDatabase(LEGACY_DB_NAME);
+    request.onsuccess = () => resolve();
+    request.onerror = () => resolve();
+    request.onblocked = () => resolve();
+  });
+}
+
+export async function cacheRetailProducts(scope: string, products: RetailCachedProduct[]) {
   if (!products.length) return;
-  const db = await openDatabase();
+  const db = await openDatabase(scope);
   if (!db) return;
   try {
     const transaction = db.transaction(PRODUCT_STORE, 'readwrite');
@@ -73,8 +105,8 @@ export async function cacheRetailProducts(products: RetailCachedProduct[]) {
   }
 }
 
-export async function replaceRetailProductCache(products: RetailCachedProduct[]) {
-  const db = await openDatabase();
+export async function replaceRetailProductCache(scope: string, products: RetailCachedProduct[]) {
+  const db = await openDatabase(scope);
   if (!db) return;
   try {
     const transaction = db.transaction([PRODUCT_STORE, META_STORE], 'readwrite');
@@ -88,8 +120,28 @@ export async function replaceRetailProductCache(products: RetailCachedProduct[])
   }
 }
 
-export async function findCachedRetailProducts(search: string, limit: number, offset = 0) {
-  const db = await openDatabase();
+export async function removeCachedRetailSearchMatches(scope: string, search: string) {
+  const query = normalize(search);
+  if (!query) return;
+  const db = await openDatabase(scope);
+  if (!db) return;
+  try {
+    const transaction = db.transaction(PRODUCT_STORE, 'readwrite');
+    const store = transaction.objectStore(PRODUCT_STORE);
+    const request = store.getAll();
+    request.onsuccess = () => {
+      for (const product of (request.result ?? []) as RetailCachedProduct[]) {
+        if (productRank(product, query) !== null) store.delete(product.id);
+      }
+    };
+    await transactionDone(transaction);
+  } finally {
+    db.close();
+  }
+}
+
+export async function findCachedRetailProducts(scope: string, search: string, limit: number, offset = 0) {
+  const db = await openDatabase(scope);
   if (!db) return [] as RetailCachedProduct[];
   try {
     const products = await new Promise<RetailCachedProduct[]>((resolve, reject) => {
@@ -101,16 +153,8 @@ export async function findCachedRetailProducts(search: string, limit: number, of
     const query = normalize(search);
     const ranked = products
       .map((product) => {
-        const sku = normalize(product.sku);
-        const barcode = normalize(product.barcode);
-        const name = normalize(product.productName);
-        const code = normalize(product.productCode);
-        if (!query) return { product, rank: 4 };
-        if (sku === query || barcode === query) return { product, rank: 0 };
-        if (sku.startsWith(query) || barcode.startsWith(query)) return { product, rank: 1 };
-        if (name.startsWith(query) || code.startsWith(query)) return { product, rank: 2 };
-        if (sku.includes(query) || barcode.includes(query) || name.includes(query) || code.includes(query)) return { product, rank: 3 };
-        return null;
+        const rank = productRank(product, query);
+        return rank === null ? null : { product, rank };
       })
       .filter((row): row is { product: RetailCachedProduct; rank: number } => row !== null)
       .sort((left, right) => left.rank - right.rank || left.product.productName.localeCompare(right.product.productName, 'vi'));
@@ -120,8 +164,8 @@ export async function findCachedRetailProducts(search: string, limit: number, of
   }
 }
 
-export async function retailProductCacheIsFresh() {
-  const db = await openDatabase();
+export async function retailProductCacheIsFresh(scope: string) {
+  const db = await openDatabase(scope);
   if (!db) return false;
   try {
     const meta = await new Promise<CacheMeta | undefined>((resolve, reject) => {
