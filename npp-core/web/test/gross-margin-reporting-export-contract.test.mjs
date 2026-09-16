@@ -37,6 +37,8 @@ test('Proxy xuất lãi gộp giữ session server-side và chỉ nhận file Ex
 
 test('Màn Lãi gộp dùng ngôn ngữ văn phòng trong phạm vi được chạm', () => {
   const workspace = source('../app/components/gross-margin-reporting-workspace.tsx');
-  assert.doesNotMatch(workspace, /Phase 7|cost fact|lineage/i);
+  assert.doesNotMatch(workspace, /Giá vốn Phase 7|Thiếu lineage xuất\/nhập kho|cost fact Phase 7|Cost fact có ngoại lệ/i);
+  assert.match(workspace, /Thiếu liên kết xuất\/nhập kho/);
+  assert.match(workspace, /Chưa có dữ liệu giá vốn/);
   assert.match(workspace, /Giá vốn/);
 });
