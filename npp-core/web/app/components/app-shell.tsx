@@ -1,7 +1,10 @@
 'use client';
 
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import type { ComponentProps } from 'react';
+import type { InventoryExportScope } from '../../lib/inventory-data-export-model';
+import InventoryExportAction from '../inventory/inventory-export-action';
 import { AppShell as CoreAppShell } from './app-shell-core';
 import styles from './app-shell-user-tabs.module.css';
 
@@ -30,6 +33,13 @@ function UserAccessTabs({ active }: { active: UserAccessTab }) {
   );
 }
 
+function inventoryExportScope(pathname: string): InventoryExportScope | null {
+  if (pathname === '/inventory/balances') return 'balances';
+  if (pathname === '/inventory/lots') return 'lots';
+  if (pathname === '/inventory/tracking-policies') return 'tracking-policies';
+  return null;
+}
+
 /**
  * Shared NPP Operations shell.
  *
@@ -38,14 +48,22 @@ function UserAccessTabs({ active }: { active: UserAccessTab }) {
  * persistent sidebar contract.
  */
 export function AppShell({ children, ...props }: AppShellProps) {
+  const pathname = usePathname();
   const userTab: UserAccessTab | null = props.title === 'Người dùng'
     ? 'accounts'
     : props.title === 'Phạm vi chi nhánh & kho'
       ? 'scopes'
       : null;
+  const exportScope = inventoryExportScope(pathname);
+  const combinedActions = (props.actions != null || exportScope !== null) ? (
+    <>
+      {props.actions}
+      {exportScope ? <InventoryExportAction scope={exportScope} /> : null}
+    </>
+  ) : undefined;
 
   return (
-    <CoreAppShell {...props}>
+    <CoreAppShell {...props} actions={combinedActions}>
       {userTab ? <UserAccessTabs active={userTab} /> : null}
       {children}
     </CoreAppShell>
