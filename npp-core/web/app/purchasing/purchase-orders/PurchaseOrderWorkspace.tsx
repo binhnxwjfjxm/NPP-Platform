@@ -23,6 +23,7 @@ import {
 } from '../../../lib/goods-receipt-types';
 import PurchaseOrderList from './components/PurchaseOrderList';
 import PurchaseOrderEditor from './components/PurchaseOrderEditor';
+import PurchaseOrderExportDialog from './components/PurchaseOrderExportDialog';
 import { describePurchaseOrderLookupIssues } from './purchase-order-lookup-state';
 import { shouldShowPurchaseOrderProductsCatalogLink } from '../../../lib/purchase-order-products-link';
 
@@ -302,6 +303,12 @@ export default function PurchaseOrderWorkspace({
       >
         {loadingList ? 'Đang cập nhật…' : 'Cập nhật dữ liệu'}
       </button>
+      <PurchaseOrderExportDialog
+        search={search}
+        status={statusFilter}
+        disabled={!createPolicy.view}
+        buttonClassName={shellStyles.actionButton}
+      />
       {createPolicy.create ? (
         <button
           type="button"
@@ -359,7 +366,7 @@ export default function PurchaseOrderWorkspace({
         <section className={styles.toolbar} aria-label="Bộ lọc đơn mua hàng">
           <div className={styles.toolbarSearch}>
             <label htmlFor="purchase-order-search">Tìm kiếm</label>
-            <input id="purchase-order-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Số đơn, nhà cung cấp, kho nhận hoặc mã hàng…" data-testid="purchase-order-search" />
+            <input id="purchase-order-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Số đơn, nhà cung cấp, kho nhận hoặc tham chiếu…" data-testid="purchase-order-search" />
           </div>
           <div className={styles.toolbarFilter}>
             <label htmlFor="purchase-order-status">Trạng thái</label>
