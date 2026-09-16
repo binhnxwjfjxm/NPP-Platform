@@ -20,10 +20,15 @@ test('opening balance UI selects a canonical warehouse and imports business-read
   assert.match(workspace, /opening-balances\/operator\/validate/);
   assert.match(workspace, /opening-balances\/operator\/post/);
   assert.match(workspace, /Nhân viên chỉ dùng SKU và mã vị trí, không cần biết ID hệ thống/);
-  assert.match(workspace, /const headers: string\[\]/);
+  assert.match(workspace, /readSpreadsheetRows/);
+  assert.match(workspace, /accept="\.xlsx,\.csv"/);
   assert.match(workspace, /SOURCE_KEY_PATTERN = \/\^\[A-Za-z0-9\._:-\]\{1,128\}\$\//);
   assert.match(workspace, /Promise\.allSettled\(\[warehousesRequest, historyRequest\]\)/);
-  assert.match(workspace, /'Idempotency-Key': `opening-\$\{contentChecksum\}`/);
+  assert.match(workspace, /createIdempotencyKey\('opening-balance-post'\)/);
+  assert.match(workspace, /pendingPost = useRef<PendingMutation \| null>/);
+  assert.match(workspace, /'Idempotency-Key': pending\.key/);
+  assert.match(workspace, /body: pending\.body/);
+  assert.doesNotMatch(workspace, /`opening-\$\{contentChecksum\}`/);
   assert.match(workspace, /opening-balances\?limit=200'\)\.catch\(\(\) => null\)/);
   assert.match(route, /listOpeningBalanceOperatorWarehouses/);
   assert.match(route, /postOpeningBalanceOperator/);

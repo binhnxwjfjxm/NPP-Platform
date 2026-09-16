@@ -9,6 +9,7 @@ import {
 } from '../../components/business-table-sequence';
 import { MIN_PRODUCT_SEARCH_LENGTH } from '../../../lib/product-search-contract';
 import { readSpreadsheetRows } from '../../../lib/spreadsheet-reader';
+import ManualInboundExportDialog from './manual-inbound-export-dialog';
 import styles from './manual-inbound-workspace.module.css';
 
 type LocationManagementMode = 'MANAGED' | 'UNMANAGED';
@@ -803,7 +804,7 @@ export default function ManualInboundWorkspace() {
 
       <aside className={styles.historyColumn}>
         <section className={`${styles.card} ${styles.historyCard}`}>
-          <div className={styles.sectionHeading}><div><h2>Lịch sử nhập kho thủ công</h2><p>Tra cứu nhanh các chứng từ đã ghi sổ.</p></div></div>
+          <div className={styles.sectionHeading}><div><h2>Lịch sử nhập kho thủ công</h2><p>Tra cứu nhanh các chứng từ đã ghi sổ.</p></div><ManualInboundExportDialog inboundType={historyType} referenceNumber={historyReference} /></div>
           <div className={styles.historyFilters}>
             <label><span>Loại nhập</span><select value={historyType} onChange={(event) => setHistoryType(event.target.value as '' | InboundType)}><option value="">Tất cả</option>{INBOUND_TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
             <label><span>Số chứng từ tham chiếu</span><input value={historyReference} maxLength={160} onChange={(event) => setHistoryReference(event.target.value)} placeholder="Nhập số cần tìm" /></label>

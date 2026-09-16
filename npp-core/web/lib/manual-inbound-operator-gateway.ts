@@ -171,10 +171,14 @@ export function searchManualInboundOperatorProducts<T>({
 export function searchManualInboundOperatorHistory<T>({
   inboundType,
   referenceNumber,
+  limit = 100,
+  offset = 0,
   requestId,
 }: {
   inboundType?: string | null;
   referenceNumber?: string | null;
+  limit?: number;
+  offset?: number;
   requestId: string;
 }): Promise<T> {
   const query = new URLSearchParams();
@@ -182,7 +186,8 @@ export function searchManualInboundOperatorHistory<T>({
   const reference = String(referenceNumber ?? '').trim();
   if (type) query.set('inboundType', type);
   if (reference) query.set('referenceNumber', reference);
-  query.set('limit', '100');
+  query.set('limit', String(limit));
+  query.set('offset', String(offset));
   return requestCore<T>({
     path: `/api/inventory/manual-inbounds/operator/history?${query.toString()}`,
     method: 'GET',

@@ -46,7 +46,8 @@ test('inventory keeps every business feature while removing JSON demo and DOM tr
 
   assert.match(opening, /Mã kho/);
   assert.match(opening, /Mã tham chiếu SKU/);
-  assert.match(opening, /Tải mẫu Excel\/CSV/);
+  assert.match(opening, /Tải mẫu CSV/);
+  assert.match(opening, /accept="\.xlsx,\.csv"/);
   assert.doesNotMatch(opening, /WAREHOUSE_UUID|VARIANT_UUID|Ví dụ: TON_DAU_2026/);
 
   for (const page of [balancesPage, lotsPage, policyPage]) {

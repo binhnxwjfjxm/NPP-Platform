@@ -1,5 +1,6 @@
 'use client';
 
+import { createIdempotencyKey } from '@npp/contracts';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { AppShell } from '../../components/app-shell';
@@ -8,6 +9,7 @@ import {
   BusinessTableSequenceHeader,
 } from '../../components/business-table-sequence';
 import { formatDateTime, type OpeningBalanceImport } from '../../../lib/inventory-types';
+import { readSpreadsheetRows } from '../../../lib/spreadsheet-reader';
 import styles from './opening-balance-csv-workspace.module.css';
 
 type WarehouseOption = { id: string; code: string; name: string };
@@ -50,6 +52,7 @@ type ValidationResult = {
 type LocationEnvelope = { warehouse: WarehouseOption; locations: LocationOption[] };
 type Envelope<T> = { data?: T; error?: { message?: string; code?: string; details?: unknown } };
 type WorkspaceProps = { initialImports: OpeningBalanceImport[]; initialError?: string | null };
+type PendingMutation = { key: string; body: string };
 
 const CSV_COLUMNS = [
   { key: 'sku', label: 'SKU' },
@@ -63,55 +66,35 @@ const CSV_COLUMNS = [
 ] as const;
 const TEMPLATE_COLUMNS = CSV_COLUMNS.filter((column) => ['sku', 'sourceQuantity', 'locationCode'].includes(column.key));
 const HEADERS = CSV_COLUMNS.map((column) => column.key);
-const HEADER_ALIASES = Object.fromEntries(CSV_COLUMNS.flatMap((column) => [
+const HEADER_ALIASES: Record<string, keyof CsvRow> = Object.fromEntries(CSV_COLUMNS.flatMap((column) => [
   [column.label, column.key],
   [column.key, column.key],
-]));
+])) as Record<string, keyof CsvRow>;
 const SOURCE_KEY_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 const OPENING_BALANCE_PREVIEW_PAGE_SIZE = 100;
 
-function parseLine(line: string, delimiter = ','): string[] {
-  const cells: string[] = [];
-  let value = '';
-  let quoted = false;
-  for (let index = 0; index < line.length; index += 1) {
-    const character = line[index];
-    if (character === '"') {
-      if (quoted && line[index + 1] === '"') { value += '"'; index += 1; }
-      else quoted = !quoted;
-    } else if (character === delimiter && !quoted) {
-      cells.push(value.trim());
-      value = '';
-    } else {
-      value += character;
-    }
-  }
-  cells.push(value.trim());
-  return cells;
+function emptyRow(): CsvRow {
+  return Object.fromEntries(HEADERS.map((header) => [header, ''])) as CsvRow;
 }
 
-function delimiterFor(line: string) {
-  const candidates = [',', ';', '\t'];
-  let best = ',';
-  let bestCount = -1;
-  for (const delimiter of candidates) {
-    const count = parseLine(line, delimiter).length - 1;
-    if (count > bestCount) { best = delimiter; bestCount = count; }
+function rowsFromSheet(sheet: string[][]): CsvRow[] {
+  if (sheet.length < 2) throw new Error('Tệp cần có dòng tiêu đề và ít nhất một dòng dữ liệu.');
+  const headers = sheet[0].map((header) => HEADER_ALIASES[String(header ?? '').trim()] ?? null);
+  if (!headers.includes('sku') || !headers.includes('sourceQuantity')) {
+    throw new Error('Tệp cần có hai cột bắt buộc: SKU và Số lượng.');
   }
-  return best;
-}
-
-function parseCsv(text: string): CsvRow[] {
-  const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter((line) => line.trim());
-  if (lines.length < 2) return [];
-  const delimiter = delimiterFor(lines[0]);
-  const headers: string[] = parseLine(lines[0], delimiter).map((header) => HEADER_ALIASES[header.trim()] ?? header.trim());
-  if (!headers.includes('sku') || !headers.includes('sourceQuantity')) return [];
-  return lines.slice(1).map((line) => {
-    const cells = parseLine(line, delimiter);
-    const row = Object.fromEntries(headers.map((header, index) => [header, cells[index] ?? ''])) as Partial<CsvRow>;
-    return Object.fromEntries(HEADERS.map((header) => [header, row[header as keyof CsvRow] ?? ''])) as CsvRow;
-  });
+  const rows = sheet.slice(1)
+    .filter((cells) => cells.some((cell) => String(cell ?? '').trim()))
+    .map((cells) => {
+      const row = emptyRow();
+      headers.forEach((field, index) => {
+        if (field) row[field] = String(cells[index] ?? '').trim();
+      });
+      return row;
+    });
+  if (!rows.length) throw new Error('Tệp chưa có dòng dữ liệu.');
+  if (rows.length > 500) throw new Error('Mỗi lần kiểm tra tối đa 500 dòng.');
+  return rows;
 }
 
 function canonicalize(value: unknown): unknown {
@@ -195,6 +178,7 @@ export default function OpeningBalanceCsvWorkspace({ initialImports, initialErro
     initialError ? { kind: 'error', text: initialError } : null,
   );
   const draftRevision = useRef(0);
+  const pendingPost = useRef<PendingMutation | null>(null);
 
   const selectedWarehouse = useMemo(
     () => warehouseOptions.find((warehouse) => warehouse.id === selectedWarehouseId) ?? null,
@@ -220,6 +204,7 @@ export default function OpeningBalanceCsvWorkspace({ initialImports, initialErro
 
   function invalidateDraft() {
     draftRevision.current += 1;
+    pendingPost.current = null;
     setValidation(null);
     setValidationChecksum(null);
   }
@@ -282,18 +267,19 @@ export default function OpeningBalanceCsvWorkspace({ initialImports, initialErro
     setPreviewPage(0);
     setMessage(null);
     setFilename('');
-    if (!file.name.toLowerCase().endsWith('.csv')) {
-      setMessage({ kind: 'error', text: 'Chỉ nhận tệp CSV UTF-8. Trong Excel, chọn “Lưu thành CSV UTF-8” rồi tải lại.' });
+    const lowerName = file.name.toLowerCase();
+    if (!lowerName.endsWith('.csv') && !lowerName.endsWith('.xlsx')) {
+      setMessage({ kind: 'error', text: 'Chỉ nhận tệp Excel (.xlsx) hoặc CSV (.csv).' });
       return;
     }
-    const parsed = parseCsv(await file.text());
-    if (parsed.length === 0) {
-      setMessage({ kind: 'error', text: 'Tệp cần đúng mẫu và có ít nhất một dòng dữ liệu. Hai cột bắt buộc là SKU và Số lượng.' });
-      return;
+    try {
+      const parsed = rowsFromSheet(await readSpreadsheetRows(file));
+      setFilename(file.name);
+      setRows(parsed);
+      setMessage({ kind: 'success', text: `Đã đọc ${parsed.length} dòng. Bấm “Kiểm tra tệp” để đối chiếu SKU và tự áp dụng chính sách lô/hạn dùng.` });
+    } catch (error) {
+      setMessage({ kind: 'error', text: error instanceof Error ? error.message : 'Không đọc được tệp Excel/CSV.' });
     }
-    setFilename(file.name);
-    setRows(parsed);
-    setMessage({ kind: 'success', text: `Đã đọc ${parsed.length} dòng. Bấm “Kiểm tra tệp” để đối chiếu SKU và tự áp dụng chính sách lô/hạn dùng.` });
   }
 
   function normalizedBody() {
@@ -303,7 +289,7 @@ export default function OpeningBalanceCsvWorkspace({ initialImports, initialErro
       sourceFilename: filename || null,
       documentDate,
       metadata: {
-        importMethod: 'csv-upload-operator',
+        importMethod: 'spreadsheet-upload-operator',
         originalFilename: filename,
         defaultLocationCode: defaultLocationCode || null,
       },
@@ -326,7 +312,7 @@ export default function OpeningBalanceCsvWorkspace({ initialImports, initialErro
     const normalizedSourceKey = sourceKey.trim().toUpperCase();
     if (!normalizedSourceKey) { setMessage({ kind: 'error', text: 'Nhập mã đợt dữ liệu để tránh nhập trùng.' }); return; }
     if (!SOURCE_KEY_PATTERN.test(normalizedSourceKey)) { setMessage({ kind: 'error', text: 'Mã đợt dữ liệu chỉ dùng chữ không dấu, số và các ký tự . _ : - (tối đa 128 ký tự).' }); return; }
-    if (!rows.length) { setMessage({ kind: 'error', text: 'Chọn tệp CSV trước khi kiểm tra.' }); return; }
+    if (!rows.length) { setMessage({ kind: 'error', text: 'Chọn tệp Excel/CSV trước khi kiểm tra.' }); return; }
     if (localErrors.length) { setMessage({ kind: 'error', text: 'Tệp còn dòng thiếu SKU hoặc số lượng. Sửa các dòng báo đỏ trước.' }); return; }
     const revision = draftRevision.current;
     setBusy('validate');
@@ -367,11 +353,21 @@ export default function OpeningBalanceCsvWorkspace({ initialImports, initialErro
         setMessage({ kind: 'error', text: 'Kho, vị trí hoặc dữ liệu đã thay đổi sau lần kiểm tra. Vui lòng kiểm tra lại trước khi xác nhận.' });
         return;
       }
+      const postBody = JSON.stringify({ ...body, contentChecksum });
+      let pending = pendingPost.current;
+      if (!pending || pending.body !== postBody) {
+        pending = {
+          key: createIdempotencyKey('opening-balance-post'),
+          body: postBody,
+        };
+        pendingPost.current = pending;
+      }
       await requestJson('/api/inventory/opening-balances/operator/post', {
         method: 'POST',
-        headers: { 'Idempotency-Key': `opening-${contentChecksum}` },
-        body: JSON.stringify({ ...body, contentChecksum }),
+        headers: { 'Idempotency-Key': pending.key },
+        body: pending.body,
       });
+      pendingPost.current = null;
       const next = await requestJson<OpeningBalanceImport[]>('/api/inventory/opening-balances?limit=200').catch(() => null);
       draftRevision.current += 1;
       if (next) setImports(next);
@@ -400,8 +396,8 @@ export default function OpeningBalanceCsvWorkspace({ initialImports, initialErro
       {message ? <div className={message.kind === 'success' ? styles.success : styles.error} role={message.kind === 'error' ? 'alert' : undefined}>{message.text}</div> : null}
 
       <section className={styles.steps} aria-label="Các bước nhập tồn đầu kỳ">
-        <article><strong>1</strong><span>Tải tệp mẫu</span><button type="button" onClick={downloadTemplate}>Tải mẫu Excel/CSV</button></article>
-        <article><strong>2</strong><span>Chọn tệp đã điền</span><label>Chọn tệp<input type="file" accept=".csv,text/csv" data-testid="inventory-opening-file-input" onChange={(event) => { const file = event.target.files?.[0]; if (file) void chooseFile(file); }} /></label></article>
+        <article><strong>1</strong><span>Tải tệp mẫu</span><button type="button" onClick={downloadTemplate}>Tải mẫu CSV</button></article>
+        <article><strong>2</strong><span>Chọn tệp đã điền</span><label>Chọn tệp<input type="file" accept=".xlsx,.csv" data-testid="inventory-opening-file-input" onChange={(event) => { const file = event.target.files?.[0]; if (file) void chooseFile(file); }} /></label></article>
         <article><strong>3</strong><span>Kiểm tra dữ liệu</span><button type="button" onClick={() => void validate()} disabled={busy !== null}>{busy === 'validate' ? 'Đang kiểm tra…' : 'Kiểm tra tệp'}</button></article>
         <article><strong>4</strong><span>Xác nhận ghi nhận</span><button type="button" onClick={() => void post()} disabled={busy !== null || !validation || !validationChecksum || validation.rowErrors.length > 0}>{busy === 'post' ? 'Đang ghi nhận…' : 'Xác nhận nhập tồn'}</button></article>
       </section>
@@ -410,7 +406,7 @@ export default function OpeningBalanceCsvWorkspace({ initialImports, initialErro
         <h2>Thông tin đợt nhập</h2>
         <div className={styles.formGrid}>
           <label><span>Kho *</span><select data-testid="inventory-opening-warehouse-select" value={selectedWarehouseId} onChange={(event) => { setSelectedWarehouseId(event.target.value); setMessage(null); }} disabled={busy === 'bootstrap'}><option value="">Chọn kho</option>{warehouseOptions.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.code} — {warehouse.name}</option>)}</select></label>
-          <label><span>Vị trí mặc định</span><select data-testid="inventory-opening-location-select" value={defaultLocationCode} onChange={(event) => { setDefaultLocationCode(event.target.value); invalidateDraft(); setResolvedRows([]); }} disabled={!selectedWarehouseId || busy === 'locations'}><option value="">Không chọn — lấy theo từng dòng CSV</option>{locationOptions.map((location) => <option key={location.id} value={location.code}>{location.code} — {location.name}</option>)}</select><small>Dòng CSV có Vị trí sẽ ưu tiên vị trí của dòng đó.</small></label>
+          <label><span>Vị trí mặc định</span><select data-testid="inventory-opening-location-select" value={defaultLocationCode} onChange={(event) => { setDefaultLocationCode(event.target.value); invalidateDraft(); setResolvedRows([]); }} disabled={!selectedWarehouseId || busy === 'locations'}><option value="">Không chọn — lấy theo từng dòng tệp</option>{locationOptions.map((location) => <option key={location.id} value={location.code}>{location.code} — {location.name}</option>)}</select><small>Dòng tệp có Vị trí sẽ ưu tiên vị trí của dòng đó.</small></label>
           <label><span>Mã đợt dữ liệu *</span><input value={sourceKey} onChange={(event) => { setSourceKey(event.target.value); invalidateDraft(); }} placeholder="Ví dụ TONDAUKY-2026-08" data-testid="inventory-opening-source-key-input" /></label>
           <label><span>Ngày ghi nhận</span><input type="date" value={documentDate} onChange={(event) => { setDocumentDate(event.target.value); invalidateDraft(); }} data-testid="inventory-opening-document-date-input" /></label>
           <label><span>Tệp đã chọn</span><input value={filename || 'Chưa chọn tệp'} readOnly /></label>
@@ -432,7 +428,7 @@ export default function OpeningBalanceCsvWorkspace({ initialImports, initialErro
           </div>
         </div>
         <div className={styles.tableWrap}><table><thead><tr><th>Dòng</th><th>Kho</th><th>Vị trí</th><th>SKU</th><th>Tên hàng</th><th>Số lượng</th><th>Chính sách</th><th>Lô hàng</th><th>Hạn dùng</th><th>Trạng thái</th></tr></thead><tbody>
-          {rows.length === 0 ? <tr><td colSpan={10} className={styles.empty}>Chọn tệp CSV để hiển thị dữ liệu.</td></tr> : previewRows.map((row, pageIndex) => {
+          {rows.length === 0 ? <tr><td colSpan={10} className={styles.empty}>Chọn tệp Excel/CSV để hiển thị dữ liệu.</td></tr> : previewRows.map((row, pageIndex) => {
             const index = previewStart + pageIndex;
             const issue = localErrors.find((item) => item.line === index + 2);
             const canonical = resolvedRows[index] ?? validation?.rows[index];
