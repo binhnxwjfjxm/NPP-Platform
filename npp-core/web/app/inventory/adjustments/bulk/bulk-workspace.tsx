@@ -3,11 +3,11 @@
 import { createIdempotencyKey } from '@npp/contracts';
 import { useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../../components/app-shell-core';
+import { exportTable } from '../../../operations/data-exchange/data-exchange-file-utils';
 import { formatQuantity } from '../../../../lib/inventory-types';
 import { formatSignedExactDecimal } from '../../../../lib/decimal-display.js';
 import {
   MAX_BULK_INVENTORY_ADJUSTMENT_ROWS,
-  bulkInventoryAdjustmentTemplateCsv,
   parseBulkInventoryAdjustmentSheet,
   type BulkInventoryAdjustmentInputRow,
 } from '../../../../lib/inventory-adjustment-bulk-entry.js';
@@ -97,16 +97,14 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   return payload.data;
 }
 
-function downloadTemplate() {
-  const blob = new Blob([bulkInventoryAdjustmentTemplateCsv()], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = 'mau-dieu-chinh-ton-hang-loat.csv';
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
+async function downloadTemplate(format: 'xlsx' | 'csv') {
+  await exportTable(
+    'mau-dieu-chinh-ton-hang-loat.xlsx',
+    'Mẫu điều chỉnh tồn',
+    ['SKU', 'Tồn thực tế'],
+    [],
+    format,
+  );
 }
 
 function directionLabel(direction: PreviewRow['direction']) {
@@ -328,7 +326,8 @@ export default function BulkInventoryAdjustmentWorkspace({ reasons, warehouses, 
         <section className={fileStyles.steps} aria-label="Các bước điều chỉnh tồn hàng loạt">
           <article>
             <strong>1</strong><span>Tải tệp mẫu</span>
-            <button type="button" onClick={downloadTemplate}>Tải mẫu Excel/CSV</button>
+            <button type="button" onClick={() => void downloadTemplate('xlsx').catch((cause) => setError(cause instanceof Error ? cause.message : 'Không tạo được mẫu Excel.'))}>Tải mẫu Excel</button>
+            <button type="button" onClick={() => void downloadTemplate('csv').catch((cause) => setError(cause instanceof Error ? cause.message : 'Không tạo được mẫu CSV.'))}>Tải mẫu CSV</button>
           </article>
           <article>
             <strong>2</strong><span>Chọn tệp đã điền</span>
