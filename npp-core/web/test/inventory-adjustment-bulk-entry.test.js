@@ -54,7 +54,10 @@ test('bulk adjustment template stays minimal while parser keeps optional scope c
 
 test('bulk adjustment UI follows the compact file-import workflow and stays usable for hundreds of rows', () => {
   assert.match(bulkUiSource, /Các bước điều chỉnh tồn hàng loạt/);
-  assert.match(bulkUiSource, /Tải mẫu Excel\/CSV/);
+  assert.match(bulkUiSource, /Tải mẫu Excel/);
+  assert.match(bulkUiSource, /Tải mẫu CSV/);
+  assert.match(bulkUiSource, /exportTable/);
+  assert.doesNotMatch(bulkUiSource, /Tải mẫu Excel\/CSV/);
   assert.match(bulkUiSource, /Chọn tệp đã điền/);
   assert.match(bulkUiSource, /Kiểm tra tệp/);
   assert.match(bulkUiSource, /Đi tới lập phiếu/);
