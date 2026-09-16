@@ -10,6 +10,7 @@ test('Mẫu phiếu Retail có preview trực tiếp và cỡ chữ lưu dùng c
   const css = read('app/retail-print-template-editor.css');
   const layout = read('app/layout.tsx');
   const bridge = read('lib/printer-bridge.ts');
+  const iosBridge = read('../mobile/ios/NPPRetail/RetailPrinterBridge.swift');
 
   assert.match(workspace, /RetailPrintTemplatePreview/);
   assert.match(workspace, /templateFontSizePercent/);
@@ -30,4 +31,9 @@ test('Mẫu phiếu Retail có preview trực tiếp và cỡ chữ lưu dùng c
   assert.match(bridge, /fontSizePercent\?: number/);
   assert.match(bridge, /fontSizePercent: safeFontSizePercent/);
   assert.match(bridge, /visibleFields\.has\('line_sku'\)/);
+
+  assert.match(iosBridge, /payload\["fontSizePercent"\]/);
+  assert.match(iosBridge, /renderText\(printableText\(payload\), width: width, scale: fontScale\)/);
+  assert.match(iosBridge, /let fontSize: CGFloat = \(width <= 384 \? 20 : 23\) \* scale/);
+  assert.match(iosBridge, /paragraph\.lineSpacing = 3 \* scale/);
 });
