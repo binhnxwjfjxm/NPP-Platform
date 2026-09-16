@@ -17,10 +17,21 @@ test('Retail product picker keeps fast search and removes category pills from th
   assert.match(css, /\.product-sheet \.filter-tabs \{\s*display: none !important;/);
 });
 
-test('Retail product actions are centered, borderless and keep product price/action inside each card', async () => {
+test('Retail product card keeps current height, enlarges text and moves price plus availability to two right rows', async () => {
   const css = await read('app/retail-product-picker-polish.css');
   assert.match(css, /\.choose-products \{[\s\S]*width: min\(82%, 360px\);[\s\S]*min-height: 58px;[\s\S]*border: 0;[\s\S]*box-shadow:/);
-  assert.match(css, /\.lot7-product-row \{[\s\S]*grid-template-columns: 56px minmax\(0, 1fr\) auto;[\s\S]*align-items: center;[\s\S]*overflow: hidden;/);
-  assert.match(css, /\.lot7-product-row \.product-copy b \{[\s\S]*display: block;[\s\S]*white-space: nowrap;/);
-  assert.match(css, /\.lot7-product-row \.add-product \{[\s\S]*align-self: center;[\s\S]*justify-self: end;/);
+  assert.match(css, /\.lot7-product-row \{[\s\S]*grid-template-columns: 56px minmax\(0, 1fr\);[\s\S]*min-height: 90px;[\s\S]*overflow: hidden;/);
+  assert.match(css, /\.lot7-product-row \.product-copy \{[\s\S]*grid-template-columns: minmax\(0, 1fr\) minmax\(118px, auto\);[\s\S]*grid-template-rows: auto auto;/);
+  assert.match(css, /\.product-copy strong \{[\s\S]*grid-column: 1;[\s\S]*font-size: 16px;/);
+  assert.match(css, /\.product-copy b \{[\s\S]*grid-column: 2;[\s\S]*grid-row: 1;[\s\S]*font-size: 16px;/);
+  assert.match(css, /\.product-copy em \{[\s\S]*grid-column: 2;[\s\S]*grid-row: 2;/);
+});
+
+test('Retail search result hides plus-minus buttons, shows tap quantity and keeps keyboard focus visible', async () => {
+  const css = await read('app/retail-product-picker-polish.css');
+  assert.match(css, /\.lot7-product-row \.add-product,[\s\S]*\.lot7-product-row \.quantity-stepper button \{\s*display: none !important;/);
+  assert.match(css, /\.lot7-product-row \.quantity-stepper output \{[\s\S]*background: var\(--green-dark\)/);
+  assert.match(css, /\.quantity-stepper output::before \{\s*content: '×';/);
+  assert.match(css, /\.lot7-product-row \{[\s\S]*cursor: pointer;/);
+  assert.match(css, /\.lot7-product-row:focus-visible \{[\s\S]*outline:/);
 });
