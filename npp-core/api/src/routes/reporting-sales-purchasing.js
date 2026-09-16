@@ -34,6 +34,10 @@ import {
   createSalesReportingExport,
   normalizeSalesReportingExportSelection,
 } from '../services/reporting-sales-export.js';
+import {
+  createGrossMarginReportingExport,
+  normalizeGrossMarginReportingExportSelection,
+} from '../services/reporting-gross-margin-export.js';
 
 function apiError(code, message, details = {}, retryable = false, statusCode = 500) {
   return { code, message, details, retryable, statusCode };
@@ -82,6 +86,7 @@ function reportingFamily(pathname) {
   if (pathname === '/api/reporting/inventory') return 'inventory';
   if (pathname === '/api/reporting/aging') return 'aging';
   if (pathname === '/api/reporting/gross-margin') return 'gross-margin';
+  if (pathname === '/api/reporting/gross-margin-export') return 'gross-margin-export';
   if (pathname === '/api/reporting/employee-mcp') return 'employee-mcp';
   if (pathname === '/api/reporting/mcp-supervision') return 'mcp-supervision';
   if (pathname === '/api/reporting/admin-alerts' || pathname.startsWith('/api/reporting/admin-alerts/')) return 'admin-alerts';
@@ -105,6 +110,7 @@ function reportingPermission(options, family) {
   if (family === 'cod') return options.PERMISSIONS.coreReportingCodRead;
   if (family === 'business-export') return options.PERMISSIONS.coreReportingExport;
   if (family === 'sales-export') return options.PERMISSIONS.coreReportingExport;
+  if (family === 'gross-margin-export') return options.PERMISSIONS.coreReportingExport;
   if (family === 'audit-history' || family === 'import-export-history') return options.PERMISSIONS.coreReportingAuditHistoryRead;
   if (family === 'control-tower') return options.PERMISSIONS.coreReportingControlTowerRead;
   return options.PERMISSIONS.coreReportingEmployeeMcpRead;
@@ -244,6 +250,62 @@ async function streamSalesReportingExport(res, options, requestContext, filters,
   }
 }
 
+async function streamGrossMarginReportingExport(res, options, requestContext, filters, warehouseIds, selection) {
+  let artifact = null;
+  try {
+    artifact = await createGrossMarginReportingExport(options.getPool(), {
+      requestContext,
+      filters,
+      warehouseIds,
+      selection,
+    });
+    res.statusCode = 200;
+    res.setHeader('Cache-Control', 'no-store, max-age=0');
+    res.setHeader('Content-Type', artifact.contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${artifact.filename}"`);
+    res.setHeader('Content-Length', String(artifact.size));
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    await pipeline(createReadStream(artifact.filePath), res);
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: 'gross_margin_reporting_export_failed',
+      requestId: options.requestId,
+      errorName: error?.name ?? null,
+      errorCode: typeof error?.code === 'string' ? error.code : null,
+    }));
+    if (!res.headersSent) {
+      const reconciliationFailed = error?.code === 'GROSS_MARGIN_EXPORT_RECONCILIATION_FAILED';
+      const tooLarge = error?.code === 'GROSS_MARGIN_EXPORT_TOO_LARGE';
+      sendError(
+        res,
+        apiError(
+          reconciliationFailed
+            ? 'GROSS_MARGIN_EXPORT_RECONCILIATION_FAILED'
+            : tooLarge
+              ? 'GROSS_MARGIN_EXPORT_TOO_LARGE'
+              : 'GROSS_MARGIN_EXPORT_FAILED',
+          reconciliationFailed
+            ? 'Báo cáo lãi gộp chưa đối soát khớp nên chưa thể xuất file'
+            : tooLarge
+              ? 'Dữ liệu xuất quá lớn. Hãy thu hẹp kỳ báo cáo hoặc chọn một kho.'
+              : 'Không xuất được báo cáo lãi gộp',
+          {},
+          !reconciliationFailed && !tooLarge,
+          reconciliationFailed ? 409 : tooLarge ? 413 : 503,
+        ),
+        options.requestId,
+        options.receivedAt,
+      );
+    } else if (!res.destroyed) {
+      res.destroy(error instanceof Error ? error : undefined);
+    }
+  } finally {
+    if (artifact?.cleanup) {
+      try { await artifact.cleanup(); } catch {}
+    }
+  }
+}
+
 async function resolveMcpFieldScope(res, options, requestContext) {
   const fieldScope = await resolveReportingMcpScope(options.getPool(), requestContext);
   if (!fieldScope.ok) {
@@ -288,6 +350,19 @@ export async function handleReportingRoutes(req, res, options) {
       sendError(
         res,
         apiError('FORBIDDEN', 'Tài khoản hiện tại không có quyền xem Báo cáo bán hàng', {}, false, 403),
+        options.requestId,
+        options.receivedAt,
+      );
+      return true;
+    }
+  }
+
+  if (family === 'gross-margin-export') {
+    const grossMarginReadPermission = options.PERMISSIONS.coreReportingGrossMarginRead;
+    if (!grossMarginReadPermission || !options.authorize(requestContext, grossMarginReadPermission).ok) {
+      sendError(
+        res,
+        apiError('FORBIDDEN', 'Tài khoản hiện tại không có quyền xem báo cáo lãi gộp', {}, false, 403),
         options.requestId,
         options.receivedAt,
       );
@@ -433,6 +508,27 @@ export async function handleReportingRoutes(req, res, options) {
       options,
       requestContext,
       reportingFilters,
+      warehouseScope.warehouseIds,
+      selection,
+    );
+    return true;
+  }
+
+  if (family === 'gross-margin-export') {
+    const selection = normalizeGrossMarginReportingExportSelection({
+      dimension: url.searchParams.get('dimension'),
+      format: url.searchParams.get('format'),
+      columns: url.searchParams.getAll('column'),
+    });
+    if (!selection.ok) {
+      sendNormalizedError(res, selection, options);
+      return true;
+    }
+    await streamGrossMarginReportingExport(
+      res,
+      options,
+      requestContext,
+      normalized,
       warehouseScope.warehouseIds,
       selection,
     );

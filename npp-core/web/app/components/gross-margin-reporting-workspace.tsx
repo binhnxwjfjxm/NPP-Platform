@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import type { GrossMarginDashboard } from '../../lib/finance-reporting-types';
 import { AppShell } from './app-shell';
+import { GrossMarginReportingExportDialog, type GrossMarginExportDimension } from './gross-margin-reporting-export-dialog';
 import {
   BusinessTableSequenceCell,
   BusinessTableSequenceHeader,
@@ -62,7 +63,7 @@ function deriveWarehouses(report: GrossMarginDashboard): Warehouse[] {
 }
 
 function exceptionLabel(code?: string) {
-  return ({ NON_VND_REVENUE: 'Doanh thu không phải VND', MISSING_INVENTORY_LINEAGE: 'Thiếu lineage xuất/nhập kho', MISSING_COST_FACT: 'Chưa có cost fact Phase 7', COST_ANOMALY: 'Cost fact có ngoại lệ' } as Record<string, string>)[code ?? ''] ?? code ?? '—';
+  return ({ NON_VND_REVENUE: 'Doanh thu không phải VND', MISSING_INVENTORY_LINEAGE: 'Thiếu liên kết xuất/nhập kho', MISSING_COST_FACT: 'Chưa có dữ liệu giá vốn', COST_ANOMALY: 'Dữ liệu giá vốn có bất thường' } as Record<string, string>)[code ?? ''] ?? code ?? '—';
 }
 
 export function GrossMarginReportingWorkspace() {
@@ -102,17 +103,22 @@ export function GrossMarginReportingWorkspace() {
     void load(EMPTY, true);
   }
 
+  const appliedFilters: Filters = report
+    ? { from: report.filters.from, to: report.filters.to, warehouseId: report.filters.warehouseId ?? '' }
+    : EMPTY;
+  const exportDimension: GrossMarginExportDimension = activeTab === 'skus' ? 'skus' : activeTab === 'exceptions' ? 'exceptions' : 'customers';
   const actions = (
     <div className={styles.headerActions}>
+      <GrossMarginReportingExportDialog initialDimension={exportDimension} filters={appliedFilters} disabled={busy || !report} />
       <Link className={styles.linkButton} href="/sales/sales-orders">Đơn bán hàng</Link>
-      <Link className={styles.linkButton} href="/inventory/costing">Giá vốn Phase 7</Link>
+      <Link className={styles.linkButton} href="/inventory/costing">Giá vốn</Link>
     </div>
   );
 
   return (
     <AppShell
       title="Lãi gộp"
-      subtitle="Đối chiếu doanh thu thuần đã ghi nhận với dữ liệu giá vốn bình quân theo chuỗi chứng từ kho; hàng khách trả đã nhận được đảo cả doanh thu và giá vốn hàng bán."
+      subtitle="Đối chiếu doanh thu thuần đã ghi nhận với dữ liệu giá vốn theo đúng chứng từ kho; hàng khách trả đã nhận được đảo cả doanh thu và giá vốn hàng bán."
       kicker="Bán hàng"
       actions={actions}
     >
@@ -130,21 +136,15 @@ export function GrossMarginReportingWorkspace() {
 
         {report ? <>
           <div className={styles.cards}>
-            <article className={styles.card}><p className={styles.cardLabel}>Doanh thu thuần so sánh được</p><p className={styles.cardValue}>{money(report.summary.netRevenueVnd)}</p><p className={styles.cardHint}>Không gồm VAT; đã trừ discount và đảo Customer Return.</p></article>
-            <article className={styles.card}><p className={styles.cardLabel}>Giá vốn</p><p className={styles.cardValue}>{money(report.summary.cogsVnd)}</p><p className={styles.cardHint}>Phase 7 MWA_V1 theo exact movement line.</p></article>
+            <article className={styles.card}><p className={styles.cardLabel}>Doanh thu thuần so sánh được</p><p className={styles.cardValue}>{money(report.summary.netRevenueVnd)}</p><p className={styles.cardHint}>Không gồm VAT; đã trừ chiết khấu và đảo hàng khách trả.</p></article>
+            <article className={styles.card}><p className={styles.cardLabel}>Giá vốn</p><p className={styles.cardValue}>{money(report.summary.cogsVnd)}</p><p className={styles.cardHint}>Theo đúng dòng xuất/nhập kho đã ghi nhận giá vốn.</p></article>
             <article className={styles.card}><p className={styles.cardLabel}>Lãi gộp</p><p className={styles.cardValue}>{money(report.summary.grossMarginVnd)}</p><p className={styles.cardHint}>Doanh thu thuần − Giá vốn hàng bán.</p></article>
-            <article className={styles.card}><p className={styles.cardLabel}>Biên lãi gộp</p><p className={styles.cardValue}>{percent(report.summary.grossMarginPercent)}</p><p className={styles.cardHint}>Chỉ trên các dòng VND có cost fact hợp lệ.</p></article>
+            <article className={styles.card}><p className={styles.cardLabel}>Biên lãi gộp</p><p className={styles.cardValue}>{percent(report.summary.grossMarginPercent)}</p><p className={styles.cardHint}>Chỉ tính các dòng VND có dữ liệu giá vốn hợp lệ.</p></article>
           </div>
 
           <div className={styles.notice}><strong>Đối soát:</strong> {report.summary.comparableLineCount ?? '0'}/{report.summary.eventLineCount ?? '0'} dòng so sánh được · thiếu liên kết chứng từ {report.summary.missingLineageCount ?? '0'} · thiếu giá vốn {report.summary.missingCostCount ?? '0'} · bất thường giá vốn {report.summary.costAnomalyCount ?? '0'} · chưa quy đổi VND {report.summary.nonVndCount ?? '0'}.</div>
 
-          <WorkspaceTabs
-            tabs={GROSS_MARGIN_TABS}
-            activeTab={activeTab}
-            onChange={setActiveTab}
-            idPrefix={GROSS_MARGIN_TAB_PREFIX}
-            label="Chi tiết lãi gộp"
-          />
+          <WorkspaceTabs tabs={GROSS_MARGIN_TABS} activeTab={activeTab} onChange={setActiveTab} idPrefix={GROSS_MARGIN_TAB_PREFIX} label="Chi tiết lãi gộp" />
 
           <WorkspaceTabPanel tabId="customers" activeTab={activeTab} idPrefix={GROSS_MARGIN_TAB_PREFIX}>
             <section className={styles.section} data-testid="gross-margin-customers-panel">
