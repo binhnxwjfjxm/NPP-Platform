@@ -3,6 +3,9 @@ import * as repository from '../db/repositories/document-print-templates.js';
 const PAGE_SIZES = new Set(['A4', 'A5']);
 const HEADER_ALIGNMENTS = new Set(['left', 'center', 'right']);
 const FIELD_KEY_PATTERN = /^[a-z0-9._-]{1,64}$/;
+const FONT_SIZE_MIN = 80;
+const FONT_SIZE_MAX = 140;
+const DEFAULT_FONT_SIZE_PERCENT = 100;
 
 function template(documentType, templateCode, name, pageSize, fields) {
   return Object.freeze({
@@ -62,6 +65,11 @@ function normalizeAlignment(value) {
   const normalized = String(value ?? '').trim().toLowerCase();
   return HEADER_ALIGNMENTS.has(normalized) ? normalized : null;
 }
+function normalizeFontSizePercent(value) {
+  if (value === undefined) return undefined;
+  const normalized = Number(value);
+  return Number.isInteger(normalized) && normalized >= FONT_SIZE_MIN && normalized <= FONT_SIZE_MAX ? normalized : null;
+}
 
 function selectVisibleFields(catalog, keys) {
   const selected = new Set(keys);
@@ -79,6 +87,7 @@ function present(catalog, setting) {
     templateCode: catalog.templateCode,
     name: catalog.name,
     pageSize: setting?.page_size ?? catalog.pageSize,
+    fontSizePercent: Number(setting?.font_size_percent ?? DEFAULT_FONT_SIZE_PERCENT),
     visibleFieldKeys: selected,
     fields: catalog.fields,
     heading: setting?.heading ?? null,
@@ -109,14 +118,17 @@ function normalizePayload(catalog, payload) {
   const headingVisible = payload?.headingVisible;
   const headingAlign = normalizeAlignment(payload?.headingAlign);
   const titleAlign = normalizeAlignment(payload?.titleAlign);
+  const fontSizePercent = normalizeFontSizePercent(payload?.fontSizePercent);
   if (heading === undefined && payload?.heading !== undefined) return failure('INVALID_PRINT_HEADING', 'Tên Công Ty không được vượt quá 160 ký tự');
   if (title === undefined && payload?.title !== undefined) return failure('INVALID_PRINT_TITLE', 'Tên chứng từ không được vượt quá 160 ký tự');
   if (subtitle === undefined && payload?.subtitle !== undefined) return failure('INVALID_PRINT_SUBTITLE', 'Dòng phụ không được vượt quá 240 ký tự');
   if (headingVisible !== undefined && typeof headingVisible !== 'boolean') return failure('INVALID_PRINT_HEADING_VISIBILITY', 'Tùy chọn hiển thị Tên Công Ty không hợp lệ');
   if (payload?.headingAlign !== undefined && headingAlign === null) return failure('INVALID_PRINT_HEADING_ALIGN', 'Vị trí Tên Công Ty chỉ có thể là trái, giữa hoặc phải');
   if (payload?.titleAlign !== undefined && titleAlign === null) return failure('INVALID_PRINT_TITLE_ALIGN', 'Vị trí loại đơn chỉ có thể là trái, giữa hoặc phải');
+  if (payload?.fontSizePercent !== undefined && fontSizePercent === null) return failure('INVALID_PRINT_FONT_SIZE', 'Cỡ chữ phiếu phải từ 80% đến 140%');
   return Object.freeze({
     pageSize,
+    fontSizePercent,
     visibleFieldKeys,
     heading,
     title,
@@ -156,6 +168,7 @@ export async function updateDocumentPrintTemplate(client, { installationId, docu
     documentType: catalog.documentType,
     templateCode: catalog.templateCode,
     pageSize: normalized.pageSize,
+    fontSizePercent: normalized.fontSizePercent ?? Number(before?.font_size_percent ?? DEFAULT_FONT_SIZE_PERCENT),
     visibleFieldKeys: normalized.visibleFieldKeys,
     heading: normalized.heading !== undefined ? normalized.heading : before?.heading ?? null,
     title: normalized.title !== undefined ? normalized.title : before?.title ?? null,

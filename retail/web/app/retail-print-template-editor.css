@@ -1,0 +1,128 @@
+/* Retail — chỉnh cỡ chữ và xem trước mẫu phiếu ngay trong Cài đặt. */
+
+.template-font-size-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px 14px;
+  border: 1px solid #dfe8e2;
+  border-radius: 16px;
+  padding: 12px 14px;
+  background: #f9fcfa;
+}
+.template-font-size-control > span { font-weight: 800; }
+.template-font-size-control > small { grid-column: 1 / -1; color: var(--muted); line-height: 1.4; }
+.template-font-size-stepper {
+  display: grid;
+  grid-template-columns: 42px minmax(64px, auto) 42px;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid #cfdad3;
+  border-radius: 12px;
+  background: #fff;
+}
+.template-font-size-stepper button {
+  width: 42px;
+  height: 42px;
+  border: 0;
+  background: transparent;
+  color: var(--green-dark);
+  font-size: 22px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.template-font-size-stepper button:disabled { color: #aab5ae; cursor: default; }
+.template-font-size-stepper output { min-width: 64px; text-align: center; font-weight: 900; }
+
+.template-live-preview {
+  display: grid;
+  gap: 10px;
+  margin-top: 4px;
+  border-top: 1px solid #e6ece8;
+  padding-top: 14px;
+}
+.template-live-preview > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.template-live-preview > header > div { display: grid; gap: 2px; }
+.template-live-preview > header strong { font-size: 14px; }
+.template-live-preview > header small { color: var(--muted); font-size: 11px; }
+.template-live-preview > header > span {
+  border-radius: 999px;
+  padding: 5px 9px;
+  background: var(--green-soft);
+  color: var(--green-dark);
+  font-size: 11px;
+  font-weight: 800;
+}
+.template-preview-stage {
+  overflow: auto;
+  max-height: 58vh;
+  border: 1px solid #dfe6e1;
+  border-radius: 14px;
+  padding: 12px;
+  background: #edf1ee;
+}
+.template-preview-stage .print-document { min-height: 0; box-shadow: 0 8px 24px rgba(0, 0, 0, .10); }
+
+/* Một cỡ gốc điều khiển preview và bản in thật; các thành phần giữ tỷ lệ bằng em. */
+.print-document { font-size: calc(12px * var(--retail-print-font-scale, 1)); }
+.paper-80 .print-document,
+.paper-58 .print-document { font-size: calc(10px * var(--retail-print-font-scale, 1)); }
+.print-document > header p { font-size: 1em; }
+.print-document > header h1 { font-size: 2em; }
+.print-meta p,
+.print-document table { font-size: 1em; }
+.print-document td strong { font-size: 1em; }
+.print-document td small { font-size: .75em; }
+.print-grand-total { font-size: 1.5em; }
+.print-grand-total strong { font-size: 1.22em; }
+.print-signatures { font-size: 1em; }
+
+.paper-a4 .print-document > header h1,
+.paper-a5 .print-document > header h1 { font-size: 2.1667em; }
+.paper-a4 .print-document > header > p:first-child,
+.paper-a5 .print-document > header > p:first-child { font-size: .9167em; }
+.paper-a4 .print-document > header h1 + p,
+.paper-a5 .print-document > header h1 + p,
+.paper-a4 .print-document > header small,
+.paper-a5 .print-document > header small { font-size: .8333em; }
+.paper-a4 .print-document td strong,
+.paper-a5 .print-document td strong { font-size: 1em; }
+.paper-a4 .print-document td small,
+.paper-a5 .print-document td small { font-size: .75em; }
+.paper-a4 .print-grand-total strong,
+.paper-a5 .print-grand-total strong { font-size: 1.22em; }
+
+.paper-80 .print-document > header > p:first-child,
+.paper-58 .print-document > header > p:first-child { font-size: .9em; }
+.paper-80 .print-document > header h1,
+.paper-58 .print-document > header h1 { font-size: 1.5em; }
+.paper-80 .print-document > header h1 + p,
+.paper-58 .print-document > header h1 + p { font-size: .9em; }
+.paper-80 .print-document > header small,
+.paper-58 .print-document > header small { font-size: .8em; }
+.paper-80 .print-meta p,
+.paper-58 .print-meta p,
+.paper-80 .print-document td,
+.paper-58 .print-document td { font-size: .9em; }
+.paper-80 .print-document td:has(> strong) > strong,
+.paper-58 .print-document td:has(> strong) > strong { font-size: 1.1em; }
+.paper-80 .print-document td:has(> strong) > small,
+.paper-58 .print-document td:has(> strong) > small { font-size: .8em; }
+.paper-80 .print-grand-total,
+.paper-58 .print-grand-total { font-size: 1.3em; }
+.paper-80 .print-grand-total strong { font-size: 1.3077em; }
+.paper-58 .print-grand-total strong { font-size: 1.1538em; }
+.paper-80 .print-signatures,
+.paper-58 .print-signatures { font-size: .9em; }
+
+@media (max-width: 640px) {
+  .template-font-size-control { grid-template-columns: 1fr; }
+  .template-font-size-stepper { width: max-content; }
+  .template-font-size-control > small { grid-column: 1; }
+  .template-preview-stage { margin-right: -4px; margin-left: -4px; padding: 8px; }
+}

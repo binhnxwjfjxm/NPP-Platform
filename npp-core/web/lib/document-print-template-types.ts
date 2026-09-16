@@ -13,6 +13,7 @@ export type DocumentPrintTemplate = {
   templateCode: string;
   name: string;
   pageSize: PrintPageSize;
+  fontSizePercent: number;
   visibleFieldKeys: string[];
   fields: DocumentPrintTemplateField[];
   heading?: string | null;

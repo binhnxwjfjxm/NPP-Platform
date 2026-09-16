@@ -226,7 +226,9 @@ final class RetailPrinterBridge: NSObject, WKScriptMessageHandler {
 private enum EscPosRenderer {
     static func render(payload: [String: Any], paper: String) -> Data? {
         let width = paper == "58mm" ? 384 : 576
-        guard let image = renderText(printableText(payload), width: width), let raster = rasterBytes(image) else { return nil }
+        let fontSizePercent = max(80, min(140, (payload["fontSizePercent"] as? NSNumber)?.intValue ?? 100))
+        let fontScale = CGFloat(fontSizePercent) / 100
+        guard let image = renderText(printableText(payload), width: width, scale: fontScale), let raster = rasterBytes(image) else { return nil }
         let widthBytes = (image.width + 7) / 8
         var output = Data([0x1B, 0x40])
         output.append(contentsOf: [0x1D, 0x76, 0x30, 0x00, UInt8(widthBytes & 0xFF), UInt8((widthBytes >> 8) & 0xFF), UInt8(image.height & 0xFF), UInt8((image.height >> 8) & 0xFF)])
@@ -263,23 +265,26 @@ private enum EscPosRenderer {
         return lines.joined(separator: "\n")
     }
 
-    private static func renderText(_ text: String, width: Int) -> CGImage? {
-        let horizontalPadding: CGFloat = 18
-        let fontSize: CGFloat = width <= 384 ? 20 : 23
+    private static func renderText(_ text: String, width: Int, scale: CGFloat) -> CGImage? {
+        let horizontalPadding: CGFloat = 18 * scale
+        let fontSize: CGFloat = (width <= 384 ? 20 : 23) * scale
         let font = UIFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
         let paragraph = NSMutableParagraphStyle()
         paragraph.lineBreakMode = .byWordWrapping
-        paragraph.lineSpacing = 3
+        paragraph.lineSpacing = 3 * scale
         let attributed = NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: UIColor.black, .paragraphStyle: paragraph])
         let targetWidth = CGFloat(width) - horizontalPadding * 2
         let bounds = attributed.boundingRect(with: CGSize(width: targetWidth, height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin, .usesFontLeading], context: nil)
-        let height = Int(ceil(bounds.height + 30))
+        let verticalPadding: CGFloat = 30 * scale
+        let topInset: CGFloat = 12 * scale
+        let bottomInset: CGFloat = 4 * scale
+        let height = Int(ceil(bounds.height + verticalPadding))
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: CGFloat(width), height: CGFloat(max(1, height))))
         let image = renderer.image { context in
             let cg = context.cgContext
             cg.setFillColor(UIColor.white.cgColor)
             cg.fill(CGRect(x: 0, y: 0, width: CGFloat(width), height: CGFloat(max(1, height))))
-            attributed.draw(with: CGRect(x: horizontalPadding, y: 12, width: targetWidth, height: bounds.height + 4), options: [.usesLineFragmentOrigin, .usesFontLeading], context: nil)
+            attributed.draw(with: CGRect(x: horizontalPadding, y: topInset, width: targetWidth, height: bounds.height + bottomInset), options: [.usesLineFragmentOrigin, .usesFontLeading], context: nil)
         }
         return image.cgImage
     }

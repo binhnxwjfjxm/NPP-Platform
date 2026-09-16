@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-const COLUMNS = `id, installation_id, document_type, template_code, page_size,
+const COLUMNS = `id, installation_id, document_type, template_code, page_size, font_size_percent,
   visible_field_keys, heading, title, subtitle, heading_visible, heading_align, title_align,
   created_at, updated_at, created_by, updated_by`;
 
@@ -34,10 +34,10 @@ export async function insertDocumentPrintTemplateSetting(client, data) {
   const id = randomUUID();
   const result = await client.query(
     `INSERT INTO shared.document_print_template_settings (
-      id, installation_id, document_type, template_code, page_size,
+      id, installation_id, document_type, template_code, page_size, font_size_percent,
       visible_field_keys, heading, title, subtitle, heading_visible, heading_align, title_align,
       created_by, updated_by
-    ) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11,$12,$13,$13)
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12,$13,$14,$14)
     RETURNING ${COLUMNS}`,
     [
       id,
@@ -45,6 +45,7 @@ export async function insertDocumentPrintTemplateSetting(client, data) {
       data.documentType,
       data.templateCode,
       data.pageSize,
+      data.fontSizePercent,
       JSON.stringify(data.visibleFieldKeys),
       data.heading,
       data.title,
@@ -62,22 +63,24 @@ export async function updateDocumentPrintTemplateSetting(client, data) {
   const result = await client.query(
     `UPDATE shared.document_print_template_settings
         SET page_size = $1,
-            visible_field_keys = $2::jsonb,
-            heading = $3,
-            title = $4,
-            subtitle = $5,
-            heading_visible = $6,
-            heading_align = $7,
-            title_align = $8,
+            font_size_percent = $2,
+            visible_field_keys = $3::jsonb,
+            heading = $4,
+            title = $5,
+            subtitle = $6,
+            heading_visible = $7,
+            heading_align = $8,
+            title_align = $9,
             updated_at = GREATEST(date_trunc('milliseconds', clock_timestamp()), updated_at + interval '1 millisecond'),
-            updated_by = $9
-      WHERE installation_id = $10
-        AND document_type = $11
-        AND template_code = $12
-        AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $13::timestamptz)
+            updated_by = $10
+      WHERE installation_id = $11
+        AND document_type = $12
+        AND template_code = $13
+        AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $14::timestamptz)
     RETURNING ${COLUMNS}`,
     [
       data.pageSize,
+      data.fontSizePercent,
       JSON.stringify(data.visibleFieldKeys),
       data.heading,
       data.title,

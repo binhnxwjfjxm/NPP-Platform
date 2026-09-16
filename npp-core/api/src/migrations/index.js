@@ -118,6 +118,7 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   migration('134_customer_profile_delivery_return_indexes', 'sales/134_customer_profile_delivery_return_indexes.sql'),
   migration('135_sales_order_sku_search_indexes', 'shared/135_sales_order_sku_search_indexes.sql'),
   migration('136_inventory_tracking_policy_backfill', 'inventory/136_inventory_tracking_policy_backfill.sql'),
+  migration('137_document_print_template_font_size', 'shared/137_document_print_template_font_size.sql'),
 ]);
 
 export { runMigrations };

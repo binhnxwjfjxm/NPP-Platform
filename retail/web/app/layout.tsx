@@ -8,6 +8,7 @@ import './retail-home-polish.css';
 import './retail-final-polish.css';
 import './retail-print-professional.css';
 import './retail-product-picker-polish.css';
+import './retail-print-template-editor.css';
 import './retail-printer.css';
 import { PwaRegistration } from './pwa-registration';
 import { RetailProductPickerRuntime } from './retail-product-picker-runtime';
