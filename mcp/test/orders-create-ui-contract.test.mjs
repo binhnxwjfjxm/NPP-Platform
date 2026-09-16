@@ -90,6 +90,8 @@ test("each MCP product keeps one card and each Lẻ-Thùng row is the full add t
   assert.match(sheet, /<button[\s\S]*className=\{catalogStyles\.unitRow\}[\s\S]*onClick=\{\(\) => addProduct\(product\)\}/);
   assert.match(sheet, /disabled=\{!customerReady \|\| saving\}/);
   assert.match(sheet, /<small>×\{selectedQuantity\}<\/small>/);
+  assert.match(sheet, /Đã chọn \$\{selectedQuantity\}/);
+  assert.match(sheet, /Giá \$\{catalogPriceLabel\(product\.price\)\}/);
   assert.doesNotMatch(sheet, /catalogStyles\.unitAdd/);
   assert.doesNotMatch(sheet, /<span aria-hidden="true">\+<\/span>/);
   assert.doesNotMatch(sheet, /Mở tab Sản phẩm và bấm \+/);

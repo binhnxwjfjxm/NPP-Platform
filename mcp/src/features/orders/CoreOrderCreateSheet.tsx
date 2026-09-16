@@ -699,7 +699,7 @@ export function CoreOrderCreateSheet({
                                 key={product.variantId}
                                 onClick={() => addProduct(product)}
                                 disabled={!customerReady || saving}
-                                aria-label={`Thêm ${product.name}, ${variantPrimaryLabel(product)} · ${unitLabel} vào đơn`}
+                                aria-label={`${selectedQuantity ? `Đã chọn ${selectedQuantity}. ` : ""}Thêm ${product.name}, ${variantPrimaryLabel(product)} · ${unitLabel} vào đơn. Giá ${catalogPriceLabel(product.price)}`}
                                 title={`${product.name} · ${unitLabel} · ${unitDetail || variantPrimaryLabel(product)}`}
                               >
                                 <span className={catalogStyles.unitCopy}>
