@@ -143,12 +143,13 @@ export function GrossMarginReportingExportDialog({ initialDimension, filters, di
             </div>
             <p className={styles.description}>Xuất theo kỳ và kho đang áp dụng. Dữ liệu lãi gộp được đối soát với cùng nguồn đang hiển thị trên màn hình.</p>
 
-            <label className={styles.formatGroup}>
-              <span>Nội dung xuất</span>
-              <select value={dimension} onChange={(event) => changeDimension(event.target.value as GrossMarginExportDimension)} disabled={exporting}>
-                {Object.entries(DIMENSION_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-              </select>
-            </label>
+            <fieldset className={styles.formatGroup}>
+              <legend>Nội dung xuất</legend>
+              {Object.entries(DIMENSION_LABELS).map(([key, label]) => {
+                const value = key as GrossMarginExportDimension;
+                return <label key={key}><input type="radio" name="gross-margin-export-dimension" value={value} checked={dimension === value} onChange={() => changeDimension(value)} disabled={exporting} /> {label}</label>;
+              })}
+            </fieldset>
 
             <fieldset className={styles.formatGroup}>
               <legend>Định dạng file</legend>
