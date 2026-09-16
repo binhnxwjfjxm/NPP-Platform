@@ -41,6 +41,7 @@ export type RetailPrintPayload = {
   documentType: 'SALES_ORDER' | 'PRINTER_TEST';
   paper: PrinterPaper;
   copies: number;
+  fontSizePercent?: number;
   heading?: string | null;
   title: string;
   subtitle?: string | null;
@@ -109,6 +110,11 @@ function safePaper(value: unknown): PrinterPaper {
 function safeCopies(value: unknown) {
   const count = Number(value);
   return Number.isInteger(count) ? Math.max(1, Math.min(5, count)) : 1;
+}
+
+function safeFontSizePercent(value: unknown) {
+  const percent = Number(value);
+  return Number.isInteger(percent) ? Math.max(80, Math.min(140, percent)) : 100;
 }
 
 function safePort(value: unknown) {
@@ -249,6 +255,7 @@ export function printerSettingsSummary(settings: PrinterSettings) {
 export function buildSalesOrderPrintPayload(input: {
   paper: PrinterPaper;
   copies: number;
+  fontSizePercent?: number;
   heading?: string | null;
   title: string;
   subtitle?: string | null;
@@ -270,7 +277,7 @@ export function buildSalesOrderPrintPayload(input: {
   ];
   const rows = input.visibleFields.has('line_item') ? input.lines.map((line, index) => [
     ...(input.visibleFields.has('line_no') ? [String(index + 1)] : []),
-    `${line.itemName}\n${line.sku}`,
+    input.visibleFields.has('line_sku') ? `${line.itemName}\n${line.sku}` : line.itemName,
     ...(input.visibleFields.has('line_quantity') ? [line.quantity] : []),
     line.unitCode,
     ...(input.visibleFields.has('line_unit_price') ? [line.unitPrice] : []),
@@ -284,6 +291,7 @@ export function buildSalesOrderPrintPayload(input: {
     documentType: 'SALES_ORDER',
     paper: input.paper,
     copies: safeCopies(input.copies),
+    fontSizePercent: safeFontSizePercent(input.fontSizePercent),
     heading: input.heading ?? null,
     title: input.title,
     subtitle: input.subtitle ?? null,
@@ -301,6 +309,7 @@ export function buildPrinterTestPayload(paper: PrinterPaper, copies: number): Re
     documentType: 'PRINTER_TEST',
     paper,
     copies: safeCopies(copies),
+    fontSizePercent: 100,
     heading: 'BÁN TẠI QUẦY',
     title: 'PHIẾU IN THỬ',
     subtitle: 'Kiểm tra khổ giấy và máy in',
