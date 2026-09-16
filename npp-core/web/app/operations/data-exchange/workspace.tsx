@@ -13,6 +13,13 @@ import {
 } from './data-exchange-model';
 import { exactQuantity, exportTable, scaled12, formatScaled12, scopeKey, requestJson, idempotency } from './data-exchange-file-utils';
 
+const MOVEMENT_PAGE_SIZE = 500;
+
+function filenameFromDisposition(value: string | null, fallback: string) {
+  const match = /filename="([^"\r\n]+)"/i.exec(value ?? '');
+  return match?.[1] || fallback;
+}
+
 export default function DataExchangeWorkspace() {
   const searchParams = useSearchParams();
   const requestedTab = searchParams.get('tab');
@@ -25,6 +32,7 @@ export default function DataExchangeWorkspace() {
   const [stocktakeWarehouse, setStocktakeWarehouse] = useState(''); const [quotationScope, setQuotationScope] = useState<'all' | 'category' | 'sku'>('all'); const [quotationCategory, setQuotationCategory] = useState('');
   const [quotationSkus, setQuotationSkus] = useState(''); const [quotationContext, setQuotationContext] = useState({ channelId: '', customerGroupId: '', customerId: '', quantity: '1' });
   const [quotationRows, setQuotationRows] = useState<QuotationRow[]>([]); const [selectedBalanceKey, setSelectedBalanceKey] = useState(''); const [movementRows, setMovementRows] = useState<MovementView[]>([]);
+  const [movementHasMore, setMovementHasMore] = useState(false);
   const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const importOperationKeyRef = useRef<string | null>(null);
@@ -38,11 +46,23 @@ export default function DataExchangeWorkspace() {
   }, [balances]);
   const selectedBalance = useMemo(() => balances.find((item) => scopeKey(item.warehouse_code, item.location_code, item.base_sku, item.lot_code) === selectedBalanceKey) ?? null, [balances, selectedBalanceKey]);
 
+  async function loadAllBalances() {
+    const rows: Balance[] = [];
+    let offset = 0;
+    while (true) {
+      const batch = await requestJson<Balance[]>(`/api/inventory/balances?limit=1000&offset=${offset}`);
+      rows.push(...batch);
+      if (batch.length < 1000) return rows;
+      offset += 1000;
+      if (offset > 100_000) throw new Error('Dữ liệu tồn kho quá lớn. Hãy dùng Tra cứu tồn kho để thu hẹp phạm vi.');
+    }
+  }
+
   async function refreshReferenceData() {
     const [nextProducts, nextCategories, nextBrands, nextUnits, nextLists, nextChannels, nextGroups, nextCustomers, nextBalances] = await Promise.all([
       requestJson<Product[]>('/api/products?limit=1000'), requestJson<Category[]>('/api/product-categories?limit=1000'), requestJson<Brand[]>('/api/product-brands?limit=1000'), requestJson<Unit[]>('/api/units?limit=1000'),
       requestJson<PriceList[]>('/api/price-lists?limit=1000'), requestJson<Channel[]>('/api/sales-channels?limit=1000'), requestJson<CustomerGroup[]>('/api/customer-groups?limit=1000'),
-      requestJson<Customer[]>('/api/customers?limit=1000'), requestJson<Balance[]>('/api/inventory/balances?limit=1000'),
+      requestJson<Customer[]>('/api/customers?limit=1000'), loadAllBalances(),
     ]);
     setProducts(nextProducts); setCategories(nextCategories); setBrands(nextBrands); setUnits(nextUnits); setPriceLists(nextLists); setChannels(nextChannels); setGroups(nextGroups); setCustomers(nextCustomers); setBalances(nextBalances);
     if (!pricingPriceListId) setPricingPriceListId(nextLists.find((item) => item.is_active && item.list_type === 'BASE')?.id ?? '');
@@ -76,14 +96,89 @@ export default function DataExchangeWorkspace() {
     try { if (!quotationRows.length) throw new Error('Hãy tính báo giá trước khi xuất file.'); const rows = quotationRows.map((row) => [row.sku, row.product, row.name, row.quantity, row.currency, row.finalPrice, row.lineTotal, row.priceListCode]); await exportTable('bao-gia.xlsx', 'Báo giá', [...QUOTATION_COLUMNS], rows, format); setMessage(`Đã xuất ${rows.length} dòng báo giá.`); }
     catch (cause) { fail(cause); } finally { setBusy(false); }
   }
+
+  function movementQuery(offset: number) {
+    if (!selectedBalance) throw new Error('Chọn một dòng tồn kho để xem biến động.');
+    const params = new URLSearchParams({
+      warehouseId: selectedBalance.warehouse_id,
+      baseVariantId: selectedBalance.base_variant_id,
+      limit: String(MOVEMENT_PAGE_SIZE),
+      offset: String(offset),
+    });
+    if (selectedBalance.location_id) params.set('locationId', selectedBalance.location_id);
+    if (selectedBalance.lot_id) params.set('lotId', selectedBalance.lot_id);
+    return params;
+  }
+
+  function movementViews(rows: Movement[], startingQuantity: bigint) {
+    let running = startingQuantity;
+    return rows.map((row) => {
+      const stockAfter = formatScaled12(running);
+      running -= scaled12(row.base_quantity_delta);
+      return { ...row, stockAfter };
+    });
+  }
+
   async function loadMovements() {
     begin();
     try {
-      if (!selectedBalance) throw new Error('Chọn một dòng tồn kho để xem biến động.'); const params = new URLSearchParams({ warehouseId: selectedBalance.warehouse_id, baseVariantId: selectedBalance.base_variant_id, limit: '500' });
-      if (selectedBalance.location_id) params.set('locationId', selectedBalance.location_id); if (selectedBalance.lot_id) params.set('lotId', selectedBalance.lot_id);
-      const rows = await requestJson<Movement[]>(`/api/inventory/balances/drill-down?${params}`); let running = scaled12(selectedBalance.on_hand_quantity);
-      const views = rows.map((row) => { const stockAfter = formatScaled12(running); running -= scaled12(row.base_quantity_delta); return { ...row, stockAfter }; }); setMovementRows(views); setMessage(`Đã tải ${views.length} lần biến động của ${selectedBalance.base_sku}.`);
+      if (!selectedBalance) throw new Error('Chọn một dòng tồn kho để xem biến động.');
+      const rows = await requestJson<Movement[]>(`/api/inventory/balances/drill-down?${movementQuery(0)}`);
+      const views = movementViews(rows, scaled12(selectedBalance.on_hand_quantity));
+      setMovementRows(views);
+      setMovementHasMore(rows.length === MOVEMENT_PAGE_SIZE);
+      setMessage(`Đã tải ${views.length} lần biến động của ${selectedBalance.base_sku}.`);
     } catch (cause) { fail(cause); } finally { setBusy(false); }
+  }
+
+  async function loadMoreMovements() {
+    if (!selectedBalance || !movementHasMore || busy) return;
+    begin();
+    try {
+      const rows = await requestJson<Movement[]>(`/api/inventory/balances/drill-down?${movementQuery(movementRows.length)}`);
+      let running = scaled12(selectedBalance.on_hand_quantity);
+      for (const row of movementRows) running -= scaled12(row.base_quantity_delta);
+      const views = movementViews(rows, running);
+      setMovementRows((current) => [...current, ...views]);
+      setMovementHasMore(rows.length === MOVEMENT_PAGE_SIZE);
+      setMessage(`Đã tải ${movementRows.length + views.length} lần biến động của ${selectedBalance.base_sku}.`);
+    } catch (cause) { fail(cause); } finally { setBusy(false); }
+  }
+
+  async function exportMovements(format: 'xlsx' | 'csv') {
+    begin();
+    try {
+      if (!selectedBalance) throw new Error('Chọn một dòng tồn kho trước khi xuất file.');
+      const query = new URLSearchParams({
+        warehouseId: selectedBalance.warehouse_id,
+        baseVariantId: selectedBalance.base_variant_id,
+        format,
+      });
+      if (selectedBalance.location_id) query.set('locationId', selectedBalance.location_id);
+      if (selectedBalance.lot_id) query.set('lotId', selectedBalance.lot_id);
+      const response = await fetch(`/api/inventory/balances/drill-down/export?${query.toString()}`, { method: 'GET', cache: 'no-store' });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null) as { error?: { message?: string } } | null;
+        throw new Error(payload?.error?.message || 'Không xuất được biến động kho.');
+      }
+      const blob = await response.blob();
+      const filename = filenameFromDisposition(response.headers.get('content-disposition'), `Bien-dong-kho.${format}`);
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = objectUrl;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+      setMessage(`Đã xuất biến động kho của ${selectedBalance.base_sku}.`);
+    } catch (cause) { fail(cause); } finally { setBusy(false); }
+  }
+
+  function selectMovementBalance(value: string) {
+    setSelectedBalanceKey(value);
+    setMovementRows([]);
+    setMovementHasMore(false);
   }
 
   function fileInput(key: string, accept: string, kind: ImportKind) {
@@ -94,5 +189,5 @@ export default function DataExchangeWorkspace() {
   }
   function previewTable() { return <DataExchangeImportPreview ctx={{ pendingImport, tab, setPendingImport, busy, confirmPendingImport, units, updatePendingRow }} />; }
 
-  return <DataExchangeView ctx={{ tab, setTab, setError, setMessage, setPendingImport, busy, setBusy, error, message, fileRefs, fileInput, productTemplate, productExport, columnChooser, productColumns, setProductColumns, previewTable, pricingTemplate, pricingExport, priceLists, pricingPriceListId, setPricingPriceListId, stocktakeExport, stocktakeWarehouse, setStocktakeWarehouse, warehouses, buildQuotation, quotationExport, quotationRows, quotationScope, setQuotationScope, quotationCategory, setQuotationCategory, categories, quotationSkus, setQuotationSkus, quotationContext, setQuotationContext, channels, groups, customers, loadMovements, selectedBalanceKey, setSelectedBalanceKey, setMovementRows, balances, selectedBalance, movementRows, refreshReferenceData, begin, fail }} />;
+  return <DataExchangeView ctx={{ tab, setTab, setError, setMessage, setPendingImport, busy, setBusy, error, message, fileRefs, fileInput, productTemplate, productExport, columnChooser, productColumns, setProductColumns, previewTable, pricingTemplate, pricingExport, priceLists, pricingPriceListId, setPricingPriceListId, stocktakeExport, stocktakeWarehouse, setStocktakeWarehouse, warehouses, buildQuotation, quotationExport, quotationRows, quotationScope, setQuotationScope, quotationCategory, setQuotationCategory, categories, quotationSkus, setQuotationSkus, quotationContext, setQuotationContext, channels, groups, customers, loadMovements, loadMoreMovements, movementHasMore, exportMovements, selectedBalanceKey, selectMovementBalance, balances, selectedBalance, movementRows, refreshReferenceData, begin, fail }} />;
 }

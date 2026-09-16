@@ -10,6 +10,7 @@ import { handleOpeningBalanceOperatorRoutes } from './opening-balance-operator.j
 import { handleManualInboundRoutes } from './manual-inbound.js';
 import { handleInventoryHoldRoutes } from './inventory-holds.js';
 import { handleWarehouseLocationModeRoutes } from './warehouse-location-mode.js';
+import { handleInventoryReportingExportRoutes } from './inventory-reporting-export.js';
 import { handleCodDriverRoutes } from './cod-driver.js';
 import { handleLogisticsRoutes } from './logistics.js';
 import { handleLogisticsAttemptRoutes } from './logistics-attempts.js';
@@ -26,6 +27,9 @@ export async function handleInventoryRoutes(req, res, options) {
   const pathname = new URL(`http://localhost${req.url}`).pathname;
   if (pathname === '/api/inventory/holds') {
     return handleInventoryHoldRoutes(req, res, options);
+  }
+  if (pathname === '/api/inventory/reporting-export') {
+    return handleInventoryReportingExportRoutes(req, res, options);
   }
   if (pathname === '/api/inventory/tracking-policies/candidates') {
     return handleInventoryTrackingPolicyCandidateRoutes(req, res, options);

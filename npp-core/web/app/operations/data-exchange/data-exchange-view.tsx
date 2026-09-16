@@ -21,13 +21,27 @@ type DataExchangeViewContext = Record<string, any> & {
   movementRows: MovementView[];
 };
 
+const MOVEMENT_LABELS: Readonly<Record<string, string>> = Object.freeze({
+  OPENING_BALANCE: 'Tồn đầu kỳ', GOODS_RECEIPT: 'Nhập hàng', SUPPLIER_RETURN: 'Trả nhà cung cấp',
+  INVENTORY_TRANSFER_OUT: 'Chuyển kho đi', INVENTORY_TRANSFER_IN: 'Nhận chuyển kho', INVENTORY_ADJUSTMENT: 'Điều chỉnh kho',
+  STOCKTAKE_ADJUSTMENT: 'Điều chỉnh sau kiểm kho', FULFILLMENT_PICK: 'Soạn hàng', FULFILLMENT_REVERSE_PICK: 'Hoàn soạn hàng',
+  DELIVERY_ISSUE: 'Xuất giao hàng', DELIVERY_RETURN: 'Nhập hàng giao trả về', CUSTOMER_RETURN: 'Khách trả hàng',
+  PICKUP_ISSUE: 'Khách nhận tại kho', MANUAL_ISSUE: 'Xuất kho thủ công', MANUAL_RECEIPT: 'Nhập kho thủ công',
+  SALES_DELIVERY_ISSUE: 'Xuất bán hàng', CUSTOMER_RETURN_RECEIPT: 'Nhập hàng khách trả',
+});
+
+function movementTypeLabel(value: string) {
+  return MOVEMENT_LABELS[value] ?? 'Nghiệp vụ kho khác';
+}
+
 export function DataExchangeView({ ctx }: { ctx: DataExchangeViewContext }) {
   const {
     tab, setTab, setError, setMessage, setPendingImport, busy, setBusy, error, message, fileRefs, fileInput, productTemplate, productExport, columnChooser,
     productColumns, setProductColumns, previewTable, pricingTemplate, pricingExport, priceLists, pricingPriceListId, setPricingPriceListId, stocktakeExport, stocktakeWarehouse,
     setStocktakeWarehouse, warehouses, buildQuotation, quotationExport, quotationRows, quotationScope, setQuotationScope, quotationCategory,
     setQuotationCategory, categories, quotationSkus, setQuotationSkus, quotationContext, setQuotationContext, channels, groups, customers,
-    loadMovements, selectedBalanceKey, setSelectedBalanceKey, setMovementRows, balances, selectedBalance, movementRows, refreshReferenceData, begin, fail,
+    loadMovements, loadMoreMovements, movementHasMore, exportMovements, selectedBalanceKey, selectMovementBalance, balances, selectedBalance, movementRows,
+    refreshReferenceData, begin, fail,
   } = ctx;
   const actions = <div className={styles.headerActions}><a className={styles.secondaryButton} href="/operations/import-export-history">Lịch sử nhập/xuất</a><button className={styles.secondaryButton} type="button" onClick={() => { begin(); refreshReferenceData().then(() => setMessage('Đã cập nhật dữ liệu nền.')).catch(fail).finally(() => setBusy(false)); }} disabled={busy}>Làm mới</button></div>;
   return <AppShell kicker="Dữ liệu vận hành" title="Nhập/xuất dữ liệu và báo giá" subtitle="Nhập, kiểm tra và xuất dữ liệu theo từng nghiệp vụ." actions={actions}>
@@ -55,9 +69,9 @@ export function DataExchangeView({ ctx }: { ctx: DataExchangeViewContext }) {
         <label className={styles.field}>Số lượng<input inputMode="decimal" value={quotationContext.quantity} onChange={(event) => setQuotationContext({ ...quotationContext, quantity: event.target.value })} /></label></div>
         {quotationRows.length ? <div className={styles.tableWrap}><table><thead><tr><th>SKU</th><th>Sản phẩm</th><th>SL</th><th>Giá áp dụng</th><th>Thành tiền</th><th>Bảng giá</th></tr></thead><tbody>{quotationRows.map((row) => <tr key={row.sku}><td><strong>{row.sku}</strong><small>{row.name}</small></td><td>{row.product}</td><td>{row.quantity}</td><td>{row.finalPrice || '—'}</td><td>{row.lineTotal || '—'}</td><td>{row.priceListCode || '—'}</td></tr>)}</tbody></table></div> : null}</section> : null}
 
-      {tab === 'movements' ? <section className={styles.panel}><div className={styles.panelTitle}><div><h2>Biến động tồn kho theo SKU</h2><p>Chọn một dòng tồn để xem từng lần nhập, xuất hoặc điều chỉnh và số tồn sau mỗi lần.</p></div><button type="button" className={styles.primaryButton} onClick={() => void loadMovements()} disabled={busy}>Xem biến động</button></div><label className={styles.field}>Dòng tồn<select value={selectedBalanceKey} onChange={(event) => { setSelectedBalanceKey(event.target.value); setMovementRows([]); }}><option value="">Chọn kho, vị trí, SKU hoặc lô</option>{balances.map((item) => { const key = scopeKey(item.warehouse_code, item.location_code, item.base_sku, item.lot_code); return <option key={key} value={key}>{item.warehouse_code} · {item.location_code || 'Không vị trí'} · {item.base_sku}{item.lot_code ? ` · ${item.lot_code}` : ''} · tồn {trimDecimal(item.on_hand_quantity)}</option>; })}</select></label>
+      {tab === 'movements' ? <section className={styles.panel}><div className={styles.panelTitle}><div><h2>Biến động tồn kho theo SKU</h2><p>Chọn một dòng tồn để xem từng lần nhập, xuất hoặc điều chỉnh và số tồn sau mỗi lần. Danh sách có thể tải tiếp; file xuất lấy đầy đủ từ máy chủ trong phạm vi đã chọn.</p></div><div className={styles.buttonRow}><button type="button" className={styles.primaryButton} onClick={() => void loadMovements()} disabled={busy}>Xem biến động</button><button type="button" className={styles.secondaryButton} onClick={() => void exportMovements('xlsx')} disabled={busy || !selectedBalance}>Xuất Excel</button><button type="button" className={styles.secondaryButton} onClick={() => void exportMovements('csv')} disabled={busy || !selectedBalance}>Xuất CSV</button></div></div><label className={styles.field}>Dòng tồn<select value={selectedBalanceKey} onChange={(event) => selectMovementBalance(event.target.value)}><option value="">Chọn kho, vị trí, SKU hoặc lô</option>{balances.map((item) => { const key = scopeKey(item.warehouse_code, item.location_code, item.base_sku, item.lot_code); return <option key={key} value={key}>{item.warehouse_code} · {item.location_code || 'Không vị trí'} · {item.base_sku}{item.lot_code ? ` · ${item.lot_code}` : ''} · tồn {trimDecimal(item.on_hand_quantity)}</option>; })}</select></label>
         {selectedBalance ? <div className={styles.balanceSummary}><span>Tồn hiện tại <strong>{trimDecimal(selectedBalance.on_hand_quantity)}</strong></span><span>Đang giữ <strong>{trimDecimal(selectedBalance.reserved_quantity)}</strong></span><span>Khả dụng <strong>{trimDecimal(selectedBalance.available_quantity)}</strong></span></div> : null}
-        {movementRows.length ? <div className={styles.tableWrap}><table><thead><tr><th>Thời gian</th><th>Chứng từ</th><th>Loại</th><th>Biến động</th><th>Tồn sau</th></tr></thead><tbody>{movementRows.map((row) => <tr key={`${row.movement_id}:${row.source_line_reference ?? row.base_quantity_delta}`}><td>{new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date(row.posted_at))}</td><td>{row.source_document_number || row.document_number || row.source_document_type || '—'}</td><td>{row.movement_type}</td><td className={scaled12(row.base_quantity_delta) >= 0n ? styles.positive : styles.negative}>{scaled12(row.base_quantity_delta) >= 0n ? '+' : ''}{trimDecimal(row.base_quantity_delta)}</td><td>{trimDecimal(row.stockAfter)}</td></tr>)}</tbody></table></div> : null}</section> : null}
+        {movementRows.length ? <><div className={styles.tableWrap}><table><thead><tr><th>Thời gian</th><th>Chứng từ</th><th>Loại nghiệp vụ</th><th>Biến động</th><th>Tồn sau</th></tr></thead><tbody>{movementRows.map((row) => <tr key={`${row.movement_id}:${row.source_line_reference ?? row.base_quantity_delta}`}><td>{new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date(row.posted_at))}</td><td>{row.source_document_number || row.document_number || row.source_document_type || '—'}</td><td>{movementTypeLabel(row.movement_type)}</td><td className={scaled12(row.base_quantity_delta) >= 0n ? styles.positive : styles.negative}>{scaled12(row.base_quantity_delta) >= 0n ? '+' : ''}{trimDecimal(row.base_quantity_delta)}</td><td>{trimDecimal(row.stockAfter)}</td></tr>)}</tbody></table></div>{movementHasMore ? <div className={styles.buttonRow}><button type="button" className={styles.secondaryButton} onClick={() => void loadMoreMovements()} disabled={busy}>Xem thêm</button></div> : null}</> : null}</section> : null}
     </div>
   </AppShell>;
 }
