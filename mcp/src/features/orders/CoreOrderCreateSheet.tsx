@@ -692,26 +692,25 @@ export function CoreOrderCreateSheet({
                             const unitLabel = purchaseUnitLabel(product);
                             const unitDetail = purchaseUnitDetail(product);
                             return (
-                              <div className={catalogStyles.unitRow} data-selected={selectedQuantity ? "true" : "false"} key={product.variantId}>
-                                <div className={catalogStyles.unitCopy}>
+                              <button
+                                type="button"
+                                className={catalogStyles.unitRow}
+                                data-selected={selectedQuantity ? "true" : "false"}
+                                key={product.variantId}
+                                onClick={() => addProduct(product)}
+                                disabled={!customerReady || saving}
+                                aria-label={`Thêm ${product.name}, ${variantPrimaryLabel(product)} · ${unitLabel} vào đơn`}
+                                title={`${product.name} · ${unitLabel} · ${unitDetail || variantPrimaryLabel(product)}`}
+                              >
+                                <span className={catalogStyles.unitCopy}>
                                   <strong>{unitLabel}</strong>
                                   {unitDetail ? <small>{unitDetail}</small> : null}
-                                </div>
-                                <div className={catalogStyles.unitPrice}>
+                                </span>
+                                <span className={catalogStyles.unitPrice}>
                                   <strong>{catalogPriceLabel(product.price)}</strong>
-                                  {selectedQuantity ? <small>{selectedQuantity} trong đơn</small> : null}
-                                </div>
-                                <button
-                                  type="button"
-                                  className={catalogStyles.unitAdd}
-                                  onClick={() => addProduct(product)}
-                                  disabled={!customerReady || saving}
-                                  aria-label={`Thêm ${product.name}, ${variantPrimaryLabel(product)} · ${unitLabel} vào đơn`}
-                                  title={`${product.name} · ${unitLabel} · ${unitDetail || variantPrimaryLabel(product)}`}
-                                >
-                                  <span aria-hidden="true">+</span>
-                                </button>
-                              </div>
+                                  {selectedQuantity ? <small>×{selectedQuantity}</small> : null}
+                                </span>
+                              </button>
                             );
                           })}
                         </div>
@@ -731,7 +730,7 @@ export function CoreOrderCreateSheet({
               <b className={styles.cartTotal}>{totalLabel}</b>
             </div>
             <div className={styles.itemList}>
-              {items.length === 0 ? <p className={styles.emptyState}>Chưa có sản phẩm. Mở tab Sản phẩm và bấm + ở đúng quy cách cần lấy.</p> : null}
+              {items.length === 0 ? <p className={styles.emptyState}>Chưa có sản phẩm. Mở tab Sản phẩm và chạm vào dòng Lẻ/Thùng cần lấy.</p> : null}
               {items.map((item) => (
                 <article key={item.variantId} className={styles.cartItem}>
                   <div className={styles.itemHead}>
