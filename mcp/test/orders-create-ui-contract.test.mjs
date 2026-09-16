@@ -82,26 +82,30 @@ test("catalog keeps quick search full-width and retires the left filter rail fro
   assert.doesNotMatch(catalogStyles, /grid-template-columns:\s*(?:142px|100px|88px) minmax\(0, 1fr\)/);
 });
 
-test("each MCP product stays one card with flat Lẻ-Thùng rows and compact plus action", () => {
+test("each MCP product keeps one card and each Lẻ-Thùng row is the full add target", () => {
   assert.match(sheet, /productGroups\.map\(\(group\)/);
   assert.match(sheet, /<article key=\{group\.productId\}[\s\S]*data-order-product-card/);
   assert.match(sheet, /group\.variants\.map\(\(product\) => \{/);
   assert.match(sheet, /purchaseUnitLabel\(product\)/);
-  assert.match(sheet, /className=\{catalogStyles\.unitRow\}/);
-  assert.match(sheet, /className=\{catalogStyles\.unitAdd\}/);
-  assert.match(sheet, /onClick=\{\(\) => addProduct\(product\)\}/);
-  assert.match(sheet, /<span aria-hidden="true">\+<\/span>/);
+  assert.match(sheet, /<button[\s\S]*className=\{catalogStyles\.unitRow\}[\s\S]*onClick=\{\(\) => addProduct\(product\)\}/);
+  assert.match(sheet, /disabled=\{!customerReady \|\| saving\}/);
+  assert.match(sheet, /<small>×\{selectedQuantity\}<\/small>/);
+  assert.doesNotMatch(sheet, /catalogStyles\.unitAdd/);
+  assert.doesNotMatch(sheet, /<span aria-hidden="true">\+<\/span>/);
+  assert.doesNotMatch(sheet, /Mở tab Sản phẩm và bấm \+/);
   assert.doesNotMatch(sheet, /styles\.variantGrid|styles\.variantButton|\+ Thêm/);
-  assert.match(catalogStyles, /\.unitRow\s*\{[\s\S]*border-top:/);
-  assert.doesNotMatch(catalogStyles.match(/\.unitRow\s*\{[\s\S]*?\}/)?.[0] ?? "", /border-radius|background:/);
-  const addRule = catalogStyles.match(/\.unitAdd\s*\{([\s\S]*?)\}/)?.[1] ?? "";
-  assert.match(addRule, /width:\s*40px/);
-  assert.match(addRule, /height:\s*40px/);
-  assert.match(addRule, /border:\s*0/);
-  assert.match(addRule, /background:\s*transparent/);
-  assert.match(addRule, /color:\s*var\(--warning\)/);
-  assert.match(addRule, /box-shadow:\s*none/);
-  assert.doesNotMatch(addRule, /border-radius:\s*50%/);
+
+  const rowRule = catalogStyles.match(/\.unitRow\s*\{([\s\S]*?)\}/)?.[1] ?? "";
+  assert.match(rowRule, /width:\s*100%/);
+  assert.match(rowRule, /min-height:\s*52px/);
+  assert.match(rowRule, /cursor:\s*pointer/);
+  assert.match(rowRule, /border-top:/);
+  assert.match(rowRule, /background:\s*transparent/);
+
+  const priceRule = catalogStyles.match(/\.unitPrice strong\s*\{([\s\S]*?)\}/)?.[1] ?? "";
+  assert.match(priceRule, /font-size:\s*13px/);
+  assert.match(priceRule, /font-weight:\s*900/);
+
   const milkTeaIndex = catalogPriority.indexOf('"Trà sữa"');
   const spicyIndex = catalogPriority.indexOf('"Mì Cay"');
   const frozenIndex = catalogPriority.indexOf('"Đông Lạnh"');
