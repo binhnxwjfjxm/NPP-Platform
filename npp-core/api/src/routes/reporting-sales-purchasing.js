@@ -34,6 +34,10 @@ import {
   createSalesReportingExport,
   normalizeSalesReportingExportSelection,
 } from '../services/reporting-sales-export.js';
+import {
+  createGrossMarginReportingExport,
+  normalizeGrossMarginReportingExportSelection,
+} from '../services/reporting-gross-margin-export.js';
 
 function apiError(code, message, details = {}, retryable = false, statusCode = 500) {
   return { code, message, details, retryable, statusCode };
@@ -82,6 +86,7 @@ function reportingFamily(pathname) {
   if (pathname === '/api/reporting/inventory') return 'inventory';
   if (pathname === '/api/reporting/aging') return 'aging';
   if (pathname === '/api/reporting/gross-margin') return 'gross-margin';
+  if (pathname === '/api/reporting/gross-margin-export') return 'gross-margin-export';
   if (pathname === '/api/reporting/employee-mcp') return 'employee-mcp';
   if (pathname === '/api/reporting/mcp-supervision') return 'mcp-supervision';
   if (pathname === '/api/reporting/admin-alerts' || pathname.startsWith('/api/reporting/admin-alerts/')) return 'admin-alerts';
@@ -104,7 +109,7 @@ function reportingPermission(options, family) {
   if (family === 'logistics') return options.PERMISSIONS.coreReportingLogisticsRead;
   if (family === 'cod') return options.PERMISSIONS.coreReportingCodRead;
   if (family === 'business-export') return options.PERMISSIONS.coreReportingExport;
-  if (family === 'sales-export') return options.PERMISSIONS.coreReportingExport;
+  if (family === 'sales-export' || family === 'gross-margin-export') return options.PERMISSIONS.coreReportingExport;
   if (family === 'audit-history' || family === 'import-export-history') return options.PERMISSIONS.coreReportingAuditHistoryRead;
   if (family === 'control-tower') return options.PERMISSIONS.coreReportingControlTowerRead;
   return options.PERMISSIONS.coreReportingEmployeeMcpRead;
@@ -175,13 +180,7 @@ async function streamBusinessExport(req, res, options, requestContext) {
     if (!res.headersSent) {
       sendError(
         res,
-        apiError(
-          'BUSINESS_DATA_EXPORT_FAILED',
-          'Không xuất được số liệu doanh nghiệp',
-          {},
-          true,
-          503,
-        ),
+        apiError('BUSINESS_DATA_EXPORT_FAILED', 'Không xuất được số liệu doanh nghiệp', {}, true, 503),
         options.requestId,
         options.receivedAt,
       );
@@ -198,12 +197,7 @@ async function streamBusinessExport(req, res, options, requestContext) {
 async function streamSalesReportingExport(res, options, requestContext, filters, warehouseIds, selection) {
   let artifact = null;
   try {
-    artifact = await createSalesReportingExport(options.getPool(), {
-      requestContext,
-      filters,
-      warehouseIds,
-      selection,
-    });
+    artifact = await createSalesReportingExport(options.getPool(), { requestContext, filters, warehouseIds, selection });
     res.statusCode = 200;
     res.setHeader('Cache-Control', 'no-store, max-age=0');
     res.setHeader('Content-Type', artifact.contentType);
@@ -213,27 +207,52 @@ async function streamSalesReportingExport(res, options, requestContext, filters,
     await pipeline(createReadStream(artifact.filePath), res);
   } catch (error) {
     console.error(JSON.stringify({
-      event: 'sales_reporting_export_failed',
-      requestId: options.requestId,
-      errorName: error?.name ?? null,
-      errorCode: typeof error?.code === 'string' ? error.code : null,
+      event: 'sales_reporting_export_failed', requestId: options.requestId,
+      errorName: error?.name ?? null, errorCode: typeof error?.code === 'string' ? error.code : null,
     }));
     if (!res.headersSent) {
       const reconciliationFailed = error?.code === 'SALES_REPORT_RECONCILIATION_FAILED';
-      sendError(
-        res,
-        apiError(
-          reconciliationFailed ? 'SALES_REPORT_RECONCILIATION_FAILED' : 'SALES_REPORT_EXPORT_FAILED',
-          reconciliationFailed
-            ? 'Báo cáo chưa đối soát khớp nên chưa thể xuất file'
-            : 'Không xuất được Báo cáo bán hàng',
-          {},
-          !reconciliationFailed,
-          reconciliationFailed ? 409 : 503,
-        ),
-        options.requestId,
-        options.receivedAt,
-      );
+      sendError(res, apiError(
+        reconciliationFailed ? 'SALES_REPORT_RECONCILIATION_FAILED' : 'SALES_REPORT_EXPORT_FAILED',
+        reconciliationFailed ? 'Báo cáo chưa đối soát khớp nên chưa thể xuất file' : 'Không xuất được Báo cáo bán hàng',
+        {}, !reconciliationFailed, reconciliationFailed ? 409 : 503,
+      ), options.requestId, options.receivedAt);
+    } else if (!res.destroyed) {
+      res.destroy(error instanceof Error ? error : undefined);
+    }
+  } finally {
+    if (artifact?.cleanup) {
+      try { await artifact.cleanup(); } catch {}
+    }
+  }
+}
+
+async function streamGrossMarginReportingExport(res, options, requestContext, filters, warehouseIds, selection) {
+  let artifact = null;
+  try {
+    artifact = await createGrossMarginReportingExport(options.getPool(), { requestContext, filters, warehouseIds, selection });
+    res.statusCode = 200;
+    res.setHeader('Cache-Control', 'no-store, max-age=0');
+    res.setHeader('Content-Type', artifact.contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${artifact.filename}"`);
+    res.setHeader('Content-Length', String(artifact.size));
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    await pipeline(createReadStream(artifact.filePath), res);
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: 'gross_margin_reporting_export_failed', requestId: options.requestId,
+      errorName: error?.name ?? null, errorCode: typeof error?.code === 'string' ? error.code : null,
+    }));
+    if (!res.headersSent) {
+      const reconciliationFailed = error?.code === 'GROSS_MARGIN_EXPORT_RECONCILIATION_FAILED';
+      const tooLarge = error?.code === 'GROSS_MARGIN_EXPORT_TOO_LARGE';
+      sendError(res, apiError(
+        reconciliationFailed ? 'GROSS_MARGIN_EXPORT_RECONCILIATION_FAILED' : tooLarge ? 'GROSS_MARGIN_EXPORT_TOO_LARGE' : 'GROSS_MARGIN_EXPORT_FAILED',
+        reconciliationFailed ? 'Báo cáo lãi gộp chưa đối soát khớp nên chưa thể xuất file'
+          : tooLarge ? 'Dữ liệu xuất quá lớn. Hãy thu hẹp kỳ báo cáo hoặc chọn một kho.'
+            : 'Không xuất được báo cáo lãi gộp',
+        {}, !reconciliationFailed && !tooLarge, reconciliationFailed ? 409 : tooLarge ? 413 : 503,
+      ), options.requestId, options.receivedAt);
     } else if (!res.destroyed) {
       res.destroy(error instanceof Error ? error : undefined);
     }
@@ -273,24 +292,21 @@ export async function handleReportingRoutes(req, res, options) {
     && family !== 'mcp-supervision'
     && family !== 'admin-alerts'
     && !historyFamily;
-  const requestContext = await authenticateAndAuthorize(
-    req,
-    res,
-    options,
-    reportingPermission(options, family),
-    warehouseScoped,
-  );
+  const requestContext = await authenticateAndAuthorize(req, res, options, reportingPermission(options, family), warehouseScoped);
   if (!requestContext) return true;
 
   if (family === 'sales-export') {
     const salesReadPermission = options.PERMISSIONS.coreReportingSalesRead;
     if (!salesReadPermission || !options.authorize(requestContext, salesReadPermission).ok) {
-      sendError(
-        res,
-        apiError('FORBIDDEN', 'Tài khoản hiện tại không có quyền xem Báo cáo bán hàng', {}, false, 403),
-        options.requestId,
-        options.receivedAt,
-      );
+      sendError(res, apiError('FORBIDDEN', 'Tài khoản hiện tại không có quyền xem Báo cáo bán hàng', {}, false, 403), options.requestId, options.receivedAt);
+      return true;
+    }
+  }
+
+  if (family === 'gross-margin-export') {
+    const grossMarginReadPermission = options.PERMISSIONS.coreReportingGrossMarginRead;
+    if (!grossMarginReadPermission || !options.authorize(requestContext, grossMarginReadPermission).ok) {
+      sendError(res, apiError('FORBIDDEN', 'Tài khoản hiện tại không có quyền xem báo cáo lãi gộp', {}, false, 403), options.requestId, options.receivedAt);
       return true;
     }
   }
@@ -302,17 +318,11 @@ export async function handleReportingRoutes(req, res, options) {
 
   if (historyFamily) {
     const period = normalizeFilters({ from: url.searchParams.get('from'), to: url.searchParams.get('to'), warehouseId: null }, new Date(options.receivedAt));
-    if (!period.ok) {
-      sendNormalizedError(res, period, options);
-      return true;
-    }
+    if (!period.ok) { sendNormalizedError(res, period, options); return true; }
     const historyFilters = family === 'audit-history'
       ? normalizeAuditHistoryFilters(url.searchParams, period)
       : normalizeImportExportHistoryFilters(url.searchParams, period);
-    if (!historyFilters.ok) {
-      sendNormalizedError(res, historyFilters, options);
-      return true;
-    }
+    if (!historyFilters.ok) { sendNormalizedError(res, historyFilters, options); return true; }
     try {
       const report = family === 'audit-history'
         ? await auditHistoryReport(options.getPool(), requestContext, historyFilters)
@@ -320,57 +330,24 @@ export async function handleReportingRoutes(req, res, options) {
       res.setHeader('Cache-Control', 'no-store');
       sendSuccess(res, report, options.requestId, options.receivedAt);
     } catch (error) {
-      console.error(JSON.stringify({
-        event: 'reporting_query_failed',
-        requestId: options.requestId,
-        family,
-        errorName: error?.name ?? null,
-        errorCode: typeof error?.code === 'string' ? error.code : null,
-      }));
+      console.error(JSON.stringify({ event: 'reporting_query_failed', requestId: options.requestId, family, errorName: error?.name ?? null, errorCode: typeof error?.code === 'string' ? error.code : null }));
       sendError(res, apiError('REPORTING_QUERY_FAILED', 'Không tải được lịch sử vận hành', {}, false, 503), options.requestId, options.receivedAt);
     }
     return true;
   }
 
   if (isMcpFamily(family) && requiresCanonicalEmployeeMcpScope(requestContext)) {
-    sendError(
-      res,
-      apiError('EMPLOYEE_MCP_SCOPE_DENIED', 'Cần phạm vi nhân viên canonical để xem báo cáo MCP', {}, false, 403),
-      options.requestId,
-      options.receivedAt,
-    );
+    sendError(res, apiError('EMPLOYEE_MCP_SCOPE_DENIED', 'Cần phạm vi nhân viên canonical để xem báo cáo MCP', {}, false, 403), options.requestId, options.receivedAt);
     return true;
   }
 
   if (family === 'aging' && (url.searchParams.has('from') || url.searchParams.has('to'))) {
-    sendError(
-      res,
-      apiError(
-        'AGING_HISTORICAL_FILTER_UNSUPPORTED',
-        'Tuổi nợ hiện dùng số dư hiện tại; không nhận bộ lọc kỳ lịch sử',
-        {},
-        false,
-        400,
-      ),
-      options.requestId,
-      options.receivedAt,
-    );
+    sendError(res, apiError('AGING_HISTORICAL_FILTER_UNSUPPORTED', 'Tuổi nợ hiện dùng số dư hiện tại; không nhận bộ lọc kỳ lịch sử', {}, false, 400), options.requestId, options.receivedAt);
     return true;
   }
 
   if (isMcpFamily(family) && url.searchParams.has('warehouseId')) {
-    sendError(
-      res,
-      apiError(
-        'EMPLOYEE_MCP_WAREHOUSE_FILTER_UNSUPPORTED',
-        'Báo cáo MCP không suy diễn phạm vi field từ kho',
-        {},
-        false,
-        400,
-      ),
-      options.requestId,
-      options.receivedAt,
-    );
+    sendError(res, apiError('EMPLOYEE_MCP_WAREHOUSE_FILTER_UNSUPPORTED', 'Báo cáo MCP không suy diễn phạm vi field từ kho', {}, false, 400), options.requestId, options.receivedAt);
     return true;
   }
 
@@ -379,10 +356,7 @@ export async function handleReportingRoutes(req, res, options) {
     to: family === 'aging' ? null : url.searchParams.get('to'),
     warehouseId: warehouseScoped ? url.searchParams.get('warehouseId') : null,
   }, new Date(options.receivedAt));
-  if (!normalized.ok) {
-    sendNormalizedError(res, normalized, options);
-    return true;
-  }
+  if (!normalized.ok) { sendNormalizedError(res, normalized, options); return true; }
 
   let reportingFilters = normalized;
   if (family === 'sales' || family === 'sales-export') {
@@ -391,51 +365,37 @@ export async function handleReportingRoutes(req, res, options) {
       customerGroupId: url.searchParams.get('customerGroupId'),
       includeZeroProducts: url.searchParams.get('includeZeroProducts'),
     }, normalized);
-    if (!salesFilters.ok) {
-      sendNormalizedError(res, salesFilters, options);
-      return true;
-    }
+    if (!salesFilters.ok) { sendNormalizedError(res, salesFilters, options); return true; }
     reportingFilters = salesFilters;
   }
 
   const slowDays = family === 'inventory' ? normalizeSlowDays(url.searchParams.get('slowDays')) : undefined;
   if (family === 'inventory' && slowDays === null) {
-    sendError(
-      res,
-      apiError('INVALID_REPORTING_SLOW_DAYS', 'Ngưỡng hàng chậm luân chuyển phải là số nguyên từ 30 đến 365 ngày', {}, false, 400),
-      options.requestId,
-      options.receivedAt,
-    );
+    sendError(res, apiError('INVALID_REPORTING_SLOW_DAYS', 'Ngưỡng hàng chậm luân chuyển phải là số nguyên từ 30 đến 365 ngày', {}, false, 400), options.requestId, options.receivedAt);
     return true;
   }
 
   let warehouseScope = null;
   if (warehouseScoped) {
     warehouseScope = validateScope(requestContext, reportingFilters);
-    if (!warehouseScope.ok) {
-      sendNormalizedError(res, warehouseScope, options);
-      return true;
-    }
+    if (!warehouseScope.ok) { sendNormalizedError(res, warehouseScope, options); return true; }
   }
 
   if (family === 'sales-export') {
     const selection = normalizeSalesReportingExportSelection({
-      dimension: url.searchParams.get('dimension'),
-      format: url.searchParams.get('format'),
-      columns: url.searchParams.getAll('column'),
+      dimension: url.searchParams.get('dimension'), format: url.searchParams.get('format'), columns: url.searchParams.getAll('column'),
     });
-    if (!selection.ok) {
-      sendNormalizedError(res, selection, options);
-      return true;
-    }
-    await streamSalesReportingExport(
-      res,
-      options,
-      requestContext,
-      reportingFilters,
-      warehouseScope.warehouseIds,
-      selection,
-    );
+    if (!selection.ok) { sendNormalizedError(res, selection, options); return true; }
+    await streamSalesReportingExport(res, options, requestContext, reportingFilters, warehouseScope.warehouseIds, selection);
+    return true;
+  }
+
+  if (family === 'gross-margin-export') {
+    const selection = normalizeGrossMarginReportingExportSelection({
+      dimension: url.searchParams.get('dimension'), format: url.searchParams.get('format'), columns: url.searchParams.getAll('column'),
+    });
+    if (!selection.ok) { sendNormalizedError(res, selection, options); return true; }
+    await streamGrossMarginReportingExport(res, options, requestContext, normalized, warehouseScope.warehouseIds, selection);
     return true;
   }
 
@@ -446,53 +406,27 @@ export async function handleReportingRoutes(req, res, options) {
   }
 
   if (alertMutation) {
-    await handleAdminAlertMutation({
-      req,
-      res,
-      options,
-      requestContext,
-      filters: normalized,
-      fieldScope,
-      alertId,
-    });
+    await handleAdminAlertMutation({ req, res, options, requestContext, filters: normalized, fieldScope, alertId });
     return true;
   }
 
   try {
     let report;
-    if (family === 'sales') {
-      report = await salesReport(options.getPool(), requestContext, reportingFilters, warehouseScope.warehouseIds);
-    } else if (family === 'purchasing') {
-      report = await purchasingReport(options.getPool(), requestContext, normalized, warehouseScope.warehouseIds);
-    } else if (family === 'inventory') {
-      report = await inventoryReport(options.getPool(), requestContext, normalized, warehouseScope.warehouseIds, slowDays);
-    } else if (family === 'aging') {
-      report = await agingReport(options.getPool(), requestContext, normalized, warehouseScope.warehouseIds);
-    } else if (family === 'gross-margin') {
-      report = await grossMarginReport(options.getPool(), requestContext, normalized, warehouseScope.warehouseIds);
-    } else if (family === 'logistics') {
-      report = await logisticsReport(options.getPool(), requestContext, normalized, warehouseScope.warehouseIds);
-    } else if (family === 'cod') {
-      report = await codReport(options.getPool(), requestContext, normalized, warehouseScope.warehouseIds);
-    } else if (family === 'control-tower') {
-      report = await controlTowerReport(options.getPool(), requestContext, normalized, warehouseScope.warehouseIds);
-    } else if (family === 'mcp-supervision') {
-      report = await mcpSupervisionReport(options.getPool(), requestContext, normalized, fieldScope);
-    } else if (family === 'admin-alerts') {
-      report = await adminAlertsReport(options.getPool(), requestContext, normalized, fieldScope);
-    } else {
-      report = await employeeMcpReport(options.getPool(), requestContext, normalized, fieldScope);
-    }
+    if (family === 'sales') report = await salesReport(options.getPool(), requestContext, reportingFilters, warehouseScope.warehouseIds);
+    else if (family === 'purchasing') report = await purchasingReport(options.getPool(), requestContext, normalized, warehouseScope.warehouseIds);
+    else if (family === 'inventory') report = await inventoryReport(options.getPool(), requestContext, normalized, warehouseScope.warehouseIds, slowDays);
+    else if (family === 'aging') report = await agingReport(options.getPool(), requestContext, normalized, warehouseScope.warehouseIds);
+    else if (family === 'gross-margin') report = await grossMarginReport(options.getPool(), requestContext, normalized, warehouseScope.warehouseIds);
+    else if (family === 'logistics') report = await logisticsReport(options.getPool(), requestContext, normalized, warehouseScope.warehouseIds);
+    else if (family === 'cod') report = await codReport(options.getPool(), requestContext, normalized, warehouseScope.warehouseIds);
+    else if (family === 'control-tower') report = await controlTowerReport(options.getPool(), requestContext, normalized, warehouseScope.warehouseIds);
+    else if (family === 'mcp-supervision') report = await mcpSupervisionReport(options.getPool(), requestContext, normalized, fieldScope);
+    else if (family === 'admin-alerts') report = await adminAlertsReport(options.getPool(), requestContext, normalized, fieldScope);
+    else report = await employeeMcpReport(options.getPool(), requestContext, normalized, fieldScope);
     res.setHeader('Cache-Control', 'no-store');
     sendSuccess(res, report, options.requestId, options.receivedAt);
   } catch (error) {
-    console.error(JSON.stringify({
-      event: 'reporting_query_failed',
-      requestId: options.requestId,
-      family,
-      errorName: error?.name ?? null,
-      errorCode: typeof error?.code === 'string' ? error.code : null,
-    }));
+    console.error(JSON.stringify({ event: 'reporting_query_failed', requestId: options.requestId, family, errorName: error?.name ?? null, errorCode: typeof error?.code === 'string' ? error.code : null }));
     sendError(res, apiError('REPORTING_QUERY_FAILED', 'Không tải được báo cáo vận hành', {}, false, 503), options.requestId, options.receivedAt);
   }
   return true;
