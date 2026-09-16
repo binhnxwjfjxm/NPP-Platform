@@ -30,7 +30,9 @@ test('opening balance file selection invalidates every previously validated draf
   assert.match(workspace, /setValidation\(null\)/);
   assert.match(workspace, /setValidationChecksum\(null\)/);
   assert.match(workspace, /invalidateDraft\(\);\s*setRows\(\[\]\)/);
-  assert.match(workspace, /if \(!file\.name\.toLowerCase\(\)\.endsWith\('\.csv'\)\)/);
+  assert.match(workspace, /const lowerName = file\.name\.toLowerCase\(\)/);
+  assert.match(workspace, /!lowerName\.endsWith\('\.csv'\) && !lowerName\.endsWith\('\.xlsx'\)/);
+  assert.match(workspace, /readSpreadsheetRows\(file\)/);
   assert.doesNotMatch(page, /OpeningFileResetBoundary/);
 });
 

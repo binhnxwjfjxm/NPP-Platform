@@ -15,9 +15,10 @@ test('opening balance page uses CSV workspace instead of the legacy JSON form', 
   assert.doesNotMatch(workspace, /textarea/);
 });
 
-test('CSV flow has template, file selection, preview, validation and posting gates', () => {
-  assert.match(workspace, /Tải mẫu Excel\/CSV/);
+test('spreadsheet flow has template, file selection, preview, validation and posting gates', () => {
+  assert.match(workspace, /Tải mẫu CSV/);
   assert.match(workspace, /inventory-opening-file-input/);
+  assert.match(workspace, /accept="\.xlsx,\.csv"/);
   assert.match(workspace, /Xem trước dữ liệu/);
   assert.match(workspace, /Kiểm tra tệp/);
   assert.match(workspace, /Xác nhận nhập tồn/);
@@ -25,14 +26,14 @@ test('CSV flow has template, file selection, preview, validation and posting gat
   assert.match(workspace, /!validationChecksum/);
 });
 
-test('CSV validation is bound to the current draft and ignores stale responses', () => {
+test('spreadsheet validation is bound to the current draft and ignores stale responses', () => {
   assert.match(workspace, /draftRevision/);
   assert.match(workspace, /revision !== draftRevision\.current/);
   assert.match(workspace, /contentChecksum !== validationChecksum/);
   assert.match(workspace, /invalidateDraft\(\)/);
 });
 
-test('CSV errors and history remain actionable', () => {
+test('spreadsheet errors and history remain actionable', () => {
   assert.match(workspace, /localErrors\.map/);
   assert.match(workspace, /item\.lineNumber \+ 1/);
   assert.match(workspace, /\/api\/inventory\/opening-balances\?limit=200/);
