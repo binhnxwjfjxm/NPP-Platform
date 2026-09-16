@@ -23,7 +23,9 @@ test('Issue #615 production fix routes driver custody to the COD handler and exp
 test('Issue #615 production fix shows product identity and office Vietnamese in inventory reporting', () => {
   const source = read('npp-core/web/app/components/inventory-reporting-workspace.tsx');
 
-  assert.match(source, /\/api\/inventory\/balances\?limit=1000/);
+  assert.match(source, /const PRODUCT_LABEL_PAGE_SIZE = 1000/);
+  assert.match(source, /limit=\$\{PRODUCT_LABEL_PAGE_SIZE\}&offset=\$\{offset\}/);
+  assert.match(source, /offset \+= PRODUCT_LABEL_PAGE_SIZE/);
   assert.match(source, /product_name/);
   assert.match(source, /Sản phẩm \/ mã hàng/);
   assert.match(source, /Tồn kho/);

@@ -8,6 +8,8 @@ import {
   BusinessTableSequenceHeader,
 } from './business-table-sequence';
 import { StockHoldBreakdown } from './stock-hold-breakdown';
+import { InventoryReportingExportDialog } from './inventory-reporting-export-dialog';
+import { inventoryMovementTypeLabel } from '../../lib/inventory-movement-labels';
 import type { InventoryReportingDashboard } from '../../lib/inventory-reporting-types';
 import {
   WorkspaceTabPanel,
@@ -69,24 +71,7 @@ const INVENTORY_TAB_PREFIX = 'inventory-reporting';
 const QUANTITY_SCALE = 1_000_000_000_000n;
 const QUANTITY_SCALE_DIGITS = 12;
 const QUANTITY_PATTERN = /^(-?)(\d+)(?:\.(\d{1,12}))?$/;
-
-const MOVEMENT_LABELS: Readonly<Record<string, string>> = Object.freeze({
-  OPENING_BALANCE: 'Tồn đầu kỳ',
-  GOODS_RECEIPT: 'Nhập hàng',
-  SUPPLIER_RETURN: 'Trả nhà cung cấp',
-  INVENTORY_TRANSFER_OUT: 'Chuyển kho đi',
-  INVENTORY_TRANSFER_IN: 'Nhận chuyển kho',
-  INVENTORY_ADJUSTMENT: 'Điều chỉnh kho',
-  STOCKTAKE_ADJUSTMENT: 'Điều chỉnh sau kiểm kho',
-  FULFILLMENT_PICK: 'Soạn hàng',
-  FULFILLMENT_REVERSE_PICK: 'Hoàn soạn hàng',
-  DELIVERY_ISSUE: 'Xuất giao hàng',
-  DELIVERY_RETURN: 'Nhập hàng giao trả về',
-  CUSTOMER_RETURN: 'Khách trả hàng',
-  PICKUP_ISSUE: 'Khách nhận tại kho',
-  MANUAL_ISSUE: 'Xuất kho thủ công',
-  MANUAL_RECEIPT: 'Nhập kho thủ công',
-});
+const PRODUCT_LABEL_PAGE_SIZE = 1000;
 
 function incrementDigits(value: string) {
   const digits = value.split('');
@@ -162,10 +147,6 @@ function expiryClass(value: string) {
   if (value === 'EXPIRING_30_DAYS' || value === 'EXPIRING_90_DAYS') return styles.statusWarn;
   if (value === 'ACTIVE') return styles.statusGood;
   return styles.statusNeutral;
-}
-
-function movementTypeLabel(value: string) {
-  return MOVEMENT_LABELS[value] ?? 'Nghiệp vụ kho khác';
 }
 
 function costingStatusLabel(value: string) {
@@ -248,12 +229,18 @@ async function requestReport(filters: Filters): Promise<InventoryReportingDashbo
 }
 
 async function requestProductLabels(): Promise<InventoryProductLabel[]> {
-  const response = await fetch('/api/inventory/balances?limit=1000', { method: 'GET', cache: 'no-store' });
-  const envelope = await response.json().catch(() => ({})) as ApiEnvelope<InventoryProductLabel[]>;
-  if (!response.ok || !envelope.data) {
-    throw new Error(envelope.error?.message || 'Không tải được tên sản phẩm trong tồn kho.');
+  const rows: InventoryProductLabel[] = [];
+  let offset = 0;
+  while (true) {
+    const response = await fetch(`/api/inventory/balances?limit=${PRODUCT_LABEL_PAGE_SIZE}&offset=${offset}`, { method: 'GET', cache: 'no-store' });
+    const envelope = await response.json().catch(() => ({})) as ApiEnvelope<InventoryProductLabel[]>;
+    if (!response.ok || !envelope.data) {
+      throw new Error(envelope.error?.message || 'Không tải được tên sản phẩm trong tồn kho.');
+    }
+    rows.push(...envelope.data);
+    if (envelope.data.length < PRODUCT_LABEL_PAGE_SIZE) return rows;
+    offset += PRODUCT_LABEL_PAGE_SIZE;
   }
-  return envelope.data;
 }
 
 export function InventoryReportingWorkspace() {
@@ -334,6 +321,7 @@ export function InventoryReportingWorkspace() {
 
   const actions = (
     <div className={styles.headerActions}>
+      {report ? <InventoryReportingExportDialog initialDimension={activeTab} filters={report.filters} disabled={busy} /> : null}
       <Link className={styles.linkButton} href="/inventory/balances">Tra cứu tồn</Link>
       <Link className={styles.linkButton} href="/inventory/costing">Giá vốn</Link>
       <Link className={styles.linkButton} href="/inventory/lots">Danh mục lô</Link>
@@ -525,7 +513,7 @@ export function InventoryReportingWorkspace() {
                     <thead><tr><BusinessTableSequenceHeader /><th>Loại nghiệp vụ</th><th className={styles.numeric}>Chứng từ</th><th className={styles.numeric}>Dòng</th><th className={styles.numeric}>Mã hàng</th></tr></thead>
                     <tbody>
                       {report.movementTypes.map((row, rowIndex) => (
-                        <tr key={row.movementType}><BusinessTableSequenceCell rowIndex={rowIndex} /><td>{movementTypeLabel(row.movementType)}</td><td className={styles.numeric}>{row.movementCount}</td><td className={styles.numeric}>{row.movementLineCount}</td><td className={styles.numeric}>{row.skuCount}</td></tr>
+                        <tr key={row.movementType}><BusinessTableSequenceCell rowIndex={rowIndex} /><td>{inventoryMovementTypeLabel(row.movementType)}</td><td className={styles.numeric}>{row.movementCount}</td><td className={styles.numeric}>{row.movementLineCount}</td><td className={styles.numeric}>{row.skuCount}</td></tr>
                       ))}
                       {!report.movementTypes.length ? <tr><td className={styles.empty} colSpan={5}>Không có nghiệp vụ kho trong kỳ.</td></tr> : null}
                     </tbody>
