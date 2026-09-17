@@ -7,7 +7,10 @@ import {
   filterSalesFactsForDimension,
   normalizeSalesClassificationFilters,
 } from '../src/routes/reporting-sales-classification.js';
-import { normalizeSalesReportingExportSelection } from '../src/services/reporting-sales-export.js';
+import {
+  normalizeSalesReportingExportSelection,
+  salesReportingExportInternals,
+} from '../src/services/reporting-sales-export.js';
 
 const readApi = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
@@ -102,11 +105,8 @@ test('Danh mục nhóm vẫn là nguồn lựa chọn và sản phẩm không ph
   assert.equal(zero.source, 'current-master-zero');
 });
 
-test('Backend giữ 6 bảng phân tích cũ và thêm ma trận ở luồng xuất file, không làm lệch payload báo cáo', async () => {
-  const [sales, exporter] = await Promise.all([
-    readApi('src/routes/reporting-sales.js'),
-    readApi('src/services/reporting-sales-export.js'),
-  ]);
+test('Backend giữ 6 bảng phân tích cũ và luồng xuất Phân tích mới vẫn tương thích matrix.* cũ, không làm lệch payload báo cáo', async () => {
+  const sales = await readApi('src/routes/reporting-sales.js');
 
   assert.match(sales, /breakdownTotals: breakdownTotalsByDimension/);
   assert.match(sales, /customers: breakdown\(customerFacts, 'customers'\)/);
@@ -124,8 +124,9 @@ test('Backend giữ 6 bảng phân tích cũ và thêm ma trận ở luồng xu�
   });
   assert.equal(matrix.ok, true);
   assert.equal(matrix.matrix, true);
-  assert.match(exporter, /buildMatrixSheets/);
-  assert.match(exporter, /loadSalesMatrixFacts/);
+  assert.equal(matrix.analysis, true);
+  assert.deepEqual(matrix.metrics, ['revenue']);
+  assert.equal(typeof salesReportingExportInternals.buildAnalysisSheet, 'function');
 });
 
 test('Route Công Ty và Admin vẫn nhận ID nhóm, không thêm DB hoặc migration', async () => {
