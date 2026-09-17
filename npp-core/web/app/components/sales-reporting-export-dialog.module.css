@@ -38,9 +38,11 @@
 }
 
 .dialog {
+  box-sizing: border-box;
   width: min(720px, 100%);
-  max-height: min(760px, calc(100vh - 40px));
+  max-height: min(760px, calc(100dvh - 40px));
   overflow: auto;
+  overscroll-behavior: contain;
   border: 1px solid #dbe3ec;
   border-radius: 18px;
   padding: 20px;
@@ -279,7 +281,7 @@
 
   .dialog {
     width: 100%;
-    max-height: 88vh;
+    max-height: 88dvh;
     border-radius: 18px 18px 0 0;
     padding: 16px;
   }
