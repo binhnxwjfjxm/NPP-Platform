@@ -22,6 +22,7 @@ type SalesExportDimension = SalesBreakdownKey;
 type ExportMode = 'list' | 'analysis';
 type AnalysisDimension = 'products' | 'customerGroups' | 'channels' | 'productGroups';
 type AnalysisMetric = 'revenue' | 'quantity';
+type QuantityDisplay = 'sold' | 'carton' | 'base';
 
 type ColumnOption = Readonly<{
   key: string;
@@ -66,6 +67,12 @@ const ANALYSIS_DIMENSIONS: readonly AnalysisDimension[] = Object.freeze([
 const ANALYSIS_METRIC_LABELS: Readonly<Record<AnalysisMetric, string>> = Object.freeze({
   revenue: 'Doanh thu',
   quantity: 'Sản lượng',
+});
+
+const QUANTITY_DISPLAY_LABELS: Readonly<Record<QuantityDisplay, string>> = Object.freeze({
+  sold: 'Theo ĐVT bán',
+  carton: 'Ưu tiên Thùng',
+  base: 'Ưu tiên ĐVT lẻ',
 });
 
 const COLUMN_LABELS = Object.freeze({
@@ -115,9 +122,9 @@ function isAnalysisDimension(value: SalesExportDimension): value is AnalysisDime
 }
 
 function defaultAnalysisDimensions(dimension: SalesExportDimension): readonly AnalysisDimension[] {
-  const first = isAnalysisDimension(dimension) ? dimension : 'products';
-  const second = ANALYSIS_DIMENSIONS.find((item) => item !== first) ?? 'customerGroups';
-  return Object.freeze([first, second]);
+  if (dimension === 'products') return Object.freeze(['products', 'customerGroups']);
+  if (isAnalysisDimension(dimension)) return Object.freeze(['products', dimension]);
+  return Object.freeze(['products', 'customerGroups']);
 }
 
 function analysisIdentityPart(value: string | null | undefined, fallback: string) {
@@ -181,6 +188,7 @@ export function SalesReportingExportDialog({
   const [selectedColumns, setSelectedColumns] = useState<readonly string[]>(DEFAULT_COLUMNS[dimension]);
   const [analysisDimensions, setAnalysisDimensions] = useState<readonly AnalysisDimension[]>(defaultAnalysisDimensions(dimension));
   const [analysisMetrics, setAnalysisMetrics] = useState<readonly AnalysisMetric[]>(Object.freeze(['revenue', 'quantity']));
+  const [quantityDisplay, setQuantityDisplay] = useState<QuantityDisplay>('sold');
   const [analysisSelectedColumns, setAnalysisSelectedColumns] = useState<readonly string[]>([]);
   const [analysisReport, setAnalysisReport] = useState<SalesReportingDashboard | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
@@ -250,6 +258,7 @@ export function SalesReportingExportDialog({
     setSelectedColumns(DEFAULT_COLUMNS[dimension]);
     setAnalysisDimensions(defaultAnalysisDimensions(dimension));
     setAnalysisMetrics(Object.freeze(['revenue', 'quantity']));
+    setQuantityDisplay('sold');
     setAnalysisReport(null);
     setError('');
   }, [dimension]);
@@ -282,6 +291,7 @@ export function SalesReportingExportDialog({
     setSelectedColumns(DEFAULT_COLUMNS[dimension]);
     setAnalysisDimensions(defaultAnalysisDimensions(dimension));
     setAnalysisMetrics(Object.freeze(['revenue', 'quantity']));
+    setQuantityDisplay('sold');
     setAnalysisReport(null);
     setError('');
     setOpen(true);
@@ -295,9 +305,15 @@ export function SalesReportingExportDialog({
 
   function toggleAnalysisDimension(value: AnalysisDimension) {
     setAnalysisDimensions((current) => {
-      if (current.includes(value)) return current.filter((item) => item !== value);
-      if (current.length >= 2) return current;
-      return Object.freeze([...current, value]);
+      const next = current.includes(value)
+        ? current.filter((item) => item !== value)
+        : current.length >= 2
+          ? current
+          : [...current, value];
+      if (next.includes('products')) {
+        return Object.freeze(['products', ...next.filter((item) => item !== 'products')]);
+      }
+      return Object.freeze(next);
     });
   }
 
@@ -339,6 +355,7 @@ export function SalesReportingExportDialog({
       if (mode === 'analysis') {
         if (filters.productGroupId) query.set('productGroupId', filters.productGroupId);
         if (filters.customerGroupId) query.set('customerGroupId', filters.customerGroupId);
+        if (analysisMetrics.includes('quantity')) query.set('quantityDisplay', quantityDisplay);
         for (const key of analysisSelectedColumns) query.append('column', key);
       } else {
         if (dimension === 'products') {
@@ -381,7 +398,7 @@ export function SalesReportingExportDialog({
 
   const analysisReady = analysisDimensions.length === 2 && analysisMetrics.length > 0 && analysisSelectedColumns.length > 0 && !analysisLoading;
   const analysisSummary = analysisDimensions.length === 2
-    ? `Sẽ xuất Báo cáo ${ANALYSIS_DIMENSION_LABELS[analysisDimensions[0]]} theo ${ANALYSIS_DIMENSION_LABELS[analysisDimensions[1]]}, gồm ${analysisMetrics.map((item) => ANALYSIS_METRIC_LABELS[item]).join(' và ')}.`
+    ? `Sẽ xuất Báo cáo ${ANALYSIS_DIMENSION_LABELS[analysisDimensions[0]]} theo ${ANALYSIS_DIMENSION_LABELS[analysisDimensions[1]]}, gồm ${analysisMetrics.map((item) => ANALYSIS_METRIC_LABELS[item]).join(' và ')}${analysisMetrics.includes('quantity') ? ` · ${QUANTITY_DISPLAY_LABELS[quantityDisplay]}` : ''}.`
     : 'Chọn đúng 2 tiêu chí để tạo báo cáo phân tích.';
 
   return (
@@ -430,6 +447,25 @@ export function SalesReportingExportDialog({
                     </label>
                   ))}
                 </fieldset>
+
+                {analysisMetrics.includes('quantity') ? (
+                  <fieldset className={styles.formatGroup}>
+                    <legend>Hiển thị sản lượng</legend>
+                    {(Object.keys(QUANTITY_DISPLAY_LABELS) as QuantityDisplay[]).map((item) => (
+                      <label key={item}>
+                        <input
+                          type="radio"
+                          name="sales-export-quantity-display"
+                          value={item}
+                          checked={quantityDisplay === item}
+                          onChange={() => setQuantityDisplay(item)}
+                          disabled={exporting}
+                        />
+                        {QUANTITY_DISPLAY_LABELS[item]}
+                      </label>
+                    ))}
+                  </fieldset>
+                ) : null}
 
                 <fieldset className={styles.formatGroup}>
                   <legend>Phân tích theo · chọn 2</legend>

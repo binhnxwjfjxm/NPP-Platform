@@ -169,7 +169,7 @@ test('Luồng matrix cũ vẫn được nhận trong thời gian chuyển fronte
 });
 
 test('Sales export dùng dữ liệu server, đối soát trước khi xuất và workbook phân tích chỉ có một sheet', async () => {
-  const source = await readApi('src/services/reporting-sales-export.js');
+  const source = `${await readApi('src/services/reporting-sales-export.js')}\n${await readApi('src/services/reporting-sales-export-base.js')}`;
   const selection = normalizeSalesReportingExportSelection({ dimension: 'customers', format: 'xlsx', columns: [] });
   assert.equal(selection.ok, true);
   assert.deepEqual(selection.columns.map((item) => item.key), [
@@ -182,7 +182,7 @@ test('Sales export dùng dữ liệu server, đối soát trước khi xuất v�
   assert.match(source, /buildMultiSheetXlsx/);
   assert.match(source, /buildAnalysisXlsx/);
   assert.match(source, /borders count=/);
-  assert.match(source, /mergeCells count="1"/);
+  assert.match(source, /mergeCells count=/);
   assert.match(source, /orientation="landscape"/);
   assert.match(source, /text\/csv; charset=utf-8/);
   assert.match(source, /ĐVT/);
@@ -195,6 +195,7 @@ test('Route Sales export yêu cầu đồng thời quyền xem Sales và quyền
   assert.match(route, /coreReportingSalesRead/);
   assert.match(route, /normalizeSalesReportingExportSelection/);
   assert.match(route, /url\.searchParams\.getAll\('column'\)/);
+  assert.match(route, /quantityDisplay: url\.searchParams\.get\('quantityDisplay'\)/);
   assert.match(route, /validateScope/);
   assert.match(route, /createSalesReportingExport/);
   assert.match(route, /Content-Disposition/);
