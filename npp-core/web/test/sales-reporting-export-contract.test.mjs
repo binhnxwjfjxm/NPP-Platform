@@ -50,6 +50,23 @@ test('Cửa sổ xuất có ma trận đủ Sản phẩm, Loại khách, Kênh b
   assert.match(css, /\.matrixField/);
 });
 
+test('Cửa sổ xuất desktop nằm giữa viewport và không bị thanh điều hướng che', () => {
+  const css = read('app/components/sales-reporting-export-dialog.module.css');
+
+  assert.match(
+    css,
+    /\.backdrop\s*\{[\s\S]*?z-index:\s*120;[\s\S]*?display:\s*flex;[\s\S]*?align-items:\s*center;[\s\S]*?justify-content:\s*center;[\s\S]*?overflow:\s*auto;/,
+  );
+  assert.match(
+    css,
+    /\.dialog\s*\{[\s\S]*?max-height:\s*min\(760px,\s*calc\(100dvh - 96px\)\);[\s\S]*?margin:\s*auto;/,
+  );
+  assert.match(
+    css,
+    /@media \(max-width: 640px\)[\s\S]*?\.backdrop\s*\{[\s\S]*?align-items:\s*end;[\s\S]*?padding:\s*0;/,
+  );
+});
+
 test('Export danh sách chỉ truyền bộ lọc phù hợp, còn ma trận nhận cả bộ lọc nhóm đang áp dụng', () => {
   const dialog = read('app/components/sales-reporting-export-dialog.tsx');
   const gateway = read('lib/sales-reporting-export-gateway.ts');
