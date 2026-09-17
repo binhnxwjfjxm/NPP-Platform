@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { SalesBreakdownKey } from '../../lib/sales-reporting-types';
 import styles from './sales-reporting-export-dialog.module.css';
 
@@ -248,7 +249,7 @@ export function SalesReportingExportDialog({
       <button type="button" className={styles.openButton} onClick={openDialog} disabled={disabled}>
         {buttonLabel}
       </button>
-      {open ? (
+      {open ? createPortal(
         <div className={styles.backdrop} role="presentation" onMouseDown={(event) => {
           if (event.currentTarget === event.target && !exporting) setOpen(false);
         }}>
@@ -337,7 +338,8 @@ export function SalesReportingExportDialog({
               </button>
             </div>
           </section>
-        </div>
+        </div>,
+        document.body,
       ) : null}
     </>
   );

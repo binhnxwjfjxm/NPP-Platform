@@ -50,6 +50,20 @@ test('Cửa sổ xuất có ma trận đủ Sản phẩm, Loại khách, Kênh b
   assert.match(css, /\.matrixField/);
 });
 
+test('Cửa sổ xuất bán hàng luôn thoát khỏi topbar và nằm gọn trong viewport', () => {
+  const dialog = read('app/components/sales-reporting-export-dialog.tsx');
+  const css = read('app/components/sales-reporting-export-dialog.module.css');
+  const shellCss = read('app/components/app-shell.module.css');
+
+  assert.match(shellCss, /\.topbar\s*\{[\s\S]*?backdrop-filter:\s*blur\(/);
+  assert.match(dialog, /import \{ createPortal \} from 'react-dom'/);
+  assert.match(dialog, /createPortal\([\s\S]*?document\.body/);
+  assert.match(css, /\.backdrop\s*\{[\s\S]*?place-items:\s*center/);
+  assert.match(css, /\.dialog\s*\{[\s\S]*?box-sizing:\s*border-box/);
+  assert.match(css, /max-height:\s*min\(760px,\s*calc\(100dvh - 40px\)\)/);
+  assert.match(css, /overscroll-behavior:\s*contain/);
+});
+
 test('Export danh sách chỉ truyền bộ lọc phù hợp, còn ma trận nhận cả bộ lọc nhóm đang áp dụng', () => {
   const dialog = read('app/components/sales-reporting-export-dialog.tsx');
   const gateway = read('lib/sales-reporting-export-gateway.ts');
