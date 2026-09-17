@@ -6,6 +6,7 @@ import * as lotRepository from '../db/repositories/inventory-lots.js';
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const QUANTITY_PATTERN = /^(?:0|[1-9]\d{0,13})(?:\.\d{1,6})?$/;
 const COST_PATTERN = /^(?:0|[1-9]\d{0,17})(?:\.\d{1,12})?$/;
+const SPLIT_IDENTITY_PATTERN = /^[A-Za-z0-9._-]{1,80}$/;
 const SCALE_6 = 1_000_000n;
 const INBOUND_TYPES = new Set(['MANUAL_RECEIPT', 'OFF_DOCUMENT_CUSTOMER_RETURN', 'RECOVERY', 'OTHER']);
 
@@ -108,6 +109,7 @@ function normalizePreviewPayload(payload) {
   }
 
   const rows = [];
+  const splitIdentities = new Set();
   for (let index = 0; index < payload.rows.length; index += 1) {
     const source = payload.rows[index];
     const lineNumber = index + 1;
@@ -134,9 +136,20 @@ function normalizePreviewPayload(payload) {
     if (source.manufacturedDate && !manufacturedDate) return failure('INVALID_MANUFACTURED_DATE', `Dòng ${lineNumber}: Ngày sản xuất không hợp lệ.`);
     const supplierLotReference = optionalText(source.supplierLotReference, 160, `Dòng ${lineNumber}: Mã lô nhà cung cấp`);
     if (!supplierLotReference.ok) return supplierLotReference;
+    const rawSplitIdentity = source.splitIdentity === undefined || source.splitIdentity === null
+      ? ''
+      : String(source.splitIdentity).trim();
+    if (rawSplitIdentity && !SPLIT_IDENTITY_PATTERN.test(rawSplitIdentity)) {
+      return failure('INVALID_SPLIT_IDENTITY', `Dòng ${lineNumber}: Thông tin tách dòng không hợp lệ.`);
+    }
+    if (rawSplitIdentity && splitIdentities.has(rawSplitIdentity)) {
+      return failure('DUPLICATE_SPLIT_IDENTITY', `Dòng ${lineNumber}: Thông tin tách dòng bị trùng.`);
+    }
+    if (rawSplitIdentity) splitIdentities.add(rawSplitIdentity);
     rows.push({
       lineNumber,
       sourceLineNumbers: [lineNumber],
+      splitIdentity: rawSplitIdentity || null,
       sku: sku.toUpperCase(),
       sourceQuantity: quantity.value,
       sourceQuantityScaled: quantity.scaled,
@@ -151,7 +164,16 @@ function normalizePreviewPayload(payload) {
 
   const merged = new Map();
   for (const row of rows) {
-    const key = [row.sku, row.locationCode ?? '', row.lotCode ?? '', row.manufacturedDate ?? '', row.expiryDate ?? '', row.unitCost ?? '', row.supplierLotReference ?? ''].join('\u001f');
+    const key = [
+      row.splitIdentity ? `split:${row.splitIdentity}` : 'merge',
+      row.sku,
+      row.locationCode ?? '',
+      row.lotCode ?? '',
+      row.manufacturedDate ?? '',
+      row.expiryDate ?? '',
+      row.unitCost ?? '',
+      row.supplierLotReference ?? '',
+    ].join('\u001f');
     const existing = merged.get(key);
     if (!existing) {
       merged.set(key, { ...row });
@@ -400,6 +422,7 @@ export async function previewManualInbound(client, { requestContext, payload }) 
     const display = {
       lineNumber: row.lineNumber,
       sourceLineNumbers: row.sourceLineNumbers,
+      splitIdentity: row.splitIdentity ?? '',
       sku: row.sku,
       sourceQuantity: formatScaled6(row.sourceQuantityScaled),
       unitCost: row.unitCost,
