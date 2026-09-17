@@ -101,14 +101,15 @@ jobs:
       TABLES: ${{ matrix.tables }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 20
+          package-manager-cache: false
 
       - name: Install workspaces
         run: npm ci
@@ -231,7 +232,7 @@ jobs:
 
       - name: Upload pack evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: phase-3-${{ matrix.pack }}-${{ github.run_id }}
           path: |
@@ -269,12 +270,13 @@ jobs:
       EVIDENCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       NODE_ENV: test
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 20
+          package-manager-cache: false
       - run: npm ci
       - name: Apply migrations and run full Core API regression
         shell: bash
@@ -331,7 +333,7 @@ jobs:
           JSON
       - name: Upload cross-domain evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: phase-3-cross-domain-${{ github.run_id }}
           path: |
@@ -367,12 +369,13 @@ jobs:
       EVIDENCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       NODE_ENV: test
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 20
+          package-manager-cache: false
       - run: npm ci
       - name: Install PostgreSQL 17 client tools
         timeout-minutes: 8
@@ -406,7 +409,7 @@ jobs:
           JSON
       - name: Upload grouped rehearsal evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: phase-3-grouped-rehearsal-${{ github.run_id }}
           path: artifacts/grouped-rehearsal
