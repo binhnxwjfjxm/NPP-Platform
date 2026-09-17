@@ -112,7 +112,7 @@ function defaultMatrixColumn(row: MatrixDimension): MatrixColumnDimension {
 }
 
 function filenameFromDisposition(value: string | null, fallback: string) {
-  const match = /filename=\"([^\"\r\n]+)\"/i.exec(value ?? '');
+  const match = /filename="([^"\r\n]+)"/i.exec(value ?? '');
   return match?.[1] || fallback;
 }
 
