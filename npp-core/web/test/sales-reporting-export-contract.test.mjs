@@ -27,27 +27,43 @@ test('Cửa sổ xuất danh sách giữ Excel, CSV và chọn cột như cũ', 
   );
 });
 
-test('Cửa sổ xuất có ma trận đủ Sản phẩm, Loại khách, Kênh bán và Nhóm hàng ở cả dòng lẫn cột', () => {
+test('Cửa sổ phân tích dùng ngôn ngữ văn phòng, chọn rõ số liệu và đúng 2 tiêu chí', () => {
   const dialog = read('app/components/sales-reporting-export-dialog.tsx');
-  const css = read('app/components/sales-reporting-export-dialog.module.css');
-
-  assert.match(dialog, /value="matrix"/);
-  assert.match(dialog, /MATRIX_DIMENSIONS/);
+  assert.match(dialog, /value="analysis"/);
+  assert.match(dialog, /> Phân tích</);
+  assert.match(dialog, /Số liệu cần xuất/);
+  assert.match(dialog, /Phân tích theo · chọn 2/);
   assert.match(dialog, /products: 'Sản phẩm'/);
   assert.match(dialog, /customerGroups: 'Loại khách'/);
   assert.match(dialog, /channels: 'Kênh bán'/);
   assert.match(dialog, /productGroups: 'Nhóm hàng'/);
-  assert.match(dialog, /type MatrixColumnDimension = MatrixDimension/);
-  assert.match(dialog, /MATRIX_COLUMN_DIMENSIONS: readonly MatrixColumnDimension\[\] = MATRIX_DIMENSIONS/);
-  assert.match(dialog, /MATRIX_COLUMN_DIMENSIONS\.filter\(\(item\) => item !== matrixRow\)/);
-  assert.match(dialog, /matrix\.\$\{matrixRow\}\.\$\{matrixColumn\}\.\$\{matrixMetric\}/);
-  assert.match(dialog, /Doanh thu/);
-  assert.match(dialog, /Sản lượng/);
-  assert.match(dialog, /Sản lượng được tách riêng theo ĐVT/);
-  assert.match(dialog, /Xuất Excel ma trận/);
-  assert.match(dialog, /File Excel có dòng Tổng, Tỷ lệ và khung bảng đầy đủ/);
-  assert.match(css, /\.matrixGrid/);
-  assert.match(css, /\.matrixField/);
+  assert.match(dialog, /revenue: 'Doanh thu'/);
+  assert.match(dialog, /quantity: 'Sản lượng'/);
+  assert.match(dialog, /analysisMetrics\.length === 2 \? 'both'/);
+  assert.doesNotMatch(dialog, />\s*Ma trận\s*</);
+  assert.doesNotMatch(dialog, /Xuất Excel ma trận/);
+  assert.doesNotMatch(dialog, /Tiêu chí dòng|Tiêu chí cột|Chỉ tiêu/);
+});
+
+test('Cửa sổ phân tích hiện trước đúng cột xuất và cho bỏ từng cột', () => {
+  const dialog = read('app/components/sales-reporting-export-dialog.tsx');
+  assert.match(dialog, /Cột sẽ xuất/);
+  assert.match(dialog, /analysisColumnOptions/);
+  assert.match(dialog, /analysisSelectedColumns/);
+  assert.match(dialog, /toggleAnalysisColumn/);
+  assert.match(dialog, /cat:\$\{category\.key\}\|revenue/);
+  assert.match(dialog, /cat:\$\{category\.key\}\|quantity/);
+  assert.match(dialog, /total:revenue:/);
+  assert.match(dialog, /total:quantity/);
+  assert.match(dialog, /Tổng doanh thu/);
+  assert.match(dialog, /Tổng sản lượng/);
+});
+
+test('ĐVT là cột trong cùng sheet, không còn hướng dẫn tách sheet theo ĐVT', () => {
+  const dialog = read('app/components/sales-reporting-export-dialog.tsx');
+  assert.match(dialog, /ĐVT nằm trong cùng một sheet/);
+  assert.match(dialog, /không tách báo cáo thành nhiều sheet theo đơn vị tính/);
+  assert.doesNotMatch(dialog, /Sản lượng được tách riêng theo ĐVT/);
 });
 
 test('Cửa sổ xuất bán hàng luôn thoát khỏi topbar và nằm gọn trong viewport', () => {
@@ -64,30 +80,30 @@ test('Cửa sổ xuất bán hàng luôn thoát khỏi topbar và nằm gọn tr
   assert.match(css, /overscroll-behavior:\s*contain/);
 });
 
-test('Export danh sách chỉ truyền bộ lọc phù hợp, còn ma trận nhận cả bộ lọc nhóm đang áp dụng', () => {
+test('Phân tích lấy danh sách cột từ báo cáo server theo đúng bộ lọc rồi gửi các cột được tích', () => {
   const dialog = read('app/components/sales-reporting-export-dialog.tsx');
   const gateway = read('lib/sales-reporting-export-gateway.ts');
 
-  assert.match(dialog, /dimension === 'products'/);
+  assert.match(dialog, /requestAnalysisReport\(filters\)/);
+  assert.match(dialog, /\/api\/reporting\/sales/);
   assert.match(dialog, /query\.set\('productGroupId', filters\.productGroupId\)/);
-  assert.match(dialog, /query\.set\('includeZeroProducts', 'true'\)/);
-  assert.match(dialog, /dimension === 'customers'/);
   assert.match(dialog, /query\.set\('customerGroupId', filters\.customerGroupId\)/);
-  assert.match(dialog, /mode === 'matrix'/);
+  assert.match(dialog, /mode === 'analysis'/);
+  assert.match(dialog, /analysisSelectedColumns/);
   assert.match(dialog, /query\.append\('column', key\)/);
-  for (const field of ['productGroupId', 'customerGroupId', 'includeZeroProducts', 'dimension', 'format']) {
+  for (const field of ['productGroupId', 'customerGroupId', 'includeZeroProducts', 'dimension', 'format', 'column']) {
     assert.match(gateway, new RegExp(field));
   }
 });
 
-test('Trình duyệt chỉ yêu cầu file từ server, không tự dựng CSV/XLSX từ dòng đang hiển thị', () => {
+test('Trình duyệt vẫn nhận file từ server, không tự dựng CSV/XLSX trong component', () => {
   const dialog = read('app/components/sales-reporting-export-dialog.tsx');
   assert.match(dialog, /\/api\/reporting\/sales\/export/);
   assert.match(dialog, /from: filters\.from/);
   assert.match(dialog, /to: filters\.to/);
   assert.match(dialog, /query\.set\('warehouseId', filters\.warehouseId\)/);
   assert.match(dialog, /response\.blob\(\)/);
-  assert.doesNotMatch(dialog, /join\(','\)|buildMultiSheetXlsx|report\.breakdowns/);
+  assert.doesNotMatch(dialog, /join\(','\)|buildMultiSheetXlsx/);
   assert.match(dialog, /không phụ thuộc số dòng đang hiển thị/);
 });
 

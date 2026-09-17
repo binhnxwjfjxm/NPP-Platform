@@ -12,9 +12,9 @@ import {
 import { reportingSalesInternals, salesReport } from '../routes/reporting-sales.js';
 
 const FORMATS = new Set(['xlsx', 'csv']);
-const MATRIX_DIMENSION_KEYS = Object.freeze(['products', 'customerGroups', 'channels', 'productGroups']);
-const MATRIX_COLUMN_KEYS = MATRIX_DIMENSION_KEYS;
-const MATRIX_METRICS = new Set(['revenue', 'quantity']);
+const ANALYSIS_DIMENSION_KEYS = Object.freeze(['products', 'customerGroups', 'channels', 'productGroups']);
+const ANALYSIS_METRICS = new Set(['revenue', 'quantity']);
+const ANALYSIS_METRIC_TOKENS = new Set(['revenue', 'quantity', 'both']);
 
 function column(key, label) {
   return Object.freeze({ key, label });
@@ -105,34 +105,58 @@ function invalid(code, message, details = {}) {
   return Object.freeze({ ok: false, code, message, details, statusCode: 400 });
 }
 
-function normalizeMatrixSelection(dimensionKey, format) {
+function normalizeAnalysisColumns(rawColumns) {
+  const supplied = Array.isArray(rawColumns)
+    ? rawColumns.map((value) => String(value ?? '').trim()).filter(Boolean)
+    : [];
+  if (supplied.length > 512) {
+    return invalid('INVALID_SALES_ANALYSIS_COLUMNS', 'Danh sách cột xuất vượt giới hạn cho phép');
+  }
+  const selected = [...new Set(supplied)];
+  const tokenPattern = /^(?:meta:(?:code|name|unit)|total:quantity|total:revenue:[^|]{1,80}|cat:[^|]{1,180}\|quantity|cat:[^|]{1,180}\|revenue\|[^|]{1,80})$/;
+  const rejected = selected.filter((value) => !tokenPattern.test(value));
+  if (rejected.length) {
+    return invalid('INVALID_SALES_ANALYSIS_COLUMNS', 'Có cột không hợp lệ trong báo cáo phân tích', { rejected });
+  }
+  return Object.freeze({ ok: true, columns: Object.freeze(selected) });
+}
+
+function normalizeAnalysisSelection(dimensionKey, format, rawColumns, legacyMatrix = false) {
   const parts = dimensionKey.split('.');
-  if (parts.length !== 4 || parts[0] !== 'matrix') return null;
-  const [, rowDimension, columnDimension, metric] = parts;
-  if (!MATRIX_DIMENSION_KEYS.includes(rowDimension)) {
-    return invalid('INVALID_SALES_MATRIX_ROW', 'Tiêu chí dòng của báo cáo ma trận không hợp lệ');
+  if (parts.length !== 4) return null;
+  const [prefix, rowDimension, columnDimension, metricToken] = parts;
+  if ((!legacyMatrix && prefix !== 'analysis') || (legacyMatrix && prefix !== 'matrix')) return null;
+  if (!ANALYSIS_DIMENSION_KEYS.includes(rowDimension)) {
+    return invalid('INVALID_SALES_ANALYSIS_ROW', 'Tiêu chí đầu tiên của báo cáo phân tích không hợp lệ');
   }
-  if (!MATRIX_COLUMN_KEYS.includes(columnDimension) || rowDimension === columnDimension) {
-    return invalid('INVALID_SALES_MATRIX_COLUMN', 'Tiêu chí cột của báo cáo ma trận không hợp lệ');
+  if (!ANALYSIS_DIMENSION_KEYS.includes(columnDimension) || rowDimension === columnDimension) {
+    return invalid('INVALID_SALES_ANALYSIS_COLUMN', 'Hai tiêu chí phân tích phải khác nhau');
   }
-  if (!MATRIX_METRICS.has(metric)) {
-    return invalid('INVALID_SALES_MATRIX_METRIC', 'Chỉ tiêu của báo cáo ma trận không hợp lệ');
+  if (!ANALYSIS_METRIC_TOKENS.has(metricToken) || (legacyMatrix && metricToken === 'both')) {
+    return invalid('INVALID_SALES_ANALYSIS_METRIC', 'Số liệu cần xuất không hợp lệ');
   }
   if (format !== 'xlsx') {
-    return invalid('INVALID_SALES_MATRIX_FORMAT', 'Báo cáo ma trận chỉ xuất Excel để giữ nguyên khung và bố cục');
+    return invalid('INVALID_SALES_ANALYSIS_FORMAT', 'Báo cáo phân tích chỉ xuất Excel');
   }
+  const normalizedColumns = normalizeAnalysisColumns(rawColumns);
+  if (!normalizedColumns.ok) return normalizedColumns;
+  const metrics = metricToken === 'both' ? ['revenue', 'quantity'] : [metricToken];
+  const rowDefinition = MATRIX_DIMENSIONS[rowDimension];
+  const columnDefinition = MATRIX_DIMENSIONS[columnDimension];
   return Object.freeze({
     ok: true,
-    matrix: true,
+    matrix: legacyMatrix,
+    analysis: true,
     dimension: dimensionKey,
     format: 'xlsx',
     rowDimension,
     columnDimension,
-    metric,
-    rowLabel: MATRIX_DIMENSIONS[rowDimension].label,
-    columnLabel: MATRIX_DIMENSIONS[columnDimension].label,
-    dimensionSlug: `Ma-tran-${MATRIX_DIMENSIONS[rowDimension].slug}-${MATRIX_DIMENSIONS[columnDimension].slug}-${metric === 'quantity' ? 'San-luong' : 'Doanh-thu'}`,
-    columns: Object.freeze([]),
+    metrics: Object.freeze(metrics),
+    metric: metrics.length === 1 ? metrics[0] : 'both',
+    rowLabel: rowDefinition.label,
+    columnLabel: columnDefinition.label,
+    dimensionSlug: `${rowDefinition.slug}-theo-${columnDefinition.slug}-${metrics.length === 2 ? 'Doanh-thu-San-luong' : metrics[0] === 'quantity' ? 'San-luong' : 'Doanh-thu'}`,
+    columns: normalizedColumns.columns,
   });
 }
 
@@ -141,8 +165,11 @@ export function normalizeSalesReportingExportSelection({ dimension: rawDimension
   const format = String(rawFormat ?? 'xlsx').trim().toLowerCase();
   if (!FORMATS.has(format)) return invalid('INVALID_SALES_EXPORT_FORMAT', 'Định dạng xuất chỉ hỗ trợ Excel hoặc CSV');
 
+  if (dimensionKey.startsWith('analysis.')) {
+    return normalizeAnalysisSelection(dimensionKey, format, rawColumns, false);
+  }
   if (dimensionKey.startsWith('matrix.')) {
-    return normalizeMatrixSelection(dimensionKey, format);
+    return normalizeAnalysisSelection(dimensionKey, format, rawColumns, true);
   }
 
   const definition = DIMENSIONS[dimensionKey];
@@ -163,6 +190,7 @@ export function normalizeSalesReportingExportSelection({ dimension: rawDimension
   return Object.freeze({
     ok: true,
     matrix: false,
+    analysis: false,
     dimension: dimensionKey,
     dimensionLabel: definition.label,
     dimensionSlug: definition.slug,
@@ -357,86 +385,32 @@ function matrixDimensionValue(row, key) {
   return Object.freeze({ id: matrixIdentity(row.productGroupId, `${code}|${name}`), code, name });
 }
 
+function identityPart(value, fallback = '__none__') {
+  return encodeURIComponent(text(value, fallback));
+}
+
+function analysisDimensionKey(row, key) {
+  if (key === 'products') {
+    const main = matrixIdentity(row.productId, text(row.productCode, text(row.productName, '__none__')));
+    const unit = matrixIdentity(row.unitId, text(row.unitCode, text(row.unitName, '__none__')));
+    return `products:${identityPart(main)}:${identityPart(unit)}`;
+  }
+  if (key === 'customerGroups') {
+    return `customerGroups:${identityPart(matrixIdentity(row.customerGroupId, text(row.customerGroupCode, text(row.customerGroupName, '__none__'))))}`;
+  }
+  if (key === 'channels') {
+    return `channels:${identityPart(matrixIdentity(row.channelId, text(row.channelCode, text(row.channelName, '__none__'))))}`;
+  }
+  return `productGroups:${identityPart(matrixIdentity(row.productGroupId, text(row.productGroupCode, text(row.productGroupName, '__none__'))))}`;
+}
+
+function analysisDimensionValue(row, key) {
+  const base = matrixDimensionValue(row, key);
+  return Object.freeze({ ...base, key: analysisDimensionKey(row, key) });
+}
+
 function compareMatrixLabel(left, right) {
   return `${left.code}|${left.name}`.localeCompare(`${right.code}|${right.name}`, 'vi');
-}
-
-function percentRatioText(numerator, denominator) {
-  if (denominator === 0n) return '0';
-  const scale = 1_000_000n;
-  const rounded = ((numerator * scale) + (denominator / 2n)) / denominator;
-  const whole = rounded / scale;
-  const fraction = String(rounded % scale).padStart(6, '0').replace(/0+$/, '');
-  return `${whole}${fraction ? `.${fraction}` : ''}`;
-}
-
-function buildMatrixSheets(rows, selection, filters) {
-  const { decimal6, decimalText } = reportingSalesInternals;
-  const scopes = new Map();
-
-  for (const fact of rows) {
-    const rowDimension = matrixDimensionValue(fact, selection.rowDimension);
-    const columnDimension = matrixDimensionValue(fact, selection.columnDimension);
-    const value = decimal6(selection.metric === 'quantity' ? fact.quantity : fact.revenue);
-    const scopeKey = selection.metric === 'quantity'
-      ? matrixIdentity(fact.unitId, text(fact.unitCode, 'Không xác định'))
-      : text(fact.currencyCode, 'VND');
-    const scopeLabel = selection.metric === 'quantity'
-      ? text(fact.unitName, text(fact.unitCode, 'Không xác định'))
-      : text(fact.currencyCode, 'VND');
-
-    const scope = scopes.get(scopeKey) ?? {
-      key: scopeKey,
-      label: scopeLabel,
-      columns: new Map(),
-      rows: new Map(),
-      columnTotals: new Map(),
-      grandTotal: 0n,
-    };
-    scope.columns.set(columnDimension.id, columnDimension);
-    const matrixRow = scope.rows.get(rowDimension.id) ?? {
-      ...rowDimension,
-      total: 0n,
-      values: new Map(),
-    };
-    matrixRow.total += value;
-    matrixRow.values.set(columnDimension.id, (matrixRow.values.get(columnDimension.id) ?? 0n) + value);
-    scope.columnTotals.set(columnDimension.id, (scope.columnTotals.get(columnDimension.id) ?? 0n) + value);
-    scope.grandTotal += value;
-    scope.rows.set(rowDimension.id, matrixRow);
-    scopes.set(scopeKey, scope);
-  }
-
-  const usedNames = new Set();
-  return Object.freeze([...scopes.values()].sort((a, b) => a.label.localeCompare(b.label, 'vi')).map((scope) => {
-    const columns = [...scope.columns.values()].sort(compareMatrixLabel);
-    const matrixRows = [...scope.rows.values()].sort((a, b) => {
-      if (a.total !== b.total) return a.total > b.total ? -1 : 1;
-      return compareMatrixLabel(a, b);
-    });
-    const metricLabel = selection.metric === 'quantity' ? 'SẢN LƯỢNG' : 'DOANH THU';
-    const scopeText = selection.metric === 'quantity' ? scope.label.toUpperCase() : scope.label;
-    const title = `BÁO CÁO MA TRẬN ${metricLabel} ${scopeText} TỪ NGÀY ${formatReportDate(filters.from)} - ${formatReportDate(filters.to)}`;
-    const sheetName = sanitizeSheetName(`${selection.rowLabel}-${selection.columnLabel}-${scope.label}`, usedNames);
-    return Object.freeze({
-      title,
-      sheetName,
-      rowDimension: selection.rowDimension,
-      rowLabel: selection.rowLabel,
-      columnLabel: selection.columnLabel,
-      metric: selection.metric,
-      scopeLabel: scope.label,
-      columns: Object.freeze(columns),
-      rows: Object.freeze(matrixRows.map((row) => Object.freeze({
-        ...row,
-        totalText: decimalText(row.total),
-      }))),
-      columnTotals: scope.columnTotals,
-      grandTotal: scope.grandTotal,
-      grandTotalText: decimalText(scope.grandTotal),
-      decimalText,
-    });
-  }));
 }
 
 function formatReportDate(value) {
@@ -444,15 +418,164 @@ function formatReportDate(value) {
   return match ? `${match[3]}/${match[2]}/${match[1].slice(2)}` : String(value ?? '');
 }
 
+function metricBucket() {
+  return { revenueByCurrency: new Map(), quantity: 0n };
+}
+
+function addRevenue(bucket, currencyCode, value) {
+  bucket.revenueByCurrency.set(currencyCode, (bucket.revenueByCurrency.get(currencyCode) ?? 0n) + value);
+}
+
+function buildAnalysisSheet(rows, selection, filters) {
+  const { decimal6, decimalText } = reportingSalesInternals;
+  const metrics = new Set(selection.metrics);
+  const selectedTokens = selection.columns?.length ? new Set(selection.columns) : null;
+  const categories = new Map();
+  const resultRows = new Map();
+  const currencies = new Set();
+  const units = new Set();
+  const grand = { ...metricBucket(), values: new Map() };
+
+  for (const fact of rows) {
+    const rowDimension = analysisDimensionValue(fact, selection.rowDimension);
+    const columnDimension = analysisDimensionValue(fact, selection.columnDimension);
+    const currencyCode = text(fact.currencyCode, 'VND');
+    const unitCode = text(fact.unitCode, 'Không xác định');
+    const unitName = text(fact.unitName, unitCode);
+    const unitIdentity = matrixIdentity(fact.unitId, unitCode);
+    const revenue = decimal6(fact.revenue);
+    const quantity = decimal6(fact.quantity);
+
+    currencies.add(currencyCode);
+    units.add(unitIdentity);
+    categories.set(columnDimension.key, columnDimension);
+
+    const rowNeedsUnit = metrics.has('quantity') || selection.rowDimension === 'products';
+    const rowKey = rowNeedsUnit && selection.rowDimension !== 'products'
+      ? `${rowDimension.key}|unit:${identityPart(unitIdentity)}`
+      : rowDimension.key;
+    const reportRow = resultRows.get(rowKey) ?? {
+      ...rowDimension,
+      unitCode: rowNeedsUnit ? unitCode : rowDimension.unitCode ?? '',
+      unitName: rowNeedsUnit ? unitName : rowDimension.unitName ?? '',
+      totals: metricBucket(),
+      values: new Map(),
+    };
+    const valueBucket = reportRow.values.get(columnDimension.key) ?? metricBucket();
+    const grandValueBucket = grand.values.get(columnDimension.key) ?? metricBucket();
+
+    if (metrics.has('revenue')) {
+      addRevenue(reportRow.totals, currencyCode, revenue);
+      addRevenue(valueBucket, currencyCode, revenue);
+      addRevenue(grand, currencyCode, revenue);
+      addRevenue(grandValueBucket, currencyCode, revenue);
+    }
+    if (metrics.has('quantity')) {
+      reportRow.totals.quantity += quantity;
+      valueBucket.quantity += quantity;
+      grand.quantity += quantity;
+      grandValueBucket.quantity += quantity;
+    }
+
+    reportRow.values.set(columnDimension.key, valueBucket);
+    grand.values.set(columnDimension.key, grandValueBucket);
+    resultRows.set(rowKey, reportRow);
+  }
+
+  const sortedCategories = [...categories.values()].sort(compareMatrixLabel);
+  const sortedCurrencies = metrics.has('revenue')
+    ? [...currencies].sort((left, right) => left.localeCompare(right, 'vi'))
+    : [];
+  if (metrics.has('revenue') && sortedCurrencies.length === 0) sortedCurrencies.push('VND');
+  const quantityGrandValid = units.size <= 1;
+  const showUnit = selection.rowDimension === 'products' || metrics.has('quantity');
+  const allColumns = [];
+  allColumns.push(Object.freeze({ token: 'meta:code', kind: 'meta', field: 'code', label: selection.rowDimension === 'products' ? 'Mã sản phẩm' : 'Mã' }));
+  allColumns.push(Object.freeze({ token: 'meta:name', kind: 'meta', field: 'name', label: selection.rowLabel }));
+  if (showUnit) allColumns.push(Object.freeze({ token: 'meta:unit', kind: 'meta', field: 'unitName', label: 'ĐVT' }));
+
+  for (const category of sortedCategories) {
+    if (metrics.has('revenue')) {
+      for (const currencyCode of sortedCurrencies) {
+        const suffix = sortedCurrencies.length > 1 ? ` (${currencyCode})` : '';
+        allColumns.push(Object.freeze({
+          token: `cat:${category.key}|revenue|${identityPart(currencyCode)}`,
+          kind: 'category',
+          metric: 'revenue',
+          categoryKey: category.key,
+          currencyCode,
+          label: `${category.name} - Doanh thu${suffix}`,
+        }));
+      }
+    }
+    if (metrics.has('quantity')) {
+      allColumns.push(Object.freeze({
+        token: `cat:${category.key}|quantity`,
+        kind: 'category',
+        metric: 'quantity',
+        categoryKey: category.key,
+        label: `${category.name} - Sản lượng`,
+      }));
+    }
+  }
+
+  if (metrics.has('revenue')) {
+    for (const currencyCode of sortedCurrencies) {
+      const suffix = sortedCurrencies.length > 1 ? ` (${currencyCode})` : '';
+      allColumns.push(Object.freeze({
+        token: `total:revenue:${identityPart(currencyCode)}`,
+        kind: 'total',
+        metric: 'revenue',
+        currencyCode,
+        label: `Tổng doanh thu${suffix}`,
+      }));
+    }
+  }
+  if (metrics.has('quantity')) {
+    allColumns.push(Object.freeze({ token: 'total:quantity', kind: 'total', metric: 'quantity', label: 'Tổng sản lượng' }));
+  }
+
+  const columns = selectedTokens
+    ? allColumns.filter((item) => selectedTokens.has(item.token))
+    : allColumns;
+  const reportRows = [...resultRows.values()].sort((left, right) => {
+    const labelCompare = compareMatrixLabel(left, right);
+    if (labelCompare !== 0) return labelCompare;
+    return text(left.unitName).localeCompare(text(right.unitName), 'vi');
+  });
+  const title = `BÁO CÁO ${selection.rowLabel.toUpperCase()} THEO ${selection.columnLabel.toUpperCase()} TỪ NGÀY ${formatReportDate(filters.from)} - ${formatReportDate(filters.to)}`;
+  const sheetName = sanitizeSheetName(`${selection.rowLabel} theo ${selection.columnLabel}`, new Set());
+
+  return Object.freeze({
+    title,
+    sheetName,
+    rowDimension: selection.rowDimension,
+    rowLabel: selection.rowLabel,
+    columnLabel: selection.columnLabel,
+    metrics: selection.metrics,
+    currencies: Object.freeze(sortedCurrencies),
+    categories: Object.freeze(sortedCategories),
+    columns: Object.freeze(columns),
+    rows: Object.freeze(reportRows),
+    grand,
+    quantityGrandValid,
+    decimalText,
+  });
+}
+
+function buildMatrixSheets(rows, selection, filters) {
+  return Object.freeze([buildAnalysisSheet(rows, selection, filters)]);
+}
+
 function matrixWorkbookStyles() {
   return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
     + '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
-    + '<numFmts count="2"><numFmt numFmtId="164" formatCode="#,##0.##"/><numFmt numFmtId="165" formatCode="0.0%"/></numFmts>'
+    + '<numFmts count="1"><numFmt numFmtId="164" formatCode="#,##0.##"/></numFmts>'
     + '<fonts count="3"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="14"/><name val="Calibri"/></font></fonts>'
     + '<fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFD9E2F3"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFE2F0D9"/><bgColor indexed="64"/></patternFill></fill></fills>'
     + '<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FF404040"/></left><right style="thin"><color rgb="FF404040"/></right><top style="thin"><color rgb="FF404040"/></top><bottom style="thin"><color rgb="FF404040"/></bottom><diagonal/></border></borders>'
     + '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
-    + '<cellXfs count="9">'
+    + '<cellXfs count="7">'
     + '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
     + '<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>'
     + '<xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>'
@@ -460,76 +583,74 @@ function matrixWorkbookStyles() {
     + '<xf numFmtId="164" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>'
     + '<xf numFmtId="0" fontId="1" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>'
     + '<xf numFmtId="164" fontId="1" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>'
-    + '<xf numFmtId="165" fontId="1" fillId="0" borderId="1" xfId="0" applyFont="1" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>'
-    + '<xf numFmtId="0" fontId="1" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>'
     + '</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
 }
 
-async function writeMatrixWorksheet(filePath, sheet) {
-  const stream = createWriteStream(filePath);
-  const productRows = sheet.rowDimension === 'products';
-  const metadataHeaders = productRows
-    ? ['STT', 'Mã sản phẩm', 'Tên sản phẩm', 'ĐVT']
-    : ['STT', 'Mã', sheet.rowLabel];
-  const headers = [...metadataHeaders, 'TỔNG', ...sheet.columns.map((item) => item.name)];
-  const lastColumn = columnName(headers.length - 1);
-  const metadataEnd = columnName(metadataHeaders.length - 1);
-  const totalIndex = metadataHeaders.length;
-  const totalColumn = columnName(totalIndex);
+function analysisCellValue(row, definition, sheet) {
+  if (definition.kind === 'meta') return Object.freeze({ text: row[definition.field] ?? '', numeric: false });
+  if (definition.kind === 'category') {
+    const bucket = row.values.get(definition.categoryKey);
+    if (!bucket) return Object.freeze({ text: '0', numeric: true });
+    if (definition.metric === 'quantity') return Object.freeze({ text: sheet.decimalText(bucket.quantity), numeric: true });
+    return Object.freeze({ text: sheet.decimalText(bucket.revenueByCurrency.get(definition.currencyCode) ?? 0n), numeric: true });
+  }
+  if (definition.metric === 'quantity') return Object.freeze({ text: sheet.decimalText(row.totals.quantity), numeric: true });
+  return Object.freeze({ text: sheet.decimalText(row.totals.revenueByCurrency.get(definition.currencyCode) ?? 0n), numeric: true });
+}
 
+function analysisGrandValue(definition, sheet) {
+  if (definition.kind === 'meta') return '';
+  if (definition.metric === 'quantity' && !sheet.quantityGrandValid) return '';
+  if (definition.kind === 'category') {
+    const bucket = sheet.grand.values.get(definition.categoryKey);
+    if (!bucket) return '0';
+    if (definition.metric === 'quantity') return sheet.decimalText(bucket.quantity);
+    return sheet.decimalText(bucket.revenueByCurrency.get(definition.currencyCode) ?? 0n);
+  }
+  if (definition.metric === 'quantity') return sheet.decimalText(sheet.grand.quantity);
+  return sheet.decimalText(sheet.grand.revenueByCurrency.get(definition.currencyCode) ?? 0n);
+}
+
+async function writeAnalysisWorksheet(filePath, sheet) {
+  const stream = createWriteStream(filePath);
+  const headers = ['STT', ...sheet.columns.map((item) => item.label)];
+  const lastColumn = columnName(headers.length - 1);
   try {
     await writeChunk(stream, '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>');
     await writeChunk(stream, '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">');
-    await writeChunk(stream, '<sheetViews><sheetView workbookViewId="0"><pane ySplit="4" topLeftCell="A5" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>');
+    await writeChunk(stream, '<sheetViews><sheetView workbookViewId="0"><pane ySplit="2" topLeftCell="A3" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>');
     await writeChunk(stream, '<cols>');
-    headers.forEach((_, index) => {
-      const width = index === 0 ? 7 : index === 1 ? 18 : index === 2 ? 34 : index === 3 && productRows ? 14 : 16;
+    headers.forEach((header, index) => {
+      const width = index === 0 ? 7 : /Sản phẩm|Nhóm hàng|Loại khách|Kênh bán/.test(header) ? 30 : /Doanh thu|Sản lượng|Tổng/.test(header) ? 18 : 16;
       stream.write(`<col min="${index + 1}" max="${index + 1}" width="${width}" customWidth="1"/>`);
     });
     await writeChunk(stream, '</cols><sheetData>');
     await writeChunk(stream, `<row r="1" ht="28" customHeight="1">${styledTextCell('A1', sheet.title, 1)}</row>`);
-    await writeChunk(stream, `<row r="2" ht="30" customHeight="1">${headers.map((header, index) => styledTextCell(`${columnName(index)}2`, header, 2)).join('')}</row>`);
+    await writeChunk(stream, `<row r="2" ht="34" customHeight="1">${headers.map((header, index) => styledTextCell(`${columnName(index)}2`, header, 2)).join('')}</row>`);
 
-    const totalCells = [];
-    totalCells.push(styledTextCell('A3', 'TỔNG', 5));
-    totalCells.push(styledNumberCell(`${totalColumn}3`, sheet.grandTotalText, 6));
-    sheet.columns.forEach((item, index) => {
-      totalCells.push(styledNumberCell(`${columnName(totalIndex + 1 + index)}3`, sheet.decimalText(sheet.columnTotals.get(item.id) ?? 0n), 6));
-    });
-    await writeChunk(stream, `<row r="3" ht="22" customHeight="1">${totalCells.join('')}</row>`);
-
-    const percentCells = [];
-    percentCells.push(styledTextCell('A4', 'TỶ LỆ', 8));
-    percentCells.push(styledNumberCell(`${totalColumn}4`, sheet.grandTotal === 0n ? '0' : '1', 7));
-    sheet.columns.forEach((item, index) => {
-      percentCells.push(styledNumberCell(`${columnName(totalIndex + 1 + index)}4`, percentRatioText(sheet.columnTotals.get(item.id) ?? 0n, sheet.grandTotal), 7));
-    });
-    await writeChunk(stream, `<row r="4" ht="22" customHeight="1">${percentCells.join('')}</row>`);
-
-    let rowNumber = 4;
+    let rowNumber = 2;
     for (let index = 0; index < sheet.rows.length; index += 1) {
       rowNumber += 1;
       const row = sheet.rows[index];
-      const cells = [
-        styledNumberCell(`A${rowNumber}`, String(index + 1), 4),
-        styledTextCell(`B${rowNumber}`, row.code, 3),
-        styledTextCell(`C${rowNumber}`, row.name, 3),
-      ];
-      let valueStartIndex = 3;
-      if (productRows) {
-        cells.push(styledTextCell(`D${rowNumber}`, row.unitName, 3));
-        valueStartIndex = 4;
-      }
-      cells.push(styledNumberCell(`${columnName(valueStartIndex)}${rowNumber}`, row.totalText, 4));
-      sheet.columns.forEach((item, columnIndex) => {
-        const value = row.values.get(item.id) ?? 0n;
-        cells.push(styledNumberCell(`${columnName(valueStartIndex + 1 + columnIndex)}${rowNumber}`, sheet.decimalText(value), 4));
+      const cells = [styledNumberCell(`A${rowNumber}`, String(index + 1), 4)];
+      sheet.columns.forEach((definition, columnIndex) => {
+        const value = analysisCellValue(row, definition, sheet);
+        const ref = `${columnName(columnIndex + 1)}${rowNumber}`;
+        cells.push(value.numeric ? styledNumberCell(ref, value.text, 4) : styledTextCell(ref, value.text, 3));
       });
       await writeChunk(stream, `<row r="${rowNumber}" ht="21" customHeight="1">${cells.join('')}</row>`);
     }
 
+    rowNumber += 1;
+    const totalCells = [styledTextCell(`A${rowNumber}`, 'TỔNG', 5)];
+    sheet.columns.forEach((definition, columnIndex) => {
+      const ref = `${columnName(columnIndex + 1)}${rowNumber}`;
+      const value = analysisGrandValue(definition, sheet);
+      totalCells.push(definition.kind === 'meta' ? styledTextCell(ref, '', 5) : styledNumberCell(ref, value, 6));
+    });
+    await writeChunk(stream, `<row r="${rowNumber}" ht="22" customHeight="1">${totalCells.join('')}</row>`);
     await writeChunk(stream, '</sheetData>');
-    await writeChunk(stream, `<mergeCells count="3"><mergeCell ref="A1:${lastColumn}1"/><mergeCell ref="A3:${metadataEnd}3"/><mergeCell ref="A4:${metadataEnd}4"/></mergeCells>`);
+    await writeChunk(stream, `<mergeCells count="1"><mergeCell ref="A1:${lastColumn}1"/></mergeCells>`);
     await writeChunk(stream, `<pageMargins left="0.3" right="0.3" top="0.5" bottom="0.5" header="0.2" footer="0.2"/><pageSetup orientation="landscape" fitToWidth="1" fitToHeight="0"/>`);
     await writeChunk(stream, '</worksheet>');
     stream.end();
@@ -540,24 +661,16 @@ async function writeMatrixWorksheet(filePath, sheet) {
   }
 }
 
-async function buildMatrixXlsx(outputPath, matrixSheets, tempDirectory) {
-  const worksheetFiles = [];
-  for (let index = 0; index < matrixSheets.length; index += 1) {
-    const worksheetPath = path.join(tempDirectory, `matrix-${String(index + 1).padStart(2, '0')}.xml`);
-    await writeMatrixWorksheet(worksheetPath, matrixSheets[index]);
-    worksheetFiles.push(worksheetPath);
-  }
-
-  const contentTypes = matrixSheets.map((_, index) => `<Override PartName="/xl/worksheets/sheet${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('');
-  const workbookSheets = matrixSheets.map((sheet, index) => `<sheet name="${xmlEscape(sheet.sheetName)}" sheetId="${index + 1}" r:id="rId${index + 1}"/>`).join('');
-  const relationships = matrixSheets.map((_, index) => `<Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${index + 1}.xml"/>`).join('');
+async function buildAnalysisXlsx(outputPath, sheet, tempDirectory) {
+  const worksheetPath = path.join(tempDirectory, 'analysis.xml');
+  await writeAnalysisWorksheet(worksheetPath, sheet);
   const entries = [
-    { name: '[Content_Types].xml', content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${contentTypes}</Types>` },
+    { name: '[Content_Types].xml', content: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>' },
     { name: '_rels/.rels', content: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>' },
-    { name: 'xl/workbook.xml', content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${workbookSheets}</sheets></workbook>` },
-    { name: 'xl/_rels/workbook.xml.rels', content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${relationships}<Relationship Id="rId${matrixSheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>` },
+    { name: 'xl/workbook.xml', content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="${xmlEscape(sheet.sheetName)}" sheetId="1" r:id="rId1"/></sheets></workbook>` },
+    { name: 'xl/_rels/workbook.xml.rels', content: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>' },
     { name: 'xl/styles.xml', content: matrixWorkbookStyles() },
-    ...worksheetFiles.map((filePath, index) => ({ name: `xl/worksheets/sheet${index + 1}.xml`, filePath })),
+    { name: 'xl/worksheets/sheet1.xml', filePath: worksheetPath },
   ];
   await writeStoredZip(outputPath, entries);
 }
@@ -637,7 +750,7 @@ function fileStamp(receivedAt) {
   return new Date(receivedAt ?? Date.now()).toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
 }
 
-async function createSalesMatrixReportingExport(pool, {
+async function createSalesAnalysisReportingExport(pool, {
   requestContext,
   filters,
   warehouseIds,
@@ -645,28 +758,11 @@ async function createSalesMatrixReportingExport(pool, {
   report,
 }) {
   const facts = await loadSalesMatrixFacts(pool, requestContext, filters, warehouseIds);
-  const matrixSheets = buildMatrixSheets(facts, selection, filters);
-  const tempDirectory = await mkdtemp(path.join(tmpdir(), 'npp-sales-matrix-export-'));
-  const outputPath = path.join(tempDirectory, 'sales-matrix.xlsx');
+  const sheet = buildAnalysisSheet(facts, selection, filters);
+  const tempDirectory = await mkdtemp(path.join(tmpdir(), 'npp-sales-analysis-export-'));
+  const outputPath = path.join(tempDirectory, 'sales-analysis.xlsx');
   try {
-    const sheets = matrixSheets.length
-      ? matrixSheets
-      : [Object.freeze({
-          title: `BÁO CÁO MA TRẬN ${selection.metric === 'quantity' ? 'SẢN LƯỢNG' : 'DOANH THU'} TỪ NGÀY ${formatReportDate(filters.from)} - ${formatReportDate(filters.to)}`,
-          sheetName: 'Ma trận',
-          rowDimension: selection.rowDimension,
-          rowLabel: selection.rowLabel,
-          columnLabel: selection.columnLabel,
-          metric: selection.metric,
-          scopeLabel: '',
-          columns: Object.freeze([]),
-          rows: Object.freeze([]),
-          columnTotals: new Map(),
-          grandTotal: 0n,
-          grandTotalText: '0',
-          decimalText: reportingSalesInternals.decimalText,
-        })];
-    await buildMatrixXlsx(outputPath, sheets, tempDirectory);
+    await buildAnalysisXlsx(outputPath, sheet, tempDirectory);
     const fileStat = await stat(outputPath);
     const stamp = fileStamp(requestContext.receivedAt);
     return Object.freeze({
@@ -690,7 +786,7 @@ export async function createSalesReportingExport(pool, {
   warehouseIds,
   selection,
 }) {
-  if (!selection?.ok || (!selection.matrix && !DIMENSIONS[selection.dimension])) {
+  if (!selection?.ok || (!selection.analysis && !DIMENSIONS[selection.dimension])) {
     throw new Error('sales_reporting_export_selection_required');
   }
   const report = await salesReport(pool, requestContext, filters, warehouseIds);
@@ -700,8 +796,8 @@ export async function createSalesReportingExport(pool, {
     throw error;
   }
 
-  if (selection.matrix) {
-    return createSalesMatrixReportingExport(pool, {
+  if (selection.analysis) {
+    return createSalesAnalysisReportingExport(pool, {
       requestContext,
       filters,
       warehouseIds,
@@ -755,6 +851,8 @@ export const salesReportingExportInternals = Object.freeze({
   DIMENSIONS,
   MATRIX_DIMENSIONS,
   SOURCE_LABELS,
+  analysisDimensionKey,
+  buildAnalysisSheet,
   buildMatrixSheets,
   flattenRow,
 });
