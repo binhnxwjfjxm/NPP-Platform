@@ -24,6 +24,7 @@ type LocationOption = { id: string; code: string; name: string; locationType: st
 type SupplierOption = { id: string; code: string; name: string };
 type EntryMode = 'direct' | 'file';
 type DraftRow = {
+  splitIdentity: string;
   sku: string;
   sourceQuantity: string;
   unitCost: string;
@@ -161,13 +162,13 @@ const HEADER_ALIASES: Record<string, keyof DraftRow> = {
 
 function emptyRow(): DraftRow {
   return {
-    sku: '', sourceQuantity: '', unitCost: '', locationCode: '', lotCode: '',
+    splitIdentity: '', sku: '', sourceQuantity: '', unitCost: '', locationCode: '', lotCode: '',
     manufacturedDate: '', expiryDate: '', supplierLotReference: '',
   };
 }
 
 function rowIsEmpty(row: DraftRow) {
-  return Object.values(row).every((value) => !String(value ?? '').trim());
+  return Object.entries(row).every(([key, value]) => key === 'splitIdentity' || !String(value ?? '').trim());
 }
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -280,6 +281,7 @@ export default function ManualInboundWorkspace() {
   const [reverseBusy, setReverseBusy] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const productSearchInput = useRef<HTMLInputElement>(null);
+  const productResultsRef = useRef<HTMLDivElement>(null);
   const quantityRefs = useRef(new Map<number, HTMLInputElement>());
   const pendingConfirm = useRef<PendingMutation | null>(null);
   const pendingReverse = useRef<PendingMutation | null>(null);
@@ -303,6 +305,7 @@ export default function ManualInboundWorkspace() {
       referenceNumber: referenceNumber.trim() || null,
       note: note.trim() || null,
       rows: sourceRows.filter((row) => !rowIsEmpty(row)).map((row) => ({
+        splitIdentity: row.splitIdentity || null,
         sku: row.sku.trim(),
         sourceQuantity: row.sourceQuantity.trim(),
         unitCost: row.unitCost.trim() || null,
@@ -385,6 +388,36 @@ export default function ManualInboundWorkspace() {
     invalidate();
     window.setTimeout(() => {
       const input = quantityRefs.current.get(targetIndex);
+      input?.focus();
+      input?.select();
+    }, 0);
+  }
+
+  function splitRow(index: number) {
+    const source = rows[index];
+    if (!source || !source.sku.trim()) return;
+    const sourceSplitIdentity = source.splitIdentity || crypto.randomUUID();
+    const newSplitIdentity = crypto.randomUUID();
+    setRows((current) => current.flatMap((row, rowIndex) => {
+      if (rowIndex !== index) return [row];
+      return [
+        { ...row, splitIdentity: row.splitIdentity || sourceSplitIdentity },
+        { ...row, splitIdentity: newSplitIdentity, sourceQuantity: '1' },
+      ];
+    }));
+    setResolvedItems((current) => {
+      const next: Record<number, ResolvedItem> = {};
+      (Object.entries(current) as Array<[string, ResolvedItem]>).forEach(([lineNumberText, item]) => {
+        const lineIndex = Number(lineNumberText) - 1;
+        next[lineIndex > index ? lineIndex + 2 : lineIndex + 1] = item;
+      });
+      const sourceResolved = current[index + 1];
+      if (sourceResolved) next[index + 2] = { ...sourceResolved };
+      return next;
+    });
+    invalidate();
+    window.setTimeout(() => {
+      const input = quantityRefs.current.get(index + 1);
       input?.focus();
       input?.select();
     }, 0);
@@ -493,6 +526,89 @@ export default function ManualInboundWorkspace() {
       controller.abort();
     };
   }, [entryMode, productSearch, warehouseId]);
+
+  useEffect(() => {
+    if (entryMode !== 'direct') return;
+
+    function focusProductSearch() {
+      const input = productSearchInput.current;
+      if (!input || input.disabled) return false;
+      input.focus();
+      input.select();
+      return true;
+    }
+
+    function resultButtons() {
+      return Array.from(productResultsRef.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? []);
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.defaultPrevented || event.isComposing || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+      const target = event.target;
+      if (target instanceof HTMLElement && (target.isContentEditable || target.tagName === 'TEXTAREA')) return;
+
+      if (event.key === 'F3' && focusProductSearch()) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+
+      if (target === productSearchInput.current) {
+        const buttons = resultButtons();
+        if (buttons.length === 0) return;
+        if (event.key === 'ArrowDown') {
+          event.preventDefault();
+          event.stopPropagation();
+          buttons[0]?.focus();
+          return;
+        }
+        if (event.key === 'ArrowUp') {
+          event.preventDefault();
+          event.stopPropagation();
+          buttons.at(-1)?.focus();
+          return;
+        }
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          event.stopPropagation();
+          buttons[0]?.click();
+          return;
+        }
+      }
+
+      if (target instanceof HTMLButtonElement && target.closest('[data-testid="manual-inbound-product-results"]')) {
+        const buttons = resultButtons();
+        const index = buttons.indexOf(target);
+        if (index < 0) return;
+        if (event.key === 'ArrowDown') {
+          event.preventDefault();
+          event.stopPropagation();
+          buttons[Math.min(index + 1, buttons.length - 1)]?.focus();
+          return;
+        }
+        if (event.key === 'ArrowUp') {
+          event.preventDefault();
+          event.stopPropagation();
+          if (index === 0) productSearchInput.current?.focus();
+          else buttons[index - 1]?.focus();
+          return;
+        }
+      }
+
+      if (
+        event.key === 'Enter'
+        && target instanceof HTMLInputElement
+        && (target.getAttribute('aria-label') ?? '').startsWith('Giá vốn dòng ')
+        && focusProductSearch()
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => document.removeEventListener('keydown', handleKeyDown, true);
+  }, [entryMode]);
 
   async function chooseFile(file: File) {
     setBusy('file');
@@ -683,11 +799,12 @@ export default function ManualInboundWorkspace() {
                   placeholder={warehouseId ? 'Tên sản phẩm, SKU hoặc mã vạch' : 'Chọn Kho nhập trước khi tìm sản phẩm'}
                   disabled={!warehouseId}
                   autoComplete="off"
+                  aria-keyshortcuts="F3"
                 />
               </div>
               {productSearchLoading ? <p className={styles.searchHint}>Đang tìm sản phẩm…</p> : null}
               {!productSearchLoading && productSearch.trim() && productResults.length === 0 ? <p className={styles.searchHint}>Không có sản phẩm phù hợp.</p> : null}
-              {productResults.length ? <div className={styles.productResults} role="listbox" aria-label="Kết quả tìm sản phẩm">
+              {productResults.length ? <div ref={productResultsRef} data-testid="manual-inbound-product-results" className={styles.productResults} role="listbox" aria-label="Kết quả tìm sản phẩm">
                 {productResults.map((option) => <button key={option.id} type="button" className={styles.productResult} onClick={() => addProduct(option)}>
                   <span className={styles.productIdentity}><strong>{option.productName}</strong><small>{option.sku}{option.variantName ? ` · ${option.variantName}` : ''}</small></span>
                   <span className={styles.productMeta}><b>{option.unitCode}</b><small>{option.unitCost ? `Giá vốn ${formatCost(option.unitCost)} đ` : 'Chưa có giá vốn'}</small></span>
@@ -702,14 +819,14 @@ export default function ManualInboundWorkspace() {
                   const actualIndex = rows.indexOf(row);
                   const resolved = resolvedItems[actualIndex + 1];
                   const matches = resolved?.sku === row.sku.trim().toUpperCase();
-                  return <tr key={`${actualIndex}-${row.sku}`}>
+                  return <tr key={`${actualIndex}-${row.sku}-${row.splitIdentity || 'normal'}`}>
                     <BusinessTableSequenceCell rowIndex={index} value={actualIndex + 1} />
                     <td className={styles.skuCell}>{row.sku}</td>
                     <td className={styles.productNameCell}>{matches ? (resolved.productName || '—') : 'Kiểm tra để nhận diện'}{matches && resolved?.unitCost ? <small>Giá vốn hiện hành: {formatCost(resolved.unitCost)} đ</small> : null}</td>
                     <td className={styles.unitCell}>{matches ? (resolved.sourceUnitCode || '—') : '—'}</td>
                     <td><input ref={(element) => { if (element) quantityRefs.current.set(actualIndex, element); else quantityRefs.current.delete(actualIndex); }} aria-label={`Số lượng dòng ${actualIndex + 1}`} inputMode="decimal" value={row.sourceQuantity} onFocus={(event) => event.currentTarget.select()} onClick={(event) => event.currentTarget.select()} onChange={(event) => updateRow(actualIndex, { sourceQuantity: event.target.value })} placeholder="0" /></td>
                     <td><input aria-label={`Giá vốn dòng ${actualIndex + 1}`} inputMode="decimal" value={row.unitCost} onChange={(event) => updateRow(actualIndex, { unitCost: event.target.value })} placeholder={resolved?.unitCost ? formatCost(resolved.unitCost) : 'Tự lấy nếu có'} /></td>
-                    <td><button type="button" className={styles.textButton} onClick={() => removeRow(actualIndex)}>Xóa</button></td>
+                    <td><button type="button" className={styles.textButton} onClick={() => splitRow(actualIndex)}>↳ Tách dòng</button><button type="button" className={styles.textButton} onClick={() => removeRow(actualIndex)}>Xóa</button></td>
                   </tr>;
                 }) : <tr><td colSpan={7} className={styles.emptyState}>Tìm và chọn sản phẩm ở ô phía trên để bắt đầu nhập.</td></tr>}</tbody>
               </table>
@@ -734,14 +851,14 @@ export default function ManualInboundWorkspace() {
                 <tbody>{rows.map((row, index) => {
                   const resolved = resolvedItems[index + 1];
                   const matches = resolved?.sku === row.sku.trim().toUpperCase();
-                  return <tr key={index}>
+                  return <tr key={`${index}-${row.splitIdentity || 'normal'}`}>
                     <BusinessTableSequenceCell rowIndex={index} />
                     <td><input aria-label={`SKU dòng ${index + 1}`} value={row.sku} onChange={(event) => updateRow(index, { sku: event.target.value })} placeholder="VD: SP001" /></td>
                     <td className={styles.productNameCell}>{matches ? (resolved.productName || '—') : 'Kiểm tra để nhận diện'}</td>
                     <td className={styles.unitCell}>{matches ? (resolved.sourceUnitCode || '—') : '—'}</td>
-                    <td><input aria-label={`Số lượng dòng ${index + 1}`} inputMode="decimal" value={row.sourceQuantity} onChange={(event) => updateRow(index, { sourceQuantity: event.target.value })} placeholder="0" /></td>
+                    <td><input ref={(element) => { if (element) quantityRefs.current.set(index, element); else quantityRefs.current.delete(index); }} aria-label={`Số lượng dòng ${index + 1}`} inputMode="decimal" value={row.sourceQuantity} onChange={(event) => updateRow(index, { sourceQuantity: event.target.value })} placeholder="0" /></td>
                     <td><input aria-label={`Giá vốn dòng ${index + 1}`} inputMode="decimal" value={row.unitCost} onChange={(event) => updateRow(index, { unitCost: event.target.value })} placeholder="Tự lấy nếu có" /></td>
-                    <td><button type="button" className={styles.textButton} onClick={() => removeRow(index)}>Xóa</button></td>
+                    <td><button type="button" className={styles.textButton} onClick={() => splitRow(index)}>↳ Tách dòng</button><button type="button" className={styles.textButton} onClick={() => removeRow(index)}>Xóa</button></td>
                   </tr>;
                 })}</tbody>
               </table>
