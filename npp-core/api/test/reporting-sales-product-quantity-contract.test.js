@@ -109,7 +109,7 @@ test('Cách hiển thị sản lượng được validate rõ và doanh thu khô
   assert.equal(revenueOnly.quantityDisplay, 'sold');
 });
 
-test('Nguồn phân tích lấy Product cha, snapshot lượng lịch sử và chỉ dùng danh mục hiện tại để xác định ĐVT đích', async () => {
+test('Nguồn phân tích lấy Product cha, snapshot lượng lịch sử và Loại sản phẩm hiện tại', async () => {
   const source = await readApi('src/services/reporting-sales-export.js');
   const route = await readApi('src/routes/reporting-sales-purchasing.js');
 
@@ -120,6 +120,11 @@ test('Nguồn phân tích lấy Product cha, snapshot lượng lịch sử và c
   assert.match(source, /pv\.is_inventory_base = true/);
   assert.match(source, /pv\.variant_kind = 'CARTON'/);
   assert.doesNotMatch(source, /line\.variant_id AS "productId"/);
+  assert.match(source, /product\.category_id AS "productGroupId"/);
+  assert.match(source, /product_category\.code AS "productGroupCode"/);
+  assert.match(source, /product_category\.name AS "productGroupName"/);
+  assert.match(source, /\(\$6::uuid IS NULL OR product\.category_id = \$6::uuid\)/);
+  assert.doesNotMatch(source, /CASE WHEN line\.reporting_dimension_snapshot_captured THEN line\.product_category_id_snapshot ELSE product\.category_id END AS "productGroupId"/);
   assert.match(route, /quantityDisplay: url\.searchParams\.get\('quantityDisplay'\)/);
 });
 
