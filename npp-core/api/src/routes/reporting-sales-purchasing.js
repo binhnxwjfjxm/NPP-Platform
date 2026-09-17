@@ -499,6 +499,7 @@ export async function handleReportingRoutes(req, res, options) {
       format: url.searchParams.get('format'),
       columns: url.searchParams.getAll('column'),
       quantityDisplay: url.searchParams.get('quantityDisplay'),
+      sort: url.searchParams.get('sort'),
     });
     if (!selection.ok) {
       sendNormalizedError(res, selection, options);

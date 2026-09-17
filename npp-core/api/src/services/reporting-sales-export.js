@@ -13,6 +13,7 @@ import {
 } from './reporting-sales-export-base.js';
 
 const QUANTITY_DISPLAY = new Set(['sold', 'carton', 'base']);
+const ANALYSIS_SORT = new Set(['name-asc', 'revenue-desc', 'revenue-asc', 'quantity-desc', 'quantity-asc']);
 const SCALE = 1_000_000n;
 
 function invalid(code, message, details = {}) {
@@ -33,6 +34,7 @@ export function normalizeSalesReportingExportSelection({
   format,
   columns,
   quantityDisplay: rawQuantityDisplay,
+  sort: rawSort,
 }) {
   const base = normalizeBaseSalesReportingExportSelection({ dimension, format, columns });
   if (!base.ok || !base.analysis) return base;
@@ -46,9 +48,21 @@ export function normalizeSalesReportingExportSelection({
     );
   }
 
+  const sort = text(rawSort, 'name-asc').toLowerCase();
+  if (!ANALYSIS_SORT.has(sort)
+    || (sort.startsWith('quantity-') && !base.metrics.includes('quantity'))
+    || (sort.startsWith('revenue-') && !base.metrics.includes('revenue'))) {
+    return invalid(
+      'INVALID_SALES_ANALYSIS_SORT',
+      'Cách sắp xếp báo cáo không hợp lệ',
+      { allowed: [...ANALYSIS_SORT] },
+    );
+  }
+
   return Object.freeze({
     ...base,
     quantityDisplay: base.metrics.includes('quantity') ? quantityDisplay : 'sold',
+    sort,
   });
 }
 
@@ -159,6 +173,31 @@ function rowUnitLabel(bucket) {
   return quantityEntries(bucket).map((entry) => entry.unitName).join('; ');
 }
 
+function analysisSortValue(row, sort, currencies) {
+  if (sort.startsWith('quantity-')) {
+    const entries = quantityEntries(row.totals);
+    return entries.length === 1 ? entries[0].value : null;
+  }
+  if (sort.startsWith('revenue-')) {
+    if (currencies.length !== 1) return null;
+    return row.totals.revenueByCurrency.get(currencies[0]) ?? 0n;
+  }
+  return null;
+}
+
+function compareAnalysisRows(left, right, selection, currencies) {
+  const sort = selection.sort ?? 'name-asc';
+  if (sort === 'name-asc') return compareLabel(left, right);
+  const leftValue = analysisSortValue(left, sort, currencies);
+  const rightValue = analysisSortValue(right, sort, currencies);
+  if (leftValue === null && rightValue === null) return compareLabel(left, right);
+  if (leftValue === null) return 1;
+  if (rightValue === null) return -1;
+  if (leftValue === rightValue) return compareLabel(left, right);
+  const direction = sort.endsWith('-desc') ? -1 : 1;
+  return leftValue > rightValue ? direction : -direction;
+}
+
 function formatReportDate(value) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value ?? ''));
   return match ? `${match[3]}/${match[2]}/${match[1].slice(2)}` : String(value ?? '');
@@ -258,10 +297,12 @@ export function buildAnalysisSheet(rows, selection, filters) {
   }
 
   const columns = selectedTokens ? allColumns.filter((item) => selectedTokens.has(item.token)) : allColumns;
-  const reportRows = [...resultRows.values()].sort(compareLabel).map((row) => Object.freeze({
-    ...row,
-    unitName: metrics.has('quantity') ? rowUnitLabel(row.totals) : '',
-  }));
+  const reportRows = [...resultRows.values()]
+    .sort((left, right) => compareAnalysisRows(left, right, selection, sortedCurrencies))
+    .map((row) => Object.freeze({
+      ...row,
+      unitName: metrics.has('quantity') ? rowUnitLabel(row.totals) : '',
+    }));
 
   return Object.freeze({
     title: `BÁO CÁO ${selection.rowLabel.toUpperCase()} THEO ${selection.columnLabel.toUpperCase()} TỪ NGÀY ${formatReportDate(filters.from)} - ${formatReportDate(filters.to)}`,
@@ -271,6 +312,7 @@ export function buildAnalysisSheet(rows, selection, filters) {
     columnLabel: selection.columnLabel,
     metrics: selection.metrics,
     quantityDisplay: selection.quantityDisplay,
+    sort: selection.sort,
     currencies: Object.freeze(sortedCurrencies),
     categories: Object.freeze(sortedCategories),
     columns: Object.freeze(columns),
@@ -295,17 +337,20 @@ function styledNumberCell(reference, value, styleId) {
   const normalized = valueText(value).trim();
   return normalized ? `<c r="${reference}" s="${styleId}"><v>${xmlEscape(normalized)}</v></c>` : `<c r="${reference}" s="${styleId}"/>`;
 }
+function numberCellStyle(value, integerStyle, decimalStyle) {
+  return valueText(value).trim().includes('.') ? decimalStyle : integerStyle;
+}
 async function writeChunk(stream, chunk) { if (!stream.write(chunk)) await once(stream, 'drain'); }
 
 function workbookStyles() {
   return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
     + '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
-    + '<numFmts count="1"><numFmt numFmtId="164" formatCode="#,##0.##"/></numFmts>'
+    + '<numFmts count="2"><numFmt numFmtId="164" formatCode="#,##0"/><numFmt numFmtId="165" formatCode="#,##0.######"/></numFmts>'
     + '<fonts count="3"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="14"/><name val="Calibri"/></font></fonts>'
     + '<fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFD9E2F3"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFE2F0D9"/><bgColor indexed="64"/></patternFill></fill></fills>'
     + '<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FF404040"/></left><right style="thin"><color rgb="FF404040"/></right><top style="thin"><color rgb="FF404040"/></top><bottom style="thin"><color rgb="FF404040"/></bottom><diagonal/></border></borders>'
     + '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
-    + '<cellXfs count="7"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf><xf numFmtId="164" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf><xf numFmtId="0" fontId="1" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf><xf numFmtId="164" fontId="1" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf></cellXfs>'
+    + '<cellXfs count="9"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf><xf numFmtId="164" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf><xf numFmtId="0" fontId="1" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf><xf numFmtId="164" fontId="1" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf><xf numFmtId="165" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf><xf numFmtId="165" fontId="1" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf></cellXfs>'
     + '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
 }
 
@@ -388,7 +433,9 @@ async function writeAnalysisWorksheet(filePath, sheet) {
       sheet.columns.forEach((definition, columnIndex) => {
         const value = analysisCellValue(row, definition, sheet);
         const ref = `${columnName(columnIndex + 1)}${rowNumber}`;
-        cells.push(value.numeric ? styledNumberCell(ref, value.text, 4) : styledTextCell(ref, value.text, 3));
+        cells.push(value.numeric
+          ? styledNumberCell(ref, value.text, numberCellStyle(value.text, 4, 7))
+          : styledTextCell(ref, value.text, 3));
       });
       await writeChunk(stream, `<row r="${rowNumber}" ht="21" customHeight="1">${cells.join('')}</row>`);
     }
@@ -397,7 +444,9 @@ async function writeAnalysisWorksheet(filePath, sheet) {
     sheet.columns.forEach((definition, columnIndex) => {
       const ref = `${columnName(columnIndex + 1)}${rowNumber}`;
       const value = analysisGrandValue(definition, sheet);
-      totalCells.push(definition.kind === 'meta' || !value.numeric ? styledTextCell(ref, value.text, 5) : styledNumberCell(ref, value.text, 6));
+      totalCells.push(definition.kind === 'meta' || !value.numeric
+        ? styledTextCell(ref, value.text, 5)
+        : styledNumberCell(ref, value.text, numberCellStyle(value.text, 6, 8)));
     });
     await writeChunk(stream, `<row r="${rowNumber}" ht="22" customHeight="1">${totalCells.join('')}</row></sheetData>`);
     await writeChunk(stream, `<mergeCells count="${mergeRefs.length}">${mergeRefs.map((ref) => `<mergeCell ref="${ref}"/>`).join('')}</mergeCells><pageMargins left="0.3" right="0.3" top="0.5" bottom="0.5" header="0.2" footer="0.2"/><pageSetup orientation="landscape" fitToWidth="1" fitToHeight="0"/></worksheet>`);
@@ -510,4 +559,5 @@ export const salesReportingExportInternals = Object.freeze({
   buildAnalysisSheet,
   divideScaled,
   quantityPresentation,
+  numberCellStyle,
 });

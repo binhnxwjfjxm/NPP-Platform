@@ -23,6 +23,7 @@ type ExportMode = 'list' | 'analysis';
 type AnalysisDimension = 'products' | 'customerGroups' | 'channels' | 'productGroups';
 type AnalysisMetric = 'revenue' | 'quantity';
 type QuantityDisplay = 'sold' | 'carton' | 'base';
+type AnalysisSort = 'name-asc' | 'revenue-desc' | 'revenue-asc' | 'quantity-desc' | 'quantity-asc';
 
 type ColumnOption = Readonly<{
   key: string;
@@ -73,6 +74,14 @@ const QUANTITY_DISPLAY_LABELS: Readonly<Record<QuantityDisplay, string>> = Objec
   sold: 'Theo ĐVT bán',
   carton: 'Ưu tiên Thùng',
   base: 'Ưu tiên ĐVT lẻ',
+});
+
+const ANALYSIS_SORT_LABELS: Readonly<Record<AnalysisSort, string>> = Object.freeze({
+  'name-asc': 'Tên A → Z',
+  'revenue-desc': 'Doanh thu cao → thấp',
+  'revenue-asc': 'Doanh thu thấp → cao',
+  'quantity-desc': 'Sản lượng cao → thấp',
+  'quantity-asc': 'Sản lượng thấp → cao',
 });
 
 const COLUMN_LABELS = Object.freeze({
@@ -189,6 +198,7 @@ export function SalesReportingExportDialog({
   const [analysisDimensions, setAnalysisDimensions] = useState<readonly AnalysisDimension[]>(defaultAnalysisDimensions(dimension));
   const [analysisMetrics, setAnalysisMetrics] = useState<readonly AnalysisMetric[]>(Object.freeze(['revenue', 'quantity']));
   const [quantityDisplay, setQuantityDisplay] = useState<QuantityDisplay>('sold');
+  const [analysisSort, setAnalysisSort] = useState<AnalysisSort>('name-asc');
   const [analysisSelectedColumns, setAnalysisSelectedColumns] = useState<readonly string[]>([]);
   const [analysisReport, setAnalysisReport] = useState<SalesReportingDashboard | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
@@ -198,6 +208,12 @@ export function SalesReportingExportDialog({
   const options = COLUMN_OPTIONS[dimension];
   const selected = useMemo(() => new Set(selectedColumns), [selectedColumns]);
   const analysisSelected = useMemo(() => new Set(analysisSelectedColumns), [analysisSelectedColumns]);
+  const analysisSortOptions = useMemo(() => {
+    const result: AnalysisSort[] = ['name-asc'];
+    if (analysisMetrics.includes('revenue')) result.push('revenue-desc', 'revenue-asc');
+    if (analysisMetrics.includes('quantity')) result.push('quantity-desc', 'quantity-asc');
+    return Object.freeze(result);
+  }, [analysisMetrics]);
   const analysisRow = analysisDimensions[0];
   const analysisColumn = analysisDimensions[1];
   const categories = useMemo(
@@ -259,9 +275,14 @@ export function SalesReportingExportDialog({
     setAnalysisDimensions(defaultAnalysisDimensions(dimension));
     setAnalysisMetrics(Object.freeze(['revenue', 'quantity']));
     setQuantityDisplay('sold');
+    setAnalysisSort('name-asc');
     setAnalysisReport(null);
     setError('');
   }, [dimension]);
+
+  useEffect(() => {
+    if (!analysisSortOptions.includes(analysisSort)) setAnalysisSort('name-asc');
+  }, [analysisSort, analysisSortOptions]);
 
   useEffect(() => {
     if (!open || mode !== 'analysis') return undefined;
@@ -292,6 +313,7 @@ export function SalesReportingExportDialog({
     setAnalysisDimensions(defaultAnalysisDimensions(dimension));
     setAnalysisMetrics(Object.freeze(['revenue', 'quantity']));
     setQuantityDisplay('sold');
+    setAnalysisSort('name-asc');
     setAnalysisReport(null);
     setError('');
     setOpen(true);
@@ -356,6 +378,7 @@ export function SalesReportingExportDialog({
         if (filters.productGroupId) query.set('productGroupId', filters.productGroupId);
         if (filters.customerGroupId) query.set('customerGroupId', filters.customerGroupId);
         if (analysisMetrics.includes('quantity')) query.set('quantityDisplay', quantityDisplay);
+        query.set('sort', analysisSort);
         for (const key of analysisSelectedColumns) query.append('column', key);
       } else {
         if (dimension === 'products') {
@@ -398,7 +421,7 @@ export function SalesReportingExportDialog({
 
   const analysisReady = analysisDimensions.length === 2 && analysisMetrics.length > 0 && analysisSelectedColumns.length > 0 && !analysisLoading;
   const analysisSummary = analysisDimensions.length === 2
-    ? `Sẽ xuất Báo cáo ${ANALYSIS_DIMENSION_LABELS[analysisDimensions[0]]} theo ${ANALYSIS_DIMENSION_LABELS[analysisDimensions[1]]}, gồm ${analysisMetrics.map((item) => ANALYSIS_METRIC_LABELS[item]).join(' và ')}${analysisMetrics.includes('quantity') ? ` · ${QUANTITY_DISPLAY_LABELS[quantityDisplay]}` : ''}.`
+    ? `Sẽ xuất Báo cáo ${ANALYSIS_DIMENSION_LABELS[analysisDimensions[0]]} theo ${ANALYSIS_DIMENSION_LABELS[analysisDimensions[1]]}, gồm ${analysisMetrics.map((item) => ANALYSIS_METRIC_LABELS[item]).join(' và ')}${analysisMetrics.includes('quantity') ? ` · ${QUANTITY_DISPLAY_LABELS[quantityDisplay]}` : ''} · ${ANALYSIS_SORT_LABELS[analysisSort]}.`
     : 'Chọn đúng 2 tiêu chí để tạo báo cáo phân tích.';
 
   return (
@@ -478,6 +501,23 @@ export function SalesReportingExportDialog({
                         disabled={exporting || (!analysisDimensions.includes(item) && analysisDimensions.length >= 2)}
                       />
                       {ANALYSIS_DIMENSION_LABELS[item]}
+                    </label>
+                  ))}
+                </fieldset>
+
+                <fieldset className={styles.formatGroup}>
+                  <legend>Sắp xếp dòng</legend>
+                  {analysisSortOptions.map((item) => (
+                    <label key={item}>
+                      <input
+                        type="radio"
+                        name="sales-export-sort"
+                        value={item}
+                        checked={analysisSort === item}
+                        onChange={() => setAnalysisSort(item)}
+                        disabled={exporting}
+                      />
+                      {ANALYSIS_SORT_LABELS[item]}
                     </label>
                   ))}
                 </fieldset>
