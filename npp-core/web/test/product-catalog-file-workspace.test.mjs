@@ -35,9 +35,9 @@ test('Cập nhật sản phẩm mở đủ nhóm thuộc tính và tự nhận t
 
   assert.match(updater, /\['LOAI SAN PHAM', 'CATEGORY_CODE'\]/);
   assert.match(updater, /initialMappings\(columns, rows\[0\] \?\? \[\], skipFirst\)/);
-  assert.match(updater, /Cột 1 · SKU/);
+  assert.match(updater, /Cột 1 luôn là SKU/);
   assert.match(updater, /Một thuộc tính chỉ được chọn cho một cột/);
-  assert.match(updater, /dòng có lỗi sẽ được bỏ qua/);
+  assert.match(updater, /SKU hoặc dòng lỗi được báo và bỏ qua/);
 });
 
 test('Backend cập nhật hàng loạt giữ lỗi theo dòng, mở trần đủ file hiện tại và dùng service chuẩn', async () => {
