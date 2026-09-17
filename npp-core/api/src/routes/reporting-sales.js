@@ -260,12 +260,12 @@ function reconciliation(facts) {
 function quality(facts) {
   const current = currentFacts(facts);
   const customerGroupLegacyFallbackCount = current.filter((row) => row.customerGroupSnapshotCaptured !== true).length;
-  const productGroupLegacyFallbackCount = current.filter((row) => row.productGroupSource !== 'snapshot').length;
+  const productGroupLegacyFallbackCount = current.filter((row) => row.productGroupSource === 'legacy-unavailable').length;
   const unitNameLegacyFallbackCount = current.filter((row) => row.unitNameSource !== 'snapshot').length;
   const unattributedEmployeeCount = current.filter((row) => row.employeeSource === 'unavailable').length;
   const warnings = [];
   if (customerGroupLegacyFallbackCount) warnings.push('Một phần đơn cũ chưa có ảnh chụp Loại khách để truy vết lịch sử; phân tích Nhóm khách vẫn dùng danh mục khách hàng hiện tại.');
-  if (productGroupLegacyFallbackCount) warnings.push('Một phần dòng hàng cũ chưa có ảnh chụp Nhóm hàng; báo cáo đang ghi rõ phần dùng danh mục hiện tại để tham chiếu.');
+  if (productGroupLegacyFallbackCount) warnings.push('Có dòng doanh thu thuộc sản phẩm hiện chưa được phân loại trong Danh mục sản phẩm.');
   if (unitNameLegacyFallbackCount) warnings.push('Một phần dòng hàng cũ chưa có tên ĐVT lịch sử; báo cáo đang ghi rõ phần dùng tên ĐVT hiện tại để tham chiếu.');
   if (unattributedEmployeeCount) warnings.push('Có dòng doanh thu chưa xác định được Nhân viên bán hàng từ nguồn đơn/người tạo.');
   return Object.freeze({ customerGroupLegacyFallbackCount: String(customerGroupLegacyFallbackCount), productGroupLegacyFallbackCount: String(productGroupLegacyFallbackCount), unitNameLegacyFallbackCount: String(unitNameLegacyFallbackCount), unattributedEmployeeCount: String(unattributedEmployeeCount), warnings: Object.freeze(warnings) });
@@ -310,10 +310,10 @@ export async function salesReport(adapter, requestContext, filters, warehouseIds
               sov.customer_group_id_snapshot, sov.customer_group_code_snapshot, sov.customer_group_name_snapshot,
               sov.sales_channel_id, sov.sales_channel_code_snapshot AS sales_channel_code, sov.sales_channel_name_snapshot AS sales_channel_name,
               line.variant_id, line.sku_snapshot AS sku, line.item_name_snapshot AS item_name,
-              CASE WHEN line.reporting_dimension_snapshot_captured THEN line.product_category_id_snapshot ELSE product.category_id END AS product_group_id,
-              CASE WHEN line.reporting_dimension_snapshot_captured THEN line.product_category_code_snapshot ELSE product_category.code END AS product_group_code,
-              CASE WHEN line.reporting_dimension_snapshot_captured THEN line.product_category_name_snapshot ELSE product_category.name END AS product_group_name,
-              CASE WHEN line.reporting_dimension_snapshot_captured THEN 'snapshot' WHEN product_category.id IS NOT NULL THEN 'legacy-current-master' ELSE 'legacy-unavailable' END AS product_group_source,
+              product.category_id AS product_group_id,
+              product_category.code AS product_group_code,
+              product_category.name AS product_group_name,
+              CASE WHEN product_category.id IS NOT NULL THEN 'legacy-current-master' ELSE 'legacy-unavailable' END AS product_group_source,
               line.unit_id, line.unit_code_snapshot AS unit_code,
               CASE WHEN line.reporting_dimension_snapshot_captured THEN line.unit_name_snapshot ELSE unit.name END AS unit_name,
               CASE WHEN line.reporting_dimension_snapshot_captured THEN 'snapshot' WHEN unit.id IS NOT NULL THEN 'legacy-current-master' ELSE 'legacy-unavailable' END AS unit_name_source,
@@ -435,7 +435,7 @@ export async function salesReport(adapter, requestContext, filters, warehouseIds
       includeZeroProducts: Boolean(filters.includeZeroProducts),
     }),
     scopeWarehouses: mapRows(scopeWarehouses.rows),
-    basis: Object.freeze({ date: 'sales.sales_orders.confirmed_at', revenue: 'sum(sales.sales_order_version_lines.line_total), reconciled exactly to latest confirmed/superseded version total', quantity: 'ordered_quantity is only shown on product rows where the product identity is explicit; quantities are never aggregated across different units or unrelated products', classification: 'customer group uses the current customer master and only filters the customer breakdown; product group and zero-product options only filter the product breakdown; summary, trend, documents, reconciliation and other breakdowns remain on the full selected period and warehouse scope', employee: 'sales_orders.source_employee_id, otherwise creator user employee mapping; customer responsible employee is not used', historicalDimensions: 'customer group analysis uses the current customer master; confirmed customer-group snapshots remain immutable for audit; product group and unit history still use confirmed snapshots when captured with explicit legacy fallback', effectiveStates: Object.freeze(['confirmed', 'closed']) }),
+    basis: Object.freeze({ date: 'sales.sales_orders.confirmed_at', revenue: 'sum(sales.sales_order_version_lines.line_total), reconciled exactly to latest confirmed/superseded version total', quantity: 'ordered_quantity is only shown on product rows where the product identity is explicit; quantities are never aggregated across different units or unrelated products', classification: 'customer group uses the current customer master and only filters the customer breakdown; product group and zero-product options only filter the product breakdown; summary, trend, documents, reconciliation and other breakdowns remain on the full selected period and warehouse scope', employee: 'sales_orders.source_employee_id, otherwise creator user employee mapping; customer responsible employee is not used', historicalDimensions: 'customer group and product group analysis use the current master data; confirmed customer-group and product-group snapshots remain immutable for audit; unit history still uses confirmed snapshots when captured with explicit legacy fallback', effectiveStates: Object.freeze(['confirmed', 'closed']) }),
     comparison: Object.freeze({ current: Object.freeze({ from: filters.from, to: filters.to, dayCount: previous.dayCount }), previous: Object.freeze({ from: previous.from, to: previous.to, dayCount: previous.dayCount }) }),
     summary: Object.freeze({ ...summaryCounts, revenues, quantities, soldProductCount }),
     breakdowns,

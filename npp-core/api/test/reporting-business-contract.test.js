@@ -85,6 +85,18 @@ test('Nhóm khách của Báo cáo bán hàng dùng danh mục hiện tại và 
   assert.match(source, /confirmed customer-group snapshots remain immutable for audit/);
 });
 
+test('Nhóm sản phẩm của Báo cáo bán hàng dùng Danh mục sản phẩm hiện tại cho toàn bộ lịch sử', async () => {
+  const source = await readApi('src/routes/reporting-sales.js');
+  assert.match(source, /product\.category_id AS product_group_id/);
+  assert.match(source, /product_category\.code AS product_group_code/);
+  assert.match(source, /product_category\.name AS product_group_name/);
+  assert.doesNotMatch(source, /CASE WHEN line\.reporting_dimension_snapshot_captured THEN line\.product_category_id_snapshot ELSE product\.category_id END AS product_group_id/);
+  assert.doesNotMatch(source, /CASE WHEN line\.reporting_dimension_snapshot_captured THEN line\.product_category_code_snapshot ELSE product_category\.code END AS product_group_code/);
+  assert.match(source, /product group analysis use the current master data/);
+  assert.match(source, /product-group snapshots remain immutable for audit/);
+  assert.match(source, /row\.productGroupSource === 'legacy-unavailable'/);
+});
+
 test('migration 120 snapshot forward và giữ rõ dữ liệu legacy', async () => {
   const [migration, registry] = await Promise.all([
     readRepo('database/migrations/sales/120_reporting_sales_dimension_snapshots.sql'),
