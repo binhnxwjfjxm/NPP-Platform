@@ -2,7 +2,11 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { SalesBreakdownKey } from '../../lib/sales-reporting-types';
+import type {
+  SalesBreakdownKey,
+  SalesBreakdownRow,
+  SalesReportingDashboard,
+} from '../../lib/sales-reporting-types';
 import styles from './sales-reporting-export-dialog.module.css';
 
 type Filters = Readonly<{
@@ -15,14 +19,19 @@ type Filters = Readonly<{
 }>;
 
 type SalesExportDimension = SalesBreakdownKey;
-type ExportMode = 'list' | 'matrix';
-type MatrixDimension = 'products' | 'customerGroups' | 'channels' | 'productGroups';
-type MatrixColumnDimension = MatrixDimension;
-type MatrixMetric = 'revenue' | 'quantity';
+type ExportMode = 'list' | 'analysis';
+type AnalysisDimension = 'products' | 'customerGroups' | 'channels' | 'productGroups';
+type AnalysisMetric = 'revenue' | 'quantity';
+type QuantityDisplay = 'sold' | 'carton' | 'base';
 
 type ColumnOption = Readonly<{
   key: string;
   label: string;
+}>;
+
+type ApiEnvelope<T> = Readonly<{
+  data?: T;
+  error?: Readonly<{ message?: string }>;
 }>;
 
 type Props = Readonly<{
@@ -41,21 +50,30 @@ const DIMENSION_LABELS: Readonly<Record<SalesExportDimension, string>> = Object.
   employees: 'Nhân viên bán hàng',
 });
 
-const MATRIX_DIMENSION_LABELS: Readonly<Record<MatrixDimension, string>> = Object.freeze({
+const ANALYSIS_DIMENSION_LABELS: Readonly<Record<AnalysisDimension, string>> = Object.freeze({
   products: 'Sản phẩm',
   customerGroups: 'Loại khách',
   channels: 'Kênh bán',
   productGroups: 'Nhóm hàng',
 });
 
-const MATRIX_DIMENSIONS: readonly MatrixDimension[] = Object.freeze([
+const ANALYSIS_DIMENSIONS: readonly AnalysisDimension[] = Object.freeze([
   'products',
   'customerGroups',
   'channels',
   'productGroups',
 ]);
 
-const MATRIX_COLUMN_DIMENSIONS: readonly MatrixColumnDimension[] = MATRIX_DIMENSIONS;
+const ANALYSIS_METRIC_LABELS: Readonly<Record<AnalysisMetric, string>> = Object.freeze({
+  revenue: 'Doanh thu',
+  quantity: 'Sản lượng',
+});
+
+const QUANTITY_DISPLAY_LABELS: Readonly<Record<QuantityDisplay, string>> = Object.freeze({
+  sold: 'Theo ĐVT bán',
+  carton: 'Ưu tiên Thùng',
+  base: 'Ưu tiên ĐVT lẻ',
+});
 
 const COLUMN_LABELS = Object.freeze({
   code: 'Mã',
@@ -99,21 +117,63 @@ const DEFAULT_COLUMNS: Readonly<Record<SalesExportDimension, readonly string[]>>
   employees: Object.freeze(['code', 'name', 'currencyCode', 'revenue', 'documentCount', 'customerCount', 'sharePercent', 'previousRevenue', 'changePercent']),
 });
 
-function isMatrixDimension(value: SalesExportDimension): value is MatrixDimension {
-  return MATRIX_DIMENSIONS.some((item) => item === value);
+function isAnalysisDimension(value: SalesExportDimension): value is AnalysisDimension {
+  return ANALYSIS_DIMENSIONS.some((item) => item === value);
 }
 
-function defaultMatrixRow(dimension: SalesExportDimension): MatrixDimension {
-  return isMatrixDimension(dimension) ? dimension : 'products';
+function defaultAnalysisDimensions(dimension: SalesExportDimension): readonly AnalysisDimension[] {
+  if (dimension === 'products') return Object.freeze(['products', 'customerGroups']);
+  if (isAnalysisDimension(dimension)) return Object.freeze(['products', dimension]);
+  return Object.freeze(['products', 'customerGroups']);
 }
 
-function defaultMatrixColumn(row: MatrixDimension): MatrixColumnDimension {
-  return MATRIX_COLUMN_DIMENSIONS.find((item) => item !== row) ?? 'customerGroups';
+function analysisIdentityPart(value: string | null | undefined, fallback: string) {
+  const normalized = String(value ?? '').trim() || fallback;
+  return encodeURIComponent(normalized);
+}
+
+function analysisCategoryKey(dimension: AnalysisDimension, row: SalesBreakdownRow) {
+  const main = analysisIdentityPart(row.id ?? row.code ?? row.name, '__none__');
+  if (dimension !== 'products') return `${dimension}:${main}`;
+  const unit = analysisIdentityPart(row.unit?.id ?? row.unit?.code ?? row.unit?.name, '__none__');
+  return `${dimension}:${main}:${unit}`;
+}
+
+function analysisCategoryLabel(dimension: AnalysisDimension, row: SalesBreakdownRow) {
+  if (dimension !== 'products') return row.name;
+  const unit = row.unit?.name || row.unit?.code;
+  return unit ? `${row.name} · ${unit}` : row.name;
+}
+
+function analysisCategories(report: SalesReportingDashboard | null, dimension: AnalysisDimension) {
+  const unique = new Map<string, Readonly<{ key: string; label: string }>>();
+  for (const row of report?.breakdowns[dimension] ?? []) {
+    const key = analysisCategoryKey(dimension, row);
+    if (!unique.has(key)) unique.set(key, Object.freeze({ key, label: analysisCategoryLabel(dimension, row) }));
+  }
+  return Object.freeze([...unique.values()].sort((left, right) => left.label.localeCompare(right.label, 'vi')));
 }
 
 function filenameFromDisposition(value: string | null, fallback: string) {
   const match = /filename="([^"\r\n]+)"/i.exec(value ?? '');
   return match?.[1] || fallback;
+}
+
+async function requestAnalysisReport(filters: Filters): Promise<SalesReportingDashboard> {
+  const query = new URLSearchParams();
+  if (filters.from) query.set('from', filters.from);
+  if (filters.to) query.set('to', filters.to);
+  if (filters.warehouseId) query.set('warehouseId', filters.warehouseId);
+  if (filters.productGroupId) query.set('productGroupId', filters.productGroupId);
+  if (filters.customerGroupId) query.set('customerGroupId', filters.customerGroupId);
+  const serialized = query.toString();
+  const response = await fetch(`/api/reporting/sales${serialized ? `?${serialized}` : ''}`, {
+    method: 'GET',
+    cache: 'no-store',
+  });
+  const envelope = await response.json().catch(() => ({})) as ApiEnvelope<SalesReportingDashboard>;
+  if (!response.ok || !envelope.data) throw new Error(envelope.error?.message || 'Không tải được cột báo cáo.');
+  return envelope.data;
 }
 
 export function SalesReportingExportDialog({
@@ -122,23 +182,68 @@ export function SalesReportingExportDialog({
   disabled = false,
   buttonLabel = 'Xuất báo cáo',
 }: Props) {
-  const initialMatrixRow = defaultMatrixRow(dimension);
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<ExportMode>('list');
   const [format, setFormat] = useState<'xlsx' | 'csv'>('xlsx');
   const [selectedColumns, setSelectedColumns] = useState<readonly string[]>(DEFAULT_COLUMNS[dimension]);
-  const [matrixRow, setMatrixRow] = useState<MatrixDimension>(initialMatrixRow);
-  const [matrixColumn, setMatrixColumn] = useState<MatrixColumnDimension>(defaultMatrixColumn(initialMatrixRow));
-  const [matrixMetric, setMatrixMetric] = useState<MatrixMetric>('revenue');
+  const [analysisDimensions, setAnalysisDimensions] = useState<readonly AnalysisDimension[]>(defaultAnalysisDimensions(dimension));
+  const [analysisMetrics, setAnalysisMetrics] = useState<readonly AnalysisMetric[]>(Object.freeze(['revenue', 'quantity']));
+  const [quantityDisplay, setQuantityDisplay] = useState<QuantityDisplay>('sold');
+  const [analysisSelectedColumns, setAnalysisSelectedColumns] = useState<readonly string[]>([]);
+  const [analysisReport, setAnalysisReport] = useState<SalesReportingDashboard | null>(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState('');
 
   const options = COLUMN_OPTIONS[dimension];
   const selected = useMemo(() => new Set(selectedColumns), [selectedColumns]);
-  const matrixColumnOptions = useMemo(
-    () => MATRIX_COLUMN_DIMENSIONS.filter((item) => item !== matrixRow),
-    [matrixRow],
+  const analysisSelected = useMemo(() => new Set(analysisSelectedColumns), [analysisSelectedColumns]);
+  const analysisRow = analysisDimensions[0];
+  const analysisColumn = analysisDimensions[1];
+  const categories = useMemo(
+    () => analysisColumn ? analysisCategories(analysisReport, analysisColumn) : Object.freeze([]),
+    [analysisReport, analysisColumn],
   );
+  const currencies = useMemo(() => {
+    const values = [...new Set((analysisReport?.summary.revenues ?? []).map((item) => item.currencyCode).filter(Boolean))].sort();
+    return Object.freeze(values.length ? values : ['VND']);
+  }, [analysisReport]);
+  const analysisColumnOptions = useMemo(() => {
+    if (!analysisRow || !analysisColumn || analysisDimensions.length !== 2 || !analysisReport) return Object.freeze([]) as readonly ColumnOption[];
+    const result: ColumnOption[] = [];
+    result.push(Object.freeze({ key: 'meta:code', label: analysisRow === 'products' ? 'Mã sản phẩm' : 'Mã' }));
+    result.push(Object.freeze({ key: 'meta:name', label: ANALYSIS_DIMENSION_LABELS[analysisRow] }));
+    if (analysisRow === 'products' || analysisMetrics.includes('quantity')) {
+      result.push(Object.freeze({ key: 'meta:unit', label: 'ĐVT' }));
+    }
+    for (const category of categories) {
+      if (analysisMetrics.includes('revenue')) {
+        for (const currency of currencies) {
+          const suffix = currencies.length > 1 ? ` (${currency})` : '';
+          result.push(Object.freeze({
+            key: `cat:${category.key}|revenue|${encodeURIComponent(currency)}`,
+            label: `${category.label} - Doanh thu${suffix}`,
+          }));
+        }
+      }
+      if (analysisMetrics.includes('quantity')) {
+        result.push(Object.freeze({
+          key: `cat:${category.key}|quantity`,
+          label: `${category.label} - Sản lượng`,
+        }));
+      }
+    }
+    if (analysisMetrics.includes('revenue')) {
+      for (const currency of currencies) {
+        const suffix = currencies.length > 1 ? ` (${currency})` : '';
+        result.push(Object.freeze({ key: `total:revenue:${encodeURIComponent(currency)}`, label: `Tổng doanh thu${suffix}` }));
+      }
+    }
+    if (analysisMetrics.includes('quantity')) {
+      result.push(Object.freeze({ key: 'total:quantity', label: 'Tổng sản lượng' }));
+    }
+    return Object.freeze(result);
+  }, [analysisRow, analysisColumn, analysisDimensions.length, analysisMetrics, analysisReport, categories, currencies]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -150,22 +255,44 @@ export function SalesReportingExportDialog({
   }, [open, exporting]);
 
   useEffect(() => {
-    const nextRow = defaultMatrixRow(dimension);
     setSelectedColumns(DEFAULT_COLUMNS[dimension]);
-    setMatrixRow(nextRow);
-    setMatrixColumn(defaultMatrixColumn(nextRow));
-    setMatrixMetric('revenue');
+    setAnalysisDimensions(defaultAnalysisDimensions(dimension));
+    setAnalysisMetrics(Object.freeze(['revenue', 'quantity']));
+    setQuantityDisplay('sold');
+    setAnalysisReport(null);
     setError('');
   }, [dimension]);
 
+  useEffect(() => {
+    if (!open || mode !== 'analysis') return undefined;
+    let active = true;
+    setAnalysisLoading(true);
+    setError('');
+    void requestAnalysisReport(filters)
+      .then((next) => {
+        if (active) setAnalysisReport(next);
+      })
+      .catch((loadError) => {
+        if (active) setError(loadError instanceof Error ? loadError.message : 'Không tải được cột báo cáo.');
+      })
+      .finally(() => {
+        if (active) setAnalysisLoading(false);
+      });
+    return () => { active = false; };
+  }, [open, mode, filters.from, filters.to, filters.warehouseId, filters.productGroupId, filters.customerGroupId]);
+
+  useEffect(() => {
+    setAnalysisSelectedColumns(analysisColumnOptions.map((item) => item.key));
+  }, [analysisColumnOptions]);
+
   function openDialog() {
-    const nextRow = defaultMatrixRow(dimension);
     setMode('list');
     setFormat('xlsx');
     setSelectedColumns(DEFAULT_COLUMNS[dimension]);
-    setMatrixRow(nextRow);
-    setMatrixColumn(defaultMatrixColumn(nextRow));
-    setMatrixMetric('revenue');
+    setAnalysisDimensions(defaultAnalysisDimensions(dimension));
+    setAnalysisMetrics(Object.freeze(['revenue', 'quantity']));
+    setQuantityDisplay('sold');
+    setAnalysisReport(null);
     setError('');
     setOpen(true);
   }
@@ -176,23 +303,46 @@ export function SalesReportingExportDialog({
       : [...current, key]);
   }
 
-  function changeMatrixRow(value: MatrixDimension) {
-    setMatrixRow(value);
-    if (matrixColumn === value) setMatrixColumn(defaultMatrixColumn(value));
+  function toggleAnalysisDimension(value: AnalysisDimension) {
+    setAnalysisDimensions((current) => {
+      const next = current.includes(value)
+        ? current.filter((item) => item !== value)
+        : current.length >= 2
+          ? current
+          : [...current, value];
+      if (next.includes('products')) {
+        return Object.freeze(['products', ...next.filter((item) => item !== 'products')]);
+      }
+      return Object.freeze(next);
+    });
   }
 
-  function changeMatrixMetric(value: MatrixMetric) {
-    setMatrixMetric(value);
+  function toggleAnalysisMetric(value: AnalysisMetric) {
+    setAnalysisMetrics((current) => {
+      if (current.includes(value)) {
+        if (current.length === 1) return current;
+        return current.filter((item) => item !== value);
+      }
+      return Object.freeze([...current, value]);
+    });
+  }
+
+  function toggleAnalysisColumn(key: string) {
+    setAnalysisSelectedColumns((current) => current.includes(key)
+      ? current.filter((value) => value !== key)
+      : [...current, key]);
   }
 
   async function exportReport() {
-    if ((mode === 'list' && !selectedColumns.length) || exporting) return;
+    const analysisReady = analysisDimensions.length === 2 && analysisMetrics.length > 0 && analysisSelectedColumns.length > 0 && !analysisLoading;
+    if ((mode === 'list' && !selectedColumns.length) || (mode === 'analysis' && !analysisReady) || exporting) return;
     setExporting(true);
     setError('');
     try {
-      const requestedFormat = mode === 'matrix' ? 'xlsx' : format;
-      const exportDimension = mode === 'matrix'
-        ? `matrix.${matrixRow}.${matrixColumn}.${matrixMetric}`
+      const requestedFormat = mode === 'analysis' ? 'xlsx' : format;
+      const metricToken = analysisMetrics.length === 2 ? 'both' : analysisMetrics[0];
+      const exportDimension = mode === 'analysis'
+        ? `analysis.${analysisRow}.${analysisColumn}.${metricToken}`
         : dimension;
       const query = new URLSearchParams({
         from: filters.from,
@@ -202,9 +352,11 @@ export function SalesReportingExportDialog({
       });
       if (filters.warehouseId) query.set('warehouseId', filters.warehouseId);
 
-      if (mode === 'matrix') {
+      if (mode === 'analysis') {
         if (filters.productGroupId) query.set('productGroupId', filters.productGroupId);
         if (filters.customerGroupId) query.set('customerGroupId', filters.customerGroupId);
+        if (analysisMetrics.includes('quantity')) query.set('quantityDisplay', quantityDisplay);
+        for (const key of analysisSelectedColumns) query.append('column', key);
       } else {
         if (dimension === 'products') {
           if (filters.productGroupId) query.set('productGroupId', filters.productGroupId);
@@ -244,6 +396,11 @@ export function SalesReportingExportDialog({
     }
   }
 
+  const analysisReady = analysisDimensions.length === 2 && analysisMetrics.length > 0 && analysisSelectedColumns.length > 0 && !analysisLoading;
+  const analysisSummary = analysisDimensions.length === 2
+    ? `Sẽ xuất Báo cáo ${ANALYSIS_DIMENSION_LABELS[analysisDimensions[0]]} theo ${ANALYSIS_DIMENSION_LABELS[analysisDimensions[1]]}, gồm ${analysisMetrics.map((item) => ANALYSIS_METRIC_LABELS[item]).join(' và ')}${analysisMetrics.includes('quantity') ? ` · ${QUANTITY_DISPLAY_LABELS[quantityDisplay]}` : ''}.`
+    : 'Chọn đúng 2 tiêu chí để tạo báo cáo phân tích.';
+
   return (
     <>
       <button type="button" className={styles.openButton} onClick={openDialog} disabled={disabled}>
@@ -263,43 +420,92 @@ export function SalesReportingExportDialog({
             </div>
 
             <p className={styles.description}>
-              {mode === 'matrix'
-                ? 'Xuất ma trận từ toàn bộ dữ liệu phát sinh trong kỳ và bộ lọc đang áp dụng. File Excel có dòng Tổng, Tỷ lệ và khung bảng đầy đủ.'
+              {mode === 'analysis'
+                ? 'Chọn số liệu và 2 tiêu chí cần phân tích. Danh sách cột bên dưới là đúng các cột sẽ có trong file Excel.'
                 : 'Xuất toàn bộ dữ liệu theo kỳ, kho và bộ lọc của mục đang xem, không phụ thuộc số dòng đang hiển thị trên màn hình.'}
             </p>
 
             <fieldset className={styles.formatGroup}>
-              <legend>Kiểu báo cáo</legend>
+              <legend>Loại báo cáo</legend>
               <label><input type="radio" name="sales-export-mode" value="list" checked={mode === 'list'} onChange={() => setMode('list')} /> Danh sách</label>
-              <label><input type="radio" name="sales-export-mode" value="matrix" checked={mode === 'matrix'} onChange={() => { setMode('matrix'); setFormat('xlsx'); }} /> Ma trận</label>
+              <label><input type="radio" name="sales-export-mode" value="analysis" checked={mode === 'analysis'} onChange={() => { setMode('analysis'); setFormat('xlsx'); }} /> Phân tích</label>
             </fieldset>
 
-            {mode === 'matrix' ? (
+            {mode === 'analysis' ? (
               <div className={styles.matrixPanel}>
-                <div className={styles.matrixGrid}>
-                  <label className={styles.matrixField}>
-                    <span>Tiêu chí dòng</span>
-                    <select value={matrixRow} onChange={(event) => changeMatrixRow(event.target.value as MatrixDimension)} disabled={exporting}>
-                      {MATRIX_DIMENSIONS.map((item) => <option key={item} value={item}>{MATRIX_DIMENSION_LABELS[item]}</option>)}
-                    </select>
-                  </label>
-                  <label className={styles.matrixField}>
-                    <span>Tiêu chí cột</span>
-                    <select value={matrixColumn} onChange={(event) => setMatrixColumn(event.target.value as MatrixColumnDimension)} disabled={exporting}>
-                      {matrixColumnOptions.map((item) => <option key={item} value={item}>{MATRIX_DIMENSION_LABELS[item]}</option>)}
-                    </select>
-                  </label>
-                  <label className={styles.matrixField}>
-                    <span>Chỉ tiêu</span>
-                    <select value={matrixMetric} onChange={(event) => changeMatrixMetric(event.target.value as MatrixMetric)} disabled={exporting}>
-                      <option value="revenue">Doanh thu</option>
-                      <option value="quantity">Sản lượng</option>
-                    </select>
-                  </label>
+                <fieldset className={styles.formatGroup}>
+                  <legend>Số liệu cần xuất</legend>
+                  {(Object.keys(ANALYSIS_METRIC_LABELS) as AnalysisMetric[]).map((item) => (
+                    <label key={item}>
+                      <input
+                        type="checkbox"
+                        checked={analysisMetrics.includes(item)}
+                        onChange={() => toggleAnalysisMetric(item)}
+                        disabled={exporting || (analysisMetrics.length === 1 && analysisMetrics.includes(item))}
+                      />
+                      {ANALYSIS_METRIC_LABELS[item]}
+                    </label>
+                  ))}
+                </fieldset>
+
+                {analysisMetrics.includes('quantity') ? (
+                  <fieldset className={styles.formatGroup}>
+                    <legend>Hiển thị sản lượng</legend>
+                    {(Object.keys(QUANTITY_DISPLAY_LABELS) as QuantityDisplay[]).map((item) => (
+                      <label key={item}>
+                        <input
+                          type="radio"
+                          name="sales-export-quantity-display"
+                          value={item}
+                          checked={quantityDisplay === item}
+                          onChange={() => setQuantityDisplay(item)}
+                          disabled={exporting}
+                        />
+                        {QUANTITY_DISPLAY_LABELS[item]}
+                      </label>
+                    ))}
+                  </fieldset>
+                ) : null}
+
+                <fieldset className={styles.formatGroup}>
+                  <legend>Phân tích theo · chọn 2</legend>
+                  {ANALYSIS_DIMENSIONS.map((item) => (
+                    <label key={item}>
+                      <input
+                        type="checkbox"
+                        checked={analysisDimensions.includes(item)}
+                        onChange={() => toggleAnalysisDimension(item)}
+                        disabled={exporting || (!analysisDimensions.includes(item) && analysisDimensions.length >= 2)}
+                      />
+                      {ANALYSIS_DIMENSION_LABELS[item]}
+                    </label>
+                  ))}
+                </fieldset>
+
+                <p className={styles.matrixHint}>{analysisSummary}</p>
+                <p className={styles.matrixHint}>ĐVT nằm trong cùng một sheet; không tách báo cáo thành nhiều sheet theo đơn vị tính.</p>
+
+                <div className={styles.columnHeader}>
+                  <div><strong>Cột sẽ xuất</strong><small>{analysisSelectedColumns.length}/{analysisColumnOptions.length} cột</small></div>
+                  <div className={styles.quickActions}>
+                    <button type="button" onClick={() => setAnalysisSelectedColumns(analysisColumnOptions.map((item) => item.key))} disabled={analysisLoading}>Chọn tất cả</button>
+                    <button type="button" onClick={() => setAnalysisSelectedColumns([])} disabled={analysisLoading}>Bỏ chọn</button>
+                    <button type="button" onClick={() => setAnalysisSelectedColumns(analysisColumnOptions.map((item) => item.key))} disabled={analysisLoading}>Mặc định</button>
+                  </div>
                 </div>
-                <p className={styles.matrixHint}>
-                  Sản lượng được tách riêng theo ĐVT để không cộng lẫn thùng, cái, kg hoặc các đơn vị khác. Ma trận xuất Excel (.xlsx).
-                </p>
+
+                <div className={styles.columnGrid}>
+                  {analysisLoading ? <span>Đang tải danh sách cột…</span> : null}
+                  {!analysisLoading && analysisColumnOptions.map((option) => (
+                    <label key={option.key}>
+                      <input type="checkbox" checked={analysisSelected.has(option.key)} onChange={() => toggleAnalysisColumn(option.key)} />
+                      <span>{option.label}</span>
+                    </label>
+                  ))}
+                  {!analysisLoading && analysisDimensions.length === 2 && analysisReport && analysisColumnOptions.length === 0 ? (
+                    <span>Không có cột dữ liệu trong kỳ đang chọn.</span>
+                  ) : null}
+                </div>
               </div>
             ) : (
               <>
@@ -333,8 +539,13 @@ export function SalesReportingExportDialog({
 
             <div className={styles.footer}>
               <button type="button" className={styles.cancelButton} onClick={() => setOpen(false)} disabled={exporting}>Hủy</button>
-              <button type="button" className={styles.exportButton} onClick={exportReport} disabled={exporting || (mode === 'list' && selectedColumns.length === 0)}>
-                {exporting ? 'Đang tạo file…' : mode === 'matrix' ? 'Xuất Excel ma trận' : `Xuất ${format === 'xlsx' ? 'Excel' : 'CSV'}`}
+              <button
+                type="button"
+                className={styles.exportButton}
+                onClick={exportReport}
+                disabled={exporting || (mode === 'list' ? selectedColumns.length === 0 : !analysisReady)}
+              >
+                {exporting ? 'Đang tạo file…' : mode === 'analysis' ? 'Xuất Excel' : `Xuất ${format === 'xlsx' ? 'Excel' : 'CSV'}`}
               </button>
             </div>
           </section>

@@ -49,12 +49,13 @@ jobs:
           --health-retries 5
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 20
+          package-manager-cache: false
 
       - name: Install workspaces
         run: npm --prefix .. ci
@@ -82,7 +83,7 @@ jobs:
 
       - name: Upload Core API verification log
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: core-api-verification-log-${{ github.run_id }}
           path: npp-core/artifacts/core-api-verify.log
@@ -121,12 +122,13 @@ jobs:
           --health-retries 5
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 20
+          package-manager-cache: false
 
       - name: Install workspaces
         run: npm --prefix .. ci
@@ -145,7 +147,7 @@ jobs:
 
       - name: Upload migration rehearsal report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: migration-rehearsal-report
           path: npp-core/artifacts/migration-rehearsal-report.json
