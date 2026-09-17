@@ -40,6 +40,10 @@ test('Cửa sổ phân tích dùng ngôn ngữ văn phòng, chọn rõ số li�
   assert.match(dialog, /revenue: 'Doanh thu'/);
   assert.match(dialog, /quantity: 'Sản lượng'/);
   assert.match(dialog, /analysisMetrics\.length === 2 \? 'both'/);
+  assert.match(dialog, /Sắp xếp dòng/);
+  assert.match(dialog, /Tên A → Z/);
+  assert.match(dialog, /Doanh thu cao → thấp/);
+  assert.match(dialog, /Sản lượng cao → thấp/);
   assert.doesNotMatch(dialog, />\s*Ma trận\s*</);
   assert.doesNotMatch(dialog, /Xuất Excel ma trận/);
   assert.doesNotMatch(dialog, /Tiêu chí dòng|Tiêu chí cột|Chỉ tiêu/);
@@ -80,7 +84,7 @@ test('Cửa sổ xuất bán hàng luôn thoát khỏi topbar và nằm gọn tr
   assert.match(css, /overscroll-behavior:\s*contain/);
 });
 
-test('Phân tích lấy danh sách cột từ báo cáo server theo đúng bộ lọc rồi gửi các cột được tích', () => {
+test('Phân tích lấy danh sách cột từ báo cáo server theo đúng bộ lọc rồi gửi các cột và sắp xếp đã chọn', () => {
   const dialog = read('app/components/sales-reporting-export-dialog.tsx');
   const gateway = read('lib/sales-reporting-export-gateway.ts');
 
@@ -91,7 +95,8 @@ test('Phân tích lấy danh sách cột từ báo cáo server theo đúng bộ 
   assert.match(dialog, /mode === 'analysis'/);
   assert.match(dialog, /analysisSelectedColumns/);
   assert.match(dialog, /query\.append\('column', key\)/);
-  for (const field of ['productGroupId', 'customerGroupId', 'includeZeroProducts', 'dimension', 'format', 'column']) {
+  assert.match(dialog, /query\.set\('sort', analysisSort\)/);
+  for (const field of ['productGroupId', 'customerGroupId', 'includeZeroProducts', 'dimension', 'format', 'column', 'sort']) {
     assert.match(gateway, new RegExp(field));
   }
 });

@@ -56,10 +56,11 @@ test('Sales export giữ 6 chiều danh sách và whitelist cột theo chiều',
   assert.equal(formatted.changePercent, '1,506,500.89%');
 });
 
-test('Sales export phân tích nhận 2 tiêu chí, cả doanh thu và sản lượng, cùng danh sách cột đã chọn', () => {
+test('Sales export phân tích nhận 2 tiêu chí, số liệu, cột và cách sắp xếp đã chọn', () => {
   const selection = normalizeSalesReportingExportSelection({
     dimension: 'analysis.products.customerGroups.both',
     format: 'xlsx',
+    sort: 'quantity-desc',
     columns: [
       'meta:name',
       'meta:unit',
@@ -75,6 +76,7 @@ test('Sales export phân tích nhận 2 tiêu chí, cả doanh thu và sản lư
   assert.equal(selection.rowDimension, 'products');
   assert.equal(selection.columnDimension, 'customerGroups');
   assert.deepEqual(selection.metrics, ['revenue', 'quantity']);
+  assert.equal(selection.sort, 'quantity-desc');
   assert.deepEqual(selection.columns, [
     'meta:name',
     'meta:unit',
@@ -100,12 +102,22 @@ test('Sales export phân tích nhận 2 tiêu chí, cả doanh thu và sản lư
   });
   assert.equal(invalidCsv.ok, false);
   assert.equal(invalidCsv.code, 'INVALID_SALES_ANALYSIS_FORMAT');
+
+  const invalidSort = normalizeSalesReportingExportSelection({
+    dimension: 'analysis.products.customerGroups.revenue',
+    format: 'xlsx',
+    sort: 'quantity-desc',
+    columns: [],
+  });
+  assert.equal(invalidSort.ok, false);
+  assert.equal(invalidSort.code, 'INVALID_SALES_ANALYSIS_SORT');
 });
 
-test('Phân tích sản phẩm giữ mọi ĐVT trong một sheet và xuất doanh thu + sản lượng cạnh nhau', () => {
+test('Phân tích sản phẩm giữ mọi ĐVT trong một sheet, xuất doanh thu + sản lượng và sort theo Tổng sản lượng', () => {
   const selection = normalizeSalesReportingExportSelection({
     dimension: 'analysis.products.customerGroups.both',
     format: 'xlsx',
+    sort: 'quantity-desc',
     columns: [],
   });
   const rows = [
@@ -125,6 +137,7 @@ test('Phân tích sản phẩm giữ mọi ĐVT trong một sheet và xuất doa
   const sheet = salesReportingExportInternals.buildAnalysisSheet(rows, selection, { from: '2026-09-01', to: '2026-09-17' });
   assert.equal(sheet.sheetName, 'Sản phẩm theo Loại khách');
   assert.equal(sheet.rows.length, 2);
+  assert.deepEqual(sheet.rows.map((row) => row.name), ['Sản phẩm 2', 'Sản phẩm 1']);
   assert.deepEqual(sheet.rows.map((row) => row.unitName).sort((a, b) => a.localeCompare(b, 'vi')), ['Cái', 'Thùng']);
   assert.equal(sheet.categories.length, 2);
   assert.ok(sheet.columns.some((item) => item.label === 'Đại lý - Doanh thu'));
@@ -154,6 +167,15 @@ test('Sản lượng ở tiêu chí không phải sản phẩm vẫn tách dòng
   assert.equal(sheet.rows.length, 2);
   assert.deepEqual(sheet.rows.map((row) => row.unitName).sort((a, b) => a.localeCompare(b, 'vi')), ['Cái', 'Thùng']);
   assert.equal(sheet.quantityGrandValid, false);
+});
+
+test('Excel phân tích dùng định dạng riêng cho số nguyên và số lẻ để không hiện dấu chấm thừa', async () => {
+  assert.equal(salesReportingExportInternals.numberCellStyle('0', 4, 7), 4);
+  assert.equal(salesReportingExportInternals.numberCellStyle('1', 4, 7), 4);
+  assert.equal(salesReportingExportInternals.numberCellStyle('1.83', 4, 7), 7);
+  const source = await readApi('src/services/reporting-sales-export.js');
+  assert.match(source, /numFmtId="164" formatCode="#,##0"/);
+  assert.match(source, /numFmtId="165" formatCode="#,##0\.######"/);
 });
 
 test('Luồng matrix cũ vẫn được nhận trong thời gian chuyển frontend nhưng dùng nền xuất mới một sheet', () => {
@@ -196,6 +218,7 @@ test('Route Sales export yêu cầu đồng thời quyền xem Sales và quyền
   assert.match(route, /normalizeSalesReportingExportSelection/);
   assert.match(route, /url\.searchParams\.getAll\('column'\)/);
   assert.match(route, /quantityDisplay: url\.searchParams\.get\('quantityDisplay'\)/);
+  assert.match(route, /sort: url\.searchParams\.get\('sort'\)/);
   assert.match(route, /validateScope/);
   assert.match(route, /createSalesReportingExport/);
   assert.match(route, /Content-Disposition/);
