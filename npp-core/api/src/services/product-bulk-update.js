@@ -1,12 +1,17 @@
 import * as variantRepo from '../db/repositories/product-variants.js';
 import * as productService from './product.js';
+import {
+  EXTENDED_PRODUCT_UPDATE_MAPPINGS,
+  bulkUpdateExtendedProductFields,
+} from './product-bulk-update-expanded.js';
 
-const MAX_ROWS = 500;
+const MAX_ROWS = 5000;
 const SKU = 'SKU';
 const IGNORE = 'IGNORE';
 const WEIGHT_VALUE = 'WEIGHT_VALUE';
 const WEIGHT_UOM = 'WEIGHT_UOM';
-const ALLOWED_MAPPINGS = new Set([SKU, IGNORE, WEIGHT_VALUE, WEIGHT_UOM]);
+const ALLOWED_MAPPINGS = new Set([SKU, IGNORE, WEIGHT_VALUE, WEIGHT_UOM, ...EXTENDED_PRODUCT_UPDATE_MAPPINGS]);
+const EXTENDED_MAPPINGS = new Set(EXTENDED_PRODUCT_UPDATE_MAPPINGS);
 
 function invalid(code, message, details = {}) {
   return { ok: false, code, message, retryable: false, details };
@@ -238,11 +243,22 @@ export async function bulkUpdateProductVariants(client, {
   const mappings = mappingResult.mappings;
   const rows = rowResult.rows;
   const dryRun = payload.dryRun === true;
-  const lookupVariant = dependencies.getProductVariantBySku ?? variantRepo.getProductVariantBySku;
-  const updateVariant = dependencies.updateProductVariant ?? productService.updateProductVariant;
 
   const { normalizedSkus, skuCounts } = normalizedSkuSet(rows);
+  if (mappings.some((mapping) => EXTENDED_MAPPINGS.has(mapping))) {
+    return bulkUpdateExtendedProductFields(client, {
+      installationId,
+      payload,
+      updatedBy,
+      mappings,
+      rows,
+      normalizedSkus,
+      skuCounts,
+    }, dependencies);
+  }
 
+  const lookupVariant = dependencies.getProductVariantBySku ?? variantRepo.getProductVariantBySku;
+  const updateVariant = dependencies.updateProductVariant ?? productService.updateProductVariant;
   const previewRows = [];
   let updated = 0;
   let skipped = 0;
@@ -316,4 +332,10 @@ export async function bulkUpdateProductVariants(client, {
   };
 }
 
-export const PRODUCT_VARIANT_UPDATE_MAPPINGS = Object.freeze({ SKU, IGNORE, WEIGHT_VALUE, WEIGHT_UOM });
+export const PRODUCT_VARIANT_UPDATE_MAPPINGS = Object.freeze({
+  SKU,
+  IGNORE,
+  WEIGHT_VALUE,
+  WEIGHT_UOM,
+  ...Object.fromEntries(EXTENDED_PRODUCT_UPDATE_MAPPINGS.map((mapping) => [mapping, mapping])),
+});
