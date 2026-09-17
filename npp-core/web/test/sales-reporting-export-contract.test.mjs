@@ -27,7 +27,7 @@ test('Cửa sổ xuất danh sách giữ Excel, CSV và chọn cột như cũ', 
   );
 });
 
-test('Cửa sổ xuất có chế độ Ma trận theo Sản phẩm, Loại khách, Kênh bán và Nhóm hàng', () => {
+test('Cửa sổ xuất có ma trận đủ Sản phẩm, Loại khách, Kênh bán và Nhóm hàng ở cả dòng lẫn cột', () => {
   const dialog = read('app/components/sales-reporting-export-dialog.tsx');
   const css = read('app/components/sales-reporting-export-dialog.module.css');
 
@@ -37,9 +37,13 @@ test('Cửa sổ xuất có chế độ Ma trận theo Sản phẩm, Loại khá
   assert.match(dialog, /customerGroups: 'Loại khách'/);
   assert.match(dialog, /channels: 'Kênh bán'/);
   assert.match(dialog, /productGroups: 'Nhóm hàng'/);
+  assert.match(dialog, /type MatrixColumnDimension = MatrixDimension/);
+  assert.match(dialog, /MATRIX_COLUMN_DIMENSIONS: readonly MatrixColumnDimension\[\] = MATRIX_DIMENSIONS/);
+  assert.match(dialog, /MATRIX_COLUMN_DIMENSIONS\.filter\(\(item\) => item !== matrixRow\)/);
   assert.match(dialog, /matrix\.\$\{matrixRow\}\.\$\{matrixColumn\}\.\$\{matrixMetric\}/);
   assert.match(dialog, /Doanh thu/);
   assert.match(dialog, /Sản lượng/);
+  assert.match(dialog, /Sản lượng được tách riêng theo ĐVT/);
   assert.match(dialog, /Xuất Excel ma trận/);
   assert.match(dialog, /File Excel có dòng Tổng, Tỷ lệ và khung bảng đầy đủ/);
   assert.match(css, /\.matrixGrid/);

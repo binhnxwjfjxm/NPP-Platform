@@ -13,7 +13,7 @@ import { reportingSalesInternals, salesReport } from '../routes/reporting-sales.
 
 const FORMATS = new Set(['xlsx', 'csv']);
 const MATRIX_DIMENSION_KEYS = Object.freeze(['products', 'customerGroups', 'channels', 'productGroups']);
-const MATRIX_COLUMN_KEYS = Object.freeze(['customerGroups', 'channels', 'productGroups']);
+const MATRIX_COLUMN_KEYS = MATRIX_DIMENSION_KEYS;
 const MATRIX_METRICS = new Set(['revenue', 'quantity']);
 
 function column(key, label) {
@@ -117,9 +117,6 @@ function normalizeMatrixSelection(dimensionKey, format) {
   }
   if (!MATRIX_METRICS.has(metric)) {
     return invalid('INVALID_SALES_MATRIX_METRIC', 'Chỉ tiêu của báo cáo ma trận không hợp lệ');
-  }
-  if (metric === 'quantity' && rowDimension !== 'products') {
-    return invalid('INVALID_SALES_MATRIX_QUANTITY_AXIS', 'Sản lượng chỉ xuất ma trận khi Sản phẩm là tiêu chí dòng để không cộng lẫn đơn vị tính');
   }
   if (format !== 'xlsx') {
     return invalid('INVALID_SALES_MATRIX_FORMAT', 'Báo cáo ma trận chỉ xuất Excel để giữ nguyên khung và bố cục');

@@ -16,7 +16,7 @@ type Filters = Readonly<{
 type SalesExportDimension = SalesBreakdownKey;
 type ExportMode = 'list' | 'matrix';
 type MatrixDimension = 'products' | 'customerGroups' | 'channels' | 'productGroups';
-type MatrixColumnDimension = 'customerGroups' | 'channels' | 'productGroups';
+type MatrixColumnDimension = MatrixDimension;
 type MatrixMetric = 'revenue' | 'quantity';
 
 type ColumnOption = Readonly<{
@@ -54,11 +54,7 @@ const MATRIX_DIMENSIONS: readonly MatrixDimension[] = Object.freeze([
   'productGroups',
 ]);
 
-const MATRIX_COLUMN_DIMENSIONS: readonly MatrixColumnDimension[] = Object.freeze([
-  'customerGroups',
-  'channels',
-  'productGroups',
-]);
+const MATRIX_COLUMN_DIMENSIONS: readonly MatrixColumnDimension[] = MATRIX_DIMENSIONS;
 
 const COLUMN_LABELS = Object.freeze({
   code: 'Mã',
@@ -182,11 +178,9 @@ export function SalesReportingExportDialog({
   function changeMatrixRow(value: MatrixDimension) {
     setMatrixRow(value);
     if (matrixColumn === value) setMatrixColumn(defaultMatrixColumn(value));
-    if (matrixMetric === 'quantity' && value !== 'products') setMatrixMetric('revenue');
   }
 
   function changeMatrixMetric(value: MatrixMetric) {
-    if (value === 'quantity' && matrixRow !== 'products') return;
     setMatrixMetric(value);
   }
 
@@ -298,12 +292,12 @@ export function SalesReportingExportDialog({
                     <span>Chỉ tiêu</span>
                     <select value={matrixMetric} onChange={(event) => changeMatrixMetric(event.target.value as MatrixMetric)} disabled={exporting}>
                       <option value="revenue">Doanh thu</option>
-                      <option value="quantity" disabled={matrixRow !== 'products'}>Sản lượng</option>
+                      <option value="quantity">Sản lượng</option>
                     </select>
                   </label>
                 </div>
                 <p className={styles.matrixHint}>
-                  Sản lượng chỉ dùng khi dòng là Sản phẩm để không cộng lẫn sản lượng của các sản phẩm khác nhau. Ma trận xuất Excel (.xlsx).
+                  Sản lượng được tách riêng theo ĐVT để không cộng lẫn thùng, cái, kg hoặc các đơn vị khác. Ma trận xuất Excel (.xlsx).
                 </p>
               </div>
             ) : (
