@@ -102,7 +102,7 @@ test('Danh mục nhóm vẫn là nguồn lựa chọn và sản phẩm không ph
   assert.equal(zero.source, 'current-master-zero');
 });
 
-test('Backend trả tổng cho 6 bảng cũ và không còn export ma trận như một loại báo cáo riêng', async () => {
+test('Backend giữ 6 bảng phân tích cũ và thêm ma trận ở luồng xuất file, không làm lệch payload báo cáo', async () => {
   const [sales, exporter] = await Promise.all([
     readApi('src/routes/reporting-sales.js'),
     readApi('src/services/reporting-sales-export.js'),
@@ -117,14 +117,15 @@ test('Backend trả tổng cho 6 bảng cũ và không còn export ma trận nh�
   assert.match(sales, /reconciliation\(allFacts\)/);
   assert.doesNotMatch(sales, /productCustomerMatrix,/);
 
-  const rejected = normalizeSalesReportingExportSelection({
-    dimension: 'productCustomerMatrix',
+  const matrix = normalizeSalesReportingExportSelection({
+    dimension: 'matrix.products.customerGroups.revenue',
     format: 'xlsx',
     columns: [],
   });
-  assert.equal(rejected.ok, false);
-  assert.equal(rejected.code, 'INVALID_SALES_EXPORT_DIMENSION');
-  assert.doesNotMatch(exporter, /salesProductCustomerMatrixExportShape/);
+  assert.equal(matrix.ok, true);
+  assert.equal(matrix.matrix, true);
+  assert.match(exporter, /buildMatrixSheets/);
+  assert.match(exporter, /loadSalesMatrixFacts/);
 });
 
 test('Route Công Ty và Admin vẫn nhận ID nhóm, không thêm DB hoặc migration', async () => {

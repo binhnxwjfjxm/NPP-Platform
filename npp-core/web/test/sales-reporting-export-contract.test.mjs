@@ -11,7 +11,7 @@ test('Báo cáo bán hàng mở cửa sổ xuất theo đúng chiều và bộ l
   assert.match(workspace, /filters=\{applied\}/);
 });
 
-test('Cửa sổ xuất có Excel, CSV, chọn tất cả, bỏ chọn và cột mặc định', () => {
+test('Cửa sổ xuất danh sách giữ Excel, CSV và chọn cột như cũ', () => {
   const dialog = read('app/components/sales-reporting-export-dialog.tsx');
   assert.match(dialog, /Excel \(\.xlsx\)/);
   assert.match(dialog, /CSV \(\.csv\)/);
@@ -27,7 +27,30 @@ test('Cửa sổ xuất có Excel, CSV, chọn tất cả, bỏ chọn và cột
   );
 });
 
-test('Export chỉ truyền bộ lọc phù hợp với mục đang xem, không còn loại ma trận riêng', () => {
+test('Cửa sổ xuất có ma trận đủ Sản phẩm, Loại khách, Kênh bán và Nhóm hàng ở cả dòng lẫn cột', () => {
+  const dialog = read('app/components/sales-reporting-export-dialog.tsx');
+  const css = read('app/components/sales-reporting-export-dialog.module.css');
+
+  assert.match(dialog, /value="matrix"/);
+  assert.match(dialog, /MATRIX_DIMENSIONS/);
+  assert.match(dialog, /products: 'Sản phẩm'/);
+  assert.match(dialog, /customerGroups: 'Loại khách'/);
+  assert.match(dialog, /channels: 'Kênh bán'/);
+  assert.match(dialog, /productGroups: 'Nhóm hàng'/);
+  assert.match(dialog, /type MatrixColumnDimension = MatrixDimension/);
+  assert.match(dialog, /MATRIX_COLUMN_DIMENSIONS: readonly MatrixColumnDimension\[\] = MATRIX_DIMENSIONS/);
+  assert.match(dialog, /MATRIX_COLUMN_DIMENSIONS\.filter\(\(item\) => item !== matrixRow\)/);
+  assert.match(dialog, /matrix\.\$\{matrixRow\}\.\$\{matrixColumn\}\.\$\{matrixMetric\}/);
+  assert.match(dialog, /Doanh thu/);
+  assert.match(dialog, /Sản lượng/);
+  assert.match(dialog, /Sản lượng được tách riêng theo ĐVT/);
+  assert.match(dialog, /Xuất Excel ma trận/);
+  assert.match(dialog, /File Excel có dòng Tổng, Tỷ lệ và khung bảng đầy đủ/);
+  assert.match(css, /\.matrixGrid/);
+  assert.match(css, /\.matrixField/);
+});
+
+test('Export danh sách chỉ truyền bộ lọc phù hợp, còn ma trận nhận cả bộ lọc nhóm đang áp dụng', () => {
   const dialog = read('app/components/sales-reporting-export-dialog.tsx');
   const gateway = read('lib/sales-reporting-export-gateway.ts');
 
@@ -36,10 +59,9 @@ test('Export chỉ truyền bộ lọc phù hợp với mục đang xem, không 
   assert.match(dialog, /query\.set\('includeZeroProducts', 'true'\)/);
   assert.match(dialog, /dimension === 'customers'/);
   assert.match(dialog, /query\.set\('customerGroupId', filters\.customerGroupId\)/);
+  assert.match(dialog, /mode === 'matrix'/);
   assert.match(dialog, /query\.append\('column', key\)/);
-  assert.doesNotMatch(dialog, /productCustomerMatrix/);
-  assert.doesNotMatch(dialog, /dynamicColumns/);
-  for (const field of ['productGroupId', 'customerGroupId', 'includeZeroProducts']) {
+  for (const field of ['productGroupId', 'customerGroupId', 'includeZeroProducts', 'dimension', 'format']) {
     assert.match(gateway, new RegExp(field));
   }
 });
@@ -47,7 +69,6 @@ test('Export chỉ truyền bộ lọc phù hợp với mục đang xem, không 
 test('Trình duyệt chỉ yêu cầu file từ server, không tự dựng CSV/XLSX từ dòng đang hiển thị', () => {
   const dialog = read('app/components/sales-reporting-export-dialog.tsx');
   assert.match(dialog, /\/api\/reporting\/sales\/export/);
-  assert.match(dialog, /query\.append\('column', key\)/);
   assert.match(dialog, /from: filters\.from/);
   assert.match(dialog, /to: filters\.to/);
   assert.match(dialog, /query\.set\('warehouseId', filters\.warehouseId\)/);

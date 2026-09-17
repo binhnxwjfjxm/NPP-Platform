@@ -2,7 +2,8 @@
 .closeButton,
 .quickActions button,
 .cancelButton,
-.exportButton {
+.exportButton,
+.matrixField select {
   font: inherit;
 }
 
@@ -113,6 +114,54 @@
   align-items: center;
   gap: 8px;
   cursor: pointer;
+}
+
+.matrixPanel {
+  margin-bottom: 20px;
+  border: 1px solid #dbe3ec;
+  border-radius: 12px;
+  padding: 14px;
+  background: #f8fafc;
+}
+
+.matrixGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.matrixField {
+  display: grid;
+  gap: 6px;
+}
+
+.matrixField span {
+  color: #334155;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.matrixField select {
+  min-height: 40px;
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  padding: 7px 10px;
+  background: #fff;
+  color: #0f172a;
+  font-size: 0.84rem;
+}
+
+.matrixField select:focus {
+  outline: 2px solid rgb(15 23 42 / 16%);
+  outline-offset: 1px;
+}
+
+.matrixHint {
+  margin: 10px 0 0;
+  color: #64748b;
+  font-size: 0.78rem;
+  line-height: 1.5;
 }
 
 .columnHeader {
@@ -240,7 +289,8 @@
     flex-direction: column;
   }
 
-  .columnGrid {
+  .columnGrid,
+  .matrixGrid {
     grid-template-columns: 1fr;
   }
 
