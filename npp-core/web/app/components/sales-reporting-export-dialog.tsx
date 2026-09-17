@@ -14,6 +14,10 @@ type Filters = Readonly<{
 }>;
 
 type SalesExportDimension = SalesBreakdownKey;
+type ExportMode = 'list' | 'matrix';
+type MatrixDimension = 'products' | 'customerGroups' | 'channels' | 'productGroups';
+type MatrixColumnDimension = 'customerGroups' | 'channels' | 'productGroups';
+type MatrixMetric = 'revenue' | 'quantity';
 
 type ColumnOption = Readonly<{
   key: string;
@@ -35,6 +39,26 @@ const DIMENSION_LABELS: Readonly<Record<SalesExportDimension, string>> = Object.
   productGroups: 'Nhóm hàng',
   employees: 'Nhân viên bán hàng',
 });
+
+const MATRIX_DIMENSION_LABELS: Readonly<Record<MatrixDimension, string>> = Object.freeze({
+  products: 'Sản phẩm',
+  customerGroups: 'Loại khách',
+  channels: 'Kênh bán',
+  productGroups: 'Nhóm hàng',
+});
+
+const MATRIX_DIMENSIONS: readonly MatrixDimension[] = Object.freeze([
+  'products',
+  'customerGroups',
+  'channels',
+  'productGroups',
+]);
+
+const MATRIX_COLUMN_DIMENSIONS: readonly MatrixColumnDimension[] = Object.freeze([
+  'customerGroups',
+  'channels',
+  'productGroups',
+]);
 
 const COLUMN_LABELS = Object.freeze({
   code: 'Mã',
@@ -78,6 +102,18 @@ const DEFAULT_COLUMNS: Readonly<Record<SalesExportDimension, readonly string[]>>
   employees: Object.freeze(['code', 'name', 'currencyCode', 'revenue', 'documentCount', 'customerCount', 'sharePercent', 'previousRevenue', 'changePercent']),
 });
 
+function isMatrixDimension(value: SalesExportDimension): value is MatrixDimension {
+  return MATRIX_DIMENSIONS.some((item) => item === value);
+}
+
+function defaultMatrixRow(dimension: SalesExportDimension): MatrixDimension {
+  return isMatrixDimension(dimension) ? dimension : 'products';
+}
+
+function defaultMatrixColumn(row: MatrixDimension): MatrixColumnDimension {
+  return MATRIX_COLUMN_DIMENSIONS.find((item) => item !== row) ?? 'customerGroups';
+}
+
 function filenameFromDisposition(value: string | null, fallback: string) {
   const match = /filename="([^"\r\n]+)"/i.exec(value ?? '');
   return match?.[1] || fallback;
@@ -89,14 +125,23 @@ export function SalesReportingExportDialog({
   disabled = false,
   buttonLabel = 'Xuất báo cáo',
 }: Props) {
+  const initialMatrixRow = defaultMatrixRow(dimension);
   const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<ExportMode>('list');
   const [format, setFormat] = useState<'xlsx' | 'csv'>('xlsx');
   const [selectedColumns, setSelectedColumns] = useState<readonly string[]>(DEFAULT_COLUMNS[dimension]);
+  const [matrixRow, setMatrixRow] = useState<MatrixDimension>(initialMatrixRow);
+  const [matrixColumn, setMatrixColumn] = useState<MatrixColumnDimension>(defaultMatrixColumn(initialMatrixRow));
+  const [matrixMetric, setMatrixMetric] = useState<MatrixMetric>('revenue');
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState('');
 
   const options = COLUMN_OPTIONS[dimension];
   const selected = useMemo(() => new Set(selectedColumns), [selectedColumns]);
+  const matrixColumnOptions = useMemo(
+    () => MATRIX_COLUMN_DIMENSIONS.filter((item) => item !== matrixRow),
+    [matrixRow],
+  );
 
   useEffect(() => {
     if (!open) return undefined;
@@ -108,13 +153,22 @@ export function SalesReportingExportDialog({
   }, [open, exporting]);
 
   useEffect(() => {
+    const nextRow = defaultMatrixRow(dimension);
     setSelectedColumns(DEFAULT_COLUMNS[dimension]);
+    setMatrixRow(nextRow);
+    setMatrixColumn(defaultMatrixColumn(nextRow));
+    setMatrixMetric('revenue');
     setError('');
   }, [dimension]);
 
   function openDialog() {
+    const nextRow = defaultMatrixRow(dimension);
+    setMode('list');
     setFormat('xlsx');
     setSelectedColumns(DEFAULT_COLUMNS[dimension]);
+    setMatrixRow(nextRow);
+    setMatrixColumn(defaultMatrixColumn(nextRow));
+    setMatrixMetric('revenue');
     setError('');
     setOpen(true);
   }
@@ -125,26 +179,47 @@ export function SalesReportingExportDialog({
       : [...current, key]);
   }
 
+  function changeMatrixRow(value: MatrixDimension) {
+    setMatrixRow(value);
+    if (matrixColumn === value) setMatrixColumn(defaultMatrixColumn(value));
+    if (matrixMetric === 'quantity' && value !== 'products') setMatrixMetric('revenue');
+  }
+
+  function changeMatrixMetric(value: MatrixMetric) {
+    if (value === 'quantity' && matrixRow !== 'products') return;
+    setMatrixMetric(value);
+  }
+
   async function exportReport() {
-    if (!selectedColumns.length || exporting) return;
+    if ((mode === 'list' && !selectedColumns.length) || exporting) return;
     setExporting(true);
     setError('');
     try {
+      const requestedFormat = mode === 'matrix' ? 'xlsx' : format;
+      const exportDimension = mode === 'matrix'
+        ? `matrix.${matrixRow}.${matrixColumn}.${matrixMetric}`
+        : dimension;
       const query = new URLSearchParams({
         from: filters.from,
         to: filters.to,
-        dimension,
-        format,
+        dimension: exportDimension,
+        format: requestedFormat,
       });
       if (filters.warehouseId) query.set('warehouseId', filters.warehouseId);
-      if (dimension === 'products') {
+
+      if (mode === 'matrix') {
         if (filters.productGroupId) query.set('productGroupId', filters.productGroupId);
-        if (filters.includeZeroProducts) query.set('includeZeroProducts', 'true');
+        if (filters.customerGroupId) query.set('customerGroupId', filters.customerGroupId);
+      } else {
+        if (dimension === 'products') {
+          if (filters.productGroupId) query.set('productGroupId', filters.productGroupId);
+          if (filters.includeZeroProducts) query.set('includeZeroProducts', 'true');
+        }
+        if (dimension === 'customers' && filters.customerGroupId) {
+          query.set('customerGroupId', filters.customerGroupId);
+        }
+        for (const key of selectedColumns) query.append('column', key);
       }
-      if (dimension === 'customers' && filters.customerGroupId) {
-        query.set('customerGroupId', filters.customerGroupId);
-      }
-      for (const key of selectedColumns) query.append('column', key);
 
       const response = await fetch(`/api/reporting/sales/export?${query.toString()}`, {
         method: 'GET',
@@ -156,7 +231,7 @@ export function SalesReportingExportDialog({
       }
 
       const blob = await response.blob();
-      const fallback = `Bao-cao-ban-hang-${dimension}.${format}`;
+      const fallback = `Bao-cao-ban-hang-${exportDimension.replaceAll('.', '-')}.${requestedFormat}`;
       const filename = filenameFromDisposition(response.headers.get('content-disposition'), fallback);
       const objectUrl = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
@@ -193,39 +268,78 @@ export function SalesReportingExportDialog({
             </div>
 
             <p className={styles.description}>
-              Xuất toàn bộ dữ liệu theo kỳ, kho và bộ lọc của mục đang xem, không phụ thuộc số dòng đang hiển thị trên màn hình.
+              {mode === 'matrix'
+                ? 'Xuất ma trận từ toàn bộ dữ liệu phát sinh trong kỳ và bộ lọc đang áp dụng. File Excel có dòng Tổng, Tỷ lệ và khung bảng đầy đủ.'
+                : 'Xuất toàn bộ dữ liệu theo kỳ, kho và bộ lọc của mục đang xem, không phụ thuộc số dòng đang hiển thị trên màn hình.'}
             </p>
 
             <fieldset className={styles.formatGroup}>
-              <legend>Định dạng file</legend>
-              <label><input type="radio" name="sales-export-format" value="xlsx" checked={format === 'xlsx'} onChange={() => setFormat('xlsx')} /> Excel (.xlsx)</label>
-              <label><input type="radio" name="sales-export-format" value="csv" checked={format === 'csv'} onChange={() => setFormat('csv')} /> CSV (.csv)</label>
+              <legend>Kiểu báo cáo</legend>
+              <label><input type="radio" name="sales-export-mode" value="list" checked={mode === 'list'} onChange={() => setMode('list')} /> Danh sách</label>
+              <label><input type="radio" name="sales-export-mode" value="matrix" checked={mode === 'matrix'} onChange={() => { setMode('matrix'); setFormat('xlsx'); }} /> Ma trận</label>
             </fieldset>
 
-            <div className={styles.columnHeader}>
-              <div><strong>Cột cần xuất</strong><small>{selectedColumns.length}/{options.length} cột</small></div>
-              <div className={styles.quickActions}>
-                <button type="button" onClick={() => setSelectedColumns(options.map((item) => item.key))}>Chọn tất cả</button>
-                <button type="button" onClick={() => setSelectedColumns([])}>Bỏ chọn</button>
-                <button type="button" onClick={() => setSelectedColumns(DEFAULT_COLUMNS[dimension])}>Mặc định</button>
+            {mode === 'matrix' ? (
+              <div className={styles.matrixPanel}>
+                <div className={styles.matrixGrid}>
+                  <label className={styles.matrixField}>
+                    <span>Tiêu chí dòng</span>
+                    <select value={matrixRow} onChange={(event) => changeMatrixRow(event.target.value as MatrixDimension)} disabled={exporting}>
+                      {MATRIX_DIMENSIONS.map((item) => <option key={item} value={item}>{MATRIX_DIMENSION_LABELS[item]}</option>)}
+                    </select>
+                  </label>
+                  <label className={styles.matrixField}>
+                    <span>Tiêu chí cột</span>
+                    <select value={matrixColumn} onChange={(event) => setMatrixColumn(event.target.value as MatrixColumnDimension)} disabled={exporting}>
+                      {matrixColumnOptions.map((item) => <option key={item} value={item}>{MATRIX_DIMENSION_LABELS[item]}</option>)}
+                    </select>
+                  </label>
+                  <label className={styles.matrixField}>
+                    <span>Chỉ tiêu</span>
+                    <select value={matrixMetric} onChange={(event) => changeMatrixMetric(event.target.value as MatrixMetric)} disabled={exporting}>
+                      <option value="revenue">Doanh thu</option>
+                      <option value="quantity" disabled={matrixRow !== 'products'}>Sản lượng</option>
+                    </select>
+                  </label>
+                </div>
+                <p className={styles.matrixHint}>
+                  Sản lượng chỉ dùng khi dòng là Sản phẩm để không cộng lẫn sản lượng của các sản phẩm khác nhau. Ma trận xuất Excel (.xlsx).
+                </p>
               </div>
-            </div>
+            ) : (
+              <>
+                <fieldset className={styles.formatGroup}>
+                  <legend>Định dạng file</legend>
+                  <label><input type="radio" name="sales-export-format" value="xlsx" checked={format === 'xlsx'} onChange={() => setFormat('xlsx')} /> Excel (.xlsx)</label>
+                  <label><input type="radio" name="sales-export-format" value="csv" checked={format === 'csv'} onChange={() => setFormat('csv')} /> CSV (.csv)</label>
+                </fieldset>
 
-            <div className={styles.columnGrid}>
-              {options.map((option) => (
-                <label key={option.key}>
-                  <input type="checkbox" checked={selected.has(option.key)} onChange={() => toggleColumn(option.key)} />
-                  <span>{option.label}</span>
-                </label>
-              ))}
-            </div>
+                <div className={styles.columnHeader}>
+                  <div><strong>Cột cần xuất</strong><small>{selectedColumns.length}/{options.length} cột</small></div>
+                  <div className={styles.quickActions}>
+                    <button type="button" onClick={() => setSelectedColumns(options.map((item) => item.key))}>Chọn tất cả</button>
+                    <button type="button" onClick={() => setSelectedColumns([])}>Bỏ chọn</button>
+                    <button type="button" onClick={() => setSelectedColumns(DEFAULT_COLUMNS[dimension])}>Mặc định</button>
+                  </div>
+                </div>
+
+                <div className={styles.columnGrid}>
+                  {options.map((option) => (
+                    <label key={option.key}>
+                      <input type="checkbox" checked={selected.has(option.key)} onChange={() => toggleColumn(option.key)} />
+                      <span>{option.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
 
             {error ? <div className={styles.error} role="alert">{error}</div> : null}
 
             <div className={styles.footer}>
               <button type="button" className={styles.cancelButton} onClick={() => setOpen(false)} disabled={exporting}>Hủy</button>
-              <button type="button" className={styles.exportButton} onClick={exportReport} disabled={exporting || selectedColumns.length === 0}>
-                {exporting ? 'Đang tạo file…' : `Xuất ${format === 'xlsx' ? 'Excel' : 'CSV'}`}
+              <button type="button" className={styles.exportButton} onClick={exportReport} disabled={exporting || (mode === 'list' && selectedColumns.length === 0)}>
+                {exporting ? 'Đang tạo file…' : mode === 'matrix' ? 'Xuất Excel ma trận' : `Xuất ${format === 'xlsx' ? 'Excel' : 'CSV'}`}
               </button>
             </div>
           </section>

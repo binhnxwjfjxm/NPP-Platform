@@ -8,13 +8,14 @@ import {
 
 const readApi = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
-test('Sales export giữ đúng 6 chiều cũ và whitelist cột theo chiều', () => {
+test('Sales export giữ 6 chiều danh sách và whitelist cột theo chiều', () => {
   const valid = normalizeSalesReportingExportSelection({
     dimension: 'products',
     format: 'csv',
     columns: ['code', 'name', 'unitName', 'quantity', 'revenue', 'changePercent'],
   });
   assert.equal(valid.ok, true);
+  assert.equal(valid.matrix, false);
   assert.equal(valid.dimension, 'products');
   assert.equal(valid.format, 'csv');
   assert.deepEqual(valid.columns.map((item) => item.key), ['code', 'name', 'unitName', 'quantity', 'revenue', 'changePercent']);
@@ -34,13 +35,6 @@ test('Sales export giữ đúng 6 chiều cũ và whitelist cột theo chiều',
   assert.deepEqual(Object.keys(salesReportingExportInternals.DIMENSIONS), [
     'customers', 'customerGroups', 'channels', 'products', 'productGroups', 'employees',
   ]);
-  const matrixSelection = normalizeSalesReportingExportSelection({
-    dimension: 'productCustomerMatrix',
-    format: 'xlsx',
-    columns: [],
-  });
-  assert.equal(matrixSelection.ok, false);
-  assert.equal(matrixSelection.code, 'INVALID_SALES_EXPORT_DIMENSION');
   assert.deepEqual(
     salesReportingExportInternals.flattenRow({ unit: { code: 'THUNG', name: 'Thùng' } }),
     {
@@ -70,7 +64,82 @@ test('Sales export giữ đúng 6 chiều cũ và whitelist cột theo chiều',
   assert.deepEqual(productDefaults.columns.map((item) => item.key).slice(3, 6), ['unitName', 'quantity', 'revenue']);
 });
 
-test('Sales export mặc định cột an toàn và không tự lấy documents giới hạn 200 dòng', async () => {
+test('Sales export nhận ma trận Sản phẩm, Loại khách, Kênh bán và Nhóm hàng', () => {
+  const revenue = normalizeSalesReportingExportSelection({
+    dimension: 'matrix.products.customerGroups.revenue',
+    format: 'xlsx',
+    columns: [],
+  });
+  assert.equal(revenue.ok, true);
+  assert.equal(revenue.matrix, true);
+  assert.equal(revenue.rowDimension, 'products');
+  assert.equal(revenue.columnDimension, 'customerGroups');
+  assert.equal(revenue.metric, 'revenue');
+
+  const channel = normalizeSalesReportingExportSelection({
+    dimension: 'matrix.productGroups.channels.revenue',
+    format: 'xlsx',
+    columns: [],
+  });
+  assert.equal(channel.ok, true);
+  assert.equal(channel.rowDimension, 'productGroups');
+  assert.equal(channel.columnDimension, 'channels');
+
+  const quantity = normalizeSalesReportingExportSelection({
+    dimension: 'matrix.products.productGroups.quantity',
+    format: 'xlsx',
+    columns: [],
+  });
+  assert.equal(quantity.ok, true);
+  assert.equal(quantity.metric, 'quantity');
+
+  const invalidQuantity = normalizeSalesReportingExportSelection({
+    dimension: 'matrix.customerGroups.channels.quantity',
+    format: 'xlsx',
+    columns: [],
+  });
+  assert.equal(invalidQuantity.ok, false);
+  assert.equal(invalidQuantity.code, 'INVALID_SALES_MATRIX_QUANTITY_AXIS');
+
+  const invalidCsv = normalizeSalesReportingExportSelection({
+    dimension: 'matrix.products.customerGroups.revenue',
+    format: 'csv',
+    columns: [],
+  });
+  assert.equal(invalidCsv.ok, false);
+  assert.equal(invalidCsv.code, 'INVALID_SALES_MATRIX_FORMAT');
+});
+
+test('Ma trận gom đúng số liệu và tách sheet theo tiền tệ hoặc ĐVT', () => {
+  const selection = normalizeSalesReportingExportSelection({
+    dimension: 'matrix.products.customerGroups.revenue',
+    format: 'xlsx',
+    columns: [],
+  });
+  const rows = [
+    {
+      currencyCode: 'VND', productId: 'p1', productCode: 'SP1', productName: 'Sản phẩm 1', unitId: 'u1', unitCode: 'THUNG', unitName: 'Thùng',
+      customerGroupId: 'g1', customerGroupCode: 'DL', customerGroupName: 'Đại lý', revenue: '100', quantity: '1',
+    },
+    {
+      currencyCode: 'VND', productId: 'p1', productCode: 'SP1', productName: 'Sản phẩm 1', unitId: 'u1', unitCode: 'THUNG', unitName: 'Thùng',
+      customerGroupId: 'g2', customerGroupCode: 'QUAN', customerGroupName: 'Quán', revenue: '50', quantity: '2',
+    },
+    {
+      currencyCode: 'VND', productId: 'p2', productCode: 'SP2', productName: 'Sản phẩm 2', unitId: 'u1', unitCode: 'THUNG', unitName: 'Thùng',
+      customerGroupId: 'g1', customerGroupCode: 'DL', customerGroupName: 'Đại lý', revenue: '150', quantity: '3',
+    },
+  ];
+  const sheets = salesReportingExportInternals.buildMatrixSheets(rows, selection, { from: '2026-09-01', to: '2026-09-17' });
+  assert.equal(sheets.length, 1);
+  assert.equal(sheets[0].scopeLabel, 'VND');
+  assert.equal(sheets[0].grandTotalText, '300');
+  assert.equal(sheets[0].columns.length, 2);
+  assert.equal(sheets[0].rows.length, 2);
+  assert.equal(sheets[0].rows[0].totalText, '150');
+});
+
+test('Sales export mặc định cột an toàn, ma trận có khung và không lấy documents giới hạn 200 dòng', async () => {
   const source = await readApi('src/services/reporting-sales-export.js');
   const selection = normalizeSalesReportingExportSelection({ dimension: 'customers', format: 'xlsx', columns: [] });
   assert.equal(selection.ok, true);
@@ -82,6 +151,11 @@ test('Sales export mặc định cột an toàn và không tự lấy documents 
   assert.doesNotMatch(source, /report\.documents/);
   assert.match(source, /report\.reconciliation\?\.ok !== true/);
   assert.match(source, /buildMultiSheetXlsx/);
+  assert.match(source, /buildMatrixXlsx/);
+  assert.match(source, /borders count=/);
+  assert.match(source, /mergeCells count=/);
+  assert.match(source, /orientation=\\"landscape\\"/);
+  assert.match(source, /TỶ LỆ/);
   assert.match(source, /text\/csv; charset=utf-8/);
 });
 
