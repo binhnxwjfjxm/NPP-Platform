@@ -2,9 +2,38 @@
 
 import { useMemo, useRef, useState } from 'react';
 import { readSpreadsheetMatrix } from '../../lib/spreadsheet-matrix';
+import ProductImportWorkspace from './product-import-workspace';
 import styles from './products.module.css';
 
-type Mapping = 'SKU' | 'IGNORE' | 'WEIGHT_VALUE' | 'WEIGHT_UOM';
+type Mapping =
+  | 'SKU'
+  | 'IGNORE'
+  | 'PRODUCT_NAME'
+  | 'CATALOG_NAME'
+  | 'CATEGORY_CODE'
+  | 'BRAND_CODE'
+  | 'DESCRIPTION'
+  | 'NOTES'
+  | 'PRODUCT_CATALOG_VISIBLE'
+  | 'PRODUCT_ORDERABLE'
+  | 'PRODUCT_INVENTORY_MANAGED'
+  | 'PRODUCT_ACTIVE'
+  | 'VARIANT_NAME'
+  | 'VARIANT_KIND'
+  | 'INVENTORY_BASE'
+  | 'SELLABLE'
+  | 'VARIANT_CATALOG_VISIBLE'
+  | 'VARIANT_ACTIVE'
+  | 'UNIT_CODE'
+  | 'CONVERSION_TO_BASE'
+  | 'PURCHASABLE'
+  | 'NET_CONTENT_VALUE'
+  | 'NET_CONTENT_UOM'
+  | 'SOURCE_UNIT_LABEL'
+  | 'SOURCE_PACKAGE_DESCRIPTION'
+  | 'WEIGHT_VALUE'
+  | 'WEIGHT_UOM';
+
 type SourceRow = { rowNumber: number; cells: string[] };
 type PreviewChange = { field: string; label: string; oldValue: string; newValue: string };
 type PreviewError = { code: string; message: string };
@@ -38,24 +67,94 @@ type IdentificationResult = {
   skipped: number;
   rows: IdentificationRow[];
 };
-
 type ApiEnvelope<T> = {
   data?: T;
   error?: { message?: string; code?: string };
 };
+type WorkspaceMode = 'import' | 'update';
+
+type Props = {
+  onImported?: () => Promise<void> | void;
+};
 
 const OPTIONS: Array<{ value: Mapping; label: string }> = [
   { value: 'IGNORE', label: 'Bỏ qua' },
+  { value: 'PRODUCT_NAME', label: 'Tên sản phẩm' },
+  { value: 'CATALOG_NAME', label: 'Tên hiển thị bán hàng' },
+  { value: 'CATEGORY_CODE', label: 'Loại sản phẩm' },
+  { value: 'BRAND_CODE', label: 'Nhãn hàng' },
+  { value: 'DESCRIPTION', label: 'Mô tả' },
+  { value: 'NOTES', label: 'Ghi chú' },
+  { value: 'PRODUCT_CATALOG_VISIBLE', label: 'Hiển thị sản phẩm khi bán hàng' },
+  { value: 'PRODUCT_ORDERABLE', label: 'Cho phép đặt hàng' },
+  { value: 'PRODUCT_INVENTORY_MANAGED', label: 'Quản lý tồn kho' },
+  { value: 'PRODUCT_ACTIVE', label: 'Sản phẩm đang sử dụng' },
+  { value: 'VARIANT_NAME', label: 'Tên SKU / quy cách' },
+  { value: 'VARIANT_KIND', label: 'Loại SKU' },
+  { value: 'INVENTORY_BASE', label: 'SKU dùng làm đơn vị tồn chuẩn' },
+  { value: 'SELLABLE', label: 'Cho phép bán SKU' },
+  { value: 'VARIANT_CATALOG_VISIBLE', label: 'Hiển thị SKU khi bán hàng' },
+  { value: 'VARIANT_ACTIVE', label: 'SKU đang sử dụng' },
+  { value: 'UNIT_CODE', label: 'Đơn vị tính' },
+  { value: 'CONVERSION_TO_BASE', label: 'Hệ số quy đổi về đơn vị tồn chuẩn' },
+  { value: 'PURCHASABLE', label: 'Cho phép mua SKU' },
+  { value: 'NET_CONTENT_VALUE', label: 'Định lượng quy cách' },
+  { value: 'NET_CONTENT_UOM', label: 'Đơn vị định lượng' },
+  { value: 'SOURCE_UNIT_LABEL', label: 'Tên đơn vị nguồn' },
+  { value: 'SOURCE_PACKAGE_DESCRIPTION', label: 'Mô tả quy cách nguồn' },
   { value: 'WEIGHT_VALUE', label: 'Khối lượng' },
   { value: 'WEIGHT_UOM', label: 'Đơn vị khối lượng' },
 ];
 
-function initialMappings(columnCount: number): Mapping[] {
+const HEADER_ALIASES = new Map<string, Mapping>([
+  ['TEN SAN PHAM', 'PRODUCT_NAME'], ['PRODUCTNAME', 'PRODUCT_NAME'],
+  ['TEN HIEN THI BAN HANG', 'CATALOG_NAME'], ['CATALOGNAME', 'CATALOG_NAME'],
+  ['LOAI SAN PHAM', 'CATEGORY_CODE'], ['MA LOAI SAN PHAM', 'CATEGORY_CODE'], ['CATEGORYCODE', 'CATEGORY_CODE'],
+  ['NHAN HANG', 'BRAND_CODE'], ['MA NHAN HANG', 'BRAND_CODE'], ['BRANDCODE', 'BRAND_CODE'],
+  ['MO TA', 'DESCRIPTION'], ['DESCRIPTION', 'DESCRIPTION'],
+  ['GHI CHU', 'NOTES'], ['NOTES', 'NOTES'],
+  ['HIEN THI SAN PHAM KHI BAN HANG', 'PRODUCT_CATALOG_VISIBLE'], ['PRODUCTISCATALOGVISIBLE', 'PRODUCT_CATALOG_VISIBLE'],
+  ['CHO PHEP DAT HANG', 'PRODUCT_ORDERABLE'], ['PRODUCTISORDERABLE', 'PRODUCT_ORDERABLE'],
+  ['QUAN LY TON KHO', 'PRODUCT_INVENTORY_MANAGED'], ['ISINVENTORYMANAGED', 'PRODUCT_INVENTORY_MANAGED'],
+  ['SAN PHAM DANG SU DUNG', 'PRODUCT_ACTIVE'], ['PRODUCTISACTIVE', 'PRODUCT_ACTIVE'],
+  ['TEN SKU', 'VARIANT_NAME'], ['TEN SKU / QUY CACH', 'VARIANT_NAME'], ['SKUNAME', 'VARIANT_NAME'],
+  ['LOAI SKU', 'VARIANT_KIND'], ['VARIANTKIND', 'VARIANT_KIND'],
+  ['SKU DUNG LAM DON VI TON CHUAN', 'INVENTORY_BASE'], ['TON CHUAN', 'INVENTORY_BASE'], ['ISINVENTORYBASE', 'INVENTORY_BASE'],
+  ['CHO PHEP BAN SKU', 'SELLABLE'], ['ISSELLABLE', 'SELLABLE'],
+  ['HIEN THI SKU KHI BAN HANG', 'VARIANT_CATALOG_VISIBLE'], ['ISCATALOGVISIBLE', 'VARIANT_CATALOG_VISIBLE'],
+  ['SKU DANG SU DUNG', 'VARIANT_ACTIVE'], ['ISACTIVE', 'VARIANT_ACTIVE'],
+  ['DON VI TINH', 'UNIT_CODE'], ['UNITCODE', 'UNIT_CODE'],
+  ['HE SO QUY DOI VE DON VI TON CHUAN', 'CONVERSION_TO_BASE'], ['HE SO QUY DOI', 'CONVERSION_TO_BASE'], ['CONVERSIONTOBASE', 'CONVERSION_TO_BASE'],
+  ['CHO PHEP MUA SKU', 'PURCHASABLE'], ['ISPURCHASABLE', 'PURCHASABLE'],
+  ['DINH LUONG QUY CACH', 'NET_CONTENT_VALUE'], ['NETCONTENTVALUE', 'NET_CONTENT_VALUE'],
+  ['DON VI DINH LUONG', 'NET_CONTENT_UOM'], ['NETCONTENTUOMCODE', 'NET_CONTENT_UOM'],
+  ['TEN DON VI NGUON', 'SOURCE_UNIT_LABEL'], ['SOURCEUNITLABEL', 'SOURCE_UNIT_LABEL'],
+  ['MO TA QUY CACH NGUON', 'SOURCE_PACKAGE_DESCRIPTION'], ['SOURCEPACKAGEDESCRIPTION', 'SOURCE_PACKAGE_DESCRIPTION'],
+  ['KHOI LUONG', 'WEIGHT_VALUE'], ['WEIGHTVALUE', 'WEIGHT_VALUE'],
+  ['DON VI KHOI LUONG', 'WEIGHT_UOM'], ['WEIGHTUOMCODE', 'WEIGHT_UOM'],
+]);
+
+function headerKey(value: string) {
+  return value
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/Đ/g, 'D')
+    .replace(/đ/g, 'd')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .toUpperCase();
+}
+
+function initialMappings(columnCount: number, headers: string[] = [], useHeaders = false): Mapping[] {
+  const seen = new Set<Mapping>();
   return Array.from({ length: columnCount }, (_value, index) => {
     if (index === 0) return 'SKU';
-    if (index === 1) return 'WEIGHT_VALUE';
-    if (index === 2) return 'WEIGHT_UOM';
-    return 'IGNORE';
+    if (!useHeaders) return 'IGNORE';
+    const mapping = HEADER_ALIASES.get(headerKey(headers[index] ?? '')) ?? 'IGNORE';
+    if (mapping === 'IGNORE' || seen.has(mapping)) return 'IGNORE';
+    seen.add(mapping);
+    return mapping;
   });
 }
 
@@ -78,7 +177,27 @@ function sourceCell(value: unknown) {
   return text === '' ? 'Trống' : text;
 }
 
-export default function ProductBulkUpdateWorkspace() {
+export default function ProductBulkUpdateWorkspace({ onImported }: Props) {
+  const [mode, setMode] = useState<WorkspaceMode>('update');
+
+  return (
+    <section data-testid="product-bulk-update-workspace" className={styles.bulkUpdateWorkspace}>
+      <div className={styles.sectionHeader}>
+        <div>
+          <h2>Nhập / cập nhật sản phẩm</h2>
+          <p>Làm việc với tệp sản phẩm ngay trong Danh mục sản phẩm, không cần chuyển sang màn Nhập/xuất dữ liệu.</p>
+        </div>
+      </div>
+      <div className={styles.tabs} role="tablist" aria-label="Nhập hoặc cập nhật sản phẩm">
+        <button type="button" className={mode === 'import' ? styles.tabActive : styles.tab} onClick={() => setMode('import')}>Nhập sản phẩm</button>
+        <button type="button" className={mode === 'update' ? styles.tabActive : styles.tab} onClick={() => setMode('update')}>Cập nhật sản phẩm</button>
+      </div>
+      {mode === 'import' ? <ProductImportWorkspace onImported={onImported} /> : <UpdateExistingProductsWorkspace />}
+    </section>
+  );
+}
+
+function UpdateExistingProductsWorkspace() {
   const [fileName, setFileName] = useState('');
   const [fileInputKey, setFileInputKey] = useState(0);
   const [matrix, setMatrix] = useState<string[][]>([]);
@@ -162,7 +281,7 @@ export default function ProductBulkUpdateWorkspace() {
       setFileName(file.name);
       setMatrix(rows);
       setHasHeader(skipFirst);
-      setMappings(initialMappings(columns));
+      setMappings(initialMappings(columns, rows[0] ?? [], skipFirst));
       setIdentification(null);
       setPreview(null);
       setOperationKey(null);
@@ -266,7 +385,7 @@ export default function ProductBulkUpdateWorkspace() {
       if (!response.ok || !envelope.data) throw new Error(envelope.error?.message || 'Không thể cập nhật sản phẩm');
       setPreview(envelope.data);
       setApplied(true);
-      setNotice(`Đã cập nhật ${envelope.data.updated} SKU. ${envelope.data.skipped} dòng có lỗi đã được bỏ qua.`);
+      setNotice(`Đã cập nhật ${envelope.data.updated} dòng. ${envelope.data.skipped} dòng có lỗi đã được bỏ qua.`);
     } catch (value) {
       setError(value instanceof Error ? value.message : 'Không thể cập nhật sản phẩm');
     } finally {
@@ -275,11 +394,11 @@ export default function ProductBulkUpdateWorkspace() {
   }
 
   return (
-    <section data-testid="product-bulk-update-workspace" className={styles.bulkUpdateWorkspace}>
+    <section data-testid="product-update-existing-workspace" className={styles.bulkUpdateWorkspace}>
       <div className={styles.sectionHeader}>
         <div>
-          <h2>Cập nhật sản phẩm theo SKU</h2>
-          <p>Cột 1 luôn là SKU để truy vấn SKU hiện có. Không tạo SKU mới. Chọn thuộc tính cập nhật từ cột 2 trở đi.</p>
+          <h3>Cập nhật sản phẩm theo SKU</h3>
+          <p>Cột 1 luôn là SKU. Từ cột 2 trở đi, mỗi cột chọn một thuộc tính cần cập nhật. SKU hoặc dòng lỗi được báo và bỏ qua; các dòng hợp lệ vẫn tiếp tục.</p>
         </div>
       </div>
 
@@ -306,6 +425,7 @@ export default function ProductBulkUpdateWorkspace() {
             onChange={(event) => {
               const next = event.target.checked;
               setHasHeader(next);
+              setMappings(initialMappings(columnCount, matrix[0] ?? [], next));
               void identifyRows(sourceRowsFor(matrix, next));
             }}
           />
