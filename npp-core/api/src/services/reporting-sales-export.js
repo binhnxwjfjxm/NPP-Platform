@@ -197,7 +197,6 @@ function compareAnalysisRows(left, right, selection, currencies) {
   const direction = sort.endsWith('-desc') ? -1 : 1;
   return leftValue > rightValue ? direction : -direction;
 }
-
 function formatReportDate(value) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value ?? ''));
   return match ? `${match[3]}/${match[2]}/${match[1].slice(2)}` : String(value ?? '');
@@ -486,9 +485,9 @@ async function loadSalesAnalysisFacts(pool, requestContext, filters, warehouseId
       carton_variant.conversion_to_base::text AS "cartonConversionToBase",
       customer.group_id AS "customerGroupId", customer_group.code AS "customerGroupCode", customer_group.name AS "customerGroupName",
       sov.sales_channel_id AS "channelId", sov.sales_channel_code_snapshot AS "channelCode", sov.sales_channel_name_snapshot AS "channelName",
-      CASE WHEN line.reporting_dimension_snapshot_captured THEN line.product_category_id_snapshot ELSE product.category_id END AS "productGroupId",
-      CASE WHEN line.reporting_dimension_snapshot_captured THEN line.product_category_code_snapshot ELSE product_category.code END AS "productGroupCode",
-      CASE WHEN line.reporting_dimension_snapshot_captured THEN line.product_category_name_snapshot ELSE product_category.name END AS "productGroupName",
+      product.category_id AS "productGroupId",
+      product_category.code AS "productGroupCode",
+      product_category.name AS "productGroupName",
       line.line_total::text AS revenue
     FROM sales.sales_orders so
     JOIN LATERAL (SELECT version.* FROM sales.sales_order_versions version WHERE version.installation_id = so.installation_id AND version.sales_order_id = so.id AND version.version_status IN ('confirmed','superseded') ORDER BY version.version_number DESC LIMIT 1) sov ON true
@@ -514,7 +513,7 @@ async function loadSalesAnalysisFacts(pool, requestContext, filters, warehouseId
    WHERE so.installation_id = $1 AND so.warehouse_id = ANY($2::uuid[])
      AND so.confirmed_at >= $3::timestamptz AND so.confirmed_at < $4::timestamptz
      AND ($5::uuid IS NULL OR so.warehouse_id = $5::uuid) AND so.status IN ('confirmed','closed')
-     AND ($6::uuid IS NULL OR (CASE WHEN line.reporting_dimension_snapshot_captured THEN line.product_category_id_snapshot ELSE product.category_id END) = $6::uuid)
+     AND ($6::uuid IS NULL OR product.category_id = $6::uuid)
      AND ($7::uuid IS NULL OR customer.group_id = $7::uuid)
    ORDER BY product.name, line.sku_snapshot, so.id, line.line_number`, [
     requestContext.installationId, warehouseIds, filters.fromInstant, filters.toExclusiveInstant, filters.warehouseId,
