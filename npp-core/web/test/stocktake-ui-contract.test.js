@@ -112,3 +112,38 @@ test('stocktake line detail contract exposes office statuses and persisted reaso
   assert.match(types, /reason: string \| null/);
   assert.match(types, /note: string \| null/);
 });
+
+
+test('stocktake workspace finishes the result review workflow without rendering 2,000 rows at once', () => {
+  for (const label of ['Tất cả', 'Chưa kiểm', 'Khớp', 'Lệch', 'Lý do', 'Ghi chú']) {
+    assert.match(workspace, new RegExp(label));
+  }
+  assert.match(workspace, /LINE_PAGE_SIZE = 100/);
+  assert.match(workspace, /pagedLines\.map/);
+  assert.doesNotMatch(workspace, /\(detail\.lines \?\? \[\]\)\.map\(\(line/);
+  assert.match(workspace, /Lưu Lý do & Ghi chú/);
+  assert.match(workspace, /\/annotate/);
+  assert.match(actionRoute, /'annotate'/);
+});
+
+test('stocktake workspace exports the exact open result and can copy scope to a fresh stocktake', () => {
+  assert.match(workspace, /Xuất Excel/);
+  assert.match(workspace, /Xuất CSV/);
+  assert.match(workspace, /\/api\/data-exchange\/xlsx/);
+  assert.match(workspace, /RESULT_HEADERS/);
+  assert.match(workspace, /Tồn hệ thống/);
+  assert.match(workspace, /Tồn thực tế/);
+  assert.match(workspace, /Sao chép phiếu/);
+  assert.match(workspace, /\/copy/);
+  assert.match(actionRoute, /'copy'/);
+  assert.match(gateway, /'annotate'/);
+  assert.match(gateway, /'copy'/);
+});
+
+test('stocktake list shows creator and current counter from canonical stocktake data', () => {
+  assert.match(types, /currentCountedAt\?: string \| null/);
+  assert.match(types, /currentCountedBy\?: string \| null/);
+  assert.match(workspace, /Tạo:/);
+  assert.match(workspace, /Kiểm:/);
+  assert.match(workspace, /Người kiểm hiện tại/);
+});

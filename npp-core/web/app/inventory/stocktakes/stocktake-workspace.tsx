@@ -37,6 +37,38 @@ import StocktakePrintDock from './StocktakePrintDock';
 type WarehouseOption = { id: string; code: string; name: string };
 type ScopeMode = 'all' | 'lot' | 'location';
 type ScopeGroup = { key: string; label: string; detail: string; scopeKeys: string[] };
+type LineFilter = 'all' | 'uncounted' | 'matched' | 'mismatch';
+
+const LINE_PAGE_SIZE = 100;
+const RESULT_HEADERS = [
+  'SKU',
+  'Tên sản phẩm',
+  'ĐVT',
+  'Lô',
+  'Vị trí',
+  'Tồn hệ thống',
+  'Tồn thực tế',
+  'Chênh lệch',
+  'Lý do',
+  'Ghi chú',
+] as const;
+
+function csvCell(value: unknown): string {
+  const raw = String(value ?? '');
+  const guarded = /^[=+@]/.test(raw) || /^-(?!\d+(?:[.,]\d+)?$)/.test(raw) ? `'${raw}` : raw;
+  return `"${guarded.replaceAll('"', '""')}"`;
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
 
 type Props = {
   initialStocktakes: Stocktake[];
@@ -125,6 +157,10 @@ export default function StocktakeWorkspace({
   const [selectedScopes, setSelectedScopes] = useState<Set<string>>(new Set());
   const [note, setNote] = useState('');
   const [counts, setCounts] = useState<Record<string, string>>({});
+  const [lineReasons, setLineReasons] = useState<Record<string, string>>({});
+  const [lineNotes, setLineNotes] = useState<Record<string, string>>({});
+  const [lineFilter, setLineFilter] = useState<LineFilter>('all');
+  const [linePage, setLinePage] = useState(1);
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(initialError || initialLookupError);
@@ -210,6 +246,10 @@ export default function StocktakeWorkspace({
         : [summary, ...current];
     });
     setCounts(Object.fromEntries((next.lines ?? []).map((line) => [line.id, line.countedBaseQuantity ?? ''])));
+    setLineReasons(Object.fromEntries((next.lines ?? []).map((line) => [line.id, line.reason ?? ''])));
+    setLineNotes(Object.fromEntries((next.lines ?? []).map((line) => [line.id, line.note ?? ''])));
+    setLineFilter('all');
+    setLinePage(1);
   }
 
   async function parseResponse<T>(response: Response): Promise<T> {
@@ -297,7 +337,12 @@ export default function StocktakeWorkspace({
         setError('Phải nhập số thực đếm cho toàn bộ phạm vi hiện tại.');
         return;
       }
-      payload.counts = lines.map((line) => ({ lineId: line.id, countedBaseQuantity: String(counts[line.id]).trim() }));
+      payload.counts = lines.map((line) => ({
+        lineId: line.id,
+        countedBaseQuantity: String(counts[line.id]).trim(),
+        reason: String(lineReasons[line.id] ?? '').trim() || null,
+        note: String(lineNotes[line.id] ?? '').trim() || null,
+      }));
     }
     if (['recount', 'cancel', 'reverse'].includes(action)) {
       if (!reason.trim()) {
@@ -337,6 +382,134 @@ export default function StocktakeWorkspace({
     }
   }
 
+  function annotationFingerprint(lines: StocktakeLine[]): string {
+    let hash = 2166136261;
+    for (const line of lines) {
+      const value = `${line.id}\u0000${lineReasons[line.id] ?? ''}\u0000${lineNotes[line.id] ?? ''}\u0001`;
+      for (let index = 0; index < value.length; index += 1) {
+        hash ^= value.charCodeAt(index);
+        hash = Math.imul(hash, 16777619);
+      }
+    }
+    return (hash >>> 0).toString(16);
+  }
+
+  async function saveAnnotations() {
+    if (!detail || !['submitted', 'approved'].includes(detail.status)) return;
+    const lines = detail.lines ?? [];
+    if (!lines.length) return;
+    setBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      const response = await fetch(`/api/inventory/stocktakes/${detail.id}/annotate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': stableKey('annotate', detail.id, `${detail.revision}:${annotationFingerprint(lines)}`),
+        },
+        body: JSON.stringify({
+          expectedRevision: detail.revision,
+          annotations: lines.map((line) => ({
+            lineId: line.id,
+            reason: String(lineReasons[line.id] ?? '').trim() || null,
+            note: String(lineNotes[line.id] ?? '').trim() || null,
+          })),
+        }),
+      });
+      const next = await parseResponse<Stocktake>(response);
+      remember(next);
+      setMessage('Đã lưu Lý do và Ghi chú cho các dòng kiểm kê.');
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Không lưu được Lý do và Ghi chú');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function copyCurrent() {
+    if (!detail) return;
+    setBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      const response = await fetch(`/api/inventory/stocktakes/${detail.id}/copy`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': stableKey('copy', detail.id, detail.revision),
+        },
+        body: JSON.stringify({ expectedRevision: detail.revision }),
+      });
+      const next = await parseResponse<Stocktake>(response);
+      const sourceNumber = detail.stocktakeNumber;
+      remember(next);
+      setMessage(`Đã sao chép phạm vi từ ${sourceNumber}. Phiếu mới dùng tồn hệ thống tại thời điểm vừa tạo.`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Không sao chép được phiếu kiểm kê');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function resultRows(stocktake: Stocktake): string[][] {
+    return (stocktake.lines ?? []).map((line) => {
+      const difference = stocktakeDifference(line);
+      return [
+        line.baseSku,
+        productNameByVariant.get(line.baseVariantId) || line.baseSku,
+        line.sourceUnitCode,
+        line.lotCode || '',
+        [line.locationCode, line.locationName].filter(Boolean).join(' · '),
+        line.expectedBaseQuantity ?? '',
+        line.countedBaseQuantity ?? '',
+        difference ?? '',
+        line.reason ?? '',
+        line.note ?? '',
+      ];
+    });
+  }
+
+  async function exportExcel() {
+    if (!detail || !revealSystemQuantity) {
+      setError('Chỉ xuất kết quả sau khi số hệ thống được mở để đối chiếu.');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      const response = await fetch('/api/data-exchange/xlsx', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sheetName: `Kiểm kê ${detail.stocktakeNumber}`,
+          headers: RESULT_HEADERS,
+          rows: resultRows(detail),
+        }),
+      });
+      if (!response.ok) throw new Error('Không tạo được file Excel kết quả kiểm kê.');
+      const blob = await response.blob();
+      downloadBlob(blob, `kiem-ke-${detail.stocktakeNumber}.xlsx`);
+      setMessage('Đã xuất Excel kết quả của phiếu kiểm kê đang mở.');
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Không xuất được Excel kiểm kê');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function exportCsv() {
+    if (!detail || !revealSystemQuantity) {
+      setError('Chỉ xuất kết quả sau khi số hệ thống được mở để đối chiếu.');
+      return;
+    }
+    const rows = [Array.from(RESULT_HEADERS), ...resultRows(detail)];
+    const csv = rows.map((row) => row.map(csvCell).join(',')).join('\r\n');
+    downloadBlob(new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8' }), `kiem-ke-${detail.stocktakeNumber}.csv`);
+    setMessage('Đã xuất CSV kết quả của phiếu kiểm kê đang mở.');
+  }
+
   const actionButtons = detail ? (
     <div className={styles.actionRow} aria-label="Thao tác kiểm kê">
       {['draft', 'recount_required'].includes(detail.status) && can(STOCKTAKE_PERMISSION_KEYS.count) ? (
@@ -360,11 +533,37 @@ export default function StocktakeWorkspace({
       {detail.status === 'posted' && can(STOCKTAKE_PERMISSION_KEYS.reverse) ? (
         <button type="button" className={styles.dangerButton} disabled={busy} onClick={() => transition('reverse')}>Hoàn tác cập nhật tồn</button>
       ) : null}
+      {['submitted', 'approved'].includes(detail.status) && can(STOCKTAKE_PERMISSION_KEYS.count) ? (
+        <button type="button" className={styles.secondaryButton} disabled={busy} onClick={saveAnnotations}>Lưu Lý do & Ghi chú</button>
+      ) : null}
     </div>
   ) : null;
 
   const revealSystemQuantity = Boolean(detail?.lines?.some((line) => line.expectedBaseQuantity !== undefined));
   const countingLine = detail?.lines?.length === 1 ? detail.lines[0] : null;
+  const detailLines = detail?.lines ?? [];
+  const isCounting = Boolean(detail && ['draft', 'recount_required'].includes(detail.status));
+  const canAnnotateLines = Boolean(detail && ['submitted', 'approved'].includes(detail.status) && can(STOCKTAKE_PERMISSION_KEYS.count));
+  const isUncounted = (line: StocktakeLine) => isCounting
+    ? !String(counts[line.id] ?? '').trim()
+    : line.countedBaseQuantity === null;
+  const lineSummary = {
+    all: detailLines.length,
+    uncounted: detailLines.filter(isUncounted).length,
+    matched: detailLines.filter((line) => line.countStatus === 'matched').length,
+    mismatch: detailLines.filter((line) => line.countStatus === 'mismatch').length,
+  };
+  const filteredLines = detailLines.filter((line) => {
+    if (lineFilter === 'all') return true;
+    if (lineFilter === 'uncounted') return isUncounted(line);
+    return line.countStatus === lineFilter;
+  });
+  const totalLinePages = Math.max(1, Math.ceil(filteredLines.length / LINE_PAGE_SIZE));
+  const currentLinePage = Math.min(linePage, totalLinePages);
+  const pagedLines = filteredLines.slice(
+    (currentLinePage - 1) * LINE_PAGE_SIZE,
+    currentLinePage * LINE_PAGE_SIZE,
+  );
 
   return (
     <AppShell
@@ -477,7 +676,10 @@ export default function StocktakeWorkspace({
                 </span>
                 <span>{stocktake.warehouseCode} · {stocktake.warehouseName}</span>
                 <span>Lần đếm {stocktake.currentRound} · {stocktake.lineCount} phạm vi</span>
-                <small>{formatDateTime(stocktake.updatedAt)}</small>
+                <small>Tạo: {officeActorLabel(stocktake.createdBy, 'Người tạo')} · {formatDateTime(stocktake.createdAt)}</small>
+                {stocktake.currentCountedAt ? (
+                  <small>Kiểm: {officeActorLabel(stocktake.currentCountedBy, 'Người kiểm')} · {formatDateTime(stocktake.currentCountedAt)}</small>
+                ) : null}
               </button>
             )) : <p className={styles.empty}>Chưa có đợt kiểm kê phù hợp.</p>}
           </section>
@@ -491,7 +693,28 @@ export default function StocktakeWorkspace({
                     <h2>{detail.stocktakeNumber}</h2>
                     <p>{detail.note || 'Không có ghi chú'}</p>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <div className={styles.detailTools}>
+                    {can(STOCKTAKE_PERMISSION_KEYS.create) ? (
+                      <button type="button" className={styles.secondaryButton} disabled={busy} onClick={copyCurrent}>Sao chép phiếu</button>
+                    ) : null}
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      disabled={busy || !revealSystemQuantity}
+                      title={revealSystemQuantity ? 'Xuất toàn bộ kết quả phiếu đang mở' : 'Có sau khi gửi duyệt'}
+                      onClick={exportExcel}
+                    >
+                      Xuất Excel
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      disabled={busy || !revealSystemQuantity}
+                      title={revealSystemQuantity ? 'Xuất toàn bộ kết quả phiếu đang mở' : 'Có sau khi gửi duyệt'}
+                      onClick={exportCsv}
+                    >
+                      Xuất CSV
+                    </button>
                     <StocktakePrintDock stocktake={detail} />
                     <span className={`${styles.badge} ${statusTone(detail.status)}`}>{STOCKTAKE_STATUS_LABELS[detail.status]}</span>
                   </div>
@@ -513,6 +736,39 @@ export default function StocktakeWorkspace({
                   </label>
                 ) : null}
 
+                <div className={styles.lineFilterBar} aria-label="Lọc dòng kiểm kê">
+                  <button
+                    type="button"
+                    className={lineFilter === 'all' ? styles.lineFilterActive : styles.lineFilterButton}
+                    onClick={() => { setLineFilter('all'); setLinePage(1); }}
+                  >
+                    Tất cả <strong>{lineSummary.all}</strong>
+                  </button>
+                  <button
+                    type="button"
+                    className={lineFilter === 'uncounted' ? styles.lineFilterActive : styles.lineFilterButton}
+                    onClick={() => { setLineFilter('uncounted'); setLinePage(1); }}
+                  >
+                    Chưa kiểm <strong>{lineSummary.uncounted}</strong>
+                  </button>
+                  <button
+                    type="button"
+                    className={lineFilter === 'matched' ? styles.lineFilterActive : styles.lineFilterButton}
+                    disabled={!revealSystemQuantity}
+                    onClick={() => { setLineFilter('matched'); setLinePage(1); }}
+                  >
+                    Khớp <strong>{revealSystemQuantity ? lineSummary.matched : '—'}</strong>
+                  </button>
+                  <button
+                    type="button"
+                    className={lineFilter === 'mismatch' ? styles.lineFilterActive : styles.lineFilterButton}
+                    disabled={!revealSystemQuantity}
+                    onClick={() => { setLineFilter('mismatch'); setLinePage(1); }}
+                  >
+                    Lệch <strong>{revealSystemQuantity ? lineSummary.mismatch : '—'}</strong>
+                  </button>
+                </div>
+
                 <div className={styles.tableWrap}>
                   <table>
                     <thead>
@@ -525,14 +781,16 @@ export default function StocktakeWorkspace({
                         {revealSystemQuantity ? <th>Tồn hệ thống</th> : null}
                         <th>Thực đếm</th>
                         {revealSystemQuantity ? <th>Chênh lệch</th> : null}
+                        <th>Lý do</th>
+                        <th>Ghi chú</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {(detail.lines ?? []).map((line, rowIndex) => {
+                      {pagedLines.map((line) => {
                         const difference = stocktakeDifference(line);
                         return (
                           <tr key={line.id}>
-                            <BusinessTableSequenceCell rowIndex={rowIndex} />
+                            <BusinessTableSequenceCell rowIndex={Math.max(0, line.lineNumber - 1)} />
                             <td>
                               <strong>{productNameByVariant.get(line.baseVariantId) || line.baseSku}</strong>
                               <small>{line.baseSku}</small>
@@ -563,11 +821,63 @@ export default function StocktakeWorkspace({
                             {revealSystemQuantity ? (
                               <td><strong>{difference === null ? '—' : formatSignedExactDecimal(difference)}</strong></td>
                             ) : null}
+                            <td>
+                              {isCounting || canAnnotateLines ? (
+                                <input
+                                  className={styles.lineTextInput}
+                                  maxLength={500}
+                                  aria-label={`Lý do ${scopeSummary(line)}`}
+                                  value={lineReasons[line.id] ?? ''}
+                                  onChange={(event) => setLineReasons((current) => ({ ...current, [line.id]: event.target.value }))}
+                                  placeholder={line.countStatus === 'mismatch' ? 'Nhập lý do lệch' : 'Không bắt buộc'}
+                                />
+                              ) : (line.reason || '—')}
+                            </td>
+                            <td>
+                              {isCounting || canAnnotateLines ? (
+                                <input
+                                  className={styles.lineTextInput}
+                                  maxLength={2000}
+                                  aria-label={`Ghi chú ${scopeSummary(line)}`}
+                                  value={lineNotes[line.id] ?? ''}
+                                  onChange={(event) => setLineNotes((current) => ({ ...current, [line.id]: event.target.value }))}
+                                  placeholder="Ghi chú"
+                                />
+                              ) : (line.note || '—')}
+                            </td>
                           </tr>
                         );
                       })}
                     </tbody>
                   </table>
+                  <div className={styles.tableFooter}>
+                    <span>
+                      {filteredLines.length
+                        ? `Hiển thị ${(currentLinePage - 1) * LINE_PAGE_SIZE + 1}–${Math.min(currentLinePage * LINE_PAGE_SIZE, filteredLines.length)} / ${filteredLines.length} dòng`
+                        : 'Không có dòng phù hợp.'}
+                    </span>
+                    {filteredLines.length > LINE_PAGE_SIZE ? (
+                      <div className={styles.pager}>
+                        <button
+                          type="button"
+                          className={styles.secondaryButton}
+                          disabled={currentLinePage <= 1}
+                          onClick={() => setLinePage((value) => Math.max(1, value - 1))}
+                        >
+                          Trước
+                        </button>
+                        <strong>{currentLinePage}/{totalLinePages}</strong>
+                        <button
+                          type="button"
+                          className={styles.secondaryButton}
+                          disabled={currentLinePage >= totalLinePages}
+                          onClick={() => setLinePage((value) => Math.min(totalLinePages, value + 1))}
+                        >
+                          Sau
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
 
                 <section className={styles.history} aria-labelledby="round-history-title">
@@ -584,6 +894,16 @@ export default function StocktakeWorkspace({
                 </section>
 
                 <dl className={styles.meta}>
+                  <div>
+                    <dt>Người tạo</dt>
+                    <dd>{officeActorLabel(detail.createdBy, 'Người tạo')} · {formatDateTime(detail.createdAt)}</dd>
+                  </div>
+                  <div>
+                    <dt>Người kiểm hiện tại</dt>
+                    <dd>{detail.currentCountedAt
+                      ? `${officeActorLabel(detail.currentCountedBy, 'Người kiểm')} · ${formatDateTime(detail.currentCountedAt)}`
+                      : 'Chưa hoàn tất đếm'}</dd>
+                  </div>
                   <div>
                     <dt>Người gửi</dt>
                     <dd>{officeActorLabel(detail.submittedBy, 'Người gửi')}{detail.submittedAt ? ` · ${formatDateTime(detail.submittedAt)}` : ''}</dd>

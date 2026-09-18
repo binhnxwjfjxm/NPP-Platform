@@ -6,7 +6,9 @@ import { loadConfig } from '../src/config.js';
 import { closePool, getPool } from '../src/db/pool.js';
 import { executeInventoryPost } from '../src/services/inventory-ledger.js';
 import {
+  annotateStocktake,
   approveStocktake,
+  copyStocktake,
   countStocktake,
   createStocktake,
   getStocktake,
@@ -669,6 +671,151 @@ test('line reason/note stay on the exact count round and comparison stays blind 
     assert.deepEqual(roundOne.map((row) => row.count_note), ['Đếm đủ tại kệ', 'Kiểm tra lại khi duyệt']);
     assert.deepEqual(roundTwo.map((row) => row.count_reason), [null, null]);
     assert.deepEqual(roundTwo.map((row) => row.count_note), [null, null]);
+  } finally {
+    await closePool();
+  }
+});
+
+
+test('submitted mismatch can receive line reason/note without changing counted quantity', async () => {
+  const config = loadConfig(testEnv());
+  const pool = getPool(config);
+  try {
+    const master = await seedStocktakeMasterData(pool, config.installationId);
+    const counter = requestContext(config.installationId, [master.warehouseId], 'test:counter-annotation');
+    await postOpening(pool, counter, master);
+
+    const created = await transaction(pool, (client) => createStocktake(client, {
+      requestContext: counter,
+      payload: { warehouseId: master.warehouseId, scopes: scopes(master) },
+    }));
+    const counted = await transaction(pool, (client) => countStocktake(client, {
+      requestContext: counter,
+      stocktakeId: created.stocktake.id,
+      payload: {
+        expectedRevision: created.stocktake.revision,
+        counts: created.stocktake.lines.map((line) => ({
+          lineId: line.id,
+          countedBaseQuantity: line.locationId === master.locationOneId ? '10.000000000000' : '3.000000000000',
+        })),
+      },
+    }));
+    const submitted = await transaction(pool, (client) => submitStocktake(client, {
+      requestContext: counter,
+      stocktakeId: created.stocktake.id,
+      payload: { expectedRevision: counted.stocktake.revision },
+    }));
+    const mismatch = submitted.stocktake.lines.find((line) => line.countStatus === 'mismatch');
+    assert.ok(mismatch);
+
+    const annotated = await transaction(pool, (client) => annotateStocktake(client, {
+      requestContext: counter,
+      stocktakeId: submitted.stocktake.id,
+      payload: {
+        expectedRevision: submitted.stocktake.revision,
+        annotations: [{
+          lineId: mismatch.id,
+          reason: 'Thiếu hàng tại vị trí',
+          note: 'Đã kiểm lại hai lần',
+        }],
+      },
+    }));
+    assert.equal(annotated.ok, true, annotated.message);
+    const annotatedMismatch = annotated.stocktake.lines.find((line) => line.id === mismatch.id);
+    assert.equal(annotatedMismatch.reason, 'Thiếu hàng tại vị trí');
+    assert.equal(annotatedMismatch.note, 'Đã kiểm lại hai lần');
+    assert.equal(annotatedMismatch.countedBaseQuantity, mismatch.countedBaseQuantity);
+    assert.equal(annotatedMismatch.countStatus, 'mismatch');
+
+    const row = await pool.query(
+      `SELECT counted_base_quantity::text AS counted, count_reason, count_note
+         FROM inventory.stocktake_lines
+        WHERE installation_id = $1 AND id = $2`,
+      [config.installationId, mismatch.id],
+    );
+    assert.deepEqual(row.rows[0], {
+      counted: mismatch.countedBaseQuantity,
+      count_reason: 'Thiếu hàng tại vị trí',
+      count_note: 'Đã kiểm lại hai lần',
+    });
+  } finally {
+    await closePool();
+  }
+});
+
+test('copy stocktake reuses scope but snapshots the inventory again and resets count data', async () => {
+  const config = loadConfig(testEnv());
+  const pool = getPool(config);
+  try {
+    const master = await seedStocktakeMasterData(pool, config.installationId);
+    const counter = requestContext(config.installationId, [master.warehouseId], 'test:counter-copy');
+    await postOpening(pool, counter, master);
+
+    const source = await transaction(pool, (client) => createStocktake(client, {
+      requestContext: counter,
+      payload: { warehouseId: master.warehouseId, scopes: scopes(master) },
+    }));
+    const sourcePersisted = await pool.query(
+      `SELECT location_id, expected_base_quantity::text AS expected
+         FROM inventory.stocktake_lines
+        WHERE installation_id = $1
+          AND stocktake_id = $2
+          AND round_number = 1`,
+      [config.installationId, source.stocktake.id],
+    );
+    const sourceSnapshot = new Map(sourcePersisted.rows.map((row) => [row.location_id, row.expected]));
+
+    const movement = await executeInventoryPost({
+      adapter: pool,
+      requestContext: counter,
+      idempotencyKey: `copy-fresh-${randomUUID()}`,
+      payload: {
+        movementType: 'OPENING_BALANCE',
+        sourceDomain: 'INVENTORY',
+        sourceDocumentType: 'OPENING_BALANCE_IMPORT',
+        sourceDocumentId: `copy-fresh-${randomUUID()}`,
+        documentDate: '2026-08-06',
+        lines: [{
+          warehouseId: master.warehouseId,
+          locationId: master.locationOneId,
+          sourceVariantId: master.baseVariantId,
+          sourceQuantity: '2.000000',
+          direction: 'IN',
+          sourceLineReference: 'COPY-FRESH',
+        }],
+      },
+    });
+    assert.equal(movement.ok, true, movement.message);
+
+    const copied = await transaction(pool, (client) => copyStocktake(client, {
+      requestContext: counter,
+      stocktakeId: source.stocktake.id,
+      payload: { expectedRevision: source.stocktake.revision },
+    }));
+    assert.equal(copied.ok, true, copied.message);
+    assert.notEqual(copied.stocktake.id, source.stocktake.id);
+    assert.equal(copied.stocktake.status, 'draft');
+    assert.equal(copied.stocktake.note, `Sao chép từ ${source.stocktake.stocktakeNumber}`);
+    assert.deepEqual(
+      copied.stocktake.lines.map((line) => [line.locationId, line.baseVariantId, line.lotId]),
+      source.stocktake.lines.map((line) => [line.locationId, line.baseVariantId, line.lotId]),
+    );
+    assert.ok(copied.stocktake.lines.every((line) => line.countedBaseQuantity === null && line.reason === null && line.note === null));
+
+    assert.equal(sourceSnapshot.get(master.locationOneId), '10.000000000000');
+
+    const persisted = await pool.query(
+      `SELECT location_id, expected_base_quantity::text AS expected
+         FROM inventory.stocktake_lines
+        WHERE installation_id = $1
+          AND stocktake_id = $2
+          AND round_number = 1`,
+      [config.installationId, copied.stocktake.id],
+    );
+    const expectedByLocation = new Map(persisted.rows.map((row) => [row.location_id, row.expected]));
+    assert.equal(expectedByLocation.get(master.locationOneId), '12.000000000000');
+    assert.equal(expectedByLocation.get(master.locationTwoId), '5.000000000000');
+    assert.notEqual(expectedByLocation.get(master.locationOneId), sourceSnapshot.get(master.locationOneId));
   } finally {
     await closePool();
   }

@@ -19,6 +19,8 @@ export async function listStocktakes(client, {
     `SELECT s.*,
             w.code AS warehouse_code,
             w.name AS warehouse_name,
+            current_round.counted_at AS current_counted_at,
+            current_round.counted_by AS current_counted_by,
             (SELECT count(*) FROM inventory.stocktake_lines l
               WHERE l.installation_id = s.installation_id
                 AND l.stocktake_id = s.id
@@ -27,6 +29,10 @@ export async function listStocktakes(client, {
        JOIN shared.warehouses w
          ON w.installation_id = s.installation_id
         AND w.id = s.warehouse_id
+       LEFT JOIN inventory.stocktake_rounds current_round
+         ON current_round.installation_id = s.installation_id
+        AND current_round.stocktake_id = s.id
+        AND current_round.round_number = s.current_round
       WHERE ${filters.join(' AND ')}
       ORDER BY s.created_at DESC, s.id DESC
       LIMIT $${values.length - 1} OFFSET $${values.length}`,
@@ -336,6 +342,53 @@ export async function updateCountedLines(client, {
     [installationId, stocktakeId, roundNumber, JSON.stringify(counts), actorId],
   );
   return result.rows ?? [];
+}
+
+export async function updateLineAnnotations(client, {
+  installationId,
+  stocktakeId,
+  roundNumber,
+  annotations,
+}) {
+  if (!Array.isArray(annotations) || annotations.length === 0) return [];
+  await client.query("SELECT set_config('npp.stocktake_write_context', 'annotation', true)");
+  const result = await client.query(
+    `WITH input AS (
+       SELECT item.id, item.count_reason, item.count_note
+         FROM jsonb_to_recordset($4::jsonb)
+              AS item(id uuid, count_reason text, count_note text)
+     )
+     UPDATE inventory.stocktake_lines line
+        SET count_reason = input.count_reason,
+            count_note = input.count_note
+       FROM input
+      WHERE line.installation_id = $1
+        AND line.stocktake_id = $2
+        AND line.round_number = $3
+        AND line.id = input.id
+      RETURNING line.id`,
+    [installationId, stocktakeId, roundNumber, JSON.stringify(annotations)],
+  );
+  await client.query("SELECT set_config('npp.stocktake_write_context', '', true)");
+  return result.rows ?? [];
+}
+
+export async function touchStocktake(client, {
+  installationId,
+  stocktakeId,
+  actorId,
+}) {
+  const result = await client.query(
+    `UPDATE inventory.stocktakes
+        SET revision = revision + 1,
+            updated_at = now(),
+            updated_by = $3
+      WHERE installation_id = $1
+        AND id = $2
+      RETURNING *`,
+    [installationId, stocktakeId, actorId],
+  );
+  return result.rows?.[0] ?? null;
 }
 
 export async function markCounted(client, input) {
