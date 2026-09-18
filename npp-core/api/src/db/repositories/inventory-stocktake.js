@@ -237,6 +237,77 @@ export async function insertLine(client, input) {
   return result.rows?.[0] ?? null;
 }
 
+export async function insertLines(client, inputs) {
+  if (!Array.isArray(inputs) || inputs.length === 0) return [];
+  const rows = inputs.map((input) => ({
+    id: input.id,
+    installation_id: input.installationId,
+    stocktake_id: input.stocktakeId,
+    round_id: input.roundId,
+    round_number: input.roundNumber,
+    line_number: input.lineNumber,
+    warehouse_id: input.warehouseId,
+    location_id: input.locationId ?? null,
+    source_variant_id: input.sourceVariantId,
+    source_sku: input.sourceSku,
+    source_unit_id: input.sourceUnitId,
+    source_unit_code: input.sourceUnitCode,
+    conversion_to_base: input.conversionToBase,
+    base_variant_id: input.baseVariantId,
+    base_sku: input.baseSku,
+    lot_id: input.lotId ?? null,
+    lot_code: input.lotCode ?? null,
+    expiry_date: input.expiryDate ?? null,
+    expected_base_quantity: input.expectedBaseQuantity,
+    snapshot_scope_version: input.snapshotScopeVersion,
+  }));
+  const result = await client.query(
+    `WITH input AS (
+       SELECT *
+         FROM jsonb_to_recordset($1::jsonb)
+              AS item(
+                id uuid,
+                installation_id text,
+                stocktake_id uuid,
+                round_id uuid,
+                round_number integer,
+                line_number integer,
+                warehouse_id uuid,
+                location_id uuid,
+                source_variant_id uuid,
+                source_sku text,
+                source_unit_id uuid,
+                source_unit_code text,
+                conversion_to_base numeric(20,6),
+                base_variant_id uuid,
+                base_sku text,
+                lot_id uuid,
+                lot_code text,
+                expiry_date date,
+                expected_base_quantity numeric(30,12),
+                snapshot_scope_version bigint
+              )
+     )
+     INSERT INTO inventory.stocktake_lines (
+       id, installation_id, stocktake_id, round_id, round_number, line_number,
+       warehouse_id, location_id, source_variant_id, source_sku,
+       source_unit_id, source_unit_code, conversion_to_base,
+       base_variant_id, base_sku, lot_id, lot_code, expiry_date,
+       expected_base_quantity, snapshot_scope_version
+     )
+     SELECT id, installation_id, stocktake_id, round_id, round_number, line_number,
+            warehouse_id, location_id, source_variant_id, source_sku,
+            source_unit_id, source_unit_code, conversion_to_base,
+            base_variant_id, base_sku, lot_id, lot_code, expiry_date,
+            expected_base_quantity, snapshot_scope_version
+       FROM input
+      ORDER BY line_number
+     RETURNING *`,
+    [JSON.stringify(rows)],
+  );
+  return result.rows ?? [];
+}
+
 export async function updateCountedLines(client, {
   installationId,
   stocktakeId,

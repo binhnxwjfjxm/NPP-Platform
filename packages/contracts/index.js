@@ -1,5 +1,6 @@
 export const IDEMPOTENCY_KEY_MAX_LENGTH = 128;
 export const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._-]{1,128}$/;
+export const STOCKTAKE_MAX_LINES = 2000;
 
 const IDEMPOTENCY_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const IDEMPOTENCY_UUID_LENGTH = 36;

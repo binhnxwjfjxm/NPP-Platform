@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { STOCKTAKE_MAX_LINES } from '@npp/contracts';
 import * as productService from './product.js';
 import * as pricingService from './pricing.js';
 import * as stocktakeService from './inventory-stocktake.js';
@@ -402,6 +403,9 @@ export async function exportStocktakeRows(client, { requestContext, warehouseId,
 export async function importStocktakeRows(client, { requestContext, payload }) {
   const parsed = rowsPayload(payload);
   if (!parsed.ok) return parsed;
+  if (parsed.rows.length > STOCKTAKE_MAX_LINES) {
+    return failure('INVALID_STOCKTAKE_SCOPES', `Tệp kiểm kê tối đa ${STOCKTAKE_MAX_LINES} dòng.`);
+  }
   const normalized = [];
   for (let index = 0; index < parsed.rows.length; index += 1) {
     const row = mappedRow(parsed.rows[index]);

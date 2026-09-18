@@ -1,6 +1,6 @@
 'use client';
 
-import { createIdempotencyKey } from '@npp/contracts';
+import { createIdempotencyKey, STOCKTAKE_MAX_LINES } from '@npp/contracts';
 import { useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
 import {
@@ -251,8 +251,8 @@ export default function StocktakeWorkspace({
       setError('Chọn kho và phạm vi cần kiểm kê.');
       return;
     }
-    if (effectiveSelectedScopes.size > 500) {
-      setError('Phạm vi này có hơn 500 dòng tồn. Hãy chọn theo lô hoặc theo vị trí để chia thành các đợt kiểm kê phù hợp.');
+    if (effectiveSelectedScopes.size > STOCKTAKE_MAX_LINES) {
+      setError(`Mỗi đợt kiểm kê tối đa ${STOCKTAKE_MAX_LINES.toLocaleString('vi-VN')} dòng tồn. Hãy chọn theo lô hoặc theo vị trí để chia thành các đợt phù hợp.`);
       return;
     }
     setBusy(true);

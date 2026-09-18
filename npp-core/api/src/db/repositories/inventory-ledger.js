@@ -174,6 +174,79 @@ export async function insertMovement(client, movement) {
   return result.rows?.[0] ?? null;
 }
 
+export async function insertMovementLines(client, lines) {
+  if (!Array.isArray(lines) || lines.length === 0) return [];
+  const rows = lines.map((line) => ({
+    id: line.id,
+    installation_id: line.installationId,
+    movement_id: line.movementId,
+    line_number: line.lineNumber,
+    warehouse_id: line.warehouseId,
+    location_id: line.locationId ?? null,
+    source_variant_id: line.sourceVariantId,
+    source_sku: line.sourceSku,
+    source_unit_id: line.sourceUnitId,
+    source_unit_code: line.sourceUnitCode,
+    source_quantity: line.sourceQuantity,
+    conversion_to_base: line.conversionToBase,
+    base_variant_id: line.baseVariantId,
+    base_sku: line.baseSku,
+    direction: line.direction,
+    base_quantity_delta: line.baseQuantityDelta,
+    lot_id: line.lotId ?? null,
+    lot_code: line.lotCode ?? null,
+    expiry_date: line.expiryDate ?? null,
+    source_line_reference: line.sourceLineReference ?? null,
+    metadata: line.metadata ?? {},
+  }));
+  const result = await client.query(
+    `WITH input AS (
+       SELECT *
+         FROM jsonb_to_recordset($1::jsonb)
+              AS item(
+                id uuid,
+                installation_id text,
+                movement_id uuid,
+                line_number integer,
+                warehouse_id uuid,
+                location_id uuid,
+                source_variant_id uuid,
+                source_sku text,
+                source_unit_id uuid,
+                source_unit_code text,
+                source_quantity numeric(20,6),
+                conversion_to_base numeric(20,6),
+                base_variant_id uuid,
+                base_sku text,
+                direction text,
+                base_quantity_delta numeric(30,12),
+                lot_id uuid,
+                lot_code text,
+                expiry_date date,
+                source_line_reference text,
+                metadata jsonb
+              )
+     )
+     INSERT INTO inventory.inventory_movement_lines (
+       id, installation_id, movement_id, line_number, warehouse_id, location_id,
+       source_variant_id, source_sku, source_unit_id, source_unit_code,
+       source_quantity, conversion_to_base, base_variant_id, base_sku,
+       direction, base_quantity_delta, lot_id, lot_code, expiry_date,
+       source_line_reference, metadata
+     )
+     SELECT id, installation_id, movement_id, line_number, warehouse_id, location_id,
+            source_variant_id, source_sku, source_unit_id, source_unit_code,
+            source_quantity, conversion_to_base, base_variant_id, base_sku,
+            direction, base_quantity_delta, lot_id, lot_code, expiry_date,
+            source_line_reference, metadata
+       FROM input
+      ORDER BY line_number
+     RETURNING *`,
+    [JSON.stringify(rows)],
+  );
+  return result.rows ?? [];
+}
+
 export async function insertMovementLine(client, line) {
   const result = await client.query(
     `INSERT INTO inventory.inventory_movement_lines (

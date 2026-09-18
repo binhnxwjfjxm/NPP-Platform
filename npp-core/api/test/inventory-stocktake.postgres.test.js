@@ -128,6 +128,24 @@ async function seedStocktakeMasterData(pool, installationId) {
   return { warehouseId, otherWarehouseId, locationOneId, locationTwoId, baseVariantId };
 }
 
+async function seedLargeLocations(pool, installationId, warehouseId, count, prefix) {
+  const rows = Array.from({ length: count }, (_, index) => ({
+    id: randomUUID(),
+    code: `${prefix}-${String(index + 1).padStart(4, '0')}`,
+    name: `Vị trí ${index + 1}`,
+  }));
+  await pool.query(
+    `INSERT INTO shared.warehouse_locations (
+       id, installation_id, warehouse_id, code, name, location_type, is_active, created_by, updated_by
+     )
+     SELECT item.id, $1, $2, item.code, item.name, 'storage', true, 'test:large', 'test:large'
+       FROM jsonb_to_recordset($3::jsonb)
+            AS item(id uuid, code text, name text)`,
+    [installationId, warehouseId, JSON.stringify(rows)],
+  );
+  return rows;
+}
+
 async function postOpening(pool, context, master) {
   const result = await executeInventoryPost({
     adapter: pool,
@@ -413,6 +431,151 @@ test('scope movement conflicts fail closed and recount preserves old round befor
     }));
     assert.equal(detail.ok, true);
     assert.equal(detail.stocktake.rounds.length, 2);
+  } finally {
+    await closePool();
+  }
+});
+
+
+test('large stocktake batches 2,000 snapshot lines for create and recount', async () => {
+  const config = loadConfig(testEnv());
+  const pool = getPool(config);
+  try {
+    const master = await seedStocktakeMasterData(pool, config.installationId);
+    const locations = await seedLargeLocations(pool, config.installationId, master.warehouseId, 2000, 'L2K');
+    const counter = requestContext(config.installationId, [master.warehouseId], 'test:counter-large');
+    const approver = requestContext(config.installationId, [master.warehouseId], 'test:approver-large');
+    const scopes = locations.map((location) => ({
+      locationId: location.id,
+      baseVariantId: master.baseVariantId,
+      lotId: null,
+    }));
+
+    const created = await transaction(pool, (client) => createStocktake(client, {
+      requestContext: counter,
+      payload: { warehouseId: master.warehouseId, scopes },
+    }));
+    assert.equal(created.ok, true, created.message);
+    assert.equal(created.stocktake.lines.length, 2000);
+
+    const counted = await transaction(pool, (client) => countStocktake(client, {
+      requestContext: counter,
+      stocktakeId: created.stocktake.id,
+      payload: {
+        expectedRevision: created.stocktake.revision,
+        counts: created.stocktake.lines.map((line) => ({ lineId: line.id, countedBaseQuantity: '0' })),
+      },
+    }));
+    assert.equal(counted.ok, true, counted.message);
+
+    const recounted = await transaction(pool, (client) => requestRecount(client, {
+      requestContext: approver,
+      stocktakeId: created.stocktake.id,
+      payload: { expectedRevision: counted.stocktake.revision, reason: 'Kiểm tra tải 2.000 dòng' },
+    }));
+    assert.equal(recounted.ok, true, recounted.message);
+    assert.equal(recounted.stocktake.currentRound, 2);
+    assert.equal(recounted.stocktake.lines.length, 2000);
+
+    const lineCount = await pool.query(
+      `SELECT round_number, count(*)::integer AS line_count
+         FROM inventory.stocktake_lines
+        WHERE installation_id = $1 AND stocktake_id = $2
+        GROUP BY round_number
+        ORDER BY round_number`,
+      [config.installationId, created.stocktake.id],
+    );
+    assert.deepEqual(lineCount.rows, [
+      { round_number: 1, line_count: 2000 },
+      { round_number: 2, line_count: 2000 },
+    ]);
+  } finally {
+    await closePool();
+  }
+});
+
+test('744-line stocktake posts and reverses in batches with the exact canonical request key', async () => {
+  const config = loadConfig(testEnv());
+  const pool = getPool(config);
+  try {
+    const master = await seedStocktakeMasterData(pool, config.installationId);
+    const locations = await seedLargeLocations(pool, config.installationId, master.warehouseId, 744, 'L744');
+    const counter = requestContext(config.installationId, [master.warehouseId], 'test:counter-744');
+    const approver = requestContext(config.installationId, [master.warehouseId], 'test:approver-744');
+    const scopes = locations.map((location) => ({
+      locationId: location.id,
+      baseVariantId: master.baseVariantId,
+      lotId: null,
+    }));
+
+    const created = await transaction(pool, (client) => createStocktake(client, {
+      requestContext: counter,
+      payload: { warehouseId: master.warehouseId, scopes },
+    }));
+    assert.equal(created.ok, true, created.message);
+    assert.equal(created.stocktake.lines.length, 744);
+
+    const counted = await transaction(pool, (client) => countStocktake(client, {
+      requestContext: counter,
+      stocktakeId: created.stocktake.id,
+      payload: {
+        expectedRevision: created.stocktake.revision,
+        counts: created.stocktake.lines.map((line) => ({ lineId: line.id, countedBaseQuantity: '1' })),
+      },
+    }));
+    const submitted = await transaction(pool, (client) => submitStocktake(client, {
+      requestContext: counter,
+      stocktakeId: created.stocktake.id,
+      payload: { expectedRevision: counted.stocktake.revision },
+    }));
+    const approved = await transaction(pool, (client) => approveStocktake(client, {
+      requestContext: approver,
+      stocktakeId: created.stocktake.id,
+      payload: { expectedRevision: submitted.stocktake.revision },
+    }));
+    assert.equal(approved.ok, true, approved.message);
+
+    const postKey = `stocktake-post-${randomUUID()}`;
+    const posted = await transaction(pool, (client) => postStocktake(client, {
+      requestContext: approver,
+      stocktakeId: created.stocktake.id,
+      payload: { expectedRevision: approved.stocktake.revision },
+      idempotencyKey: postKey,
+    }));
+    assert.equal(posted.ok, true, posted.message);
+
+    const postedMovement = await pool.query(
+      `SELECT idempotency_key,
+              (SELECT count(*)::integer
+                 FROM inventory.inventory_movement_lines line
+                WHERE line.installation_id = movement.installation_id
+                  AND line.movement_id = movement.id) AS line_count
+         FROM inventory.inventory_movements movement
+        WHERE installation_id = $1 AND id = $2`,
+      [config.installationId, posted.stocktake.inventoryMovementId],
+    );
+    assert.deepEqual(postedMovement.rows[0], { idempotency_key: postKey, line_count: 744 });
+
+    const reverseKey = `stocktake-reverse-${randomUUID()}`;
+    const reversed = await transaction(pool, (client) => reverseStocktake(client, {
+      requestContext: approver,
+      stocktakeId: created.stocktake.id,
+      payload: { expectedRevision: posted.stocktake.revision, reason: 'Kiểm tra hoàn tác 744 dòng' },
+      idempotencyKey: reverseKey,
+    }));
+    assert.equal(reversed.ok, true, reversed.message);
+
+    const reversedMovement = await pool.query(
+      `SELECT idempotency_key,
+              (SELECT count(*)::integer
+                 FROM inventory.inventory_movement_lines line
+                WHERE line.installation_id = movement.installation_id
+                  AND line.movement_id = movement.id) AS line_count
+         FROM inventory.inventory_movements movement
+        WHERE installation_id = $1 AND id = $2`,
+      [config.installationId, reversed.stocktake.reversalMovementId],
+    );
+    assert.deepEqual(reversedMovement.rows[0], { idempotency_key: reverseKey, line_count: 744 });
   } finally {
     await closePool();
   }

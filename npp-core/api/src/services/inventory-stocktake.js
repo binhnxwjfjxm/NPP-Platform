@@ -1,11 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { isValidIdempotencyKey, STOCKTAKE_MAX_LINES } from '@npp/contracts';
 import * as repository from '../db/repositories/inventory-stocktake.js';
 import * as ledgerRepository from '../db/repositories/inventory-ledger.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DECIMAL_PATTERN = /^(0|[1-9]\d{0,13})(?:\.(\d{1,12}))?$/;
 const REVISION_PATTERN = /^(0|[1-9]\d{0,18})$/;
-const IDEMPOTENCY_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 const SCALE_6 = 1_000_000n;
 const SCALE_12 = 1_000_000_000_000n;
 const STATUSES = new Set([
@@ -186,8 +186,8 @@ function normalizeScopes(payload) {
   if (!isUuid(warehouseId)) return failure('INVALID_WAREHOUSE_ID', 'warehouseId is invalid');
   const note = text(payload.note, 4000);
   if (payload.note && note === null) return failure('INVALID_NOTE', 'note must not exceed 4000 characters');
-  if (!Array.isArray(payload.scopes) || payload.scopes.length < 1 || payload.scopes.length > 500) {
-    return failure('INVALID_STOCKTAKE_SCOPES', 'Stocktake must contain between 1 and 500 exact scopes');
+  if (!Array.isArray(payload.scopes) || payload.scopes.length < 1 || payload.scopes.length > STOCKTAKE_MAX_LINES) {
+    return failure('INVALID_STOCKTAKE_SCOPES', `Stocktake must contain between 1 and ${STOCKTAKE_MAX_LINES} exact scopes`);
   }
   const scopes = [];
   const keys = new Set();
@@ -341,29 +341,30 @@ export async function createStocktake(client, { requestContext, payload }) {
     reason: null,
     actorId: actor,
   });
-  for (const snapshot of snapshots) {
-    await repository.insertLine(client, {
-      id: randomUUID(),
-      installationId: requestContext.installationId,
-      stocktakeId: id,
-      roundId,
-      roundNumber: 1,
-      lineNumber: Number(snapshot.line_number),
-      warehouseId: normalized.value.warehouseId,
-      locationId: snapshot.location_id,
-      sourceVariantId: snapshot.source_variant_id,
-      sourceSku: snapshot.source_sku,
-      sourceUnitId: snapshot.source_unit_id,
-      sourceUnitCode: snapshot.source_unit_code,
-      conversionToBase: String(snapshot.conversion_to_base),
-      baseVariantId: snapshot.base_variant_id,
-      baseSku: snapshot.base_sku,
-      lotId: snapshot.lot_id,
-      lotCode: snapshot.lot_code,
-      expiryDate: dateOnly(snapshot.expiry_date),
-      expectedBaseQuantity: String(snapshot.expected_base_quantity),
-      snapshotScopeVersion: String(snapshot.snapshot_scope_version),
-    });
+  const insertedLines = await repository.insertLines(client, snapshots.map((snapshot) => ({
+    id: randomUUID(),
+    installationId: requestContext.installationId,
+    stocktakeId: id,
+    roundId,
+    roundNumber: 1,
+    lineNumber: Number(snapshot.line_number),
+    warehouseId: normalized.value.warehouseId,
+    locationId: snapshot.location_id,
+    sourceVariantId: snapshot.source_variant_id,
+    sourceSku: snapshot.source_sku,
+    sourceUnitId: snapshot.source_unit_id,
+    sourceUnitCode: snapshot.source_unit_code,
+    conversionToBase: String(snapshot.conversion_to_base),
+    baseVariantId: snapshot.base_variant_id,
+    baseSku: snapshot.base_sku,
+    lotId: snapshot.lot_id,
+    lotCode: snapshot.lot_code,
+    expiryDate: dateOnly(snapshot.expiry_date),
+    expectedBaseQuantity: String(snapshot.expected_base_quantity),
+    snapshotScopeVersion: String(snapshot.snapshot_scope_version),
+  })));
+  if (insertedLines.length !== snapshots.length) {
+    return failure('STOCKTAKE_LINE_INSERT_CONFLICT', 'Stocktake lines changed while creating the snapshot', true);
   }
   return Object.freeze({ ok: true, stocktake: await hydrate(client, {
     ...row,
@@ -487,29 +488,30 @@ export async function requestRecount(client, { requestContext, stocktakeId, payl
     reason,
     actorId: actorId(requestContext),
   });
-  for (const snapshot of snapshots) {
-    await repository.insertLine(client, {
-      id: randomUUID(),
-      installationId: row.installation_id,
-      stocktakeId: row.id,
-      roundId,
-      roundNumber: nextRound,
-      lineNumber: Number(snapshot.line_number),
-      warehouseId: row.warehouse_id,
-      locationId: snapshot.location_id,
-      sourceVariantId: snapshot.source_variant_id,
-      sourceSku: snapshot.source_sku,
-      sourceUnitId: snapshot.source_unit_id,
-      sourceUnitCode: snapshot.source_unit_code,
-      conversionToBase: String(snapshot.conversion_to_base),
-      baseVariantId: snapshot.base_variant_id,
-      baseSku: snapshot.base_sku,
-      lotId: snapshot.lot_id,
-      lotCode: snapshot.lot_code,
-      expiryDate: dateOnly(snapshot.expiry_date),
-      expectedBaseQuantity: String(snapshot.expected_base_quantity),
-      snapshotScopeVersion: String(snapshot.snapshot_scope_version),
-    });
+  const insertedLines = await repository.insertLines(client, snapshots.map((snapshot) => ({
+    id: randomUUID(),
+    installationId: row.installation_id,
+    stocktakeId: row.id,
+    roundId,
+    roundNumber: nextRound,
+    lineNumber: Number(snapshot.line_number),
+    warehouseId: row.warehouse_id,
+    locationId: snapshot.location_id,
+    sourceVariantId: snapshot.source_variant_id,
+    sourceSku: snapshot.source_sku,
+    sourceUnitId: snapshot.source_unit_id,
+    sourceUnitCode: snapshot.source_unit_code,
+    conversionToBase: String(snapshot.conversion_to_base),
+    baseVariantId: snapshot.base_variant_id,
+    baseSku: snapshot.base_sku,
+    lotId: snapshot.lot_id,
+    lotCode: snapshot.lot_code,
+    expiryDate: dateOnly(snapshot.expiry_date),
+    expectedBaseQuantity: String(snapshot.expected_base_quantity),
+    snapshotScopeVersion: String(snapshot.snapshot_scope_version),
+  })));
+  if (insertedLines.length !== snapshots.length) {
+    return failure('STOCKTAKE_RECOUNT_LINE_INSERT_CONFLICT', 'Stocktake recount lines changed while creating the snapshot', true);
   }
   const next = await repository.markRecountRequired(client, {
     installationId: row.installation_id,
@@ -579,7 +581,7 @@ async function insertAdjustmentMovement(client, {
   reversalOfMovementId = null,
   reversalReason = null,
 }) {
-  if (!IDEMPOTENCY_PATTERN.test(idempotencyKey)) return failure('INVALID_IDEMPOTENCY_KEY', 'Movement idempotency key is invalid');
+  if (!isValidIdempotencyKey(idempotencyKey)) return failure('INVALID_IDEMPOTENCY_KEY', 'Movement idempotency key is invalid');
   await ledgerRepository.lockIdempotencyKey(client, {
     installationId: stocktake.installation_id,
     idempotencyKey,
@@ -678,35 +680,35 @@ async function insertAdjustmentMovement(client, {
       correctionPolicy: reversalOfMovementId ? 'guarded_reversal' : 'stocktake_adjustment',
     },
   });
-  for (let index = 0; index < adjustmentLines.length; index += 1) {
-    const line = adjustmentLines[index];
-    await ledgerRepository.insertMovementLine(client, {
-      id: line.id,
-      installationId: stocktake.installation_id,
-      movementId,
-      lineNumber: index + 1,
-      warehouseId: line.warehouseId,
-      locationId: line.locationId,
-      sourceVariantId: line.sourceVariantId,
-      sourceSku: line.sourceSku,
-      sourceUnitId: line.sourceUnitId,
-      sourceUnitCode: line.sourceUnitCode,
-      sourceQuantity: line.sourceQuantity,
-      conversionToBase: line.conversionToBase,
-      baseVariantId: line.baseVariantId,
-      baseSku: line.baseSku,
-      direction: line.direction,
-      baseQuantityDelta: line.baseQuantityDelta,
-      lotId: line.lotId,
-      lotCode: line.lotCode,
-      expiryDate: line.expiryDate,
-      sourceLineReference: `STOCKTAKE-LINE-${line.stocktakeLineId}`,
-      metadata: {
-        stocktakeId: stocktake.id,
-        stocktakeLineId: line.stocktakeLineId,
-        representation: line.conversionToBase === '0.000001' ? 'micro_base_exact' : 'base_unit',
-      },
-    });
+  const insertedMovementLines = await ledgerRepository.insertMovementLines(client, adjustmentLines.map((line, index) => ({
+    id: line.id,
+    installationId: stocktake.installation_id,
+    movementId,
+    lineNumber: index + 1,
+    warehouseId: line.warehouseId,
+    locationId: line.locationId,
+    sourceVariantId: line.sourceVariantId,
+    sourceSku: line.sourceSku,
+    sourceUnitId: line.sourceUnitId,
+    sourceUnitCode: line.sourceUnitCode,
+    sourceQuantity: line.sourceQuantity,
+    conversionToBase: line.conversionToBase,
+    baseVariantId: line.baseVariantId,
+    baseSku: line.baseSku,
+    direction: line.direction,
+    baseQuantityDelta: line.baseQuantityDelta,
+    lotId: line.lotId,
+    lotCode: line.lotCode,
+    expiryDate: line.expiryDate,
+    sourceLineReference: `STOCKTAKE-LINE-${line.stocktakeLineId}`,
+    metadata: {
+      stocktakeId: stocktake.id,
+      stocktakeLineId: line.stocktakeLineId,
+      representation: line.conversionToBase === '0.000001' ? 'micro_base_exact' : 'base_unit',
+    },
+  })));
+  if (insertedMovementLines.length !== adjustmentLines.length) {
+    return failure('STOCKTAKE_MOVEMENT_LINE_INSERT_CONFLICT', 'Stocktake movement lines changed while posting', true);
   }
   return Object.freeze({ ok: true, movement, lines: adjustmentLines, replayed: false });
 }
@@ -730,7 +732,7 @@ export async function postStocktake(client, { requestContext, stocktakeId, paylo
     stocktake: row,
     lines,
     currentByLine: watermark.currentByLine,
-    idempotencyKey: `${idempotencyKey}:movement`,
+    idempotencyKey,
   });
   if (!posted.ok) return posted;
 
@@ -852,7 +854,7 @@ export async function reverseStocktake(client, { requestContext, stocktakeId, pa
     stocktake: row,
     lines,
     currentByLine,
-    idempotencyKey: `${idempotencyKey}:reversal`,
+    idempotencyKey,
     reversalOfMovementId: row.inventory_movement_id,
     reversalReason: reason,
   });
@@ -878,4 +880,5 @@ export const stocktakeInternals = Object.freeze({
   formatScale12,
   movementRepresentation,
   normalizeScopes,
+  STOCKTAKE_MAX_LINES,
 });
