@@ -1,5 +1,6 @@
 export const IDEMPOTENCY_KEY_MAX_LENGTH: 128;
 export const IDEMPOTENCY_KEY_PATTERN: RegExp;
+export const STOCKTAKE_MAX_LINES: 2000;
 
 export type CanonicalDecimalOptions = {
   allowNegative?: boolean;

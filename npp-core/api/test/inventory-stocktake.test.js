@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { STOCKTAKE_MAX_LINES } from '@npp/contracts';
 import { stocktakeInternals } from '../src/services/inventory-stocktake.js';
 
 const migration = readFileSync(
@@ -13,6 +14,14 @@ const routeSource = readFileSync(
 );
 const serviceSource = readFileSync(
   new URL('../src/services/inventory-stocktake.js', import.meta.url),
+  'utf8',
+);
+const stocktakeRepositorySource = readFileSync(
+  new URL('../src/db/repositories/inventory-stocktake.js', import.meta.url),
+  'utf8',
+);
+const ledgerRepositorySource = readFileSync(
+  new URL('../src/db/repositories/inventory-ledger.js', import.meta.url),
   'utf8',
 );
 
@@ -80,6 +89,35 @@ test('stocktake scope input rejects duplicate exact location, SKU and lot', () =
   });
   assert.equal(result.ok, false);
   assert.equal(result.code, 'DUPLICATE_STOCKTAKE_SCOPE');
+});
+
+test('stocktake scope limit covers the 744-line field case and the 2,000-line contract', () => {
+  const warehouseId = '11111111-1111-4111-8111-111111111111';
+  const scopes = Array.from({ length: STOCKTAKE_MAX_LINES + 1 }, (_, index) => ({
+    locationId: null,
+    baseVariantId: `22222222-2222-4222-8222-${(index + 1).toString(16).padStart(12, '0')}`,
+    lotId: null,
+  }));
+  const fieldCase = stocktakeInternals.normalizeScopes({ warehouseId, scopes: scopes.slice(0, 744) });
+  const maxCase = stocktakeInternals.normalizeScopes({ warehouseId, scopes: scopes.slice(0, STOCKTAKE_MAX_LINES) });
+  const tooLarge = stocktakeInternals.normalizeScopes({ warehouseId, scopes });
+
+  assert.equal(STOCKTAKE_MAX_LINES, 2000);
+  assert.equal(fieldCase.ok, true);
+  assert.equal(fieldCase.value.scopes.length, 744);
+  assert.equal(maxCase.ok, true);
+  assert.equal(maxCase.value.scopes.length, STOCKTAKE_MAX_LINES);
+  assert.equal(tooLarge.ok, false);
+  assert.equal(tooLarge.code, 'INVALID_STOCKTAKE_SCOPES');
+});
+
+test('stocktake large-write path is set-based and reuses the canonical request idempotency key', () => {
+  assert.match(stocktakeRepositorySource, /jsonb_to_recordset\(\$1::jsonb\)/);
+  assert.match(stocktakeRepositorySource, /export async function insertLines/);
+  assert.match(ledgerRepositorySource, /export async function insertMovementLines/);
+  assert.match(serviceSource, /isValidIdempotencyKey/);
+  assert.doesNotMatch(serviceSource, /IDEMPOTENCY_PATTERN/);
+  assert.doesNotMatch(serviceSource, /idempotencyKey:\s*`\$\{idempotencyKey\}:/);
 });
 
 test('stocktake route and service enforce blind count, independent approval and guarded reversal', () => {

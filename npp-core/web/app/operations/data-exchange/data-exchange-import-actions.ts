@@ -1,3 +1,4 @@
+import { STOCKTAKE_MAX_LINES } from '@npp/contracts';
 import {
   type RowMap, type OfficialRows, type Stocktake, type PriceList, type ImportKind, type Unit, type PendingImport, type Category, type Brand,
   PRODUCT_COLUMNS, PRODUCT_REQUIRED_COLUMNS, PRICE_UPDATE_COLUMNS, STOCKTAKE_COLUMNS,
@@ -163,7 +164,7 @@ export function buildDataExchangeImportActions(ctx: ImportActionsContext) {
     } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
   async function submitStocktakeImport(rows: RowMap[], fileName: string, operationKey: string) {
-    if (rows.length > 500) throw new Error('Mỗi đợt kiểm kê tối đa 500 dòng.');
+    if (rows.length > STOCKTAKE_MAX_LINES) throw new Error(`Mỗi đợt kiểm kê tối đa ${STOCKTAKE_MAX_LINES.toLocaleString('vi-VN')} dòng.`);
     for (const [index, row] of rows.entries()) exactQuantity(String(row.actualCount ?? ''), `Dòng ${index + 2} actualCount`, 12); begin();
     try {
       const result = await requestJson<{ stocktake: Stocktake }>('/api/file-operations/stocktake/import', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': operationKey }, body: JSON.stringify({ format: fileName.toLowerCase().endsWith('.xlsx') ? 'xlsx' : 'csv', rows }) });

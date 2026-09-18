@@ -12,6 +12,7 @@ const detailRoute = readFileSync(new URL('../app/api/inventory/stocktakes/[id]/r
 const actionRoute = readFileSync(new URL('../app/api/inventory/stocktakes/[id]/[action]/route.ts', import.meta.url), 'utf8');
 const sharedRoute = readFileSync(new URL('../app/api/inventory/_shared.ts', import.meta.url), 'utf8');
 const nav = readFileSync(new URL('../app/components/app-shell-core.tsx', import.meta.url), 'utf8');
+const importActions = readFileSync(new URL('../app/operations/data-exchange/data-exchange-import-actions.ts', import.meta.url), 'utf8');
 
 test('stocktake UI keeps blind count and presents the office workflow', () => {
   assert.match(workspace, /actions=\{/);
@@ -38,7 +39,8 @@ test('stocktake UI converts simple scope choices back to exact scopes', () => {
   assert.match(workspace, /locationId: balance\.location_id/);
   assert.match(workspace, /baseVariantId: balance\.base_variant_id/);
   assert.match(workspace, /lotId: balance\.lot_id/);
-  assert.match(workspace, /hơn 500 dòng tồn/);
+  assert.match(workspace, /STOCKTAKE_MAX_LINES/);
+  assert.doesNotMatch(workspace, /> 500/);
 });
 
 test('stocktake approval view exposes clear fields and discrepancy without breaking blind count', () => {
@@ -90,4 +92,12 @@ test('stocktake proxy preserves stocktake gateway status instead of collapsing e
     assert.match(source, /normalizeStocktakeGatewayError/);
     assert.match(source, /errorResponse\(error, requestId, normalizeStocktakeGatewayError\)/);
   }
+});
+
+
+test('stocktake 2,000-line limit is shared by manual create and file import', () => {
+  assert.match(workspace, /import \{ createIdempotencyKey, STOCKTAKE_MAX_LINES \} from '@npp\/contracts'/);
+  assert.match(importActions, /import \{ STOCKTAKE_MAX_LINES \} from '@npp\/contracts'/);
+  assert.match(importActions, /rows\.length > STOCKTAKE_MAX_LINES/);
+  assert.doesNotMatch(importActions, /tối đa 500 dòng/);
 });

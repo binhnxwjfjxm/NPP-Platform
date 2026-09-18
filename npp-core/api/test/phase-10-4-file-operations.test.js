@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import { STOCKTAKE_MAX_LINES } from '@npp/contracts';
 import {
   MOVEMENT_FILE_COLUMNS,
   PRICING_FILE_COLUMNS,
@@ -67,4 +68,11 @@ test('official stocktake export is blind at the Core API boundary', () => {
   assert.match(routeSource, /pathname !== '\/api\/file-operations\/stocktake\/export'/);
   assert.match(routeSource, /systemQuantity:\s*_hidden/);
   assert.match(routeSource, /column !== 'systemQuantity'/);
+});
+
+
+test('stocktake file import uses the shared 2,000-line ceiling', () => {
+  assert.equal(STOCKTAKE_MAX_LINES, 2000);
+  assert.match(serviceSource, /parsed\.rows\.length > STOCKTAKE_MAX_LINES/);
+  assert.match(serviceSource, /Tệp kiểm kê tối đa/);
 });
