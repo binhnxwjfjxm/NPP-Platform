@@ -64,6 +64,8 @@ test('stocktake status and errors use office language instead of backend terms',
   assert.match(workspace, /Đã gửi kiểm kê chờ duyệt/);
   assert.match(workspace, /Tồn kho chưa thay đổi\. Chọn Cập nhật tồn kho để hoàn tất/);
   assert.match(workflowErrors, /SELF_APPROVAL_DENIED/);
+  assert.match(workflowErrors, /WAREHOUSE_LOCATION_MODE_REQUIRED/);
+  assert.match(workflowErrors, /Kho chưa thiết lập chế độ quản lý vị trí/);
   assert.match(workflowErrors, /STOCKTAKE_SCOPE_NOT_AVAILABLE/);
   assert.match(workflowErrors, /không có dòng tồn hợp lệ để kiểm kê/);
   assert.match(workflowErrors, /Bạn không thể tự duyệt phiếu mình đã gửi\./);

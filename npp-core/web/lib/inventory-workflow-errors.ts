@@ -16,6 +16,9 @@ export function inventoryWorkflowErrorMessage(
   if (code.includes('SELF_APPROVAL_DENIED')) {
     return 'Bạn không thể tự duyệt phiếu mình đã gửi.';
   }
+  if (code.includes('WAREHOUSE_LOCATION_MODE_REQUIRED')) {
+    return 'Kho chưa thiết lập chế độ quản lý vị trí. Hãy hoàn tất thiết lập kho trước khi kiểm kê.';
+  }
   if (code.includes('STOCKTAKE_SCOPE_NOT_AVAILABLE')) {
     return 'Kho hoặc phạm vi đã chọn hiện không có dòng tồn hợp lệ để kiểm kê. Hãy cập nhật dữ liệu kho rồi thử lại.';
   }

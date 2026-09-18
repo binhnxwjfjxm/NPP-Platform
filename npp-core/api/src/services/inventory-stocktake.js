@@ -444,6 +444,12 @@ export async function createStocktake(client, { requestContext, payload }) {
   if (!warehouse || !warehouse.is_active || ['vehicle', 'transit'].includes(warehouse.warehouse_type)) {
     return failure('WAREHOUSE_NOT_AVAILABLE', 'Warehouse is missing, inactive or not eligible for stocktake');
   }
+  if (!['MANAGED', 'UNMANAGED'].includes(warehouse.location_management_mode)) {
+    return failure(
+      'WAREHOUSE_LOCATION_MODE_REQUIRED',
+      `Kho ${warehouse.code} chưa thiết lập chế độ quản lý vị trí.`,
+    );
+  }
   const snapshots = normalized.value.scopeMode === 'exact'
     ? await repository.loadScopeSnapshots(client, {
       installationId: requestContext.installationId,

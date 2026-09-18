@@ -231,3 +231,15 @@ test('manual stocktake creation derives current scope on the backend instead of 
   assert.doesNotMatch(serviceSource, /STOCKTAKE_MAX_LINES/);
   assert.match(serviceSource, /snapshots\.length < 1/);
 });
+
+
+test('stocktake whole-warehouse scope keeps zero-balance rows and follows warehouse location mode', () => {
+  assert.doesNotMatch(
+    stocktakeRepositorySource,
+    /on_hand_quantity\s*(?:<>|>|=)\s*0/,
+  );
+  assert.match(stocktakeRepositorySource, /warehouse\.location_management_mode = 'UNMANAGED' AND balance\.location_id IS NULL/);
+  assert.match(stocktakeRepositorySource, /warehouse\.location_management_mode = 'MANAGED'/);
+  assert.match(stocktakeRepositorySource, /balance\.location_id IS NOT NULL/);
+  assert.match(serviceSource, /WAREHOUSE_LOCATION_MODE_REQUIRED/);
+});

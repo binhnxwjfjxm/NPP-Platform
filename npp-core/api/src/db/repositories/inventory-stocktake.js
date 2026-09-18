@@ -103,7 +103,7 @@ export async function listStocktakeLines(client, {
 
 export async function loadWarehouse(client, { installationId, warehouseId }) {
   const result = await client.query(
-    `SELECT id, code, name, is_active, warehouse_type
+    `SELECT id, code, name, is_active, warehouse_type, location_management_mode
        FROM shared.warehouses
       WHERE installation_id = $1 AND id = $2`,
     [installationId, warehouseId],
@@ -144,6 +144,9 @@ export async function loadScopeSnapshots(client, {
             location.code AS location_code,
             location.name AS location_name
        FROM requested
+       JOIN shared.warehouses warehouse
+         ON warehouse.installation_id = $1
+        AND warehouse.id = $2
        JOIN shared.product_variants base
          ON base.installation_id = $1
         AND base.id = requested.base_variant_id
@@ -174,7 +177,14 @@ export async function loadScopeSnapshots(client, {
         AND version.location_id IS NOT DISTINCT FROM requested.location_id
         AND version.base_variant_id = requested.base_variant_id
         AND version.lot_id IS NOT DISTINCT FROM requested.lot_id
-      WHERE (requested.location_id IS NULL OR location.id IS NOT NULL)
+      WHERE (
+              (warehouse.location_management_mode = 'UNMANAGED' AND requested.location_id IS NULL)
+              OR (
+                warehouse.location_management_mode = 'MANAGED'
+                AND requested.location_id IS NOT NULL
+                AND location.id IS NOT NULL
+              )
+            )
         AND (requested.lot_id IS NULL OR lot.id IS NOT NULL)
       ORDER BY requested.line_number`,
     [installationId, warehouseId, JSON.stringify(scopes)],
@@ -212,6 +222,9 @@ export async function loadDerivedScopeSnapshots(client, {
               location.code AS location_code,
               location.name AS location_name
          FROM inventory.inventory_balances balance
+         JOIN shared.warehouses warehouse
+           ON warehouse.installation_id = balance.installation_id
+          AND warehouse.id = balance.warehouse_id
          JOIN shared.product_variants base
            ON base.installation_id = balance.installation_id
           AND base.id = balance.base_variant_id
@@ -238,7 +251,14 @@ export async function loadDerivedScopeSnapshots(client, {
           AND version.lot_id IS NOT DISTINCT FROM balance.lot_id
         WHERE balance.installation_id = $1
           AND balance.warehouse_id = $2
-          AND (balance.location_id IS NULL OR location.id IS NOT NULL)
+          AND (
+                (warehouse.location_management_mode = 'UNMANAGED' AND balance.location_id IS NULL)
+                OR (
+                  warehouse.location_management_mode = 'MANAGED'
+                  AND balance.location_id IS NOT NULL
+                  AND location.id IS NOT NULL
+                )
+              )
           AND (balance.lot_id IS NULL OR lot.id IS NOT NULL)
           AND (
             $3 = 'all'
