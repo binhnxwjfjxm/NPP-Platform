@@ -2,6 +2,7 @@
 
 import { createIdempotencyKey } from '@npp/contracts';
 import { useMemo, useRef, useState } from 'react';
+import { exactQuantity, exportTable, readTable, requireColumns } from '../../operations/data-exchange/data-exchange-file-utils';
 import { AppShell } from '../../components/app-shell';
 import {
   BusinessSequenceNumber,
@@ -42,12 +43,30 @@ type ScopeGroup = {
   detail: string;
   scopeKeys: string[];
   baseVariantId?: string;
+  baseSku?: string;
+  productName?: string;
   lotId?: string | null;
+  lotCode?: string | null;
+  expiryDate?: string | null;
   locationId?: string | null;
+  locationCode?: string | null;
+  locationName?: string | null;
 };
 type LineFilter = 'all' | 'uncounted' | 'matched' | 'mismatch';
 
 const LINE_PAGE_SIZE = 100;
+const SCOPE_PICKER_RESULT_LIMIT = 60;
+const COUNT_FILE_HEADERS = [
+  'Phiếu kiểm kê',
+  'SKU',
+  'Tên sản phẩm',
+  'ĐVT',
+  'Mã lô',
+  'Mã vị trí',
+  'Số đếm thực tế',
+  'Lý do',
+  'Ghi chú',
+] as const;
 const RESULT_HEADERS = [
   'SKU',
   'Tên sản phẩm',
@@ -106,6 +125,10 @@ function uniqueScopes(balances: InventoryBalance[]) {
   });
 }
 
+function normalizedMatchValue(value: unknown): string {
+  return String(value ?? '').trim().toLocaleUpperCase('vi-VN');
+}
+
 function statusTone(status: StocktakeStatus): string {
   if (status === 'posted') return styles.success;
   if (status === 'reversed' || status === 'cancelled') return styles.muted;
@@ -162,6 +185,7 @@ export default function StocktakeWorkspace({
   const [showCreate, setShowCreate] = useState(false);
   const [warehouseId, setWarehouseId] = useState('');
   const [scopeMode, setScopeMode] = useState<ScopeMode>('all');
+  const [scopeSearch, setScopeSearch] = useState('');
   const [selectedScopes, setSelectedScopes] = useState<Set<string>>(new Set());
   const [note, setNote] = useState('');
   const [counts, setCounts] = useState<Record<string, string>>({});
@@ -174,6 +198,7 @@ export default function StocktakeWorkspace({
   const [error, setError] = useState(initialError || initialLookupError);
   const [message, setMessage] = useState('');
   const idempotencyKeys = useRef(new Map<string, string>());
+  const countFileInputRef = useRef<HTMLInputElement | null>(null);
   const permissions = useMemo(() => new Set(initialPermissionKeys), [initialPermissionKeys]);
   const scopeBalances = useMemo(() => uniqueScopes(balances), [balances]);
   const productNameByVariant = useMemo(
@@ -200,25 +225,47 @@ export default function StocktakeWorkspace({
       if (scopeMode === 'lot') {
         return {
           key,
-          label: `${first.product_name || first.base_variant_name || first.base_sku} · ${first.base_sku}`,
+          label: first.product_name || first.base_variant_name || first.base_sku,
           detail: `Lô ${first.lot_code || 'Không lô'} · ${group.items.length} vị trí`,
           scopeKeys: group.items.map(exactScopeKey),
           baseVariantId: first.base_variant_id,
+          baseSku: first.base_sku,
+          productName: first.product_name || first.base_variant_name || first.base_sku,
           lotId: first.lot_id,
+          lotCode: first.lot_code,
+          expiryDate: first.expiry_date,
         };
       }
       return {
         key,
-        label: `Vị trí ${first.location_code || 'Không vị trí'}`,
-        detail: `${group.items.length} phạm vi sản phẩm/lô`,
+        label: first.location_code || 'Không vị trí',
+        detail: `${first.location_name || 'Vị trí chung'} · ${group.items.length} phạm vi sản phẩm/lô`,
         scopeKeys: group.items.map(exactScopeKey),
         locationId: first.location_id,
+        locationCode: first.location_code,
+        locationName: first.location_name,
       };
     });
   }, [availableScopes, scopeMode]);
   const selectedScopeGroups = useMemo(
     () => scopeGroups.filter((group) => group.scopeKeys.every((key) => selectedScopes.has(key))),
     [scopeGroups, selectedScopes],
+  );
+  const filteredScopeGroups = useMemo(() => {
+    const term = normalizeSearch(scopeSearch);
+    if (!term) return scopeGroups;
+    return scopeGroups.filter((group) => matchTerm(
+      group.label,
+      group.detail,
+      group.baseSku,
+      group.lotCode,
+      group.locationCode,
+      group.locationName,
+    ).includes(term));
+  }, [scopeGroups, scopeSearch]);
+  const visibleScopeGroups = useMemo(
+    () => filteredScopeGroups.slice(0, SCOPE_PICKER_RESULT_LIMIT),
+    [filteredScopeGroups],
   );
   const filtered = useMemo(() => {
     const term = normalizeSearch(search);
@@ -290,6 +337,19 @@ export default function StocktakeWorkspace({
       for (const key of group.scopeKeys) {
         if (checked) next.add(key);
         else next.delete(key);
+      }
+      return next;
+    });
+  }
+
+  function toggleScopeGroups(groups: ScopeGroup[], checked: boolean) {
+    setSelectedScopes((current) => {
+      const next = new Set(current);
+      for (const group of groups) {
+        for (const key of group.scopeKeys) {
+          if (checked) next.add(key);
+          else next.delete(key);
+        }
       }
       return next;
     });
@@ -477,6 +537,149 @@ export default function StocktakeWorkspace({
     }
   }
 
+  async function exportCountFile() {
+    if (!detail || !(detail.lines ?? []).length) {
+      setError('Phiếu kiểm kê chưa có dòng để xuất.');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      const rows = (detail.lines ?? []).map((line) => [
+        detail.stocktakeNumber,
+        line.baseSku,
+        productNameByVariant.get(line.baseVariantId) || line.baseSku,
+        line.sourceUnitCode,
+        line.lotCode || '',
+        line.locationCode || '',
+        counts[line.id] ?? line.countedBaseQuantity ?? '',
+        lineReasons[line.id] ?? line.reason ?? '',
+        lineNotes[line.id] ?? line.note ?? '',
+      ]);
+      await exportTable(
+        'kiem-ke-' + detail.stocktakeNumber + '.xlsx',
+        'Kiểm kê ' + detail.stocktakeNumber,
+        Array.from(COUNT_FILE_HEADERS),
+        rows,
+        'xlsx',
+      );
+      setMessage('Đã xuất file của phiếu đang mở. File không có tồn hệ thống để giữ nguyên đếm mù.');
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Không xuất được file phiếu kiểm kê.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function importCountFile(file: File) {
+    if (!detail || !['draft', 'recount_required'].includes(detail.status)) {
+      setError('Chỉ nhập file khi phiếu đang ở bước đếm thực tế.');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      const rows = await readTable(file, ['sku', 'actualCount']);
+      requireColumns(rows, ['sku', 'actualCount']);
+      const lines = detail.lines ?? [];
+      const countPatch: Record<string, string> = {};
+      const reasonPatch: Record<string, string> = {};
+      const notePatch: Record<string, string> = {};
+      const usedLineIds = new Set<string>();
+      const errors: string[] = [];
+      let imported = 0;
+
+      for (const [index, row] of rows.entries()) {
+        const actualCount = String(row.actualCount ?? '').trim();
+        if (!actualCount) continue;
+
+        const fileStocktake = String(row['Phiếu kiểm kê'] ?? '').trim();
+        if (fileStocktake && normalizedMatchValue(fileStocktake) !== normalizedMatchValue(detail.stocktakeNumber)) {
+          errors.push('Dòng ' + (index + 2) + ': file thuộc phiếu ' + fileStocktake + ', không phải ' + detail.stocktakeNumber + '.');
+          continue;
+        }
+
+        const sku = normalizedMatchValue(row.sku);
+        if (!sku) {
+          errors.push('Dòng ' + (index + 2) + ': thiếu SKU.');
+          continue;
+        }
+
+        let candidates = lines.filter((line) => (
+          normalizedMatchValue(line.baseSku) === sku
+          || normalizedMatchValue(line.sourceSku) === sku
+        ));
+
+        const lotCode = normalizedMatchValue(row.lotCode);
+        const locationCode = normalizedMatchValue(row.locationCode);
+        if (lotCode) candidates = candidates.filter((line) => normalizedMatchValue(line.lotCode) === lotCode);
+        if (locationCode) candidates = candidates.filter((line) => normalizedMatchValue(line.locationCode) === locationCode);
+
+        if (!lotCode && new Set(candidates.map((line) => normalizedMatchValue(line.lotCode))).size > 1) {
+          errors.push('Dòng ' + (index + 2) + ': SKU ' + row.sku + ' có nhiều lô trong phiếu, cần ghi Mã lô.');
+          continue;
+        }
+        if (!locationCode && new Set(candidates.map((line) => normalizedMatchValue(line.locationCode))).size > 1) {
+          errors.push('Dòng ' + (index + 2) + ': SKU ' + row.sku + ' có nhiều vị trí trong phiếu, cần ghi Mã vị trí.');
+          continue;
+        }
+        if (candidates.length !== 1) {
+          errors.push('Dòng ' + (index + 2) + ': không tìm được đúng một dòng của SKU ' + row.sku + ' trong phiếu.');
+          continue;
+        }
+
+        const line = candidates[0];
+        if (usedLineIds.has(line.id)) {
+          errors.push('Dòng ' + (index + 2) + ': SKU ' + row.sku + ' bị trùng phạm vi trong file.');
+          continue;
+        }
+
+        try {
+          countPatch[line.id] = exactQuantity(actualCount, 'Dòng ' + (index + 2) + ' - Số đếm thực tế', 12);
+        } catch (caught) {
+          errors.push(caught instanceof Error ? caught.message : 'Dòng ' + (index + 2) + ': số đếm không hợp lệ.');
+          continue;
+        }
+
+        const importedReason = String(row.reason ?? row['Lý do'] ?? '').trim();
+        const importedNote = String(row.note ?? row['Ghi chú'] ?? '').trim();
+        if (importedReason) reasonPatch[line.id] = importedReason;
+        if (importedNote) notePatch[line.id] = importedNote;
+        usedLineIds.add(line.id);
+        imported += 1;
+      }
+
+      if (errors.length) {
+        const preview = errors.slice(0, 6).join(' ');
+        const remainingErrors = errors.length > 6 ? ' Còn ' + (errors.length - 6) + ' lỗi khác.' : '';
+        throw new Error(preview + remainingErrors);
+      }
+      if (!imported) throw new Error('File chưa có dòng nào được nhập Số đếm thực tế.');
+
+      setCounts((current) => ({ ...current, ...countPatch }));
+      if (Object.keys(reasonPatch).length) setLineReasons((current) => ({ ...current, ...reasonPatch }));
+      if (Object.keys(notePatch).length) setLineNotes((current) => ({ ...current, ...notePatch }));
+      setLineFilter('all');
+      setLinePage(1);
+      const alreadyCounted = new Set(
+        lines.filter((line) => String(counts[line.id] ?? '').trim()).map((line) => line.id),
+      );
+      for (const lineId of Object.keys(countPatch)) alreadyCounted.add(lineId);
+      const remainingLines = Math.max(0, lines.length - alreadyCounted.size);
+      setMessage(
+        'Đã nhập ' + imported + ' dòng vào phiếu ' + detail.stocktakeNumber
+        + '. Còn ' + remainingLines + ' dòng chưa kiểm; vẫn có thể sửa tay.',
+      );
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Không nhập được file kiểm kê.');
+    } finally {
+      if (countFileInputRef.current) countFileInputRef.current.value = '';
+      setBusy(false);
+    }
+  }
+
   function resultRows(stocktake: Stocktake): string[][] {
     return (stocktake.lines ?? []).map((line) => {
       const difference = stocktakeDifference(line);
@@ -606,7 +809,7 @@ export default function StocktakeWorkspace({
           <section className={styles.createPanel} aria-labelledby="create-stocktake-title">
             <div>
               <h2 id="create-stocktake-title">Tạo đợt kiểm kê</h2>
-              <p>Chọn phạm vi theo công việc thực tế. Hệ thống vẫn chuyển lựa chọn thành từng phạm vi tồn chính xác trước khi tạo phiếu.</p>
+              <p>Chọn phạm vi theo công việc thực tế. Hệ thống lấy trực tiếp dữ liệu tồn hiện tại tại thời điểm tạo phiếu.</p>
             </div>
             <label>
               Kho kiểm kê
@@ -615,6 +818,7 @@ export default function StocktakeWorkspace({
                 value={warehouseId}
                 onChange={(event) => {
                   setWarehouseId(event.target.value);
+                  setScopeSearch('');
                   setSelectedScopes(new Set());
                 }}
               >
@@ -626,15 +830,15 @@ export default function StocktakeWorkspace({
             <fieldset className={styles.scopeList}>
               <legend>Cách chọn phạm vi</legend>
               <label className={styles.scopeOption}>
-                <input type="radio" name="stocktake-scope-mode" checked={scopeMode === 'all'} onChange={() => { setScopeMode('all'); setSelectedScopes(new Set()); }} />
+                <input type="radio" name="stocktake-scope-mode" checked={scopeMode === 'all'} onChange={() => { setScopeMode('all'); setScopeSearch(''); setSelectedScopes(new Set()); }} />
                 <span><strong>Toàn bộ sản phẩm trong kho</strong> · kiểm tất cả sản phẩm, lô và vị trí đang có trong kho</span>
               </label>
               <label className={styles.scopeOption}>
-                <input type="radio" name="stocktake-scope-mode" checked={scopeMode === 'lot'} onChange={() => { setScopeMode('lot'); setSelectedScopes(new Set()); }} />
+                <input type="radio" name="stocktake-scope-mode" checked={scopeMode === 'lot'} onChange={() => { setScopeMode('lot'); setScopeSearch(''); setSelectedScopes(new Set()); }} />
                 <span><strong>Theo lô</strong> · chọn một hoặc nhiều lô cần kiểm</span>
               </label>
               <label className={styles.scopeOption}>
-                <input type="radio" name="stocktake-scope-mode" checked={scopeMode === 'location'} onChange={() => { setScopeMode('location'); setSelectedScopes(new Set()); }} />
+                <input type="radio" name="stocktake-scope-mode" checked={scopeMode === 'location'} onChange={() => { setScopeMode('location'); setScopeSearch(''); setSelectedScopes(new Set()); }} />
                 <span><strong>Theo vị trí</strong> · chọn một hoặc nhiều vị trí cần kiểm</span>
               </label>
             </fieldset>
@@ -644,22 +848,100 @@ export default function StocktakeWorkspace({
                 ? 'Khi tạo phiếu, hệ thống sẽ lấy trực tiếp toàn bộ phạm vi tồn hợp lệ hiện tại của kho.'
                 : 'Chọn kho để bắt đầu kiểm kê.'}</p>
             ) : (
-              <div className={styles.scopeList} aria-label={scopeMode === 'lot' ? 'Chọn lô kiểm kê' : 'Chọn vị trí kiểm kê'}>
-                {scopeGroups.length ? scopeGroups.map((group) => {
-                  const checked = group.scopeKeys.every((key) => selectedScopes.has(key));
-                  return (
-                    <label className={styles.scopeOption} key={group.key}>
-                      <input type="checkbox" checked={checked} onChange={(event) => toggleScopeGroup(group, event.target.checked)} />
-                      <span><strong>{group.label}</strong> · {group.detail}</span>
-                    </label>
-                  );
-                }) : <p>Kho chưa có phạm vi phù hợp để chọn.</p>}
+              <div className={styles.scopePicker} aria-label={scopeMode === 'lot' ? 'Chọn lô kiểm kê' : 'Chọn vị trí kiểm kê'}>
+                <div className={styles.scopePickerToolbar}>
+                  <input
+                    className={styles.scopeSearch}
+                    value={scopeSearch}
+                    onChange={(event) => setScopeSearch(event.target.value)}
+                    placeholder={scopeMode === 'lot'
+                      ? 'Tìm tên sản phẩm, SKU hoặc mã lô...'
+                      : 'Tìm mã hoặc tên vị trí...'}
+                    aria-label={scopeMode === 'lot' ? 'Tìm lô kiểm kê' : 'Tìm vị trí kiểm kê'}
+                  />
+                  <div className={styles.scopePickerActions}>
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      disabled={!filteredScopeGroups.length}
+                      onClick={() => toggleScopeGroups(filteredScopeGroups, true)}
+                    >
+                      Chọn tất cả kết quả
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      disabled={!selectedScopeGroups.length}
+                      onClick={() => toggleScopeGroups(filteredScopeGroups, false)}
+                    >
+                      Bỏ chọn kết quả
+                    </button>
+                  </div>
+                </div>
+
+                <div className={styles.scopePickerMeta}>
+                  <strong>Đã chọn {selectedScopeGroups.length} {scopeMode === 'lot' ? 'lô' : 'vị trí'}</strong>
+                  <span>{filteredScopeGroups.length} kết quả</span>
+                </div>
+
+                {selectedScopeGroups.length ? (
+                  <div className={styles.scopeChips} aria-label="Phạm vi đã chọn">
+                    {selectedScopeGroups.slice(0, 12).map((group) => (
+                      <button
+                        type="button"
+                        key={group.key}
+                        className={styles.scopeChip}
+                        onClick={() => toggleScopeGroup(group, false)}
+                        title="Bỏ chọn"
+                      >
+                        {scopeMode === 'lot'
+                          ? (group.baseSku || group.label) + ' · ' + (group.lotCode || 'Không lô')
+                          : group.label}
+                        <span aria-hidden="true">×</span>
+                      </button>
+                    ))}
+                    {selectedScopeGroups.length > 12 ? <span className={styles.scopeChipMore}>+{selectedScopeGroups.length - 12} mục</span> : null}
+                  </div>
+                ) : null}
+
+                <div className={styles.scopeResults}>
+                  {visibleScopeGroups.length ? visibleScopeGroups.map((group) => {
+                    const checked = group.scopeKeys.every((key) => selectedScopes.has(key));
+                    return (
+                      <label className={styles.scopeResult + (checked ? ' ' + styles.scopeResultSelected : '')} key={group.key}>
+                        <input type="checkbox" checked={checked} onChange={(event) => toggleScopeGroup(group, event.target.checked)} />
+                        <span className={styles.scopeResultMain}>
+                          <strong>{group.label}</strong>
+                          <small>{scopeMode === 'lot' ? group.baseSku : group.detail}</small>
+                        </span>
+                        <span className={styles.scopeResultSide}>
+                          {scopeMode === 'lot' ? (
+                            <>
+                              <strong>{group.lotCode || 'Không lô'}</strong>
+                              <small>{group.expiryDate ? 'HSD ' + formatDate(group.expiryDate) : group.detail}</small>
+                            </>
+                          ) : (
+                            <>
+                              <strong>{group.locationCode || 'Không vị trí'}</strong>
+                              <small>{group.locationName || group.detail}</small>
+                            </>
+                          )}
+                        </span>
+                      </label>
+                    );
+                  }) : <p className={styles.empty}>Không có kết quả phù hợp.</p>}
+                  {filteredScopeGroups.length > SCOPE_PICKER_RESULT_LIMIT ? (
+                    <p className={styles.scopeResultHint}>
+                      Đang hiển thị 60 kết quả đầu. Tìm theo tên sản phẩm, SKU hoặc mã lô để thu hẹp nhanh.
+                    </p>
+                  ) : null}
+                </div>
               </div>
             )}
 
             <p>{scopeMode === 'all'
               ? 'Phạm vi sẽ được chụp lại trực tiếp từ dữ liệu kho khi tạo phiếu.'
-              : `Đã chọn ${selectedScopeGroups.length} ${scopeMode === 'lot' ? 'lô' : 'vị trí'}.`}</p>
+              : 'Đã chọn ' + selectedScopeGroups.length + ' ' + (scopeMode === 'lot' ? 'lô' : 'vị trí') + '.'}</p>
             <label>
               Ghi chú
               <textarea value={note} maxLength={4000} onChange={(event) => setNote(event.target.value)} />
@@ -723,29 +1005,54 @@ export default function StocktakeWorkspace({
                     <p>{detail.note || 'Không có ghi chú'}</p>
                   </div>
                   <div className={styles.detailTools}>
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      disabled={busy || !(detail.lines ?? []).length}
+                      onClick={exportCountFile}
+                      title="Xuất file đếm của chính phiếu đang mở; không có tồn hệ thống"
+                    >
+                      Xuất file phiếu
+                    </button>
+                    {isCounting && can(STOCKTAKE_PERMISSION_KEYS.count) ? (
+                      <>
+                        <button
+                          type="button"
+                          className={styles.secondaryButton}
+                          disabled={busy}
+                          onClick={() => countFileInputRef.current?.click()}
+                          title="Nhập nhanh số thực đếm vào chính phiếu đang mở"
+                        >
+                          Nhập file
+                        </button>
+                        <input
+                          ref={countFileInputRef}
+                          className={styles.hiddenFileInput}
+                          type="file"
+                          accept=".xlsx,.csv"
+                          aria-label="Chọn file kết quả kiểm kê"
+                          onChange={(event) => {
+                            const file = event.currentTarget.files?.[0];
+                            if (file) void importCountFile(file);
+                          }}
+                        />
+                      </>
+                    ) : null}
                     {can(STOCKTAKE_PERMISSION_KEYS.create) ? (
                       <button type="button" className={styles.secondaryButton} disabled={busy} onClick={copyCurrent}>Sao chép phiếu</button>
                     ) : null}
-                    <button
-                      type="button"
-                      className={styles.secondaryButton}
-                      disabled={busy || !revealSystemQuantity}
-                      title={revealSystemQuantity ? 'Xuất toàn bộ kết quả phiếu đang mở' : 'Có sau khi gửi duyệt'}
-                      onClick={exportExcel}
-                    >
-                      Xuất Excel
-                    </button>
-                    <button
-                      type="button"
-                      className={styles.secondaryButton}
-                      disabled={busy || !revealSystemQuantity}
-                      title={revealSystemQuantity ? 'Xuất toàn bộ kết quả phiếu đang mở' : 'Có sau khi gửi duyệt'}
-                      onClick={exportCsv}
-                    >
-                      Xuất CSV
-                    </button>
+                    {revealSystemQuantity ? (
+                      <>
+                        <button type="button" className={styles.secondaryButton} disabled={busy} onClick={exportExcel}>
+                          Kết quả Excel
+                        </button>
+                        <button type="button" className={styles.secondaryButton} disabled={busy} onClick={exportCsv}>
+                          Kết quả CSV
+                        </button>
+                      </>
+                    ) : null}
                     <StocktakePrintDock stocktake={detail} />
-                    <span className={`${styles.badge} ${statusTone(detail.status)}`}>{STOCKTAKE_STATUS_LABELS[detail.status]}</span>
+                    <span className={styles.badge + ' ' + statusTone(detail.status)}>{STOCKTAKE_STATUS_LABELS[detail.status]}</span>
                   </div>
                 </header>
 
