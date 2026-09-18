@@ -546,7 +546,8 @@ export default function StocktakeWorkspace({
     setError('');
     setMessage('');
     try {
-      const rows = (detail.lines ?? []).map((line) => [
+      const fileLines = detail.lines ?? [];
+      const rows = fileLines.map((line) => [
         detail.stocktakeNumber,
         line.baseSku,
         productNameByVariant.get(line.baseVariantId) || line.baseSku,
