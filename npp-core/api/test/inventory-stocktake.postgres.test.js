@@ -580,3 +580,96 @@ test('744-line stocktake posts and reverses in batches with the exact canonical 
     await closePool();
   }
 });
+
+
+test('line reason/note stay on the exact count round and comparison stays blind until submit', async () => {
+  const config = loadConfig(testEnv());
+  const pool = getPool(config);
+  try {
+    const master = await seedStocktakeMasterData(pool, config.installationId);
+    const counter = requestContext(config.installationId, [master.warehouseId], 'test:counter-details');
+    const approver = requestContext(config.installationId, [master.warehouseId], 'test:approver-details');
+    await postOpening(pool, counter, master);
+
+    const created = await transaction(pool, (client) => createStocktake(client, {
+      requestContext: counter,
+      payload: { warehouseId: master.warehouseId, scopes: scopes(master) },
+    }));
+    assert.equal(created.ok, true, created.message);
+    assert.deepEqual(created.stocktake.lines.map((line) => line.countStatus), ['uncounted', 'uncounted']);
+
+    const counted = await transaction(pool, (client) => countStocktake(client, {
+      requestContext: counter,
+      stocktakeId: created.stocktake.id,
+      payload: {
+        expectedRevision: created.stocktake.revision,
+        counts: created.stocktake.lines.map((line) => ({
+          lineId: line.id,
+          countedBaseQuantity: line.locationId === master.locationOneId ? '10.000000000000' : '3.000000000000',
+          reason: line.locationId === master.locationOneId ? 'Đã đối chiếu' : 'Thiếu hàng',
+          note: line.locationId === master.locationOneId ? 'Đếm đủ tại kệ' : 'Kiểm tra lại khi duyệt',
+        })),
+      },
+    }));
+    assert.equal(counted.ok, true, counted.message);
+    assert.equal(counted.stocktake.lines[0].expectedBaseQuantity, undefined);
+    assert.deepEqual(counted.stocktake.lines.map((line) => line.countStatus), [null, null]);
+    assert.deepEqual(counted.stocktake.lines.map((line) => line.reason), ['Đã đối chiếu', 'Thiếu hàng']);
+    assert.deepEqual(counted.stocktake.lines.map((line) => line.note), ['Đếm đủ tại kệ', 'Kiểm tra lại khi duyệt']);
+
+    await assert.rejects(
+      pool.query(
+        `UPDATE inventory.stocktake_lines
+            SET count_note = 'Không được sửa sau khi hoàn tất đếm'
+          WHERE installation_id = $1
+            AND stocktake_id = $2
+            AND round_number = 1`,
+        [config.installationId, created.stocktake.id],
+      ),
+      /stocktake_round_is_locked/,
+    );
+
+    const submitted = await transaction(pool, (client) => submitStocktake(client, {
+      requestContext: counter,
+      stocktakeId: created.stocktake.id,
+      payload: { expectedRevision: counted.stocktake.revision },
+    }));
+    assert.equal(submitted.ok, true, submitted.message);
+    const byLocation = new Map(submitted.stocktake.lines.map((line) => [line.locationId, line]));
+    assert.equal(byLocation.get(master.locationOneId).countStatus, 'matched');
+    assert.equal(byLocation.get(master.locationTwoId).countStatus, 'mismatch');
+    assert.equal(byLocation.get(master.locationTwoId).reason, 'Thiếu hàng');
+    assert.equal(byLocation.get(master.locationTwoId).note, 'Kiểm tra lại khi duyệt');
+
+    const recounted = await transaction(pool, (client) => requestRecount(client, {
+      requestContext: approver,
+      stocktakeId: created.stocktake.id,
+      payload: {
+        expectedRevision: submitted.stocktake.revision,
+        reason: 'Kiểm lại dòng lệch',
+      },
+    }));
+    assert.equal(recounted.ok, true, recounted.message);
+    assert.equal(recounted.stocktake.currentRound, 2);
+    assert.deepEqual(recounted.stocktake.lines.map((line) => line.countStatus), ['uncounted', 'uncounted']);
+    assert.deepEqual(recounted.stocktake.lines.map((line) => line.reason), [null, null]);
+    assert.deepEqual(recounted.stocktake.lines.map((line) => line.note), [null, null]);
+
+    const history = await pool.query(
+      `SELECT round_number, location_id, count_reason, count_note
+         FROM inventory.stocktake_lines
+        WHERE installation_id = $1
+          AND stocktake_id = $2
+        ORDER BY round_number, line_number`,
+      [config.installationId, created.stocktake.id],
+    );
+    const roundOne = history.rows.filter((row) => row.round_number === 1);
+    const roundTwo = history.rows.filter((row) => row.round_number === 2);
+    assert.deepEqual(roundOne.map((row) => row.count_reason), ['Đã đối chiếu', 'Thiếu hàng']);
+    assert.deepEqual(roundOne.map((row) => row.count_note), ['Đếm đủ tại kệ', 'Kiểm tra lại khi duyệt']);
+    assert.deepEqual(roundTwo.map((row) => row.count_reason), [null, null]);
+    assert.deepEqual(roundTwo.map((row) => row.count_note), [null, null]);
+  } finally {
+    await closePool();
+  }
+});

@@ -97,6 +97,26 @@ function dateOnly(value) {
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().slice(0, 10);
 }
 
+function lineCountStatus(row, revealExpected) {
+  if (row.counted_base_quantity === null) return 'uncounted';
+  if (!revealExpected) return null;
+  const counted = databaseScaled12(row.counted_base_quantity);
+  const expected = databaseScaled12(row.expected_base_quantity);
+  if (counted === null || expected === null) return null;
+  return counted === expected ? 'matched' : 'mismatch';
+}
+
+function optionalLineText(value, maxLength, code, label) {
+  if (value === undefined || value === null || String(value).trim() === '') {
+    return Object.freeze({ ok: true, value: null });
+  }
+  const normalized = String(value).trim();
+  if (normalized.length > maxLength) {
+    return failure(code, `${label} tối đa ${maxLength.toLocaleString('vi-VN')} ký tự.`);
+  }
+  return Object.freeze({ ok: true, value: normalized });
+}
+
 function mapLine(row, revealExpected) {
   return Object.freeze({
     id: row.id,
@@ -118,6 +138,9 @@ function mapLine(row, revealExpected) {
     expiryDate: dateOnly(row.expiry_date),
     expectedBaseQuantity: revealExpected ? String(row.expected_base_quantity) : undefined,
     countedBaseQuantity: row.counted_base_quantity === null ? null : String(row.counted_base_quantity),
+    countStatus: lineCountStatus(row, revealExpected),
+    reason: row.count_reason ?? null,
+    note: row.count_note ?? null,
     finalDelta: row.final_delta === null ? null : String(row.final_delta),
     snapshotScopeVersion: revealExpected ? String(row.snapshot_scope_version) : undefined,
     postedScopeVersion: row.posted_scope_version === null ? null : String(row.posted_scope_version),
@@ -402,8 +425,27 @@ export async function countStocktake(client, { requestContext, stocktakeId, payl
     }
     const quantity = parseDecimal12(count.countedBaseQuantity, `counts[${index}].countedBaseQuantity`);
     if (!quantity.ok) return quantity;
+    const reason = optionalLineText(
+      count.reason,
+      500,
+      'INVALID_STOCKTAKE_LINE_REASON',
+      `Dòng ${index + 1}: Lý do`,
+    );
+    if (!reason.ok) return reason;
+    const note = optionalLineText(
+      count.note,
+      2000,
+      'INVALID_STOCKTAKE_LINE_NOTE',
+      `Dòng ${index + 1}: Ghi chú`,
+    );
+    if (!note.ok) return note;
     seen.add(count.lineId);
-    counts.push({ id: count.lineId, counted_quantity: quantity.value });
+    counts.push({
+      id: count.lineId,
+      counted_quantity: quantity.value,
+      count_reason: reason.value,
+      count_note: note.value,
+    });
   }
   const updated = await repository.updateCountedLines(client, {
     installationId: row.installation_id,
@@ -880,5 +922,6 @@ export const stocktakeInternals = Object.freeze({
   formatScale12,
   movementRepresentation,
   normalizeScopes,
+  lineCountStatus,
   STOCKTAKE_MAX_LINES,
 });

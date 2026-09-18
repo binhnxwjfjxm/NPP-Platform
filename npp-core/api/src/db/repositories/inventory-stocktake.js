@@ -317,12 +317,14 @@ export async function updateCountedLines(client, {
 }) {
   const result = await client.query(
     `WITH input AS (
-       SELECT item.id, item.counted_quantity
+       SELECT item.id, item.counted_quantity, item.count_reason, item.count_note
          FROM jsonb_to_recordset($4::jsonb)
-              AS item(id uuid, counted_quantity numeric(30,12))
+              AS item(id uuid, counted_quantity numeric(30,12), count_reason text, count_note text)
      )
      UPDATE inventory.stocktake_lines line
         SET counted_base_quantity = input.counted_quantity,
+            count_reason = input.count_reason,
+            count_note = input.count_note,
             counted_at = now(),
             counted_by = $5
        FROM input

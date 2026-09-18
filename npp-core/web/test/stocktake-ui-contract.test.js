@@ -101,3 +101,14 @@ test('stocktake 2,000-line limit is shared by manual create and file import', ()
   assert.match(importActions, /rows\.length > STOCKTAKE_MAX_LINES/);
   assert.doesNotMatch(importActions, /tối đa 500 dòng/);
 });
+
+
+test('stocktake line detail contract exposes office statuses and persisted reason/note fields', () => {
+  assert.match(types, /StocktakeLineCountStatus = 'uncounted' \| 'matched' \| 'mismatch'/);
+  assert.match(types, /uncounted: 'Chưa kiểm'/);
+  assert.match(types, /matched: 'Khớp'/);
+  assert.match(types, /mismatch: 'Lệch'/);
+  assert.match(types, /countStatus: StocktakeLineCountStatus \| null/);
+  assert.match(types, /reason: string \| null/);
+  assert.match(types, /note: string \| null/);
+});
