@@ -34,6 +34,14 @@ export type StocktakeRound = {
   approvedBy: string | null;
 };
 
+export type StocktakeLineCountStatus = 'uncounted' | 'matched' | 'mismatch';
+
+export const STOCKTAKE_LINE_STATUS_LABELS: Record<StocktakeLineCountStatus, string> = {
+  uncounted: 'Chưa kiểm',
+  matched: 'Khớp',
+  mismatch: 'Lệch',
+};
+
 export type StocktakeLine = {
   id: string;
   roundNumber: number;
@@ -54,6 +62,9 @@ export type StocktakeLine = {
   expiryDate: string | null;
   expectedBaseQuantity?: string;
   countedBaseQuantity: string | null;
+  countStatus: StocktakeLineCountStatus | null;
+  reason: string | null;
+  note: string | null;
   finalDelta: string | null;
   snapshotScopeVersion?: string;
   postedScopeVersion: string | null;

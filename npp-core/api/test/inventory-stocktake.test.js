@@ -8,6 +8,10 @@ const migration = readFileSync(
   new URL('../../../database/migrations/inventory/060_inventory_stocktake.sql', import.meta.url),
   'utf8',
 );
+const lineDetailsMigration = readFileSync(
+  new URL('../../../database/migrations/inventory/138_inventory_stocktake_line_details.sql', import.meta.url),
+  'utf8',
+);
 const routeSource = readFileSync(
   new URL('../src/routes/inventory-stocktakes.js', import.meta.url),
   'utf8',
@@ -43,6 +47,28 @@ test('Phase 7.3 migration registers stocktake permissions and exact-scope waterm
   assert.match(migration, /bump_inventory_scope_version/);
   assert.match(migration, /stocktakes_submitter_approver_separation/);
   assert.doesNotMatch(migration, /UPDATE\s+inventory\.inventory_balances/i);
+});
+
+test('stocktake line details migration persists reason/note and locks completed round history', () => {
+  assert.match(lineDetailsMigration, /count_reason text NULL/);
+  assert.match(lineDetailsMigration, /count_note text NULL/);
+  assert.match(lineDetailsMigration, /stocktake_lines_count_reason_length/);
+  assert.match(lineDetailsMigration, /stocktake_lines_count_note_length/);
+  assert.match(lineDetailsMigration, /header_status NOT IN \('draft', 'recount_required'\)/);
+  assert.match(lineDetailsMigration, /OLD\.count_reason IS DISTINCT FROM NEW\.count_reason/);
+  assert.match(lineDetailsMigration, /OLD\.count_note IS DISTINCT FROM NEW\.count_note/);
+});
+
+test('stocktake line comparison status never leaks the hidden system quantity', () => {
+  const uncounted = { counted_base_quantity: null, expected_base_quantity: '10.000000000000' };
+  const matched = { counted_base_quantity: '10.000000000000', expected_base_quantity: '10.000000000000' };
+  const mismatch = { counted_base_quantity: '9.000000000000', expected_base_quantity: '10.000000000000' };
+
+  assert.equal(stocktakeInternals.lineCountStatus(uncounted, false), 'uncounted');
+  assert.equal(stocktakeInternals.lineCountStatus(matched, false), null);
+  assert.equal(stocktakeInternals.lineCountStatus(mismatch, false), null);
+  assert.equal(stocktakeInternals.lineCountStatus(matched, true), 'matched');
+  assert.equal(stocktakeInternals.lineCountStatus(mismatch, true), 'mismatch');
 });
 
 test('stocktake revision accepts the initial zero revision without allowing padded values', () => {
@@ -129,4 +155,16 @@ test('stocktake route and service enforce blind count, independent approval and 
   assert.match(serviceSource, /STOCKTAKE_REVERSAL_DOWNSTREAM_CONFLICT/);
   assert.match(serviceSource, /revealExpected: false/);
   assert.match(serviceSource, /movementType: reversalOfMovementId \? 'STOCKTAKE_ADJUSTMENT_REVERSAL' : 'STOCKTAKE_ADJUSTMENT'/);
+});
+
+
+test('stocktake count payload stores per-line reason and note through the set-based update', () => {
+  assert.match(serviceSource, /INVALID_STOCKTAKE_LINE_REASON/);
+  assert.match(serviceSource, /INVALID_STOCKTAKE_LINE_NOTE/);
+  assert.match(serviceSource, /count_reason: reason\.value/);
+  assert.match(serviceSource, /count_note: note\.value/);
+  assert.match(stocktakeRepositorySource, /item\.count_reason/);
+  assert.match(stocktakeRepositorySource, /item\.count_note/);
+  assert.match(stocktakeRepositorySource, /count_reason = input\.count_reason/);
+  assert.match(stocktakeRepositorySource, /count_note = input\.count_note/);
 });
