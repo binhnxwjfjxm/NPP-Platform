@@ -16,6 +16,9 @@ export function inventoryWorkflowErrorMessage(
   if (code.includes('SELF_APPROVAL_DENIED')) {
     return 'Bạn không thể tự duyệt phiếu mình đã gửi.';
   }
+  if (code.includes('STOCKTAKE_SCOPE_NOT_AVAILABLE')) {
+    return 'Kho hoặc phạm vi đã chọn hiện không có dòng tồn hợp lệ để kiểm kê. Hãy cập nhật dữ liệu kho rồi thử lại.';
+  }
   if (code.includes('SCOPE_CHANGED')) {
     return 'Tồn kho đã thay đổi sau khi phiếu được lập. Hãy làm mới dữ liệu và thực hiện lại bước cần thiết.';
   }

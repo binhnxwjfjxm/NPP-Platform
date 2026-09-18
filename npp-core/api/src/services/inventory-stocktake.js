@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { isValidIdempotencyKey, STOCKTAKE_MAX_LINES } from '@npp/contracts';
+import { isValidIdempotencyKey } from '@npp/contracts';
 import * as repository from '../db/repositories/inventory-stocktake.js';
 import * as ledgerRepository from '../db/repositories/inventory-ledger.js';
 
@@ -212,8 +212,104 @@ function normalizeScopes(payload) {
   if (!isUuid(warehouseId)) return failure('INVALID_WAREHOUSE_ID', 'warehouseId is invalid');
   const note = text(payload.note, 4000);
   if (payload.note && note === null) return failure('INVALID_NOTE', 'note must not exceed 4000 characters');
-  if (!Array.isArray(payload.scopes) || payload.scopes.length < 1 || payload.scopes.length > STOCKTAKE_MAX_LINES) {
-    return failure('INVALID_STOCKTAKE_SCOPES', `Stocktake must contain between 1 and ${STOCKTAKE_MAX_LINES} exact scopes`);
+
+  const requestedMode = text(payload.scopeMode, 16);
+  const scopeMode = requestedMode ?? (Array.isArray(payload.scopes) ? 'exact' : null);
+  if (!['all', 'lot', 'location', 'exact'].includes(scopeMode)) {
+    return failure('INVALID_STOCKTAKE_SCOPE_MODE', 'scopeMode must be all, lot, location or exact');
+  }
+
+  if (scopeMode === 'all') {
+    return Object.freeze({
+      ok: true,
+      value: Object.freeze({
+        warehouseId,
+        note,
+        scopeMode,
+        scopes: Object.freeze([]),
+        selectors: Object.freeze([]),
+      }),
+    });
+  }
+
+  if (scopeMode === 'lot') {
+    if (!Array.isArray(payload.lotSelections) || payload.lotSelections.length < 1) {
+      return failure('INVALID_STOCKTAKE_SELECTION', 'At least one lot selection is required');
+    }
+    const selectors = [];
+    const keys = new Set();
+    for (let index = 0; index < payload.lotSelections.length; index += 1) {
+      const input = payload.lotSelections[index];
+      if (!input || typeof input !== 'object' || Array.isArray(input)) {
+        return failure('INVALID_STOCKTAKE_SELECTION', `Lot selection ${index + 1} is invalid`);
+      }
+      const baseVariantId = text(input.baseVariantId, 64);
+      const lotId = text(input.lotId, 64);
+      if (!isUuid(baseVariantId)) {
+        return failure('INVALID_BASE_VARIANT_ID', `Lot selection ${index + 1} baseVariantId is invalid`);
+      }
+      if (lotId && !isUuid(lotId)) {
+        return failure('INVALID_LOT_ID', `Lot selection ${index + 1} lotId is invalid`);
+      }
+      const key = `${baseVariantId}:${lotId ?? '<null>'}`;
+      if (keys.has(key)) return failure('DUPLICATE_STOCKTAKE_SELECTION', `Lot selection ${index + 1} is duplicated`);
+      keys.add(key);
+      selectors.push(Object.freeze({
+        location_id: null,
+        base_variant_id: baseVariantId,
+        lot_id: lotId,
+      }));
+    }
+    return Object.freeze({
+      ok: true,
+      value: Object.freeze({
+        warehouseId,
+        note,
+        scopeMode,
+        scopes: Object.freeze([]),
+        selectors: Object.freeze(selectors),
+      }),
+    });
+  }
+
+  if (scopeMode === 'location') {
+    if (!Array.isArray(payload.locationIds) || payload.locationIds.length < 1) {
+      return failure('INVALID_STOCKTAKE_SELECTION', 'At least one location selection is required');
+    }
+    const selectors = [];
+    const keys = new Set();
+    for (let index = 0; index < payload.locationIds.length; index += 1) {
+      const raw = payload.locationIds[index];
+      const locationId = text(raw, 64);
+      if (raw !== null && raw !== undefined && !locationId) {
+        return failure('INVALID_LOCATION_ID', `Location selection ${index + 1} is invalid`);
+      }
+      if (locationId && !isUuid(locationId)) {
+        return failure('INVALID_LOCATION_ID', `Location selection ${index + 1} is invalid`);
+      }
+      const key = locationId ?? '<null>';
+      if (keys.has(key)) return failure('DUPLICATE_STOCKTAKE_SELECTION', `Location selection ${index + 1} is duplicated`);
+      keys.add(key);
+      selectors.push(Object.freeze({
+        location_id: locationId,
+        base_variant_id: null,
+        lot_id: null,
+      }));
+    }
+    return Object.freeze({
+      ok: true,
+      value: Object.freeze({
+        warehouseId,
+        note,
+        scopeMode,
+        scopes: Object.freeze([]),
+        selectors: Object.freeze(selectors),
+      }),
+    });
+  }
+
+  if (!Array.isArray(payload.scopes) || payload.scopes.length < 1) {
+    return failure('INVALID_STOCKTAKE_SCOPES', 'Stocktake must contain at least one exact scope');
   }
   const scopes = [];
   const keys = new Set();
@@ -233,7 +329,16 @@ function normalizeScopes(payload) {
     keys.add(key);
     scopes.push(Object.freeze({ location_id: locationId, base_variant_id: baseVariantId, lot_id: lotId }));
   }
-  return Object.freeze({ ok: true, value: Object.freeze({ warehouseId, note, scopes: Object.freeze(scopes) }) });
+  return Object.freeze({
+    ok: true,
+    value: Object.freeze({
+      warehouseId,
+      note,
+      scopeMode,
+      scopes: Object.freeze(scopes),
+      selectors: Object.freeze([]),
+    }),
+  });
 }
 
 async function hydrate(client, row, { revealExpected = true } = {}) {
@@ -339,13 +444,33 @@ export async function createStocktake(client, { requestContext, payload }) {
   if (!warehouse || !warehouse.is_active || ['vehicle', 'transit'].includes(warehouse.warehouse_type)) {
     return failure('WAREHOUSE_NOT_AVAILABLE', 'Warehouse is missing, inactive or not eligible for stocktake');
   }
-  const snapshots = await repository.loadScopeSnapshots(client, {
-    installationId: requestContext.installationId,
-    warehouseId: normalized.value.warehouseId,
-    scopes: normalized.value.scopes,
-  });
-  if (snapshots.length !== normalized.value.scopes.length) {
-    return failure('STOCKTAKE_SCOPE_NOT_AVAILABLE', 'One or more stocktake scopes are invalid or unavailable');
+  const snapshots = normalized.value.scopeMode === 'exact'
+    ? await repository.loadScopeSnapshots(client, {
+      installationId: requestContext.installationId,
+      warehouseId: normalized.value.warehouseId,
+      scopes: normalized.value.scopes,
+    })
+    : await repository.loadDerivedScopeSnapshots(client, {
+      installationId: requestContext.installationId,
+      warehouseId: normalized.value.warehouseId,
+      scopeMode: normalized.value.scopeMode,
+      selectors: normalized.value.selectors,
+    });
+  if (normalized.value.scopeMode === 'exact' && snapshots.length !== normalized.value.scopes.length) {
+    return failure(
+      'STOCKTAKE_SCOPE_NOT_AVAILABLE',
+      'Một hoặc nhiều dòng kiểm kê không còn hợp lệ.',
+      false,
+      { requested: normalized.value.scopes.length, available: snapshots.length },
+    );
+  }
+  if (snapshots.length < 1) {
+    return failure(
+      'STOCKTAKE_SCOPE_NOT_AVAILABLE',
+      'Kho hoặc phạm vi đã chọn hiện không có dòng tồn hợp lệ để kiểm kê.',
+      false,
+      { scopeMode: normalized.value.scopeMode },
+    );
   }
 
   const id = randomUUID();
@@ -1036,5 +1161,4 @@ export const stocktakeInternals = Object.freeze({
   movementRepresentation,
   normalizeScopes,
   lineCountStatus,
-  STOCKTAKE_MAX_LINES,
 });
