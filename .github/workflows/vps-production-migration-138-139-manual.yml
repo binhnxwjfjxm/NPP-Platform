@@ -9,10 +9,6 @@ permissions:
   contents: read
   issues: write
 
-concurrency:
-  group: vps-production-db-migration
-  cancel-in-progress: false
-
 jobs:
   migrate-138-139:
     if: >-
@@ -25,6 +21,9 @@ jobs:
       )
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    concurrency:
+      group: vps-production-db-migration
+      cancel-in-progress: false
     env:
       VPS_DB_HOST: ${{ vars.VPS_DB_HOST }}
       VPS_SSH_USER: ${{ vars.VPS_SSH_USER }}
