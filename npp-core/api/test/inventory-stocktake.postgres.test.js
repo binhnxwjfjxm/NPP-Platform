@@ -820,3 +820,80 @@ test('copy stocktake reuses scope but snapshots the inventory again and resets c
     await closePool();
   }
 });
+
+
+test('whole-warehouse stocktake resolves current valid scopes on the server and ignores stale inactive location rows', async () => {
+  const config = loadConfig(testEnv());
+  const pool = getPool(config);
+  try {
+    const master = await seedStocktakeMasterData(pool, config.installationId);
+    const counter = requestContext(config.installationId, [master.warehouseId], 'test:counter-server-scope');
+    await postOpening(pool, counter, master);
+
+    await pool.query(
+      `UPDATE shared.warehouse_locations
+          SET is_active = false,
+              updated_by = 'test:server-scope',
+              updated_at = now()
+        WHERE installation_id = $1
+          AND warehouse_id = $2
+          AND id = $3`,
+      [config.installationId, master.warehouseId, master.locationTwoId],
+    );
+
+    const created = await transaction(pool, (client) => createStocktake(client, {
+      requestContext: counter,
+      payload: {
+        warehouseId: master.warehouseId,
+        scopeMode: 'all',
+        note: 'Lấy phạm vi trực tiếp từ tồn kho hiện tại',
+      },
+    }));
+
+    assert.equal(created.ok, true, created.message);
+    assert.equal(created.stocktake.lines.length, 1);
+    assert.equal(created.stocktake.lines[0].locationId, master.locationOneId);
+    assert.equal(created.stocktake.lines[0].baseVariantId, master.baseVariantId);
+  } finally {
+    await closePool();
+  }
+});
+
+test('location and lot modes expand current balance rows on the backend', async () => {
+  const config = loadConfig(testEnv());
+  const pool = getPool(config);
+  try {
+    const master = await seedStocktakeMasterData(pool, config.installationId);
+    const counter = requestContext(config.installationId, [master.warehouseId], 'test:counter-selector-scope');
+    await postOpening(pool, counter, master);
+
+    const byLocation = await transaction(pool, (client) => createStocktake(client, {
+      requestContext: counter,
+      payload: {
+        warehouseId: master.warehouseId,
+        scopeMode: 'location',
+        locationIds: [master.locationOneId],
+      },
+    }));
+    assert.equal(byLocation.ok, true, byLocation.message);
+    assert.equal(byLocation.stocktake.lines.length, 1);
+    assert.equal(byLocation.stocktake.lines[0].locationId, master.locationOneId);
+
+    const byLot = await transaction(pool, (client) => createStocktake(client, {
+      requestContext: counter,
+      payload: {
+        warehouseId: master.warehouseId,
+        scopeMode: 'lot',
+        lotSelections: [{ baseVariantId: master.baseVariantId, lotId: null }],
+      },
+    }));
+    assert.equal(byLot.ok, true, byLot.message);
+    assert.equal(byLot.stocktake.lines.length, 2);
+    assert.deepEqual(
+      new Set(byLot.stocktake.lines.map((line) => line.locationId)),
+      new Set([master.locationOneId, master.locationTwoId]),
+    );
+  } finally {
+    await closePool();
+  }
+});

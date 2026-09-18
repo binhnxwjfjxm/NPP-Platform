@@ -103,7 +103,7 @@ export async function listStocktakeLines(client, {
 
 export async function loadWarehouse(client, { installationId, warehouseId }) {
   const result = await client.query(
-    `SELECT id, code, name, is_active, warehouse_type
+    `SELECT id, code, name, is_active, warehouse_type, location_management_mode
        FROM shared.warehouses
       WHERE installation_id = $1 AND id = $2`,
     [installationId, warehouseId],
@@ -144,6 +144,9 @@ export async function loadScopeSnapshots(client, {
             location.code AS location_code,
             location.name AS location_name
        FROM requested
+       JOIN shared.warehouses warehouse
+         ON warehouse.installation_id = $1
+        AND warehouse.id = $2
        JOIN shared.product_variants base
          ON base.installation_id = $1
         AND base.id = requested.base_variant_id
@@ -174,10 +177,134 @@ export async function loadScopeSnapshots(client, {
         AND version.location_id IS NOT DISTINCT FROM requested.location_id
         AND version.base_variant_id = requested.base_variant_id
         AND version.lot_id IS NOT DISTINCT FROM requested.lot_id
-      WHERE (requested.location_id IS NULL OR location.id IS NOT NULL)
+      WHERE (
+              (warehouse.location_management_mode = 'UNMANAGED' AND requested.location_id IS NULL)
+              OR (
+                warehouse.location_management_mode = 'MANAGED'
+                AND requested.location_id IS NOT NULL
+                AND location.id IS NOT NULL
+              )
+            )
         AND (requested.lot_id IS NULL OR lot.id IS NOT NULL)
       ORDER BY requested.line_number`,
     [installationId, warehouseId, JSON.stringify(scopes)],
+  );
+  return result.rows ?? [];
+}
+
+export async function loadDerivedScopeSnapshots(client, {
+  installationId,
+  warehouseId,
+  scopeMode,
+  selectors = [],
+}) {
+  const result = await client.query(
+    `WITH selected AS (
+       SELECT item.location_id,
+              item.base_variant_id,
+              item.lot_id
+         FROM jsonb_to_recordset($4::jsonb)
+              AS item(location_id uuid, base_variant_id uuid, lot_id uuid)
+     ), eligible AS (
+       SELECT balance.location_id,
+              base.id AS base_variant_id,
+              balance.lot_id,
+              base.id AS source_variant_id,
+              base.sku AS source_sku,
+              base.unit_id AS source_unit_id,
+              unit.code AS source_unit_code,
+              1::numeric(20,6) AS conversion_to_base,
+              base.sku AS base_sku,
+              lot.lot_code,
+              lot.expiry_date,
+              balance.on_hand_quantity::numeric(30,12) AS expected_base_quantity,
+              COALESCE(version.version, 0)::bigint AS snapshot_scope_version,
+              location.code AS location_code,
+              location.name AS location_name
+         FROM inventory.inventory_balances balance
+         JOIN shared.warehouses warehouse
+           ON warehouse.installation_id = balance.installation_id
+          AND warehouse.id = balance.warehouse_id
+         JOIN shared.product_variants base
+           ON base.installation_id = balance.installation_id
+          AND base.id = balance.base_variant_id
+          AND base.is_inventory_base = true
+          AND base.is_active = true
+         JOIN shared.units_of_measure unit
+           ON unit.installation_id = base.installation_id
+          AND unit.id = base.unit_id
+          AND unit.is_active = true
+         LEFT JOIN shared.warehouse_locations location
+           ON location.installation_id = balance.installation_id
+          AND location.warehouse_id = balance.warehouse_id
+          AND location.id = balance.location_id
+          AND location.is_active = true
+         LEFT JOIN inventory.inventory_lots lot
+           ON lot.installation_id = balance.installation_id
+          AND lot.id = balance.lot_id
+          AND lot.base_variant_id = balance.base_variant_id
+         LEFT JOIN inventory.inventory_scope_versions version
+           ON version.installation_id = balance.installation_id
+          AND version.warehouse_id = balance.warehouse_id
+          AND version.location_id IS NOT DISTINCT FROM balance.location_id
+          AND version.base_variant_id = balance.base_variant_id
+          AND version.lot_id IS NOT DISTINCT FROM balance.lot_id
+        WHERE balance.installation_id = $1
+          AND balance.warehouse_id = $2
+          AND (
+                (warehouse.location_management_mode = 'UNMANAGED' AND balance.location_id IS NULL)
+                OR (
+                  warehouse.location_management_mode = 'MANAGED'
+                  AND balance.location_id IS NOT NULL
+                  AND location.id IS NOT NULL
+                )
+              )
+          AND (balance.lot_id IS NULL OR lot.id IS NOT NULL)
+          AND (
+            $3 = 'all'
+            OR (
+              $3 = 'lot'
+              AND EXISTS (
+                SELECT 1
+                  FROM selected
+                 WHERE selected.base_variant_id = balance.base_variant_id
+                   AND selected.lot_id IS NOT DISTINCT FROM balance.lot_id
+              )
+            )
+            OR (
+              $3 = 'location'
+              AND EXISTS (
+                SELECT 1
+                  FROM selected
+                 WHERE selected.location_id IS NOT DISTINCT FROM balance.location_id
+              )
+            )
+          )
+     )
+     SELECT row_number() OVER (
+              ORDER BY location_id NULLS FIRST, base_sku, lot_code NULLS FIRST,
+                       base_variant_id, lot_id NULLS FIRST
+            )::integer AS line_number,
+            $2::uuid AS warehouse_id,
+            location_id,
+            base_variant_id,
+            lot_id,
+            source_variant_id,
+            source_sku,
+            source_unit_id,
+            source_unit_code,
+            conversion_to_base,
+            base_sku,
+            lot_code,
+            expiry_date,
+            expected_base_quantity,
+            snapshot_scope_version,
+            location_code,
+            location_name
+       FROM eligible
+      ORDER BY location_id NULLS FIRST, base_sku, lot_code NULLS FIRST,
+               base_variant_id, lot_id NULLS FIRST`,
+    [installationId, warehouseId, scopeMode, JSON.stringify(selectors)],
   );
   return result.rows ?? [];
 }

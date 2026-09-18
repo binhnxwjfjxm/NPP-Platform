@@ -1,6 +1,6 @@
 'use client';
 
-import { createIdempotencyKey, STOCKTAKE_MAX_LINES } from '@npp/contracts';
+import { createIdempotencyKey } from '@npp/contracts';
 import { useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
 import {
@@ -36,7 +36,15 @@ import StocktakePrintDock from './StocktakePrintDock';
 
 type WarehouseOption = { id: string; code: string; name: string };
 type ScopeMode = 'all' | 'lot' | 'location';
-type ScopeGroup = { key: string; label: string; detail: string; scopeKeys: string[] };
+type ScopeGroup = {
+  key: string;
+  label: string;
+  detail: string;
+  scopeKeys: string[];
+  baseVariantId?: string;
+  lotId?: string | null;
+  locationId?: string | null;
+};
 type LineFilter = 'all' | 'uncounted' | 'matched' | 'mismatch';
 
 const LINE_PAGE_SIZE = 100;
@@ -195,6 +203,8 @@ export default function StocktakeWorkspace({
           label: `${first.product_name || first.base_variant_name || first.base_sku} · ${first.base_sku}`,
           detail: `Lô ${first.lot_code || 'Không lô'} · ${group.items.length} vị trí`,
           scopeKeys: group.items.map(exactScopeKey),
+          baseVariantId: first.base_variant_id,
+          lotId: first.lot_id,
         };
       }
       return {
@@ -202,14 +212,13 @@ export default function StocktakeWorkspace({
         label: `Vị trí ${first.location_code || 'Không vị trí'}`,
         detail: `${group.items.length} phạm vi sản phẩm/lô`,
         scopeKeys: group.items.map(exactScopeKey),
+        locationId: first.location_id,
       };
     });
   }, [availableScopes, scopeMode]);
-  const effectiveSelectedScopes = useMemo(
-    () => scopeMode === 'all'
-      ? new Set(availableScopes.map(exactScopeKey))
-      : selectedScopes,
-    [availableScopes, scopeMode, selectedScopes],
+  const selectedScopeGroups = useMemo(
+    () => scopeGroups.filter((group) => group.scopeKeys.every((key) => selectedScopes.has(key))),
+    [scopeGroups, selectedScopes],
   );
   const filtered = useMemo(() => {
     const term = normalizeSearch(search);
@@ -287,35 +296,47 @@ export default function StocktakeWorkspace({
   }
 
   async function createNew() {
-    if (!warehouseId || effectiveSelectedScopes.size === 0) {
-      setError('Chọn kho và phạm vi cần kiểm kê.');
+    if (!warehouseId) {
+      setError('Chọn kho cần kiểm kê.');
       return;
     }
-    if (effectiveSelectedScopes.size > STOCKTAKE_MAX_LINES) {
-      setError(`Mỗi đợt kiểm kê tối đa ${STOCKTAKE_MAX_LINES.toLocaleString('vi-VN')} dòng tồn. Hãy chọn theo lô hoặc theo vị trí để chia thành các đợt phù hợp.`);
+    if (scopeMode !== 'all' && selectedScopeGroups.length === 0) {
+      setError(scopeMode === 'lot' ? 'Chọn ít nhất một lô cần kiểm kê.' : 'Chọn ít nhất một vị trí cần kiểm kê.');
       return;
     }
     setBusy(true);
     setError('');
     setMessage('');
     try {
-      const scopes = availableScopes
-        .filter((balance) => effectiveSelectedScopes.has(exactScopeKey(balance)))
-        .map((balance) => ({
-          locationId: balance.location_id,
-          baseVariantId: balance.base_variant_id,
-          lotId: balance.lot_id,
-        }));
-      const createFingerprint = `${warehouseId}:${scopeMode}:${[...effectiveSelectedScopes].sort().join('|')}:${note.trim()}`;
+      const selectionPayload = scopeMode === 'all'
+        ? {}
+        : scopeMode === 'lot'
+          ? {
+            lotSelections: selectedScopeGroups.map((group) => ({
+              baseVariantId: group.baseVariantId,
+              lotId: group.lotId ?? null,
+            })),
+          }
+          : {
+            locationIds: selectedScopeGroups.map((group) => group.locationId ?? null),
+          };
+      const createFingerprint = `${warehouseId}:${scopeMode}:${selectedScopeGroups.map((group) => group.key).sort().join('|')}:${note.trim()}`;
+      const createIdempotencyKey = stableKey('create', warehouseId, createFingerprint);
       const response = await fetch('/api/inventory/stocktakes', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Idempotency-Key': stableKey('create', warehouseId, createFingerprint),
+          'Idempotency-Key': createIdempotencyKey,
         },
-        body: JSON.stringify({ warehouseId, note: note.trim() || null, scopes }),
+        body: JSON.stringify({
+          warehouseId,
+          note: note.trim() || null,
+          scopeMode,
+          ...selectionPayload,
+        }),
       });
       const next = await parseResponse<Stocktake>(response);
+      idempotencyKeys.current.delete(`create:${warehouseId}:${createFingerprint}`);
       remember(next);
       setShowCreate(false);
       setSelectedScopes(new Set());
@@ -429,20 +450,24 @@ export default function StocktakeWorkspace({
 
   async function copyCurrent() {
     if (!detail) return;
+    const sourceId = detail.id;
+    const sourceRevision = detail.revision;
+    const sourceNumber = detail.stocktakeNumber;
     setBusy(true);
     setError('');
     setMessage('');
     try {
-      const response = await fetch(`/api/inventory/stocktakes/${detail.id}/copy`, {
+      const copyIdempotencyKey = stableKey('copy', sourceId, sourceRevision);
+      const response = await fetch(`/api/inventory/stocktakes/${sourceId}/copy`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Idempotency-Key': stableKey('copy', detail.id, detail.revision),
+          'Idempotency-Key': copyIdempotencyKey,
         },
-        body: JSON.stringify({ expectedRevision: detail.revision }),
+        body: JSON.stringify({ expectedRevision: sourceRevision }),
       });
       const next = await parseResponse<Stocktake>(response);
-      const sourceNumber = detail.stocktakeNumber;
+      idempotencyKeys.current.delete(`copy:${sourceId}:${sourceRevision}`);
       remember(next);
       setMessage(`Đã sao chép phạm vi từ ${sourceNumber}. Phiếu mới dùng tồn hệ thống tại thời điểm vừa tạo.`);
     } catch (caught) {
@@ -615,7 +640,9 @@ export default function StocktakeWorkspace({
             </fieldset>
 
             {scopeMode === 'all' ? (
-              <p>{warehouseId ? `Sẽ kiểm ${availableScopes.length} phạm vi tồn chính xác trong kho đã chọn.` : 'Chọn kho để xem số phạm vi sẽ kiểm.'}</p>
+              <p>{warehouseId
+                ? 'Khi tạo phiếu, hệ thống sẽ lấy trực tiếp toàn bộ phạm vi tồn hợp lệ hiện tại của kho.'
+                : 'Chọn kho để bắt đầu kiểm kê.'}</p>
             ) : (
               <div className={styles.scopeList} aria-label={scopeMode === 'lot' ? 'Chọn lô kiểm kê' : 'Chọn vị trí kiểm kê'}>
                 {scopeGroups.length ? scopeGroups.map((group) => {
@@ -630,7 +657,9 @@ export default function StocktakeWorkspace({
               </div>
             )}
 
-            <p>Đã chọn {effectiveSelectedScopes.size} phạm vi tồn chính xác.</p>
+            <p>{scopeMode === 'all'
+              ? 'Phạm vi sẽ được chụp lại trực tiếp từ dữ liệu kho khi tạo phiếu.'
+              : `Đã chọn ${selectedScopeGroups.length} ${scopeMode === 'lot' ? 'lô' : 'vị trí'}.`}</p>
             <label>
               Ghi chú
               <textarea value={note} maxLength={4000} onChange={(event) => setNote(event.target.value)} />

@@ -31,16 +31,16 @@ test('stocktake UI keeps blind count and presents the office workflow', () => {
   assert.doesNotMatch(workspace, /crypto\.randomUUID\(\)/);
 });
 
-test('stocktake UI converts simple scope choices back to exact scopes', () => {
+test('stocktake UI sends warehouse-owned scope choices instead of thousands of exact browser rows', () => {
   assert.match(workspace, /Toàn bộ sản phẩm trong kho/);
   assert.match(workspace, /Theo lô/);
   assert.match(workspace, /Theo vị trí/);
-  assert.match(workspace, /effectiveSelectedScopes/);
-  assert.match(workspace, /locationId: balance\.location_id/);
-  assert.match(workspace, /baseVariantId: balance\.base_variant_id/);
-  assert.match(workspace, /lotId: balance\.lot_id/);
-  assert.match(workspace, /STOCKTAKE_MAX_LINES/);
-  assert.doesNotMatch(workspace, /> 500/);
+  assert.match(workspace, /scopeMode,/);
+  assert.match(workspace, /lotSelections:/);
+  assert.match(workspace, /locationIds:/);
+  assert.match(workspace, /selectedScopeGroups/);
+  assert.doesNotMatch(workspace, /const scopes = availableScopes/);
+  assert.doesNotMatch(workspace, /STOCKTAKE_MAX_LINES/);
 });
 
 test('stocktake approval view exposes clear fields and discrepancy without breaking blind count', () => {
@@ -64,6 +64,10 @@ test('stocktake status and errors use office language instead of backend terms',
   assert.match(workspace, /Đã gửi kiểm kê chờ duyệt/);
   assert.match(workspace, /Tồn kho chưa thay đổi\. Chọn Cập nhật tồn kho để hoàn tất/);
   assert.match(workflowErrors, /SELF_APPROVAL_DENIED/);
+  assert.match(workflowErrors, /WAREHOUSE_LOCATION_MODE_REQUIRED/);
+  assert.match(workflowErrors, /Kho chưa thiết lập chế độ quản lý vị trí/);
+  assert.match(workflowErrors, /STOCKTAKE_SCOPE_NOT_AVAILABLE/);
+  assert.match(workflowErrors, /không có dòng tồn hợp lệ để kiểm kê/);
   assert.match(workflowErrors, /Bạn không thể tự duyệt phiếu mình đã gửi\./);
   assert.doesNotMatch(workspace, /payload\?\.error\?\.message/);
 });
@@ -95,8 +99,9 @@ test('stocktake proxy preserves stocktake gateway status instead of collapsing e
 });
 
 
-test('stocktake 2,000-line limit is shared by manual create and file import', () => {
-  assert.match(workspace, /import \{ createIdempotencyKey, STOCKTAKE_MAX_LINES \} from '@npp\/contracts'/);
+test('manual stocktake has no business line ceiling while file import keeps its file-size contract', () => {
+  assert.match(workspace, /import \{ createIdempotencyKey \} from '@npp\/contracts'/);
+  assert.doesNotMatch(workspace, /STOCKTAKE_MAX_LINES/);
   assert.match(importActions, /import \{ STOCKTAKE_MAX_LINES \} from '@npp\/contracts'/);
   assert.match(importActions, /rows\.length > STOCKTAKE_MAX_LINES/);
   assert.doesNotMatch(importActions, /tối đa 500 dòng/);
@@ -138,6 +143,8 @@ test('stocktake workspace exports the exact open result and can copy scope to a 
   assert.match(actionRoute, /'copy'/);
   assert.match(gateway, /'annotate'/);
   assert.match(gateway, /'copy'/);
+  assert.match(workspace, /idempotencyKeys\.current\.delete\(`create:/);
+  assert.match(workspace, /idempotencyKeys\.current\.delete\(`copy:/);
 });
 
 test('stocktake list shows creator and current counter from canonical stocktake data', () => {

@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { STOCKTAKE_MAX_LINES } from '@npp/contracts';
 import { stocktakeInternals } from '../src/services/inventory-stocktake.js';
 
 const migration = readFileSync(
@@ -129,29 +128,58 @@ test('stocktake scope input rejects duplicate exact location, SKU and lot', () =
   assert.equal(result.code, 'DUPLICATE_STOCKTAKE_SCOPE');
 });
 
-test('stocktake scope limit covers the 744-line field case and the 2,000-line contract', () => {
+test('manual stocktake modes are server-owned and exact scope input has no business line ceiling', () => {
   const warehouseId = '11111111-1111-4111-8111-111111111111';
-  const scopes = Array.from({ length: STOCKTAKE_MAX_LINES + 1 }, (_, index) => ({
+  const baseVariantId = '22222222-2222-4222-8222-222222222222';
+  const locationId = '33333333-3333-4333-8333-333333333333';
+
+  const all = stocktakeInternals.normalizeScopes({ warehouseId, scopeMode: 'all' });
+  assert.equal(all.ok, true);
+  assert.equal(all.value.scopeMode, 'all');
+  assert.deepEqual(all.value.scopes, []);
+  assert.deepEqual(all.value.selectors, []);
+
+  const lot = stocktakeInternals.normalizeScopes({
+    warehouseId,
+    scopeMode: 'lot',
+    lotSelections: [{ baseVariantId, lotId: null }],
+  });
+  assert.equal(lot.ok, true);
+  assert.equal(lot.value.scopeMode, 'lot');
+  assert.deepEqual(lot.value.selectors, [{
+    location_id: null,
+    base_variant_id: baseVariantId,
+    lot_id: null,
+  }]);
+
+  const location = stocktakeInternals.normalizeScopes({
+    warehouseId,
+    scopeMode: 'location',
+    locationIds: [locationId, null],
+  });
+  assert.equal(location.ok, true);
+  assert.equal(location.value.scopeMode, 'location');
+  assert.deepEqual(location.value.selectors, [
+    { location_id: locationId, base_variant_id: null, lot_id: null },
+    { location_id: null, base_variant_id: null, lot_id: null },
+  ]);
+
+  const scopes = Array.from({ length: 2001 }, (_, index) => ({
     locationId: null,
     baseVariantId: `22222222-2222-4222-8222-${(index + 1).toString(16).padStart(12, '0')}`,
     lotId: null,
   }));
-  const fieldCase = stocktakeInternals.normalizeScopes({ warehouseId, scopes: scopes.slice(0, 744) });
-  const maxCase = stocktakeInternals.normalizeScopes({ warehouseId, scopes: scopes.slice(0, STOCKTAKE_MAX_LINES) });
-  const tooLarge = stocktakeInternals.normalizeScopes({ warehouseId, scopes });
-
-  assert.equal(STOCKTAKE_MAX_LINES, 2000);
-  assert.equal(fieldCase.ok, true);
-  assert.equal(fieldCase.value.scopes.length, 744);
-  assert.equal(maxCase.ok, true);
-  assert.equal(maxCase.value.scopes.length, STOCKTAKE_MAX_LINES);
-  assert.equal(tooLarge.ok, false);
-  assert.equal(tooLarge.code, 'INVALID_STOCKTAKE_SCOPES');
+  const exact = stocktakeInternals.normalizeScopes({ warehouseId, scopes });
+  assert.equal(exact.ok, true);
+  assert.equal(exact.value.scopeMode, 'exact');
+  assert.equal(exact.value.scopes.length, 2001);
 });
 
 test('stocktake large-write path is set-based and reuses the canonical request idempotency key', () => {
   assert.match(stocktakeRepositorySource, /jsonb_to_recordset\(\$1::jsonb\)/);
   assert.match(stocktakeRepositorySource, /export async function insertLines/);
+  assert.match(stocktakeRepositorySource, /export async function loadDerivedScopeSnapshots/);
+  assert.match(stocktakeRepositorySource, /FROM inventory\.inventory_balances balance/);
   assert.match(ledgerRepositorySource, /export async function insertMovementLines/);
   assert.match(serviceSource, /isValidIdempotencyKey/);
   assert.doesNotMatch(serviceSource, /IDEMPOTENCY_PATTERN/);
@@ -193,4 +221,25 @@ test('stocktake copy and annotation stay backend-owned and audited', () => {
   assert.match(routeSource, /inventory\.stocktake\.annotated/);
   assert.match(routeSource, /copy: PERMISSIONS\.create/);
   assert.match(routeSource, /annotate: PERMISSIONS\.count/);
+});
+
+
+test('manual stocktake creation derives current scope on the backend instead of comparing browser scope count', () => {
+  assert.match(serviceSource, /normalized\.value\.scopeMode === 'exact'/);
+  assert.match(serviceSource, /repository\.loadDerivedScopeSnapshots/);
+  assert.match(serviceSource, /scopeMode: normalized\.value\.scopeMode/);
+  assert.doesNotMatch(serviceSource, /STOCKTAKE_MAX_LINES/);
+  assert.match(serviceSource, /snapshots\.length < 1/);
+});
+
+
+test('stocktake whole-warehouse scope keeps zero-balance rows and follows warehouse location mode', () => {
+  assert.doesNotMatch(
+    stocktakeRepositorySource,
+    /on_hand_quantity\s*(?:<>|>|=)\s*0/,
+  );
+  assert.match(stocktakeRepositorySource, /warehouse\.location_management_mode = 'UNMANAGED' AND balance\.location_id IS NULL/);
+  assert.match(stocktakeRepositorySource, /warehouse\.location_management_mode = 'MANAGED'/);
+  assert.match(stocktakeRepositorySource, /balance\.location_id IS NOT NULL/);
+  assert.match(serviceSource, /WAREHOUSE_LOCATION_MODE_REQUIRED/);
 });
