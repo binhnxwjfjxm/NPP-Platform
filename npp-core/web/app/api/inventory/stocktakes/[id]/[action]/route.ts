@@ -4,7 +4,7 @@ import { errorResponse, readJsonBody, requestIdFrom, responseHeaders } from '../
 
 export const dynamic = 'force-dynamic';
 
-const ACTIONS = ['count', 'submit', 'recount', 'approve', 'post', 'cancel', 'reverse'] as const;
+const ACTIONS = ['count', 'annotate', 'submit', 'recount', 'approve', 'post', 'cancel', 'reverse', 'copy'] as const;
 type StocktakeAction = (typeof ACTIONS)[number];
 
 export async function POST(

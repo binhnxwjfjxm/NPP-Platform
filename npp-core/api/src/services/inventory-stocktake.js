@@ -167,6 +167,7 @@ function mapRound(row) {
 }
 
 function mapStocktake(row, { rounds, lines, revealExpected } = {}) {
+  const currentRound = rounds?.find((round) => Number(round.round_number) === Number(row.current_round));
   return Object.freeze({
     id: row.id,
     stocktakeNumber: row.stocktake_number,
@@ -193,6 +194,8 @@ function mapStocktake(row, { rounds, lines, revealExpected } = {}) {
     reversalReason: row.reversal_reason ?? null,
     createdAt: row.created_at,
     createdBy: row.created_by,
+    currentCountedAt: row.current_counted_at ?? currentRound?.counted_at ?? null,
+    currentCountedBy: row.current_counted_by ?? currentRound?.counted_by ?? null,
     updatedAt: row.updated_at,
     updatedBy: row.updated_by,
     lineCount: Number(row.line_count ?? lines?.length ?? 0),
@@ -396,6 +399,39 @@ export async function createStocktake(client, { requestContext, payload }) {
   }, { revealExpected: false }) });
 }
 
+export async function copyStocktake(client, { requestContext, stocktakeId, payload }) {
+  const loaded = await loadLocked(client, requestContext, stocktakeId);
+  if (!loaded.ok) return loaded;
+  const row = loaded.row;
+  if (!revisionMatches(row, payload?.expectedRevision)) {
+    return failure('STOCKTAKE_REVISION_CONFLICT', 'Stocktake revision is stale');
+  }
+  const lines = await repository.listStocktakeLines(client, {
+    installationId: row.installation_id,
+    stocktakeId: row.id,
+    roundNumber: Number(row.current_round),
+    forUpdate: false,
+  });
+  if (lines.length < 1) return failure('STOCKTAKE_SCOPE_NOT_AVAILABLE', 'Stocktake has no scope to copy');
+  const created = await createStocktake(client, {
+    requestContext,
+    payload: {
+      warehouseId: row.warehouse_id,
+      note: `Sao chép từ ${row.stocktake_number}`,
+      scopes: lines.map((line) => ({
+        locationId: line.location_id,
+        baseVariantId: line.base_variant_id,
+        lotId: line.lot_id,
+      })),
+    },
+  });
+  if (!created.ok) return created;
+  return Object.freeze({
+    ...created,
+    sourceStocktakeId: row.id,
+  });
+}
+
 export async function countStocktake(client, { requestContext, stocktakeId, payload }) {
   const loaded = await loadLocked(client, requestContext, stocktakeId);
   if (!loaded.ok) return loaded;
@@ -466,6 +502,83 @@ export async function countStocktake(client, { requestContext, stocktakeId, payl
     warehouse_code: row.warehouse_code,
     warehouse_name: row.warehouse_name,
   }, { revealExpected: false }) });
+}
+
+export async function annotateStocktake(client, { requestContext, stocktakeId, payload }) {
+  const loaded = await loadLocked(client, requestContext, stocktakeId);
+  if (!loaded.ok) return loaded;
+  const row = loaded.row;
+  if (!['submitted', 'approved'].includes(row.status)) {
+    return failure('INVALID_STATUS_TRANSITION', 'Line reason and note can only be updated after submission and before posting');
+  }
+  if (!revisionMatches(row, payload?.expectedRevision)) {
+    return failure('STOCKTAKE_REVISION_CONFLICT', 'Stocktake revision is stale');
+  }
+  const lines = await repository.listStocktakeLines(client, {
+    installationId: row.installation_id,
+    stocktakeId: row.id,
+    roundNumber: Number(row.current_round),
+    forUpdate: true,
+  });
+  if (!Array.isArray(payload?.annotations) || payload.annotations.length < 1 || payload.annotations.length > lines.length) {
+    return failure('INVALID_STOCKTAKE_ANNOTATIONS', 'At least one current-round line annotation is required');
+  }
+  const known = new Set(lines.map((line) => line.id));
+  const seen = new Set();
+  const annotations = [];
+  for (let index = 0; index < payload.annotations.length; index += 1) {
+    const annotation = payload.annotations[index];
+    if (!isUuid(annotation?.lineId) || !known.has(annotation.lineId) || seen.has(annotation.lineId)) {
+      return failure('INVALID_STOCKTAKE_ANNOTATION_LINE', `Annotation line ${index + 1} is invalid or duplicated`);
+    }
+    const reason = optionalLineText(
+      annotation.reason,
+      500,
+      'INVALID_STOCKTAKE_LINE_REASON',
+      `Dòng ${index + 1}: Lý do`,
+    );
+    if (!reason.ok) return reason;
+    const note = optionalLineText(
+      annotation.note,
+      2000,
+      'INVALID_STOCKTAKE_LINE_NOTE',
+      `Dòng ${index + 1}: Ghi chú`,
+    );
+    if (!note.ok) return note;
+    seen.add(annotation.lineId);
+    annotations.push({
+      id: annotation.lineId,
+      count_reason: reason.value,
+      count_note: note.value,
+    });
+  }
+  const beforeData = mapStocktake(row, {
+    lines,
+    revealExpected: true,
+  });
+  const updated = await repository.updateLineAnnotations(client, {
+    installationId: row.installation_id,
+    stocktakeId: row.id,
+    roundNumber: Number(row.current_round),
+    annotations,
+  });
+  if (updated.length !== annotations.length) {
+    return failure('STOCKTAKE_ANNOTATION_CONFLICT', 'Stocktake annotations changed while saving', true);
+  }
+  const next = await repository.touchStocktake(client, {
+    installationId: row.installation_id,
+    stocktakeId: row.id,
+    actorId: actorId(requestContext),
+  });
+  return Object.freeze({
+    ok: true,
+    beforeData,
+    stocktake: await hydrate(client, {
+      ...next,
+      warehouse_code: row.warehouse_code,
+      warehouse_name: row.warehouse_name,
+    }, { revealExpected: true }),
+  });
 }
 
 export async function submitStocktake(client, { requestContext, stocktakeId, payload }) {

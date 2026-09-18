@@ -98,6 +98,8 @@ export type Stocktake = {
   reversalReason: string | null;
   createdAt: string;
   createdBy: string;
+  currentCountedAt?: string | null;
+  currentCountedBy?: string | null;
   updatedAt: string;
   updatedBy: string;
   lineCount: number;

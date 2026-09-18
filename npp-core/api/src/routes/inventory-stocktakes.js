@@ -163,7 +163,9 @@ async function authenticateAndAuthorize(req, res, options, permission) {
 function eventTypeFor(action) {
   return {
     create: 'inventory.stocktake.created',
+    copy: 'inventory.stocktake.copied',
     count: 'inventory.stocktake.counted',
+    annotate: 'inventory.stocktake.annotated',
     submit: 'inventory.stocktake.submitted',
     recount: 'inventory.stocktake.recount_required',
     approve: 'inventory.stocktake.approved',
@@ -216,6 +218,7 @@ async function executeIdempotentMutation(req, res, options, {
               revision: stocktake.revision,
               inventoryMovementId: stocktake.inventoryMovementId,
               reversalMovementId: stocktake.reversalMovementId,
+              sourceStocktakeId: result.sourceStocktakeId ?? null,
             };
             await insertAuditRecord(client, buildAuditRecord({
               requestContext,
@@ -362,12 +365,14 @@ export async function handleInventoryStocktakeRoutes(req, res, options) {
     return true;
   }
 
-  const actionMatch = /^\/api\/inventory\/stocktakes\/([0-9a-f-]+)\/(count|submit|recount|approve|post|cancel|reverse)$/i.exec(pathname);
+  const actionMatch = /^\/api\/inventory\/stocktakes\/([0-9a-f-]+)\/(count|annotate|submit|recount|approve|post|cancel|reverse|copy)$/i.exec(pathname);
   if (req.method === 'POST' && actionMatch) {
     const stocktakeId = actionMatch[1];
     const action = actionMatch[2].toLowerCase();
     const permission = {
       count: PERMISSIONS.count,
+      annotate: PERMISSIONS.count,
+      copy: PERMISSIONS.create,
       submit: PERMISSIONS.submit,
       recount: PERMISSIONS.approve,
       approve: PERMISSIONS.approve,
@@ -382,6 +387,12 @@ export async function handleInventoryStocktakeRoutes(req, res, options) {
 
     const mutations = {
       count: (client, key) => stocktakeService.countStocktake(client, {
+        requestContext, stocktakeId, payload, idempotencyKey: key,
+      }),
+      annotate: (client, key) => stocktakeService.annotateStocktake(client, {
+        requestContext, stocktakeId, payload, idempotencyKey: key,
+      }),
+      copy: (client, key) => stocktakeService.copyStocktake(client, {
         requestContext, stocktakeId, payload, idempotencyKey: key,
       }),
       submit: (client, key) => stocktakeService.submitStocktake(client, {
@@ -409,6 +420,7 @@ export async function handleInventoryStocktakeRoutes(req, res, options) {
       route: `POST /api/inventory/stocktakes/:id/${action}`,
       payload: { stocktakeId, ...payload },
       action,
+      statusCode: action === 'copy' ? 201 : 200,
       mutate: mutations[action],
     });
     return true;

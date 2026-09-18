@@ -12,6 +12,10 @@ const lineDetailsMigration = readFileSync(
   new URL('../../../database/migrations/inventory/138_inventory_stocktake_line_details.sql', import.meta.url),
   'utf8',
 );
+const lineAnnotationMigration = readFileSync(
+  new URL('../../../database/migrations/inventory/139_inventory_stocktake_line_annotation.sql', import.meta.url),
+  'utf8',
+);
 const routeSource = readFileSync(
   new URL('../src/routes/inventory-stocktakes.js', import.meta.url),
   'utf8',
@@ -57,6 +61,14 @@ test('stocktake line details migration persists reason/note and locks completed 
   assert.match(lineDetailsMigration, /header_status NOT IN \('draft', 'recount_required'\)/);
   assert.match(lineDetailsMigration, /OLD\.count_reason IS DISTINCT FROM NEW\.count_reason/);
   assert.match(lineDetailsMigration, /OLD\.count_note IS DISTINCT FROM NEW\.count_note/);
+});
+
+test('stocktake line annotation migration only opens controlled reason/note writes before posting', () => {
+  assert.match(lineAnnotationMigration, /write_context = 'annotation'/);
+  assert.match(lineAnnotationMigration, /header_status IN \('submitted', 'approved'\)/);
+  assert.match(lineAnnotationMigration, /stocktake_annotation_update_invalid/);
+  assert.match(lineAnnotationMigration, /OLD\.final_delta IS DISTINCT FROM NEW\.final_delta/);
+  assert.match(lineAnnotationMigration, /OLD\.posted_scope_version IS DISTINCT FROM NEW\.posted_scope_version/);
 });
 
 test('stocktake line comparison status never leaks the hidden system quantity', () => {
@@ -149,7 +161,7 @@ test('stocktake large-write path is set-based and reuses the canonical request i
 test('stocktake route and service enforce blind count, independent approval and guarded reversal', () => {
   assert.match(routeSource, /core\.stocktake\.count/);
   assert.match(routeSource, /core\.stocktake\.approve/);
-  assert.match(routeSource, /count\|submit\|recount\|approve\|post\|cancel\|reverse/);
+  assert.match(routeSource, /count\|annotate\|submit\|recount\|approve\|post\|cancel\|reverse\|copy/);
   assert.match(serviceSource, /STOCKTAKE_SELF_APPROVAL_DENIED/);
   assert.match(serviceSource, /STOCKTAKE_SCOPE_CHANGED/);
   assert.match(serviceSource, /STOCKTAKE_REVERSAL_DOWNSTREAM_CONFLICT/);
@@ -167,4 +179,18 @@ test('stocktake count payload stores per-line reason and note through the set-ba
   assert.match(stocktakeRepositorySource, /item\.count_note/);
   assert.match(stocktakeRepositorySource, /count_reason = input\.count_reason/);
   assert.match(stocktakeRepositorySource, /count_note = input\.count_note/);
+});
+
+
+test('stocktake copy and annotation stay backend-owned and audited', () => {
+  assert.match(serviceSource, /export async function copyStocktake/);
+  assert.match(serviceSource, /Sao chép từ/);
+  assert.match(serviceSource, /createStocktake\(client/);
+  assert.match(serviceSource, /export async function annotateStocktake/);
+  assert.match(serviceSource, /updateLineAnnotations/);
+  assert.match(stocktakeRepositorySource, /npp\.stocktake_write_context', 'annotation'/);
+  assert.match(routeSource, /inventory\.stocktake\.copied/);
+  assert.match(routeSource, /inventory\.stocktake\.annotated/);
+  assert.match(routeSource, /copy: PERMISSIONS\.create/);
+  assert.match(routeSource, /annotate: PERMISSIONS\.count/);
 });
