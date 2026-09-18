@@ -1,0 +1,277 @@
+name: VPS production DB migrations 138-139
+
+on:
+  workflow_dispatch:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: vps-production-db-migration
+  cancel-in-progress: false
+
+jobs:
+  migrate-138-139:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.number == 5 &&
+        github.event.comment.body == '/migrate-vps-production-138-139' &&
+        contains(fromJSON('["binhnxwjfjxm","khuongbinhinfo-a11y"]'), github.actor)
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      VPS_DB_HOST: ${{ vars.VPS_DB_HOST }}
+      VPS_SSH_USER: ${{ vars.VPS_SSH_USER }}
+
+    steps:
+      - name: Validate exact issue command
+        if: github.event_name == 'issue_comment'
+        shell: bash
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          test "$COMMENT_BODY" = '/migrate-vps-production-138-139'
+
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact origin/main SHA and migration contract
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          test "$(git rev-parse --is-shallow-repository)" = "false"
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          test -s database/migrations/inventory/138_inventory_stocktake_line_details.sql
+          test -s database/migrations/inventory/139_inventory_stocktake_line_annotation.sql
+          grep -q "138_inventory_stocktake_line_details" npp-core/api/src/migrations/index.js
+          grep -q "139_inventory_stocktake_line_annotation" npp-core/api/src/migrations/index.js
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare DB SSH credential
+        id: ssh
+        shell: bash
+        env:
+          VPS_DB_SSH_KEY: ${{ secrets.VPS_DB_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$VPS_DB_HOST"
+          test -n "$VPS_SSH_USER"
+          test -n "$VPS_DB_SSH_KEY"
+          umask 077
+          key="$RUNNER_TEMP/vps-db.key"
+          printf '%s\n' "$VPS_DB_SSH_KEY" > "$key"
+          chmod 600 "$key"
+          ssh-keygen -y -f "$key" >/dev/null
+          known_hosts="$RUNNER_TEMP/vps-db-known-hosts"
+          ssh-keyscan -T 10 -H "$VPS_DB_HOST" > "$known_hosts" 2>/dev/null
+          test -s "$known_hosts"
+          chmod 600 "$known_hosts"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+          echo "known_hosts=$known_hosts" >> "$GITHUB_OUTPUT"
+
+      - name: Copy exact migration SQL to DB VPS
+        shell: bash
+        env:
+          SSH_KEY: ${{ steps.ssh.outputs.key }}
+          KNOWN_HOSTS: ${{ steps.ssh.outputs.known_hosts }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          scp -i "$SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN_HOSTS" \
+            database/migrations/inventory/138_inventory_stocktake_line_details.sql \
+            "$VPS_SSH_USER@$VPS_DB_HOST:/tmp/npp-138-${SOURCE_SHA}.sql"
+          scp -i "$SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN_HOSTS" \
+            database/migrations/inventory/139_inventory_stocktake_line_annotation.sql \
+            "$VPS_SSH_USER@$VPS_DB_HOST:/tmp/npp-139-${SOURCE_SHA}.sql"
+
+      - name: Fresh backup, restore rehearsal, migrate production and verify
+        id: migrate
+        shell: bash
+        env:
+          SSH_KEY: ${{ steps.ssh.outputs.key }}
+          KNOWN_HOSTS: ${{ steps.ssh.outputs.known_hosts }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/vps-production-migration-138-139.txt"
+          ssh -i "$SSH_KEY" -o BatchMode=yes -o ConnectTimeout=10 -o ConnectionAttempts=1 \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN_HOSTS" \
+            "$VPS_SSH_USER@$VPS_DB_HOST" \
+            "bash -s -- '$SOURCE_SHA' '$GITHUB_RUN_ID'" > "$out" <<'REMOTE'
+          set -euo pipefail
+          source_sha="$1"
+          run_id="$2"
+          db="npp_production"
+          predecessor_id="137_document_print_template_font_size"
+          migration_138="138_inventory_stocktake_line_details"
+          migration_139="139_inventory_stocktake_line_annotation"
+          sql_138="/tmp/npp-138-${source_sha}.sql"
+          sql_139="/tmp/npp-139-${source_sha}.sql"
+          rehearsal="npp_migration_rehearsal_${run_id}"
+          backup_dir="/var/backups/npp/migrations"
+          backup_file="${backup_dir}/${source_sha}-${run_id}.dump"
+
+          sudo -n true
+          for command in psql pg_dump pg_restore createdb dropdb; do command -v "$command" >/dev/null; done
+          test -s "$sql_138"
+          test -s "$sql_139"
+          chmod 0644 "$sql_138" "$sql_139"
+
+          cleanup() {
+            sudo -n -u postgres dropdb --if-exists "$rehearsal" >/dev/null 2>&1 || true
+            rm -f "$sql_138" "$sql_139" || true
+          }
+          trap cleanup EXIT
+
+          scalar() {
+            local target="$1"
+            local query="$2"
+            sudo -n -u postgres psql -XAt -d "$target" -c "$query"
+          }
+
+          line_count() {
+            scalar "$1" "SELECT count(*) FROM inventory.stocktake_lines"
+          }
+
+          verify_target() {
+            local target="$1"
+            local registry_138 registry_139 columns constraints trigger_count annotation_guard posting_guard
+            registry_138="$(scalar "$target" "SELECT count(*) FROM shared.schema_migrations WHERE id='${migration_138}'")"
+            registry_139="$(scalar "$target" "SELECT count(*) FROM shared.schema_migrations WHERE id='${migration_139}'")"
+            columns="$(scalar "$target" "SELECT count(*) FROM information_schema.columns WHERE table_schema='inventory' AND table_name='stocktake_lines' AND column_name IN ('count_reason','count_note')")"
+            constraints="$(scalar "$target" "SELECT count(*) FROM pg_constraint WHERE conrelid='inventory.stocktake_lines'::regclass AND conname IN ('stocktake_lines_count_reason_length','stocktake_lines_count_note_length')")"
+            trigger_count="$(scalar "$target" "SELECT count(*) FROM pg_trigger WHERE tgrelid='inventory.stocktake_lines'::regclass AND tgname='stocktake_lines_history_guard' AND NOT tgisinternal")"
+            annotation_guard="$(scalar "$target" "SELECT CASE WHEN pg_get_functiondef('inventory.guard_stocktake_history()'::regprocedure) LIKE '%write_context = ''annotation''%' THEN 1 ELSE 0 END")"
+            posting_guard="$(scalar "$target" "SELECT CASE WHEN pg_get_functiondef('inventory.guard_stocktake_history()'::regprocedure) LIKE '%write_context = ''posting''%' THEN 1 ELSE 0 END")"
+            test "$registry_138" = 1
+            test "$registry_139" = 1
+            test "$columns" = 2
+            test "$constraints" = 2
+            test "$trigger_count" = 1
+            test "$annotation_guard" = 1
+            test "$posting_guard" = 1
+          }
+
+          apply_migration() {
+            local target="$1"
+            local migration_id="$2"
+            local migration_sql="$3"
+            local already
+            already="$(scalar "$target" "SELECT count(*) FROM shared.schema_migrations WHERE id='${migration_id}'")"
+            if [ "$already" = 1 ]; then
+              return 0
+            fi
+            sudo -n -u postgres psql -X -v ON_ERROR_STOP=1 -d "$target" >/dev/null <<SQL
+          BEGIN;
+          SET LOCAL lock_timeout = '5s';
+          SET LOCAL statement_timeout = '10min';
+          \i '$migration_sql'
+          INSERT INTO shared.schema_migrations (id)
+          VALUES ('$migration_id')
+          ON CONFLICT (id) DO NOTHING;
+          COMMIT;
+          SQL
+          }
+
+          test "$(scalar postgres "SELECT count(*) FROM pg_database WHERE datname='${db}'")" = 1
+          test "$(scalar "$db" "SELECT count(*) FROM shared.schema_migrations WHERE id='${predecessor_id}'")" = 1
+
+          already_138="$(scalar "$db" "SELECT count(*) FROM shared.schema_migrations WHERE id='${migration_138}'")"
+          already_139="$(scalar "$db" "SELECT count(*) FROM shared.schema_migrations WHERE id='${migration_139}'")"
+          if [ "$already_138" = 1 ] && [ "$already_139" = 1 ]; then
+            verify_target "$db"
+            echo "MIGRATION_138=ALREADY_APPLIED"
+            echo "MIGRATION_139=ALREADY_APPLIED"
+            echo "SOURCE_SHA=$source_sha"
+            echo "PRODUCTION_VERIFY=PASS"
+            exit 0
+          fi
+
+          db_bytes="$(scalar postgres "SELECT pg_database_size('${db}')")"
+          free_kb="$(df -Pk / | awk 'NR==2 {print $4}')"
+          free_bytes=$((free_kb * 1024))
+          required_bytes=$((db_bytes * 2))
+          test "$db_bytes" -gt 0
+          test "$free_bytes" -gt "$required_bytes"
+
+          sudo -n install -d -o postgres -g postgres -m 0700 "$backup_dir"
+          sudo -n -u postgres pg_dump -Fc -d "$db" -f "$backup_file"
+          backup_bytes="$(sudo -n stat -c '%s' "$backup_file")"
+          test "$backup_bytes" -gt 0
+
+          sudo -n -u postgres dropdb --if-exists "$rehearsal"
+          sudo -n -u postgres createdb --template=template0 "$rehearsal"
+          sudo -n -u postgres pg_restore --exit-on-error --no-owner --no-privileges --dbname="$rehearsal" "$backup_file"
+
+          rehearsal_lines_before="$(line_count "$rehearsal")"
+          apply_migration "$rehearsal" "$migration_138" "$sql_138"
+          apply_migration "$rehearsal" "$migration_139" "$sql_139"
+          verify_target "$rehearsal"
+          test "$(line_count "$rehearsal")" = "$rehearsal_lines_before"
+          sudo -n -u postgres dropdb "$rehearsal"
+
+          production_lines_before="$(line_count "$db")"
+          apply_migration "$db" "$migration_138" "$sql_138"
+          apply_migration "$db" "$migration_139" "$sql_139"
+          verify_target "$db"
+          production_lines_after="$(line_count "$db")"
+          test "$production_lines_after" = "$production_lines_before"
+
+          apply_migration "$db" "$migration_138" "$sql_138"
+          apply_migration "$db" "$migration_139" "$sql_139"
+          verify_target "$db"
+          test "$(line_count "$db")" = "$production_lines_after"
+
+          echo "MIGRATION_138=$migration_138"
+          echo "MIGRATION_139=$migration_139"
+          echo "SOURCE_SHA=$source_sha"
+          echo "BACKUP_BYTES=$backup_bytes"
+          echo "BACKUP_LOCATION=DB_VPS_LOCAL"
+          echo "RESTORE_REHEARSAL=PASS"
+          echo "STOCKTAKE_LINE_ROWS_UNCHANGED=PASS"
+          echo "PRODUCTION_MIGRATION=APPLIED"
+          echo "PRODUCTION_RERUN_NOOP=PASS"
+          echo "PRODUCTION_VERIFY=PASS"
+          REMOTE
+          cat "$out"
+          echo "report=$out" >> "$GITHUB_OUTPUT"
+
+      - name: Publish sanitized migration evidence to Issue 958
+        if: always() && steps.migrate.outputs.report != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPORT_FILE: ${{ steps.migrate.outputs.report }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/migration-evidence.md"
+          {
+            echo "## VPS production migrations 138-139"
+            echo
+            echo "- Run ID: `$GITHUB_RUN_ID`"
+            echo "- Exact main SHA: `$SOURCE_SHA`"
+            echo '- Command: `/migrate-vps-production-138-139`'
+            echo "- Operation status: `${{ job.status }}`"
+            echo "- Secret values and database URLs are not included."
+            echo
+            echo '~~~text'
+            cat "$REPORT_FILE"
+            echo '~~~'
+          } > "$evidence"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/958/comments" \
+            -f body="$(cat "$evidence")" >/dev/null
