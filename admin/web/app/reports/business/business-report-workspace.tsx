@@ -150,6 +150,12 @@ export function BusinessReportWorkspace({
   const revenues = Array.isArray(report.summary.revenues) ? report.summary.revenues as Record<string, unknown>[] : [];
   const rows = report.breakdowns[selectedDimension] ?? [];
   const series = trendSeries(report.trend);
+  const latestDailyRevenue = series
+    .map((item) => {
+      const latest = item.rows[item.rows.length - 1];
+      return latest ? { currencyCode: item.currencyCode, date: latest.date, value: latest.value } : null;
+    })
+    .filter((item): item is { currencyCode: string; date: string; value: number } => item !== null);
   const productGroupOptions = report.classification.options.productGroups;
   const customerGroupOptions = report.classification.options.customerGroups;
   const totals = report.breakdownTotals[selectedDimension] ?? [];
@@ -298,35 +304,66 @@ export function BusinessReportWorkspace({
         <AdminKpiCard label="Khách mua" value={text(report.summary.buyerCount)} note="Khách có đơn hiệu lực." />
       </AdminKpiGrid>
 
-      <section className={`card ${styles.trendPanel}`} aria-labelledby="business-trend-title">
-        <div className={styles.sectionHeading}>
-          <h2 id="business-trend-title">Doanh thu theo ngày</h2>
-        </div>
-        {series.length ? (
-          <div className={styles.trendSeries}>
-            {series.map((item) => (
-              <figure className={styles.trendFigure} key={item.currencyCode}>
-                <div className={styles.trendMeta}>
-                  <strong>{item.currencyCode}</strong>
-                  <span>{item.rows.length} ngày có dữ liệu</span>
-                </div>
-                <svg className={styles.trendChart} viewBox="0 0 1000 180" role="img" aria-label={`Doanh thu theo ngày - ${item.currencyCode}`}>
-                  <line x1="0" y1="162" x2="1000" y2="162" className={styles.chartAxis} />
-                  <line x1="0" y1="90" x2="1000" y2="90" className={styles.chartGrid} />
-                  <line x1="0" y1="18" x2="1000" y2="18" className={styles.chartGrid} />
-                  <polyline points={item.pointsString} className={styles.chartLine} />
-                </svg>
-                <figcaption>
-                  <span>{item.rows[0]?.date}</span>
-                  <span>{item.rows[item.rows.length - 1]?.date}</span>
-                </figcaption>
-              </figure>
-            ))}
+      <div className={styles.overviewGrid}>
+        <section className={`card ${styles.trendPanel}`} aria-labelledby="business-trend-title">
+          <div className={styles.sectionHeading}>
+            <h2 id="business-trend-title">Doanh thu theo ngày</h2>
           </div>
-        ) : (
-          <p className={styles.emptyText}>Không phát sinh doanh thu trong kỳ.</p>
-        )}
-      </section>
+          {series.length ? (
+            <div className={styles.trendSeries}>
+              {series.map((item) => (
+                <figure className={styles.trendFigure} key={item.currencyCode}>
+                  <div className={styles.trendMeta}>
+                    <strong>{item.currencyCode}</strong>
+                    <span>{item.rows.length} ngày có dữ liệu</span>
+                  </div>
+                  <svg className={styles.trendChart} viewBox="0 0 1000 180" role="img" aria-label={`Doanh thu theo ngày - ${item.currencyCode}`}>
+                    <line x1="0" y1="162" x2="1000" y2="162" className={styles.chartAxis} />
+                    <line x1="0" y1="90" x2="1000" y2="90" className={styles.chartGrid} />
+                    <line x1="0" y1="18" x2="1000" y2="18" className={styles.chartGrid} />
+                    <polyline points={item.pointsString} className={styles.chartLine} />
+                  </svg>
+                  <figcaption>
+                    <span>{item.rows[0]?.date}</span>
+                    <span>{item.rows[item.rows.length - 1]?.date}</span>
+                  </figcaption>
+                </figure>
+              ))}
+            </div>
+          ) : (
+            <p className={styles.emptyText}>Không phát sinh doanh thu trong kỳ.</p>
+          )}
+        </section>
+
+        <aside className={`card ${styles.dailyRevenuePanel}`} aria-labelledby="daily-revenue-title">
+          <div className={styles.dailyRevenueHeading}>
+            <div>
+              <span>Tóm tắt ngày</span>
+              <h2 id="daily-revenue-title">Doanh thu ngày gần nhất</h2>
+            </div>
+            <small>{latestDailyRevenue.length ? `${latestDailyRevenue.length} loại tiền` : 'Chưa có dữ liệu'}</small>
+          </div>
+
+          {latestDailyRevenue.length ? (
+            <div className={styles.dailyRevenueList}>
+              {latestDailyRevenue.map((item) => (
+                <div className={styles.dailyRevenueLine} key={item.currencyCode}>
+                  <span>{item.currencyCode}</span>
+                  <strong>{money(item.value, item.currencyCode)}</strong>
+                  <small>{item.date}</small>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className={styles.dailyRevenueEmpty}>Chưa phát sinh doanh thu theo ngày.</p>
+          )}
+
+          <div className={styles.dailyRevenuePeriod}>
+            <span>Kỳ báo cáo</span>
+            <strong>{report.from} → {report.to}</strong>
+          </div>
+        </aside>
+      </div>
 
       <section className={`card ${styles.analysisPanel}`} aria-labelledby="business-analysis-title">
         <div className={styles.analysisHeader}>

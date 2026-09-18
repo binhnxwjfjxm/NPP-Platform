@@ -40,6 +40,10 @@ test('Kinh doanh dùng client workspace để đổi chiều tại chỗ trên d
   assert.match(workspace, /onClick=\{\(\) => selectRow\(row, index\)\}/);
   assert.match(workspace, /Đối soát/);
   assert.match(workspace, /trendChart/);
+  assert.match(workspace, /className=\{styles\.overviewGrid\}/);
+  assert.match(workspace, /Doanh thu ngày gần nhất/);
+  assert.match(workspace, /latestDailyRevenue/);
+  assert.match(workspaceStyles, /\.overviewGrid\{display:grid;grid-template-columns:minmax\(0,3fr\) minmax\(230px,1fr\)/);
   assert.match(workspaceStyles, /\.analysisLayout\.withDetail/);
   assert.match(workspaceStyles, /\.desktopAnalysisToolbar/);
   assert.match(workspaceStyles, /@media\(min-width:761px\).*\.workspace :global\(\.adminKpiCard\)\{min-height:70px/s);
@@ -83,6 +87,8 @@ test('Kinh doanh trên điện thoại giữ danh sách gọn và tab cuộn nga
   assert.match(workspace, /<dt>Thay đổi<\/dt>/);
   assert.match(workspace, /Có \{report\.warnings\.length\} điểm cần lưu ý/);
   assert.match(workspaceStyles, /@media\(max-width:760px\).*\.dimensionTabs\{display:flex/s);
+  assert.match(workspaceStyles, /@media\(max-width:760px\).*\.overviewGrid\{display:block/s);
+  assert.match(workspaceStyles, /@media\(max-width:760px\).*\.dailyRevenuePanel\{display:none\}/s);
   assert.match(workspaceStyles, /@media\(max-width:760px\).*\.desktopTableWrap\{display:none\}/s);
   assert.match(workspaceStyles, /@media\(max-width:760px\).*\.mobileList\{display:block\}/s);
   assert.match(workspaceStyles, /@media\(max-width:760px\).*\.detailPanel\{display:none\}/s);
