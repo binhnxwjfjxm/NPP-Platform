@@ -13,6 +13,8 @@ const actionRoute = readFileSync(new URL('../app/api/inventory/stocktakes/[id]/[
 const sharedRoute = readFileSync(new URL('../app/api/inventory/_shared.ts', import.meta.url), 'utf8');
 const nav = readFileSync(new URL('../app/components/app-shell-core.tsx', import.meta.url), 'utf8');
 const importActions = readFileSync(new URL('../app/operations/data-exchange/data-exchange-import-actions.ts', import.meta.url), 'utf8');
+const printDock = readFileSync(new URL('../app/inventory/stocktakes/StocktakePrintDock.tsx', import.meta.url), 'utf8');
+const workspaceCss = readFileSync(new URL('../app/inventory/stocktakes/stocktake-workspace.module.css', import.meta.url), 'utf8');
 
 test('stocktake UI keeps blind count and presents the office workflow', () => {
   assert.match(workspace, /actions=\{/);
@@ -132,8 +134,8 @@ test('stocktake workspace finishes the result review workflow without rendering 
 });
 
 test('stocktake workspace exports the exact open result and can copy scope to a fresh stocktake', () => {
-  assert.match(workspace, /Xuất Excel/);
-  assert.match(workspace, /Xuất CSV/);
+  assert.match(workspace, /Kết quả Excel/);
+  assert.match(workspace, /Kết quả CSV/);
   assert.match(workspace, /\/api\/data-exchange\/xlsx/);
   assert.match(workspace, /RESULT_HEADERS/);
   assert.match(workspace, /Tồn hệ thống/);
@@ -153,4 +155,42 @@ test('stocktake list shows creator and current counter from canonical stocktake 
   assert.match(workspace, /Tạo:/);
   assert.match(workspace, /Kiểm:/);
   assert.match(workspace, /Người kiểm hiện tại/);
+});
+
+
+test('stocktake file actions stay inside the open voucher and only fill matching count rows', () => {
+  assert.match(workspace, /Xuất file phiếu/);
+  assert.match(workspace, /Nhập file/);
+  assert.match(workspace, /readTable\(file, \['sku', 'actualCount'\]\)/);
+  assert.match(workspace, /if \(!actualCount\) continue/);
+  assert.match(workspace, /normalizedMatchValue\(line\.baseSku\) === sku/);
+  assert.match(workspace, /normalizedMatchValue\(line\.lotCode\) === lotCode/);
+  assert.match(workspace, /normalizedMatchValue\(line\.locationCode\) === locationCode/);
+  assert.match(workspace, /setCounts\(\(current\) => \(\{ \.\.\.current, \.\.\.countPatch \}\)\)/);
+  assert.match(workspace, /vẫn có thể sửa tay/);
+  assert.match(workspace, /File không có tồn hệ thống để giữ nguyên đếm mù/);
+  assert.doesNotMatch(printDock, /operations\/data-exchange/);
+  assert.doesNotMatch(printDock, /Nhập\/xuất kiểm kê/);
+});
+
+test('stocktake lot picker searches like an order-entry selector instead of rendering one long checklist', () => {
+  assert.match(workspace, /Tìm tên sản phẩm, SKU hoặc mã lô/);
+  assert.match(workspace, /filteredScopeGroups/);
+  assert.match(workspace, /Chọn tất cả kết quả/);
+  assert.match(workspace, /Bỏ chọn kết quả/);
+  assert.match(workspace, /scopeChips/);
+  assert.match(workspace, /scopeResults/);
+  assert.match(workspace, /SCOPE_PICKER_RESULT_LIMIT = 60/);
+  assert.match(workspace, /visibleScopeGroups/);
+  assert.match(workspace, /Đang hiển thị 60 kết quả đầu/);
+  assert.match(workspace, /Đã chọn \{selectedScopeGroups\.length\}/);
+});
+
+test('stocktake action buttons are compact and keep subtle press depth', () => {
+  assert.match(workspaceCss, /min-height: 36px/);
+  assert.match(workspaceCss, /box-shadow: 0 2px 5px/);
+  assert.match(workspaceCss, /translateY\(-1px\)/);
+  assert.match(workspaceCss, /translateY\(1px\)/);
+  assert.match(workspaceCss, /\.scopeResults/);
+  assert.match(workspaceCss, /max-height: 360px/);
 });

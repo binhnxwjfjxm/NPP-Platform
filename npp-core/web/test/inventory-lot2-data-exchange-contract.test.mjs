@@ -8,14 +8,17 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
 const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
 
-test('Kiểm kê kho nối trực tiếp nền nhập/xuất và lịch sử file hiện có', () => {
+test('Kiểm kê kho nhập file ngay trên phiếu và không điều hướng sang màn Xuất/Nhập dữ liệu', () => {
+  const workspace = read('app/inventory/stocktakes/stocktake-workspace.tsx');
   const dock = read('app/inventory/stocktakes/StocktakePrintDock.tsx');
   const exchange = read('app/operations/data-exchange/data-exchange-view.tsx');
   const route = read('app/api/file-operations/[...segments]/route.ts');
-  assert.match(dock, /\/operations\/data-exchange\?tab=stocktake/);
-  assert.match(dock, /\/operations\/import-export-history/);
+  assert.match(workspace, /Xuất file phiếu/);
+  assert.match(workspace, /Nhập file/);
+  assert.match(workspace, /readTable\(file, \['sku', 'actualCount'\]\)/);
+  assert.doesNotMatch(dock, /\/operations\/data-exchange\?tab=stocktake/);
+  assert.doesNotMatch(dock, /\/operations\/import-export-history/);
   assert.match(exchange, /Nhập số kiểm kê thực tế/);
-  assert.match(exchange, /Chưa gửi duyệt, chưa ghi sổ tồn/);
   assert.match(route, /sanitizeStocktakeExport/);
   assert.match(route, /systemQuantity:\s*_hidden/);
 });
