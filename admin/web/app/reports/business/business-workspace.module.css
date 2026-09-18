@@ -6,6 +6,24 @@
 .dataStatus{display:flex;align-items:center;gap:.4rem;width:max-content;max-width:100%;margin:.1rem 0 .5rem;padding:.3rem .55rem;border-radius:999px;background:#f4f7f2;color:#35623f;font-size:.66rem;font-weight:800}
 .statusDot{width:7px;height:7px;border-radius:50%;background:#4f8b59}
 .kpis{margin:0 0 .55rem}
+.overviewGrid{display:grid;grid-template-columns:minmax(0,3fr) minmax(230px,1fr);gap:.55rem;align-items:stretch;margin-bottom:.55rem}
+.overviewGrid .trendPanel{height:100%;margin-bottom:0}
+.dailyRevenuePanel{display:flex;min-width:0;flex-direction:column;gap:.5rem;margin:0;padding:.62rem .7rem}
+.dailyRevenueHeading{display:flex;align-items:flex-start;justify-content:space-between;gap:.55rem}
+.dailyRevenueHeading>div{min-width:0}
+.dailyRevenueHeading span{display:block;color:#98600f;font-size:.58rem;font-weight:850;letter-spacing:.04em;text-transform:uppercase}
+.dailyRevenueHeading h2{margin:.05rem 0 0;color:#35271e;font-size:.82rem;line-height:1.2}
+.dailyRevenueHeading small{flex:0 0 auto;color:#81766d;font-size:.58rem;font-weight:700;white-space:nowrap}
+.dailyRevenueList{display:grid;gap:0}
+.dailyRevenueLine{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:baseline;gap:.08rem .45rem;padding:.42rem 0;border-top:1px solid rgba(121,86,47,.08)}
+.dailyRevenueLine:first-child{border-top:0;padding-top:.15rem}
+.dailyRevenueLine>span{color:#81766d;font-size:.6rem;font-weight:800}
+.dailyRevenueLine strong{overflow:hidden;color:#3f3025;font-size:.92rem;font-weight:850;text-align:right;text-overflow:ellipsis;white-space:nowrap}
+.dailyRevenueLine small{grid-column:1/-1;color:#8a827a;font-size:.56rem;text-align:right}
+.dailyRevenuePeriod{display:grid;gap:.12rem;margin-top:auto;padding-top:.5rem;border-top:1px solid rgba(121,86,47,.08)}
+.dailyRevenuePeriod span{color:#81766d;font-size:.58rem;font-weight:700}
+.dailyRevenuePeriod strong{color:#4b3829;font-size:.64rem;font-weight:820}
+.dailyRevenueEmpty{margin:0;color:#746d66;font-size:.65rem;line-height:1.4}
 .trendPanel,.analysisPanel,.warningPanel{margin-bottom:.55rem}
 .trendPanel{padding:.62rem .75rem}
 .sectionHeading,.analysisHeader{display:flex;align-items:flex-start;justify-content:space-between;gap:.7rem}
@@ -99,6 +117,7 @@
 }
 
 @media(max-width:980px) and (min-width:761px){
+  .overviewGrid{grid-template-columns:minmax(0,2fr) minmax(220px,1fr)}
   .analysisLayout.withDetail{grid-template-columns:minmax(0,1fr)}
   .detailPanel{border-top:1px solid rgba(121,86,47,.1);border-left:0}
   .desktopAnalysisToolbar{align-items:stretch;flex-wrap:wrap}
@@ -106,6 +125,9 @@
 }
 
 @media(max-width:760px){
+  .overviewGrid{display:block;margin-bottom:0}
+  .overviewGrid .trendPanel{height:auto;margin-bottom:.75rem}
+  .dailyRevenuePanel{display:none}
   .toolbarActions{width:100%;justify-content:flex-end}
   .secondaryAction{min-height:44px;font-size:.72rem}
   .dataStatus{margin:.25rem 0 .65rem;padding:.36rem .6rem;font-size:.68rem}
