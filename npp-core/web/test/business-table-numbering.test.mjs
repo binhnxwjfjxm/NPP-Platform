@@ -102,9 +102,9 @@ test('primary business list tables use the shared STT convention', () => {
   assert.doesNotMatch(returnCredits, /Customer Return đã nhận/);
 
   const inventoryBalances = read(rolloutPaths[9]);
-  assert.match(inventoryBalances, /visibleBalances = filteredBalances\.slice\(pageStart, pageStart \+ INVENTORY_TABLE_PAGE_SIZE\)/);
-  assert.match(inventoryBalances, /visibleBalances\.map\(\(balance, rowIndex\)/);
-  assert.match(inventoryBalances, /BusinessTableSequenceCell rowIndex=\{pageStart \+ rowIndex\}/);
+  assert.match(inventoryBalances, /groupBalancesByWarehouseSku\(filteredBalances\)/);
+  assert.match(inventoryBalances, /visibleBalanceGroups\.flatMap\(\(group\) => group\.rows\.map\(\(balance, groupRowIndex\)/);
+  assert.match(inventoryBalances, /BusinessTableSequenceCell rowIndex=\{group\.startIndex \+ groupRowIndex\}/);
 
   const scopedInventory = read(rolloutPaths[11]);
   assert.match(scopedInventory, /filteredBalances\.map\(\(balance, rowIndex\)/);
