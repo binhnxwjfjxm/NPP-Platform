@@ -48,6 +48,8 @@ test('inventory balance lookup exposes the same warehouse-level business hold to
   assert.match(route, /business_held_quantity: hold\?\.heldBaseQuantity/);
   assert.match(route, /business_available_quantity: hold\?\.availableBaseQuantity/);
   assert.match(route, /business_on_hand_quantity: hold\?\.onHandBaseQuantity/);
+  assert.match(route, /baseVariantIds: pageBaseVariantIds/);
+  assert.match(read('../src/services/inventory-business-holds.js'), /balance\.base_variant_id = ANY\(\$5::uuid\[\]\)/);
   assert.match(repository, /balance\.reserved_quantity/);
   assert.match(repository, /balance\.available_quantity/);
 });
