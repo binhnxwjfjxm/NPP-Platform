@@ -40,6 +40,18 @@ test('held-order breakdown excludes current order from both exact and demand hol
   assert.match(source, /demand\.state = 'ACTIVE'/);
 });
 
+test('inventory balance lookup exposes the same warehouse-level business hold totals', () => {
+  const route = read('../src/routes/inventory-core.js');
+  const repository = read('../src/db/repositories/inventory-balance.js');
+
+  assert.match(route, /listWarehouseBusinessHoldSummary/);
+  assert.match(route, /business_held_quantity: hold\?\.heldBaseQuantity/);
+  assert.match(route, /business_available_quantity: hold\?\.availableBaseQuantity/);
+  assert.match(route, /business_on_hand_quantity: hold\?\.onHandBaseQuantity/);
+  assert.match(repository, /balance\.reserved_quantity/);
+  assert.match(repository, /balance\.available_quantity/);
+});
+
 test('inventory held-order route is read-only, scoped and permission guarded', () => {
   const route = read('../src/routes/inventory-holds.js');
   const router = read('../src/routes/inventory.js');
