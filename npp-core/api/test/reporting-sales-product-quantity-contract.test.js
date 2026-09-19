@@ -128,13 +128,15 @@ test('Nguồn phân tích lấy Product cha, snapshot lượng lịch sử và L
   assert.match(route, /quantityDisplay: url\.searchParams\.get\('quantityDisplay'\)/);
 });
 
-test('Excel phân tích có một sheet và header hai tầng khi chọn cả Doanh thu + Sản lượng', async () => {
+test('Excel phân tích giữ header hai tầng và sinh Tổng hợp + nhiều sheet chi tiết', async () => {
   const source = await readApi('src/services/reporting-sales-export.js');
   assert.match(source, /sheet\.metrics\.length === 2/);
   assert.match(source, /groupLabel/);
   assert.match(source, /metricLabel/);
   assert.match(source, /mergeCells count=/);
   assert.match(source, /A2:A3/);
-  assert.match(source, /sheet1\.xml/);
-  assert.doesNotMatch(source, /sheet2\.xml/);
+  assert.match(source, /analysis-\$\{index \+ 1\}\.xml/);
+  assert.match(source, /worksheets\/sheet\$\{index \+ 1\}\.xml/);
+  assert.match(source, /sanitizeSheetName\('Tổng hợp'/);
+  assert.match(source, /buildAnalysisSheets/);
 });
