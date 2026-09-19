@@ -20,6 +20,7 @@ import {
   listInventoryMovementDrillDown,
   listInventoryMovementHistory,
 } from '../services/inventory-balance.js';
+import { listWarehouseBusinessHoldSummary } from '../services/inventory-business-holds.js';
 import * as warehouseRepository from '../db/repositories/warehouse.js';
 import { handleFulfillmentOperationRoutes } from './fulfillment-operations.js';
 import { handleFulfillmentReversalRoutes } from './fulfillment-reversal.js';
@@ -291,15 +292,40 @@ async function handleBalances(req, res, options, pathname, method) {
       return true;
     }
 
+    const warehouseId = url.searchParams.get('warehouseId') || null;
+    const baseVariantId = url.searchParams.get('baseVariantId') || null;
     const rows = await balanceRepository.listInventoryBalances(options.getPool(), {
       installationId: scopedRequestContext.installationId,
-      warehouseId: url.searchParams.get('warehouseId') || null,
-      baseVariantId: url.searchParams.get('baseVariantId') || null,
+      warehouseId,
+      baseVariantId,
       lotId: url.searchParams.get('lotId') || null,
       limit: parseInteger(url.searchParams.get('limit'), 500, 1000),
       offset: parseOffset(url.searchParams.get('offset')),
     });
-    writeSuccess(res, rows, options);
+    const pageBaseVariantIds = [...new Set(rows.map((row) => row.base_variant_id))];
+    const holds = rows.length > 0
+      ? await listWarehouseBusinessHoldSummary(options.getPool(), {
+          installationId: scopedRequestContext.installationId,
+          warehouseIds: scopedRequestContext.scopes?.warehouseIds ?? [],
+          warehouseId,
+          baseVariantId,
+          baseVariantIds: pageBaseVariantIds,
+        })
+      : [];
+    const holdByScope = new Map(holds.map((hold) => [
+      `${hold.warehouseId}:${hold.baseVariantId}`,
+      hold,
+    ]));
+    const enriched = rows.map((row) => {
+      const hold = holdByScope.get(`${row.warehouse_id}:${row.base_variant_id}`);
+      return {
+        ...row,
+        business_on_hand_quantity: hold?.onHandBaseQuantity ?? null,
+        business_held_quantity: hold?.heldBaseQuantity ?? null,
+        business_available_quantity: hold?.availableBaseQuantity ?? null,
+      };
+    });
+    writeSuccess(res, enriched, options);
     return true;
   } catch (error) {
     sendError(res, apiError(error.code, error.publicMessage, {}, false, error.statusCode), options.requestId, options.receivedAt);

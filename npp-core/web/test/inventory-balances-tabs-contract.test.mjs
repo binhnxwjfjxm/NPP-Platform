@@ -17,7 +17,7 @@ test('Tồn kho hides empty projection rows without removing warehouse history l
   assert.match(inventory, /function hasDisplayableBalance\(balance: InventoryBalance\): boolean/);
   assert.match(
     inventory,
-    /quantityToScaled\(balance\.on_hand_quantity\) !== 0n\s*\|\|\s*quantityToScaled\(balance\.reserved_quantity\) !== 0n/,
+    /quantityToScaled\(balance\.on_hand_quantity\) !== 0n\s*\|\|\s*quantityToScaled\(balance\.business_held_quantity \?\? balance\.reserved_quantity\) !== 0n/,
   );
   assert.match(inventory, /balances\.filter\(\(balance\) => hasDisplayableBalance\(balance\) && \(!normalizedSearch/);
   assert.match(inventory, /const candidate = balances\.find\(\(balance\) => \{/);

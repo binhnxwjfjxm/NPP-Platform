@@ -24,6 +24,17 @@ test('inventory table uses office-facing product and stock labels', () => {
   assert.doesNotMatch(workspace, />Khả dụng</);
 });
 
+test('inventory lookup shows warehouse business holds once per warehouse and base SKU group', () => {
+  assert.match(inventoryTypes, /business_held_quantity\?: string \| null;/);
+  assert.match(inventoryTypes, /business_available_quantity\?: string \| null;/);
+  assert.match(workspace, /groupBalancesByWarehouseSku/);
+  assert.match(workspace, /businessHoldKey\(balance\)/);
+  assert.match(workspace, /rowSpan=\{group\.rows\.length\}/);
+  assert.match(workspace, /balance\.business_held_quantity/);
+  assert.match(workspace, /balance\.business_available_quantity/);
+  assert.match(workspace, />Theo kho</);
+});
+
 test('package breakdown derives from the canonical conversion instead of a second stock quantity', () => {
   assert.match(workspace, /balance\.package_conversion_to_base/);
   assert.match(workspace, /const packageCount = quantityScaled \/ conversionScaled/);

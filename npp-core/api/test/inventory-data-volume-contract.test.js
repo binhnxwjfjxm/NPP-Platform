@@ -74,7 +74,10 @@ test('giao diện tồn kho tải đủ các trang dữ liệu và chỉ phân t
   assert.match(balances, /loadAllBalances/);
   assert.match(balances, /INVENTORY_TABLE_PAGE_SIZE = 100/);
   assert.match(balances, /limit=\$\{INVENTORY_BALANCE_BATCH_SIZE\}&offset=\$\{offset\}/);
-  assert.match(balances, /filteredBalances\.slice\(pageStart, pageStart \+ INVENTORY_TABLE_PAGE_SIZE\)/);
+  assert.match(balances, /groupBalancesByWarehouseSku\(filteredBalances\)/);
+  assert.match(balances, /paginateBalanceGroups\(balanceGroups\)/);
+  assert.match(balances, /rowCount \+ group\.rows\.length > INVENTORY_TABLE_PAGE_SIZE/);
+  assert.doesNotMatch(balances, /filteredBalances\.slice\(pageStart, pageStart \+ INVENTORY_TABLE_PAGE_SIZE\)/);
 });
 
 test('preview tồn đầu kỳ phân trang toàn bộ file thay vì cắt cố định 100 dòng', async () => {

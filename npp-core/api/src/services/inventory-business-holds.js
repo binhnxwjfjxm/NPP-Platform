@@ -30,9 +30,13 @@ export async function listWarehouseBusinessHoldSummary(client, {
   warehouseIds,
   warehouseId = null,
   baseVariantId = null,
+  baseVariantIds = null,
 }) {
   const scopedWarehouseIds = Array.isArray(warehouseIds)
     ? warehouseIds.map(normalizeId).filter(Boolean)
+    : [];
+  const scopedBaseVariantIds = Array.isArray(baseVariantIds)
+    ? baseVariantIds.map(normalizeId).filter(Boolean)
     : [];
   if (scopedWarehouseIds.length === 0) return Object.freeze([]);
 
@@ -48,6 +52,7 @@ export async function listWarehouseBusinessHoldSummary(client, {
          AND balance.warehouse_id = ANY($2::uuid[])
          AND ($3::uuid IS NULL OR balance.warehouse_id = $3::uuid)
          AND ($4::uuid IS NULL OR balance.base_variant_id = $4::uuid)
+         AND ($5::uuid[] IS NULL OR balance.base_variant_id = ANY($5::uuid[]))
        GROUP BY balance.warehouse_id, balance.base_variant_id
      ), demand_scope AS (
        SELECT
@@ -63,6 +68,7 @@ export async function listWarehouseBusinessHoldSummary(client, {
          AND demand.state = 'ACTIVE'
          AND ($3::uuid IS NULL OR demand.warehouse_id = $3::uuid)
          AND ($4::uuid IS NULL OR demand.base_variant_id = $4::uuid)
+         AND ($5::uuid[] IS NULL OR demand.base_variant_id = ANY($5::uuid[]))
        GROUP BY demand.warehouse_id, demand.base_variant_id
      ), scopes AS (
        SELECT warehouse_id, base_variant_id FROM inventory_scope
@@ -94,7 +100,13 @@ export async function listWarehouseBusinessHoldSummary(client, {
        ON demand_scope.warehouse_id = scopes.warehouse_id
       AND demand_scope.base_variant_id = scopes.base_variant_id
      ORDER BY scopes.warehouse_id, scopes.base_variant_id`,
-    [installationId, scopedWarehouseIds, warehouseId, baseVariantId],
+    [
+      installationId,
+      scopedWarehouseIds,
+      warehouseId,
+      baseVariantId,
+      scopedBaseVariantIds.length > 0 ? scopedBaseVariantIds : null,
+    ],
   );
   return Object.freeze((result.rows ?? []).map((row) => Object.freeze({
     warehouseId: row.warehouse_id,
