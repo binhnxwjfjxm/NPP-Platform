@@ -5,6 +5,8 @@ import test from "node:test";
 const files = {
   vercelNpp: ".github/workflows/vercel-production-manual.yml",
   vercelMcp: ".github/workflows/vercel-mcp-production-manual.yml",
+  vpsCompany: ".github/workflows/vps-company-backend-manual.yml",
+  vpsMcp: ".github/workflows/vps-mcp-backend-manual.yml",
   herokuNpp: ".github/workflows/heroku-npp-backend-manual.yml",
   herokuMcp: ".github/workflows/heroku-mcp-backend-manual.yml",
   herokuMcpScript: "mcp/apps/backend/scripts/manual-production-deploy.sh",
@@ -14,14 +16,14 @@ async function source(path) {
   return readFile(path, "utf8");
 }
 
-test("manual production deploy workflows expose four explicit Actions names", async () => {
-  const workflowPaths = [files.vercelNpp, files.vercelMcp, files.herokuNpp, files.herokuMcp];
+test("active production deploy workflows expose Vercel frontend and VPS backend Actions names", async () => {
+  const workflowPaths = [files.vercelNpp, files.vercelMcp, files.vpsCompany, files.vpsMcp];
   const entries = await Promise.all(workflowPaths.map(source));
   const expected = [
     "name: Manual Vercel NPP production deploy",
     "name: Manual Vercel MCP production deploy",
-    "name: Manual Heroku NPP production deploy",
-    "name: Manual Heroku MCP production deploy",
+    "name: VPS Công Ty backend manual deploy",
+    "name: VPS MCP backend manual deploy",
   ];
 
   assert.deepEqual(entries.map((text) => text.split(/\r?\n/, 1)[0]), expected);
@@ -49,11 +51,18 @@ test("Vercel workflows are locked to distinct NPP and MCP projects", async () =>
   assert.doesNotMatch(mcp, /rootDirectory !== 'npp-core\/web'/);
 });
 
-test("Heroku workflows fail closed across the Core and MCP app boundary", async () => {
+test("retired Heroku workflows remain fail-closed historical contracts", async () => {
   const npp = await source(files.herokuNpp);
   const mcpWorkflow = await source(files.herokuMcp);
   const mcpScript = await source(files.herokuMcpScript);
   const mcp = `${mcpWorkflow}\n${mcpScript}`;
+
+  assert.match(npp, /name: RETIRED — Heroku Công Ty production deploy/);
+  assert.match(mcpWorkflow, /name: RETIRED — Heroku MCP production deploy/);
+  assert.match(npp, /false &&/);
+  assert.match(mcpWorkflow, /false &&/);
+  assert.match(npp, /Canonical production command: \/deploy-vps-company-production/);
+  assert.match(mcpWorkflow, /Canonical production command: \/deploy-vps-mcp-production/);
 
   assert.match(npp, /HEROKU_APP_NAME: hung-phat\n/);
   assert.match(npp, /HEROKU_FORBIDDEN_APP_NAME: hung-phat-mcp/);
