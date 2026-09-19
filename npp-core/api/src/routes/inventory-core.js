@@ -302,12 +302,16 @@ async function handleBalances(req, res, options, pathname, method) {
       limit: parseInteger(url.searchParams.get('limit'), 500, 1000),
       offset: parseOffset(url.searchParams.get('offset')),
     });
-    const holds = await listWarehouseBusinessHoldSummary(options.getPool(), {
-      installationId: scopedRequestContext.installationId,
-      warehouseIds: scopedRequestContext.scopes?.warehouseIds ?? [],
-      warehouseId,
-      baseVariantId,
-    });
+    const pageBaseVariantIds = [...new Set(rows.map((row) => row.base_variant_id))];
+    const holds = rows.length > 0
+      ? await listWarehouseBusinessHoldSummary(options.getPool(), {
+          installationId: scopedRequestContext.installationId,
+          warehouseIds: scopedRequestContext.scopes?.warehouseIds ?? [],
+          warehouseId,
+          baseVariantId,
+          baseVariantIds: pageBaseVariantIds,
+        })
+      : [];
     const holdByScope = new Map(holds.map((hold) => [
       `${hold.warehouseId}:${hold.baseVariantId}`,
       hold,
