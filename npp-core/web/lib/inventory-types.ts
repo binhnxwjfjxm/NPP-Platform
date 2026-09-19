@@ -72,6 +72,9 @@ export type InventoryBalance = {
   on_hand_quantity: string;
   reserved_quantity: string;
   available_quantity: string;
+  business_on_hand_quantity?: string | null;
+  business_held_quantity?: string | null;
+  business_available_quantity?: string | null;
   movement_count?: number | string | null;
 };
 
