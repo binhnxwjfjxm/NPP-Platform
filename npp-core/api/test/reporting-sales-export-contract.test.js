@@ -135,7 +135,7 @@ test('Phân tích sản phẩm giữ mọi ĐVT trong một sheet, xuất doanh 
     },
   ];
   const sheet = salesReportingExportInternals.buildAnalysisSheet(rows, selection, { from: '2026-09-01', to: '2026-09-17' });
-  assert.equal(sheet.sheetName, 'Sản phẩm theo Loại khách');
+  assert.equal(sheet.sheetName, 'Tổng hợp');
   assert.equal(sheet.rows.length, 2);
   assert.deepEqual(sheet.rows.map((row) => row.name), ['Sản phẩm 2', 'Sản phẩm 1']);
   assert.deepEqual(sheet.rows.map((row) => row.unitName).sort((a, b) => a.localeCompare(b, 'vi')), ['Cái', 'Thùng']);
@@ -144,7 +144,49 @@ test('Phân tích sản phẩm giữ mọi ĐVT trong một sheet, xuất doanh 
   assert.ok(sheet.columns.some((item) => item.label === 'Đại lý - Sản lượng'));
   assert.ok(sheet.columns.some((item) => item.label === 'Tổng doanh thu'));
   assert.ok(sheet.columns.some((item) => item.label === 'Tổng sản lượng'));
-  assert.equal(salesReportingExportInternals.buildMatrixSheets(rows, selection, { from: '2026-09-01', to: '2026-09-17' }).length, 1);
+
+  const sheets = salesReportingExportInternals.buildAnalysisSheets(rows, selection, { from: '2026-09-01', to: '2026-09-17' });
+  assert.deepEqual(sheets.map((item) => item.sheetName), ['Tổng hợp', 'Đại lý', 'Quán']);
+  assert.deepEqual(sheets[1].rows.map((row) => row.name), ['Sản phẩm 2', 'Sản phẩm 1']);
+  assert.deepEqual(sheets[2].rows.map((row) => row.name), ['Sản phẩm 1']);
+  assert.deepEqual(sheets[1].columns.map((item) => item.label), ['Mã sản phẩm', 'Sản phẩm', 'ĐVT', 'Doanh thu', 'Sản lượng']);
+});
+
+
+test('Mỗi sheet chi tiết sắp xếp lại theo số liệu của chính nhóm, không theo tổng toàn báo cáo', () => {
+  const selection = normalizeSalesReportingExportSelection({
+    dimension: 'analysis.products.productGroups.quantity',
+    format: 'xlsx',
+    sort: 'quantity-desc',
+    columns: [],
+  });
+  const rows = [
+    {
+      currencyCode: 'VND', productId: 'p1', productCode: 'SP1', productName: 'Sản phẩm 1',
+      unitId: 'u1', unitCode: 'CAI', unitName: 'Cái', productGroupId: 'g1', productGroupCode: 'A',
+      productGroupName: 'Nhóm A', quantity: '100', revenue: '100',
+    },
+    {
+      currencyCode: 'VND', productId: 'p1', productCode: 'SP1', productName: 'Sản phẩm 1',
+      unitId: 'u1', unitCode: 'CAI', unitName: 'Cái', productGroupId: 'g2', productGroupCode: 'B',
+      productGroupName: 'Nhóm B', quantity: '1', revenue: '1',
+    },
+    {
+      currencyCode: 'VND', productId: 'p2', productCode: 'SP2', productName: 'Sản phẩm 2',
+      unitId: 'u1', unitCode: 'CAI', unitName: 'Cái', productGroupId: 'g1', productGroupCode: 'A',
+      productGroupName: 'Nhóm A', quantity: '10', revenue: '10',
+    },
+    {
+      currencyCode: 'VND', productId: 'p2', productCode: 'SP2', productName: 'Sản phẩm 2',
+      unitId: 'u1', unitCode: 'CAI', unitName: 'Cái', productGroupId: 'g2', productGroupCode: 'B',
+      productGroupName: 'Nhóm B', quantity: '200', revenue: '200',
+    },
+  ];
+
+  const sheets = salesReportingExportInternals.buildAnalysisSheets(rows, selection, { from: '2026-09-01', to: '2026-09-17' });
+  assert.deepEqual(sheets[0].rows.map((row) => row.name), ['Sản phẩm 2', 'Sản phẩm 1']);
+  assert.deepEqual(sheets[1].rows.map((row) => row.name), ['Sản phẩm 1', 'Sản phẩm 2']);
+  assert.deepEqual(sheets[2].rows.map((row) => row.name), ['Sản phẩm 2', 'Sản phẩm 1']);
 });
 
 test('Sản lượng ở tiêu chí không phải sản phẩm vẫn tách dòng theo ĐVT trong cùng sheet, không cộng lẫn đơn vị', () => {
@@ -178,7 +220,7 @@ test('Excel phân tích dùng định dạng riêng cho số nguyên và số l�
   assert.match(source, /numFmtId="165" formatCode="#,##0\.######"/);
 });
 
-test('Luồng matrix cũ vẫn được nhận trong thời gian chuyển frontend nhưng dùng nền xuất mới một sheet', () => {
+test('Luồng matrix cũ vẫn được nhận trong thời gian chuyển frontend và dùng nền xuất phân tích mới', () => {
   const legacy = normalizeSalesReportingExportSelection({
     dimension: 'matrix.products.customerGroups.revenue',
     format: 'xlsx',
@@ -190,7 +232,7 @@ test('Luồng matrix cũ vẫn được nhận trong thời gian chuyển fronte
   assert.deepEqual(legacy.metrics, ['revenue']);
 });
 
-test('Sales export dùng dữ liệu server, đối soát trước khi xuất và workbook phân tích chỉ có một sheet', async () => {
+test('Sales export dùng dữ liệu server, đối soát trước khi xuất và workbook phân tích có Tổng hợp + sheet chi tiết', async () => {
   const source = `${await readApi('src/services/reporting-sales-export.js')}\n${await readApi('src/services/reporting-sales-export-base.js')}`;
   const selection = normalizeSalesReportingExportSelection({ dimension: 'customers', format: 'xlsx', columns: [] });
   assert.equal(selection.ok, true);
@@ -203,6 +245,10 @@ test('Sales export dùng dữ liệu server, đối soát trước khi xuất v�
   assert.match(source, /report\.reconciliation\?\.ok !== true/);
   assert.match(source, /buildMultiSheetXlsx/);
   assert.match(source, /buildAnalysisXlsx/);
+  assert.match(source, /buildAnalysisSheets/);
+  assert.match(source, /sanitizeSheetName\('Tổng hợp'/);
+  assert.match(source, /worksheetEntries/);
+  assert.match(source, /workbookSheets/);
   assert.match(source, /borders count=/);
   assert.match(source, /mergeCells count=/);
   assert.match(source, /orientation="landscape"/);
