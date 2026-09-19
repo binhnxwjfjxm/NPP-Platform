@@ -11,8 +11,18 @@ const mcpWorkflow = (await readFile(
   new URL(".github/workflows/heroku-mcp-backend-manual.yml", root),
   "utf8"
 )).replace(/\r\n/g, "\n");
+const coreVpsWorkflow = (await readFile(
+  new URL(".github/workflows/vps-company-backend-manual.yml", root),
+  "utf8"
+)).replace(/\r\n/g, "\n");
+const mcpVpsWorkflow = (await readFile(
+  new URL(".github/workflows/vps-mcp-backend-manual.yml", root),
+  "utf8"
+)).replace(/\r\n/g, "\n");
 
-test("Core production deploy remains manual and gains one exact Issue 5 command", () => {
+test("Heroku Core production path is retained only as fail-closed history", () => {
+  assert.match(coreWorkflow, /RETIRED/);
+  assert.match(coreWorkflow, /false &&/);
   assert.match(coreWorkflow, /workflow_dispatch:/);
   assert.match(coreWorkflow, /issue_comment:/);
   assert.match(coreWorkflow, /github\.event\.issue\.number == 5/);
@@ -46,7 +56,9 @@ test("Core production deploy remains manual and gains one exact Issue 5 command"
   assert.doesNotMatch(coreWorkflow, /^\s{2}(?:push|pull_request|schedule):\s*$/m);
 });
 
-test("MCP production keeps separate exact migration and deploy commands", () => {
+test("Heroku MCP production path is retained only as fail-closed history", () => {
+  assert.match(mcpWorkflow, /RETIRED/);
+  assert.match(mcpWorkflow, /false &&/);
   assert.match(mcpWorkflow, /workflow_dispatch:/);
   assert.match(mcpWorkflow, /issue_comment:/);
   assert.match(mcpWorkflow, /github\.event\.issue\.number == 5/);
@@ -86,4 +98,17 @@ test("Core and MCP release boundaries remain separate", () => {
   assert.doesNotMatch(mcpWorkflow, /git push --force heroku HEAD:main/);
   assert.doesNotMatch(mcpWorkflow, /HEROKU_APP_NAME: hung-phat\s*$/m);
   assert.doesNotMatch(`${coreWorkflow}\n${mcpWorkflow}`, /vercel\s+(?:deploy|--prod)/i);
+});
+
+
+test("VPS is the only active backend production deploy command path", () => {
+  assert.match(coreVpsWorkflow, /github\.event\.comment\.body == '\/deploy-vps-company-production'/);
+  assert.match(coreVpsWorkflow, /VPS_COMPANY_HOST/);
+  assert.match(coreVpsWorkflow, /health_live=PASS/);
+  assert.match(coreVpsWorkflow, /health_ready=PASS/);
+  assert.match(mcpVpsWorkflow, /github\.event\.comment\.body == '\/deploy-vps-mcp-production'/);
+  assert.match(mcpVpsWorkflow, /VPS_MCP_HOST/);
+  assert.match(mcpVpsWorkflow, /proxy_listener_count=300/);
+  assert.doesNotMatch(coreVpsWorkflow, /deploy-heroku-core-production/);
+  assert.doesNotMatch(mcpVpsWorkflow, /deploy-heroku-mcp-production/);
 });
