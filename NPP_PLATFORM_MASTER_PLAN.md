@@ -6,6 +6,17 @@
 > Cập nhật: `2026-07-30`  
 > Nguyên tắc: **Không chắp vá khi lỗi; phải tái hiện, tìm nguyên nhân gốc, sửa đúng tầng và thêm test hồi quy.**
 
+## Production runtime override — 2026-09-19
+
+Phần này **ưu tiên hơn mọi mô tả Heroku cũ trong tài liệu này**.
+
+- Backend Công Ty production chạy trên VPS và deploy bằng lệnh Issue #5: `/deploy-vps-company-production`.
+- Backend MCP production chạy trên VPS và deploy bằng lệnh Issue #5: `/deploy-vps-mcp-production`.
+- PostgreSQL production dùng hạ tầng VPS dùng chung của installation hiện tại.
+- Heroku là runtime cũ đã nghỉ; **không deploy, migrate hoặc rollback production qua Heroku**.
+- Hai workflow Heroku cũ chỉ được giữ làm lịch sử và phải fail-closed.
+- Trước mọi production mutation vẫn phải audit provider truth, exact `main`, backup/migration gate và smoke tương ứng.
+
 ---
 
 ## 0. Quyền ưu tiên và tài liệu liên quan
