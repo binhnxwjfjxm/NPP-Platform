@@ -71,6 +71,50 @@ function balanceKey(balance: InventoryBalance): string {
   return [balance.warehouse_id, balance.location_id ?? '<null>', balance.base_variant_id, balance.lot_id ?? '<null>'].join(':');
 }
 
+function businessHoldKey(balance: InventoryBalance): string {
+  return `${balance.warehouse_id}:${balance.base_variant_id}`;
+}
+
+type InventoryBalanceGroup = {
+  key: string;
+  rows: InventoryBalance[];
+};
+
+function groupBalancesByWarehouseSku(rows: InventoryBalance[]): InventoryBalanceGroup[] {
+  const groups = new Map<string, InventoryBalance[]>();
+  for (const balance of rows) {
+    const key = businessHoldKey(balance);
+    const current = groups.get(key);
+    if (current) current.push(balance);
+    else groups.set(key, [balance]);
+  }
+  return [...groups.entries()]
+    .map(([key, groupedRows]) => ({ key, rows: groupedRows }))
+    .sort((left, right) => {
+      const leftRow = left.rows[0];
+      const rightRow = right.rows[0];
+      return leftRow.warehouse_code.localeCompare(rightRow.warehouse_code, 'vi')
+        || leftRow.base_sku.localeCompare(rightRow.base_sku, 'vi');
+    });
+}
+
+function paginateBalanceGroups(groups: InventoryBalanceGroup[]): InventoryBalanceGroup[][] {
+  const pages: InventoryBalanceGroup[][] = [];
+  let current: InventoryBalanceGroup[] = [];
+  let rowCount = 0;
+  for (const group of groups) {
+    if (current.length > 0 && rowCount + group.rows.length > INVENTORY_TABLE_PAGE_SIZE) {
+      pages.push(current);
+      current = [];
+      rowCount = 0;
+    }
+    current.push(group);
+    rowCount += group.rows.length;
+  }
+  if (current.length > 0) pages.push(current);
+  return pages;
+}
+
 function joinValues(...values: Array<string | null | undefined>): string {
   return values.filter(Boolean).join(' · ');
 }
@@ -86,7 +130,7 @@ function quantityToScaled(value: string): bigint {
 
 function hasDisplayableBalance(balance: InventoryBalance): boolean {
   return quantityToScaled(balance.on_hand_quantity) !== 0n
-    || quantityToScaled(balance.reserved_quantity) !== 0n;
+    || quantityToScaled(balance.business_held_quantity ?? balance.reserved_quantity) !== 0n;
 }
 
 function scaledToQuantity(value: bigint): string {
@@ -257,10 +301,27 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
     balance.lot_code,
     balance.expiry_date,
   ).includes(normalizedSearch))), [balances, normalizedSearch]);
-  const pageCount = Math.max(1, Math.ceil(filteredBalances.length / INVENTORY_TABLE_PAGE_SIZE));
+  const balanceGroups = useMemo(
+    () => groupBalancesByWarehouseSku(filteredBalances),
+    [filteredBalances],
+  );
+  const balancePages = useMemo(
+    () => paginateBalanceGroups(balanceGroups),
+    [balanceGroups],
+  );
+  const pageCount = Math.max(1, balancePages.length);
   const effectivePage = Math.min(page, pageCount - 1);
-  const pageStart = effectivePage * INVENTORY_TABLE_PAGE_SIZE;
-  const visibleBalances = filteredBalances.slice(pageStart, pageStart + INVENTORY_TABLE_PAGE_SIZE);
+  const pageStart = balancePages.slice(0, effectivePage)
+    .flat()
+    .reduce((total, group) => total + group.rows.length, 0);
+  const visibleBalanceGroups = useMemo(() => {
+    let rowOffset = pageStart;
+    return (balancePages[effectivePage] ?? []).map((group) => {
+      const startIndex = rowOffset;
+      rowOffset += group.rows.length;
+      return { ...group, startIndex };
+    });
+  }, [balancePages, effectivePage, pageStart]);
 
   const sameSkuAtWarehouse = useMemo(() => {
     if (!selectedBalance) return [];
@@ -429,13 +490,18 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
                   <tr><BusinessTableSequenceHeader /><th>Kho / vị trí</th><th>Sản phẩm / SKU</th><th>Lô</th><th>Hạn dùng</th><th>Tồn kho</th><th>Đã giữ cho đơn</th><th>Có thể xuất</th><th></th></tr>
                 </thead>
                 <tbody>
-                  {visibleBalances.length === 0 ? (
+                  {visibleBalanceGroups.length === 0 ? (
                     <tr><td colSpan={9} className={styles.subtle}>Chưa có dữ liệu tồn kho.</td></tr>
-                  ) : visibleBalances.map((balance, rowIndex) => {
+                  ) : visibleBalanceGroups.flatMap((group) => group.rows.map((balance, groupRowIndex) => {
                     const packageRule = packageRuleLabel(balance);
+                    const firstInGroup = groupRowIndex === 0;
+                    const businessHeld = balance.business_held_quantity
+                      ?? sumQuantities(group.rows.map((row) => row.reserved_quantity));
+                    const businessAvailable = balance.business_available_quantity
+                      ?? sumQuantities(group.rows.map((row) => row.available_quantity));
                     return (
                       <tr key={balanceKey(balance)} data-testid={`inventory-balance-${balanceKey(balance)}`}>
-                        <BusinessTableSequenceCell rowIndex={pageStart + rowIndex} />
+                        <BusinessTableSequenceCell rowIndex={group.startIndex + groupRowIndex} />
                         <td>
                           <div>{balance.warehouse_code} · {balance.warehouse_name}</div>
                           <div className={styles.subtle}>{joinValues(balance.location_code, balance.location_name) || 'Không vị trí'}</div>
@@ -450,8 +516,18 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
                         <td className={styles.mono}>{balance.lot_code ?? '—'}</td>
                         <td>{formatDate(balance.expiry_date)}</td>
                         <td><InventoryQuantity balance={balance} value={balance.on_hand_quantity} /></td>
-                        <td><InventoryQuantity balance={balance} value={balance.reserved_quantity} /></td>
-                        <td><InventoryQuantity balance={balance} value={balance.available_quantity} /></td>
+                        {firstInGroup ? (
+                          <td rowSpan={group.rows.length}>
+                            <InventoryQuantity balance={balance} value={businessHeld} />
+                            <div className={styles.subtle}>Theo kho</div>
+                          </td>
+                        ) : null}
+                        {firstInGroup ? (
+                          <td rowSpan={group.rows.length}>
+                            <InventoryQuantity balance={balance} value={businessAvailable} />
+                            <div className={styles.subtle}>Theo kho</div>
+                          </td>
+                        ) : null}
                         <td>
                           <button
                             type="button"
@@ -461,7 +537,7 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
                         </td>
                       </tr>
                     );
-                  })}
+                  }))}
                 </tbody>
               </table>
             </div>
