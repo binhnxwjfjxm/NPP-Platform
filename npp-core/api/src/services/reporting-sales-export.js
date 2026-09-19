@@ -305,7 +305,7 @@ export function buildAnalysisSheet(rows, selection, filters) {
 
   return Object.freeze({
     title: `BÁO CÁO ${selection.rowLabel.toUpperCase()} THEO ${selection.columnLabel.toUpperCase()} TỪ NGÀY ${formatReportDate(filters.from)} - ${formatReportDate(filters.to)}`,
-    sheetName: sanitizeSheetName(`${selection.rowLabel} theo ${selection.columnLabel}`, new Set()),
+    sheetName: 'Tổng hợp',
     rowDimension: selection.rowDimension,
     rowLabel: selection.rowLabel,
     columnLabel: selection.columnLabel,
@@ -320,6 +320,88 @@ export function buildAnalysisSheet(rows, selection, filters) {
     quantityGrandValid: grand.quantityByUnit.size <= 1,
     decimalText,
   });
+}
+
+
+function detailMetricColumns(summary) {
+  const columns = summary.columns.filter((definition) => definition.kind === 'meta');
+  const includeRevenue = summary.columns.some((definition) => definition.metric === 'revenue');
+  const includeQuantity = summary.columns.some((definition) => definition.metric === 'quantity');
+
+  if (includeRevenue) {
+    for (const currencyCode of summary.currencies) {
+      const suffix = summary.currencies.length > 1 ? ` (${currencyCode})` : '';
+      columns.push(Object.freeze({
+        token: `detail:revenue:${identityPart(currencyCode)}`,
+        kind: 'total',
+        groupLabel: 'Kết quả',
+        metricLabel: `Doanh thu${suffix}`,
+        metric: 'revenue',
+        currencyCode,
+        label: `Doanh thu${suffix}`,
+      }));
+    }
+  }
+  if (includeQuantity) {
+    columns.push(Object.freeze({
+      token: 'detail:quantity',
+      kind: 'total',
+      groupLabel: 'Kết quả',
+      metricLabel: 'Sản lượng',
+      metric: 'quantity',
+      label: 'Sản lượng',
+    }));
+  }
+  return Object.freeze(columns);
+}
+
+function buildAnalysisDetailSheet(summary, category, selection, filters, usedSheetNames) {
+  const bucket = summary.grand.values.get(category.key) ?? metricBucket();
+  const columns = detailMetricColumns(summary);
+  const metrics = [...new Set(columns.map((definition) => definition.metric).filter(Boolean))];
+  const rows = summary.rows
+    .filter((row) => row.values.has(category.key))
+    .map((row) => {
+      const rowBucket = row.values.get(category.key);
+      return Object.freeze({
+        ...row,
+        totals: rowBucket,
+        values: new Map(),
+        unitName: metrics.includes('quantity') ? rowUnitLabel(rowBucket) : '',
+      });
+    })
+    .sort((left, right) => compareAnalysisRows(left, right, selection, summary.currencies));
+
+  return Object.freeze({
+    title: `BÁO CÁO ${selection.rowLabel.toUpperCase()} - ${category.name.toUpperCase()} TỪ NGÀY ${formatReportDate(filters.from)} - ${formatReportDate(filters.to)}`,
+    sheetName: sanitizeSheetName(category.name, usedSheetNames),
+    rowDimension: selection.rowDimension,
+    rowLabel: selection.rowLabel,
+    columnLabel: category.name,
+    metrics: Object.freeze(metrics),
+    quantityDisplay: selection.quantityDisplay,
+    sort: selection.sort,
+    currencies: summary.currencies,
+    categories: Object.freeze([category]),
+    columns,
+    rows: Object.freeze(rows),
+    grand: { ...bucket, values: new Map() },
+    quantityGrandValid: bucket.quantityByUnit.size <= 1,
+    decimalText: summary.decimalText,
+  });
+}
+
+export function buildAnalysisSheets(rows, selection, filters) {
+  const usedSheetNames = new Set();
+  const summaryBase = buildAnalysisSheet(rows, selection, filters);
+  const summary = Object.freeze({
+    ...summaryBase,
+    sheetName: sanitizeSheetName('Tổng hợp', usedSheetNames),
+  });
+  const details = summary.categories
+    .map((category) => buildAnalysisDetailSheet(summary, category, selection, filters, usedSheetNames))
+    .filter((sheet) => sheet.rows.length > 0);
+  return Object.freeze([summary, ...details]);
 }
 
 function xmlEscape(value) {
@@ -453,16 +535,47 @@ async function writeAnalysisWorksheet(filePath, sheet) {
   } catch (error) { stream.destroy(); throw error; }
 }
 
-async function buildAnalysisXlsx(outputPath, sheet, tempDirectory) {
-  const worksheetPath = path.join(tempDirectory, 'analysis.xml');
-  await writeAnalysisWorksheet(worksheetPath, sheet);
+async function buildAnalysisXlsx(outputPath, sheets, tempDirectory) {
+  const worksheetEntries = [];
+  for (let index = 0; index < sheets.length; index += 1) {
+    const worksheetPath = path.join(tempDirectory, `analysis-${index + 1}.xml`);
+    await writeAnalysisWorksheet(worksheetPath, sheets[index]);
+    worksheetEntries.push({
+      name: `xl/worksheets/sheet${index + 1}.xml`,
+      filePath: worksheetPath,
+    });
+  }
+
+  const worksheetOverrides = sheets
+    .map((_, index) => `<Override PartName="/xl/worksheets/sheet${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`)
+    .join('');
+  const workbookSheets = sheets
+    .map((sheet, index) => `<sheet name="${xmlEscape(sheet.sheetName)}" sheetId="${index + 1}" r:id="rId${index + 1}"/>`)
+    .join('');
+  const worksheetRelationships = sheets
+    .map((_, index) => `<Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${index + 1}.xml"/>`)
+    .join('');
+  const stylesRelationshipId = sheets.length + 1;
+
   await writeStoredZip(outputPath, [
-    { name: '[Content_Types].xml', content: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>' },
-    { name: '_rels/.rels', content: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>' },
-    { name: 'xl/workbook.xml', content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="${xmlEscape(sheet.sheetName)}" sheetId="1" r:id="rId1"/></sheets></workbook>` },
-    { name: 'xl/_rels/workbook.xml.rels', content: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>' },
+    {
+      name: '[Content_Types].xml',
+      content: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' + worksheetOverrides + '</Types>',
+    },
+    {
+      name: '_rels/.rels',
+      content: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>',
+    },
+    {
+      name: 'xl/workbook.xml',
+      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${workbookSheets}</sheets></workbook>`,
+    },
+    {
+      name: 'xl/_rels/workbook.xml.rels',
+      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${worksheetRelationships}<Relationship Id="rId${stylesRelationshipId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`,
+    },
     { name: 'xl/styles.xml', content: workbookStyles() },
-    { name: 'xl/worksheets/sheet1.xml', filePath: worksheetPath },
+    ...worksheetEntries,
   ]);
 }
 
@@ -526,18 +639,18 @@ function fileStamp(receivedAt) { return new Date(receivedAt ?? Date.now()).toISO
 
 async function createAnalysisExport(pool, { requestContext, filters, warehouseIds, selection, report }) {
   const facts = await loadSalesAnalysisFacts(pool, requestContext, filters, warehouseIds);
-  const sheet = buildAnalysisSheet(facts, selection, filters);
+  const sheets = buildAnalysisSheets(facts, selection, filters);
   const tempDirectory = await mkdtemp(path.join(tmpdir(), 'npp-sales-analysis-export-'));
   const outputPath = path.join(tempDirectory, 'sales-analysis.xlsx');
   try {
-    await buildAnalysisXlsx(outputPath, sheet, tempDirectory);
+    await buildAnalysisXlsx(outputPath, sheets, tempDirectory);
     const fileStat = await stat(outputPath);
     return Object.freeze({
       filePath: outputPath,
       filename: `Bao-cao-ban-hang-${selection.dimensionSlug}-${fileStamp(requestContext.receivedAt)}.xlsx`,
       contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       size: fileStat.size,
-      rowCount: sheet.rows.length,
+      rowCount: sheets[0].rows.length,
       reconciliation: report.reconciliation,
       cleanup: () => rm(tempDirectory, { recursive: true, force: true }),
     });
@@ -556,6 +669,7 @@ export async function createSalesReportingExport(pool, args) {
 export const salesReportingExportInternals = Object.freeze({
   ...baseSalesReportingExportInternals,
   buildAnalysisSheet,
+  buildAnalysisSheets,
   divideScaled,
   quantityPresentation,
   numberCellStyle,
