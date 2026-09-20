@@ -169,8 +169,8 @@ const WORKFORCE_PERMISSION_CATALOG = Object.freeze([
   ['coreAttendanceSelfAdjustRequest', 'Nhân sự', 'Gửi yêu cầu điều chỉnh công', 'Cho phép nhân viên gửi và theo dõi yêu cầu điều chỉnh công của chính mình; không tự sửa dữ liệu đã duyệt.'],
   ['coreAttendancePointManage', 'Nhân sự', 'Quản lý điểm chấm công', 'Cho phép tạo điểm chấm công và phát mã QR ngắn hạn trong phạm vi chi nhánh được cấp.'],
   ['coreAttendanceRead', 'Nhân sự', 'Xem bảng công', 'Cho phép đọc bảng công của nhân viên trong phạm vi được cấp.'],
-  ['coreAttendanceAdjust', 'Nhân sự', 'Điều chỉnh công', 'Cho phép tạo, duyệt hoặc từ chối điều chỉnh công trong phạm vi được cấp; mọi thay đổi phải có lý do và audit.'],
-  ['coreAttendanceLock', 'Nhân sự', 'Khóa kỳ công', 'Cho phép khóa kỳ công và xử lý ngoại lệ sau khóa khi đồng thời có quyền điều chỉnh công.'],
+  ['coreAttendanceAdjust', 'Nhân sự', 'Điều chỉnh công', 'Cho phép tạo hoặc duyệt điều chỉnh công trong phạm vi được cấp; mọi thay đổi phải có lý do và audit.'],
+  ['coreAttendanceLock', 'Nhân sự', 'Khóa kỳ công', 'Cho phép khóa kỳ công và thực hiện ngoại lệ điều chỉnh sau khóa khi đồng thời có quyền điều chỉnh công.'],
 ].map(([key, module, label, description]) => Object.freeze({
   permissionKey: PERMISSIONS[key],
   module,

@@ -122,7 +122,7 @@ test('Issue #1110 Lô 5 records actor, reason, before and after facts without fa
   assert.match(route, /afterData: \{ request: result\.request, events: result\.events \}/);
   assert.match(route, /reviewReason: result\.request\.review_reason/);
   assert.match(repository, /recorded_by, request_id/);
-  assert.match(repository, /attendance-adjustment\./);
+  assert.match(service, /attendance-adjustment\./);
   assert.doesNotMatch(service, /insertOutboxEvent|buildOutboxEvent/);
 });
 
