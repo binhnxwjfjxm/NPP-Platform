@@ -32,6 +32,14 @@ export const PERMISSIONS = Object.freeze({
   coreInventoryCostRead: 'core.inventory-cost.read',
   coreInventoryCostRebuild: 'core.inventory-cost.rebuild',
   coreInventoryCostReconcile: 'core.inventory-cost.reconcile',
+  coreWorkPolicyRead: 'core.work-policy.read',
+  coreWorkPolicyManage: 'core.work-policy.manage',
+  coreWorkScheduleRead: 'core.work-schedule.read',
+  coreWorkScheduleManage: 'core.work-schedule.manage',
+  coreAttendanceSelfRead: 'core.attendance.self.read',
+  coreAttendanceSelfRecord: 'core.attendance.self.record',
+  coreAttendanceRead: 'core.attendance.read',
+  coreAttendanceAdjust: 'core.attendance.adjust',
   coreReportingInventoryRead: 'core.reporting.inventory.read',
   coreReportingAgingRead: 'core.reporting.aging.read',
   coreReportingGrossMarginRead: 'core.reporting.gross-margin.read',
@@ -148,6 +156,23 @@ const INVENTORY_COST_PERMISSION_CATALOG = Object.freeze([
   ['coreInventoryCostReconcile', 'Kho', 'Đối soát giá vốn tồn kho', 'Cho phép đọc đối soát quantity ledger với costing projection và anomaly nguồn giá.'],
 ].map(([key, module, label, description]) => Object.freeze({ permissionKey: PERMISSIONS[key], module, label, description, isSystem: true })));
 
+const WORKFORCE_PERMISSION_CATALOG = Object.freeze([
+  ['coreWorkPolicyRead', 'Nhân sự', 'Xem chính sách làm việc', 'Cho phép đọc chính sách làm việc và phiên bản hiệu lực trong phạm vi được cấp.'],
+  ['coreWorkPolicyManage', 'Nhân sự', 'Quản lý chính sách làm việc', 'Cho phép tạo phiên bản chính sách làm việc và gán chính sách cho nhân viên trong phạm vi được cấp.'],
+  ['coreWorkScheduleRead', 'Nhân sự', 'Xem ca và lịch làm việc', 'Cho phép đọc ca và lịch làm việc trong phạm vi nhân sự được cấp.'],
+  ['coreWorkScheduleManage', 'Nhân sự', 'Quản lý ca và lịch làm việc', 'Cho phép tạo hoặc điều chỉnh lịch làm việc theo ngày trong phạm vi nhân sự được cấp.'],
+  ['coreAttendanceSelfRead', 'Nhân sự', 'Xem công của bản thân', 'Cho phép nhân viên xem trạng thái và lịch sử chấm công của chính mình.'],
+  ['coreAttendanceSelfRecord', 'Nhân sự', 'Chấm công cho bản thân', 'Cho phép nhân viên ghi nhận sự kiện chấm công của chính mình qua phương thức được chính sách cho phép.'],
+  ['coreAttendanceRead', 'Nhân sự', 'Xem bảng công', 'Cho phép đọc bảng công của nhân viên trong phạm vi được cấp.'],
+  ['coreAttendanceAdjust', 'Nhân sự', 'Điều chỉnh công', 'Cho phép tạo hoặc duyệt điều chỉnh công trong phạm vi được cấp; mọi thay đổi phải có lý do và audit.'],
+].map(([key, module, label, description]) => Object.freeze({
+  permissionKey: PERMISSIONS[key],
+  module,
+  label,
+  description,
+  isSystem: true,
+})));
+
 const REPORTING_PERMISSION_CATALOG = Object.freeze([
   Object.freeze({ permissionKey: PERMISSIONS.coreReportingInventoryRead, module: 'Báo cáo tồn kho', label: 'Xem báo cáo tồn kho', description: 'Cho phép đọc dashboard tồn kho trong đúng installation và phạm vi kho được cấp.', isSystem: true }),
   Object.freeze({ permissionKey: PERMISSIONS.coreReportingAgingRead, module: 'Báo cáo công nợ', label: 'Xem tuổi nợ phải thu / phải trả', description: 'Cho phép đọc tuổi khoản phải thu và tuổi nợ phải trả trong đúng installation và phạm vi kho được cấp.', isSystem: true }),
@@ -237,6 +262,7 @@ export const PERMISSION_CATALOG = Object.freeze([
   ...INVENTORY_ADJUSTMENT_PERMISSION_CATALOG,
   ...MANUAL_INBOUND_PERMISSION_CATALOG,
   ...INVENTORY_COST_PERMISSION_CATALOG,
+  ...WORKFORCE_PERMISSION_CATALOG,
   ...REPORTING_PERMISSION_CATALOG,
   ...MANAGEMENT_PERMISSION_CATALOG,
   ...MCP_PERMISSION_CATALOG,
