@@ -6,7 +6,7 @@ import { requireNppWorkforceSessionToken } from './internal-auth-client';
 
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 const REQUEST_TIMEOUT_MS = 8_000;
-const ALLOWED_QUERY_KEYS = new Set(['employeeId', 'from', 'to']);
+const ALLOWED_QUERY_KEYS = new Set(['employeeId', 'employeeQuery', 'branchId', 'from', 'to', 'view', 'limit', 'offset']);
 
 interface CoreEnvelope<T> {
   data?: T;
@@ -159,6 +159,10 @@ export function upsertWorkSchedule<T>(requestId: string, body: unknown, idempote
   });
 }
 
+
+export function getAttendanceTimesheet<T>(requestId: string, searchParams: URLSearchParams): Promise<T> {
+  return requestCore<T>({ path: '/attendance/timesheet', method: 'GET', requestId, searchParams });
+}
 
 export function getAttendanceToday<T>(requestId: string): Promise<T> {
   return requestCore<T>({ path: '/attendance/today', method: 'GET', requestId });
