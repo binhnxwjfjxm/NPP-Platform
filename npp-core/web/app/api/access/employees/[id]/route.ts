@@ -51,7 +51,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   }
 
   try {
-    const data = await patchEmployee(params.id, requestId, body);
+    const data = await patchEmployee(params.id, requestId, body, request.headers.get('idempotency-key') ?? undefined);
     return NextResponse.json({ data, requestId }, { status: 200, headers: responseHeaders(requestId) });
   } catch (error) {
     return errorResponse(error, requestId);

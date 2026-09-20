@@ -47,7 +47,7 @@ test('P2 Core UI keeps office wording and object-specific statuses consistent', 
   const shell = read('app/components/app-shell-core.tsx');
   const dashboard = read('app/dashboard/page.tsx');
   const users = read('app/access/users/user-workspace.tsx');
-  const employees = read('app/access/employees/employee-workspace.tsx');
+  const employees = read('app/workforce/employees/employee-workspace.tsx');
   const roles = read('app/access/roles/role-workspace.tsx');
   const suppliers = read('app/suppliers/supplier-workspace.tsx');
   const products = read('app/products/product-workspace.tsx');

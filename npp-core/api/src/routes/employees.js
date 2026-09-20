@@ -194,6 +194,12 @@ async function handleCreate(req, res, context) {
 }
 
 async function handlePatch(req, res, context, id) {
+  const keyResult = requireIdempotencyKey(req);
+  if (!keyResult.ok) {
+    sendError(res, createError(keyResult.code, keyResult.message, {}, false, 400), context.requestId, context.receivedAt);
+    return;
+  }
+
   let payload;
   try {
     payload = await readJsonBody(req);
@@ -203,72 +209,103 @@ async function handlePatch(req, res, context, id) {
   }
 
   try {
-    const result = await withAuditOutboxTransaction({
-      adapter: context.getPool(),
-      mutate: async (client) => {
-        const protection = await guardSecurityOwnerEmployeeMutation(client, {
-          installationId: context.requestContext.installationId,
-          employeeId: id,
-          allowSecurityOwnerMutation: canManageSecurityOwners(context.requestContext),
+    const execution = await context.executeRequestWithIdempotency({
+      idempotencyStore: context.idempotencyStore,
+      req,
+      requestContext: context.requestContext,
+      requestId: context.requestId,
+      receivedAt: context.receivedAt,
+      route: `/api/employees/${id}`,
+      payload,
+      onProcess: async () => {
+        const result = await withAuditOutboxTransaction({
+          adapter: context.getPool(),
+          mutate: async (client) => {
+            const protection = await guardSecurityOwnerEmployeeMutation(client, {
+              installationId: context.requestContext.installationId,
+              employeeId: id,
+              allowSecurityOwnerMutation: canManageSecurityOwners(context.requestContext),
+            });
+            if (!protection.ok) {
+              return {
+                serviceResult: {
+                  ...protection,
+                  message: 'Security Owner employee được bảo vệ khỏi thay đổi bởi quản trị viên thông thường',
+                },
+                skipAudit: true,
+              };
+            }
+
+            const serviceResult = typeof payload.isActive === 'boolean'
+              ? await employeeService.updateEmployeeStatus(client, {
+                id,
+                installationId: context.requestContext.installationId,
+                isActive: payload.isActive,
+                updatedBy: context.requestContext.actorId,
+                expectedUpdatedAt: payload.expectedUpdatedAt,
+              })
+              : await employeeService.updateEmployee(client, {
+                id,
+                installationId: context.requestContext.installationId,
+                payload,
+                updatedBy: context.requestContext.actorId,
+              });
+
+            if (!serviceResult.ok) return { serviceResult, skipAudit: true };
+
+            const employee = serviceResult.employee;
+            await insertAuditRecord(client, buildAuditRecord({
+              requestContext: context.requestContext,
+              action: typeof payload.isActive === 'boolean'
+                ? (payload.isActive ? 'activate' : 'deactivate')
+                : 'update',
+              resourceType: 'employee',
+              resourceId: employee.id,
+              beforeData: serviceResult.beforeData ?? employee,
+              afterData: employee,
+              metadata: { code: employee.code, changed: serviceResult.changed !== false },
+            }));
+            return { employee };
+          },
         });
-        if (!protection.ok) {
-          throw Object.assign(new Error('EMPLOYEE_UPDATE_FAILED'), {
-            serviceResult: {
-              ...protection,
-              message: 'Security Owner employee được bảo vệ khỏi thay đổi bởi quản trị viên thông thường',
+
+        if (result.skipAudit) {
+          return {
+            statusCode: serviceStatus(result.serviceResult),
+            contentType: 'application/json',
+            requestId: context.requestId,
+            body: {
+              error: {
+                code: result.serviceResult.code,
+                message: result.serviceResult.message,
+                retryable: Boolean(result.serviceResult.retryable),
+                details: {},
+              },
+              requestId: context.requestId,
+              receivedAt: context.receivedAt,
             },
-          });
+          };
         }
 
-        const serviceResult = typeof payload.isActive === 'boolean'
-          ? await employeeService.updateEmployeeStatus(client, {
-            id,
-            installationId: context.requestContext.installationId,
-            isActive: payload.isActive,
-            updatedBy: context.requestContext.actorId,
-            expectedUpdatedAt: payload.expectedUpdatedAt,
-          })
-          : await employeeService.updateEmployee(client, {
-            id,
-            installationId: context.requestContext.installationId,
-            payload,
-            updatedBy: context.requestContext.actorId,
-          });
-
-        if (!serviceResult.ok) {
-          throw Object.assign(new Error('EMPLOYEE_UPDATE_FAILED'), { serviceResult });
-        }
-
-        const employee = serviceResult.employee;
-        if (serviceResult.changed === false) return { employee };
-
-        await insertAuditRecord(client, buildAuditRecord({
-          requestContext: context.requestContext,
-          action: typeof payload.isActive === 'boolean'
-            ? (payload.isActive ? 'activate' : 'deactivate')
-            : 'update',
-          resourceType: 'employee',
-          resourceId: employee.id,
-          beforeData: serviceResult.beforeData ?? null,
-          afterData: employee,
-          metadata: { code: employee.code },
-        }));
-        return { employee };
+        return {
+          statusCode: 200,
+          contentType: 'application/json',
+          requestId: context.requestId,
+          body: createSuccessEnvelope(result.employee, context.requestId, context.receivedAt),
+        };
       },
     });
 
-    sendSuccess(res, result.employee, context.requestId, context.receivedAt);
-  } catch (error) {
-    if (error?.serviceResult) {
-      sendError(
-        res,
-        createError(error.serviceResult.code, error.serviceResult.message, {}, Boolean(error.serviceResult.retryable), serviceStatus(error.serviceResult)),
-        context.requestId,
-        context.receivedAt,
-      );
-      return;
-    }
-    sendError(res, createError('INTERNAL_ERROR', 'Failed to update employee', {}, true, 500), context.requestId, context.receivedAt);
+    res.setHeader('Cache-Control', 'no-store');
+    sendJson(
+      res,
+      execution.response.statusCode,
+      execution.response.body,
+      execution.response.requestId ?? context.requestId,
+      execution.response.contentType,
+    );
+  } catch {
+    sendError(res, createError('IDEMPOTENCY_STORAGE_ERROR', 'Idempotency storage unavailable', {}, true, 503), context.requestId, context.receivedAt);
   }
 }
 

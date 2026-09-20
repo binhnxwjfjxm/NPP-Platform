@@ -16,7 +16,7 @@ test.describe('Core shell UX', () => {
     await expect(page.getByText('Về tồn kho', { exact: true })).toHaveCount(0);
   });
 
-  test('keeps the access submenu stable while opening and switching access tabs', async ({ page }) => {
+  test('keeps access and workforce submenus stable while switching administration tabs', async ({ page }) => {
     await page.setViewportSize({ width: 1366, height: 768 });
     await page.goto('/dashboard');
 
@@ -56,9 +56,13 @@ test.describe('Core shell UX', () => {
     expect(Math.abs((toggleOnUsers?.y ?? 0) - (toggleBeforeRoute?.y ?? 0))).toBeLessThan(4);
 
     await page.emulateMedia({ reducedMotion: 'reduce' });
+    const workforceToggle = page.getByTestId('workforce-menu-toggle');
+    const workforceSubnav = page.getByTestId('workforce-menu-toggle-subnav');
+    if (!await page.getByTestId('nav-employees').isVisible()) await workforceToggle.click();
+    await expect(workforceToggle).toHaveAttribute('aria-expanded', 'true');
     await page.getByTestId('nav-employees').click();
-    await expect(page).toHaveURL(/\/access\/employees$/);
+    await expect(page).toHaveURL(/\/workforce\/employees$/);
     await expect(page.getByTestId('app-content')).toHaveCSS('animation-name', 'none');
-    await expect(accessSubnav).toHaveCSS('transition-duration', '0s');
+    await expect(workforceSubnav).toHaveCSS('transition-duration', '0s');
   });
 });

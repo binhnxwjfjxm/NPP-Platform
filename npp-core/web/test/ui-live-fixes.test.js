@@ -62,6 +62,7 @@ test('sidebar submenu expands by content and exposes every P0-P4 destination', a
     'sales-menu-toggle',
     'purchasing-menu-toggle',
     'accounting-menu-toggle',
+    'workforce-menu-toggle',
     'access-menu-toggle',
   ];
   for (const testId of requiredGroupToggles) {
@@ -108,7 +109,7 @@ test('product catalog editors use the shared accessible React modal', async () =
 
 test('initial loads preserve partial data and retry only once', async () => {
   const [employeePage, employeeRetry, rolePage, snapshot, retry, organizationPage] = await Promise.all([
-    readSource('../app/access/employees/page.tsx'),
+    readSource('../app/workforce/employees/page.tsx'),
     readSource('../app/access/employees/employee-initial-retry.tsx'),
     readSource('../app/access/roles/page.tsx'),
     readSource('../lib/organization-snapshot.ts'),

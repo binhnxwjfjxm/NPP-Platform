@@ -431,7 +431,7 @@ export default function UserWorkspace({
       <main className={styles.page}>
         <header className={styles.header}>
           <div className={styles.headerText}>
-            <p className={styles.kicker}>Nhân sự và phân quyền</p>
+            <p className={styles.kicker}>Người dùng & phân quyền</p>
             <h1 className={styles.title}>Người dùng</h1>
             <p className={styles.subtitle}>Quản lý tài khoản sử dụng hệ thống, liên kết nhân sự và phân quyền theo công việc.</p>
           </div>

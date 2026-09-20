@@ -15,7 +15,7 @@ test('MCP supervision is placed under Company settings instead of user access', 
   assert.match(settingsItems, /\/settings\/mcp-routes/);
   assert.match(settingsItems, /MCP và tuyến/);
   assert.match(shell, /Cài đặt Công Ty/);
-  assert.match(shell, /Hồ sơ, tài khoản, vai trò và phạm vi truy cập/);
+  assert.match(shell, /Tài khoản, vai trò và phạm vi truy cập/);
 });
 
 test('legacy employee performance deep-link redirects to the MCP route settings area', async () => {

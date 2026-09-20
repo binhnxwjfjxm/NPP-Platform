@@ -102,7 +102,7 @@ export function EmployeeMcpReportingWorkspace() {
   const summary = report?.summary ?? {};
   const actions = (
     <div className={styles.headerActions}>
-      <Link className={styles.linkButton} href="/access/employees">Danh mục nhân sự</Link>
+      <Link className={styles.linkButton} href="/workforce/employees">Danh mục nhân sự</Link>
       <Link className={styles.linkButton} href="/management/customer-onboarding">Đề nghị mở mã khách</Link>
     </div>
   );
@@ -194,7 +194,7 @@ export function EmployeeMcpReportingWorkspace() {
 
           {activeTab === 'effectiveness' ? <>
             <section className={styles.section} data-testid="employee-mcp-effectiveness-panel">
-              <div className={styles.sectionHeader}><div><h2>Hiệu suất theo nhân viên</h2><p>Chỉ gắn số liệu với hồ sơ nhân viên khi mã nhân viên khớp chính xác.</p></div><Link className={styles.linkButton} href="/access/employees">Mở danh mục nhân sự</Link></div>
+              <div className={styles.sectionHeader}><div><h2>Hiệu suất theo nhân viên</h2><p>Chỉ gắn số liệu với hồ sơ nhân viên khi mã nhân viên khớp chính xác.</p></div><Link className={styles.linkButton} href="/workforce/employees">Mở danh mục nhân sự</Link></div>
               <div className={styles.tableWrap}><table className={styles.table}>
                 <thead><tr><th>Nhân viên</th><th className={styles.numeric}>Phiên</th><th className={styles.numeric}>Tuyến</th><th className={styles.numeric}>Kế hoạch</th><th className={styles.numeric}>Đã ghé</th><th className={styles.numeric}>Có mặt</th><th className={styles.numeric}>Nhu cầu mua</th><th className={styles.numeric}>Đơn Công Ty</th><th className={styles.numeric}>Hoàn thành KH</th><th className={styles.numeric}>Nhu cầu / ghé</th></tr></thead>
                 <tbody>{report.fieldActors.map((row) => <tr key={`${row.salesLabel ?? 'missing'}:${row.employeeId ?? 'unmapped'}`}><td><strong>{actorLabel(row.salesLabel, row.employeeCode, row.employeeName)}</strong></td><td className={styles.numeric}>{count(row.sessionCount)}</td><td className={styles.numeric}>{count(row.routeCount)}</td><td className={styles.numeric}>{count(row.plannedOutletCount)}</td><td className={styles.numeric}>{count(row.visitedOutletCount)}</td><td className={styles.numeric}>{count(row.checkedInOutletCount)}</td><td className={styles.numeric}>{count(row.orderIntentCount)}</td><td className={styles.numeric}>{count(row.coreSalesOrderCount)}</td><td className={styles.numeric}>{percent(row.plannedVisitRatePercent)}</td><td className={styles.numeric}>{percent(row.orderIntentConversionPercent)}</td></tr>)}{!report.fieldActors.length ? <tr><td className={styles.empty} colSpan={10}>Không có hoạt động thị trường trong kỳ.</td></tr> : null}</tbody>
