@@ -17,40 +17,61 @@ jobs:
     timeout-minutes: 5
     env:
       VPS_COMPANY_HOST: ${{ vars.VPS_COMPANY_HOST }}
+      VPS_DB_HOST: ${{ vars.VPS_DB_HOST }}
       VPS_SSH_USER: ${{ vars.VPS_SSH_USER }}
 
     steps:
-      - name: Prepare Công Ty SSH credential
+      - name: Prepare SSH credentials
         id: ssh
         shell: bash
         env:
           VPS_COMPANY_SSH_KEY: ${{ secrets.VPS_COMPANY_SSH_KEY }}
+          VPS_DB_SSH_KEY: ${{ secrets.VPS_DB_SSH_KEY }}
         run: |
           set -euo pipefail
           test -n "$VPS_COMPANY_HOST"
+          test -n "$VPS_DB_HOST"
           test -n "$VPS_SSH_USER"
           test -n "$VPS_COMPANY_SSH_KEY"
+          test -n "$VPS_DB_SSH_KEY"
 
-          key="$RUNNER_TEMP/vps-company.key"
-          known="$RUNNER_TEMP/vps-company.known"
           umask 077
-          printf '%s\n' "$VPS_COMPANY_SSH_KEY" > "$key"
-          chmod 600 "$key"
-          ssh-keygen -y -f "$key" >/dev/null
-          ssh-keyscan -T 10 -H "$VPS_COMPANY_HOST" > "$known" 2>/dev/null
-          test -s "$known"
-          chmod 600 "$known"
-          echo "key=$key" >> "$GITHUB_OUTPUT"
-          echo "known=$known" >> "$GITHUB_OUTPUT"
+          company_key="$RUNNER_TEMP/vps-company.key"
+          db_key="$RUNNER_TEMP/vps-db.key"
+          printf '%s\n' "$VPS_COMPANY_SSH_KEY" > "$company_key"
+          printf '%s\n' "$VPS_DB_SSH_KEY" > "$db_key"
+          chmod 600 "$company_key" "$db_key"
+          ssh-keygen -y -f "$company_key" >/dev/null
+          ssh-keygen -y -f "$db_key" >/dev/null
+
+          company_known="$RUNNER_TEMP/vps-company.known"
+          db_known="$RUNNER_TEMP/vps-db.known"
+          ssh-keyscan -T 10 -H "$VPS_COMPANY_HOST" > "$company_known" 2>/dev/null
+          ssh-keyscan -T 10 -H "$VPS_DB_HOST" > "$db_known" 2>/dev/null
+          test -s "$company_known"
+          test -s "$db_known"
+          chmod 600 "$company_known" "$db_known"
+
+          echo "company_key=$company_key" >> "$GITHUB_OUTPUT"
+          echo "company_known=$company_known" >> "$GITHUB_OUTPUT"
+          echo "db_key=$db_key" >> "$GITHUB_OUTPUT"
+          echo "db_known=$db_known" >> "$GITHUB_OUTPUT"
 
       - name: Read exact Công Ty backend evidence
         shell: bash
         env:
-          KEY: ${{ steps.ssh.outputs.key }}
-          KNOWN: ${{ steps.ssh.outputs.known }}
+          KEY: ${{ steps.ssh.outputs.company_key }}
+          KNOWN: ${{ steps.ssh.outputs.company_known }}
         run: |
           set -euo pipefail
-          ssh             -i "$KEY"             -o BatchMode=yes             -o ConnectTimeout=10             -o ConnectionAttempts=1             -o StrictHostKeyChecking=yes             -o UserKnownHostsFile="$KNOWN"             "$VPS_SSH_USER@$VPS_COMPANY_HOST" 'bash -s' <<'REMOTE'
+          ssh \
+            -i "$KEY" \
+            -o BatchMode=yes \
+            -o ConnectTimeout=10 \
+            -o ConnectionAttempts=1 \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$KNOWN" \
+            "$VPS_SSH_USER@$VPS_COMPANY_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
 
           echo "service_state=$(systemctl is-active npp-company-api.service 2>/dev/null || true)"
@@ -62,13 +83,48 @@ jobs:
           fi
 
           echo 'BULK_503_JOURNAL_BEGIN'
-          matches="$(
-            sudo -n journalctl               -u npp-company-api.service               --since '2026-09-20 13:15:00 UTC'               --until '2026-09-20 13:25:00 UTC'               --no-pager               -o cat 2>/dev/null             | grep -E 'idempotent_request_processing_error|inventory_adjustment_bulk_operation_failed|/api/inventory/adjustments/bulk-confirm|bulk-confirm'             | tail -n 200             || true
-          )"
-          if [ -n "$matches" ]; then
-            printf '%s\n' "$matches"
-          else
-            echo 'NO_MATCHES'
-          fi
+          sudo -n journalctl \
+            -u npp-company-api.service \
+            --since '2026-09-20 13:15:00 UTC' \
+            --until '2026-09-20 13:25:00 UTC' \
+            --no-pager \
+            -o cat 2>/dev/null \
+          | grep -E 'idempotent_request_processing_error|inventory_adjustment_bulk_operation_failed|/api/inventory/adjustments/bulk-confirm|bulk-confirm' \
+          | tail -n 200 \
+          || true
           echo 'BULK_503_JOURNAL_END'
+          REMOTE
+
+      - name: Read exact PostgreSQL error evidence
+        shell: bash
+        env:
+          KEY: ${{ steps.ssh.outputs.db_key }}
+          KNOWN: ${{ steps.ssh.outputs.db_known }}
+        run: |
+          set -euo pipefail
+          ssh \
+            -i "$KEY" \
+            -o BatchMode=yes \
+            -o ConnectTimeout=10 \
+            -o ConnectionAttempts=1 \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$KNOWN" \
+            "$VPS_SSH_USER@$VPS_DB_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+
+          echo 'POSTGRES_503_ERROR_BEGIN'
+          log_file=/var/log/postgresql/postgresql-17-main.log
+          if sudo -n test -r "$log_file"; then
+            sudo -n awk '
+              $0 ~ /^2026-09-20 13:(1[5-9]|2[0-5]):/ { in_window=1 }
+              $0 ~ /^2026-09-20 13:2[6-9]:/ { in_window=0 }
+              in_window && $0 ~ /(ERROR:|CONTEXT:|DETAIL:|HINT:)/ { print }
+            ' "$log_file" \
+            | grep -E 'inventory|adjustment|scope|location|ledger|movement|audit|outbox|idempot|ERROR:|CONTEXT:' \
+            | tail -n 200 \
+            || true
+          else
+            echo 'POSTGRES_LOG_NOT_READABLE'
+          fi
+          echo 'POSTGRES_503_ERROR_END'
           REMOTE
