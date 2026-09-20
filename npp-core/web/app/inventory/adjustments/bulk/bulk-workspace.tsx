@@ -145,12 +145,16 @@ function locationChoices(options: ScopeOption[], lotCode: string) {
 
 export default function BulkInventoryAdjustmentWorkspace({ reasons, warehouses, initialError }: Props) {
   const activeWarehouses = useMemo(() => warehouses.filter((item) => item.is_active), [warehouses]);
-  const increaseReasons = useMemo(
-    () => reasons.filter((reason) => reason.documentKind === 'MANUAL_ADJUSTMENT' && reason.adjustmentDirection === 'IN'),
+  const increaseReasonCode = useMemo(
+    () => reasons.find((reason) => reason.code === 'MANUAL_COUNT_CORRECTION_IN'
+      && reason.documentKind === 'MANUAL_ADJUSTMENT'
+      && reason.adjustmentDirection === 'IN')?.code ?? '',
     [reasons],
   );
-  const decreaseReasons = useMemo(
-    () => reasons.filter((reason) => reason.documentKind === 'MANUAL_ADJUSTMENT' && reason.adjustmentDirection === 'OUT'),
+  const decreaseReasonCode = useMemo(
+    () => reasons.find((reason) => reason.code === 'MANUAL_COUNT_CORRECTION_OUT'
+      && reason.documentKind === 'MANUAL_ADJUSTMENT'
+      && reason.adjustmentDirection === 'OUT')?.code ?? '',
     [reasons],
   );
   const [warehouseId, setWarehouseId] = useState(() => activeWarehouses.length === 1 ? activeWarehouses[0].id : '');
@@ -158,8 +162,6 @@ export default function BulkInventoryAdjustmentWorkspace({ reasons, warehouses, 
   const [filename, setFilename] = useState('');
   const [preview, setPreview] = useState<PreviewResult | null>(null);
   const [previewStale, setPreviewStale] = useState(false);
-  const [increaseReasonCode, setIncreaseReasonCode] = useState('');
-  const [decreaseReasonCode, setDecreaseReasonCode] = useState('');
   const [reasonNote, setReasonNote] = useState('');
   const [busy, setBusy] = useState<'file' | 'preview' | 'confirm' | null>(null);
   const [error, setError] = useState<string | null>(initialError);
@@ -198,8 +200,6 @@ export default function BulkInventoryAdjustmentWorkspace({ reasons, warehouses, 
       setFilename(file.name);
       setPreview(null);
       setPreviewStale(false);
-      setIncreaseReasonCode('');
-      setDecreaseReasonCode('');
       setReasonNote('');
       pendingConfirm.current = null;
       setMessage(warehouseId
@@ -250,8 +250,8 @@ export default function BulkInventoryAdjustmentWorkspace({ reasons, warehouses, 
   async function confirm() {
     if (previewStale) return setError('Lô/Vị trí vừa thay đổi. Hãy bấm “Kiểm tra tệp” trước khi lập phiếu.');
     if (!preview?.ready) return setError('Hãy kiểm tra tệp và xử lý hết các dòng cần chú ý trước khi lập phiếu.');
-    if (preview.totals.increaseRowCount > 0 && !increaseReasonCode) return setError('Hãy chọn lý do cho các dòng tăng tồn.');
-    if (preview.totals.decreaseRowCount > 0 && !decreaseReasonCode) return setError('Hãy chọn lý do cho các dòng giảm tồn.');
+    if (preview.totals.increaseRowCount > 0 && !increaseReasonCode) return setError('Thiếu lý do hệ thống cho điều chỉnh tăng sau đối soát.');
+    if (preview.totals.decreaseRowCount > 0 && !decreaseReasonCode) return setError('Thiếu lý do hệ thống cho điều chỉnh giảm sau đối soát.');
     if (!reasonNote.trim()) return setError('Hãy nhập diễn giải cho đợt điều chỉnh tồn hàng loạt.');
     const body = {
       warehouseId,
@@ -538,25 +538,8 @@ export default function BulkInventoryAdjustmentWorkspace({ reasons, warehouses, 
                 <p>Hệ thống đọc lại tồn hiện tại trước khi lập phiếu. Nếu tệp có cả tăng và giảm, hệ thống lập riêng phiếu Tăng và phiếu Giảm.</p>
               </div>
             </div>
+            <p className={fileStyles.helper}>Lý do phiếu được hệ thống tự xác định theo chênh lệch tăng hoặc giảm sau đối soát.</p>
             <div className={styles.formGrid}>
-              {preview.totals.increaseRowCount > 0 ? (
-                <label>
-                  Lý do tăng tồn
-                  <select value={increaseReasonCode} onChange={(event) => { setIncreaseReasonCode(event.target.value); pendingConfirm.current = null; }}>
-                    <option value="">Chọn lý do</option>
-                    {increaseReasons.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}
-                  </select>
-                </label>
-              ) : null}
-              {preview.totals.decreaseRowCount > 0 ? (
-                <label>
-                  Lý do giảm tồn
-                  <select value={decreaseReasonCode} onChange={(event) => { setDecreaseReasonCode(event.target.value); pendingConfirm.current = null; }}>
-                    <option value="">Chọn lý do</option>
-                    {decreaseReasons.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}
-                  </select>
-                </label>
-              ) : null}
               <label className={styles.fullWidth}>
                 Diễn giải
                 <textarea value={reasonNote} onChange={(event) => { setReasonNote(event.target.value); pendingConfirm.current = null; }} rows={3} placeholder="Ví dụ: Đối chiếu tồn thực tế cuối ngày" />

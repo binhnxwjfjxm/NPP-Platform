@@ -96,6 +96,16 @@ test('bulk preview supports inline policy-driven lot and exact-location completi
   assert.match(bulkUiSource, /scopeOptions/);
 });
 
+test('bulk reconciliation assigns canonical reasons automatically instead of asking for two selections', () => {
+  assert.match(bulkUiSource, /MANUAL_COUNT_CORRECTION_IN/);
+  assert.match(bulkUiSource, /MANUAL_COUNT_CORRECTION_OUT/);
+  assert.match(bulkUiSource, /Lý do phiếu được hệ thống tự xác định theo chênh lệch tăng hoặc giảm sau đối soát/);
+  assert.doesNotMatch(bulkUiSource, /Lý do tăng tồn/);
+  assert.doesNotMatch(bulkUiSource, /Lý do giảm tồn/);
+  assert.doesNotMatch(bulkUiSource, /setIncreaseReasonCode/);
+  assert.doesNotMatch(bulkUiSource, /setDecreaseReasonCode/);
+});
+
 test('bulk adjustment preview keeps inventory read-only and confirmation keeps canonical idempotency', () => {
   assert.match(bulkUiSource, /Tồn hệ thống/);
   assert.match(bulkUiSource, /Tồn thực tế/);
