@@ -1,0 +1,74 @@
+name: Company bulk adjustment 503 diagnostic
+
+on:
+  push:
+    branches:
+      - agent/diagnose-inventory-bulk-503
+    paths:
+      - .github/workflows/vps-company-bulk-503-diagnostic.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      VPS_COMPANY_HOST: ${{ vars.VPS_COMPANY_HOST }}
+      VPS_SSH_USER: ${{ vars.VPS_SSH_USER }}
+
+    steps:
+      - name: Prepare Công Ty SSH credential
+        id: ssh
+        shell: bash
+        env:
+          VPS_COMPANY_SSH_KEY: ${{ secrets.VPS_COMPANY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$VPS_COMPANY_HOST"
+          test -n "$VPS_SSH_USER"
+          test -n "$VPS_COMPANY_SSH_KEY"
+
+          key="$RUNNER_TEMP/vps-company.key"
+          known="$RUNNER_TEMP/vps-company.known"
+          umask 077
+          printf '%s\n' "$VPS_COMPANY_SSH_KEY" > "$key"
+          chmod 600 "$key"
+          ssh-keygen -y -f "$key" >/dev/null
+          ssh-keyscan -T 10 -H "$VPS_COMPANY_HOST" > "$known" 2>/dev/null
+          test -s "$known"
+          chmod 600 "$known"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+          echo "known=$known" >> "$GITHUB_OUTPUT"
+
+      - name: Read exact Công Ty backend evidence
+        shell: bash
+        env:
+          KEY: ${{ steps.ssh.outputs.key }}
+          KNOWN: ${{ steps.ssh.outputs.known }}
+        run: |
+          set -euo pipefail
+          ssh             -i "$KEY"             -o BatchMode=yes             -o ConnectTimeout=10             -o ConnectionAttempts=1             -o StrictHostKeyChecking=yes             -o UserKnownHostsFile="$KNOWN"             "$VPS_SSH_USER@$VPS_COMPANY_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+
+          echo "service_state=$(systemctl is-active npp-company-api.service 2>/dev/null || true)"
+          active_release="$(readlink -f /srv/npp/company/current 2>/dev/null || true)"
+          if [ -n "$active_release" ]; then
+            echo "active_release=$(basename "$active_release")"
+          else
+            echo "active_release=unknown"
+          fi
+
+          echo 'BULK_503_JOURNAL_BEGIN'
+          matches="$(
+            sudo -n journalctl               -u npp-company-api.service               --since '2026-09-20 13:15:00 UTC'               --until '2026-09-20 13:25:00 UTC'               --no-pager               -o cat 2>/dev/null             | grep -E 'idempotent_request_processing_error|inventory_adjustment_bulk_operation_failed|/api/inventory/adjustments/bulk-confirm|bulk-confirm'             | tail -n 200             || true
+          )"
+          if [ -n "$matches" ]; then
+            printf '%s\n' "$matches"
+          else
+            echo 'NO_MATCHES'
+          fi
+          echo 'BULK_503_JOURNAL_END'
+          REMOTE
