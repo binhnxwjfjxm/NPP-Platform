@@ -144,7 +144,7 @@ test.describe('Core web route smoke', () => {
     expect(browserGatewayGets).toEqual([]);
   });
 
-  test('employee directory loads through the nested access menu without browser-side initial reload', async ({ page }) => {
+  test('employee directory loads through the Nhân sự menu without browser-side initial reload', async ({ page }) => {
     const browserEmployeeGets: string[] = [];
     page.on('request', (request) => {
       const url = new URL(request.url());
@@ -153,11 +153,13 @@ test.describe('Core web route smoke', () => {
       }
     });
 
-    await expectHealthyRoute(page, '/access/employees');
+    await expectHealthyRoute(page, '/workforce/employees');
     await expect(page.getByTestId('employees-page')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Danh mục nhân sự', exact: true })).toBeVisible();
-    await expect(page.getByTestId('access-menu-toggle')).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.getByTestId('workforce-menu-toggle')).toHaveAttribute('aria-expanded', 'true');
     await expect(page.getByTestId('nav-employees')).toBeVisible();
+    await expect(page.getByTestId('nav-work-schedules')).toBeVisible();
+    await expect(page.getByTestId('nav-work-policies')).toBeVisible();
     expectNoSensitiveData(await page.content());
     expectNoEnglishMainFlow(await page.locator('body').innerText());
     expect(browserEmployeeGets).toEqual([]);

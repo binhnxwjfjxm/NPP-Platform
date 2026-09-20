@@ -19,10 +19,10 @@ test.describe('Danh mục nhân sự', () => {
     await page.getByRole('button', { name: 'Tạo chi nhánh' }).click();
     await expect(page.getByTestId(`branch-row-${branchCode}`)).toBeVisible();
 
-    await page.goto('/access/employees');
+    await page.goto('/workforce/employees');
     await expect(page.getByTestId('employees-page')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Danh mục nhân sự', exact: true })).toBeVisible();
-    await expect(page.getByTestId('access-menu-toggle')).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.getByTestId('workforce-menu-toggle')).toHaveAttribute('aria-expanded', 'true');
     await expect(page.getByTestId('nav-employees')).toBeVisible();
 
     await page.getByTestId('employees-search-input').fill(`KHONG-KHOP-${suffix}`);
@@ -48,10 +48,12 @@ test.describe('Danh mục nhân sự', () => {
     await expect(row).toContainText(branchName);
     await expect(row).toContainText('Đang làm việc');
 
+    if (!await page.getByTestId('nav-users').isVisible()) await page.getByTestId('access-menu-toggle').click();
     await page.getByTestId('nav-users').click();
     await expect(page).toHaveURL(/\/access\/users$/);
+    if (!await page.getByTestId('nav-employees').isVisible()) await page.getByTestId('workforce-menu-toggle').click();
     await page.getByTestId('nav-employees').click();
-    await expect(page).toHaveURL(/\/access\/employees$/);
+    await expect(page).toHaveURL(/\/workforce\/employees$/);
     await expect(row).toBeVisible();
     await expect(row).toContainText(employeeName);
 
@@ -67,22 +69,26 @@ test.describe('Danh mục nhân sự', () => {
     await page.getByRole('button', { name: 'Lưu thay đổi' }).click();
     await expect(row).toContainText('Kế toán kho cấp cao');
 
+    if (!await page.getByTestId('nav-users').isVisible()) await page.getByTestId('access-menu-toggle').click();
     await page.getByTestId('nav-users').click();
     await expect(page).toHaveURL(/\/access\/users$/);
+    if (!await page.getByTestId('nav-employees').isVisible()) await page.getByTestId('workforce-menu-toggle').click();
     await page.getByTestId('nav-employees').click();
-    await expect(page).toHaveURL(/\/access\/employees$/);
+    await expect(page).toHaveURL(/\/workforce\/employees$/);
     await expect(row).toContainText('Kế toán kho cấp cao');
 
     await page.getByTestId(`toggle-employee-${employeeCode}`).click();
     await page.getByRole('button', { name: 'Xác nhận' }).click();
     await page.getByTestId('employees-status-filter').selectOption('inactive');
-    await expect(row).toContainText('Ngừng hoạt động');
+    await expect(row).toContainText('Ngừng làm việc');
 
+    if (!await page.getByTestId('nav-users').isVisible()) await page.getByTestId('access-menu-toggle').click();
     await page.getByTestId('nav-users').click();
     await expect(page).toHaveURL(/\/access\/users$/);
+    if (!await page.getByTestId('nav-employees').isVisible()) await page.getByTestId('workforce-menu-toggle').click();
     await page.getByTestId('nav-employees').click();
-    await expect(page).toHaveURL(/\/access\/employees$/);
-    await expect(row).toContainText('Ngừng hoạt động');
+    await expect(page).toHaveURL(/\/workforce\/employees$/);
+    await expect(row).toContainText('Ngừng làm việc');
 
     await page.getByTestId(`toggle-employee-${employeeCode}`).click();
     await page.getByRole('button', { name: 'Xác nhận' }).click();

@@ -8,8 +8,10 @@ test('shared navigation uses business grouping without fake system or unfinished
   const shell = await source('../app/components/app-shell-core.tsx');
   assert.match(shell, /Danh mục nghiệp vụ/);
   assert.match(shell, /Tổ chức, đối tác, hàng hóa, giá và chứng từ/);
-  assert.match(shell, /Nhân sự và phân quyền/);
-  assert.match(shell, /Hồ sơ, tài khoản, vai trò và phạm vi truy cập/);
+  assert.match(shell, /title: 'Nhân sự'/);
+  assert.match(shell, /Hồ sơ, chính sách và lịch làm việc/);
+  assert.match(shell, /Người dùng & phân quyền/);
+  assert.match(shell, /Tài khoản, vai trò và phạm vi truy cập/);
   assert.doesNotMatch(shell, /Đăng nhập sẽ được bổ sung|Hệ thống trực tuyến/);
 });
 
@@ -100,7 +102,7 @@ test('product catalog preserves product, SKU, unit and barcode features with tra
 test('roles, employees, customers, suppliers and organization use neutral administrative language', async () => {
   const [roles, employees, customers, suppliers, organization] = await Promise.all([
     source('../app/access/roles/role-workspace.tsx'),
-    source('../app/access/employees/employee-workspace.tsx'),
+    source('../app/workforce/employees/employee-workspace.tsx'),
     source('../app/customers/customer-workspace.tsx'),
     source('../app/suppliers/supplier-workspace.tsx'),
     source('../app/organization/organization-workspace.tsx'),

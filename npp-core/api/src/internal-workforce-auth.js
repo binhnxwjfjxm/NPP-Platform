@@ -645,6 +645,7 @@ export function createInternalWorkforceAuthenticator({
         roles: authorization.roles,
         permissions: authorization.permissions,
         scopes: authorization.scopes,
+        scopeAuthority: authorization.ownerKind ? 'COMPANY' : 'ASSIGNED',
         sourceApp: session.source_app,
       }),
       session: Object.freeze({

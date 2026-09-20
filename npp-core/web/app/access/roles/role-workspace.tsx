@@ -73,7 +73,7 @@ function groupPermissions(permissions: AccessPermission[]) {
 }
 
 const MODULE_LABELS: Record<string, string> = {
-  organization: 'Tổ chức và kho hàng', access: 'Nhân sự và phân quyền', customers: 'Khách hàng', suppliers: 'Nhà cung cấp',
+  organization: 'Tổ chức và kho hàng', access: 'Người dùng & phân quyền', customers: 'Khách hàng', suppliers: 'Nhà cung cấp',
   products: 'Sản phẩm', pricing: 'Giá bán và khuyến mãi', inventory: 'Tồn kho và lô hàng', document_numbering: 'Số chứng từ',
   sales: 'Bán hàng', purchasing: 'Mua hàng', accounting: 'Kế toán', reporting: 'Báo cáo',
 };

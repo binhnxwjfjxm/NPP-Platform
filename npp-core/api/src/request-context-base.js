@@ -26,6 +26,7 @@ function normalizePrincipal(principal = {}) {
     roles: frozenStrings(principal.roles),
     permissions: frozenStrings(principal.permissions),
     scopes: normalizeScopes(principal.scopes),
+    scopeAuthority: principal.scopeAuthority === 'COMPANY' ? 'COMPANY' : 'ASSIGNED',
     sourceApp: typeof principal.sourceApp === 'string' && principal.sourceApp.trim() ? principal.sourceApp.trim() : 'npp-core-api',
   });
 }
@@ -38,6 +39,7 @@ export function createBootstrapPrincipal(config) {
   return normalizePrincipal({
     actorId: config.coreBootstrapActorId,
     roles: ['bootstrap'],
+    scopeAuthority: 'COMPANY',
     permissions: [
       PERMISSIONS.coreConfigRead,
       PERMISSIONS.coreHealthAuthenticatedRead,
@@ -233,6 +235,7 @@ export function createRequestContext({ config, principal = createAnonymousPrinci
     roles: normalizedPrincipal.roles,
     permissions: normalizedPrincipal.permissions,
     scopes: normalizedPrincipal.scopes,
+    scopeAuthority: normalizedPrincipal.scopeAuthority,
     requestId,
     sourceApp: normalizedPrincipal.sourceApp,
     receivedAt,
@@ -295,6 +298,7 @@ export function safeRequestContext(requestContext) {
     installationId: requestContext.installationId,
     roles: [...requestContext.roles],
     permissions: [...requestContext.permissions],
+    scopeAuthority: requestContext.scopeAuthority,
     scopes: {
       branchIds: [...requestContext.scopes.branchIds],
       warehouseIds: [...requestContext.scopes.warehouseIds],
