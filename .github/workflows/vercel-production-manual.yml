@@ -16,7 +16,7 @@ jobs:
   deploy-production:
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'issue_comment' && github.event.issue.number == 5 && github.event.comment.body == '/deploy-vercel-production' && contains(fromJSON('["binhnxwjfjxm","khuongbinhinfo-a11y"]'), github.actor))
+      (github.event_name == 'issue_comment' && github.event.issue.number == 5 && github.event.comment.body == '/deploy-vercel-production' && contains(fromJSON('["binhnxwjfjxm","khuongbinhinfo-a11y","gustavjung01"]'), github.actor))
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
