@@ -1,3 +1,4 @@
+import { createHash, randomBytes } from 'node:crypto';
 import * as workforceRepo from '../db/repositories/workforce.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -82,6 +83,11 @@ function normalizePolicy(payload, codeOverride = null) {
   }
   const timezone = text(payload.timezone) || INSTALLATION_TIMEZONE;
   if (timezone.length > 64) return fail('INVALID_TIMEZONE', 'Múi giờ không hợp lệ');
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: timezone }).format(new Date());
+  } catch {
+    return fail('INVALID_TIMEZONE', 'Múi giờ không hợp lệ');
+  }
   const effectiveFrom = text(payload.effectiveFrom);
   const effectiveTo = text(payload.effectiveTo) || null;
   if (!validDate(effectiveFrom) || (effectiveTo && !validDate(effectiveTo))) {
@@ -289,4 +295,400 @@ export async function upsertWorkSchedule(client, { installationId, payload, acto
     scheduledStartAt, scheduledEndAt, overrideReason, actorId,
   });
   return { ok: true, schedule, beforeSchedule: null, employee, action: 'create' };
+}
+
+
+const ATTENDANCE_QR_PREFIX = 'NPPATT.';
+const ATTENDANCE_QR_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+const ATTENDANCE_QR_TTL_MS = 90_000;
+const ATTENDANCE_MIN_EVENT_GAP_MS = 60_000;
+
+function nextDate(value) {
+  const date = new Date(`${value}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10);
+}
+
+function dayOfWeek(value) {
+  return new Date(`${value}T00:00:00Z`).getUTCDay();
+}
+
+function localClockMinutes(timeZone, now) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(now);
+  const map = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return Number(map.hour) * 60 + Number(map.minute);
+}
+
+function timeMinutes(value) {
+  const match = /^(\d{2}):(\d{2})/.exec(String(value ?? ''));
+  return match ? Number(match[1]) * 60 + Number(match[2]) : null;
+}
+
+function zonedLocalDateTimeToIso(dateValue, timeValue, timeZone) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateValue);
+  const clock = /^(\d{2}):(\d{2})/.exec(String(timeValue ?? ''));
+  if (!match || !clock) return null;
+  const wanted = Date.UTC(
+    Number(match[1]), Number(match[2]) - 1, Number(match[3]),
+    Number(clock[1]), Number(clock[2]), 0,
+  );
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hourCycle: 'h23',
+  });
+  const wallAsUtc = (timestamp) => {
+    const parts = Object.fromEntries(
+      formatter.formatToParts(new Date(timestamp)).map((part) => [part.type, part.value]),
+    );
+    return Date.UTC(
+      Number(parts.year), Number(parts.month) - 1, Number(parts.day),
+      Number(parts.hour), Number(parts.minute), Number(parts.second),
+    );
+  };
+  let offset = wallAsUtc(wanted) - wanted;
+  let utc = wanted - offset;
+  const secondOffset = wallAsUtc(utc) - utc;
+  if (secondOffset !== offset) {
+    offset = secondOffset;
+    utc = wanted - offset;
+  }
+  return new Date(utc).toISOString();
+}
+
+function attendanceEventWindow({ workDate, timeZone, expectedStartAt, expectedEndAt }) {
+  const start = expectedStartAt
+    ? new Date(new Date(expectedStartAt).getTime() - 12 * 60 * 60 * 1000).toISOString()
+    : zonedLocalDateTimeToIso(workDate, '00:00', timeZone);
+  const end = expectedEndAt
+    ? new Date(new Date(expectedEndAt).getTime() + 12 * 60 * 60 * 1000).toISOString()
+    : zonedLocalDateTimeToIso(nextDate(workDate), '00:00', timeZone);
+  return { fromAt: start, toAt: end };
+}
+
+function attendanceState(events, now) {
+  const validEvents = events.filter((event) => event.validation_status === 'VALID');
+  const latest = validEvents.at(-1) ?? null;
+  if (!latest) return { status: 'NOT_STARTED', nextAction: 'CHECK_IN', latestEvent: null };
+  if (latest.event_type === 'CHECK_IN') {
+    const elapsed = now.getTime() - new Date(latest.occurred_at).getTime();
+    return {
+      status: 'WORKING',
+      nextAction: 'CHECK_OUT',
+      latestEvent: latest,
+      tooSoon: elapsed >= 0 && elapsed < ATTENDANCE_MIN_EVENT_GAP_MS,
+    };
+  }
+  return { status: 'COMPLETE', nextAction: null, latestEvent: latest };
+}
+
+async function policyForDate(client, { installationId, employeeId, workDate }) {
+  const assignment = await workforceRepo.getEffectiveEmployeePolicyAssignment(client, {
+    installationId, employeeId, workDate,
+  });
+  if (!assignment) return null;
+  const policy = await workforceRepo.getWorkPolicyById(client, {
+    installationId, id: assignment.work_policy_id,
+  });
+  return policy ? { assignment, policy } : null;
+}
+
+async function resolveAttendanceContext(client, { installationId, employeeId, now = new Date() }) {
+  const employee = await workforceRepo.getEmployeeScopeRecord(client, {
+    installationId, employeeId, lock: 'share',
+  });
+  if (!employee || !employee.is_active) return fail('EMPLOYEE_NOT_FOUND', 'Không tìm thấy hồ sơ nhân sự đang hoạt động');
+
+  const defaultToday = localDate(INSTALLATION_TIMEZONE, now);
+  const yesterday = previousDate(defaultToday);
+  const [todaySchedule, yesterdaySchedule] = await Promise.all([
+    workforceRepo.getWorkScheduleForEmployeeDate(client, { installationId, employeeId, workDate: defaultToday }),
+    workforceRepo.getWorkScheduleForEmployeeDate(client, { installationId, employeeId, workDate: yesterday }),
+  ]);
+
+  let workDate = defaultToday;
+  let schedule = todaySchedule ?? null;
+  if (yesterdaySchedule?.schedule_kind === 'WORK' && yesterdaySchedule.scheduled_end_at) {
+    const end = new Date(yesterdaySchedule.scheduled_end_at).getTime();
+    const start = new Date(yesterdaySchedule.scheduled_start_at).getTime();
+    const current = now.getTime();
+    if (current >= start && current <= end + 4 * 60 * 60 * 1000) {
+      workDate = yesterday;
+      schedule = yesterdaySchedule;
+    }
+  }
+
+  let policyBundle = await policyForDate(client, { installationId, employeeId, workDate });
+  if (!schedule && workDate === defaultToday) {
+    const yesterdayPolicy = await policyForDate(client, { installationId, employeeId, workDate: yesterday });
+    if (yesterdayPolicy?.policy?.time_mode === 'FIXED') {
+      const startMinutes = timeMinutes(yesterdayPolicy.policy.fixed_start_time);
+      const endMinutes = timeMinutes(yesterdayPolicy.policy.fixed_end_time);
+      if (startMinutes !== null && endMinutes !== null && endMinutes <= startMinutes) {
+        try {
+          const nowMinutes = localClockMinutes(yesterdayPolicy.policy.timezone || INSTALLATION_TIMEZONE, now);
+          if (nowMinutes <= endMinutes) {
+            workDate = yesterday;
+            policyBundle = yesterdayPolicy;
+          }
+        } catch {
+          return fail('INVALID_POLICY_TIMEZONE', 'Múi giờ của chính sách làm việc không hợp lệ');
+        }
+      }
+    }
+  }
+
+  if (!policyBundle && schedule?.work_policy_id) {
+    const policy = await workforceRepo.getWorkPolicyById(client, {
+      installationId, id: schedule.work_policy_id,
+    });
+    if (policy) policyBundle = { assignment: null, policy };
+  }
+  if (!policyBundle) return fail('WORK_POLICY_REQUIRED', 'Nhân sự chưa có chính sách làm việc phù hợp cho ngày chấm công');
+
+  const policy = policyBundle.policy;
+  if (!['QR', 'BOTH'].includes(policy.attendance_method)) {
+    return fail('QR_ATTENDANCE_NOT_ALLOWED', 'Chính sách làm việc hiện tại không cho phép chấm công bằng QR');
+  }
+  if (policy.time_mode === 'NO_ATTENDANCE') {
+    return fail('ATTENDANCE_NOT_REQUIRED', 'Chính sách làm việc hiện tại không yêu cầu chấm công');
+  }
+  if (schedule?.schedule_kind === 'OFF') {
+    return fail('WORK_DAY_OFF', 'Hôm nay là ngày nghỉ theo lịch làm việc');
+  }
+  if (!schedule && policy.time_mode === 'SHIFT') {
+    return fail('WORK_SCHEDULE_REQUIRED', 'Nhân sự làm theo ca nhưng chưa có lịch làm việc cho ngày này');
+  }
+  if (!schedule && !Array.isArray(policy.working_days)) {
+    return fail('WORK_POLICY_INVALID', 'Chính sách làm việc chưa có ngày làm việc hợp lệ');
+  }
+  if (!schedule && !policy.working_days.map(Number).includes(dayOfWeek(workDate))) {
+    return fail('WORK_DAY_OFF', 'Hôm nay không nằm trong ngày làm việc của chính sách');
+  }
+
+  const timeZone = policy.timezone || INSTALLATION_TIMEZONE;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone }).format(now);
+  } catch {
+    return fail('INVALID_POLICY_TIMEZONE', 'Múi giờ của chính sách làm việc không hợp lệ');
+  }
+  let expectedStartAt = schedule?.scheduled_start_at ? new Date(schedule.scheduled_start_at).toISOString() : null;
+  let expectedEndAt = schedule?.scheduled_end_at ? new Date(schedule.scheduled_end_at).toISOString() : null;
+  if (!schedule && policy.time_mode === 'FIXED') {
+    try {
+      expectedStartAt = zonedLocalDateTimeToIso(workDate, policy.fixed_start_time, timeZone);
+      const startMinutes = timeMinutes(policy.fixed_start_time);
+      const endMinutes = timeMinutes(policy.fixed_end_time);
+      const endDate = startMinutes !== null && endMinutes !== null && endMinutes <= startMinutes
+        ? nextDate(workDate)
+        : workDate;
+      expectedEndAt = zonedLocalDateTimeToIso(endDate, policy.fixed_end_time, timeZone);
+    } catch {
+      return fail('INVALID_POLICY_TIMEZONE', 'Múi giờ của chính sách làm việc không hợp lệ');
+    }
+  }
+
+  const window = attendanceEventWindow({ workDate, timeZone, expectedStartAt, expectedEndAt });
+  if (!window.fromAt || !window.toAt) return fail('ATTENDANCE_WINDOW_INVALID', 'Không xác định được ngày chấm công');
+  const events = await workforceRepo.listAttendanceEventsForRange(client, {
+    installationId, employeeId, ...window,
+  });
+  const state = attendanceState(events, now);
+
+  return {
+    ok: true,
+    context: {
+      employee,
+      workDate,
+      policy,
+      schedule,
+      expectedStartAt,
+      expectedEndAt,
+      timeZone,
+      events,
+      ...state,
+    },
+  };
+}
+
+export function parseAttendanceQrPayload(value) {
+  const raw = text(value);
+  if (!raw.startsWith(ATTENDANCE_QR_PREFIX)) return null;
+  const token = raw.slice(ATTENDANCE_QR_PREFIX.length);
+  return ATTENDANCE_QR_TOKEN_PATTERN.test(token) ? token : null;
+}
+
+export function hashAttendanceQrToken(token) {
+  return createHash('sha256').update(token).digest('hex');
+}
+
+export async function listAttendancePointManagement(client, { installationId, branchIds = null }) {
+  const [points, branches] = await Promise.all([
+    workforceRepo.listAttendancePoints(client, { installationId, branchIds }),
+    workforceRepo.listAttendanceBranches(client, { installationId, branchIds }),
+  ]);
+  return { ok: true, points, branches };
+}
+
+export async function createAttendancePoint(client, { installationId, payload, actorId }) {
+  const code = text(payload?.code).toUpperCase();
+  const name = text(payload?.name);
+  const branchId = text(payload?.branchId) || null;
+  if (!CODE_PATTERN.test(code)) return fail('INVALID_ATTENDANCE_POINT_CODE', 'Mã điểm chấm công chỉ dùng chữ in hoa, số, gạch ngang hoặc gạch dưới');
+  if (!name || name.length > 256) return fail('INVALID_ATTENDANCE_POINT_NAME', 'Tên điểm chấm công là bắt buộc và tối đa 256 ký tự');
+  if (branchId && !validUuid(branchId)) return fail('BRANCH_NOT_FOUND', 'Chi nhánh không hợp lệ');
+  if (branchId) {
+    const branch = await workforceRepo.getAttendanceBranchById(client, { installationId, id: branchId });
+    if (!branch || !branch.is_active) return fail('BRANCH_NOT_FOUND', 'Không tìm thấy chi nhánh đang hoạt động');
+  }
+  try {
+    const point = await workforceRepo.insertAttendancePoint(client, {
+      installationId, code, name, branchId, actorId,
+    });
+    return { ok: true, point };
+  } catch (error) {
+    if (error?.code === '23505') return fail('ATTENDANCE_POINT_CODE_EXISTS', 'Mã điểm chấm công đã tồn tại');
+    throw error;
+  }
+}
+
+export async function createAttendanceQrToken(client, { installationId, attendancePointId, actorId, now = new Date() }) {
+  if (!validUuid(attendancePointId)) return fail('ATTENDANCE_POINT_NOT_FOUND', 'Không tìm thấy điểm chấm công');
+  const point = await workforceRepo.getAttendancePointById(client, { installationId, id: attendancePointId });
+  if (!point || !point.is_active) return fail('ATTENDANCE_POINT_NOT_FOUND', 'Không tìm thấy điểm chấm công đang hoạt động');
+
+  const token = randomBytes(32).toString('base64url');
+  const tokenHash = hashAttendanceQrToken(token);
+  const expiresAt = new Date(now.getTime() + ATTENDANCE_QR_TTL_MS).toISOString();
+  await workforceRepo.pruneExpiredAttendanceQrTokens(client, { installationId });
+  const row = await workforceRepo.insertAttendanceQrToken(client, {
+    installationId,
+    attendancePointId,
+    tokenHash,
+    expiresAt,
+    actorId,
+  });
+  if (!row) return fail('QR_TOKEN_CREATE_FAILED', 'Không phát được mã QR chấm công');
+  return {
+    ok: true,
+    token: {
+      id: row.id,
+      attendancePointId,
+      pointCode: point.code,
+      pointName: point.name,
+      branchName: point.branch_name ?? null,
+      qrPayload: `${ATTENDANCE_QR_PREFIX}${token}`,
+      expiresAt: row.expires_at,
+      createdAt: row.created_at,
+    },
+    auditToken: {
+      id: row.id,
+      attendancePointId,
+      expiresAt: row.expires_at,
+      createdAt: row.created_at,
+    },
+    point,
+  };
+}
+
+export async function getAttendanceToday(client, { installationId, employeeId, now = new Date() }) {
+  if (!validUuid(employeeId)) return fail('EMPLOYEE_ID_REQUIRED', 'Tài khoản chưa liên kết hồ sơ nhân sự để chấm công');
+  const resolved = await resolveAttendanceContext(client, { installationId, employeeId, now });
+  if (!resolved.ok) return resolved;
+  const value = resolved.context;
+  return {
+    ok: true,
+    today: {
+      workDate: value.workDate,
+      status: value.status,
+      nextAction: value.nextAction,
+      tooSoon: Boolean(value.tooSoon),
+      employee: value.employee,
+      policy: {
+        id: value.policy.id,
+        code: value.policy.code,
+        version: value.policy.version,
+        name: value.policy.name,
+        timeMode: value.policy.time_mode,
+        attendanceMethod: value.policy.attendance_method,
+        timezone: value.timeZone,
+      },
+      schedule: value.schedule ? {
+        id: value.schedule.id,
+        kind: value.schedule.schedule_kind,
+        source: value.schedule.source,
+      } : null,
+      expectedStartAt: value.expectedStartAt,
+      expectedEndAt: value.expectedEndAt,
+      events: value.events,
+    },
+  };
+}
+
+export async function recordQrAttendance(client, {
+  installationId,
+  employeeId,
+  payload,
+  actorId,
+  requestId,
+  now = new Date(),
+}) {
+  if (!validUuid(employeeId)) return fail('EMPLOYEE_ID_REQUIRED', 'Tài khoản chưa liên kết hồ sơ nhân sự để chấm công');
+  const token = parseAttendanceQrPayload(payload?.qrPayload);
+  if (!token) return fail('QR_TOKEN_INVALID', 'Mã QR chấm công không hợp lệ');
+  const tokenRow = await workforceRepo.getAttendanceQrTokenByHash(client, {
+    installationId,
+    tokenHash: hashAttendanceQrToken(token),
+  });
+  if (!tokenRow) return fail('QR_TOKEN_INVALID', 'Mã QR chấm công không hợp lệ');
+  if (!tokenRow.point_active) return fail('ATTENDANCE_POINT_INACTIVE', 'Điểm chấm công hiện không hoạt động');
+  if (new Date(tokenRow.expires_at).getTime() <= now.getTime()) {
+    return fail('QR_TOKEN_EXPIRED', 'Mã QR đã hết hạn; vui lòng quét mã đang hiển thị tại điểm chấm công');
+  }
+
+  const resolved = await resolveAttendanceContext(client, { installationId, employeeId, now });
+  if (!resolved.ok) return resolved;
+  const attendance = resolved.context;
+  if (!attendance.nextAction) return fail('ATTENDANCE_ALREADY_COMPLETE', 'Ngày làm việc này đã có đủ giờ vào và giờ ra');
+  if (attendance.tooSoon) return fail('ATTENDANCE_TOO_SOON', 'Vừa ghi nhận chấm công; vui lòng đợi một phút trước thao tác tiếp theo');
+
+  const sourceReference = createHash('sha256')
+    .update(`attendance-qr|${tokenRow.id}|${employeeId}|${attendance.nextAction}`)
+    .digest('hex');
+  const event = await workforceRepo.insertAttendanceEvent(client, {
+    installationId,
+    employeeId,
+    scheduleId: attendance.schedule?.id ?? null,
+    workPolicyId: attendance.policy.id,
+    attendancePointId: tokenRow.attendance_point_id,
+    eventType: attendance.nextAction,
+    occurredAt: now.toISOString(),
+    sourceReference,
+    actorId,
+    requestId,
+  });
+  if (!event) return fail('ATTENDANCE_DUPLICATE_SCAN', 'Lần quét này đã được ghi nhận trước đó');
+
+  return {
+    ok: true,
+    event: {
+      ...event,
+      point_code: tokenRow.point_code,
+      point_name: tokenRow.point_name,
+    },
+    workDate: attendance.workDate,
+    point: {
+      id: tokenRow.attendance_point_id,
+      code: tokenRow.point_code,
+      name: tokenRow.point_name,
+      branchId: tokenRow.branch_id,
+      branchName: tokenRow.branch_name,
+    },
+  };
 }

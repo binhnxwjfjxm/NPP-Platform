@@ -157,6 +157,7 @@ test.describe('Core web route smoke', () => {
     await expect(page.getByTestId('employees-page')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Danh mục nhân sự', exact: true })).toBeVisible();
     await expect(page.getByTestId('workforce-menu-toggle')).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.getByTestId('nav-attendance')).toBeVisible();
     await expect(page.getByTestId('nav-employees')).toBeVisible();
     await expect(page.getByTestId('nav-work-schedules')).toBeVisible();
     await expect(page.getByTestId('nav-work-policies')).toBeVisible();

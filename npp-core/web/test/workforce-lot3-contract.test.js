@@ -1,0 +1,48 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+
+async function source(path) {
+  return readFile(new URL(`../${path}`, import.meta.url), 'utf8');
+}
+
+test('Issue #1110 Lô 3 adds Chấm công to the Nhân sự menu', async () => {
+  const shell = await source('app/components/app-shell-core.tsx');
+  assert.match(shell, /href: '\/workforce\/attendance'.*label: 'Chấm công'.*testId: 'nav-attendance'/);
+  assert.match(shell, /Hồ sơ, chấm công, chính sách và lịch làm việc/);
+});
+
+test('Issue #1110 Lô 3 uses camera QR scan with an office-friendly fallback', async () => {
+  const workspace = await source('app/workforce/attendance/attendance-workspace.tsx');
+  assert.match(workspace, /navigator\.mediaDevices\.getUserMedia/);
+  assert.match(workspace, /BarcodeDetector/);
+  assert.match(workspace, /formats: \['qr_code'\]/);
+  assert.match(workspace, /Dán mã QR nếu thiết bị không quét được camera/);
+  assert.match(workspace, /Mở camera quét QR/);
+  assert.match(workspace, /Ghi nhận giờ vào/);
+  assert.match(workspace, /Ghi nhận giờ ra/);
+});
+
+test('Issue #1110 Lô 3 reuses canonical idempotency keys and does not send employee or timestamp from browser', async () => {
+  const [workspace, gateway] = await Promise.all([
+    source('app/workforce/attendance/attendance-workspace.tsx'),
+    source('lib/workforce-gateway.ts'),
+  ]);
+  assert.match(workspace, /createIdempotencyKey\(operation\)/);
+  assert.match(workspace, /const payload = \{ qrPayload: normalized \}/);
+  assert.doesNotMatch(workspace, /employeeId:\s*today|occurredAt:/);
+  assert.match(gateway, /mutationKey\(idempotencyKey, 'attendance-record'\)/);
+  assert.match(gateway, /mutationKey\(idempotencyKey, 'attendance-qr-token'\)/);
+});
+
+test('Issue #1110 Lô 3 renders QR locally without sending short-lived token to an external service', async () => {
+  const [qr, workspace] = await Promise.all([
+    source('lib/attendance-qr.ts'),
+    source('app/workforce/attendance/attendance-workspace.tsx'),
+  ]);
+  assert.match(qr, /const SIZE = 33/);
+  assert.match(qr, /MAX_PAYLOAD_BYTES = 62/);
+  assert.match(qr, /reedSolomonRemainder/);
+  assert.match(workspace, /createAttendanceQrMatrix/);
+  assert.doesNotMatch(qr + workspace, /api\.qrserver|chart\.googleapis|quickchart|external.*qr/i);
+});

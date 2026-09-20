@@ -38,6 +38,7 @@ export const PERMISSIONS = Object.freeze({
   coreWorkScheduleManage: 'core.work-schedule.manage',
   coreAttendanceSelfRead: 'core.attendance.self.read',
   coreAttendanceSelfRecord: 'core.attendance.self.record',
+  coreAttendancePointManage: 'core.attendance-point.manage',
   coreAttendanceRead: 'core.attendance.read',
   coreAttendanceAdjust: 'core.attendance.adjust',
   coreReportingInventoryRead: 'core.reporting.inventory.read',
@@ -163,6 +164,7 @@ const WORKFORCE_PERMISSION_CATALOG = Object.freeze([
   ['coreWorkScheduleManage', 'Nhân sự', 'Quản lý ca và lịch làm việc', 'Cho phép tạo hoặc điều chỉnh lịch làm việc theo ngày trong phạm vi nhân sự được cấp.'],
   ['coreAttendanceSelfRead', 'Nhân sự', 'Xem công của bản thân', 'Cho phép nhân viên xem trạng thái và lịch sử chấm công của chính mình.'],
   ['coreAttendanceSelfRecord', 'Nhân sự', 'Chấm công cho bản thân', 'Cho phép nhân viên ghi nhận sự kiện chấm công của chính mình qua phương thức được chính sách cho phép.'],
+  ['coreAttendancePointManage', 'Nhân sự', 'Quản lý điểm chấm công', 'Cho phép tạo điểm chấm công và phát mã QR ngắn hạn trong phạm vi chi nhánh được cấp.'],
   ['coreAttendanceRead', 'Nhân sự', 'Xem bảng công', 'Cho phép đọc bảng công của nhân viên trong phạm vi được cấp.'],
   ['coreAttendanceAdjust', 'Nhân sự', 'Điều chỉnh công', 'Cho phép tạo hoặc duyệt điều chỉnh công trong phạm vi được cấp; mọi thay đổi phải có lý do và audit.'],
 ].map(([key, module, label, description]) => Object.freeze({
