@@ -5,6 +5,8 @@ import { inventoryAdjustmentBulkInternals } from '../src/services/inventory-adju
 
 const routeSource = readFileSync(new URL('../src/routes/inventory-adjustments.js', import.meta.url), 'utf8');
 const bulkSource = readFileSync(new URL('../src/services/inventory-adjustment-bulk.js', import.meta.url), 'utf8');
+const adjustmentSource = readFileSync(new URL('../src/services/inventory-adjustment.js', import.meta.url), 'utf8');
+const migration143 = readFileSync(new URL('../../database/migrations/inventory/143_inventory_adjustment_reconciliation_batch.sql', import.meta.url), 'utf8');
 
 const warehouseId = '11111111-1111-4111-8111-111111111111';
 
@@ -150,4 +152,23 @@ test('bulk preview seeds every active warehouse location and confirm reuses cano
   assert.match(bulkSource, /DUPLICATE_STOCK_SCOPE/);
   assert.doesNotMatch(bulkSource, /UPDATE\s+inventory\.inventory_balances/i);
   assert.doesNotMatch(bulkSource, /INSERT\s+INTO\s+inventory\.inventory_balances/i);
+});
+
+test('bulk reconciliation supports 2.000 rows with internal chunking and one shared batch code', () => {
+  assert.equal(inventoryAdjustmentBulkInternals.MAX_ROWS, 2000);
+  assert.equal(inventoryAdjustmentBulkInternals.QUERY_CHUNK_SIZE, 250);
+  assert.match(bulkSource, /currentScopeVersionsInChunks/);
+  assert.match(bulkSource, /reconciliationBatchCodeValue/);
+  assert.match(bulkSource, /lineMetadata:/);
+  assert.match(adjustmentSource, /INVENTORY_ADJUSTMENT_BULK_MAX_LINES/);
+  assert.match(adjustmentSource, /loadLineSnapshotsInChunks/);
+  assert.match(adjustmentSource, /repository\.insertLines/);
+});
+
+test('migration 143 stores reconciliation batch and printable stock snapshots', () => {
+  assert.match(migration143, /reconciliation_batch_code/);
+  assert.match(migration143, /product_name_snapshot/);
+  assert.match(migration143, /system_base_quantity_snapshot/);
+  assert.match(migration143, /counted_base_quantity_snapshot/);
+  assert.match(migration143, /source_location_code_snapshot/);
 });

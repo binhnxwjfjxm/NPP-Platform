@@ -17,10 +17,11 @@ type PageSearchParams = Promise<{
   tab?: string;
   adjustment?: string;
   created?: string;
+  createdIds?: string;
 }>;
 
 export default async function InventoryAdjustmentsPage({ searchParams }: { searchParams: PageSearchParams }) {
-  const [{ tab, adjustment, created }, headerStore] = await Promise.all([searchParams, headers()]);
+  const [{ tab, adjustment, created, createdIds }, headerStore] = await Promise.all([searchParams, headers()]);
   const requestId = resolveInventoryAdjustmentRequestId(headerStore.get('x-request-id'));
   let adjustments: InventoryAdjustment[] = [];
   let reasons: AdjustmentReason[] = [];
@@ -53,5 +54,6 @@ export default async function InventoryAdjustmentsPage({ searchParams }: { searc
     initialTab={tab === 'manual' ? 'manual' : 'documents'}
     initialAdjustmentId={adjustment?.trim() || null}
     createdSummary={created?.trim() || null}
+    initialSelectedIds={(createdIds ?? '').split(',').map((item) => item.trim()).filter(Boolean)}
   />;
 }

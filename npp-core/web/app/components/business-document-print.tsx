@@ -47,6 +47,7 @@ export default function BusinessDocumentPrint({
   templateCode = 'standard',
   actionLabel = 'In',
   actionVariant = 'button',
+  showAction = true,
   title,
   subtitle = 'Chứng từ nghiệp vụ',
   headingFallback,
@@ -73,6 +74,7 @@ export default function BusinessDocumentPrint({
   templateCode?: string;
   actionLabel?: string;
   actionVariant?: PrintActionVariant;
+  showAction?: boolean;
   title: string;
   subtitle?: string;
   headingFallback?: ReactNode;
@@ -128,7 +130,7 @@ export default function BusinessDocumentPrint({
 
   return (
     <>
-      <PrintAction label={actionLabel} targetId={id} onPrint={onPrint} variant={actionVariant} />
+      {showAction ? <PrintAction label={actionLabel} targetId={id} onPrint={onPrint} variant={actionVariant} /> : null}
       <PrintSurface
         id={id}
         size={template?.pageSize ?? size}

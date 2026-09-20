@@ -56,6 +56,42 @@ export function clonePrintSurfaceForOutput(target: HTMLElement, suffix = crypto.
   return printable;
 }
 
+export function printSurfacesForOutput(targetIds: string[]): boolean {
+  clearPrintState();
+  const requested = new Set(targetIds.filter(Boolean));
+  const targets = Array.from(document.querySelectorAll<HTMLElement>('[data-print-surface]'))
+    .filter((surface) => requested.has(surface.dataset.printId ?? ''));
+  if (!targets.length) return false;
+
+  const printRoot = document.createElement('div');
+  printRoot.setAttribute('data-print-root', 'true');
+  targets.forEach((target, index) => {
+    const printable = clonePrintSurfaceForOutput(target, `${index + 1}-${target.dataset.printId ?? 'print'}`);
+    if (index < targets.length - 1) {
+      printable.style.breakAfter = 'page';
+      printable.style.pageBreakAfter = 'always';
+    }
+    printRoot.appendChild(printable);
+  });
+  if (targets.length === 1) appendFixedFooterFallback(printRoot, targets[0].dataset.printFooter);
+  document.body.appendChild(printRoot);
+  document.body.setAttribute('data-printing', 'true');
+
+  const cleanup = () => {
+    window.removeEventListener('afterprint', cleanup);
+    clearPrintState();
+  };
+  window.addEventListener('afterprint', cleanup, { once: true });
+
+  try {
+    window.print();
+    return true;
+  } catch (error) {
+    cleanup();
+    throw error;
+  }
+}
+
 export function PrintAction({
   label = 'In',
   targetId,

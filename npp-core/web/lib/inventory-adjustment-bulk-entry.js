@@ -1,4 +1,6 @@
-export const MAX_BULK_INVENTORY_ADJUSTMENT_ROWS = 200;
+import { INVENTORY_ADJUSTMENT_BULK_MAX_LINES } from '@npp/contracts';
+
+export const MAX_BULK_INVENTORY_ADJUSTMENT_ROWS = INVENTORY_ADJUSTMENT_BULK_MAX_LINES;
 
 function normalizeHeader(value) {
   return String(value ?? '')
@@ -40,7 +42,7 @@ export function parseBulkInventoryAdjustmentSheet(sheet) {
     });
   if (rows.length === 0) throw new Error('Tệp chưa có dòng dữ liệu.');
   if (rows.length > MAX_BULK_INVENTORY_ADJUSTMENT_ROWS) {
-    throw new Error(`Mỗi lần kiểm tra tối đa ${MAX_BULK_INVENTORY_ADJUSTMENT_ROWS} dòng.`);
+    throw new Error(`Mỗi lần kiểm tra tối đa ${MAX_BULK_INVENTORY_ADJUSTMENT_ROWS.toLocaleString('vi-VN')} dòng.`);
   }
   return rows;
 }

@@ -23,6 +23,8 @@ export async function listAdjustments(client, {
   warehouseIds,
   status,
   documentKind,
+  fromDate,
+  toDate,
   limit,
   offset,
 }) {
@@ -37,7 +39,15 @@ export async function listAdjustments(client, {
   }
   if (documentKind) {
     values.push(documentKind);
-    filters.push(`a.document_kind = $${values.length}`);
+    filters.push(`a.document_kind = ${values.length}`);
+  }
+  if (fromDate) {
+    values.push(fromDate);
+    filters.push(`a.created_at >= (${values.length}::date::timestamp AT TIME ZONE 'Asia/Ho_Chi_Minh')`);
+  }
+  if (toDate) {
+    values.push(toDate);
+    filters.push(`a.created_at < (((${values.length}::date + 1)::timestamp) AT TIME ZONE 'Asia/Ho_Chi_Minh')`);
   }
   values.push(limit, offset);
   const result = await client.query(
@@ -91,9 +101,10 @@ export async function getAdjustment(client, {
 export async function listLines(client, { installationId, adjustmentId, forUpdate = false }) {
   const result = await client.query(
     `SELECT line.*,
-            source_location.code AS source_location_code,
-            source_location.name AS source_location_name,
+            COALESCE(line.source_location_code_snapshot, source_location.code) AS source_location_code,
+            COALESCE(line.source_location_name_snapshot, source_location.name) AS source_location_name,
             source_location.location_type AS source_location_type,
+            COALESCE(line.product_name_snapshot, product.name) AS product_name,
             destination_location.code AS destination_location_code,
             destination_location.name AS destination_location_name,
             destination_location.location_type AS destination_location_type
@@ -106,6 +117,12 @@ export async function listLines(client, { installationId, adjustmentId, forUpdat
          ON destination_location.installation_id = line.installation_id
         AND destination_location.warehouse_id = line.warehouse_id
         AND destination_location.id = line.destination_location_id
+       LEFT JOIN shared.product_variants source_variant
+         ON source_variant.installation_id = line.installation_id
+        AND source_variant.id = line.source_variant_id
+       LEFT JOIN shared.products product
+         ON product.installation_id = source_variant.installation_id
+        AND product.id = source_variant.product_id
       WHERE line.installation_id = $1
         AND line.adjustment_id = $2
       ORDER BY line.line_number
@@ -182,6 +199,7 @@ export async function loadLineSnapshots(client, {
             destination_location.location_type AS destination_location_type,
             requested.source_variant_id,
             source.sku AS source_sku,
+            product.name AS product_name,
             source.unit_id AS source_unit_id,
             unit.code AS source_unit_code,
             source.conversion_to_base,
@@ -210,6 +228,9 @@ export async function loadLineSnapshots(client, {
          ON source.installation_id = $1
         AND source.id = requested.source_variant_id
         AND source.is_active = true
+       JOIN shared.products product
+         ON product.installation_id = source.installation_id
+        AND product.id = source.product_id
        JOIN shared.units_of_measure unit
          ON unit.installation_id = source.installation_id
         AND unit.id = source.unit_id
@@ -253,9 +274,9 @@ export async function insertAdjustment(client, input) {
   const result = await client.query(
     `INSERT INTO inventory.inventory_adjustments (
        id, installation_id, adjustment_number, warehouse_id, document_kind,
-       adjustment_direction, reason_code, reason_note, status, revision,
+       adjustment_direction, reason_code, reason_note, reconciliation_batch_code, status, revision,
        correction_of_adjustment_id, created_by, updated_by
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'DRAFT',1,$9,$10,$10)
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'DRAFT',1,$10,$11,$11)
      RETURNING *`,
     [
       input.id,
@@ -266,6 +287,7 @@ export async function insertAdjustment(client, input) {
       input.adjustmentDirection,
       input.reasonCode,
       input.reasonNote,
+      input.reconciliationBatchCode,
       input.correctionOfAdjustmentId,
       input.actorId,
     ],
@@ -311,6 +333,75 @@ export async function insertLine(client, input) {
     ],
   );
   return result.rows?.[0] ?? null;
+}
+
+
+export async function insertLines(client, inputs) {
+  if (!Array.isArray(inputs) || inputs.length === 0) return [];
+  const payload = inputs.map((input) => ({
+    id: input.id,
+    installation_id: input.installationId,
+    adjustment_id: input.adjustmentId,
+    line_number: input.lineNumber,
+    warehouse_id: input.warehouseId,
+    source_location_id: input.sourceLocationId,
+    destination_location_id: input.destinationLocationId,
+    source_variant_id: input.sourceVariantId,
+    source_sku: input.sourceSku,
+    source_unit_id: input.sourceUnitId,
+    source_unit_code: input.sourceUnitCode,
+    source_quantity: input.sourceQuantity,
+    conversion_to_base: input.conversionToBase,
+    base_variant_id: input.baseVariantId,
+    base_sku: input.baseSku,
+    base_quantity: input.baseQuantity,
+    lot_id: input.lotId,
+    lot_code: input.lotCode,
+    expiry_date: input.expiryDate,
+    source_snapshot_scope_version: input.sourceSnapshotScopeVersion,
+    destination_snapshot_scope_version: input.destinationSnapshotScopeVersion,
+    product_name_snapshot: input.productNameSnapshot,
+    source_location_code_snapshot: input.sourceLocationCodeSnapshot,
+    source_location_name_snapshot: input.sourceLocationNameSnapshot,
+    system_base_quantity_snapshot: input.systemBaseQuantitySnapshot,
+    counted_base_quantity_snapshot: input.countedBaseQuantitySnapshot,
+    created_by: input.actorId,
+  }));
+  const result = await client.query(
+    `INSERT INTO inventory.inventory_adjustment_lines (
+       id, installation_id, adjustment_id, line_number, warehouse_id,
+       source_location_id, destination_location_id, source_variant_id,
+       source_sku, source_unit_id, source_unit_code, source_quantity,
+       conversion_to_base, base_variant_id, base_sku, base_quantity,
+       lot_id, lot_code, expiry_date, source_snapshot_scope_version,
+       destination_snapshot_scope_version, product_name_snapshot,
+       source_location_code_snapshot, source_location_name_snapshot,
+       system_base_quantity_snapshot, counted_base_quantity_snapshot, created_by
+     )
+     SELECT input.id, input.installation_id, input.adjustment_id, input.line_number, input.warehouse_id,
+            input.source_location_id, input.destination_location_id, input.source_variant_id,
+            input.source_sku, input.source_unit_id, input.source_unit_code, input.source_quantity,
+            input.conversion_to_base, input.base_variant_id, input.base_sku, input.base_quantity,
+            input.lot_id, input.lot_code, input.expiry_date, input.source_snapshot_scope_version,
+            input.destination_snapshot_scope_version, input.product_name_snapshot,
+            input.source_location_code_snapshot, input.source_location_name_snapshot,
+            input.system_base_quantity_snapshot, input.counted_base_quantity_snapshot, input.created_by
+       FROM jsonb_to_recordset($1::jsonb) AS input(
+         id uuid, installation_id text, adjustment_id uuid, line_number integer, warehouse_id uuid,
+         source_location_id uuid, destination_location_id uuid, source_variant_id uuid,
+         source_sku text, source_unit_id uuid, source_unit_code text, source_quantity numeric(20,6),
+         conversion_to_base numeric(20,6), base_variant_id uuid, base_sku text, base_quantity numeric(30,12),
+         lot_id uuid, lot_code text, expiry_date date, source_snapshot_scope_version bigint,
+         destination_snapshot_scope_version bigint, product_name_snapshot text,
+         source_location_code_snapshot text, source_location_name_snapshot text,
+         system_base_quantity_snapshot numeric(30,12), counted_base_quantity_snapshot numeric(30,12),
+         created_by text
+       )
+      ORDER BY input.line_number
+     RETURNING *`,
+    [JSON.stringify(payload)],
+  );
+  return result.rows ?? [];
 }
 
 export async function currentScopeVersions(client, {
