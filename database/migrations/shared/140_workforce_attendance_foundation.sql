@@ -110,7 +110,7 @@ CREATE TABLE IF NOT EXISTS shared.work_schedules (
   scheduled_start_at timestamptz NULL,
   scheduled_end_at timestamptz NULL,
   source text NOT NULL CHECK (source IN ('POLICY', 'OVERRIDE')),
-  override_reason text NULL CHECK (override_reason IS NULL OR char_length(override_reason) <= 512),
+  override_reason text NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   created_by text NOT NULL CHECK (char_length(created_by) BETWEEN 1 AND 128),
@@ -123,7 +123,11 @@ CREATE TABLE IF NOT EXISTS shared.work_schedules (
     (schedule_kind = 'WORK' AND scheduled_start_at IS NOT NULL AND scheduled_end_at IS NOT NULL AND scheduled_end_at > scheduled_start_at)
   ),
   CONSTRAINT work_schedules_override_reason_check CHECK (
-    source <> 'OVERRIDE' OR (override_reason IS NOT NULL AND char_length(btrim(override_reason)) > 0)
+    (override_reason IS NULL OR char_length(override_reason) <= 512)
+    AND (
+      source <> 'OVERRIDE'
+      OR (override_reason IS NOT NULL AND char_length(btrim(override_reason)) > 0)
+    )
   ),
   CONSTRAINT work_schedules_employee_fk
     FOREIGN KEY (installation_id, employee_id)
