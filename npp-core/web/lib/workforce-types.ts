@@ -172,6 +172,85 @@ export type AttendanceRecordResult = {
   };
 };
 
+export type AttendanceAdjustmentStatus = 'SUBMITTED' | 'APPROVED' | 'REJECTED';
+
+export type AttendanceAdjustmentRequest = {
+  id: string;
+  installation_id: string;
+  employee_id: string;
+  work_date: string;
+  requested_check_in_at: string | null;
+  requested_check_out_at: string | null;
+  reason: string;
+  request_source: 'SELF_REQUEST' | 'DIRECT';
+  status: AttendanceAdjustmentStatus;
+  requested_by_actor_id: string;
+  requested_by_employee_id: string | null;
+  reviewed_by_actor_id: string | null;
+  review_reason: string | null;
+  reviewed_at: string | null;
+  version: number;
+  request_id: string;
+  created_at: string;
+  updated_at: string;
+  employee_code?: string;
+  employee_name?: string;
+  employee_branch_id?: string | null;
+  branch_code?: string | null;
+  branch_name?: string | null;
+};
+
+export type AttendancePeriodLock = {
+  id: string;
+  installation_id: string;
+  branch_id: string | null;
+  period_start: string;
+  period_end: string;
+  reason: string;
+  locked_by_actor_id: string;
+  request_id: string;
+  locked_at: string;
+  branch_code?: string | null;
+  branch_name?: string | null;
+};
+
+export type AttendanceAdjustmentListResponse = {
+  period: { from: string; to: string };
+  selectedEmployee: {
+    id: string;
+    code: string;
+    name: string;
+    branchId: string | null;
+  } | null;
+  branches: AttendanceBranch[];
+  pagination: {
+    limit: number;
+    offset: number;
+    total: number;
+    hasPrevious: boolean;
+    hasNext: boolean;
+  };
+  requests: AttendanceAdjustmentRequest[];
+  capabilities: {
+    selfOnly: boolean;
+    canSubmitOwn: boolean;
+    canManage: boolean;
+    canLock: boolean;
+  };
+};
+
+export type AttendancePeriodLockListResponse = {
+  locks: AttendancePeriodLock[];
+  branches: AttendanceBranch[];
+  companyScope: boolean;
+  canLock: boolean;
+};
+
+export type AttendanceAdjustmentMutationResult = {
+  request: AttendanceAdjustmentRequest;
+  events: AttendanceEvent[];
+};
+
 export type AttendanceDayStatus =
   | 'UPCOMING'
   | 'DAY_OFF'
@@ -227,6 +306,8 @@ export type AttendanceTimesheetDay = {
   status: AttendanceDayStatus;
   attendanceSources: AttendanceEvent['source'][];
   scheduleSource: 'POLICY' | 'OVERRIDE' | null;
+  adjustment: AttendanceAdjustmentRequest | null;
+  periodLock: AttendancePeriodLock | null;
   events: AttendanceEvent[];
 };
 
@@ -240,6 +321,9 @@ export type AttendanceTimesheetMonth = {
   countedMinutes: number;
   lateMinutes: number;
   earlyLeaveMinutes: number;
+  adjustedDays: number;
+  pendingAdjustmentDays: number;
+  lockedDays: number;
   attendanceSources: AttendanceEvent['source'][];
   scheduleSources: Array<'POLICY' | 'OVERRIDE'>;
   days: AttendanceTimesheetDay[];
@@ -259,6 +343,11 @@ export type AttendanceTimesheetResponse = {
     total: number;
     hasPrevious: boolean;
     hasNext: boolean;
+  };
+  capabilities: {
+    canSubmitOwn: boolean;
+    canManage: boolean;
+    canLock: boolean;
   };
   rows: AttendanceTimesheetDay[] | AttendanceTimesheetMonth[];
 };

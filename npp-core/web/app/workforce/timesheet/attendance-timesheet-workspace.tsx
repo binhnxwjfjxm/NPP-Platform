@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
 import shellStyles from '../../components/app-shell.module.css';
@@ -306,7 +307,7 @@ export default function AttendanceTimesheetWorkspace({
                   <tr>
                     <th>Ngày</th><th>Nhân sự</th><th>Chi nhánh</th><th>Trạng thái</th>
                     <th>Giờ vào</th><th>Giờ ra</th><th>Thực tế</th><th>Được tính</th>
-                    <th>Đi trễ</th><th>Về sớm</th><th>Thiếu chấm công</th><th>Nguồn dữ liệu</th><th>Chi tiết</th>
+                    <th>Đi trễ</th><th>Về sớm</th><th>Thiếu chấm công</th><th>Nguồn dữ liệu</th><th>Kiểm soát</th><th>Chi tiết</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -324,6 +325,17 @@ export default function AttendanceTimesheetWorkspace({
                       <td>{minutesLabel(day.earlyLeaveMinutes)}</td>
                       <td>{missingLabel(day)}</td>
                       <td>{sourceSummary(day)}</td>
+                      <td>
+                        <div className={localStyles.detailMeta}>
+                          {day.periodLock ? <strong>Đã khóa kỳ</strong> : <span>Kỳ đang mở</span>}
+                          {day.adjustment ? <span>{day.adjustment.status === 'SUBMITTED' ? 'Điều chỉnh: Chờ duyệt' : day.adjustment.status === 'APPROVED' ? 'Điều chỉnh: Đã duyệt' : 'Điều chỉnh: Từ chối'}</span> : <span>Chưa có điều chỉnh</span>}
+                          {data?.capabilities.canManage && (!day.periodLock || data?.capabilities.canLock) ? (
+                            <Link href={'/workforce/adjustments?employeeId=' + encodeURIComponent(day.employee.id) + '&workDate=' + day.workDate}>Điều chỉnh</Link>
+                          ) : !day.periodLock && data?.capabilities.canSubmitOwn ? (
+                            <Link href={'/workforce/adjustments?workDate=' + day.workDate}>Yêu cầu điều chỉnh</Link>
+                          ) : null}
+                        </div>
+                      </td>
                       <td>
                         <details className={localStyles.details}>
                           <summary>Chi tiết sự kiện ({day.events.length})</summary>
@@ -350,7 +362,7 @@ export default function AttendanceTimesheetWorkspace({
                     </tr>
                   ))}
                   {!dailyRows.length ? (
-                    <tr><td colSpan={13}><div className={styles.emptyState}>Không có dữ liệu bảng công trong kỳ đã chọn.</div></td></tr>
+                    <tr><td colSpan={14}><div className={styles.emptyState}>Không có dữ liệu bảng công trong kỳ đã chọn.</div></td></tr>
                   ) : null}
                 </tbody>
               </table>
@@ -368,7 +380,7 @@ export default function AttendanceTimesheetWorkspace({
                   <tr>
                     <th>Nhân sự</th><th>Chi nhánh</th><th>Kỳ</th><th>Ngày làm việc</th><th>Hoàn tất</th>
                     <th>Ngày thiếu</th><th>Thực tế</th><th>Được tính</th><th>Đi trễ</th><th>Về sớm</th>
-                    <th>Nguồn dữ liệu</th><th>Chi tiết</th>
+                    <th>Điều chỉnh</th><th>Ngày khóa</th><th>Nguồn dữ liệu</th><th>Chi tiết</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -384,6 +396,8 @@ export default function AttendanceTimesheetWorkspace({
                       <td>{minutesLabel(row.countedMinutes)}</td>
                       <td>{minutesLabel(row.lateMinutes)}</td>
                       <td>{minutesLabel(row.earlyLeaveMinutes)}</td>
+                      <td>{row.adjustedDays} đã duyệt{row.pendingAdjustmentDays ? ` · ${row.pendingAdjustmentDays} chờ duyệt` : ''}</td>
+                      <td>{row.lockedDays}</td>
                       <td>{monthSourceSummary(row)}</td>
                       <td>
                         <details className={localStyles.details}>
@@ -404,7 +418,7 @@ export default function AttendanceTimesheetWorkspace({
                     </tr>
                   ))}
                   {!monthlyRows.length ? (
-                    <tr><td colSpan={12}><div className={styles.emptyState}>Không có nhân sự trong phạm vi và kỳ đã chọn.</div></td></tr>
+                    <tr><td colSpan={14}><div className={styles.emptyState}>Không có nhân sự trong phạm vi và kỳ đã chọn.</div></td></tr>
                   ) : null}
                 </tbody>
               </table>

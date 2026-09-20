@@ -125,6 +125,7 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   migration('141_workforce_attendance_qr', 'shared/141_workforce_attendance_qr.sql'),
   migration('142_inventory_adjustment_warehouse_location_guard', 'inventory/142_inventory_adjustment_warehouse_location_guard.sql'),
   migration('143_inventory_adjustment_reconciliation_batch', 'inventory/143_inventory_adjustment_reconciliation_batch.sql'),
+  migration('144_workforce_attendance_adjustment_lock', 'shared/144_workforce_attendance_adjustment_lock.sql'),
 ]);
 
 export { runMigrations };

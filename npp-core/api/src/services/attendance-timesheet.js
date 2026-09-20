@@ -1,4 +1,5 @@
 import * as timesheetRepo from '../db/repositories/attendance-timesheet.js';
+import * as adjustmentRepo from '../db/repositories/attendance-adjustments.js';
 import * as workforceRepo from '../db/repositories/workforce.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -116,33 +117,69 @@ function expectedTimes(row) {
 }
 function eventsForDay(row, events) {
   if (!events.length) return [];
-  if (row.schedule_id) {
-    const bySchedule = events.filter((event) => String(event.schedule_id ?? '') === String(row.schedule_id));
-    if (bySchedule.length) return bySchedule;
-  }
   const zone = row.policy_timezone || INSTALLATION_TIMEZONE;
   const workDate = String(row.work_date);
   const startMinutes = timeMinutes(row.policy_fixed_start_time);
   const endMinutes = timeMinutes(row.policy_fixed_end_time);
   const overnight = row.policy_time_mode === 'FIXED'
     && startMinutes !== null && endMinutes !== null && endMinutes <= startMinutes;
+
+  let byLocalWindow;
   if (!overnight) {
-    return events.filter((event) => localDate(zone, new Date(event.occurred_at)) === workDate);
+    byLocalWindow = events.filter((event) => localDate(zone, new Date(event.occurred_at)) === workDate);
+  } else {
+    const next = nextDate(workDate);
+    const previousShiftCutoff = Math.min(23 * 60 + 59, endMinutes + 240);
+    byLocalWindow = events.filter((event) => {
+      const instant = new Date(event.occurred_at);
+      const eventDate = localDate(zone, instant);
+      const clock = localClockMinutes(zone, instant);
+      if (eventDate === workDate) return clock > previousShiftCutoff;
+      return eventDate === next && clock <= previousShiftCutoff;
+    });
   }
-  const next = nextDate(workDate);
-  const previousShiftCutoff = Math.min(23 * 60 + 59, endMinutes + 240);
-  return events.filter((event) => {
-    const instant = new Date(event.occurred_at);
-    const eventDate = localDate(zone, instant);
-    const clock = localClockMinutes(zone, instant);
-    if (eventDate === workDate) return clock > previousShiftCutoff;
-    return eventDate === next && clock <= previousShiftCutoff;
+
+  if (!row.schedule_id) return byLocalWindow;
+  const bySchedule = events.filter((event) => String(event.schedule_id ?? '') === String(row.schedule_id));
+  const adjustmentIds = new Set(
+    byLocalWindow
+      .filter((event) => event.source === 'ADJUSTMENT')
+      .map((event) => String(event.id)),
+  );
+  if (!bySchedule.length && !adjustmentIds.size) return byLocalWindow;
+  const combined = [...bySchedule];
+  for (const event of byLocalWindow) {
+    if (adjustmentIds.has(String(event.id)) && !combined.some((item) => String(item.id) === String(event.id))) {
+      combined.push(event);
+    }
+  }
+  return combined;
+}
+
+export function selectEffectiveAttendanceEvents(events) {
+  const valid = events.filter((event) => event.validation_status === 'VALID');
+  const selected = [];
+  for (const eventType of ['CHECK_IN', 'CHECK_OUT']) {
+    const typed = valid.filter((event) => event.event_type === eventType);
+    const adjustments = typed.filter((event) => event.source === 'ADJUSTMENT');
+    if (adjustments.length) {
+      const latest = [...adjustments].sort((left, right) => {
+        const created = new Date(left.created_at).getTime() - new Date(right.created_at).getTime();
+        return created || String(left.id).localeCompare(String(right.id));
+      }).at(-1);
+      if (latest) selected.push(latest);
+    } else {
+      selected.push(...typed);
+    }
+  }
+  return selected.sort((left, right) => {
+    const occurred = new Date(left.occurred_at).getTime() - new Date(right.occurred_at).getTime();
+    return occurred || String(left.id).localeCompare(String(right.id));
   });
 }
+
 function pairValidEvents(events) {
-  const valid = events
-    .filter((event) => event.validation_status === 'VALID')
-    .sort((left, right) => new Date(left.occurred_at).getTime() - new Date(right.occurred_at).getTime());
+  const valid = selectEffectiveAttendanceEvents(events);
   const pairs = [];
   let open = null;
   let unmatchedOut = 0;
@@ -162,6 +199,7 @@ function pairValidEvents(events) {
   }
   return { valid, pairs, open, unmatchedOut };
 }
+
 function overlapMinutes(pairs, startAt, endAt) {
   if (!startAt || !endAt) {
     return Math.round(pairs.reduce((sum, pair) => sum + Math.max(0, pair.end - pair.start), 0) / 60_000);
@@ -183,7 +221,7 @@ function minutesBefore(value, reference, graceMinutes) {
   return Math.max(0, Math.floor(difference / 60_000));
 }
 
-export function summarizeAttendanceDay(row, employeeEvents, now = new Date()) {
+export function summarizeAttendanceDay(row, employeeEvents, now = new Date(), control = {}) {
   const workDate = String(row.work_date);
   const timeZone = row.policy_timezone || INSTALLATION_TIMEZONE;
   const events = eventsForDay(row, employeeEvents);
@@ -298,6 +336,8 @@ export function summarizeAttendanceDay(row, employeeEvents, now = new Date()) {
     status,
     attendanceSources,
     scheduleSource: row.schedule_source ?? (hasPolicy ? 'POLICY' : null),
+    adjustment: control.adjustment ?? null,
+    periodLock: control.periodLock ?? null,
     events: events.map((event) => ({
       ...event,
       occurred_at: asIso(event.occurred_at),
@@ -332,6 +372,9 @@ export function summarizeAttendanceMonth(employee, days, period) {
     countedMinutes: days.reduce((sum, day) => sum + day.countedMinutes, 0),
     lateMinutes: days.reduce((sum, day) => sum + day.lateMinutes, 0),
     earlyLeaveMinutes: days.reduce((sum, day) => sum + day.earlyLeaveMinutes, 0),
+    adjustedDays: days.filter((day) => day.attendanceSources.includes('ADJUSTMENT')).length,
+    pendingAdjustmentDays: days.filter((day) => day.adjustment?.status === 'SUBMITTED').length,
+    lockedDays: days.filter((day) => Boolean(day.periodLock)).length,
     attendanceSources,
     scheduleSources,
     days,
@@ -422,9 +465,17 @@ export async function listAttendanceTimesheet(client, {
 
   const employeeIds = [...new Set(facts.map((row) => String(row.employee_id)))];
   const window = broadEventWindow(dateFrom, dateTo);
-  const events = await timesheetRepo.listEvents(client, {
-    installationId, employeeIds, ...window,
-  });
+  const [events, adjustmentRequests, periodLocks] = await Promise.all([
+    timesheetRepo.listEvents(client, {
+      installationId, employeeIds, ...window,
+    }),
+    adjustmentRepo.listRequestsForTimesheet(client, {
+      installationId, employeeIds, dateFrom, dateTo,
+    }),
+    adjustmentRepo.listPeriodLocksForTimesheet(client, {
+      installationId, dateFrom, dateTo,
+    }),
+  ]);
   const byEmployee = new Map();
   for (const event of events) {
     const key = String(event.employee_id);
@@ -432,12 +483,29 @@ export async function listAttendanceTimesheet(client, {
     bucket.push(event);
     byEmployee.set(key, bucket);
   }
-
-  const days = facts.map((row) => summarizeAttendanceDay(
-    row,
-    byEmployee.get(String(row.employee_id)) ?? [],
-    now,
-  ));
+  const requestByDay = new Map();
+  for (const request of adjustmentRequests) {
+    const key = `${request.employee_id}:${request.work_date}`;
+    if (!requestByDay.has(key)) requestByDay.set(key, request);
+  }
+  const days = facts.map((row) => {
+    const workDate = String(row.work_date);
+    const branchId = row.employee_branch_id ? String(row.employee_branch_id) : null;
+    const periodLock = periodLocks.find((lock) => (
+      String(lock.period_start) <= workDate
+      && String(lock.period_end) >= workDate
+      && (lock.branch_id == null || String(lock.branch_id) === branchId)
+    )) ?? null;
+    return summarizeAttendanceDay(
+      row,
+      byEmployee.get(String(row.employee_id)) ?? [],
+      now,
+      {
+        adjustment: requestByDay.get(`${row.employee_id}:${workDate}`) ?? null,
+        periodLock,
+      },
+    );
+  });
 
   const rows = view === 'monthly'
     ? employees.map((employee) => summarizeAttendanceMonth(
