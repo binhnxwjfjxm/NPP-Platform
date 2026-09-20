@@ -37,7 +37,8 @@ jobs:
         github.event.comment.body == '/deploy-vps-company-production' &&
         (
           github.actor == 'binhnxwjfjxm' ||
-          github.actor == 'khuongbinhinfo-a11y'
+          github.actor == 'khuongbinhinfo-a11y' ||
+          github.actor == 'gustavjung01'
         )
       )
     runs-on: ubuntu-latest
