@@ -171,3 +171,95 @@ export type AttendanceRecordResult = {
     branchName: string | null;
   };
 };
+
+export type AttendanceDayStatus =
+  | 'UPCOMING'
+  | 'DAY_OFF'
+  | 'NO_ATTENDANCE_REQUIRED'
+  | 'MISSING_POLICY'
+  | 'MISSING_SCHEDULE'
+  | 'NOT_STARTED'
+  | 'WORKING'
+  | 'MISSING_CHECK_IN'
+  | 'MISSING_CHECK_OUT'
+  | 'INCOMPLETE'
+  | 'LATE_AND_EARLY'
+  | 'LATE'
+  | 'EARLY'
+  | 'COMPLETE';
+
+export type AttendanceTimesheetDay = {
+  workDate: string;
+  employee: {
+    id: string;
+    code: string;
+    name: string;
+    branchId: string | null;
+    branchCode: string | null;
+    branchName: string | null;
+  };
+  policy: {
+    id: string;
+    code: string;
+    version: number;
+    name: string;
+    timeMode: WorkPolicy['time_mode'];
+    timezone: string;
+    breakMinutes: number;
+  } | null;
+  schedule: {
+    id: string;
+    kind: 'WORK' | 'OFF';
+    source: 'POLICY' | 'OVERRIDE';
+  } | null;
+  expectedStartAt: string | null;
+  expectedEndAt: string | null;
+  checkInAt: string | null;
+  checkOutAt: string | null;
+  actualMinutes: number;
+  countedMinutes: number;
+  lateMinutes: number;
+  earlyLeaveMinutes: number;
+  missingCheckIn: boolean;
+  missingCheckOut: boolean;
+  scheduledWorkDay: boolean;
+  validWork: boolean;
+  status: AttendanceDayStatus;
+  attendanceSources: AttendanceEvent['source'][];
+  scheduleSource: 'POLICY' | 'OVERRIDE' | null;
+  events: AttendanceEvent[];
+};
+
+export type AttendanceTimesheetMonth = {
+  employee: AttendanceTimesheetDay['employee'];
+  period: { from: string; to: string };
+  workDays: number;
+  completedDays: number;
+  missingDays: number;
+  actualMinutes: number;
+  countedMinutes: number;
+  lateMinutes: number;
+  earlyLeaveMinutes: number;
+  attendanceSources: AttendanceEvent['source'][];
+  scheduleSources: Array<'POLICY' | 'OVERRIDE'>;
+  days: AttendanceTimesheetDay[];
+};
+
+export type AttendanceTimesheetResponse = {
+  view: 'daily' | 'monthly';
+  period: { from: string; to: string; timezone: string };
+  scope: {
+    companyScope: boolean;
+    selfOnly: boolean;
+    branches: AttendanceBranch[];
+  };
+  pagination: {
+    limit: number;
+    offset: number;
+    total: number;
+    hasPrevious: boolean;
+    hasNext: boolean;
+  };
+  rows: AttendanceTimesheetDay[] | AttendanceTimesheetMonth[];
+};
+

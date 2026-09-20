@@ -3,6 +3,7 @@ import { sendJson, sendSuccess, sendError } from '../http-utils.js';
 import { readJsonBody, normalizeIdempotencyKey } from '../idempotency.js';
 import { buildAuditRecord, insertAuditRecord, withAuditOutboxTransaction } from '../audit-outbox.js';
 import * as workforceService from '../services/workforce.js';
+import * as attendanceTimesheetService from '../services/attendance-timesheet.js';
 
 function createError(code, message, details = {}, retryable = false, statusCode = 500) {
   return { code, message, details, retryable, statusCode };
@@ -282,6 +283,79 @@ async function handleSchedules(req, res, context, method) {
 }
 
 
+async function handleAttendanceTimesheet(req, res, context, { selfOnly }) {
+  const url = new URL(`http://localhost${req.url}`);
+  const requestedEmployeeId = String(url.searchParams.get('employeeId') ?? '').trim() || null;
+  const requestedBranchId = String(url.searchParams.get('branchId') ?? '').trim() || null;
+  let employeeId = requestedEmployeeId;
+  let branchIds = null;
+  let branchOptionIds = null;
+
+  if (selfOnly) {
+    const ownEmployeeId = String(context.requestContext.employeeId ?? '').trim();
+    if (!ownEmployeeId) {
+      sendError(res, createError('EMPLOYEE_ID_REQUIRED', 'Tài khoản chưa liên kết hồ sơ nhân sự', {}, false, 400), context.requestId, context.receivedAt);
+      return;
+    }
+    if (requestedEmployeeId && requestedEmployeeId !== ownEmployeeId) {
+      sendError(res, createError('SCOPE_FORBIDDEN', 'Bạn chỉ có thể xem bảng công của chính mình', {}, false, 403), context.requestId, context.receivedAt);
+      return;
+    }
+    const own = await workforceService.getEmployeeScopeRecord(context.getPool(), {
+      installationId: context.requestContext.installationId,
+      employeeId: ownEmployeeId,
+    });
+    if (!own.ok) {
+      sendError(res, createError(own.code, own.message, {}, false, statusFor(own)), context.requestId, context.receivedAt);
+      return;
+    }
+    employeeId = ownEmployeeId;
+    branchOptionIds = own.employee.branch_id ? [String(own.employee.branch_id)] : [];
+    if (requestedBranchId && !branchOptionIds.includes(requestedBranchId)) {
+      sendError(res, createError('SCOPE_FORBIDDEN', 'Chi nhánh nằm ngoài phạm vi được cấp', {}, false, 403), context.requestId, context.receivedAt);
+      return;
+    }
+  } else {
+    if (employeeId) {
+      const scope = await requireEmployeeScope(context.getPool(), context.requestContext, employeeId);
+      if (!scope.ok) {
+        sendError(res, createError(scope.code, scope.message, {}, false, statusFor(scope)), context.requestId, context.receivedAt);
+        return;
+      }
+    }
+    branchIds = isCompanyScope(context.requestContext)
+      ? null
+      : [...(context.requestContext.scopes.branchIds ?? [])];
+    branchOptionIds = branchIds;
+    if (requestedBranchId && Array.isArray(branchIds) && !branchIds.includes(requestedBranchId)) {
+      sendError(res, createError('SCOPE_FORBIDDEN', 'Chi nhánh nằm ngoài phạm vi được cấp', {}, false, 403), context.requestId, context.receivedAt);
+      return;
+    }
+  }
+
+  const result = await attendanceTimesheetService.listAttendanceTimesheet(context.getPool(), {
+    installationId: context.requestContext.installationId,
+    view: url.searchParams.get('view'),
+    dateFrom: url.searchParams.get('from'),
+    dateTo: url.searchParams.get('to'),
+    employeeId,
+    employeeQuery: url.searchParams.get('employeeQuery'),
+    branchId: requestedBranchId,
+    branchIds,
+    branchOptionIds,
+    companyScope: !selfOnly && isCompanyScope(context.requestContext),
+    selfOnly,
+    limit: url.searchParams.get('limit'),
+    offset: url.searchParams.get('offset'),
+  });
+  if (!result.ok) {
+    sendError(res, createError(result.code, result.message, {}, false, statusFor(result)), context.requestId, context.receivedAt);
+    return;
+  }
+  sendSuccess(res, result.timesheet, context.requestId, context.receivedAt);
+}
+
+
 async function requirePointScope(client, requestContext, pointId) {
   const point = await workforceService.listAttendancePointManagement(client, {
     installationId: requestContext.installationId,
@@ -442,7 +516,7 @@ export async function handleWorkforceRoutes(req, res, options) {
   const pathname = new URL(`http://localhost${req.url}`).pathname;
   if (!pathname.startsWith('/api/workforce/')) return false;
   const route = pathname.slice('/api/workforce'.length);
-  if (!['/policies', '/assignments', '/schedules', '/attendance/today', '/attendance/record', '/attendance/points', '/attendance/qr-token'].includes(route)) return false;
+  if (!['/policies', '/assignments', '/schedules', '/attendance/today', '/attendance/timesheet', '/attendance/record', '/attendance/points', '/attendance/qr-token'].includes(route)) return false;
 
   const auth = options.authenticate(req, options.config);
   if (!auth.ok) {
@@ -459,6 +533,7 @@ export async function handleWorkforceRoutes(req, res, options) {
   const method = String(req.method || 'GET').toUpperCase();
   const routeAllowsMethod = (
     (route === '/attendance/today' && method === 'GET')
+    || (route === '/attendance/timesheet' && method === 'GET')
     || (route === '/attendance/record' && method === 'POST')
     || (route === '/attendance/qr-token' && method === 'POST')
     || (route === '/attendance/points' && ['GET', 'POST'].includes(method))
@@ -469,16 +544,26 @@ export async function handleWorkforceRoutes(req, res, options) {
     return true;
   }
 
-  const permissionKey = route === '/schedules'
-    ? (method === 'GET' ? options.PERMISSIONS.coreWorkScheduleRead : options.PERMISSIONS.coreWorkScheduleManage)
-    : route === '/attendance/today'
-      ? options.PERMISSIONS.coreAttendanceSelfRead
-      : route === '/attendance/record'
-        ? options.PERMISSIONS.coreAttendanceSelfRecord
-        : route === '/attendance/points' || route === '/attendance/qr-token'
-          ? options.PERMISSIONS.coreAttendancePointManage
-          : (method === 'GET' ? options.PERMISSIONS.coreWorkPolicyRead : options.PERMISSIONS.coreWorkPolicyManage);
-  const permission = options.authorize(requestContext, permissionKey);
+  let timesheetSelfOnly = false;
+  let permission;
+  if (route === '/attendance/timesheet') {
+    permission = options.authorize(requestContext, options.PERMISSIONS.coreAttendanceRead);
+    if (!permission.ok) {
+      permission = options.authorize(requestContext, options.PERMISSIONS.coreAttendanceSelfRead);
+      timesheetSelfOnly = permission.ok;
+    }
+  } else {
+    const permissionKey = route === '/schedules'
+      ? (method === 'GET' ? options.PERMISSIONS.coreWorkScheduleRead : options.PERMISSIONS.coreWorkScheduleManage)
+      : route === '/attendance/today'
+        ? options.PERMISSIONS.coreAttendanceSelfRead
+        : route === '/attendance/record'
+          ? options.PERMISSIONS.coreAttendanceSelfRecord
+          : route === '/attendance/points' || route === '/attendance/qr-token'
+            ? options.PERMISSIONS.coreAttendancePointManage
+            : (method === 'GET' ? options.PERMISSIONS.coreWorkPolicyRead : options.PERMISSIONS.coreWorkPolicyManage);
+    permission = options.authorize(requestContext, permissionKey);
+  }
   if (!permission.ok) {
     sendError(res, createError('FORBIDDEN', 'Bạn không có quyền thực hiện thao tác này', {}, false, 403), options.requestId, options.receivedAt);
     return true;
@@ -490,6 +575,7 @@ export async function handleWorkforceRoutes(req, res, options) {
     else if (route === '/assignments') await handleAssignments(req, res, context, method);
     else if (route === '/schedules') await handleSchedules(req, res, context, method);
     else if (route === '/attendance/today') await handleAttendanceToday(req, res, context);
+    else if (route === '/attendance/timesheet') await handleAttendanceTimesheet(req, res, context, { selfOnly: timesheetSelfOnly });
     else if (route === '/attendance/record') await handleAttendanceRecord(req, res, context);
     else if (route === '/attendance/points') await handleAttendancePoints(req, res, context, method);
     else await handleAttendanceQrToken(req, res, context);

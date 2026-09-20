@@ -1,0 +1,124 @@
+.viewSwitch {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 42px;
+  padding: 4px;
+  border: 1px solid var(--line, #dfe3e8);
+  border-radius: 12px;
+  background: #f7f8fa;
+}
+
+.viewSwitch button {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+}
+
+.viewSwitch button:disabled {
+  cursor: default;
+  opacity: .6;
+}
+
+.viewSwitch .viewActive {
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, .12);
+}
+
+.details {
+  min-width: 170px;
+}
+
+.details summary {
+  cursor: pointer;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.detailBody {
+  display: grid;
+  gap: 10px;
+  width: min(520px, 72vw);
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--line, #dfe3e8);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, .08);
+}
+
+.detailMeta {
+  display: grid;
+  gap: 4px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line, #dfe3e8);
+}
+
+.eventItem {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line, #dfe3e8);
+}
+
+.eventItem:last-child {
+  border-bottom: 0;
+}
+
+.eventItem > div {
+  display: grid;
+  gap: 3px;
+}
+
+.eventItem small,
+.dayItem span {
+  color: var(--muted, #667085);
+}
+
+.dayList {
+  display: grid;
+  gap: 8px;
+  width: min(480px, 70vw);
+  margin-top: 10px;
+}
+
+.dayItem {
+  display: grid;
+  gap: 3px;
+  padding: 9px 10px;
+  border: 1px solid var(--line, #dfe3e8);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.pagination span {
+  min-width: 100px;
+  text-align: center;
+  font-weight: 700;
+}
+
+@media (max-width: 900px) {
+  .detailBody,
+  .dayList {
+    width: min(420px, 80vw);
+  }
+
+  .pagination {
+    justify-content: center;
+  }
+}

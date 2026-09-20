@@ -65,6 +65,7 @@ const organizationItems: NavItem[] = [
 
 const workforceItems: NavItem[] = [
   { href: '/workforce/attendance', label: 'Chấm công', icon: 'panel', testId: 'nav-attendance' },
+  { href: '/workforce/timesheet', label: 'Bảng công', icon: 'dashboard', testId: 'nav-timesheet' },
   { href: '/workforce/employees', label: 'Danh mục nhân sự', icon: 'user', testId: 'nav-employees' },
   { href: '/workforce/schedules', label: 'Ca / lịch làm việc', icon: 'panel', testId: 'nav-work-schedules' },
   { href: '/workforce/policies', label: 'Chính sách làm việc', icon: 'panel', testId: 'nav-work-policies' },
