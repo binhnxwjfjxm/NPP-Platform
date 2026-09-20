@@ -6,7 +6,7 @@ import { inventoryAdjustmentBulkInternals } from '../src/services/inventory-adju
 const routeSource = readFileSync(new URL('../src/routes/inventory-adjustments.js', import.meta.url), 'utf8');
 const bulkSource = readFileSync(new URL('../src/services/inventory-adjustment-bulk.js', import.meta.url), 'utf8');
 const adjustmentSource = readFileSync(new URL('../src/services/inventory-adjustment.js', import.meta.url), 'utf8');
-const migration143 = readFileSync(new URL('../../database/migrations/inventory/143_inventory_adjustment_reconciliation_batch.sql', import.meta.url), 'utf8');
+const migration143 = readFileSync(new URL('../../../database/migrations/inventory/143_inventory_adjustment_reconciliation_batch.sql', import.meta.url), 'utf8');
 
 const warehouseId = '11111111-1111-4111-8111-111111111111';
 
