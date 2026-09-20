@@ -9,7 +9,7 @@ test('shared navigation uses business grouping without fake system or unfinished
   assert.match(shell, /Danh mục nghiệp vụ/);
   assert.match(shell, /Tổ chức, đối tác, hàng hóa, giá và chứng từ/);
   assert.match(shell, /title: 'Nhân sự'/);
-  assert.match(shell, /Hồ sơ, chính sách và lịch làm việc/);
+  assert.match(shell, /Hồ sơ, chấm công, chính sách và lịch làm việc/);
   assert.match(shell, /Người dùng & phân quyền/);
   assert.match(shell, /Tài khoản, vai trò và phạm vi truy cập/);
   assert.doesNotMatch(shell, /Đăng nhập sẽ được bổ sung|Hệ thống trực tuyến/);

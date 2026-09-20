@@ -9,11 +9,13 @@ function createError(code, message, details = {}, retryable = false, statusCode 
 }
 
 function statusFor(result) {
-  if (result.code === 'EMPLOYEE_NOT_FOUND' || result.code === 'POLICY_NOT_FOUND') return 404;
+  if (['EMPLOYEE_NOT_FOUND', 'POLICY_NOT_FOUND', 'ATTENDANCE_POINT_NOT_FOUND', 'BRANCH_NOT_FOUND'].includes(result.code)) return 404;
+  if (result.code === 'QR_TOKEN_EXPIRED') return 410;
   if (result.code === 'SCOPE_FORBIDDEN') return 403;
   if ([
     'POLICY_CODE_EXISTS', 'POLICY_VERSION_CONFLICT', 'POLICY_EFFECTIVE_DATE_CONFLICT',
-    'ASSIGNMENT_EFFECTIVE_DATE_CONFLICT', 'SCHEDULE_CONFLICT',
+    'ASSIGNMENT_EFFECTIVE_DATE_CONFLICT', 'SCHEDULE_CONFLICT', 'ATTENDANCE_POINT_CODE_EXISTS',
+    'ATTENDANCE_ALREADY_COMPLETE', 'ATTENDANCE_TOO_SOON', 'ATTENDANCE_DUPLICATE_SCAN',
   ].includes(result.code)) return 409;
   return 400;
 }
@@ -279,11 +281,168 @@ async function handleSchedules(req, res, context, method) {
   });
 }
 
+
+async function requirePointScope(client, requestContext, pointId) {
+  const point = await workforceService.listAttendancePointManagement(client, {
+    installationId: requestContext.installationId,
+    branchIds: isCompanyScope(requestContext) ? null : [...(requestContext.scopes.branchIds ?? [])],
+  });
+  if (!point.ok) return point;
+  const matched = point.points.find((item) => item.id === pointId);
+  return matched
+    ? { ok: true, point: matched }
+    : { ok: false, code: 'SCOPE_FORBIDDEN', message: 'Bạn không có quyền quản lý điểm chấm công này' };
+}
+
+async function handleAttendanceToday(req, res, context) {
+  const result = await workforceService.getAttendanceToday(context.getPool(), {
+    installationId: context.requestContext.installationId,
+    employeeId: context.requestContext.employeeId,
+  });
+  if (!result.ok) {
+    sendError(res, createError(result.code, result.message, {}, false, statusFor(result)), context.requestId, context.receivedAt);
+    return;
+  }
+  sendSuccess(res, result.today, context.requestId, context.receivedAt);
+}
+
+async function handleAttendancePoints(req, res, context, method) {
+  const branchIds = isCompanyScope(context.requestContext)
+    ? null
+    : [...(context.requestContext.scopes.branchIds ?? [])];
+  if (method === 'GET') {
+    const result = await workforceService.listAttendancePointManagement(context.getPool(), {
+      installationId: context.requestContext.installationId,
+      branchIds,
+    });
+    sendSuccess(res, {
+      points: result.points,
+      branches: result.branches,
+      companyScope: isCompanyScope(context.requestContext),
+    }, context.requestId, context.receivedAt);
+    return;
+  }
+
+  const parsed = await parsePayload(req, res, context);
+  if (!parsed.ok) return;
+  const payload = parsed.payload;
+  const branchId = String(payload?.branchId ?? '').trim() || null;
+  if (!isCompanyScope(context.requestContext)) {
+    if (!branchId || !new Set(branchIds).has(branchId)) {
+      sendError(res, createError('SCOPE_FORBIDDEN', 'Bạn không có quyền tạo điểm chấm công ngoài phạm vi được cấp', {}, false, 403), context.requestId, context.receivedAt);
+      return;
+    }
+  }
+  await runIdempotentMutation(req, res, context, {
+    route: '/api/workforce/attendance/points',
+    payload,
+    successStatus: 201,
+    mutate: async (client) => {
+      const result = await workforceService.createAttendancePoint(client, {
+        installationId: context.requestContext.installationId,
+        payload,
+        actorId: context.requestContext.actorId,
+      });
+      if (!result.ok) return result;
+      return {
+        ok: true,
+        data: result.point,
+        audit: {
+          requestContext: context.requestContext,
+          action: 'create',
+          resourceType: 'attendance-point',
+          resourceId: result.point.id,
+          beforeData: null,
+          afterData: result.point,
+          metadata: { code: result.point.code, branchId: result.point.branch_id },
+        },
+      };
+    },
+  });
+}
+
+async function handleAttendanceQrToken(req, res, context) {
+  const parsed = await parsePayload(req, res, context);
+  if (!parsed.ok) return;
+  const payload = parsed.payload;
+  const pointId = String(payload?.attendancePointId ?? '').trim();
+  const scope = await requirePointScope(context.getPool(), context.requestContext, pointId);
+  if (!scope.ok) {
+    sendError(res, createError(scope.code, scope.message, {}, false, statusFor(scope)), context.requestId, context.receivedAt);
+    return;
+  }
+  await runIdempotentMutation(req, res, context, {
+    route: '/api/workforce/attendance/qr-token',
+    payload,
+    successStatus: 201,
+    mutate: async (client) => {
+      const result = await workforceService.createAttendanceQrToken(client, {
+        installationId: context.requestContext.installationId,
+        attendancePointId: pointId,
+        actorId: context.requestContext.actorId,
+      });
+      if (!result.ok) return result;
+      return {
+        ok: true,
+        data: result.token,
+        audit: {
+          requestContext: context.requestContext,
+          action: 'issue-qr',
+          resourceType: 'attendance-qr-token',
+          resourceId: result.auditToken.id,
+          beforeData: null,
+          afterData: result.auditToken,
+          metadata: { attendancePointId: pointId, pointCode: result.point.code },
+        },
+      };
+    },
+  });
+}
+
+async function handleAttendanceRecord(req, res, context) {
+  const parsed = await parsePayload(req, res, context);
+  if (!parsed.ok) return;
+  const payload = parsed.payload;
+  await runIdempotentMutation(req, res, context, {
+    route: '/api/workforce/attendance/record',
+    payload,
+    successStatus: 201,
+    mutate: async (client) => {
+      const result = await workforceService.recordQrAttendance(client, {
+        installationId: context.requestContext.installationId,
+        employeeId: context.requestContext.employeeId,
+        payload,
+        actorId: context.requestContext.actorId,
+        requestId: context.requestId,
+      });
+      if (!result.ok) return result;
+      return {
+        ok: true,
+        data: { event: result.event, workDate: result.workDate, point: result.point },
+        audit: {
+          requestContext: context.requestContext,
+          action: result.event.event_type === 'CHECK_IN' ? 'check-in' : 'check-out',
+          resourceType: 'attendance-event',
+          resourceId: result.event.id,
+          beforeData: null,
+          afterData: result.event,
+          metadata: {
+            employeeId: context.requestContext.employeeId,
+            workDate: result.workDate,
+            attendancePointId: result.point.id,
+            eventType: result.event.event_type,
+          },
+        },
+      };
+    },
+  });
+}
+
 export async function handleWorkforceRoutes(req, res, options) {
   const pathname = new URL(`http://localhost${req.url}`).pathname;
   if (!pathname.startsWith('/api/workforce/')) return false;
   const route = pathname.slice('/api/workforce'.length);
-  if (!['/policies', '/assignments', '/schedules'].includes(route)) return false;
+  if (!['/policies', '/assignments', '/schedules', '/attendance/today', '/attendance/record', '/attendance/points', '/attendance/qr-token'].includes(route)) return false;
 
   const auth = options.authenticate(req, options.config);
   if (!auth.ok) {
@@ -298,14 +457,27 @@ export async function handleWorkforceRoutes(req, res, options) {
     receivedAt: options.receivedAt,
   });
   const method = String(req.method || 'GET').toUpperCase();
-  if (!['GET', 'POST'].includes(method)) {
+  const routeAllowsMethod = (
+    (route === '/attendance/today' && method === 'GET')
+    || (route === '/attendance/record' && method === 'POST')
+    || (route === '/attendance/qr-token' && method === 'POST')
+    || (route === '/attendance/points' && ['GET', 'POST'].includes(method))
+    || (['/policies', '/assignments', '/schedules'].includes(route) && ['GET', 'POST'].includes(method))
+  );
+  if (!routeAllowsMethod) {
     sendError(res, createError('METHOD_NOT_ALLOWED', 'Thao tác không được hỗ trợ', {}, false, 405), options.requestId, options.receivedAt);
     return true;
   }
 
   const permissionKey = route === '/schedules'
     ? (method === 'GET' ? options.PERMISSIONS.coreWorkScheduleRead : options.PERMISSIONS.coreWorkScheduleManage)
-    : (method === 'GET' ? options.PERMISSIONS.coreWorkPolicyRead : options.PERMISSIONS.coreWorkPolicyManage);
+    : route === '/attendance/today'
+      ? options.PERMISSIONS.coreAttendanceSelfRead
+      : route === '/attendance/record'
+        ? options.PERMISSIONS.coreAttendanceSelfRecord
+        : route === '/attendance/points' || route === '/attendance/qr-token'
+          ? options.PERMISSIONS.coreAttendancePointManage
+          : (method === 'GET' ? options.PERMISSIONS.coreWorkPolicyRead : options.PERMISSIONS.coreWorkPolicyManage);
   const permission = options.authorize(requestContext, permissionKey);
   if (!permission.ok) {
     sendError(res, createError('FORBIDDEN', 'Bạn không có quyền thực hiện thao tác này', {}, false, 403), options.requestId, options.receivedAt);
@@ -316,7 +488,11 @@ export async function handleWorkforceRoutes(req, res, options) {
   try {
     if (route === '/policies') await handlePolicies(req, res, context, method);
     else if (route === '/assignments') await handleAssignments(req, res, context, method);
-    else await handleSchedules(req, res, context, method);
+    else if (route === '/schedules') await handleSchedules(req, res, context, method);
+    else if (route === '/attendance/today') await handleAttendanceToday(req, res, context);
+    else if (route === '/attendance/record') await handleAttendanceRecord(req, res, context);
+    else if (route === '/attendance/points') await handleAttendancePoints(req, res, context, method);
+    else await handleAttendanceQrToken(req, res, context);
   } catch {
     sendError(res, createError('WORKFORCE_UNAVAILABLE', 'Dữ liệu nhân sự tạm thời chưa sẵn sàng', {}, true, 503), options.requestId, options.receivedAt);
   }

@@ -279,3 +279,173 @@ export async function updateWorkSchedule(client, values) {
   if (!result.rows?.[0]) return null;
   return getWorkScheduleById(client, { installationId: values.installationId, id: result.rows[0].id });
 }
+
+
+const ATTENDANCE_POINT_COLUMNS = `p.id, p.installation_id, p.code, p.name, p.branch_id, p.is_active,
+  p.created_at, p.updated_at, p.created_by, p.updated_by,
+  b.code AS branch_code, b.name AS branch_name`;
+
+export async function listAttendancePoints(client, { installationId, branchIds = null }) {
+  const params = [installationId];
+  let query = `SELECT ${ATTENDANCE_POINT_COLUMNS}
+       FROM shared.attendance_points p
+       LEFT JOIN shared.branches b
+         ON b.installation_id = p.installation_id AND b.id = p.branch_id
+      WHERE p.installation_id = $1`;
+  if (Array.isArray(branchIds)) {
+    params.push(branchIds);
+    query += ` AND p.branch_id = ANY($${params.length}::uuid[])`;
+  }
+  query += ' ORDER BY p.is_active DESC, p.code ASC';
+  const result = await client.query(query, params);
+  return result.rows ?? [];
+}
+
+export async function listAttendanceBranches(client, { installationId, branchIds = null }) {
+  const params = [installationId];
+  let query = `SELECT id, code, name, is_active
+       FROM shared.branches
+      WHERE installation_id = $1 AND is_active = true`;
+  if (Array.isArray(branchIds)) {
+    params.push(branchIds);
+    query += ` AND id = ANY($${params.length}::uuid[])`;
+  }
+  query += ' ORDER BY code ASC';
+  const result = await client.query(query, params);
+  return result.rows ?? [];
+}
+
+export async function getAttendancePointById(client, { installationId, id }) {
+  const result = await client.query(
+    `SELECT ${ATTENDANCE_POINT_COLUMNS}
+       FROM shared.attendance_points p
+       LEFT JOIN shared.branches b
+         ON b.installation_id = p.installation_id AND b.id = p.branch_id
+      WHERE p.installation_id = $1 AND p.id = $2`,
+    [installationId, id],
+  );
+  return result.rows?.[0] ?? null;
+}
+
+export async function getAttendanceBranchById(client, { installationId, id }) {
+  const result = await client.query(
+    `SELECT id, code, name, is_active
+       FROM shared.branches
+      WHERE installation_id = $1 AND id = $2`,
+    [installationId, id],
+  );
+  return result.rows?.[0] ?? null;
+}
+
+export async function insertAttendancePoint(client, values) {
+  const id = randomUUID();
+  const result = await client.query(
+    `INSERT INTO shared.attendance_points (
+       id, installation_id, code, name, branch_id, is_active,
+       created_at, updated_at, created_by, updated_by
+     ) VALUES ($1,$2,$3,$4,$5,true,now(),now(),$6,$6)
+     RETURNING id`,
+    [id, values.installationId, values.code, values.name, values.branchId, values.actorId],
+  );
+  if (!result.rows?.[0]) return null;
+  return getAttendancePointById(client, { installationId: values.installationId, id });
+}
+
+export async function pruneExpiredAttendanceQrTokens(client, { installationId }) {
+  await client.query(
+    `DELETE FROM shared.attendance_qr_tokens
+      WHERE installation_id = $1
+        AND expires_at < now() - interval '1 day'`,
+    [installationId],
+  );
+}
+
+export async function insertAttendanceQrToken(client, values) {
+  const id = randomUUID();
+  const result = await client.query(
+    `INSERT INTO shared.attendance_qr_tokens (
+       id, installation_id, attendance_point_id, token_hash, expires_at, created_at, created_by
+     ) VALUES ($1,$2,$3,$4,$5,now(),$6)
+     RETURNING id, installation_id, attendance_point_id, expires_at, created_at, created_by`,
+    [id, values.installationId, values.attendancePointId, values.tokenHash, values.expiresAt, values.actorId],
+  );
+  return result.rows?.[0] ?? null;
+}
+
+export async function getAttendanceQrTokenByHash(client, { installationId, tokenHash }) {
+  const result = await client.query(
+    `SELECT t.id, t.installation_id, t.attendance_point_id, t.expires_at, t.created_at, t.created_by,
+            p.code AS point_code, p.name AS point_name, p.branch_id, p.is_active AS point_active,
+            b.code AS branch_code, b.name AS branch_name
+       FROM shared.attendance_qr_tokens t
+       JOIN shared.attendance_points p
+         ON p.installation_id = t.installation_id AND p.id = t.attendance_point_id
+       LEFT JOIN shared.branches b
+         ON b.installation_id = p.installation_id AND b.id = p.branch_id
+      WHERE t.installation_id = $1 AND t.token_hash = $2`,
+    [installationId, tokenHash],
+  );
+  return result.rows?.[0] ?? null;
+}
+
+export async function getWorkScheduleForEmployeeDate(client, { installationId, employeeId, workDate }) {
+  const result = await client.query(
+    `SELECT id, installation_id, employee_id, work_policy_id, work_date, schedule_kind,
+            scheduled_start_at, scheduled_end_at, source, override_reason,
+            created_at, updated_at, created_by, updated_by
+       FROM shared.work_schedules
+      WHERE installation_id = $1 AND employee_id = $2 AND work_date = $3`,
+    [installationId, employeeId, workDate],
+  );
+  return result.rows?.[0] ?? null;
+}
+
+export async function listAttendanceEventsForRange(client, {
+  installationId,
+  employeeId,
+  fromAt,
+  toAt,
+}) {
+  const result = await client.query(
+    `SELECT e.id, e.installation_id, e.employee_id, e.schedule_id, e.work_policy_id,
+            e.attendance_point_id, e.event_type, e.occurred_at, e.source,
+            e.validation_status, e.source_reference, e.note, e.recorded_by,
+            e.request_id, e.created_at,
+            p.code AS point_code, p.name AS point_name
+       FROM shared.attendance_events e
+       LEFT JOIN shared.attendance_points p
+         ON p.installation_id = e.installation_id AND p.id = e.attendance_point_id
+      WHERE e.installation_id = $1
+        AND e.employee_id = $2
+        AND e.occurred_at >= $3
+        AND e.occurred_at < $4
+      ORDER BY e.occurred_at ASC, e.id ASC`,
+    [installationId, employeeId, fromAt, toAt],
+  );
+  return result.rows ?? [];
+}
+
+export async function insertAttendanceEvent(client, values) {
+  const id = randomUUID();
+  const result = await client.query(
+    `INSERT INTO shared.attendance_events (
+       id, installation_id, employee_id, schedule_id, work_policy_id,
+       attendance_point_id, event_type, occurred_at, source, validation_status,
+       source_reference, note, recorded_by, request_id, created_at
+     ) VALUES (
+       $1,$2,$3,$4,$5,$6,$7,$8,'QR','VALID',$9,NULL,$10,$11,now()
+     )
+     ON CONFLICT (installation_id, source, source_reference)
+     WHERE source_reference IS NOT NULL
+     DO NOTHING
+     RETURNING id, installation_id, employee_id, schedule_id, work_policy_id,
+               attendance_point_id, event_type, occurred_at, source, validation_status,
+               source_reference, note, recorded_by, request_id, created_at`,
+    [
+      id, values.installationId, values.employeeId, values.scheduleId,
+      values.workPolicyId, values.attendancePointId, values.eventType,
+      values.occurredAt, values.sourceReference, values.actorId, values.requestId,
+    ],
+  );
+  return result.rows?.[0] ?? null;
+}

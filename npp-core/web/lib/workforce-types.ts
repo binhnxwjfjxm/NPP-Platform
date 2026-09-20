@@ -68,3 +68,106 @@ export type WorkSchedule = {
   policy_name: string | null;
   policy_timezone: string | null;
 };
+
+
+export type AttendancePoint = {
+  id: string;
+  installation_id: string;
+  code: string;
+  name: string;
+  branch_id: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  created_by: string;
+  updated_by: string;
+  branch_code: string | null;
+  branch_name: string | null;
+};
+
+export type AttendanceBranch = {
+  id: string;
+  code: string;
+  name: string;
+  is_active: boolean;
+};
+
+export type AttendanceEvent = {
+  id: string;
+  installation_id: string;
+  employee_id: string;
+  schedule_id: string | null;
+  work_policy_id: string | null;
+  attendance_point_id: string | null;
+  event_type: 'CHECK_IN' | 'CHECK_OUT';
+  occurred_at: string;
+  source: 'QR' | 'MANUAL' | 'ADJUSTMENT' | 'SYSTEM';
+  validation_status: 'VALID' | 'PENDING' | 'INVALID';
+  source_reference: string | null;
+  note: string | null;
+  recorded_by: string;
+  request_id: string;
+  created_at: string;
+  point_code?: string | null;
+  point_name?: string | null;
+};
+
+export type AttendanceToday = {
+  workDate: string;
+  status: 'NOT_STARTED' | 'WORKING' | 'COMPLETE';
+  nextAction: 'CHECK_IN' | 'CHECK_OUT' | null;
+  tooSoon: boolean;
+  employee: {
+    id: string;
+    code: string;
+    full_name: string;
+    branch_id: string | null;
+    is_active: boolean;
+  };
+  policy: {
+    id: string;
+    code: string;
+    version: number;
+    name: string;
+    timeMode: WorkPolicy['time_mode'];
+    attendanceMethod: WorkPolicy['attendance_method'];
+    timezone: string;
+  };
+  schedule: {
+    id: string;
+    kind: 'WORK' | 'OFF';
+    source: 'POLICY' | 'OVERRIDE';
+  } | null;
+  expectedStartAt: string | null;
+  expectedEndAt: string | null;
+  events: AttendanceEvent[];
+};
+
+export type AttendancePointManagement = {
+  points: AttendancePoint[];
+  branches: AttendanceBranch[];
+  companyScope: boolean;
+};
+
+export type AttendanceQrToken = {
+  id: string;
+  attendancePointId: string;
+  pointCode: string;
+  pointName: string;
+  branchName: string | null;
+  qrPayload: string;
+  expiresAt: string;
+  createdAt: string;
+};
+
+export type AttendanceRecordResult = {
+  event: AttendanceEvent;
+  workDate: string;
+  point: {
+    id: string;
+    code: string;
+    name: string;
+    branchId: string | null;
+    branchName: string | null;
+  };
+};

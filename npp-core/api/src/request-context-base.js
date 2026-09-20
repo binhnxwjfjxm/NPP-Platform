@@ -77,6 +77,7 @@ export function createBootstrapPrincipal(config) {
       PERMISSIONS.coreWorkScheduleManage,
       PERMISSIONS.coreAttendanceSelfRead,
       PERMISSIONS.coreAttendanceSelfRecord,
+      PERMISSIONS.coreAttendancePointManage,
       PERMISSIONS.coreAttendanceRead,
       PERMISSIONS.coreAttendanceAdjust,
       PERMISSIONS.coreUserRead,

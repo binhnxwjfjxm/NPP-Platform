@@ -122,6 +122,7 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   migration('138_inventory_stocktake_line_details', 'inventory/138_inventory_stocktake_line_details.sql'),
   migration('139_inventory_stocktake_line_annotation', 'inventory/139_inventory_stocktake_line_annotation.sql'),
   migration('140_workforce_attendance_foundation', 'shared/140_workforce_attendance_foundation.sql'),
+  migration('141_workforce_attendance_qr', 'shared/141_workforce_attendance_qr.sql'),
 ]);
 
 export { runMigrations };

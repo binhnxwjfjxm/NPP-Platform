@@ -158,3 +158,29 @@ export function upsertWorkSchedule<T>(requestId: string, body: unknown, idempote
     idempotencyKey: mutationKey(idempotencyKey, 'work-schedule-save'),
   });
 }
+
+
+export function getAttendanceToday<T>(requestId: string): Promise<T> {
+  return requestCore<T>({ path: '/attendance/today', method: 'GET', requestId });
+}
+export function recordAttendance<T>(requestId: string, body: unknown, idempotencyKey?: string): Promise<T> {
+  return requestCore<T>({
+    path: '/attendance/record', method: 'POST', requestId, body,
+    idempotencyKey: mutationKey(idempotencyKey, 'attendance-record'),
+  });
+}
+export function getAttendancePointManagement<T>(requestId: string): Promise<T> {
+  return requestCore<T>({ path: '/attendance/points', method: 'GET', requestId });
+}
+export function createAttendancePoint<T>(requestId: string, body: unknown, idempotencyKey?: string): Promise<T> {
+  return requestCore<T>({
+    path: '/attendance/points', method: 'POST', requestId, body,
+    idempotencyKey: mutationKey(idempotencyKey, 'attendance-point-create'),
+  });
+}
+export function createAttendanceQrToken<T>(requestId: string, body: unknown, idempotencyKey?: string): Promise<T> {
+  return requestCore<T>({
+    path: '/attendance/qr-token', method: 'POST', requestId, body,
+    idempotencyKey: mutationKey(idempotencyKey, 'attendance-qr-token'),
+  });
+}
