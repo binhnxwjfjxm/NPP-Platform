@@ -142,9 +142,18 @@ export default function InventoryAdjustmentWorkspace({
   const idempotencyKeys = useRef(new Map<string, string>());
   const detailRequest = useRef(0);
 
+  const selectedWarehouseLocationMode = warehouses.find(
+    (item) => item.id === draft.warehouseId,
+  )?.location_management_mode ?? null;
   const sourceBalances = useMemo(
-    () => balances.filter((item) => item.location_id && (!draft.warehouseId || item.warehouse_id === draft.warehouseId)),
-    [balances, draft.warehouseId],
+    () => balances.filter((item) => {
+      if (!draft.warehouseId) return Boolean(item.location_id);
+      if (item.warehouse_id !== draft.warehouseId) return false;
+      if (selectedWarehouseLocationMode === 'UNMANAGED') return item.location_id === null;
+      if (selectedWarehouseLocationMode === 'MANAGED') return item.location_id !== null;
+      return false;
+    }),
+    [balances, draft.warehouseId, selectedWarehouseLocationMode],
   );
   const selectedBalance = sourceBalances.find((item) => keyForBalance(item) === draft.sourceKey) ?? null;
   const destinationType = draft.documentKind === 'QUARANTINE_TRANSFER'
@@ -218,7 +227,7 @@ export default function InventoryAdjustmentWorkspace({
 
   async function createDocument() {
     if (!selectedBalance || !draft.reasonCode || !draft.reasonNote.trim() || !draft.quantity.trim()) {
-      setError('Chọn đủ kho, sản phẩm/lô/vị trí, lý do và số lượng.');
+      setError('Chọn đủ kho, dòng tồn, lý do và số lượng.');
       return;
     }
     if (destinationType && !draft.destinationLocationId) {
@@ -380,12 +389,12 @@ export default function InventoryAdjustmentWorkspace({
               </select>
             </label>
             <label>
-              Sản phẩm / Lô / Vị trí
+              {selectedWarehouseLocationMode === 'UNMANAGED' ? 'Sản phẩm / Lô' : 'Sản phẩm / Lô / Vị trí'}
               <select value={draft.sourceKey} onChange={(event) => setDraft({ ...draft, sourceKey: event.target.value })}>
                 <option value="">Chọn dòng tồn cần xử lý</option>
                 {sourceBalances.map((item) => (
                   <option key={keyForBalance(item)} value={keyForBalance(item)}>
-                    {item.product_name || item.base_variant_name || item.base_sku} · {item.base_sku} · Lô {item.lot_code || 'Không lô'} · Vị trí {item.location_code || 'Không vị trí'} · Tồn hiện tại {formatQuantity(item.on_hand_quantity)} · Có thể xử lý {formatQuantity(item.available_quantity)}
+                    {item.product_name || item.base_variant_name || item.base_sku} · {item.base_sku} · Lô {item.lot_code || 'Không lô'}{selectedWarehouseLocationMode === 'MANAGED' ? ` · Vị trí ${item.location_code || 'Chưa xác định'}` : ''} · Tồn hiện tại {formatQuantity(item.on_hand_quantity)} · Có thể xử lý {formatQuantity(item.available_quantity)}
                   </option>
                 ))}
               </select>

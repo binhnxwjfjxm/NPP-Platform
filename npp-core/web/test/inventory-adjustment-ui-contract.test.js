@@ -100,3 +100,13 @@ test('adjustment proxy preserves the domain gateway status instead of collapsing
   assert.match(route, /normalizeInventoryAdjustmentGatewayError/);
   assert.equal((route.match(/errorResponse\(error, requestId, normalizeInventoryAdjustmentGatewayError\)/g) ?? []).length, 2);
 });
+
+
+test('manual adjustment follows warehouse location mode instead of forcing a location', () => {
+  assert.match(workspace, /selectedWarehouseLocationMode === 'UNMANAGED'/);
+  assert.match(workspace, /item\.location_id === null/);
+  assert.match(workspace, /selectedWarehouseLocationMode === 'MANAGED'/);
+  assert.match(workspace, /item\.location_id !== null/);
+  assert.match(workspace, /Chọn đủ kho, dòng tồn, lý do và số lượng\./);
+  assert.doesNotMatch(workspace, /Chọn đủ kho, sản phẩm\/lô\/vị trí, lý do và số lượng\./);
+});

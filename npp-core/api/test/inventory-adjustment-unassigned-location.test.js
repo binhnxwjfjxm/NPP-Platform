@@ -62,7 +62,7 @@ test('manual adjustment normalization leaves location authority to the selected 
     warehouseId,
     documentKind: 'MANUAL_ADJUSTMENT',
     reasonCode: 'MANUAL_COUNT_CORRECTION_OUT',
-    reasonNote: 'Đưa tồn cũ chưa gán vị trí về đúng số thực tế',
+    reasonNote: 'Đưa tồn kho về đúng số thực tế',
     lines: [{ sourceLocationId: null, sourceVariantId: variantId, lotId: null, quantity: '27306' }],
   };
 
@@ -87,10 +87,30 @@ test('manual adjustment normalization leaves location authority to the selected 
   assert.match(serviceSource, /LOCATION_NOT_ALLOWED/);
 });
 
-test('repository and migration keep null-location scope concurrency and lineage exact', () => {
+test('migration 142 makes the database guard follow warehouse-owned location mode', () => {
+  const registry = readFileSync(new URL('../src/migrations/index.js', import.meta.url), 'utf8');
+  const guardMigration = readFileSync(
+    new URL('../../../database/migrations/inventory/142_inventory_adjustment_warehouse_location_guard.sql', import.meta.url),
+    'utf8',
+  );
+
+  assert.ok(
+    registry.indexOf('142_inventory_adjustment_warehouse_location_guard')
+      > registry.indexOf('141_workforce_attendance_qr'),
+  );
+  assert.match(guardMigration, /warehouse\.location_management_mode/);
+  assert.match(guardMigration, /warehouse_location_mode = 'UNMANAGED'/);
+  assert.match(guardMigration, /NEW\.source_location_id IS NOT NULL[\s\S]*NEW\.destination_location_id IS NOT NULL/);
+  assert.match(guardMigration, /inventory_adjustment_location_not_allowed/);
+  assert.match(guardMigration, /NEW\.source_location_id IS NULL/);
+  assert.match(guardMigration, /inventory_adjustment_source_location_required/);
+  assert.doesNotMatch(guardMigration, /header_direction <> 'OUT'/);
+});
+
+test('repository and migrations keep null-location scope concurrency and lineage exact', () => {
   const repositorySource = readFileSync(new URL('../src/db/repositories/inventory-adjustment.js', import.meta.url), 'utf8');
   const bulkSource = readFileSync(new URL('../src/services/inventory-adjustment-bulk.js', import.meta.url), 'utf8');
-  const migrationSource = readFileSync(
+  const compatibilityMigration = readFileSync(
     new URL('../../../database/migrations/inventory/128_inventory_adjustment_unassigned_location.sql', import.meta.url),
     'utf8',
   );
@@ -99,8 +119,7 @@ test('repository and migration keep null-location scope concurrency and lineage 
   assert.match(repositorySource, /LEFT JOIN shared\.warehouse_locations source_location/);
   assert.match(repositorySource, /version\.location_id IS NOT DISTINCT FROM requested\.location_id/);
   assert.match(repositorySource, /balance\.location_id IS NOT DISTINCT FROM requested\.location_id/);
-  assert.match(migrationSource, /inventory_adjustment_lines\s+ALTER COLUMN source_location_id DROP NOT NULL/);
-  assert.match(migrationSource, /inventory_adjustment_posted_scopes\s+ALTER COLUMN location_id DROP NOT NULL/);
-  assert.match(migrationSource, /header_direction <> 'OUT'/);
-  assert.match(migrationSource, /NEW\.location_id IS DISTINCT FROM line_row\.source_location_id/);
+  assert.match(compatibilityMigration, /inventory_adjustment_lines\s+ALTER COLUMN source_location_id DROP NOT NULL/);
+  assert.match(compatibilityMigration, /inventory_adjustment_posted_scopes\s+ALTER COLUMN location_id DROP NOT NULL/);
+  assert.match(compatibilityMigration, /NEW\.location_id IS DISTINCT FROM line_row\.source_location_id/);
 });
