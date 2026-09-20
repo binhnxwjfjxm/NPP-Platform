@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+import { INVENTORY_ADJUSTMENT_BULK_MAX_LINES } from '@npp/contracts';
 import * as adjustmentRepository from '../db/repositories/inventory-adjustment.js';
 import * as warehouseLocationModeRepository from '../db/repositories/warehouse-location-mode.js';
 import { createAdjustment } from './inventory-adjustment.js';
@@ -6,7 +8,8 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
 const QUANTITY_PATTERN = /^(?:0|[1-9]\d{0,13})(?:\.\d{1,6})?$/;
 const SCALE_6 = 1_000_000n;
 const SCALE_12 = 1_000_000_000_000n;
-const MAX_ROWS = 200;
+const MAX_ROWS = INVENTORY_ADJUSTMENT_BULK_MAX_LINES;
+const QUERY_CHUNK_SIZE = 250;
 const UNASSIGNED_LOCATION_CODE = 'KHÔNG VỊ TRÍ';
 
 function failure(code, message, details = {}, retryable = false) {
@@ -49,6 +52,24 @@ function formatScaled(value, scaleDigits) {
 function signedScaled(value) {
   const formatted = formatScaled(value, 12);
   return value > 0n ? `+${formatted}` : formatted;
+}
+
+function chunkValues(values, size = QUERY_CHUNK_SIZE) {
+  const chunks = [];
+  for (let index = 0; index < values.length; index += size) chunks.push(values.slice(index, index + size));
+  return chunks;
+}
+
+function mergeArrayMap(target, source) {
+  for (const [key, values] of source.entries()) {
+    target.set(key, [...(target.get(key) ?? []), ...values]);
+  }
+  return target;
+}
+
+function reconciliationBatchCode() {
+  const date = new Date().toISOString().slice(0, 10).replaceAll('-', '');
+  return `DS-${date}-${randomUUID().slice(0, 8).toUpperCase()}`;
 }
 
 function normalizeBulkRows(payload) {
@@ -117,7 +138,7 @@ function normalizeBulkRows(payload) {
   return Object.freeze({ ok: true, warehouseId, rows });
 }
 
-async function loadSkuMap(client, installationId, skus) {
+async function loadSkuMapChunk(client, installationId, skus) {
   if (skus.length === 0) return new Map();
   const result = await client.query(
     `SELECT source.id AS source_variant_id,
@@ -170,7 +191,15 @@ async function loadSkuMap(client, installationId, skus) {
   return map;
 }
 
-async function loadBalanceMap(client, installationId, warehouseId, baseVariantIds) {
+async function loadSkuMap(client, installationId, skus) {
+  const map = new Map();
+  for (const skuChunk of chunkValues(skus)) {
+    mergeArrayMap(map, await loadSkuMapChunk(client, installationId, skuChunk));
+  }
+  return map;
+}
+
+async function loadBalanceMapChunk(client, installationId, warehouseId, baseVariantIds) {
   if (baseVariantIds.length === 0) return new Map();
   const result = await client.query(
     `WITH requested AS (
@@ -229,7 +258,15 @@ async function loadBalanceMap(client, installationId, warehouseId, baseVariantId
   return map;
 }
 
-async function loadLocationMap(client, installationId, warehouseId, locationCodes) {
+async function loadBalanceMap(client, installationId, warehouseId, baseVariantIds) {
+  const map = new Map();
+  for (const variantChunk of chunkValues(baseVariantIds)) {
+    mergeArrayMap(map, await loadBalanceMapChunk(client, installationId, warehouseId, variantChunk));
+  }
+  return map;
+}
+
+async function loadLocationMapChunk(client, installationId, warehouseId, locationCodes) {
   if (locationCodes.length === 0) return new Map();
   const result = await client.query(
     `SELECT id, code, name
@@ -244,7 +281,17 @@ async function loadLocationMap(client, installationId, warehouseId, locationCode
   return new Map((result.rows ?? []).map((row) => [String(row.code).trim().toUpperCase(), row]));
 }
 
-async function loadLotMap(client, installationId, baseVariantIds, lotCodes) {
+async function loadLocationMap(client, installationId, warehouseId, locationCodes) {
+  const map = new Map();
+  for (const codeChunk of chunkValues(locationCodes)) {
+    for (const [key, value] of (await loadLocationMapChunk(client, installationId, warehouseId, codeChunk)).entries()) {
+      map.set(key, value);
+    }
+  }
+  return map;
+}
+
+async function loadLotMapChunk(client, installationId, baseVariantIds, lotCodes) {
   if (baseVariantIds.length === 0 || lotCodes.length === 0) return new Map();
   const result = await client.query(
     `SELECT id, base_variant_id, lot_code
@@ -260,6 +307,29 @@ async function loadLotMap(client, installationId, baseVariantIds, lotCodes) {
     map.set(`${row.base_variant_id}\u001f${String(row.lot_code).trim().toUpperCase()}`, row);
   }
   return map;
+}
+
+async function loadLotMap(client, installationId, baseVariantIds, lotCodes) {
+  const map = new Map();
+  for (const variantChunk of chunkValues(baseVariantIds)) {
+    for (const [key, value] of (await loadLotMapChunk(client, installationId, variantChunk, lotCodes)).entries()) {
+      map.set(key, value);
+    }
+  }
+  return map;
+}
+
+async function currentScopeVersionsInChunks(client, { installationId, warehouseId, scopes, lock }) {
+  const rows = [];
+  for (const scopeChunk of chunkValues(scopes)) {
+    rows.push(...await adjustmentRepository.currentScopeVersions(client, {
+      installationId,
+      warehouseId,
+      scopes: scopeChunk,
+      lock,
+    }));
+  }
+  return rows;
 }
 
 function sameCode(left, right) {
@@ -670,7 +740,7 @@ async function prepareBulkAdjustment(client, { requestContext, payload, lockScop
         lot_id: row.scope.lot_id ?? null,
       }));
     if (scopes.length > 0) {
-      const locked = await adjustmentRepository.currentScopeVersions(client, {
+      const locked = await currentScopeVersionsInChunks(client, {
         installationId: requestContext.installationId,
         warehouseId: normalized.warehouseId,
         scopes,
@@ -762,6 +832,7 @@ export async function confirmBulkAdjustment(client, { requestContext, payload })
   if (increases.length > 0 && !increaseReasonCode) return failure('INCREASE_REASON_REQUIRED', 'Hãy chọn lý do cho các dòng tăng tồn.');
   if (decreases.length > 0 && !decreaseReasonCode) return failure('DECREASE_REASON_REQUIRED', 'Hãy chọn lý do cho các dòng giảm tồn.');
 
+  const reconciliationBatchCodeValue = reconciliationBatchCode();
   const groups = [
     { direction: 'IN', rows: increases, reasonCode: increaseReasonCode },
     { direction: 'OUT', rows: decreases, reasonCode: decreaseReasonCode },
@@ -783,6 +854,11 @@ export async function confirmBulkAdjustment(client, { requestContext, payload })
           quantity: row.canonicalQuantity,
         })),
       },
+      reconciliationBatchCode: reconciliationBatchCodeValue,
+      lineMetadata: group.rows.map((row) => ({
+        systemBaseQuantity: row.currentBaseQuantity,
+        countedBaseQuantity: row.actualBaseQuantity,
+      })),
     });
     if (!result.ok) return result;
     adjustments.push(result.adjustment);
@@ -790,12 +866,14 @@ export async function confirmBulkAdjustment(client, { requestContext, payload })
   return Object.freeze({
     ok: true,
     adjustments: Object.freeze(adjustments),
+    reconciliationBatchCode: reconciliationBatchCodeValue,
     preview: prepared.preview,
   });
 }
 
 export const inventoryAdjustmentBulkInternals = Object.freeze({
   MAX_ROWS,
+  QUERY_CHUNK_SIZE,
   UNASSIGNED_LOCATION_CODE,
   parseScaled,
   formatScaled,

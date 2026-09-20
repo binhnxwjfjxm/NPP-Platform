@@ -407,12 +407,16 @@ export async function handleInventoryAdjustmentRoutes(req, res, options) {
     try {
       const status = url.searchParams.get('status')?.trim() || null;
       const documentKind = url.searchParams.get('documentKind')?.trim() || null;
+      const fromDate = url.searchParams.get('from')?.trim() || null;
+      const toDate = url.searchParams.get('to')?.trim() || null;
       const limit = parseInteger(url.searchParams.get('limit'), 100, 500);
       const offset = parseInteger(url.searchParams.get('offset'), 0, 100000);
       const result = await adjustmentService.listAdjustments(options.getPool(), {
         requestContext,
         status,
         documentKind,
+        fromDate,
+        toDate,
         limit,
         offset,
       });

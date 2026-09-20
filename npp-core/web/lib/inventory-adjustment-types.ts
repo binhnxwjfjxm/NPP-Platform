@@ -35,6 +35,9 @@ export type AdjustmentLine = {
   expiryDate: string | null;
   sourceSnapshotScopeVersion: string;
   destinationSnapshotScopeVersion: string | null;
+  productName: string | null;
+  systemBaseQuantity: string | null;
+  countedBaseQuantity: string | null;
 };
 
 export type InventoryAdjustment = {
@@ -48,6 +51,7 @@ export type InventoryAdjustment = {
   reasonCode: string;
   reasonLabel: string | null;
   reasonNote: string;
+  reconciliationBatchCode: string | null;
   status: AdjustmentStatus;
   revision: string;
   correctionOfAdjustmentId: string | null;

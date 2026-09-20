@@ -4,6 +4,8 @@ import { createIdempotencyKey } from '@npp/contracts';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell-core';
 import { BusinessSequenceNumber } from '../../components/business-table-sequence';
+import { printSurfacesForOutput } from '../../components/print-document';
+import { exportTable } from '../../operations/data-exchange/data-exchange-file-utils';
 import { formatQuantity, type InventoryBalance } from '../../../lib/inventory-types';
 import {
   addExactDecimal,
@@ -24,6 +26,7 @@ import {
   type InventoryAdjustment,
 } from '../../../lib/inventory-adjustment-types';
 import { InventoryAdjustmentTabs, type InventoryAdjustmentTab } from './adjustment-tabs';
+import InventoryAdjustmentPrintBundle, { inventoryAdjustmentPrintSurfaceId } from './InventoryAdjustmentPrintBundle';
 import styles from './workspace.module.css';
 
 type Props = {
@@ -36,6 +39,7 @@ type Props = {
   initialTab: InventoryAdjustmentTab;
   initialAdjustmentId: string | null;
   createdSummary: string | null;
+  initialSelectedIds: string[];
 };
 
 type Draft = {
@@ -126,6 +130,7 @@ export default function InventoryAdjustmentWorkspace({
   initialTab,
   initialAdjustmentId,
   createdSummary,
+  initialSelectedIds,
 }: Props) {
   const [adjustments, setAdjustments] = useState(initialAdjustments);
   const [selected, setSelected] = useState<InventoryAdjustment | null>(null);
@@ -133,6 +138,14 @@ export default function InventoryAdjustmentWorkspace({
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [statusFilter, setStatusFilter] = useState('');
   const [kindFilter, setKindFilter] = useState('');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const [hasMore, setHasMore] = useState(initialAdjustments.length >= 100);
+  const [selectedDocumentIds, setSelectedDocumentIds] = useState<Set<string>>(
+    () => new Set(initialSelectedIds),
+  );
+  const [outputDocuments, setOutputDocuments] = useState<InventoryAdjustment[]>([]);
+  const [outputBusy, setOutputBusy] = useState(false);
   const [actionReason, setActionReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(initialError);
@@ -181,21 +194,134 @@ export default function InventoryAdjustmentWorkspace({
     idempotencyKeys.current.delete(signature);
   }
 
-  async function refresh(nextStatus = statusFilter, nextKind = kindFilter) {
+  function documentListParams(
+    nextStatus = statusFilter,
+    nextKind = kindFilter,
+    nextFromDate = fromDate,
+    nextToDate = toDate,
+    offset = 0,
+  ) {
+    const params = new URLSearchParams({ limit: '100', offset: String(offset) });
+    if (nextStatus) params.set('status', nextStatus);
+    if (nextKind) params.set('documentKind', nextKind);
+    if (nextFromDate) params.set('from', nextFromDate);
+    if (nextToDate) params.set('to', nextToDate);
+    return params;
+  }
+
+  async function refresh(
+    nextStatus = statusFilter,
+    nextKind = kindFilter,
+    nextFromDate = fromDate,
+    nextToDate = toDate,
+  ) {
     setBusy(true);
     setError(null);
     try {
-      const params = new URLSearchParams();
-      if (nextStatus) params.set('status', nextStatus);
-      if (nextKind) params.set('documentKind', nextKind);
       const data = await requestJson<InventoryAdjustment[]>(
-        `/api/inventory/adjustments${params.toString() ? `?${params}` : ''}`,
+        `/api/inventory/adjustments?${documentListParams(nextStatus, nextKind, nextFromDate, nextToDate)}`,
       );
       setAdjustments(data);
+      setHasMore(data.length >= 100);
+      setSelectedDocumentIds(new Set());
+      setOutputDocuments([]);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Không tải lại được danh sách');
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function loadMore() {
+    setBusy(true);
+    setError(null);
+    try {
+      const data = await requestJson<InventoryAdjustment[]>(
+        `/api/inventory/adjustments?${documentListParams(statusFilter, kindFilter, fromDate, toDate, adjustments.length)}`,
+      );
+      setAdjustments((current) => [...current, ...data]);
+      setHasMore(data.length >= 100);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Không tải thêm được phiếu cũ');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function toggleDocumentSelection(id: string) {
+    setSelectedDocumentIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function loadSelectedDocumentsForOutput(): Promise<InventoryAdjustment[]> {
+    const ids = [...selectedDocumentIds];
+    if (!ids.length) throw new Error('Hãy chọn ít nhất một phiếu cần xuất.');
+    const documents = await Promise.all(
+      ids.map((id) => requestJson<InventoryAdjustment>(`/api/inventory/adjustments/${id}`)),
+    );
+    setOutputDocuments(documents);
+    return documents;
+  }
+
+  async function printSelectedDocuments() {
+    setOutputBusy(true);
+    setError(null);
+    try {
+      const documents = await loadSelectedDocumentsForOutput();
+      await new Promise<void>((resolve) => window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve())));
+      const printed = printSurfacesForOutput(
+        documents.map((document) => inventoryAdjustmentPrintSurfaceId(document.id)),
+      );
+      if (!printed) throw new Error('Không chuẩn bị được phiếu để in hoặc lưu PDF.');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Không xuất được phiếu.');
+    } finally {
+      setOutputBusy(false);
+    }
+  }
+
+  async function exportSelectedDocumentsExcel() {
+    setOutputBusy(true);
+    setError(null);
+    try {
+      const documents = await loadSelectedDocumentsForOutput();
+      const rows = documents.flatMap((document) => (document.lines ?? []).map((line) => [
+        document.reconciliationBatchCode ?? '',
+        document.adjustmentNumber,
+        document.adjustmentDirection === 'IN' ? 'Tăng' : document.adjustmentDirection === 'OUT' ? 'Giảm' : '',
+        adjustmentStatusLabels[document.status],
+        document.warehouseCode ?? document.warehouseName ?? '',
+        formatDate(document.createdAt),
+        officeActorLabel(document.createdBy, 'Người lập'),
+        document.reasonNote,
+        String(line.lineNumber),
+        line.sourceSku,
+        line.productName ?? '',
+        line.lotCode ?? '',
+        [line.sourceLocationCode, line.sourceLocationName].filter(Boolean).join(' · '),
+        line.systemBaseQuantity ?? '',
+        line.countedBaseQuantity ?? '',
+        sourceDelta(document, line),
+        line.sourceUnitCode,
+      ]));
+      if (rows.length > 2000) {
+        throw new Error('Một file Excel tối đa 2.000 dòng. Hãy chọn ít phiếu hơn.');
+      }
+      await exportTable(
+        `phieu-dieu-chinh-ton-${new Date().toISOString().slice(0, 10)}.xlsx`,
+        'Phiếu điều chỉnh tồn',
+        ['Mã đợt đối soát', 'Số phiếu', 'Điều chỉnh', 'Trạng thái', 'Kho', 'Ngày lập', 'Người lập', 'Diễn giải', 'STT', 'SKU', 'Tên hàng', 'Lô', 'Vị trí', 'Tồn hệ thống', 'Tồn thực tế', 'Chênh lệch', 'ĐVT'],
+        rows,
+        'xlsx',
+      );
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Không xuất được Excel.');
+    } finally {
+      setOutputBusy(false);
     }
   }
 
@@ -454,6 +580,8 @@ export default function InventoryAdjustmentWorkspace({
         </section>
       ) : null}
 
+      <InventoryAdjustmentPrintBundle documents={outputDocuments} />
+
       {activeTab === 'documents' ? (
         <section className={styles.panel}>
           <div className={styles.filters}>
@@ -463,7 +591,7 @@ export default function InventoryAdjustmentWorkspace({
                 value={statusFilter}
                 onChange={(event) => {
                   setStatusFilter(event.target.value);
-                  refresh(event.target.value, kindFilter);
+                  refresh(event.target.value, kindFilter, fromDate, toDate);
                 }}
               >
                 <option value="">Tất cả</option>
@@ -476,29 +604,71 @@ export default function InventoryAdjustmentWorkspace({
                 value={kindFilter}
                 onChange={(event) => {
                   setKindFilter(event.target.value);
-                  refresh(statusFilter, event.target.value);
+                  refresh(statusFilter, event.target.value, fromDate, toDate);
                 }}
               >
                 <option value="">Tất cả</option>
                 {Object.entries(adjustmentKindLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </select>
             </label>
+            <label>
+              Từ ngày
+              <input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
+            </label>
+            <label>
+              Đến ngày
+              <input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
+            </label>
+            <button type="button" className={styles.secondaryButton} onClick={() => refresh()} disabled={busy}>Áp dụng thời gian</button>
+          </div>
+
+          <div className={styles.selectionToolbar}>
+            <span>{selectedDocumentIds.size ? `Đã chọn ${selectedDocumentIds.size} phiếu` : 'Chọn một hoặc nhiều phiếu để xuất.'}</span>
+            <div className={styles.actionRow}>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => setSelectedDocumentIds(new Set(adjustments.map((item) => item.id)))}
+                disabled={!adjustments.length || selectedDocumentIds.size === adjustments.length}
+              >
+                Chọn danh sách
+              </button>
+              <button type="button" className={styles.secondaryButton} onClick={() => setSelectedDocumentIds(new Set())} disabled={!selectedDocumentIds.size}>Bỏ chọn</button>
+              <button type="button" className={styles.secondaryButton} onClick={() => void printSelectedDocuments()} disabled={!selectedDocumentIds.size || outputBusy}>In / lưu PDF</button>
+              <button type="button" className={styles.secondaryButton} onClick={() => void exportSelectedDocumentsExcel()} disabled={!selectedDocumentIds.size || outputBusy}>Xuất Excel</button>
+            </div>
           </div>
 
           <div className={styles.layout}>
-            <div className={styles.list} aria-label="Danh sách phiếu điều chỉnh tồn">
-              {adjustments.length === 0 ? <p className={styles.empty}>Chưa có phiếu phù hợp.</p> : adjustments.map((item, rowIndex) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  className={`${styles.listItem} ${selected?.id === item.id ? styles.active : ''}`}
-                  onClick={() => openDetail(item.id)}
-                >
-                  <strong><BusinessSequenceNumber rowIndex={rowIndex} /> {item.adjustmentNumber}</strong>
-                  <span>{adjustmentKindLabels[item.documentKind]}</span>
-                  <small>{item.warehouseCode ?? item.warehouseName ?? 'Kho'} · {adjustmentStatusLabels[item.status]} · {formatDate(item.createdAt)}</small>
-                </button>
-              ))}
+            <div>
+              <div className={styles.list} aria-label="Danh sách phiếu điều chỉnh tồn">
+                {adjustments.length === 0 ? <p className={styles.empty}>Chưa có phiếu phù hợp.</p> : adjustments.map((item, rowIndex) => (
+                  <div key={item.id} className={`${styles.listItem} ${selected?.id === item.id ? styles.active : ''}`}>
+                    <label className={styles.listSelect} title="Chọn phiếu để xuất">
+                      <input
+                        type="checkbox"
+                        checked={selectedDocumentIds.has(item.id)}
+                        onChange={() => toggleDocumentSelection(item.id)}
+                        aria-label={`Chọn phiếu ${item.adjustmentNumber}`}
+                      />
+                    </label>
+                    <button type="button" className={styles.listItemOpen} onClick={() => openDetail(item.id)}>
+                      <strong><BusinessSequenceNumber rowIndex={rowIndex} /> {item.adjustmentNumber}</strong>
+                      <span>{adjustmentKindLabels[item.documentKind]}</span>
+                      {item.reconciliationBatchCode ? <small>Mã đợt: {item.reconciliationBatchCode}</small> : null}
+                      <small>{item.warehouseCode ?? item.warehouseName ?? 'Kho'} · {adjustmentStatusLabels[item.status]} · {formatDate(item.createdAt)}</small>
+                    </button>
+                    {item.documentKind === 'MANUAL_ADJUSTMENT' && item.adjustmentDirection ? (
+                      <small className={`${styles.directionText} ${item.adjustmentDirection === 'IN' ? styles.directionIn : styles.directionOut}`}>
+                        {item.adjustmentDirection === 'IN' ? 'Tăng' : 'Giảm'}
+                      </small>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+              {hasMore ? (
+                <button type="button" className={styles.loadMoreButton} onClick={() => void loadMore()} disabled={busy}>Tải thêm phiếu cũ</button>
+              ) : null}
             </div>
 
             <div className={styles.detail}>
@@ -538,6 +708,7 @@ export default function InventoryAdjustmentWorkspace({
                   <p>{workflowHint(selected)}</p>
                   <dl className={styles.meta}>
                     <div><dt>Kho</dt><dd>{selected.warehouseCode} — {selected.warehouseName}</dd></div>
+                    {selected.reconciliationBatchCode ? <div><dt>Mã đợt đối soát</dt><dd>{selected.reconciliationBatchCode}</dd></div> : null}
                     <div><dt>Nguồn</dt><dd>{adjustmentSourceLabel(selected)}</dd></div>
                     <div><dt>Người lập</dt><dd>{officeActorLabel(selected.createdBy, 'Người lập')}</dd></div>
                     <div>

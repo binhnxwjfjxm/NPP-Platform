@@ -11,6 +11,8 @@ const workflowErrors = readFileSync(new URL('../lib/inventory-workflow-errors.ts
 const route = readFileSync(new URL('../app/api/inventory/adjustments/[[...segments]]/route.ts', import.meta.url), 'utf8');
 const sharedRoute = readFileSync(new URL('../app/api/inventory/_shared.ts', import.meta.url), 'utf8');
 const shell = readFileSync(new URL('../app/components/app-shell-core.tsx', import.meta.url), 'utf8');
+const printBundle = readFileSync(new URL('../app/inventory/adjustments/InventoryAdjustmentPrintBundle.tsx', import.meta.url), 'utf8');
+const printDocument = readFileSync(new URL('../app/components/print-document.tsx', import.meta.url), 'utf8');
 
 test('adjustment screen lives under Inventory and keeps mutation actions in action rows', () => {
   assert.match(shell, /\/inventory\/adjustments/);
@@ -109,4 +111,27 @@ test('manual adjustment follows warehouse location mode instead of forcing a loc
   assert.match(workspace, /item\.location_id !== null/);
   assert.match(workspace, /Chọn đủ kho, dòng tồn, lý do và số lượng\./);
   assert.doesNotMatch(workspace, /Chọn đủ kho, sản phẩm\/lô\/vị trí, lý do và số lượng\./);
+});
+
+
+test('adjustment list marks increase/decrease as quiet text and supports selecting documents for PDF or Excel', () => {
+  assert.match(workspace, /directionText/);
+  assert.match(workspace, /styles\.directionIn/);
+  assert.match(workspace, /styles\.directionOut/);
+  assert.match(workspace, /In \/ lưu PDF/);
+  assert.match(workspace, /Xuất Excel/);
+  assert.match(workspace, /selectedDocumentIds/);
+  assert.match(workspace, /Mã đợt đối soát/);
+  assert.match(workspace, /Tải thêm phiếu cũ/);
+  assert.match(workspace, /type="date"/);
+});
+
+test('adjustment print bundle includes reconciliation snapshots and multi-document printing', () => {
+  assert.match(printBundle, /Tồn hệ thống/);
+  assert.match(printBundle, /Tồn thực tế/);
+  assert.match(printBundle, /Chênh lệch/);
+  assert.match(printBundle, /Người đối chiếu/);
+  assert.match(printBundle, /CHƯA CẬP NHẬT TỒN KHO/);
+  assert.match(printDocument, /printSurfacesForOutput/);
+  assert.match(printDocument, /breakAfter = 'page'/);
 });

@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { createIdempotencyKey, IDEMPOTENCY_KEY_PATTERN } from '@npp/contracts';
+import { createIdempotencyKey, IDEMPOTENCY_KEY_PATTERN, INVENTORY_ADJUSTMENT_BULK_MAX_LINES } from '@npp/contracts';
 import { PERMISSIONS } from '../access/permissions.js';
 import * as repository from '../db/repositories/inventory-adjustment.js';
 import * as ledgerRepository from '../db/repositories/inventory-ledger.js';
@@ -8,6 +8,9 @@ import * as warehouseLocationModeRepository from '../db/repositories/warehouse-l
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const QUANTITY_PATTERN = /^(?:0|[1-9]\d{0,13})(?:\.\d{1,6})?$/;
 const REVISION_PATTERN = /^(?:0|[1-9]\d{0,18})$/;
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const RECONCILIATION_BATCH_PATTERN = /^[A-Z0-9._-]{1,64}$/;
+const LINE_WRITE_CHUNK_SIZE = 250;
 const DOCUMENT_KINDS = new Set([
   'MANUAL_ADJUSTMENT',
   'QUARANTINE_TRANSFER',
@@ -37,6 +40,35 @@ function upper(value, maxLength = 0) {
 
 function isUuid(value) {
   return typeof value === 'string' && UUID_PATTERN.test(value.trim());
+}
+
+function chunkValues(values, size = LINE_WRITE_CHUNK_SIZE) {
+  const chunks = [];
+  for (let index = 0; index < values.length; index += size) chunks.push(values.slice(index, index + size));
+  return chunks;
+}
+
+function validDateOnly(value) {
+  if (!DATE_PATTERN.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+async function loadLineSnapshotsInChunks(client, { installationId, warehouseId, lines }) {
+  const snapshots = [];
+  for (let offset = 0; offset < lines.length; offset += LINE_WRITE_CHUNK_SIZE) {
+    const lineChunk = lines.slice(offset, offset + LINE_WRITE_CHUNK_SIZE);
+    const loaded = await repository.loadLineSnapshots(client, {
+      installationId,
+      warehouseId,
+      lines: lineChunk,
+    });
+    snapshots.push(...loaded.map((row) => ({
+      ...row,
+      line_number: Number(row.line_number) + offset,
+    })));
+  }
+  return snapshots;
 }
 
 function actorId(requestContext) {
@@ -162,6 +194,13 @@ function mapLine(row) {
     destinationSnapshotScopeVersion: row.destination_snapshot_scope_version === null
       ? null
       : String(row.destination_snapshot_scope_version),
+    productName: row.product_name ?? row.product_name_snapshot ?? null,
+    systemBaseQuantity: row.system_base_quantity_snapshot === null || row.system_base_quantity_snapshot === undefined
+      ? null
+      : String(row.system_base_quantity_snapshot),
+    countedBaseQuantity: row.counted_base_quantity_snapshot === null || row.counted_base_quantity_snapshot === undefined
+      ? null
+      : String(row.counted_base_quantity_snapshot),
   });
 }
 
@@ -189,6 +228,7 @@ function mapAdjustment(row, { lines, postedScopes } = {}) {
     reasonCode: row.reason_code,
     reasonLabel: row.reason_label ?? null,
     reasonNote: row.reason_note,
+    reconciliationBatchCode: row.reconciliation_batch_code ?? null,
     status: row.status,
     revision: String(row.revision),
     correctionOfAdjustmentId: row.correction_of_adjustment_id ?? null,
@@ -289,8 +329,8 @@ function normalizeCreatePayload(payload) {
   if (payload.signedDelta !== undefined || payload.delta !== undefined || payload.baseQuantityDelta !== undefined) {
     return failure('SIGNED_DELTA_NOT_ALLOWED', 'Client signed delta is not accepted as inventory truth');
   }
-  if (!Array.isArray(payload.lines) || payload.lines.length < 1 || payload.lines.length > 200) {
-    return failure('INVALID_LINES', 'Inventory adjustment must contain between 1 and 200 lines');
+  if (!Array.isArray(payload.lines) || payload.lines.length < 1 || payload.lines.length > INVENTORY_ADJUSTMENT_BULK_MAX_LINES) {
+    return failure('INVALID_LINES', `Inventory adjustment must contain between 1 and ${INVENTORY_ADJUSTMENT_BULK_MAX_LINES} lines`);
   }
 
   const lines = [];
@@ -717,6 +757,8 @@ export async function listAdjustments(client, {
   requestContext,
   status,
   documentKind,
+  fromDate,
+  toDate,
   limit = 100,
   offset = 0,
 }) {
@@ -726,11 +768,20 @@ export async function listAdjustments(client, {
   const normalizedKind = documentKind ? upper(documentKind, 64) : null;
   if (normalizedStatus && !STATUSES.has(normalizedStatus)) return failure('INVALID_STATUS', 'status is invalid');
   if (normalizedKind && !DOCUMENT_KINDS.has(normalizedKind)) return failure('INVALID_DOCUMENT_KIND', 'documentKind is invalid');
+  const normalizedFromDate = fromDate ? text(fromDate, 10) : null;
+  const normalizedToDate = toDate ? text(toDate, 10) : null;
+  if ((fromDate && (!normalizedFromDate || !validDateOnly(normalizedFromDate)))
+      || (toDate && (!normalizedToDate || !validDateOnly(normalizedToDate)))
+      || (normalizedFromDate && normalizedToDate && normalizedFromDate > normalizedToDate)) {
+    return failure('INVALID_DATE_RANGE', 'Khoảng ngày không hợp lệ.');
+  }
   const rows = await repository.listAdjustments(client, {
     installationId: requestContext.installationId,
     warehouseIds: ids,
     status: normalizedStatus,
     documentKind: normalizedKind,
+    fromDate: normalizedFromDate,
+    toDate: normalizedToDate,
     limit,
     offset,
   });
@@ -743,10 +794,19 @@ export async function getAdjustment(client, { requestContext, adjustmentId }) {
   return Object.freeze({ ok: true, adjustment: await hydrate(client, loaded.row) });
 }
 
-export async function createAdjustment(client, { requestContext, payload }) {
+export async function createAdjustment(client, { requestContext, payload, reconciliationBatchCode = null, lineMetadata = null }) {
   const normalized = normalizeCreatePayload(payload);
   if (!normalized.ok) return normalized;
   const input = normalized.value;
+  const normalizedBatchCode = reconciliationBatchCode === null ? null : text(reconciliationBatchCode, 64);
+  if (reconciliationBatchCode !== null
+      && (!normalizedBatchCode || !RECONCILIATION_BATCH_PATTERN.test(normalizedBatchCode))) {
+    return failure('INVALID_RECONCILIATION_BATCH_CODE', 'Mã đợt đối soát không hợp lệ.');
+  }
+  if (lineMetadata !== null
+      && (!Array.isArray(lineMetadata) || lineMetadata.length !== input.lines.length)) {
+    return failure('INVALID_RECONCILIATION_METADATA', 'Dữ liệu đối soát theo dòng không hợp lệ.');
+  }
   if (!hasWarehouse(requestContext, input.warehouseId)) {
     return failure('WAREHOUSE_SCOPE_DENIED', 'Warehouse is outside the authorized scope');
   }
@@ -775,7 +835,7 @@ export async function createAdjustment(client, { requestContext, payload }) {
       return failure('INVALID_CORRECTION_SOURCE', 'Forward correction must reference a posted adjustment in the same warehouse');
     }
   }
-  const snapshots = await repository.loadLineSnapshots(client, {
+  const snapshots = await loadLineSnapshotsInChunks(client, {
     installationId: requestContext.installationId,
     warehouseId: input.warehouseId,
     lines: input.lines,
@@ -804,10 +864,12 @@ export async function createAdjustment(client, { requestContext, payload }) {
     reasonCode: input.reasonCode,
     reasonNote: input.reasonNote,
     correctionOfAdjustmentId: input.correctionOfAdjustmentId,
+    reconciliationBatchCode: normalizedBatchCode,
     actorId: actor,
   });
-  for (const snapshot of snapshots) {
-    await repository.insertLine(client, {
+  const lineRows = snapshots.map((snapshot, index) => {
+    const metadata = lineMetadata?.[index] ?? null;
+    return {
       id: randomUUID(),
       installationId: requestContext.installationId,
       adjustmentId: id,
@@ -831,8 +893,16 @@ export async function createAdjustment(client, { requestContext, payload }) {
       destinationSnapshotScopeVersion: snapshot.destination_snapshot_scope_version === null
         ? null
         : String(snapshot.destination_snapshot_scope_version),
+      productNameSnapshot: snapshot.product_name ?? null,
+      sourceLocationCodeSnapshot: snapshot.source_location_code ?? null,
+      sourceLocationNameSnapshot: snapshot.source_location_name ?? null,
+      systemBaseQuantitySnapshot: metadata?.systemBaseQuantity ?? null,
+      countedBaseQuantitySnapshot: metadata?.countedBaseQuantity ?? null,
       actorId: actor,
-    });
+    };
+  });
+  for (const lineChunk of chunkValues(lineRows)) {
+    await repository.insertLines(client, lineChunk);
   }
   return Object.freeze({ ok: true, adjustment: await hydrate(client, {
     ...row,

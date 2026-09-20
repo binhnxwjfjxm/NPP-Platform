@@ -71,7 +71,7 @@ type PreviewResult = {
     unchangedRowCount: number;
   };
 };
-type ConfirmResult = { adjustments: InventoryAdjustment[]; preview: PreviewResult };
+type ConfirmResult = { adjustments: InventoryAdjustment[]; reconciliationBatchCode: string; preview: PreviewResult };
 type Envelope<T> = { data?: T; error?: { code?: string; message?: string } };
 type PendingConfirm = { signature: string; key: string };
 
@@ -282,6 +282,7 @@ export default function BulkInventoryAdjustmentWorkspace({ reasons, warehouses, 
         const targetParams = new URLSearchParams({
           adjustment: firstCreated.id,
           created: numbers,
+          createdIds: result.adjustments.map((item) => item.id).join(','),
         });
         window.location.assign(`/inventory/adjustments?${targetParams.toString()}`);
         return;

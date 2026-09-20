@@ -38,13 +38,13 @@ test('bulk adjustment sheet keeps optional lot and location scope', () => {
 });
 
 test('bulk adjustment sheet enforces row limit and required columns', () => {
-  assert.equal(MAX_BULK_INVENTORY_ADJUSTMENT_ROWS, 200);
+  assert.equal(MAX_BULK_INVENTORY_ADJUSTMENT_ROWS, 2000);
   assert.throws(
     () => parseBulkInventoryAdjustmentSheet([['SKU'], ['SKU001']]),
     /SKU và Tồn thực tế/,
   );
-  const oversized = [['SKU', 'Tồn thực tế'], ...Array.from({ length: 201 }, (_, index) => [`SKU${index}`, '1'])];
-  assert.throws(() => parseBulkInventoryAdjustmentSheet(oversized), /tối đa 200 dòng/i);
+  const oversized = [['SKU', 'Tồn thực tế'], ...Array.from({ length: 2001 }, (_, index) => [`SKU${index}`, '1'])];
+  assert.throws(() => parseBulkInventoryAdjustmentSheet(oversized), /tối đa 2\.000 dòng/i);
 });
 
 test('bulk adjustment template stays minimal while parser keeps optional scope columns', () => {

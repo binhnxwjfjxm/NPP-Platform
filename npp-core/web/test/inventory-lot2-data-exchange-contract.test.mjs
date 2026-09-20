@@ -73,3 +73,14 @@ test('Route xuất Điều chỉnh whitelist định dạng/cột và tạo XLSX
   assert.match(route, /Cache-Control/);
   assert.match(route, /X-Content-Type-Options/);
 });
+
+
+test('Phiếu điều chỉnh cho phép xuất chi tiết Excel từ một hoặc nhiều phiếu đã chọn', () => {
+  const workspace = read('app/inventory/adjustments/workspace.tsx');
+  assert.match(workspace, /exportSelectedDocumentsExcel/);
+  assert.match(workspace, /Mã đợt đối soát/);
+  assert.match(workspace, /Tồn hệ thống/);
+  assert.match(workspace, /Tồn thực tế/);
+  assert.match(workspace, /Chênh lệch/);
+  assert.match(workspace, /Một file Excel tối đa 2\.000 dòng/);
+});
