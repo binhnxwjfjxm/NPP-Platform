@@ -128,3 +128,39 @@ jobs:
           fi
           echo 'POSTGRES_503_ERROR_END'
           REMOTE
+
+
+      - name: Read production location contract
+        shell: bash
+        env:
+          KEY: ${{ steps.ssh.outputs.db_key }}
+          KNOWN: ${{ steps.ssh.outputs.db_known }}
+        run: |
+          set -euo pipefail
+          ssh \
+            -i "$KEY" \
+            -o BatchMode=yes \
+            -o ConnectTimeout=10 \
+            -o ConnectionAttempts=1 \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$KNOWN" \
+            "$VPS_SSH_USER@$VPS_DB_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+
+          echo 'WAREHOUSE_MODE_BEGIN'
+          sudo -n -u postgres psql -XAt -d npp_production -c "
+            SELECT code || '|' || COALESCE(location_management_mode, '<NULL>')
+              FROM shared.warehouses
+             WHERE code = 'YS-001'
+             ORDER BY id;
+          "
+          echo 'WAREHOUSE_MODE_END'
+
+          echo 'ADJUSTMENT_GUARD_BEGIN'
+          sudo -n -u postgres psql -XAt -d npp_production -c "
+            SELECT pg_get_functiondef('inventory.guard_inventory_adjustment_line()'::regprocedure);
+          " \
+          | grep -E "NEW\.source_location_id IS NULL|header_kind <> 'MANUAL_ADJUSTMENT'|header_direction <> 'OUT'|inventory_adjustment_source_location_required|location_management_mode" \
+          || true
+          echo 'ADJUSTMENT_GUARD_END'
+          REMOTE
