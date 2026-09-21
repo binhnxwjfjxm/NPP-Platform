@@ -738,7 +738,7 @@ export default function AttendanceTimesheetWorkspace({
                 {selectedDay.leave.requests.length ? <Link className={localStyles.inlineLink} href="/workforce/leave">Mở đơn nghỉ</Link> : null}
               </div>
               <div className={localStyles.dayDetailSection}>
-                <strong>Kiểm soát và nguồn dữ liệu</strong>
+                <strong>Kiểm soát · Nguồn dữ liệu</strong>
                 <span>{sourceSummary(selectedDay)}</span>
                 <span>{selectedDay.policy ? `Chính sách: ${selectedDay.policy.code} · ${selectedDay.policy.name} · bản ${selectedDay.policy.version}` : 'Chưa có chính sách phù hợp'}</span>
                 <span>{selectedDay.adjustment ? (selectedDay.adjustment.status === 'SUBMITTED' ? 'Điều chỉnh: Chờ duyệt' : selectedDay.adjustment.status === 'APPROVED' ? 'Điều chỉnh: Đã duyệt' : 'Điều chỉnh: Từ chối') : 'Chưa có điều chỉnh'}</span>
