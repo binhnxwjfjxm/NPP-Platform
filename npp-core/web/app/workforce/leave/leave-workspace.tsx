@@ -172,11 +172,32 @@ export default function LeaveWorkspace({
   const [cancelReason, setCancelReason] = useState('');
 
   const [typeForm, setTypeForm] = useState(blankTypeForm);
+  const [balanceEmployeeId, setBalanceEmployeeId] = useState(initialData?.selectedEmployee?.id ?? '');
+  const [balanceLeaveTypeId, setBalanceLeaveTypeId] = useState('');
+  const [balanceEntryType, setBalanceEntryType] = useState('OPENING_GRANT');
+  const [balanceDays, setBalanceDays] = useState('');
+  const [balanceEffectiveDate, setBalanceEffectiveDate] = useState(initialToday);
+  const [balanceReason, setBalanceReason] = useState('');
 
   const submitAttempt = useRef<Attempt>(null);
   const reviewAttempt = useRef<Attempt>(null);
   const cancelAttempt = useRef<Attempt>(null);
   const typeAttempt = useRef<Attempt>(null);
+  const balanceAttempt = useRef<Attempt>(null);
+
+  const balanceRows = data?.leaveBalances ?? [];
+  const balanceEntries = data?.balanceEntries ?? [];
+  const trackedTypes = useMemo(
+    () => (typesData?.leaveTypes ?? []).filter((item) => Boolean((item as LeaveType & LeaveTypeBalanceFields).tracks_balance)),
+    [typesData],
+  );
+  const balanceEmployees = useMemo(() => {
+    const unique = new Map<string, { id: string; label: string }>();
+    for (const row of balanceRows) {
+      unique.set(row.employee_id, { id: row.employee_id, label: `${row.employee_code} · ${row.employee_name}` });
+    }
+    return [...unique.values()];
+  }, [balanceRows]);
 
   const selectedType = useMemo(
     () => activeTypes.find((item) => item.id === leaveTypeId) ?? null,
