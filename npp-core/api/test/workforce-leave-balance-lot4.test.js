@@ -16,7 +16,8 @@ test('Issue #1140 Lô 4 adds an append-only leave balance ledger without mutable
   assert.match(migration, /entry_type IN \('OPENING_GRANT', 'ACCRUAL', 'USAGE', 'ADJUSTMENT', 'CARRY_OVER', 'EXPIRY', 'COMPENSATORY', 'REVERSAL'\)/);
   assert.match(migration, /reject_leave_balance_history_mutation/);
   assert.match(migration, /BEFORE UPDATE OR DELETE ON shared\.leave_balance_ledger/);
-  assert.doesNotMatch(migration, /remaining_leave|remaining_balance/i);
+  const schemaSql = migration.replace(/--.*$/gm, '');
+  assert.doesNotMatch(schemaSql, /remaining_leave|remaining_balance/i);
 });
 
 test('Issue #1140 Lô 4 snapshots balance policy on leave requests and keeps old types opt-in', async () => {
@@ -51,7 +52,10 @@ test('Issue #1140 Lô 4 uses dated employee scope for requests and ledger histor
 });
 
 test('Issue #1140 Lô 4 posts usage and reversal entries instead of rewriting balance history', async () => {
-  const service = await source('src/services/leave-management.js');
+  const [repository, service] = await Promise.all([
+    source('src/db/repositories/leave-management.js'),
+    source('src/services/leave-management.js'),
+  ]);
   assert.match(service, /entryType: 'USAGE'/);
   assert.match(service, /entryType: 'REVERSAL'/);
   assert.match(service, /listUsageEntriesForRequest/);
