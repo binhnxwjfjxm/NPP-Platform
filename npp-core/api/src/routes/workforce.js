@@ -18,7 +18,7 @@ function statusFor(result) {
   if (result.code === 'SCOPE_FORBIDDEN') return 403;
   if ([
     'POLICY_CODE_EXISTS', 'POLICY_VERSION_CONFLICT', 'POLICY_EFFECTIVE_DATE_CONFLICT',
-    'ASSIGNMENT_EFFECTIVE_DATE_CONFLICT', 'SCHEDULE_CONFLICT', 'ATTENDANCE_POINT_CODE_EXISTS',
+    'ASSIGNMENT_EFFECTIVE_DATE_CONFLICT', 'BOOTSTRAP_ASSIGNMENT_EXISTS', 'SCHEDULE_CONFLICT', 'ATTENDANCE_POINT_CODE_EXISTS',
     'ATTENDANCE_ALREADY_COMPLETE', 'ATTENDANCE_TOO_SOON', 'ATTENDANCE_DUPLICATE_SCAN',
     'ATTENDANCE_PERIOD_LOCKED', 'ATTENDANCE_ADJUSTMENT_PENDING',
     'ADJUSTMENT_REQUEST_CONFLICT', 'ATTENDANCE_PERIOD_LOCK_OVERLAP',
@@ -222,6 +222,82 @@ async function handleAssignments(req, res, context, method) {
   });
 }
 
+async function handleAssignmentCoverage(req, res, context) {
+  const url = new URL(`http://localhost${req.url}`);
+  const workDate = String(url.searchParams.get('date') ?? '').trim();
+  const branchId = String(url.searchParams.get('branchId') ?? '').trim() || null;
+  const branchIds = isCompanyScope(context.requestContext)
+    ? null
+    : [...(context.requestContext.scopes.branchIds ?? [])];
+  if (branchId && Array.isArray(branchIds) && !branchIds.includes(branchId)) {
+    sendError(res, createError('SCOPE_FORBIDDEN', 'Chi nhánh nằm ngoài phạm vi được cấp', {}, false, 403), context.requestId, context.receivedAt);
+    return;
+  }
+  const result = await workforceService.listWorkPolicyCoverage(context.getPool(), {
+    installationId: context.requestContext.installationId,
+    workDate,
+    branchId,
+    branchIds,
+  });
+  if (!result.ok) {
+    sendError(res, createError(result.code, result.message, {}, false, statusFor(result)), context.requestId, context.receivedAt);
+    return;
+  }
+  sendSuccess(res, result.coverage, context.requestId, context.receivedAt);
+}
+
+async function handleBulkAssignments(req, res, context) {
+  const parsed = await parsePayload(req, res, context);
+  if (!parsed.ok) return;
+  const payload = parsed.payload;
+  await runIdempotentMutation(req, res, context, {
+    route: '/api/workforce/assignments/bulk',
+    payload,
+    successStatus: 201,
+    mutate: async (client) => {
+      const branchIds = isCompanyScope(context.requestContext)
+        ? null
+        : [...(context.requestContext.scopes.branchIds ?? [])];
+      const result = await workforceService.assignWorkPolicyBulk(client, {
+        installationId: context.requestContext.installationId,
+        payload,
+        actorId: context.requestContext.actorId,
+        branchIds,
+      });
+      if (!result.ok) return result;
+      return {
+        ok: true,
+        data: {
+          affectedCount: result.affectedCount,
+          bootstrap: result.bootstrap,
+          targetMode: result.targetMode,
+          workPolicyId: result.workPolicyId,
+          effectiveFrom: result.effectiveFrom,
+        },
+        audit: {
+          requestContext: context.requestContext,
+          action: result.bootstrap ? 'bootstrap-bulk-assign' : 'bulk-assign',
+          resourceType: 'employee-work-policy-bulk',
+          resourceId: result.workPolicyId,
+          beforeData: null,
+          afterData: {
+            affectedCount: result.affectedCount,
+            targetMode: result.targetMode,
+            workPolicyId: result.workPolicyId,
+            effectiveFrom: result.effectiveFrom,
+            bootstrap: result.bootstrap,
+          },
+          metadata: {
+            affectedCount: result.affectedCount,
+            targetMode: result.targetMode,
+            effectiveFrom: result.effectiveFrom,
+            reason: result.reason,
+          },
+        },
+      };
+    },
+  });
+}
 async function handleSchedules(req, res, context, method) {
   if (method === 'GET') {
     const url = new URL(`http://localhost${req.url}`);
@@ -1046,7 +1122,7 @@ export async function handleWorkforceRoutes(req, res, options) {
   const pathname = new URL(`http://localhost${req.url}`).pathname;
   if (!pathname.startsWith('/api/workforce/')) return false;
   const route = pathname.slice('/api/workforce'.length);
-  if (!['/policies', '/assignments', '/schedules', '/attendance/today', '/attendance/timesheet', '/attendance/record', '/attendance/points', '/attendance/qr-token', '/attendance/adjustments', '/attendance/adjustments/review', '/attendance/adjustments/direct', '/attendance/period-locks', '/leave-types', '/leave-types/update', '/leave/requests', '/leave/requests/review', '/leave/requests/cancel', '/attendance/violations', '/attendance/violations/explain', '/attendance/violations/review'].includes(route)) return false;
+  if (!['/policies', '/assignments', '/assignments/coverage', '/assignments/bulk', '/schedules', '/attendance/today', '/attendance/timesheet', '/attendance/record', '/attendance/points', '/attendance/qr-token', '/attendance/adjustments', '/attendance/adjustments/review', '/attendance/adjustments/direct', '/attendance/period-locks', '/leave-types', '/leave-types/update', '/leave/requests', '/leave/requests/review', '/leave/requests/cancel', '/attendance/violations', '/attendance/violations/explain', '/attendance/violations/review'].includes(route)) return false;
 
   const auth = options.authenticate(req, options.config);
   if (!auth.ok) {
@@ -1080,6 +1156,8 @@ export async function handleWorkforceRoutes(req, res, options) {
     || (route === '/leave/requests/review' && method === 'POST')
     || (route === '/leave/requests/cancel' && method === 'POST')
     || (['/policies', '/assignments', '/schedules'].includes(route) && ['GET', 'POST'].includes(method))
+    || (route === '/assignments/coverage' && method === 'GET')
+    || (route === '/assignments/bulk' && method === 'POST')
   );
   if (!routeAllowsMethod) {
     sendError(res, createError('METHOD_NOT_ALLOWED', 'Thao tác không được hỗ trợ', {}, false, 405), options.requestId, options.receivedAt);
@@ -1174,6 +1252,8 @@ export async function handleWorkforceRoutes(req, res, options) {
   try {
     if (route === '/policies') await handlePolicies(req, res, context, method);
     else if (route === '/assignments') await handleAssignments(req, res, context, method);
+    else if (route === '/assignments/coverage') await handleAssignmentCoverage(req, res, context);
+    else if (route === '/assignments/bulk') await handleBulkAssignments(req, res, context);
     else if (route === '/schedules') await handleSchedules(req, res, context, method);
     else if (route === '/attendance/today') await handleAttendanceToday(req, res, context);
     else if (route === '/attendance/timesheet') await handleAttendanceTimesheet(req, res, context, {

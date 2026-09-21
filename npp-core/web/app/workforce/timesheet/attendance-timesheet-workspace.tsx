@@ -125,7 +125,7 @@ function compactDayLabel(day: AttendanceTimesheetDay) {
     case 'WORKING': return 'Đang';
     case 'UPCOMING': return '';
     case 'NOT_STARTED': return 'Chưa';
-    case 'MISSING_POLICY': return 'Lỗi CS';
+    case 'MISSING_POLICY': return 'Thiếu CS';
     case 'MISSING_SCHEDULE': return 'Lỗi ca';
     default: return 'Thiếu';
   }
@@ -134,7 +134,7 @@ function compactDayLabel(day: AttendanceTimesheetDay) {
 function compactDayTone(day: AttendanceTimesheetDay) {
   if (day.status === 'COMPLETE') return 'good';
   if (day.status === 'DAY_OFF' || day.status === 'APPROVED_LEAVE' || day.status === 'NO_ATTENDANCE_REQUIRED' || day.status === 'UPCOMING') return 'muted';
-  if (day.status === 'PENDING_LEAVE' || day.status === 'PENDING_ADJUSTMENT' || day.status === 'LATE' || day.status === 'EARLY' || day.status === 'LATE_AND_EARLY' || day.status === 'WORKING') return 'warn';
+  if (day.status === 'MISSING_POLICY' || day.status === 'MISSING_SCHEDULE' || day.status === 'PENDING_LEAVE' || day.status === 'PENDING_ADJUSTMENT' || day.status === 'LATE' || day.status === 'EARLY' || day.status === 'LATE_AND_EARLY' || day.status === 'WORKING') return 'warn';
   return 'danger';
 }
 
@@ -640,7 +640,7 @@ export default function AttendanceTimesheetWorkspace({
                 <span>Phần được nghỉ: {leaveSegmentLabel(selectedDay)}</span>
                 <span>{leaveSummary(selectedDay)}</span>
                 {selectedDay.unexcusedAbsenceFraction > 0 ? <span>Vắng không phép: {dayCountLabel(selectedDay.unexcusedAbsenceFraction)} ngày</span> : null}
-                {selectedDay.configurationIssue === 'MISSING_POLICY' ? <span>Cần bổ sung chính sách làm việc.</span> : null}
+                {selectedDay.configurationIssue === 'MISSING_POLICY' ? <><span>Nhân sự chưa có Chính sách làm việc hiệu lực tại ngày này.</span><Link className={localStyles.inlineLink} href="/workforce/employees">Mở danh mục nhân sự để áp dụng chính sách</Link></> : null}
                 {selectedDay.configurationIssue === 'MISSING_SCHEDULE' ? <span>Cần bổ sung lịch/ca làm việc.</span> : null}
                 {selectedDay.leave.requests.length ? <Link className={localStyles.inlineLink} href="/workforce/leave">Mở đơn nghỉ</Link> : null}
               </div>

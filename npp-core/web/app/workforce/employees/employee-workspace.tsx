@@ -6,10 +6,11 @@ import { useRouter } from 'next/navigation';
 import { AppShell } from '../../components/app-shell';
 import shellStyles from '../../components/app-shell.module.css';
 import styles from '../../organization/organization.module.css';
+import localStyles from './employee-workspace.module.css';
 import type { Branch } from '../../../lib/organization-types';
 import { formatCompactNumber, formatDateTime, matchTerm, normalizeSearch, toUpperCode } from '../../../lib/organization-types';
 import type { Employee } from '../../../lib/employee-types';
-import type { EmployeeWorkPolicyAssignment, WorkPolicy } from '../../../lib/workforce-types';
+import type { BulkPolicyAssignmentResult, EmployeeWorkPolicyAssignment, WorkPolicy, WorkPolicyCoverage } from '../../../lib/workforce-types';
 
 type FilterState = 'all' | 'active' | 'inactive';
 type EmployeeDraft = {
@@ -35,7 +36,18 @@ type Props = {
   initialEmployees: Employee[];
   branches: Branch[];
   policies: WorkPolicy[];
+  initialCoverage: WorkPolicyCoverage | null;
   initialError?: string | null;
+};
+type PolicyFilter = 'all' | 'assigned' | 'missing';
+type BulkTargetMode = 'ALL_ACTIVE' | 'BRANCH' | 'FILTERED' | 'MISSING';
+type BulkAssignmentDraft = {
+  targetMode: BulkTargetMode;
+  branchId: string;
+  workPolicyId: string;
+  effectiveFrom: string;
+  reason: string;
+  bootstrap: boolean;
 };
 type MutationAttempt = { payload: string; key: string } | null;
 
@@ -52,12 +64,16 @@ function mutationKeyForPayload(
 }
 
 function localDate(offsetDays = 0) {
-  const date = new Date();
-  date.setDate(date.getDate() + offsetDays);
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Ho_Chi_Minh',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(new Date()).map((part) => [part.type, part.value]),
+  );
+  const date = new Date(Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day) + offsetDays));
+  return date.toISOString().slice(0, 10);
 }
 
 function todayDate() {
@@ -69,11 +85,11 @@ function tomorrowDate() {
 }
 
 function nextDate(value: string) {
-  const date = new Date(`${value}T00:00:00`);
-  date.setDate(date.getDate() + 1);
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
+  const date = new Date(`${value}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + 1);
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
 
@@ -122,7 +138,7 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   return payload.data;
 }
 
-export default function EmployeeWorkspace({ initialEmployees, branches: initialBranches, policies, initialError = null }: Props) {
+export default function EmployeeWorkspace({ initialEmployees, branches: initialBranches, policies, initialCoverage, initialError = null }: Props) {
   const router = useRouter();
   const loadSequence = useRef(0);
   const [employees, setEmployees] = useState(initialEmployees);
@@ -133,6 +149,8 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<FilterState>('all');
   const [branchFilter, setBranchFilter] = useState('all');
+  const [policyFilter, setPolicyFilter] = useState<PolicyFilter>('all');
+  const [coverage, setCoverage] = useState<WorkPolicyCoverage | null>(initialCoverage);
   const [editor, setEditor] = useState<EditorState>(null);
   const [toggleState, setToggleState] = useState<ToggleState>(null);
   const [draft, setDraft] = useState<EmployeeDraft>(emptyDraft());
@@ -140,13 +158,38 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
   const [assignmentHistory, setAssignmentHistory] = useState<EmployeeWorkPolicyAssignment[]>([]);
   const [assignmentDraft, setAssignmentDraft] = useState({ workPolicyId: '', effectiveFrom: todayDate(), reason: '' });
   const [assignmentBusy, setAssignmentBusy] = useState(false);
+  const [createPolicyId, setCreatePolicyId] = useState('');
+  const [createPolicyEffectiveFrom, setCreatePolicyEffectiveFrom] = useState(todayDate());
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkDraft, setBulkDraft] = useState<BulkAssignmentDraft>({
+    targetMode: 'MISSING',
+    branchId: '',
+    workPolicyId: '',
+    effectiveFrom: todayDate(),
+    reason: '',
+    bootstrap: false,
+  });
   const employeeSaveAttempt = useRef<MutationAttempt>(null);
   const employeeStatusAttempt = useRef<MutationAttempt>(null);
   const assignmentAttempt = useRef<MutationAttempt>(null);
+  const bulkAssignmentAttempt = useRef<MutationAttempt>(null);
 
   const branchMap = useMemo(() => new Map(branches.map((branch) => [branch.id, branch])), [branches]);
   const activeBranches = useMemo(() => branches.filter((branch) => branch.is_active), [branches]);
-  const activePolicies = useMemo(() => policies.filter((policy) => policy.is_active), [policies]);
+  const activePolicies = useMemo(() => {
+    const today = todayDate();
+    const latest = new Map<string, WorkPolicy>();
+    for (const policy of policies) {
+      if (!policy.is_active || (policy.effective_to && policy.effective_to < today)) continue;
+      const current = latest.get(policy.code);
+      if (!current || policy.version > current.version) latest.set(policy.code, policy);
+    }
+    return [...latest.values()].sort((left, right) => left.code.localeCompare(right.code));
+  }, [policies]);
+  const coverageMap = useMemo(
+    () => new Map((coverage?.employees ?? []).map((employee) => [employee.id, employee])),
+    [coverage],
+  );
   const policyEmployee = useMemo(
     () => employees.find((employee) => employee.id === policyEmployeeId) ?? null,
     [employees, policyEmployeeId],
@@ -164,6 +207,9 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
         || (statusFilter === 'active' ? employee.is_active : !employee.is_active);
       const matchesBranch = branchFilter === 'all'
         || (branchFilter === 'unassigned' ? !employee.branch_id : employee.branch_id === branchFilter);
+      const assignedPolicy = Boolean(coverageMap.get(employee.id)?.assignment);
+      const matchesPolicy = policyFilter === 'all'
+        || (policyFilter === 'assigned' ? assignedPolicy : !assignedPolicy);
       const matchesText = !normalizedSearch || matchTerm(
         employee.code,
         employee.full_name,
@@ -173,9 +219,9 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
         branch?.code,
         branch?.name,
       ).includes(normalizedSearch);
-      return matchesStatus && matchesBranch && matchesText;
+      return matchesStatus && matchesBranch && matchesPolicy && matchesText;
     })
-    .sort((left, right) => left.code.localeCompare(right.code)), [branchFilter, branchMap, employees, normalizedSearch, statusFilter]);
+    .sort((left, right) => left.code.localeCompare(right.code)), [branchFilter, branchMap, coverageMap, employees, normalizedSearch, policyFilter, statusFilter]);
 
   const counts = useMemo(() => {
     const active = employees.filter((employee) => employee.is_active).length;
@@ -186,8 +232,9 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
       inactive: employees.length - active,
       assigned,
       unassigned: employees.length - assigned,
+      missingPolicy: coverage?.missingCount ?? 0,
     };
-  }, [employees]);
+  }, [coverage, employees]);
 
   const loadAll = useCallback(async (
     successMessage: string | null = 'Danh mục nhân sự đã được cập nhật.',
@@ -198,13 +245,15 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
     setError(null);
     if (successMessage) setNotice(null);
     try {
-      const [nextEmployees, nextBranches] = await Promise.all([
+      const [nextEmployees, nextBranches, nextCoverage] = await Promise.all([
         requestJson<Employee[]>('/api/access/employees?limit=1000'),
         requestJson<Branch[]>('/api/organization/branches?limit=1000'),
+        requestJson<WorkPolicyCoverage>(`/api/workforce/assignments/coverage?date=${encodeURIComponent(todayDate())}`),
       ]);
       if (sequence !== loadSequence.current) return false;
       setEmployees(nextEmployees);
       setBranches(nextBranches);
+      setCoverage(nextCoverage);
       window.sessionStorage.removeItem(EMPLOYEE_DIRECTORY_DIRTY_KEY);
       if (successMessage) setNotice(successMessage);
       if (options.refreshRouter !== false) router.refresh();
@@ -218,6 +267,14 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
     }
   }, [router]);
 
+  const refreshCoverage = useCallback(async () => {
+    const nextCoverage = await requestJson<WorkPolicyCoverage>(
+      `/api/workforce/assignments/coverage?date=${encodeURIComponent(todayDate())}`,
+    );
+    setCoverage(nextCoverage);
+    return nextCoverage;
+  }, []);
+
   useEffect(() => {
     if (window.sessionStorage.getItem(EMPLOYEE_DIRECTORY_DIRTY_KEY) !== '1') return;
     void loadAll(null, { silent: true, refreshRouter: false });
@@ -227,6 +284,8 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
     setError(null);
     setNotice(null);
     setDraft(emptyDraft(activeBranches[0]?.id ?? ''));
+    setCreatePolicyId(activePolicies[0]?.id ?? '');
+    setCreatePolicyEffectiveFrom(todayDate());
     setEditor({ mode: 'create', employeeId: null });
   }
 
@@ -262,7 +321,9 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
       phone: draft.phone.trim(),
       email: draft.email.trim(),
       branchId: draft.branchId || null,
-      ...(current ? { expectedUpdatedAt: current.updated_at } : {}),
+      ...(current
+        ? { expectedUpdatedAt: current.updated_at }
+        : { workPolicyId: createPolicyId, policyEffectiveFrom: createPolicyEffectiveFrom }),
     };
 
     try {
@@ -277,10 +338,12 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
       loadSequence.current += 1;
       setEmployees((items) => upsertEmployee(items, saved));
       setEditor(null);
+      if (!current) await refreshCoverage();
       if (!current) {
         setSearch('');
         setStatusFilter('all');
         setBranchFilter('all');
+        setPolicyFilter('all');
       }
       employeeSaveAttempt.current = null;
       setNotice(current ? 'Thông tin nhân sự đã được cập nhật.' : 'Hồ sơ nhân sự đã được tạo.');
@@ -380,9 +443,97 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
       );
       setAssignmentHistory(history);
       setAssignmentDraft((current) => ({ ...current, effectiveFrom: tomorrowDate(), reason: '' }));
+      await refreshCoverage();
       setNotice('Chính sách làm việc của nhân sự đã được cập nhật.');
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Không gán được chính sách làm việc');
+    } finally {
+      setAssignmentBusy(false);
+    }
+  }
+
+  function openBulkAssignment() {
+    setBulkDraft({
+      targetMode: coverage?.missingCount ? 'MISSING' : 'FILTERED',
+      branchId: branchFilter !== 'all' && branchFilter !== 'unassigned' ? branchFilter : '',
+      workPolicyId: activePolicies[0]?.id ?? '',
+      effectiveFrom: todayDate(),
+      reason: '',
+      bootstrap: false,
+    });
+    bulkAssignmentAttempt.current = null;
+    setError(null);
+    setNotice(null);
+    setBulkOpen(true);
+  }
+
+  async function submitBulkAssignment(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const selectedPolicy = activePolicies.find((policy) => policy.id === bulkDraft.workPolicyId) ?? null;
+    if (!selectedPolicy) {
+      setError('Vui lòng chọn chính sách làm việc.');
+      return;
+    }
+    if (bulkDraft.effectiveFrom < selectedPolicy.effective_from) {
+      setError(`Chính sách này chỉ có hiệu lực từ ${selectedPolicy.effective_from}; không thể áp dụng từ ngày sớm hơn.`);
+      return;
+    }
+    const isPast = bulkDraft.effectiveFrom < todayDate();
+    if (isPast && !bulkDraft.bootstrap) {
+      setError('Ngày đã qua chỉ được dùng khi xác nhận đây là khởi tạo chính sách ban đầu.');
+      return;
+    }
+    if (isPast && !bulkDraft.reason.trim()) {
+      setError('Khởi tạo cho giai đoạn trước phải nhập lý do.');
+      return;
+    }
+
+    let targetMode: 'ALL_ACTIVE' | 'BRANCH' | 'EMPLOYEES' = 'ALL_ACTIVE';
+    let employeeIds: string[] | undefined;
+    if (bulkDraft.targetMode === 'BRANCH') {
+      if (!bulkDraft.branchId) {
+        setError('Vui lòng chọn chi nhánh.');
+        return;
+      }
+      targetMode = 'BRANCH';
+    } else if (bulkDraft.targetMode === 'FILTERED') {
+      targetMode = 'EMPLOYEES';
+      employeeIds = visibleEmployees.filter((employee) => employee.is_active).map((employee) => employee.id);
+    } else if (bulkDraft.targetMode === 'MISSING') {
+      targetMode = 'EMPLOYEES';
+      employeeIds = (coverage?.employees ?? []).filter((employee) => !employee.assignment).map((employee) => employee.id);
+    }
+    if (targetMode === 'EMPLOYEES' && !employeeIds?.length) {
+      setError('Không có nhân sự phù hợp trong phạm vi đã chọn.');
+      return;
+    }
+
+    const payload = {
+      targetMode,
+      branchId: targetMode === 'BRANCH' ? bulkDraft.branchId : null,
+      employeeIds: targetMode === 'EMPLOYEES' ? employeeIds : null,
+      workPolicyId: bulkDraft.workPolicyId,
+      effectiveFrom: bulkDraft.effectiveFrom,
+      reason: bulkDraft.reason.trim(),
+      bootstrap: isPast && bulkDraft.bootstrap,
+    };
+    const key = mutationKeyForPayload(bulkAssignmentAttempt, 'web-employee-policy-bulk-assign', payload);
+    setAssignmentBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await requestJson<BulkPolicyAssignmentResult>('/api/workforce/assignments/bulk', {
+        method: 'POST',
+        headers: { 'Idempotency-Key': key },
+        body: JSON.stringify(payload),
+      });
+      bulkAssignmentAttempt.current = null;
+      setBulkOpen(false);
+      await loadAll(null, { silent: true, refreshRouter: false });
+      setNotice(`Đã áp dụng chính sách cho ${result.affectedCount} nhân sự.`);
+      router.refresh();
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Không áp dụng được chính sách hàng loạt');
     } finally {
       setAssignmentBusy(false);
     }
@@ -392,6 +543,15 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
     <>
       <button type="button" className={shellStyles.actionButton} onClick={() => void loadAll()} disabled={busy !== null}>
         {busy === 'load' ? 'Đang cập nhật…' : 'Cập nhật dữ liệu'}
+      </button>
+      <button
+        type="button"
+        className={shellStyles.actionButton}
+        onClick={openBulkAssignment}
+        disabled={!activePolicies.length || assignmentBusy}
+        data-testid="employees-bulk-policy-button"
+      >
+        Áp dụng chính sách hàng loạt
       </button>
       <button
         type="button"
@@ -434,7 +594,18 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
             <strong>{formatCompactNumber(counts.assigned)}</strong>
             <small>{counts.unassigned} hồ sơ chưa gắn chi nhánh</small>
           </article>
+          <article className={styles.summaryCard}>
+            <span>Chưa có chính sách</span>
+            <strong>{formatCompactNumber(counts.missingPolicy)}</strong>
+            <small>Tính tại ngày {coverage?.asOfDate ?? todayDate()}</small>
+          </article>
         </section>
+
+        {coverage && coverage.missingCount > 0 ? (
+          <div className={styles.banner} role="note">
+            Có {coverage.missingCount} nhân sự đang làm việc chưa có Chính sách làm việc hiệu lực. Hãy áp dụng chính sách hàng loạt trước khi dùng Bảng công.
+          </div>
+        ) : null}
 
         <section className={styles.toolbar}>
           <div className={styles.toolbarSearch}>
@@ -475,6 +646,18 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
               ))}
             </select>
           </div>
+          <div className={styles.toolbarFilter}>
+            <label htmlFor="employees-policy">Chính sách làm việc</label>
+            <select
+              id="employees-policy"
+              value={policyFilter}
+              onChange={(event) => setPolicyFilter(event.target.value as PolicyFilter)}
+            >
+              <option value="all">Tất cả</option>
+              <option value="assigned">Đã có chính sách</option>
+              <option value="missing">Chưa có chính sách</option>
+            </select>
+          </div>
         </section>
 
         <section className={styles.tableSection}>
@@ -493,6 +676,7 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
                   <th>Mã nhân sự</th>
                   <th>Họ và tên</th>
                   <th>Đơn vị công tác</th>
+                  <th>Chính sách làm việc</th>
                   <th>Liên hệ</th>
                   <th>Trạng thái</th>
                   <th>Cập nhật</th>
@@ -513,6 +697,16 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
                       </td>
                       <td className={styles.relationCell}>
                         {branch ? `${branch.code} · ${branch.name}` : 'Chưa phân công chi nhánh'}
+                      </td>
+                      <td>
+                        {coverageMap.get(employee.id)?.assignment ? (
+                          <div className={styles.entityStack}>
+                            <strong>{coverageMap.get(employee.id)?.assignment?.policyName}</strong>
+                            <span>{coverageMap.get(employee.id)?.assignment?.policyCode} · bản {coverageMap.get(employee.id)?.assignment?.policyVersion}</span>
+                          </div>
+                        ) : employee.is_active ? (
+                          <span className={joinClasses(styles.statusPill, styles.toneDanger)}>Chưa có chính sách</span>
+                        ) : <span>Không áp dụng</span>}
                       </td>
                       <td>
                         <div className={styles.entityStack}>
@@ -543,13 +737,102 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
                   );
                 }) : (
                   <tr>
-                    <td colSpan={7}><div className={styles.emptyState}>Không tìm thấy hồ sơ nhân sự phù hợp.</div></td>
+                    <td colSpan={8}><div className={styles.emptyState}>Không tìm thấy hồ sơ nhân sự phù hợp.</div></td>
                   </tr>
                 )}
               </tbody>
             </table>
           </div>
         </section>
+
+        {bulkOpen ? (
+          <div className={styles.modalBackdrop} role="presentation" onClick={() => setBulkOpen(false)}>
+            <div className={styles.modal} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+              <div className={styles.modalHeader}>
+                <div>
+                  <p className={styles.panelKicker}>Thiết lập hàng loạt</p>
+                  <h3>Áp dụng Chính sách làm việc</h3>
+                </div>
+                <button type="button" className={styles.modalClose} onClick={() => setBulkOpen(false)}>Đóng</button>
+              </div>
+              <form className={styles.form} onSubmit={(event) => void submitBulkAssignment(event)}>
+                <label>
+                  Phạm vi áp dụng
+                  <select value={bulkDraft.targetMode} onChange={(event) => setBulkDraft((current) => ({ ...current, targetMode: event.target.value as BulkTargetMode }))}>
+                    <option value="MISSING">Nhân sự chưa có chính sách ({coverage?.missingCount ?? 0})</option>
+                    <option value="FILTERED">Danh sách đang lọc ({visibleEmployees.filter((employee) => employee.is_active).length})</option>
+                    <option value="BRANCH">Theo chi nhánh</option>
+                    <option value="ALL_ACTIVE">Toàn bộ nhân sự đang làm việc</option>
+                  </select>
+                </label>
+                {bulkDraft.targetMode === 'BRANCH' ? (
+                  <label>
+                    Chi nhánh
+                    <select value={bulkDraft.branchId} onChange={(event) => setBulkDraft((current) => ({ ...current, branchId: event.target.value }))} required>
+                      <option value="">Chọn chi nhánh</option>
+                      {activeBranches.map((branch) => <option key={branch.id} value={branch.id}>{branch.code} · {branch.name}</option>)}
+                    </select>
+                  </label>
+                ) : null}
+                <label>
+                  Chính sách áp dụng
+                  <select value={bulkDraft.workPolicyId} onChange={(event) => setBulkDraft((current) => ({ ...current, workPolicyId: event.target.value }))} required>
+                    <option value="">Chọn chính sách</option>
+                    {activePolicies.map((policy) => (
+                      <option key={policy.id} value={policy.id}>{policy.code} · {policy.name} · bản {policy.version}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Áp dụng từ ngày
+                  <input
+                    type="date"
+                    value={bulkDraft.effectiveFrom}
+                    onChange={(event) => setBulkDraft((current) => ({
+                      ...current,
+                      effectiveFrom: event.target.value,
+                      bootstrap: event.target.value < todayDate() ? current.bootstrap : false,
+                    }))}
+                    required
+                  />
+                </label>
+                {bulkDraft.effectiveFrom < todayDate() ? (
+                  <label className={localStyles.checkOption}>
+                    <input
+                      type="checkbox"
+                      checked={bulkDraft.bootstrap}
+                      onChange={(event) => setBulkDraft((current) => ({ ...current, bootstrap: event.target.checked }))}
+                    />
+                    <span>
+                      <strong>Khởi tạo chính sách ban đầu cho giai đoạn trước</strong>
+                      <small>Chỉ áp dụng cho nhân sự chưa từng có lịch sử chính sách. Không dùng để sửa ngược lịch sử đã vận hành.</small>
+                    </span>
+                  </label>
+                ) : null}
+                <label>
+                  Lý do / ghi chú
+                  <input
+                    value={bulkDraft.reason}
+                    onChange={(event) => setBulkDraft((current) => ({ ...current, reason: event.target.value }))}
+                    maxLength={512}
+                    required={bulkDraft.effectiveFrom < todayDate()}
+                    placeholder={bulkDraft.effectiveFrom < todayDate() ? 'Bắt buộc khi khởi tạo giai đoạn trước' : 'Ví dụ: áp dụng chính sách văn phòng mới'}
+                  />
+                </label>
+                <div className={localStyles.bulkInfo}>
+                  <strong>Nguyên tắc an toàn</strong>
+                  <span>Thao tác được ghi audit. Nếu có một nhân sự không hợp lệ, cả lô sẽ không được áp dụng dở dang.</span>
+                </div>
+                <div className={styles.formActions}>
+                  <button type="button" className={styles.secondaryButton} onClick={() => setBulkOpen(false)}>Hủy</button>
+                  <button type="submit" className={styles.primaryButton} disabled={assignmentBusy || !bulkDraft.workPolicyId}>
+                    {assignmentBusy ? 'Đang áp dụng…' : 'Áp dụng chính sách'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        ) : null}
 
         {policyEmployee ? (
           <div className={styles.modalBackdrop} role="presentation" onClick={() => setPolicyEmployeeId(null)}>
@@ -703,9 +986,33 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
                     maxLength={256}
                   />
                 </label>
+                {editor.mode === 'create' ? (
+                  <>
+                    <label>
+                      Chính sách làm việc
+                      <select value={createPolicyId} onChange={(event) => setCreatePolicyId(event.target.value)} required data-testid="employee-create-policy-select">
+                        <option value="">Chọn chính sách</option>
+                        {activePolicies.map((policy) => (
+                          <option key={policy.id} value={policy.id}>{policy.code} · {policy.name} · bản {policy.version}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      Áp dụng chính sách từ ngày
+                      <input
+                        type="date"
+                        min={todayDate()}
+                        value={createPolicyEffectiveFrom}
+                        onChange={(event) => setCreatePolicyEffectiveFrom(event.target.value)}
+                        required
+                      />
+                    </label>
+                    {!activePolicies.length ? <div className={styles.banner}>Chưa có chính sách làm việc đang hoạt động. Hãy tạo chính sách trước khi thêm nhân sự.</div> : null}
+                  </>
+                ) : null}
                 <div className={styles.formActions}>
                   <button type="button" className={styles.secondaryButton} onClick={() => setEditor(null)}>Hủy</button>
-                  <button type="submit" className={styles.primaryButton} disabled={busy !== null}>
+                  <button type="submit" className={styles.primaryButton} disabled={busy !== null || (editor.mode === 'create' && !createPolicyId)}>
                     {busy === 'save' ? 'Đang lưu…' : editor.mode === 'create' ? 'Tạo hồ sơ' : 'Lưu thay đổi'}
                   </button>
                 </div>

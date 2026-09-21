@@ -120,6 +120,14 @@ async function handleCreate(req, res, context) {
     return;
   }
 
+  if (payload?.workPolicyId) {
+    const policyPermission = context.authorize(context.requestContext, context.PERMISSIONS.coreWorkPolicyManage);
+    if (!policyPermission.ok) {
+      sendError(res, createError('FORBIDDEN', 'Bạn không có quyền gán chính sách làm việc cho nhân sự', {}, false, 403), context.requestId, context.receivedAt);
+      return;
+    }
+  }
+
   try {
     const execution = await context.executeRequestWithIdempotency({
       idempotencyStore: context.idempotencyStore,
@@ -149,6 +157,20 @@ async function handleCreate(req, res, context) {
               afterData: employee,
               metadata: { code: employee.code },
             }));
+            if (serviceResult.policyAssignment) {
+              await insertAuditRecord(client, buildAuditRecord({
+                requestContext: context.requestContext,
+                action: 'assign-on-create',
+                resourceType: 'employee-work-policy',
+                resourceId: serviceResult.policyAssignment.id,
+                beforeData: null,
+                afterData: serviceResult.policyAssignment,
+                metadata: {
+                  employeeId: employee.id,
+                  policyId: serviceResult.policyAssignment.work_policy_id,
+                },
+              }));
+            }
             return { employee };
           },
         });

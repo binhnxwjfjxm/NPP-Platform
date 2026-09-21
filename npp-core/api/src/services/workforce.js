@@ -164,7 +164,7 @@ export async function createWorkPolicyVersion(client, { installationId, payload,
 
 export async function getEmployeeScopeRecord(client, { installationId, employeeId }) {
   if (!validUuid(employeeId)) return fail('EMPLOYEE_NOT_FOUND', 'Không tìm thấy nhân sự');
-  const employee = await workforceRepo.getEmployeeScopeRecord(client, { installationId, employeeId, lock: 'share' });
+  const employee = await workforceRepo.getEmployeeScopeRecord(client, { installationId, employeeId, lock: 'update' });
   return employee ? { ok: true, employee } : fail('EMPLOYEE_NOT_FOUND', 'Không tìm thấy nhân sự');
 }
 
@@ -176,42 +176,222 @@ export async function listEmployeePolicyAssignments(client, { installationId, em
   };
 }
 
+async function preparePolicyAssignment(client, {
+  installationId,
+  employee,
+  workPolicyId,
+  effectiveFrom,
+  reason,
+  bootstrap,
+}) {
+  const today = localDate();
+  if (!validUuid(workPolicyId)) return fail('POLICY_NOT_FOUND', 'Không tìm thấy chính sách làm việc');
+  if (!validDate(effectiveFrom)) return fail('INVALID_EFFECTIVE_DATE', 'Ngày bắt đầu áp dụng không hợp lệ');
+  if (reason && reason.length > 512) return fail('INVALID_REASON', 'Lý do tối đa 512 ký tự');
+  if (effectiveFrom < today && !bootstrap) {
+    return fail('RETROACTIVE_ASSIGNMENT_FORBIDDEN', 'Ngày đã qua chỉ được dùng trong khởi tạo chính sách ban đầu có kiểm soát');
+  }
+  if (effectiveFrom < today && bootstrap && !reason) {
+    return fail('BOOTSTRAP_REASON_REQUIRED', 'Khởi tạo chính sách cho giai đoạn trước phải có lý do');
+  }
+
+  const policy = await workforceRepo.getWorkPolicyById(client, { installationId, id: workPolicyId });
+  if (!policy || !policy.is_active) return fail('POLICY_NOT_FOUND', 'Không tìm thấy chính sách làm việc đang hiệu lực');
+  if (String(policy.effective_from) > effectiveFrom || (policy.effective_to && String(policy.effective_to) < effectiveFrom)) {
+    return fail(
+      'POLICY_NOT_EFFECTIVE',
+      effectiveFrom < today
+        ? 'Ngày khởi tạo sớm hơn thời gian hiệu lực của chính sách; hãy chọn ngày nằm trong thời gian hiệu lực'
+        : 'Chính sách không có hiệu lực tại ngày bắt đầu đã chọn',
+    );
+  }
+
+  const latest = await workforceRepo.getLatestEmployeePolicyAssignmentForUpdate(client, {
+    installationId,
+    employeeId: employee.id,
+  });
+  if (effectiveFrom < today && bootstrap && latest) {
+    return fail('BOOTSTRAP_ASSIGNMENT_EXISTS', `${employee.code} đã có lịch sử chính sách; không được dùng khởi tạo lùi ngày`);
+  }
+  if (latest && effectiveFrom <= String(latest.effective_from)) {
+    return fail('ASSIGNMENT_EFFECTIVE_DATE_CONFLICT', `Ngày áp dụng của ${employee.code} phải sau lần gán chính sách gần nhất`);
+  }
+  return { ok: true, policy, latest };
+}
+
+async function applyPreparedPolicyAssignment(client, {
+  installationId,
+  employee,
+  workPolicyId,
+  effectiveFrom,
+  reason,
+  actorId,
+  prepared,
+}) {
+  if (prepared.latest && (!prepared.latest.effective_to || String(prepared.latest.effective_to) >= effectiveFrom)) {
+    await workforceRepo.closeEmployeePolicyAssignment(client, {
+      installationId,
+      id: prepared.latest.id,
+      effectiveTo: previousDate(effectiveFrom),
+    });
+  }
+  const assignment = await workforceRepo.insertEmployeePolicyAssignment(client, {
+    installationId,
+    employeeId: employee.id,
+    workPolicyId,
+    effectiveFrom,
+    reason,
+    createdBy: actorId,
+  });
+  return { assignment, beforeAssignment: prepared.latest ?? null };
+}
+
+export async function listWorkPolicyCoverage(client, {
+  installationId,
+  workDate,
+  branchId = null,
+  branchIds = null,
+}) {
+  const date = text(workDate) || localDate();
+  if (!validDate(date)) return fail('INVALID_EFFECTIVE_DATE', 'Ngày kiểm tra chính sách không hợp lệ');
+  if (branchId && !validUuid(branchId)) return fail('INVALID_BRANCH_ID', 'Chi nhánh không hợp lệ');
+  const rows = await workforceRepo.listEmployeePolicyCoverage(client, {
+    installationId,
+    workDate: date,
+    branchId,
+    branchIds,
+  });
+  const employees = rows.map((row) => ({
+    id: row.employee_id,
+    code: row.employee_code,
+    name: row.employee_name,
+    branchId: row.employee_branch_id ?? null,
+    branchCode: row.branch_code ?? null,
+    branchName: row.branch_name ?? null,
+    assignment: row.assignment_id ? {
+      id: row.assignment_id,
+      workPolicyId: row.work_policy_id,
+      effectiveFrom: String(row.effective_from),
+      effectiveTo: row.effective_to ? String(row.effective_to) : null,
+      policyCode: row.policy_code,
+      policyVersion: Number(row.policy_version),
+      policyName: row.policy_name,
+    } : null,
+  }));
+  const missing = employees.filter((employee) => !employee.assignment);
+  return {
+    ok: true,
+    coverage: {
+      asOfDate: date,
+      totalActive: employees.length,
+      assignedCount: employees.length - missing.length,
+      missingCount: missing.length,
+      employees,
+    },
+  };
+}
+
 export async function assignWorkPolicy(client, { installationId, payload, actorId }) {
   const employeeId = text(payload?.employeeId);
   const workPolicyId = text(payload?.workPolicyId);
   const effectiveFrom = text(payload?.effectiveFrom);
   const reason = text(payload?.reason) || null;
+  const bootstrap = payload?.bootstrap === true && effectiveFrom < localDate();
   if (!validUuid(employeeId)) return fail('EMPLOYEE_NOT_FOUND', 'Không tìm thấy nhân sự');
-  if (!validUuid(workPolicyId)) return fail('POLICY_NOT_FOUND', 'Không tìm thấy chính sách làm việc');
-  if (!validDate(effectiveFrom)) return fail('INVALID_EFFECTIVE_DATE', 'Ngày bắt đầu áp dụng không hợp lệ');
-  if (effectiveFrom < localDate()) return fail('RETROACTIVE_ASSIGNMENT_FORBIDDEN', 'Không thể gán chính sách lùi về ngày đã qua');
-  if (reason && reason.length > 512) return fail('INVALID_REASON', 'Lý do tối đa 512 ký tự');
 
   const employee = await workforceRepo.getEmployeeScopeRecord(client, { installationId, employeeId, lock: 'share' });
   if (!employee) return fail('EMPLOYEE_NOT_FOUND', 'Không tìm thấy nhân sự');
   if (!employee.is_active) return fail('EMPLOYEE_INACTIVE', 'Nhân sự đã ngừng làm việc');
 
-  const policy = await workforceRepo.getWorkPolicyById(client, { installationId, id: workPolicyId });
-  if (!policy || !policy.is_active) return fail('POLICY_NOT_FOUND', 'Không tìm thấy chính sách làm việc đang hiệu lực');
-  if (String(policy.effective_from) > effectiveFrom || (policy.effective_to && String(policy.effective_to) < effectiveFrom)) {
-    return fail('POLICY_NOT_EFFECTIVE', 'Chính sách không có hiệu lực tại ngày bắt đầu đã chọn');
+  const prepared = await preparePolicyAssignment(client, {
+    installationId, employee, workPolicyId, effectiveFrom, reason, bootstrap,
+  });
+  if (!prepared.ok) return prepared;
+  const applied = await applyPreparedPolicyAssignment(client, {
+    installationId, employee, workPolicyId, effectiveFrom, reason, actorId, prepared,
+  });
+  return { ok: true, ...applied, employee, bootstrap };
+}
+
+export async function assignWorkPolicyBulk(client, {
+  installationId,
+  payload,
+  actorId,
+  branchIds = null,
+}) {
+  const targetMode = text(payload?.targetMode).toUpperCase();
+  const workPolicyId = text(payload?.workPolicyId);
+  const effectiveFrom = text(payload?.effectiveFrom);
+  const reason = text(payload?.reason) || null;
+  const bootstrap = payload?.bootstrap === true && effectiveFrom < localDate();
+  const branchId = text(payload?.branchId) || null;
+  const employeeIds = Array.isArray(payload?.employeeIds)
+    ? [...new Set(payload.employeeIds.map((value) => text(value)).filter(Boolean))]
+    : [];
+
+  if (!['ALL_ACTIVE', 'BRANCH', 'EMPLOYEES'].includes(targetMode)) {
+    return fail('INVALID_ASSIGNMENT_TARGET', 'Phạm vi áp dụng chính sách không hợp lệ');
+  }
+  if (targetMode === 'BRANCH' && !validUuid(branchId)) return fail('INVALID_BRANCH_ID', 'Phải chọn chi nhánh hợp lệ');
+  if (targetMode === 'EMPLOYEES' && (!employeeIds.length || employeeIds.length > 1000 || employeeIds.some((id) => !validUuid(id)))) {
+    return fail('INVALID_EMPLOYEE_SELECTION', 'Danh sách nhân sự áp dụng không hợp lệ hoặc vượt quá 1.000 người');
+  }
+  if (Array.isArray(branchIds) && branchId && !branchIds.map(String).includes(branchId)) {
+    return fail('SCOPE_FORBIDDEN', 'Chi nhánh nằm ngoài phạm vi được cấp');
   }
 
-  const latest = await workforceRepo.getLatestEmployeePolicyAssignmentForUpdate(client, { installationId, employeeId });
-  if (latest && effectiveFrom <= String(latest.effective_from)) {
-    return fail('ASSIGNMENT_EFFECTIVE_DATE_CONFLICT', 'Ngày áp dụng mới phải sau lần gán chính sách gần nhất');
-  }
-  if (latest && (!latest.effective_to || String(latest.effective_to) >= effectiveFrom)) {
-    await workforceRepo.closeEmployeePolicyAssignment(client, {
-      installationId,
-      id: latest.id,
-      effectiveTo: previousDate(effectiveFrom),
-    });
-  }
-  const assignment = await workforceRepo.insertEmployeePolicyAssignment(client, {
-    installationId, employeeId, workPolicyId, effectiveFrom, reason, createdBy: actorId,
+  const targets = await workforceRepo.listEmployeePolicyCoverage(client, {
+    installationId,
+    workDate: localDate(),
+    branchId: targetMode === 'BRANCH' ? branchId : null,
+    branchIds,
+    employeeIds: targetMode === 'EMPLOYEES' ? employeeIds : null,
   });
-  return { ok: true, assignment, beforeAssignment: latest, employee };
+  if (!targets.length) return fail('NO_EMPLOYEES_SELECTED', 'Không có nhân sự đang làm việc trong phạm vi đã chọn');
+  if (targetMode === 'EMPLOYEES' && targets.length !== employeeIds.length) {
+    return fail('SCOPE_FORBIDDEN', 'Một hoặc nhiều nhân sự không còn hoạt động hoặc nằm ngoài phạm vi được cấp');
+  }
+
+  const plans = [];
+  for (const row of targets) {
+    const employee = await workforceRepo.getEmployeeScopeRecord(client, {
+      installationId,
+      employeeId: row.employee_id,
+      lock: 'update',
+    });
+    if (!employee || !employee.is_active) {
+      return fail('EMPLOYEE_INACTIVE', `${row.employee_code} không còn ở trạng thái đang làm việc`);
+    }
+    const prepared = await preparePolicyAssignment(client, {
+      installationId, employee, workPolicyId, effectiveFrom, reason, bootstrap,
+    });
+    if (!prepared.ok) return prepared;
+    plans.push({ employee, prepared });
+  }
+
+  const assignments = [];
+  for (const plan of plans) {
+    const applied = await applyPreparedPolicyAssignment(client, {
+      installationId,
+      employee: plan.employee,
+      workPolicyId,
+      effectiveFrom,
+      reason,
+      actorId,
+      prepared: plan.prepared,
+    });
+    assignments.push(applied.assignment);
+  }
+  return {
+    ok: true,
+    assignments,
+    affectedCount: assignments.length,
+    bootstrap,
+    targetMode,
+    workPolicyId,
+    effectiveFrom,
+    reason,
+  };
 }
 
 export async function listWorkSchedules(client, {
