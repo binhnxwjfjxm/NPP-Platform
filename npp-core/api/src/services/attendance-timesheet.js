@@ -314,6 +314,99 @@ function expandLeaveRequestsByDay(requests, dateFrom, dateTo) {
   return byDay;
 }
 
+export function evaluateAttendanceViolations(day) {
+  if (!day || day.status === 'UPCOMING') {
+    return {
+      state: 'NOT_DUE',
+      explanation: 'Chưa đến thời điểm đánh giá vi phạm công.',
+      items: [],
+    };
+  }
+  if (day.status === 'DAY_OFF' || day.status === 'NO_ATTENDANCE_REQUIRED') {
+    return {
+      state: 'NOT_APPLICABLE',
+      explanation: 'Ngày này không yêu cầu đánh giá vi phạm chấm công.',
+      items: [],
+    };
+  }
+  if (day.configurationIssue) {
+    return {
+      state: 'CONFIGURATION_ERROR',
+      explanation: 'Chưa thể đánh giá vì thiếu cấu hình làm việc.',
+      items: [],
+    };
+  }
+  if (day.status === 'PENDING_LEAVE') {
+    return {
+      state: 'PENDING_LEAVE',
+      explanation: 'Chờ xử lý đơn nghỉ trước khi kết luận vi phạm.',
+      items: [],
+    };
+  }
+  if (day.status === 'PENDING_ADJUSTMENT') {
+    return {
+      state: 'PENDING_ADJUSTMENT',
+      explanation: 'Chờ xử lý điều chỉnh công trước khi kết luận vi phạm.',
+      items: [],
+    };
+  }
+
+  const items = [];
+  if (Number(day.lateMinutes || 0) > 0) {
+    items.push({
+      kind: 'LATE',
+      label: 'Đi trễ',
+      detail: `Đi trễ ${Number(day.lateMinutes)} phút sau ngưỡng ${Number(day.policy?.lateGraceMinutes || 0)} phút của chính sách.`,
+      minutes: Number(day.lateMinutes),
+      dayFraction: null,
+    });
+  }
+  if (Number(day.earlyLeaveMinutes || 0) > 0) {
+    items.push({
+      kind: 'EARLY_LEAVE',
+      label: 'Về sớm',
+      detail: `Về sớm ${Number(day.earlyLeaveMinutes)} phút sau ngưỡng ${Number(day.policy?.earlyLeaveGraceMinutes || 0)} phút của chính sách.`,
+      minutes: Number(day.earlyLeaveMinutes),
+      dayFraction: null,
+    });
+  }
+
+  if (Number(day.unexcusedAbsenceFraction || 0) > 0) {
+    const fraction = Number(day.unexcusedAbsenceFraction);
+    items.push({
+      kind: 'UNEXCUSED_ABSENCE',
+      label: 'Vắng không phép',
+      detail: fraction >= 1 ? 'Vắng không phép cả ngày.' : 'Vắng không phép một phần ngày.',
+      minutes: null,
+      dayFraction: fraction,
+    });
+  } else if (
+    day.missingCheckIn
+    || day.missingCheckOut
+    || day.attendanceStatus === 'INCOMPLETE'
+  ) {
+    const missing = [];
+    if (day.missingCheckIn) missing.push('thiếu giờ vào');
+    if (day.missingCheckOut) missing.push('thiếu giờ ra');
+    if (!missing.length) missing.push('trình tự chấm công chưa đầy đủ');
+    items.push({
+      kind: 'MISSING_ATTENDANCE',
+      label: 'Thiếu chấm công',
+      detail: missing.join(' · '),
+      minutes: null,
+      dayFraction: null,
+    });
+  }
+
+  return {
+    state: items.length ? 'HAS_VIOLATIONS' : 'CLEAR',
+    explanation: items.length
+      ? 'Có sai lệch công cần theo dõi theo chính sách làm việc.'
+      : 'Không ghi nhận vi phạm công theo dữ liệu hiện có.',
+    items,
+  };
+}
+
 export function summarizeAttendanceDay(row, employeeEvents, now = new Date(), control = {}) {
   const workDate = String(row.work_date);
   const timeZone = row.policy_timezone || INSTALLATION_TIMEZONE;
@@ -449,7 +542,7 @@ export function summarizeAttendanceDay(row, employeeEvents, now = new Date(), co
     : Math.max(0, countedMinutes - leaveCreditedMinutes + effectiveLeaveCreditedMinutes);
   const attendanceSources = [...new Set(events.map((event) => String(event.source)))];
   const validWork = ['COMPLETE', 'LATE', 'EARLY', 'LATE_AND_EARLY'].includes(attendanceStatus);
-  return {
+  const projection = {
     workDate,
     employee: {
       id: row.employee_id,
@@ -467,6 +560,8 @@ export function summarizeAttendanceDay(row, employeeEvents, now = new Date(), co
       timeMode: row.policy_time_mode,
       timezone: timeZone,
       breakMinutes: Number(row.policy_break_minutes || 0),
+      lateGraceMinutes: Number(row.policy_late_grace_minutes || 0),
+      earlyLeaveGraceMinutes: Number(row.policy_early_leave_grace_minutes || 0),
     } : null,
     schedule: row.schedule_id ? {
       id: row.schedule_id,
@@ -503,6 +598,10 @@ export function summarizeAttendanceDay(row, employeeEvents, now = new Date(), co
       created_at: asIso(event.created_at),
     })),
   };
+  return {
+    ...projection,
+    violationEvaluation: evaluateAttendanceViolations(projection),
+  };
 }
 
 export function summarizeAttendanceMonth(employee, days, period) {
@@ -516,6 +615,14 @@ export function summarizeAttendanceMonth(employee, days, period) {
     return sum + uncovered;
   }, 0);
   const configurationIssueDays = currentDays.filter((day) => Boolean(day.configurationIssue)).length;
+  const violationDays = currentDays.filter((day) => day.violationEvaluation?.state === 'HAS_VIOLATIONS').length;
+  const violationCount = (kind) => currentDays.filter((day) => (
+    day.violationEvaluation?.items?.some((item) => item.kind === kind)
+  )).length;
+  const unexcusedAbsenceViolationDays = currentDays.reduce((sum, day) => {
+    const item = day.violationEvaluation?.items?.find((entry) => entry.kind === 'UNEXCUSED_ABSENCE');
+    return sum + Number(item?.dayFraction || 0);
+  }, 0);
   return {
     employee: {
       id: employee.id,
@@ -536,6 +643,11 @@ export function summarizeAttendanceMonth(employee, days, period) {
     unexcusedAbsenceDays: currentDays.reduce((sum, day) => sum + day.unexcusedAbsenceFraction, 0),
     incompleteDays,
     configurationIssueDays,
+    violationDays,
+    lateViolationDays: violationCount('LATE'),
+    earlyLeaveViolationDays: violationCount('EARLY_LEAVE'),
+    missingAttendanceViolationDays: violationCount('MISSING_ATTENDANCE'),
+    unexcusedAbsenceViolationDays,
     missingDays: incompleteDays,
     actualMinutes: currentDays.reduce((sum, day) => sum + day.actualMinutes, 0),
     countedMinutes: currentDays.reduce((sum, day) => sum + day.countedMinutes, 0),
