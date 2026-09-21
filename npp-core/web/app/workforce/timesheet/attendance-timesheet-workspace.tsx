@@ -670,6 +670,7 @@ export default function AttendanceTimesheetWorkspace({
                   </span>
                 ) : null}
                 <span>Kết quả này dùng để theo dõi và xử lý theo quy trình Công Ty; Bảng công không tự điều chỉnh thu nhập.</span>
+                {selectedDay.violationEvaluation.items.length ? <Link className={localStyles.inlineLink} href="/workforce/violations">Mở xử lý vi phạm</Link> : null}
               </div>
               <div className={localStyles.dayDetailEvents}>
                 {selectedDay.events.map((event) => (

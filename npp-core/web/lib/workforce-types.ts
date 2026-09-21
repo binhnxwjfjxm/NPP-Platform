@@ -277,6 +277,70 @@ export type AttendanceViolationEvaluation = {
   items: AttendanceViolation[];
 };
 
+export type AttendanceViolationCaseStatus = 'EXPLANATION_SUBMITTED' | 'UNDER_REVIEW' | 'RESOLVED';
+export type AttendanceViolationOutcome = 'CONFIRMED' | 'EXCUSED';
+
+export type AttendanceViolationCase = {
+  id: string;
+  installation_id: string;
+  employee_id: string;
+  work_date: string;
+  violation_kind: AttendanceViolationKind;
+  violation_label_snapshot: string;
+  violation_detail_snapshot: string;
+  violation_minutes_snapshot: number | null;
+  violation_day_fraction_snapshot: number | string | null;
+  policy_id_snapshot: string | null;
+  policy_version_snapshot: number | null;
+  status: AttendanceViolationCaseStatus;
+  explanation: string;
+  explained_by_actor_id: string;
+  explained_at: string;
+  reviewed_by_actor_id: string | null;
+  review_note: string | null;
+  reviewed_at: string | null;
+  outcome: AttendanceViolationOutcome | null;
+  version: number;
+  request_id: string;
+  created_at: string;
+  updated_at: string;
+  employee_code?: string;
+  employee_name?: string;
+  employee_branch_id?: string | null;
+  branch_code?: string | null;
+  branch_name?: string | null;
+};
+
+export type AttendanceViolationHandlingEntry = {
+  employee: AttendanceTimesheetDay['employee'];
+  workDate: string;
+  violation: AttendanceViolation | null;
+  evaluationState: AttendanceViolationEvaluationState;
+  case: AttendanceViolationCase | null;
+};
+
+export type AttendanceViolationHandlingResponse = {
+  period: { from: string; to: string; timezone: string };
+  scope: {
+    companyScope: boolean;
+    selfOnly: boolean;
+    branches: AttendanceBranch[];
+  };
+  pagination: {
+    limit: number;
+    offset: number;
+    total: number;
+    hasPrevious: boolean;
+    hasNext: boolean;
+  };
+  entries: AttendanceViolationHandlingEntry[];
+  capabilities: {
+    selfOnly: boolean;
+    canExplain: boolean;
+    canReview: boolean;
+  };
+};
+
 export type AttendanceDayStatus =
   | 'UPCOMING'
   | 'DAY_OFF'

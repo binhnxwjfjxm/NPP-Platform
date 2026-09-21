@@ -163,6 +163,21 @@ export function upsertWorkSchedule<T>(requestId: string, body: unknown, idempote
 export function getAttendanceTimesheet<T>(requestId: string, searchParams: URLSearchParams): Promise<T> {
   return requestCore<T>({ path: '/attendance/timesheet', method: 'GET', requestId, searchParams });
 }
+export function listAttendanceViolations<T>(requestId: string, searchParams: URLSearchParams): Promise<T> {
+  return requestCore<T>({ path: '/attendance/violations', method: 'GET', requestId, searchParams });
+}
+export function submitAttendanceViolationExplanation<T>(requestId: string, body: unknown, idempotencyKey?: string): Promise<T> {
+  return requestCore<T>({
+    path: '/attendance/violations/explain', method: 'POST', requestId, body,
+    idempotencyKey: mutationKey(idempotencyKey, 'attendance-violation-explain'),
+  });
+}
+export function reviewAttendanceViolation<T>(requestId: string, body: unknown, idempotencyKey?: string): Promise<T> {
+  return requestCore<T>({
+    path: '/attendance/violations/review', method: 'POST', requestId, body,
+    idempotencyKey: mutationKey(idempotencyKey, 'attendance-violation-review'),
+  });
+}
 
 export function listLeaveTypes<T>(requestId: string): Promise<T> {
   return requestCore<T>({ path: '/leave-types', method: 'GET', requestId });

@@ -6,13 +6,14 @@ import * as workforceService from '../services/workforce.js';
 import * as attendanceTimesheetService from '../services/attendance-timesheet.js';
 import * as attendanceAdjustmentService from '../services/attendance-adjustments.js';
 import * as leaveManagementService from '../services/leave-management.js';
+import * as attendanceViolationService from '../services/attendance-violations.js';
 
 function createError(code, message, details = {}, retryable = false, statusCode = 500) {
   return { code, message, details, retryable, statusCode };
 }
 
 function statusFor(result) {
-  if (['EMPLOYEE_NOT_FOUND', 'POLICY_NOT_FOUND', 'ATTENDANCE_POINT_NOT_FOUND', 'BRANCH_NOT_FOUND', 'ADJUSTMENT_REQUEST_NOT_FOUND', 'LEAVE_TYPE_NOT_FOUND', 'LEAVE_REQUEST_NOT_FOUND'].includes(result.code)) return 404;
+  if (['EMPLOYEE_NOT_FOUND', 'POLICY_NOT_FOUND', 'ATTENDANCE_POINT_NOT_FOUND', 'BRANCH_NOT_FOUND', 'ADJUSTMENT_REQUEST_NOT_FOUND', 'LEAVE_TYPE_NOT_FOUND', 'LEAVE_REQUEST_NOT_FOUND', 'VIOLATION_CASE_NOT_FOUND', 'ATTENDANCE_DAY_NOT_FOUND'].includes(result.code)) return 404;
   if (result.code === 'QR_TOKEN_EXPIRED') return 410;
   if (result.code === 'SCOPE_FORBIDDEN') return 403;
   if ([
@@ -22,6 +23,7 @@ function statusFor(result) {
     'ATTENDANCE_PERIOD_LOCKED', 'ATTENDANCE_ADJUSTMENT_PENDING',
     'ADJUSTMENT_REQUEST_CONFLICT', 'ATTENDANCE_PERIOD_LOCK_OVERLAP',
     'LEAVE_TYPE_CODE_EXISTS', 'LEAVE_TYPE_CONFLICT', 'LEAVE_REQUEST_OVERLAP', 'LEAVE_REQUEST_CONFLICT',
+    'VIOLATION_CASE_EXISTS', 'VIOLATION_CASE_CONFLICT', 'VIOLATION_CHANGED',
   ].includes(result.code)) return 409;
   return 400;
 }
@@ -779,6 +781,108 @@ async function handleLeaveRequestCancel(req, res, context, { selfOnly }) {
   });
 }
 
+async function handleAttendanceViolations(req, res, context, { selfOnly }) {
+  const url = new URL(req.url, 'http://localhost');
+  const result = await attendanceViolationService.listViolationHandling(context.getPool(), {
+    installationId: context.requestContext.installationId,
+    selfOnly,
+    ownEmployeeId: context.requestContext.employeeId,
+    companyScope: isCompanyScope(context.requestContext),
+    branchIds: [...(context.requestContext.scopes.branchIds ?? [])],
+    rawEmployeeId: url.searchParams.get('employeeId'),
+    rawEmployeeQuery: url.searchParams.get('employeeQuery'),
+    rawBranchId: url.searchParams.get('branchId'),
+    rawDateFrom: url.searchParams.get('from'),
+    rawDateTo: url.searchParams.get('to'),
+    rawLimit: url.searchParams.get('limit'),
+    rawOffset: url.searchParams.get('offset'),
+  });
+  if (!result.ok) {
+    sendError(res, createError(result.code, result.message, {}, false, statusFor(result)), context.requestId, context.receivedAt);
+    return;
+  }
+  sendSuccess(res, {
+    ...result.data,
+    capabilities: {
+      selfOnly,
+      canExplain: context.canExplainOwnViolation,
+      canReview: context.canResolveViolations,
+    },
+  }, context.requestId, context.receivedAt);
+}
+
+async function handleViolationExplanation(req, res, context) {
+  const parsed = await parsePayload(req, res, context);
+  if (!parsed.ok) return;
+  const payload = parsed.payload;
+  await runIdempotentMutation(req, res, context, {
+    route: '/api/workforce/attendance/violations/explain',
+    payload,
+    successStatus: 201,
+    mutate: async (client) => {
+      const result = await attendanceViolationService.submitViolationExplanation(client, {
+        requestContext: context.requestContext,
+        payload,
+      });
+      if (!result.ok) return result;
+      return {
+        ok: true,
+        data: result.case,
+        audit: {
+          requestContext: context.requestContext,
+          action: 'submit-explanation',
+          resourceType: 'attendance-violation-case',
+          resourceId: result.case.id,
+          beforeData: null,
+          afterData: result.case,
+          metadata: {
+            employeeId: result.case.employee_id,
+            workDate: result.case.work_date,
+            violationKind: result.case.violation_kind,
+          },
+        },
+      };
+    },
+  });
+}
+
+async function handleViolationReview(req, res, context) {
+  const parsed = await parsePayload(req, res, context);
+  if (!parsed.ok) return;
+  const payload = parsed.payload;
+  await runIdempotentMutation(req, res, context, {
+    route: '/api/workforce/attendance/violations/review',
+    payload,
+    mutate: async (client) => {
+      const result = await attendanceViolationService.reviewViolationCase(client, {
+        requestContext: context.requestContext,
+        payload,
+        companyScope: isCompanyScope(context.requestContext),
+        branchIds: [...(context.requestContext.scopes.branchIds ?? [])],
+      });
+      if (!result.ok) return result;
+      return {
+        ok: true,
+        data: result.case,
+        audit: {
+          requestContext: context.requestContext,
+          action: result.case.status === 'RESOLVED' ? 'conclude-violation' : 'start-violation-review',
+          resourceType: 'attendance-violation-case',
+          resourceId: result.case.id,
+          beforeData: result.beforeCase,
+          afterData: result.case,
+          metadata: {
+            employeeId: result.case.employee_id,
+            workDate: result.case.work_date,
+            violationKind: result.case.violation_kind,
+            outcome: result.case.outcome,
+          },
+        },
+      };
+    },
+  });
+}
+
 async function requirePointScope(client, requestContext, pointId) {
   const point = await workforceService.listAttendancePointManagement(client, {
     installationId: requestContext.installationId,
@@ -942,7 +1046,7 @@ export async function handleWorkforceRoutes(req, res, options) {
   const pathname = new URL(`http://localhost${req.url}`).pathname;
   if (!pathname.startsWith('/api/workforce/')) return false;
   const route = pathname.slice('/api/workforce'.length);
-  if (!['/policies', '/assignments', '/schedules', '/attendance/today', '/attendance/timesheet', '/attendance/record', '/attendance/points', '/attendance/qr-token', '/attendance/adjustments', '/attendance/adjustments/review', '/attendance/adjustments/direct', '/attendance/period-locks', '/leave-types', '/leave-types/update', '/leave/requests', '/leave/requests/review', '/leave/requests/cancel'].includes(route)) return false;
+  if (!['/policies', '/assignments', '/schedules', '/attendance/today', '/attendance/timesheet', '/attendance/record', '/attendance/points', '/attendance/qr-token', '/attendance/adjustments', '/attendance/adjustments/review', '/attendance/adjustments/direct', '/attendance/period-locks', '/leave-types', '/leave-types/update', '/leave/requests', '/leave/requests/review', '/leave/requests/cancel', '/attendance/violations', '/attendance/violations/explain', '/attendance/violations/review'].includes(route)) return false;
 
   const auth = options.authenticate(req, options.config);
   if (!auth.ok) {
@@ -967,6 +1071,9 @@ export async function handleWorkforceRoutes(req, res, options) {
     || (route === '/attendance/adjustments/review' && method === 'POST')
     || (route === '/attendance/adjustments/direct' && method === 'POST')
     || (route === '/attendance/period-locks' && ['GET', 'POST'].includes(method))
+    || (route === '/attendance/violations' && method === 'GET')
+    || (route === '/attendance/violations/explain' && method === 'POST')
+    || (route === '/attendance/violations/review' && method === 'POST')
     || (route === '/leave-types' && ['GET', 'POST'].includes(method))
     || (route === '/leave-types/update' && method === 'POST')
     || (route === '/leave/requests' && ['GET', 'POST'].includes(method))
@@ -982,6 +1089,8 @@ export async function handleWorkforceRoutes(req, res, options) {
   const canManageAdjustments = options.authorize(requestContext, options.PERMISSIONS.coreAttendanceAdjust).ok;
   const canSubmitOwnAdjustment = options.authorize(requestContext, options.PERMISSIONS.coreAttendanceSelfAdjustRequest).ok;
   const canLockPeriods = options.authorize(requestContext, options.PERMISSIONS.coreAttendanceLock).ok;
+  const canExplainOwnViolation = options.authorize(requestContext, options.PERMISSIONS.coreAttendanceViolationSelfExplain).ok;
+  const canResolveViolations = options.authorize(requestContext, options.PERMISSIONS.coreAttendanceViolationResolve).ok;
   const canSelfReadLeaves = options.authorize(requestContext, options.PERMISSIONS.coreLeaveSelfRead).ok;
   const canSubmitOwnLeave = options.authorize(requestContext, options.PERMISSIONS.coreLeaveSelfRequest).ok;
   const canReadLeaves = options.authorize(requestContext, options.PERMISSIONS.coreLeaveRead).ok;
@@ -990,6 +1099,7 @@ export async function handleWorkforceRoutes(req, res, options) {
   let timesheetSelfOnly = false;
   let adjustmentSelfOnly = false;
   let leaveRequestSelfOnly = false;
+  let violationSelfOnly = false;
   let permission;
   if (route === '/attendance/timesheet') {
     permission = options.authorize(requestContext, options.PERMISSIONS.coreAttendanceRead);
@@ -1009,6 +1119,16 @@ export async function handleWorkforceRoutes(req, res, options) {
     permission = { ok: canManageAdjustments };
   } else if (route === '/attendance/period-locks') {
     permission = { ok: method === 'POST' ? canLockPeriods : (canManageAdjustments || canLockPeriods) };
+  } else if (route === '/attendance/violations') {
+    const canReadScopedViolations = options.authorize(requestContext, options.PERMISSIONS.coreAttendanceRead).ok || canResolveViolations;
+    const canReadOwnViolations = options.authorize(requestContext, options.PERMISSIONS.coreAttendanceSelfRead).ok || canExplainOwnViolation;
+    permission = { ok: canReadScopedViolations || canReadOwnViolations };
+    violationSelfOnly = !canReadScopedViolations;
+  } else if (route === '/attendance/violations/explain') {
+    permission = { ok: canExplainOwnViolation };
+    violationSelfOnly = true;
+  } else if (route === '/attendance/violations/review') {
+    permission = { ok: canResolveViolations };
   } else if (route === '/leave-types') {
     permission = { ok: method === 'POST'
       ? canManageLeaveTypes
@@ -1049,6 +1169,7 @@ export async function handleWorkforceRoutes(req, res, options) {
   const context = {
     ...options, requestContext, canManageAdjustments, canSubmitOwnAdjustment, canLockPeriods,
     canSelfReadLeaves, canSubmitOwnLeave, canReadLeaves, canApproveLeaves, canManageLeaveTypes,
+    canExplainOwnViolation, canResolveViolations,
   };
   try {
     if (route === '/policies') await handlePolicies(req, res, context, method);
@@ -1069,6 +1190,9 @@ export async function handleWorkforceRoutes(req, res, options) {
     else if (route === '/attendance/adjustments/review') await handleAttendanceAdjustmentReview(req, res, context);
     else if (route === '/attendance/adjustments/direct') await handleAttendanceDirectAdjustment(req, res, context);
     else if (route === '/attendance/period-locks') await handleAttendancePeriodLocks(req, res, context, method);
+    else if (route === '/attendance/violations') await handleAttendanceViolations(req, res, context, { selfOnly: violationSelfOnly });
+    else if (route === '/attendance/violations/explain') await handleViolationExplanation(req, res, context);
+    else if (route === '/attendance/violations/review') await handleViolationReview(req, res, context);
     else if (route === '/leave-types') await handleLeaveTypes(req, res, context, method);
     else if (route === '/leave-types/update') await handleLeaveTypeUpdate(req, res, context);
     else if (route === '/leave/requests') await handleLeaveRequests(req, res, context, method, { selfOnly: leaveRequestSelfOnly });
