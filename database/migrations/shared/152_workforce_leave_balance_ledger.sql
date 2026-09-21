@@ -1,22 +1,6 @@
 -- Issue #1140 Lô 4: leave balance ledger and dated balance contract.
 -- Additive only. Existing leave types keep balance tracking OFF until Công Ty enables it.
 
-INSERT INTO shared.permission_catalog (
-  permission_key, module, label, description, is_system, created_at
-) VALUES (
-  'core.leave-balance.manage',
-  'Nhân sự',
-  'Quản lý sổ phép',
-  'Cho phép ghi cấp phép, phát sinh, điều chỉnh, chuyển năm, hết hạn và nghỉ bù vào sổ phép bất biến trong phạm vi được cấp.',
-  true,
-  now()
-)
-ON CONFLICT (permission_key) DO UPDATE
-SET module = EXCLUDED.module,
-    label = EXCLUDED.label,
-    description = EXCLUDED.description,
-    is_system = EXCLUDED.is_system;
-
 ALTER TABLE shared.leave_types
   ADD COLUMN IF NOT EXISTS tracks_balance boolean NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS allow_negative_balance boolean NOT NULL DEFAULT false;
