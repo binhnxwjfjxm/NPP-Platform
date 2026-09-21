@@ -14,7 +14,8 @@ const ASSIGNMENT_COLUMNS = `a.id, a.installation_id, a.employee_id, a.work_polic
 
 const SCHEDULE_COLUMNS = `s.id, s.installation_id, s.employee_id, s.work_policy_id,
   s.work_date, s.schedule_kind, s.scheduled_start_at, s.scheduled_end_at, s.source,
-  s.override_reason, s.created_at, s.updated_at, s.created_by, s.updated_by,
+  s.override_reason, s.shift_template_id, s.week_template_id, s.company_calendar_day_id,
+  s.created_at, s.updated_at, s.created_by, s.updated_by,
   e.code AS employee_code, e.full_name AS employee_name, e.branch_id AS employee_branch_id,
   p.code AS policy_code, p.version AS policy_version, p.name AS policy_name, p.timezone AS policy_timezone`;
 
@@ -290,6 +291,7 @@ export async function getWorkScheduleForEmployeeDateForUpdate(client, { installa
   const result = await client.query(
     `SELECT id, installation_id, employee_id, work_policy_id, work_date, schedule_kind,
             scheduled_start_at, scheduled_end_at, source, override_reason,
+            shift_template_id, week_template_id, company_calendar_day_id,
             created_at, updated_at, created_by, updated_by
        FROM shared.work_schedules
       WHERE installation_id = $1 AND employee_id = $2 AND work_date = $3
@@ -324,6 +326,9 @@ export async function updateWorkSchedule(client, values) {
             scheduled_end_at = $7,
             source = 'OVERRIDE',
             override_reason = $8,
+            shift_template_id = NULL,
+            week_template_id = NULL,
+            company_calendar_day_id = NULL,
             updated_at = GREATEST(date_trunc('milliseconds', clock_timestamp()), updated_at + interval '1 millisecond'),
             updated_by = $9
       WHERE installation_id = $1

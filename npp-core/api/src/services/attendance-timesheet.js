@@ -485,9 +485,10 @@ export function summarizeAttendanceDay(row, employeeEvents, now = new Date(), co
   );
 
   const hasPolicy = Boolean(row.policy_id);
-  const scheduledWorkDay = row.schedule_kind === 'WORK'
-    || (!row.schedule_kind && hasPolicy && policyWorkingDay(row));
-  const offDay = row.schedule_kind === 'OFF'
+  const companyDayOff = Boolean(row.company_calendar_day_id) && row.schedule_source !== 'OVERRIDE';
+  const scheduledWorkDay = !companyDayOff && (row.schedule_kind === 'WORK'
+    || (!row.schedule_kind && hasPolicy && policyWorkingDay(row)));
+  const offDay = companyDayOff || row.schedule_kind === 'OFF'
     || (hasPolicy && !row.schedule_kind && !policyWorkingDay(row));
   const today = localDate(timeZone, now);
   const isPast = workDate < today;
@@ -637,6 +638,11 @@ export function summarizeAttendanceDay(row, employeeEvents, now = new Date(), co
     leave,
     attendanceSources,
     scheduleSource: row.schedule_source ?? (hasPolicy ? 'POLICY' : null),
+    companyCalendarDay: row.company_calendar_day_id ? {
+      id: row.company_calendar_day_id,
+      kind: row.calendar_kind,
+      name: row.company_calendar_day_name,
+    } : null,
     adjustment: control.adjustment ?? null,
     periodLock: control.periodLock ?? null,
     events: events.map((event) => ({
