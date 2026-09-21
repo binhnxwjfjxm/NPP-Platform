@@ -3,7 +3,7 @@ import {
   normalizeWorkforceGatewayError,
   postLeaveBalanceEntry,
   resolveWorkforceRequestId,
-} from '../../../../../../../lib/workforce-gateway';
+} from '../../../../../../lib/workforce-gateway';
 
 export const dynamic = 'force-dynamic';
 
