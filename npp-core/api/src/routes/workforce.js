@@ -807,7 +807,15 @@ export async function handleWorkforceRoutes(req, res, options) {
     else if (route === '/attendance/adjustments/direct') await handleAttendanceDirectAdjustment(req, res, context);
     else if (route === '/attendance/period-locks') await handleAttendancePeriodLocks(req, res, context, method);
     else await handleAttendanceQrToken(req, res, context);
-  } catch {
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: 'workforce_route_failed',
+      requestId: options.requestId,
+      route,
+      method,
+      errorName: error?.name ?? null,
+      errorCode: typeof error?.code === 'string' ? error.code : null,
+    }));
     sendError(res, createError('WORKFORCE_UNAVAILABLE', 'Dữ liệu nhân sự tạm thời chưa sẵn sàng', {}, true, 503), options.requestId, options.receivedAt);
   }
   return true;
