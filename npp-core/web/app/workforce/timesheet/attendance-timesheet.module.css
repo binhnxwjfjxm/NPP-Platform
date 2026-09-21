@@ -281,3 +281,23 @@ td.matrixSticky {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+
+
+.violationList {
+  display: grid;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.violationItem {
+  display: grid;
+  gap: 3px;
+  padding: 8px 10px;
+  border: 1px solid var(--line, #dfe3e8);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.violationItem span {
+  color: #667085;
+}

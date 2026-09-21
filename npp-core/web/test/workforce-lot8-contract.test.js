@@ -51,7 +51,7 @@ test('Issue #1110 Lô 8 day detail shows shift segment, leave, counted leave and
   assert.match(workspace, /leaveSummary/);
   assert.match(workspace, /href="\/workforce\/leave"/);
   assert.match(workspace, /Đánh giá vi phạm/);
-  assert.match(workspace, /Chưa có kết quả đánh giá vi phạm tự động/);
+  assert.match(workspace, /violationEvaluation/);
 });
 
 test('Issue #1110 Lô 8 uses office language and keeps payroll/penalty outside the timesheet engine', async () => {

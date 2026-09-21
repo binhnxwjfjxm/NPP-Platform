@@ -202,6 +202,26 @@ function validationLabel(value: AttendanceEvent['validation_status']) {
   return 'Không hợp lệ';
 }
 
+function violationSummary(day: AttendanceTimesheetDay) {
+  const evaluation = day.violationEvaluation;
+  if (!evaluation) return 'Chưa đánh giá';
+  if (evaluation.state === 'HAS_VIOLATIONS') {
+    return evaluation.items.map((item) => item.detail).join(' · ');
+  }
+  if (evaluation.state === 'CLEAR') return 'Không ghi nhận';
+  return evaluation.explanation;
+}
+
+function monthlyViolationSummary(row: AttendanceTimesheetMonth) {
+  if (!row.violationDays) return 'Không ghi nhận';
+  const parts = [`${row.violationDays} ngày`];
+  if (row.lateViolationDays) parts.push(`Trễ ${row.lateViolationDays}`);
+  if (row.earlyLeaveViolationDays) parts.push(`Sớm ${row.earlyLeaveViolationDays}`);
+  if (row.missingAttendanceViolationDays) parts.push(`Thiếu ${row.missingAttendanceViolationDays}`);
+  if (row.unexcusedAbsenceViolationDays) parts.push(`Vắng ${dayCountLabel(row.unexcusedAbsenceViolationDays)}`);
+  return parts.join(' · ');
+}
+
 export default function AttendanceTimesheetWorkspace({
   initialData,
   initialFrom,
@@ -422,7 +442,7 @@ export default function AttendanceTimesheetWorkspace({
                   <tr>
                     <th>Ngày</th><th>Nhân sự</th><th>Chi nhánh</th><th>Trạng thái</th>
                     <th>Giờ vào</th><th>Giờ ra</th><th>Thực tế</th><th>Được tính</th>
-                    <th>Đi trễ</th><th>Về sớm</th><th>Thiếu / Vắng</th><th>Nguồn dữ liệu</th><th>Kiểm soát</th><th>Chi tiết</th>
+                    <th>Đi trễ</th><th>Về sớm</th><th>Thiếu / Vắng</th><th>Vi phạm</th><th>Nguồn dữ liệu</th><th>Kiểm soát</th><th>Chi tiết</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -439,6 +459,7 @@ export default function AttendanceTimesheetWorkspace({
                       <td>{minutesLabel(day.lateMinutes)}</td>
                       <td>{minutesLabel(day.earlyLeaveMinutes)}</td>
                       <td>{missingLabel(day)}</td>
+                      <td>{violationSummary(day)}</td>
                       <td>{sourceSummary(day)}</td>
                       <td>
                         <div className={localStyles.detailMeta}>
@@ -480,7 +501,7 @@ export default function AttendanceTimesheetWorkspace({
                     </tr>
                   ))}
                   {!dailyRows.length ? (
-                    <tr><td colSpan={14}><div className={styles.emptyState}>Không có dữ liệu bảng công trong kỳ đã chọn.</div></td></tr>
+                    <tr><td colSpan={15}><div className={styles.emptyState}>Không có dữ liệu bảng công trong kỳ đã chọn.</div></td></tr>
                   ) : null}
                 </tbody>
               </table>
@@ -521,6 +542,7 @@ export default function AttendanceTimesheetWorkspace({
                     <th>Vắng</th>
                     <th>Thiếu chấm công</th>
                     <th>Lỗi cấu hình</th>
+                    <th>Vi phạm</th>
                     <th>Đi trễ</th>
                     <th>Về sớm</th>
                     <th>Giờ được tính</th>
@@ -568,6 +590,7 @@ export default function AttendanceTimesheetWorkspace({
                         <td className={localStyles.matrixTotal}>{dayCountLabel(row.unexcusedAbsenceDays)}</td>
                         <td className={localStyles.matrixTotal}>{dayCountLabel(row.incompleteDays)}</td>
                         <td className={localStyles.matrixTotal}>{dayCountLabel(row.configurationIssueDays)}</td>
+                        <td className={localStyles.matrixTotal}>{monthlyViolationSummary(row)}</td>
                         <td className={localStyles.matrixTotal}>{minutesLabel(row.lateMinutes)}</td>
                         <td className={localStyles.matrixTotal}>{minutesLabel(row.earlyLeaveMinutes)}</td>
                         <td className={localStyles.matrixTotal}>{minutesLabel(row.countedMinutes)}</td>
@@ -580,7 +603,7 @@ export default function AttendanceTimesheetWorkspace({
                   })}
                   {!monthlyRows.length ? (
                     <tr>
-                      <td colSpan={45}><div className={styles.emptyState}>Không có nhân sự trong phạm vi và tháng đã chọn.</div></td>
+                      <td colSpan={46}><div className={styles.emptyState}>Không có nhân sự trong phạm vi và tháng đã chọn.</div></td>
                     </tr>
                   ) : null}
                 </tbody>
@@ -630,7 +653,23 @@ export default function AttendanceTimesheetWorkspace({
               </div>
               <div className={localStyles.dayDetailSection}>
                 <strong>Đánh giá vi phạm</strong>
-                <span>Chưa có kết quả đánh giá vi phạm tự động. Bảng công hiện chỉ tổng hợp sự thật về lịch, nghỉ và chấm công.</span>
+                <span>{selectedDay.violationEvaluation.explanation}</span>
+                {selectedDay.violationEvaluation.items.length ? (
+                  <div className={localStyles.violationList}>
+                    {selectedDay.violationEvaluation.items.map((item) => (
+                      <div className={localStyles.violationItem} key={item.kind}>
+                        <strong>{item.label}</strong>
+                        <span>{item.detail}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                {selectedDay.policy ? (
+                  <span>
+                    Ngưỡng chính sách: trễ {selectedDay.policy.lateGraceMinutes} phút · về sớm {selectedDay.policy.earlyLeaveGraceMinutes} phút.
+                  </span>
+                ) : null}
+                <span>Kết quả này dùng để theo dõi và xử lý theo quy trình Công Ty; Bảng công không tự điều chỉnh thu nhập.</span>
               </div>
               <div className={localStyles.dayDetailEvents}>
                 {selectedDay.events.map((event) => (

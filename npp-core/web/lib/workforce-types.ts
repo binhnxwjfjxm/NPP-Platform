@@ -253,6 +253,30 @@ export type AttendanceAdjustmentMutationResult = {
   events: AttendanceEvent[];
 };
 
+export type AttendanceViolationKind = 'LATE' | 'EARLY_LEAVE' | 'MISSING_ATTENDANCE' | 'UNEXCUSED_ABSENCE';
+export type AttendanceViolationEvaluationState =
+  | 'NOT_DUE'
+  | 'NOT_APPLICABLE'
+  | 'CONFIGURATION_ERROR'
+  | 'PENDING_LEAVE'
+  | 'PENDING_ADJUSTMENT'
+  | 'CLEAR'
+  | 'HAS_VIOLATIONS';
+
+export type AttendanceViolation = {
+  kind: AttendanceViolationKind;
+  label: string;
+  detail: string;
+  minutes: number | null;
+  dayFraction: number | null;
+};
+
+export type AttendanceViolationEvaluation = {
+  state: AttendanceViolationEvaluationState;
+  explanation: string;
+  items: AttendanceViolation[];
+};
+
 export type AttendanceDayStatus =
   | 'UPCOMING'
   | 'DAY_OFF'
@@ -291,6 +315,8 @@ export type AttendanceTimesheetDay = {
     timeMode: WorkPolicy['time_mode'];
     timezone: string;
     breakMinutes: number;
+    lateGraceMinutes: number;
+    earlyLeaveGraceMinutes: number;
   } | null;
   schedule: {
     id: string;
@@ -316,6 +342,7 @@ export type AttendanceTimesheetDay = {
   attendanceStatus: AttendanceDayStatus;
   configurationIssue: 'MISSING_POLICY' | 'MISSING_SCHEDULE' | null;
   unexcusedAbsenceFraction: number;
+  violationEvaluation: AttendanceViolationEvaluation;
   leave: {
     requests: LeaveRequest[];
     approvedFraction: number;
@@ -346,6 +373,11 @@ export type AttendanceTimesheetMonth = {
   unexcusedAbsenceDays: number;
   incompleteDays: number;
   configurationIssueDays: number;
+  violationDays: number;
+  lateViolationDays: number;
+  earlyLeaveViolationDays: number;
+  missingAttendanceViolationDays: number;
+  unexcusedAbsenceViolationDays: number;
   missingDays: number;
   actualMinutes: number;
   countedMinutes: number;
