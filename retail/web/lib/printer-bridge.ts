@@ -264,7 +264,7 @@ export function buildSalesOrderPrintPayload(input: {
   warehouse?: string | null;
   date?: string | null;
   visibleFields: Set<string>;
-  lines: Array<{ itemName: string; sku: string; quantity: string; unitCode: string; unitPrice: string; lineTotal: string }>;
+  lines: Array<{ itemName: string; sku: string; quantity: string; unitCode: string; unitName?: string | null; unitPrice: string; lineTotal: string }>;
   total: string;
 }): RetailPrintPayload {
   const columns = [
@@ -279,7 +279,7 @@ export function buildSalesOrderPrintPayload(input: {
     ...(input.visibleFields.has('line_no') ? [String(index + 1)] : []),
     input.visibleFields.has('line_sku') ? `${line.itemName}\n${line.sku}` : line.itemName,
     ...(input.visibleFields.has('line_quantity') ? [line.quantity] : []),
-    line.unitCode,
+    line.unitName?.trim() || line.unitCode,
     ...(input.visibleFields.has('line_unit_price') ? [line.unitPrice] : []),
     ...(input.visibleFields.has('line_total') ? [line.lineTotal] : []),
   ]) : [];

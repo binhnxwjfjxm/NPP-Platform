@@ -94,6 +94,9 @@ test('direct print dùng payload chứng từ chuẩn hóa và fallback hệ th�
 
   assert.match(bridge, /documentType: 'SALES_ORDER' \| 'PRINTER_TEST'/);
   assert.match(bridge, /buildSalesOrderPrintPayload/);
+  assert.match(bridge, /unitName\?: string \| null/);
+  assert.match(bridge, /line\.unitName\?\.trim\(\) \|\| line\.unitCode/);
+  assert.match(workspace, /unitName: line\.unitName/);
   assert.match(bridge, /safeToFallback/);
   assert.match(workspace, /reason instanceof RetailPrinterError && reason\.safeToFallback/);
   assert.match(workspace, /printBySystem\(settings\.paper\)/);

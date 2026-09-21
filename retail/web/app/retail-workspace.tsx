@@ -23,6 +23,7 @@ type Product = {
     sku: string;
     barcode?: string | null;
     unitCode: string;
+    unitName: string;
     allowsFractional: boolean | null;
 };
 type OrderLine = {
@@ -31,6 +32,7 @@ type OrderLine = {
     sku: string;
     itemName: string;
     unitCode: string;
+    unitName: string;
     quantity: string;
     unitPrice: string;
     lineTotal: string;
@@ -191,7 +193,7 @@ const PRINT_PAPER_STORAGE_KEY = 'retail.print.paper';
 const PRINT_TEMPLATE_STORAGE_KEY = 'retail.print.template';
 const STOCK_ISSUED_FULFILLMENT_STATUSES = new Set(['partially_issued', 'issued', 'partially_fulfilled', 'fulfilled']);
 const linesOf = (order: Order | null) => order?.versions?.find((item) => item.versionNumber === order.currentVersionNumber)?.lines ?? order?.versions?.find((item) => item.status === 'draft')?.lines ?? order?.versions?.[0]?.lines ?? [];
-const cartFromOrder = (order: Order): CartLine[] => linesOf(order).map((line) => ({ id: line.variantId, productCode: line.sku, imageKey: null, productName: line.itemName, sku: line.sku, unitCode: line.unitCode, allowsFractional: null, quantity: line.quantity, taxMode: line.taxMode, taxRate: line.taxRate }));
+const cartFromOrder = (order: Order): CartLine[] => linesOf(order).map((line) => ({ id: line.variantId, productCode: line.sku, imageKey: null, productName: line.itemName, sku: line.sku, unitCode: line.unitCode, unitName: line.unitName, allowsFractional: null, quantity: line.quantity, taxMode: line.taxMode, taxRate: line.taxRate }));
 const manualPricesFromOrder = (order: Order): Record<string, string> => Object.fromEntries(linesOf(order).filter((line) => line.priceSource === 'MANUAL_OVERRIDE').map((line) => [line.variantId, normalizeVndInput(line.unitPrice)]));
 async function api<T>(path: string, init?: RequestInit) {
     const response = await fetch(path, { cache: 'no-store', ...init, headers: { Accept: 'application/json', ...(init?.headers ?? {}) } });
@@ -867,6 +869,7 @@ export default function RetailWorkspace() {
                 sku: line.sku,
                 quantity: formatQuantity(line.quantity),
                 unitCode: line.unitCode,
+                unitName: line.unitName,
                 unitPrice: money.format(Number(line.unitPrice)),
                 lineTotal: money.format(Number(line.lineTotal)),
             })),
