@@ -719,44 +719,14 @@ async function handleLeaveTypes(req, res, context, method) {
   });
 }
 
-async function handleLeaveTypeUpdate(req, res, context, options = {}) {
+async function handleLeaveTypeUpdate(req, res, context) {
   const parsed = await parsePayload(req, res, context);
   if (!parsed.ok) return;
   const payload = parsed.payload;
-  const command = new URL('http://localhost' + req.url).searchParams.get('operation');
-  const balanceEntry = options.balanceEntry ?? (command === 'balance-entry' || payload?.operation === 'balance-entry');
   await runIdempotentMutation(req, res, context, {
-    route: balanceEntry ? '/api/workforce/leave/balances/entries' : '/api/workforce/leave-types/update',
+    route: '/api/workforce/leave-types/update',
     payload,
-    successStatus: balanceEntry ? 201 : 200,
     mutate: async (client) => {
-      if (balanceEntry) {
-        const result = await leaveManagementService.postLeaveBalanceEntry(client, {
-          requestContext: context.requestContext,
-          payload,
-          companyScope: isCompanyScope(context.requestContext),
-          branchIds: [...(context.requestContext.scopes.branchIds ?? [])],
-        });
-        if (!result.ok) return result;
-        return {
-          ok: true,
-          data: result.entry,
-          audit: {
-            requestContext: context.requestContext,
-            action: 'post-leave-balance-entry',
-            resourceType: 'leave-balance-entry',
-            resourceId: result.entry.id,
-            beforeData: null,
-            afterData: result.entry,
-            metadata: {
-              employeeId: result.entry.employee_id,
-              leaveTypeId: result.entry.leave_type_id,
-              entryType: result.entry.entry_type,
-              effectiveDate: result.entry.effective_date,
-            },
-          },
-        };
-      }
       const result = await leaveManagementService.updateLeaveType(client, {
         installationId: context.requestContext.installationId,
         payload,
