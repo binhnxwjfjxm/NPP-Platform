@@ -168,6 +168,16 @@ export function upsertWorkSchedule<T>(requestId: string, body: unknown, idempote
   });
 }
 
+export function getSchedulePlanning<T>(requestId: string): Promise<T> {
+  return requestCore<T>({ path: '/schedule-planning', method: 'GET', requestId });
+}
+export function mutateSchedulePlanning<T>(requestId: string, body: unknown, idempotencyKey?: string): Promise<T> {
+  return requestCore<T>({
+    path: '/schedule-planning', method: 'POST', requestId, body,
+    idempotencyKey: mutationKey(idempotencyKey, 'schedule-planning-save'),
+  });
+}
+
 
 export function getAttendanceTimesheet<T>(requestId: string, searchParams: URLSearchParams): Promise<T> {
   return requestCore<T>({ path: '/attendance/timesheet', method: 'GET', requestId, searchParams });

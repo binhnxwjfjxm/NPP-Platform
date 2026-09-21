@@ -7,6 +7,7 @@ import shellStyles from '../../components/app-shell.module.css';
 import styles from '../../organization/organization.module.css';
 import type { Employee } from '../../../lib/employee-types';
 import type { WorkPolicy, WorkSchedule } from '../../../lib/workforce-types';
+import SchedulePlanningPanel from './schedule-planning-panel';
 
 type ApiEnvelope<T> = { data?: T; error?: { message?: string } };
 type Attempt = { payload: string; key: string } | null;
@@ -227,7 +228,7 @@ export default function WorkScheduleWorkspace({
                   <tr key={schedule.id}>
                     <td>{schedule.work_date}</td>
                     <td><strong>{schedule.employee_code} · {schedule.employee_name}</strong></td>
-                    <td>{schedule.policy_name || 'Chưa xác định'}{schedule.policy_version ? ` · bản ${schedule.policy_version}` : ''}</td>
+                    <td>{schedule.policy_name || 'Chưa xác định'}</td>
                     <td>{schedule.schedule_kind === 'WORK' ? 'Ngày làm việc' : 'Ngày nghỉ'}</td>
                     <td>{dateTimeLabel(schedule.scheduled_start_at, schedule.policy_timezone)}</td>
                     <td>{dateTimeLabel(schedule.scheduled_end_at, schedule.policy_timezone)}</td>
@@ -241,6 +242,8 @@ export default function WorkScheduleWorkspace({
           </div>
         </section>
 
+        <SchedulePlanningPanel employees={initialEmployees} onSchedulesChanged={() => void reload()} />
+
         {draft ? (
           <div className={styles.modalBackdrop} role="presentation" onClick={() => setDraft(null)}>
             <div className={styles.modal} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
@@ -248,7 +251,7 @@ export default function WorkScheduleWorkspace({
               <form className={styles.form} onSubmit={(event) => void submit(event)}>
                 <label>Nhân sự<select value={draft.employeeId} onChange={(event) => setDraft((current) => current ? ({ ...current, employeeId: event.target.value }) : current)} disabled={Boolean(draft.expectedUpdatedAt)} required>{activeEmployees.map((employee) => <option key={employee.id} value={employee.id}>{employee.code} · {employee.full_name}</option>)}</select></label>
                 <label>Ngày làm việc<input type="date" min={tomorrowDate()} value={draft.workDate} onChange={(event) => setDraft((current) => current ? ({ ...current, workDate: event.target.value }) : current)} disabled={Boolean(draft.expectedUpdatedAt)} required /></label>
-                <label>Chính sách<select value={draft.workPolicyId} onChange={(event) => setDraft((current) => current ? ({ ...current, workPolicyId: event.target.value }) : current)} required>{activePolicies.map((policy) => <option key={policy.id} value={policy.id}>{policy.code} · {policy.name} · bản {policy.version}</option>)}</select></label>
+                <label>Chính sách<select value={draft.workPolicyId} onChange={(event) => setDraft((current) => current ? ({ ...current, workPolicyId: event.target.value }) : current)} required>{activePolicies.map((policy) => <option key={policy.id} value={policy.id}>{policy.code} · {policy.name}</option>)}</select></label>
                 <label>Trạng thái<select value={draft.scheduleKind} onChange={(event) => setDraft((current) => current ? ({ ...current, scheduleKind: event.target.value as 'WORK' | 'OFF' }) : current)}><option value="WORK">Ngày làm việc</option><option value="OFF">Ngày nghỉ</option></select></label>
                 {draft.scheduleKind === 'WORK' ? <><label>Bắt đầu<input type="datetime-local" value={draft.startLocal} onChange={(event) => setDraft((current) => current ? ({ ...current, startLocal: event.target.value }) : current)} required /></label><label>Kết thúc<input type="datetime-local" value={draft.endLocal} onChange={(event) => setDraft((current) => current ? ({ ...current, endLocal: event.target.value }) : current)} required /></label></> : null}
                 <label>Lý do xếp / điều chỉnh lịch<input value={draft.overrideReason} onChange={(event) => setDraft((current) => current ? ({ ...current, overrideReason: event.target.value }) : current)} maxLength={512} required placeholder="Ví dụ: đổi ca theo kế hoạch tuần" /></label>

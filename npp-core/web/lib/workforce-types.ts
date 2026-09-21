@@ -92,6 +92,9 @@ export type WorkSchedule = {
   scheduled_end_at: string | null;
   source: 'POLICY' | 'OVERRIDE';
   override_reason: string | null;
+  shift_template_id: string | null;
+  week_template_id: string | null;
+  company_calendar_day_id: string | null;
   created_at: string;
   updated_at: string;
   created_by: string;
@@ -105,6 +108,81 @@ export type WorkSchedule = {
   policy_timezone: string | null;
 };
 
+
+
+export type WorkShiftTemplate = {
+  id: string;
+  installation_id: string;
+  code: string;
+  name: string;
+  start_time: string;
+  end_time: string;
+  break_minutes: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  created_by: string;
+  updated_by: string;
+};
+
+export type WorkWeekTemplateDay = {
+  id: string;
+  installation_id: string;
+  week_template_id: string;
+  weekday: number;
+  schedule_kind: 'WORK' | 'OFF';
+  shift_template_id: string | null;
+  shift_code: string | null;
+  shift_name: string | null;
+  shift_start_time: string | null;
+  shift_end_time: string | null;
+  shift_break_minutes: number | null;
+};
+
+export type WorkWeekTemplate = {
+  id: string;
+  installation_id: string;
+  code: string;
+  name: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  created_by: string;
+  updated_by: string;
+  days: WorkWeekTemplateDay[];
+};
+
+export type CompanyCalendarDay = {
+  id: string;
+  installation_id: string;
+  calendar_date: string;
+  calendar_kind: 'PUBLIC_HOLIDAY' | 'COMPANY_DAY_OFF';
+  name: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  created_by: string;
+  updated_by: string;
+};
+
+export type SchedulePlanningCatalog = {
+  shiftTemplates: WorkShiftTemplate[];
+  weekTemplates: WorkWeekTemplate[];
+  calendarDays: CompanyCalendarDay[];
+};
+
+export type ScheduleBulkResult = {
+  requestedCount: number;
+  affectedCount: number;
+  skippedOverrides: number;
+  employeeCount: number;
+  fromDate?: string;
+  toDate?: string;
+  sourceFrom?: string;
+  sourceTo?: string;
+  targetFrom?: string;
+  targetTo?: string;
+};
 
 export type AttendancePoint = {
   id: string;

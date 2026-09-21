@@ -4,6 +4,7 @@ const DAY_COLUMNS = `c.employee_id, c.employee_code, c.employee_name,
   s.id AS schedule_id, s.work_policy_id AS schedule_work_policy_id,
   s.schedule_kind, s.scheduled_start_at, s.scheduled_end_at,
   s.source AS schedule_source, s.override_reason,
+  cal.id AS company_calendar_day_id, cal.calendar_kind, cal.name AS company_calendar_day_name,
   assigned.work_policy_id AS assigned_work_policy_id,
   p.id AS policy_id, p.code AS policy_code, p.version AS policy_version,
   p.name AS policy_name, p.time_mode AS policy_time_mode,
@@ -21,6 +22,10 @@ const DAY_JOINS = `
     ON s.installation_id = c.installation_id
    AND s.employee_id = c.employee_id
    AND s.work_date = c.work_date_date
+  LEFT JOIN shared.company_calendar_days cal
+    ON cal.installation_id = c.installation_id
+   AND cal.calendar_date = c.work_date_date
+   AND cal.is_active = true
   LEFT JOIN LATERAL (
     SELECT a.work_policy_id
       FROM shared.employee_work_policy_assignments a
