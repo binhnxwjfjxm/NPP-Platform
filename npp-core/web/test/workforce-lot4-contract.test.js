@@ -32,12 +32,9 @@ test('Issue #1110 Lô 4 renders daily and monthly timesheets with office languag
 
   assert.match(workspace, /title="Bảng công"/);
   assert.match(workspace, /Theo ngày/);
-  assert.match(workspace, /Công theo ngày/);
-  assert.match(workspace, /Mỗi nhân sự một hàng/);
   assert.match(workspace, /Xem từng ngày/);
   assert.match(workspace, /view: nextView === 'daily' \? 'employee' : 'monthly'/);
   assert.match(workspace, /Theo tháng/);
-  assert.match(workspace, /Bảng công 31 ngày/);
   assert.match(workspace, /Array\.from\(\{ length: 31 \}/);
   assert.match(workspace, /matrixSaturday/);
   assert.match(workspace, /matrixSunday/);
@@ -50,7 +47,7 @@ test('Issue #1110 Lô 4 renders daily and monthly timesheets with office languag
   assert.match(workspace, /Thiếu chấm công/);
   assert.match(workspace, /Nguồn dữ liệu/);
   assert.match(workspace, /Chi tiết sự kiện/);
-  assert.match(workspace, /chưa phải dữ liệu tính lương/);
+  assert.doesNotMatch(workspace, /Bảng công tổng hợp từ lịch làm việc|chưa phải dữ liệu tính lương|Mỗi nhân sự một hàng|Công theo ngày|Bảng công 31 ngày/);
   assert.doesNotMatch(workspace, /Idempotency-Key|createIdempotencyKey|method:\s*'POST'/);
 });
 
@@ -65,4 +62,33 @@ test('Issue #1110 Lô 4 uses bounded pagination instead of loading the full Côn
   assert.match(workspace, /Trang trước/);
   assert.match(workspace, /Trang sau/);
   assert.match(workspace, /Tối đa 93 ngày mỗi lần xem/);
+});
+
+
+test('Workforce cards stay compact and Bảng công scrolls only inside the table', async () => {
+  const [sharedCss, timesheetCss, timesheet] = await Promise.all([
+    source('app/organization/organization.module.css'),
+    source('app/workforce/timesheet/attendance-timesheet.module.css'),
+    source('app/workforce/timesheet/attendance-timesheet-workspace.tsx'),
+  ]);
+
+  for (const pageId of [
+    'employees-page',
+    'work-policies-page',
+    'attendance-page',
+    'workforce-leave-page',
+    'attendance-adjustment-page',
+    'attendance-violation-page',
+  ]) {
+    assert.match(sharedCss, new RegExp('data-testid="' + pageId + '"'));
+  }
+  assert.match(sharedCss, /repeat\(auto-fit, minmax\(160px, 1fr\)\)/);
+
+  assert.match(timesheet, /timesheetPage/);
+  assert.match(timesheet, /timesheetTopbar/);
+  assert.match(timesheet, /compactToolbar/);
+  assert.match(timesheet, /timesheetTableSection/);
+  assert.match(timesheet, /tableViewport/);
+  assert.match(timesheetCss, /\.timesheetPage[\s\S]*overflow:\s*hidden/);
+  assert.match(timesheetCss, /\.tableViewport[\s\S]*overflow:\s*auto/);
 });

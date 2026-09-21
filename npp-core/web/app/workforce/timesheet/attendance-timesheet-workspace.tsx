@@ -367,34 +367,32 @@ export default function AttendanceTimesheetWorkspace({
       kicker="Nhân sự"
       actions={actions}
     >
-      <section className={styles.page} data-testid="attendance-timesheet-page">
+      <section className={`${styles.page} ${localStyles.timesheetPage}`} data-testid="attendance-timesheet-page">
         {error ? <div className={`${styles.banner} ${styles.bannerError}`} role="status">{error}</div> : null}
 
-        <section className={`${styles.summaryGrid} ${localStyles.compactSummaryGrid}`}>
-          <article className={styles.summaryCard}>
-            <span>Kỳ đang xem</span>
-            <strong>{dateLabel(from)} – {dateLabel(to)}</strong>
-            <small>Tối đa 93 ngày mỗi lần xem</small>
-          </article>
-          <article className={styles.summaryCard}>
-            <span>Phạm vi</span>
-            <strong>
-              {data?.scope.selfOnly
-                ? 'Bản thân'
-                : data?.scope.companyScope
-                  ? 'Toàn Công Ty'
-                  : `${data?.scope.branches.length ?? 0} chi nhánh`}
-            </strong>
-            <small>Dữ liệu ngoài phạm vi được cấp không được hiển thị</small>
-          </article>
-          <article className={styles.summaryCard}>
-            <span>Số nhân sự</span>
-            <strong>{total}</strong>
-            <small>{view === 'daily' ? 'Mỗi nhân sự một hàng' : 'Theo nhân sự trong tháng'}</small>
-          </article>
-        </section>
+        <div className={localStyles.timesheetTopbar}>
+          <section className={`${styles.summaryGrid} ${localStyles.compactSummaryGrid}`} aria-label="Tóm tắt Bảng công">
+            <article className={styles.summaryCard} title="Tối đa 93 ngày mỗi lần xem">
+              <span>Kỳ đang xem</span>
+              <strong>{dateLabel(from)} – {dateLabel(to)}</strong>
+            </article>
+            <article className={styles.summaryCard}>
+              <span>Phạm vi</span>
+              <strong>
+                {data?.scope.selfOnly
+                  ? 'Bản thân'
+                  : data?.scope.companyScope
+                    ? 'Toàn Công Ty'
+                    : `${data?.scope.branches.length ?? 0} chi nhánh`}
+              </strong>
+            </article>
+            <article className={styles.summaryCard}>
+              <span>Số nhân sự</span>
+              <strong>{total}</strong>
+            </article>
+          </section>
 
-        <section className={styles.toolbar}>
+          <section className={`${styles.toolbar} ${localStyles.compactToolbar}`}>
           <div className={localStyles.viewSwitch} aria-label="Chế độ xem bảng công">
             <button
               type="button"
@@ -462,24 +460,12 @@ export default function AttendanceTimesheetWorkspace({
               {busy ? 'Đang tải…' : 'Xem bảng công'}
             </button>
           </div>
-        </section>
-
-        <div className={styles.banner} role="note">
-          Bảng công tổng hợp từ lịch làm việc, đơn nghỉ đã duyệt/chờ duyệt, chấm công và điều chỉnh công.
-          Nghỉ theo lịch, nghỉ được duyệt, vắng không phép và thiếu chấm công là các trạng thái khác nhau. Đây chưa phải dữ liệu tính lương.
+          </section>
         </div>
 
         {view === 'daily' ? (
-          <section className={styles.tableSection}>
-            <div className={styles.sectionHeader}>
-              <div>
-                <p className={styles.panelKicker}>Theo ngày</p>
-                <h2>Công theo ngày</h2>
-                <small>Mỗi nhân sự một hàng. Bấm vào nhân sự để xem toàn bộ ngày công trong kỳ.</small>
-              </div>
-              <span className={styles.panelChip}>{total} nhân sự</span>
-            </div>
-            <div className={styles.tableWrap}>
+          <section className={`${styles.tableSection} ${localStyles.timesheetTableSection}`}>
+            <div className={`${styles.tableWrap} ${localStyles.tableViewport}`}>
               <table className={`${styles.table} ${localStyles.employeeSummaryTable}`} data-testid="attendance-timesheet-daily-table">
                 <thead>
                   <tr>
@@ -532,15 +518,7 @@ export default function AttendanceTimesheetWorkspace({
             </div>
           </section>
         ) : (
-          <section className={styles.tableSection}>
-            <div className={styles.sectionHeader}>
-              <div>
-                <p className={styles.panelKicker}>Theo tháng</p>
-                <h2>Bảng công 31 ngày</h2>
-                <small>Bấm vào từng ngày để xem giờ vào, giờ ra và nguồn chấm công.</small>
-              </div>
-              <span className={styles.panelChip}>{total} nhân sự</span>
-            </div>
+          <section className={`${styles.tableSection} ${localStyles.timesheetTableSection}`}>
             <div className={localStyles.matrixLegend} aria-label="Chú thích bảng công">
               <span><strong>✓</strong> Đủ</span>
               <span><strong>Trễ/Sớm</strong> Có sai lệch giờ</span>
@@ -550,7 +528,7 @@ export default function AttendanceTimesheetWorkspace({
               <span><strong>Phép</strong> Nghỉ đã được duyệt</span>
               <span><strong>Chờ</strong> Đơn nghỉ đang chờ duyệt</span>
             </div>
-            <div className={localStyles.matrixWrap}>
+            <div className={`${localStyles.matrixWrap} ${localStyles.tableViewport}`}>
               <table className={localStyles.matrixTable} data-testid="attendance-timesheet-monthly-table">
                 <thead>
                   <tr>
