@@ -334,6 +334,59 @@ export default function LeaveWorkspace({
     } finally { setBusy(false); }
   }
 
+  async function viewBalanceEmployee(employeeId: string, leaveTypeId?: string) {
+    if (!employeeId) return;
+    setBusy(true); setError(null); setNotice(null);
+    try {
+      const params = new URLSearchParams({ from, to, limit: '50', offset: '0', employeeId });
+      if (status) params.set('status', status);
+      if (branchId) params.set('branchId', branchId);
+      const next = await requestJson<LeaveDataWithBalance>('/api/workforce/leave/requests?' + params.toString());
+      setData(next);
+      setBalanceEmployeeId(employeeId);
+      if (leaveTypeId) setBalanceLeaveTypeId(leaveTypeId);
+      await loadTypes();
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Không tải được sổ phép');
+    } finally { setBusy(false); }
+  }
+
+  async function saveBalanceEntry(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const days = Number(balanceDays);
+    if (!balanceEmployeeId) { setError('Vui lòng chọn nhân sự cần cập nhật sổ phép.'); return; }
+    if (!balanceLeaveTypeId) { setError('Vui lòng chọn chế độ nghỉ có theo dõi số dư.'); return; }
+    if (!balanceEffectiveDate) { setError('Vui lòng chọn ngày hiệu lực.'); return; }
+    if (!Number.isFinite(days) || days === 0) { setError('Số ngày phải khác 0.'); return; }
+    if (balanceEntryType !== 'ADJUSTMENT' && days < 0) { setError('Phát sinh này phải nhập số ngày lớn hơn 0.'); return; }
+    if (!balanceReason.trim()) { setError('Vui lòng nhập lý do cập nhật sổ phép.'); return; }
+    const payload = {
+      operation: 'balance-entry',
+      employeeId: balanceEmployeeId,
+      leaveTypeId: balanceLeaveTypeId,
+      entryType: balanceEntryType,
+      days,
+      effectiveDate: balanceEffectiveDate,
+      reason: balanceReason.trim(),
+    };
+    const key = stableKey(balanceAttempt, 'web-leave-balance-entry', payload);
+    setBusy(true); setError(null); setNotice(null);
+    try {
+      await requestJson<unknown>('/api/workforce/leave-types/update', {
+        method: 'POST',
+        headers: { 'Idempotency-Key': key },
+        body: JSON.stringify(payload),
+      });
+      balanceAttempt.current = null;
+      setBalanceDays('');
+      setBalanceReason('');
+      await viewBalanceEmployee(balanceEmployeeId, balanceLeaveTypeId);
+      setNotice('Sổ phép đã được cập nhật.');
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Không cập nhật được sổ phép');
+    } finally { setBusy(false); }
+  }
+
   function editType(type: LeaveType) {
     const balance = type as LeaveType & LeaveTypeBalanceFields;
     setTypeForm({
