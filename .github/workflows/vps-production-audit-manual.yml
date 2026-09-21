@@ -24,7 +24,8 @@ jobs:
         github.event.comment.body == '/audit-vps-production' &&
         (
           github.actor == 'binhnxwjfjxm' ||
-          github.actor == 'khuongbinhinfo-a11y'
+          github.actor == 'khuongbinhinfo-a11y' ||
+          github.actor == 'gustavjung01'
         )
       )
     runs-on: ubuntu-latest

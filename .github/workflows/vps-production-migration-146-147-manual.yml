@@ -1,0 +1,295 @@
+name: VPS production DB migrations 146-147
+
+on:
+  workflow_dispatch:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  migrate-146-147:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.number == 5 &&
+        github.event.comment.body == '/migrate-vps-production-146-147' &&
+        contains(fromJSON('["binhnxwjfjxm","khuongbinhinfo-a11y","gustavjung01"]'), github.actor)
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    concurrency:
+      group: vps-production-db-migration
+      cancel-in-progress: false
+    env:
+      VPS_DB_HOST: ${{ vars.VPS_DB_HOST }}
+      VPS_SSH_USER: ${{ vars.VPS_SSH_USER }}
+
+    steps:
+      - name: Validate exact issue command
+        if: github.event_name == 'issue_comment'
+        shell: bash
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          test "$COMMENT_BODY" = '/migrate-vps-production-146-147'
+
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact origin/main SHA and migration contract
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          test "$(git rev-parse --is-shallow-repository)" = "false"
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          test -s database/migrations/shared/146_workforce_leave_absence.sql
+          test -s database/migrations/shared/147_workforce_violation_handling.sql
+          grep -q "146_workforce_leave_absence" npp-core/api/src/migrations/index.js
+          grep -q "147_workforce_violation_handling" npp-core/api/src/migrations/index.js
+          cat             database/migrations/shared/146_workforce_leave_absence.sql             database/migrations/shared/147_workforce_violation_handling.sql             > "$RUNNER_TEMP/workforce-146-147.sql"
+          test -s "$RUNNER_TEMP/workforce-146-147.sql"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare DB SSH credential
+        id: ssh
+        shell: bash
+        env:
+          VPS_DB_SSH_KEY: ${{ secrets.VPS_DB_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$VPS_DB_HOST"
+          test -n "$VPS_SSH_USER"
+          test -n "$VPS_DB_SSH_KEY"
+          umask 077
+          key="$RUNNER_TEMP/vps-db.key"
+          printf '%s
+' "$VPS_DB_SSH_KEY" > "$key"
+          chmod 600 "$key"
+          ssh-keygen -y -f "$key" >/dev/null
+          known_hosts="$RUNNER_TEMP/vps-db-known-hosts"
+          ssh-keyscan -T 10 -H "$VPS_DB_HOST" > "$known_hosts" 2>/dev/null
+          test -s "$known_hosts"
+          chmod 600 "$known_hosts"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+          echo "known_hosts=$known_hosts" >> "$GITHUB_OUTPUT"
+
+      - name: Copy exact migrations to DB VPS
+        shell: bash
+        env:
+          SSH_KEY: ${{ steps.ssh.outputs.key }}
+          KNOWN_HOSTS: ${{ steps.ssh.outputs.known_hosts }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          scp             -i "$SSH_KEY"             -o BatchMode=yes             -o StrictHostKeyChecking=yes             -o UserKnownHostsFile="$KNOWN_HOSTS"             "$RUNNER_TEMP/workforce-146-147.sql"             "$VPS_SSH_USER$@VPS_DB_HOST:/tmp/npp-workforce-146-147-$SOURCE_SHA.sql"
+
+      - name: Fresh backup, restore rehearsal, migrate production and verify
+        id: migrate
+        shell: bash
+        env:
+          SSH_KEY: ${{ steps.ssh.outputs.key }}
+          KNOWN_HOSTS: ${{ steps.ssh.outputs.known_hosts }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/vps-production-migration-146-147.txt"
+          ssh             -i "$SSH_KEY"             -o BatchMode=yes             -o ConnectTimeout=10             -o ConnectionAttempts=1             -o StrictHostKeyChecking=yes             -o UserKnownHostsFile="$KNOWN_HOSTS"             "$VPS_SSH_USER$@VPS_DB_HOST"             "bash -s -- '$SOURCE_SHA' '$GITHUB_RUN_ID'" > "$out" <<'REMOTE'
+          set -euo pipefail
+          source_sha="$1"
+          run_id="$2"
+          db="npp_production"
+          predecessor_id="145_company_runtime_privileges"
+          migration_146="146_workforce_leave_absence"
+          migration_147="147_workforce_violation_handling"
+          runtime_role="npp_company_runtime"
+          migration_sql="/tmp/npp-workforce-146-147-${source_sha}.sql"
+          rehearsal="npp_migration_rehearsal_${run_id}"
+          backup_dir="/var/backups/npp/migrations"
+          backup_file="${backup_dir}/${source_sha}-${run_id}-146-147.dump"
+
+          sudo -n true
+          command -v psql >/dev/null
+          command -v pg_dump >/dev/null
+          command -v pg_restore >/dev/null
+          command -v createdb >/dev/null
+          command -v dropdb >/dev/null
+          test -s "$migration_sql"
+          chmod 0644 "$migration_sql"
+
+          cleanup() {
+            sudo -n -u postgres dropdb --if-exists "$rehearsal" >/dev/null 2>&1 || true
+            rm -f "$migration_sql" || true
+          }
+          trap cleanup EXIT
+
+          scalar() {
+            local target="$1"
+            local query="$2"
+            sudo -n -u postgres psql -XAt -d "$target" -c "$query"
+          }
+
+          protected_row_count() {
+            scalar "$1" "SELECT 'attendance_events='||count(*) FROM shared.attendance_events
+              UNION ALL SELECT 'employees='||count(*) FROM shared.employees
+              UNION ALL SELECT 'work_schedules='||count(*) FROM shared.work_schedules
+              ORDER BY 1"
+          }
+
+          workflow_row_count() {
+            local target="$1"
+            scalar "$target" "SELECT
+              COALESCE((SELECT count(*) FROM shared.leave_types),0)::text || ':' ||
+              COALESCE((SELECT count(*) FROM shared.leave_requests),0)::text || ':' ||
+              COALESCE((SELECT count(*) FROM shared.attendance_violation_cases),0)::text"
+          }
+
+          verify_target() {
+            local target="$1"
+            local registry tables permissions indexes runtime_role_count runtime_privileges
+            registry="$(scalar "$target" "SELECT count(*) FROM shared.schema_migrations WHERE id IN ('${migration_146}','${migration_147}')")"
+            tables="$(scalar "$target" "SELECT count(*) FROM (VALUES
+              (to_regclass('shared.leave_types')),
+              (to_regclass('shared.leave_requests')),
+              (to_regclass('shared.attendance_violation_cases'))
+            ) AS t(rel) WHERE rel IS NOT NULL")"
+            permissions="$(scalar "$target" "SELECT count(*) FROM shared.permission_catalog WHERE permission_key IN (
+              'core.leave.self.read','core.leave.self.request','core.leave.read','core.leave.approve','core.leave-type.manage',
+              'core.attendance-violation.self-explain','core.attendance-violation.resolve'
+            )")"
+            indexes="$(scalar "$target" "SELECT count(*) FROM pg_indexes WHERE schemaname='shared' AND indexname IN (
+              'leave_types_active_name_idx','leave_requests_employee_period_idx','leave_requests_status_period_idx',
+              'leave_requests_type_period_idx','attendance_violation_cases_employee_period_idx',
+              'attendance_violation_cases_status_period_idx'
+            )")"
+            runtime_role_count="$(scalar "$target" "SELECT count(*) FROM pg_roles WHERE rolname='${runtime_role}'")"
+            runtime_privileges="$(scalar "$target" "SELECT count(*) FROM (VALUES
+              ('shared.leave_types'::regclass),
+              ('shared.leave_requests'::regclass),
+              ('shared.attendance_violation_cases'::regclass)
+            ) AS t(rel) WHERE has_table_privilege('${runtime_role}', rel, 'SELECT,INSERT,UPDATE,DELETE')")"
+            test "$registry" = 2
+            test "$tables" = 3
+            test "$permissions" = 7
+            test "$indexes" = 6
+            test "$runtime_role_count" = 1
+            test "$runtime_privileges" = 3
+          }
+
+          apply_bundle() {
+            local target="$1"
+            sudo -n -u postgres psql -X -v ON_ERROR_STOP=1 -d "$target" >/dev/null <<SQL
+          BEGIN;
+          SET LOCAL lock_timeout = '5s';
+          SET LOCAL statement_timeout = '10min';
+          \i '$migration_sql'
+          INSERT INTO shared.schema_migrations (id)
+          VALUES ('$migration_146'), ('$migration_147')
+          ON CONFLICT (id) DO NOTHING;
+          COMMIT;
+          SQL
+          }
+
+          test "$(scalar postgres "SELECT count(*) FROM pg_database WHERE datname='${db}'")" = 1
+          test "$(scalar "$db" "SELECT count(*) FROM shared.schema_migrations WHERE id='${predecessor_id}'")" = 1
+          test "$(scalar "$db" "SELECT count(*) FROM pg_roles WHERE rolname='${runtime_role}'")" = 1
+
+          already="$(scalar "$db" "SELECT count(*) FROM shared.schema_migrations WHERE id IN ('${migration_146}','${migration_147}')")"
+          if [ "$already" = 2 ]; then
+            verify_target "$db"
+            echo "MIGRATIONS=146,147"
+            echo "SOURCE_SHA=$source_sha"
+            echo "PRODUCTION_MIGRATION=ALREADY_APPLIED"
+            echo "PRODUCTION_VERIFY=PASS"
+            exit 0
+          fi
+
+          db_bytes="$(scalar postgres "SELECT pg_database_size('${db}')")"
+          free_kb="$(df -Pk / | awk 'NR==2 {print $4}')"
+          free_bytes=$((free_kb * 1024))
+          required_bytes=$((db_bytes * 2))
+          test "$db_bytes" -gt 0
+          test "$free_bytes" -gt "$required_bytes"
+
+          sudo -n install -d -o postgres -g postgres -m 0700 "$backup_dir"
+          sudo -n -u postgres pg_dump -Fc -d "$db" -f "$backup_file"
+          backup_bytes="$(sudo -n stat -c '%s' "$backup_file")"
+          test "$backup_bytes" -gt 0
+
+          sudo -n -u postgres dropdb --if-exists "$rehearsal"
+          sudo -n -u postgres createdb --template=template0 "$rehearsal"
+          sudo -n -u postgres pg_restore --exit-on-error --no-owner --no-privileges --dbname="$rehearsal" "$backup_file"
+
+          rehearsal_protected_before="$(protected_row_count "$rehearsal")"
+          apply_bundle "$rehearsal"
+          verify_target "$rehearsal"
+          test "$(protected_row_count "$rehearsal")" = "$rehearsal_protected_before"
+          rehearsal_workflow_rows="$(workflow_row_count "$rehearsal")"
+          apply_bundle "$rehearsal"
+          verify_target "$rehearsal"
+          test "$(workflow_row_count "$rehearsal")" = "$rehearsal_workflow_rows"
+          sudo -n -u postgres dropdb "$rehearsal"
+
+          production_protected_before="$(protected_row_count "$db")"
+          apply_bundle "$db"
+          verify_target "$db"
+          production_protected_after="$(protected_row_count "$db")"
+          test "$production_protected_after" = "$production_protected_before"
+
+          production_workflow_rows="$(workflow_row_count "$db")"
+          apply_bundle "$db"
+          verify_target "$db"
+          test "$(workflow_row_count "$db")" = "$production_workflow_rows"
+          test "$(protected_row_count "$db")" = "$production_protected_after"
+
+          echo "MIGRATIONS=146,147"
+          echo "SOURCE_SHA=$source_sha"
+          echo "BACKUP_BYTES=$backup_bytes"
+          echo "BACKUP_LOCATION=DB_VPS_LOCAL"
+          echo "RESTORE_REHEARSAL=PASS"
+          echo "PROTECTED_ROWS_UNCHANGED=PASS"
+          echo "WORKFORCE_WORKFLOW_ROWS_STABLE=PASS"
+          echo "RUNTIME_PRIVILEGES=PASS"
+          echo "PRODUCTION_MIGRATION=APPLIED"
+          echo "PRODUCTION_RERUN_NOOP=PASS"
+          echo "PRODUCTION_VERIFY=PASS"
+          REMOTE
+
+          cat "$out"
+          echo "report=$out" >> "$GITHUB_OUTPUT"
+
+      - name: Publish sanitized migration evidence to Issue 958
+        if: always() && steps.migrate.outputs.report != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPORT_FILE: ${{ steps.migrate.outputs.report }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/migration-evidence.md"
+          {
+            echo "## VPS production migrations 146-147"
+            echo
+            echo "- Run ID: `$GITHUB_RUN_ID`"
+            echo "- Exact main SHA: `$SOURCE_SHA`"
+            echo '- Command: `/migrate-vps-production-146-147`'
+            echo "- Operation status: `${{ job.status }}`"
+            echo "- Secret values and database URLs are not included."
+            echo
+            echo '~~~text'
+            cat "$REPORT_FILE"
+            echo '~~~'
+          } > "$evidence"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/958/comments"             -f body="$(cat "$evidence")" >/dev/null
