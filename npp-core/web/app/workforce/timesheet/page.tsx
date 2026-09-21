@@ -32,10 +32,10 @@ export default async function AttendanceTimesheetPage() {
     initialData = await getAttendanceTimesheet<AttendanceTimesheetResponse>(
       resolveWorkforceRequestId(undefined),
       new URLSearchParams({
-        view: 'daily',
+        view: 'employee',
         from: period.from,
         to: period.to,
-        limit: '50',
+        limit: '100',
         offset: '0',
       }),
     );

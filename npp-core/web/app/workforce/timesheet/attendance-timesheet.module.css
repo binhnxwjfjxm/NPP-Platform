@@ -301,3 +301,163 @@ td.matrixSticky {
 .violationItem span {
   color: #667085;
 }
+
+
+.compactSummaryGrid .summaryCard {
+  min-height: 0;
+  padding: 10px 14px 9px;
+}
+
+.compactSummaryGrid .summaryCard strong {
+  margin: 4px 0 2px;
+  font-size: clamp(1.05rem, 1.6vw, 1.35rem);
+}
+
+.compactSummaryGrid .summaryCard small {
+  line-height: 1.25;
+}
+
+.employeeSummaryTable th,
+.employeeSummaryTable td {
+  vertical-align: middle;
+}
+
+.employeeSummaryTable tbody td {
+  min-height: 50px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.employeeNameButton {
+  display: grid;
+  gap: 2px;
+  min-width: 220px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.employeeNameButton:hover strong,
+.employeeNameButton:focus-visible strong {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.employeeNameButton small,
+.pendingText {
+  display: block;
+  color: #667085;
+  font-size: .72rem;
+  font-weight: 500;
+}
+
+.employeeOpenButton {
+  min-height: 30px;
+  padding: 5px 9px;
+  border: 1px solid #d8d0c9;
+  border-radius: 7px;
+  background: #fff;
+  color: #5b3425;
+  cursor: pointer;
+  font: inherit;
+  font-size: .75rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.employeeOpenButton:hover,
+.employeeOpenButton:focus-visible {
+  border-color: #b9aaa0;
+  background: #faf8f6;
+}
+
+.attentionCell {
+  color: #8a4f16;
+  font-weight: 700;
+}
+
+.employeeModal {
+  width: min(1180px, calc(100vw - 36px));
+}
+
+.employeeModalSummary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.employeeModalSummary > div {
+  display: grid;
+  gap: 3px;
+  padding: 9px 10px;
+  border: 1px solid var(--line, #dfe3e8);
+  border-radius: 8px;
+  background: #fbfaf9;
+}
+
+.employeeModalSummary span {
+  color: #667085;
+  font-size: .7rem;
+}
+
+.employeeDayTableWrap {
+  overflow: auto;
+  max-height: min(64vh, 680px);
+  border: 1px solid var(--line, #dfe3e8);
+  border-radius: 9px;
+}
+
+.employeeDayTable {
+  margin: 0;
+}
+
+.employeeDayTable th,
+.employeeDayTable td {
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.matrixDayHead {
+  padding-top: 4px !important;
+  padding-bottom: 4px !important;
+}
+
+.matrixDayHead span,
+.matrixDayHead small {
+  display: block;
+}
+
+.matrixDayHead small {
+  margin-top: 2px;
+  font-size: .58rem;
+  font-weight: 800;
+}
+
+.matrixSaturday {
+  background: #f2f6fb !important;
+}
+
+.matrixSunday {
+  background: #fbf2f2 !important;
+}
+
+td.matrixSaturday .matrixCellButton,
+td.matrixSunday .matrixCellButton {
+  background: rgba(255, 255, 255, .46);
+  border-radius: 6px;
+}
+
+@media (max-width: 860px) {
+  .employeeModalSummary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .employeeSummaryTable {
+    min-width: 980px;
+  }
+}

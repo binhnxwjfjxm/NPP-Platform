@@ -735,7 +735,7 @@ export async function listAttendanceTimesheet(client, {
 }) {
   const defaults = monthBounds(now);
   const view = text(rawView).toLowerCase() || 'daily';
-  if (!['daily', 'monthly'].includes(view)) {
+  if (!['daily', 'employee', 'monthly'].includes(view)) {
     return fail('INVALID_TIMESHEET_VIEW', 'Chế độ xem bảng công không hợp lệ');
   }
   const dateFrom = text(rawDateFrom) || defaults.from;
@@ -757,7 +757,7 @@ export async function listAttendanceTimesheet(client, {
   if (branchId && !validUuid(branchId)) return fail('BRANCH_NOT_FOUND', 'Chi nhánh không hợp lệ');
 
   const maxLimit = view === 'monthly' ? 25 : 100;
-  const defaultLimit = view === 'monthly' ? 20 : 50;
+  const defaultLimit = view === 'monthly' ? 20 : view === 'employee' ? 100 : 50;
   const limit = integer(rawLimit, 1, maxLimit, defaultLimit);
   const offset = integer(rawOffset, 0, 1_000_000, 0);
   if (Number.isNaN(limit) || Number.isNaN(offset)) {
@@ -772,7 +772,7 @@ export async function listAttendanceTimesheet(client, {
   let facts;
   let total;
   let employees = null;
-  if (view === 'monthly') {
+  if (view === 'monthly' || view === 'employee') {
     const page = await timesheetRepo.listEmployeePage(client, {
       installationId, employeeId, employeeQuery, branchId, branchIds, limit, offset,
     });
@@ -841,7 +841,7 @@ export async function listAttendanceTimesheet(client, {
     );
   });
 
-  const rows = view === 'monthly'
+  const rows = view === 'monthly' || view === 'employee'
     ? employees.map((employee) => summarizeAttendanceMonth(
       employee,
       days.filter((day) => day.employee.id === employee.id),

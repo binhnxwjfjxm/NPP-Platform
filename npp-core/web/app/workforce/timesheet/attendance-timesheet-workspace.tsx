@@ -224,6 +224,43 @@ function monthlyViolationSummary(row: AttendanceTimesheetMonth) {
   return parts.join(' · ');
 }
 
+function employeeAttentionSummary(row: AttendanceTimesheetMonth) {
+  const parts: string[] = [];
+  if (row.unexcusedAbsenceDays) parts.push(`Vắng ${dayCountLabel(row.unexcusedAbsenceDays)}`);
+  if (row.incompleteDays) parts.push(`Thiếu chấm ${dayCountLabel(row.incompleteDays)}`);
+  if (row.violationDays) parts.push(`Vi phạm ${row.violationDays}`);
+  if (row.pendingLeaveDays) parts.push(`Chờ nghỉ ${dayCountLabel(row.pendingLeaveDays)}`);
+  if (row.pendingAdjustmentDays) parts.push(`Chờ điều chỉnh ${row.pendingAdjustmentDays}`);
+  if (row.configurationIssueDays) parts.push(`Lỗi cấu hình ${row.configurationIssueDays}`);
+  return parts.join(' · ') || 'Không có';
+}
+
+function employeeLeaveSummary(row: AttendanceTimesheetMonth) {
+  const parts: string[] = [];
+  if (row.scheduledDaysOff) parts.push(`Nghỉ lịch ${dayCountLabel(row.scheduledDaysOff)}`);
+  if (row.approvedLeaveDays) parts.push(`Phép ${dayCountLabel(row.approvedLeaveDays)}`);
+  return parts.join(' · ') || '—';
+}
+
+function dayAttentionSummary(day: AttendanceTimesheetDay) {
+  if (day.configurationIssue === 'MISSING_POLICY') return 'Thiếu chính sách';
+  if (day.configurationIssue === 'MISSING_SCHEDULE') return 'Thiếu lịch làm';
+  if (day.unexcusedAbsenceFraction > 0) return `Vắng ${dayCountLabel(day.unexcusedAbsenceFraction)} ngày`;
+  if (day.lateMinutes && day.earlyLeaveMinutes) return `Trễ ${day.lateMinutes}′ · Sớm ${day.earlyLeaveMinutes}′`;
+  if (day.lateMinutes) return `Trễ ${day.lateMinutes}′`;
+  if (day.earlyLeaveMinutes) return `Sớm ${day.earlyLeaveMinutes}′`;
+  if (day.missingCheckIn) return 'Thiếu giờ vào';
+  if (day.missingCheckOut) return 'Thiếu giờ ra';
+  if (day.leave.pendingFraction) return 'Chờ duyệt nghỉ';
+  if (day.adjustment?.status === 'SUBMITTED') return 'Chờ điều chỉnh';
+  return '—';
+}
+
+function monthDayWeekday(value: string, day: number) {
+  const date = monthDayDate(value, day);
+  return date ? new Date(`${date}T00:00:00Z`).getUTCDay() : null;
+}
+
 export default function AttendanceTimesheetWorkspace({
   initialData,
   initialFrom,
@@ -236,7 +273,7 @@ export default function AttendanceTimesheetWorkspace({
   initialError: string | null;
 }) {
   const [data, setData] = useState(initialData);
-  const [view, setView] = useState<'daily' | 'monthly'>(initialData?.view ?? 'daily');
+  const [view, setView] = useState<'daily' | 'monthly'>('daily');
   const [from, setFrom] = useState(initialData?.period.from ?? initialFrom);
   const [to, setTo] = useState(initialData?.period.to ?? initialTo);
   const [month, setMonth] = useState((initialData?.period.from ?? initialFrom).slice(0, 7));
@@ -245,13 +282,12 @@ export default function AttendanceTimesheetWorkspace({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(initialError);
   const [selectedDay, setSelectedDay] = useState<AttendanceTimesheetDay | null>(null);
+  const [selectedEmployee, setSelectedEmployee] = useState<AttendanceTimesheetMonth | null>(null);
 
-  const dailyRows = useMemo(
-    () => data?.view === 'daily' ? data.rows as AttendanceTimesheetDay[] : [],
-    [data],
-  );
-  const monthlyRows = useMemo(
-    () => data?.view === 'monthly' ? data.rows as AttendanceTimesheetMonth[] : [],
+  const employeeRows = useMemo(
+    () => data && (data.view === 'employee' || data.view === 'monthly')
+      ? data.rows as AttendanceTimesheetMonth[]
+      : [],
     [data],
   );
 
@@ -265,10 +301,10 @@ export default function AttendanceTimesheetWorkspace({
     setError(null);
     try {
       const params = new URLSearchParams({
-        view: nextView,
+        view: nextView === 'daily' ? 'employee' : 'monthly',
         from: period.from,
         to: period.to,
-        limit: nextView === 'monthly' ? '20' : '50',
+        limit: nextView === 'daily' ? '100' : '20',
         offset: String(Math.max(0, nextOffset)),
       });
       if (employeeQuery.trim()) params.set('employeeQuery', employeeQuery.trim());
@@ -287,6 +323,7 @@ export default function AttendanceTimesheetWorkspace({
       setTo(payload.data.period.to);
       if (nextView === 'monthly') setMonth(payload.data.period.from.slice(0, 7));
       setSelectedDay(null);
+      setSelectedEmployee(null);
       if (branchId && !payload.data.scope.branches.some((branch) => branch.id === branchId)) {
         setBranchId('');
       }
@@ -318,7 +355,7 @@ export default function AttendanceTimesheetWorkspace({
     </button>
   );
 
-  const rowCount = data?.view === 'daily' ? dailyRows.length : monthlyRows.length;
+  const rowCount = employeeRows.length;
   const total = data?.pagination.total ?? 0;
   const rangeStart = total && data ? data.pagination.offset + 1 : 0;
   const rangeEnd = data ? Math.min(data.pagination.offset + rowCount, total) : 0;
@@ -333,7 +370,7 @@ export default function AttendanceTimesheetWorkspace({
       <section className={styles.page} data-testid="attendance-timesheet-page">
         {error ? <div className={`${styles.banner} ${styles.bannerError}`} role="status">{error}</div> : null}
 
-        <section className={styles.summaryGrid}>
+        <section className={`${styles.summaryGrid} ${localStyles.compactSummaryGrid}`}>
           <article className={styles.summaryCard}>
             <span>Kỳ đang xem</span>
             <strong>{dateLabel(from)} – {dateLabel(to)}</strong>
@@ -351,9 +388,9 @@ export default function AttendanceTimesheetWorkspace({
             <small>Dữ liệu ngoài phạm vi được cấp không được hiển thị</small>
           </article>
           <article className={styles.summaryCard}>
-            <span>Số dòng</span>
+            <span>Số nhân sự</span>
             <strong>{total}</strong>
-            <small>{view === 'daily' ? 'Theo ngày công' : 'Theo nhân sự trong kỳ'}</small>
+            <small>{view === 'daily' ? 'Mỗi nhân sự một hàng' : 'Theo nhân sự trong tháng'}</small>
           </article>
         </section>
 
@@ -432,78 +469,63 @@ export default function AttendanceTimesheetWorkspace({
           Nghỉ theo lịch, nghỉ được duyệt, vắng không phép và thiếu chấm công là các trạng thái khác nhau. Đây chưa phải dữ liệu tính lương.
         </div>
 
-        {data?.view === 'daily' ? (
+        {view === 'daily' ? (
           <section className={styles.tableSection}>
             <div className={styles.sectionHeader}>
-              <div><p className={styles.panelKicker}>Theo ngày</p><h2>Chi tiết ngày công</h2></div>
-              <span className={styles.panelChip}>{total} dòng</span>
+              <div>
+                <p className={styles.panelKicker}>Theo ngày</p>
+                <h2>Công theo ngày</h2>
+                <small>Mỗi nhân sự một hàng. Bấm vào nhân sự để xem toàn bộ ngày công trong kỳ.</small>
+              </div>
+              <span className={styles.panelChip}>{total} nhân sự</span>
             </div>
             <div className={styles.tableWrap}>
-              <table className={styles.table} data-testid="attendance-timesheet-daily-table">
+              <table className={`${styles.table} ${localStyles.employeeSummaryTable}`} data-testid="attendance-timesheet-daily-table">
                 <thead>
                   <tr>
-                    <th>Ngày</th><th>Nhân sự</th><th>Chi nhánh</th><th>Trạng thái</th>
-                    <th>Giờ vào</th><th>Giờ ra</th><th>Thực tế</th><th>Được tính</th>
-                    <th>Đi trễ</th><th>Về sớm</th><th>Thiếu / Vắng</th><th>Vi phạm</th><th>Nguồn dữ liệu</th><th>Kiểm soát</th><th>Chi tiết</th>
+                    <th>Nhân sự</th>
+                    <th>Ngày phải làm</th>
+                    <th>Ngày đủ công</th>
+                    <th>Nghỉ / phép</th>
+                    <th>Bất thường</th>
+                    <th>Giờ được tính</th>
+                    <th>Điều chỉnh</th>
+                    <th>Chi tiết</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {dailyRows.map((day) => (
-                    <tr key={`${day.employee.id}-${day.workDate}`}>
-                      <td>{dateLabel(day.workDate)}</td>
-                      <td><strong>{day.employee.code} · {day.employee.name}</strong></td>
-                      <td>{day.employee.branchName || 'Chưa gán chi nhánh'}</td>
-                      <td>{statusLabel(day)}</td>
-                      <td>{timeLabel(day.checkInAt, day.policy?.timezone)}</td>
-                      <td>{timeLabel(day.checkOutAt, day.policy?.timezone)}</td>
-                      <td>{minutesLabel(day.actualMinutes)}</td>
-                      <td>{minutesLabel(day.countedMinutes)}</td>
-                      <td>{minutesLabel(day.lateMinutes)}</td>
-                      <td>{minutesLabel(day.earlyLeaveMinutes)}</td>
-                      <td>{missingLabel(day)}</td>
-                      <td>{violationSummary(day)}</td>
-                      <td>{sourceSummary(day)}</td>
+                  {employeeRows.map((row) => (
+                    <tr key={row.employee.id}>
                       <td>
-                        <div className={localStyles.detailMeta}>
-                          {day.periodLock ? <strong>Đã khóa kỳ</strong> : <span>Kỳ đang mở</span>}
-                          {day.adjustment ? <span>{day.adjustment.status === 'SUBMITTED' ? 'Điều chỉnh: Chờ duyệt' : day.adjustment.status === 'APPROVED' ? 'Điều chỉnh: Đã duyệt' : 'Điều chỉnh: Từ chối'}</span> : <span>Chưa có điều chỉnh</span>}
-                          {day.leave.requests.length ? <span>Đơn nghỉ: {leaveSummary(day)}</span> : <span>Chưa có đơn nghỉ</span>}
-                          {data?.capabilities.canManage && (!day.periodLock || data?.capabilities.canLock) ? (
-                            <Link href={'/workforce/adjustments?employeeId=' + encodeURIComponent(day.employee.id) + '&workDate=' + day.workDate}>Điều chỉnh</Link>
-                          ) : !day.periodLock && data?.capabilities.canSubmitOwn ? (
-                            <Link href={'/workforce/adjustments?workDate=' + day.workDate}>Yêu cầu điều chỉnh</Link>
-                          ) : null}
-                        </div>
+                        <button
+                          type="button"
+                          className={localStyles.employeeNameButton}
+                          onClick={() => setSelectedEmployee(row)}
+                        >
+                          <strong>{row.employee.code} · {row.employee.name}</strong>
+                          <small>{row.employee.branchName || 'Chưa gán chi nhánh'}</small>
+                        </button>
+                      </td>
+                      <td>{dayCountLabel(row.workDays)}</td>
+                      <td>{dayCountLabel(row.completedDays)}</td>
+                      <td>{employeeLeaveSummary(row)}</td>
+                      <td className={row.violationDays || row.incompleteDays || row.unexcusedAbsenceDays || row.configurationIssueDays ? localStyles.attentionCell : ''}>
+                        {employeeAttentionSummary(row)}
+                      </td>
+                      <td>{minutesLabel(row.countedMinutes)}</td>
+                      <td>
+                        {row.adjustedDays ? `${row.adjustedDays} đã duyệt` : '—'}
+                        {row.pendingAdjustmentDays ? <small className={localStyles.pendingText}>{row.pendingAdjustmentDays} chờ duyệt</small> : null}
                       </td>
                       <td>
-                        <details className={localStyles.details}>
-                          <summary>Chi tiết sự kiện ({day.events.length})</summary>
-                          <div className={localStyles.detailBody}>
-                            <div className={localStyles.detailMeta}>
-                              <span>Lịch dự kiến: <strong>{timeLabel(day.expectedStartAt, day.policy?.timezone)} – {timeLabel(day.expectedEndAt, day.policy?.timezone)}</strong></span>
-                              <span>Phần phải làm: <strong>{requiredWorkLabel(day)}</strong></span>
-                              <span>Đơn nghỉ: <strong>{leaveSummary(day)}</strong></span>
-                              <span>Phần nghỉ: <strong>{leaveSegmentLabel(day)}</strong></span>
-                              <span>Chính sách: <strong>{day.policy ? `${day.policy.code} · ${day.policy.name} · bản ${day.policy.version}` : 'Chưa có'}</strong></span>
-                            </div>
-                            {day.events.map((event) => (
-                              <div className={localStyles.eventItem} key={event.id}>
-                                <div>
-                                  <strong>{event.event_type === 'CHECK_IN' ? 'Giờ vào' : 'Giờ ra'} · {SOURCE_LABEL[event.source]}</strong>
-                                  <small>{event.point_name || 'Không ghi nhận nơi chấm công'} · {validationLabel(event.validation_status)}</small>
-                                  {event.note ? <small>Ghi chú: {event.note}</small> : null}
-                                </div>
-                                <span>{dateTimeLabel(event.occurred_at, day.policy?.timezone)}</span>
-                              </div>
-                            ))}
-                            {!day.events.length ? <div className={styles.emptyState}>Ngày này chưa có sự kiện chấm công.</div> : null}
-                          </div>
-                        </details>
+                        <button type="button" className={localStyles.employeeOpenButton} onClick={() => setSelectedEmployee(row)}>
+                          Xem từng ngày
+                        </button>
                       </td>
                     </tr>
                   ))}
-                  {!dailyRows.length ? (
-                    <tr><td colSpan={15}><div className={styles.emptyState}>Không có dữ liệu bảng công trong kỳ đã chọn.</div></td></tr>
+                  {!employeeRows.length ? (
+                    <tr><td colSpan={8}><div className={styles.emptyState}>Không có nhân sự trong phạm vi và kỳ đã chọn.</div></td></tr>
                   ) : null}
                 </tbody>
               </table>
@@ -533,9 +555,20 @@ export default function AttendanceTimesheetWorkspace({
                 <thead>
                   <tr>
                     <th className={localStyles.matrixSticky}>Nhân sự</th>
-                    {Array.from({ length: 31 }, (_, index) => index + 1).map((dayNumber) => (
-                      <th className={localStyles.matrixDayHead} key={dayNumber}>{dayNumber}</th>
-                    ))}
+                    {Array.from({ length: 31 }, (_, index) => index + 1).map((dayNumber) => {
+                      const weekday = monthDayWeekday(month, dayNumber);
+                      const weekendClass = weekday === 6
+                        ? localStyles.matrixSaturday
+                        : weekday === 0
+                          ? localStyles.matrixSunday
+                          : '';
+                      return (
+                        <th className={`${localStyles.matrixDayHead} ${weekendClass}`} key={dayNumber}>
+                          <span>{dayNumber}</span>
+                          {weekday === 6 ? <small>T7</small> : weekday === 0 ? <small>CN</small> : null}
+                        </th>
+                      );
+                    })}
                     <th>Ngày làm đến nay</th>
                     <th>Ngày đủ</th>
                     <th>Nghỉ lịch</th>
@@ -553,7 +586,7 @@ export default function AttendanceTimesheetWorkspace({
                   </tr>
                 </thead>
                 <tbody>
-                  {monthlyRows.map((row) => {
+                  {employeeRows.map((row) => {
                     const dayMap = new Map(row.days.map((day) => [day.workDate, day]));
                     return (
                       <tr key={row.employee.id}>
@@ -565,7 +598,10 @@ export default function AttendanceTimesheetWorkspace({
                           const date = monthDayDate(month, dayNumber);
                           const day = date ? dayMap.get(date) : null;
                           return (
-                            <td className={localStyles.matrixDayCell} key={dayNumber}>
+                            <td
+                              className={`${localStyles.matrixDayCell} ${monthDayWeekday(month, dayNumber) === 6 ? localStyles.matrixSaturday : monthDayWeekday(month, dayNumber) === 0 ? localStyles.matrixSunday : ''}`}
+                              key={dayNumber}
+                            >
                               {!date ? (
                                 <span className={localStyles.matrixUnavailable}>—</span>
                               ) : day ? (
@@ -603,7 +639,7 @@ export default function AttendanceTimesheetWorkspace({
                       </tr>
                     );
                   })}
-                  {!monthlyRows.length ? (
+                  {!employeeRows.length ? (
                     <tr>
                       <td colSpan={46}><div className={styles.emptyState}>Không có nhân sự trong phạm vi và tháng đã chọn.</div></td>
                     </tr>
@@ -613,6 +649,61 @@ export default function AttendanceTimesheetWorkspace({
             </div>
           </section>
         )}
+
+        {selectedEmployee ? (
+          <div className={styles.modalBackdrop} role="presentation" onClick={() => setSelectedEmployee(null)}>
+            <div className={`${styles.modal} ${localStyles.employeeModal}`} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+              <div className={styles.modalHeader}>
+                <div>
+                  <p className={styles.panelKicker}>Công theo ngày</p>
+                  <h3>{selectedEmployee.employee.code} · {selectedEmployee.employee.name}</h3>
+                  <small>{selectedEmployee.employee.branchName || 'Chưa gán chi nhánh'} · {dateLabel(selectedEmployee.period.from)} – {dateLabel(selectedEmployee.period.to)}</small>
+                </div>
+                <button type="button" className={styles.modalClose} onClick={() => setSelectedEmployee(null)}>Đóng</button>
+              </div>
+
+              <div className={localStyles.employeeModalSummary}>
+                <div><span>Ngày phải làm</span><strong>{dayCountLabel(selectedEmployee.workDays)}</strong></div>
+                <div><span>Ngày đủ công</span><strong>{dayCountLabel(selectedEmployee.completedDays)}</strong></div>
+                <div><span>Nghỉ / phép</span><strong>{employeeLeaveSummary(selectedEmployee)}</strong></div>
+                <div><span>Giờ được tính</span><strong>{minutesLabel(selectedEmployee.countedMinutes)}</strong></div>
+              </div>
+
+              <div className={localStyles.employeeDayTableWrap}>
+                <table className={`${styles.table} ${localStyles.employeeDayTable}`}>
+                  <thead>
+                    <tr>
+                      <th>Ngày</th>
+                      <th>Trạng thái</th>
+                      <th>Lịch làm</th>
+                      <th>Vào – Ra</th>
+                      <th>Được tính</th>
+                      <th>Bất thường</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedEmployee.days.map((day) => (
+                      <tr key={day.workDate}>
+                        <td><strong>{dateLabel(day.workDate)}</strong></td>
+                        <td>{statusLabel(day)}</td>
+                        <td>{day.scheduledWorkDay ? `${timeLabel(day.expectedStartAt, day.policy?.timezone)} – ${timeLabel(day.expectedEndAt, day.policy?.timezone)}` : 'Ngày nghỉ'}</td>
+                        <td>{timeLabel(day.checkInAt, day.policy?.timezone)} → {timeLabel(day.checkOutAt, day.policy?.timezone)}</td>
+                        <td>{minutesLabel(day.countedMinutes)}</td>
+                        <td className={dayAttentionSummary(day) === '—' ? '' : localStyles.attentionCell}>{dayAttentionSummary(day)}</td>
+                        <td>
+                          <button type="button" className={localStyles.employeeOpenButton} onClick={() => setSelectedDay(day)}>
+                            Chi tiết
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         {selectedDay ? (
           <div className={styles.modalBackdrop} role="presentation" onClick={() => setSelectedDay(null)}>
@@ -647,11 +738,11 @@ export default function AttendanceTimesheetWorkspace({
                 {selectedDay.leave.requests.length ? <Link className={localStyles.inlineLink} href="/workforce/leave">Mở đơn nghỉ</Link> : null}
               </div>
               <div className={localStyles.dayDetailSection}>
-                <strong>Nguồn dữ liệu và kiểm soát</strong>
+                <strong>Kiểm soát · Nguồn dữ liệu</strong>
                 <span>{sourceSummary(selectedDay)}</span>
                 <span>{selectedDay.policy ? `Chính sách: ${selectedDay.policy.code} · ${selectedDay.policy.name} · bản ${selectedDay.policy.version}` : 'Chưa có chính sách phù hợp'}</span>
                 <span>{selectedDay.adjustment ? (selectedDay.adjustment.status === 'SUBMITTED' ? 'Điều chỉnh: Chờ duyệt' : selectedDay.adjustment.status === 'APPROVED' ? 'Điều chỉnh: Đã duyệt' : 'Điều chỉnh: Từ chối') : 'Chưa có điều chỉnh'}</span>
-                {selectedDay.periodLock ? <span>Kỳ công đã khóa</span> : <span>Kỳ công đang mở</span>}
+                {selectedDay.periodLock ? <span>Đã khóa kỳ công</span> : <span>Kỳ công đang mở</span>}
               </div>
               <div className={localStyles.dayDetailSection}>
                 <strong>Đánh giá vi phạm</strong>
@@ -675,6 +766,7 @@ export default function AttendanceTimesheetWorkspace({
                 {selectedDay.violationEvaluation.items.length ? <Link className={localStyles.inlineLink} href="/workforce/violations">Mở xử lý vi phạm</Link> : null}
               </div>
               <div className={localStyles.dayDetailEvents}>
+                <strong>Chi tiết sự kiện</strong>
                 {selectedDay.events.map((event) => (
                   <div className={localStyles.eventItem} key={event.id}>
                     <div>
