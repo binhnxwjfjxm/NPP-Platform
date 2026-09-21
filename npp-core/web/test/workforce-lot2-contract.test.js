@@ -59,3 +59,16 @@ test('Issue #1110 Lô 2 exposes employee policy history and future-only schedule
   assert.match(schedules, /expectedUpdatedAt/);
   assert.match(schedules, /zonedLocalToIso/);
 });
+
+
+test('Issue #1110 keeps effective-date UI comparisons on canonical calendar dates', async () => {
+  const [employees, policies] = await Promise.all([
+    source('app/workforce/employees/employee-workspace.tsx'),
+    source('app/workforce/policies/work-policy-workspace.tsx'),
+  ]);
+
+  assert.match(employees, /function effectiveDate/);
+  assert.match(employees, /bulkDraft\.effectiveFrom < policyEffectiveFrom/);
+  assert.match(employees, /dateLabel\(assignment\.effective_from\)/);
+  assert.match(policies, /dateLabel\(policy\.effective_from\)/);
+});
