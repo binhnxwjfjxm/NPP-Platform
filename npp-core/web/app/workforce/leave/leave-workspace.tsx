@@ -481,6 +481,8 @@ export default function LeaveWorkspace({
                   <label><input type="checkbox" checked={typeForm.allowsFullDay} onChange={(event) => setTypeForm((current) => ({ ...current, allowsFullDay: event.target.checked }))} />Cho phép cả ngày</label>
                   <label><input type="checkbox" checked={typeForm.allowsHalfDay} onChange={(event) => setTypeForm((current) => ({ ...current, allowsHalfDay: event.target.checked }))} />Cho phép nửa ngày</label>
                   <label><input type="checkbox" checked={typeForm.requiresAttachment} onChange={(event) => setTypeForm((current) => ({ ...current, requiresAttachment: event.target.checked }))} />Cần chứng từ</label>
+                  <label><input type="checkbox" checked={typeForm.tracksBalance} onChange={(event) => setTypeForm((current) => ({ ...current, tracksBalance: event.target.checked, allowNegativeBalance: event.target.checked ? current.allowNegativeBalance : false }))} />Theo dõi số dư phép</label>
+                  <label><input type="checkbox" checked={typeForm.allowNegativeBalance} disabled={!typeForm.tracksBalance} onChange={(event) => setTypeForm((current) => ({ ...current, allowNegativeBalance: event.target.checked }))} />Cho phép số dư âm</label>
                 </div>
                 {configWarning ? <div className={styles.warning} role="status">{configWarning}</div> : null}
                 <div className={styles.actions}><button type="submit" className={styles.primary} disabled={busy}>{typeForm.id ? 'Lưu thay đổi' : 'Thêm chế độ nghỉ'}</button>{typeForm.id ? <button type="button" className={styles.secondary} disabled={busy} onClick={() => setTypeForm(blankTypeForm)}>Hủy sửa</button> : null}</div>
