@@ -6,7 +6,7 @@ import { requireNppWorkforceSessionToken } from './internal-auth-client';
 
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 const REQUEST_TIMEOUT_MS = 8_000;
-const ALLOWED_QUERY_KEYS = new Set(['employeeId', 'employeeQuery', 'branchId', 'from', 'to', 'view', 'limit', 'offset']);
+const ALLOWED_QUERY_KEYS = new Set(['employeeId', 'employeeQuery', 'branchId', 'from', 'to', 'view', 'status', 'limit', 'offset']);
 
 interface CoreEnvelope<T> {
   data?: T;
@@ -162,6 +162,37 @@ export function upsertWorkSchedule<T>(requestId: string, body: unknown, idempote
 
 export function getAttendanceTimesheet<T>(requestId: string, searchParams: URLSearchParams): Promise<T> {
   return requestCore<T>({ path: '/attendance/timesheet', method: 'GET', requestId, searchParams });
+}
+
+export function listAttendanceAdjustments<T>(requestId: string, searchParams: URLSearchParams): Promise<T> {
+  return requestCore<T>({ path: '/attendance/adjustments', method: 'GET', requestId, searchParams });
+}
+export function submitAttendanceAdjustment<T>(requestId: string, body: unknown, idempotencyKey?: string): Promise<T> {
+  return requestCore<T>({
+    path: '/attendance/adjustments', method: 'POST', requestId, body,
+    idempotencyKey: mutationKey(idempotencyKey, 'attendance-adjustment-submit'),
+  });
+}
+export function reviewAttendanceAdjustment<T>(requestId: string, body: unknown, idempotencyKey?: string): Promise<T> {
+  return requestCore<T>({
+    path: '/attendance/adjustments/review', method: 'POST', requestId, body,
+    idempotencyKey: mutationKey(idempotencyKey, 'attendance-adjustment-review'),
+  });
+}
+export function directAttendanceAdjustment<T>(requestId: string, body: unknown, idempotencyKey?: string): Promise<T> {
+  return requestCore<T>({
+    path: '/attendance/adjustments/direct', method: 'POST', requestId, body,
+    idempotencyKey: mutationKey(idempotencyKey, 'attendance-adjustment-direct'),
+  });
+}
+export function listAttendancePeriodLocks<T>(requestId: string, searchParams: URLSearchParams): Promise<T> {
+  return requestCore<T>({ path: '/attendance/period-locks', method: 'GET', requestId, searchParams });
+}
+export function lockAttendancePeriod<T>(requestId: string, body: unknown, idempotencyKey?: string): Promise<T> {
+  return requestCore<T>({
+    path: '/attendance/period-locks', method: 'POST', requestId, body,
+    idempotencyKey: mutationKey(idempotencyKey, 'attendance-period-lock'),
+  });
 }
 
 export function getAttendanceToday<T>(requestId: string): Promise<T> {
