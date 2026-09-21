@@ -1,0 +1,82 @@
+.statusStack {
+  display: grid;
+  gap: 4px;
+}
+
+.statusStack small,
+.muted {
+  color: #667085;
+}
+
+.fact {
+  display: grid;
+  gap: 3px;
+  min-width: 210px;
+}
+
+.fact small {
+  color: #667085;
+}
+
+.actionStack {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 180px;
+}
+
+.detailBox {
+  display: grid;
+  gap: 6px;
+  min-width: 220px;
+}
+
+.detailBox small {
+  color: #667085;
+}
+
+.modalWide {
+  width: min(100%, 680px);
+}
+
+.readOnlyBox {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--line, #dfe3e8);
+  border-radius: 9px;
+  background: #f8f9fb;
+}
+
+.readOnlyBox span {
+  color: #667085;
+  font-size: .78rem;
+}
+
+.outcomeGroup {
+  display: grid;
+  gap: 8px;
+}
+
+.outcomeChoice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line, #dfe3e8);
+  border-radius: 9px;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.pagination span {
+  min-width: 100px;
+  text-align: center;
+  font-weight: 700;
+}
