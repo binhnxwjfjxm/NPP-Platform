@@ -465,7 +465,7 @@ export async function listLeaveBalances(client, {
             leave_type.name AS leave_type_name, leave_type.is_active,
             leave_type.allow_negative_balance,
             COALESCE(SUM(ledger.quantity_days) FILTER (WHERE ledger.effective_date <= $2::date), 0)::numeric AS balance_days,
-            MAX(ledger.effective_date) AS last_activity_date
+            MAX(ledger.effective_date) FILTER (WHERE ledger.effective_date <= $2::date) AS last_activity_date
        FROM shared.employees e
        JOIN LATERAL (
          SELECT employment.id
@@ -492,7 +492,16 @@ export async function listLeaveBalances(client, {
         AND branch.id = org_assignment.branch_id
        JOIN shared.leave_types leave_type
          ON leave_type.installation_id = e.installation_id
-        AND leave_type.tracks_balance = true
+        AND (
+          leave_type.tracks_balance = true
+          OR EXISTS (
+            SELECT 1
+              FROM shared.leave_balance_ledger history
+             WHERE history.installation_id = e.installation_id
+               AND history.employee_id = e.id
+               AND history.leave_type_id = leave_type.id
+          )
+        )
        LEFT JOIN shared.leave_balance_ledger ledger
          ON ledger.installation_id = e.installation_id
         AND ledger.employee_id = e.id
