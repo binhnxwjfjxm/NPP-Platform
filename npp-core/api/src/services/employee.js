@@ -1,8 +1,10 @@
 import * as employeeRepo from '../db/repositories/employee.js';
 import * as branchRepo from '../db/repositories/branch.js';
+import * as workforceRepo from '../db/repositories/workforce.js';
 
 const CODE_PATTERN = /^[A-Z0-9_-]{1,64}$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 function normalizeText(value) {
   return typeof value === 'string' ? value.trim() : '';
@@ -27,6 +29,21 @@ function validateEmail(value) {
 
 function validatePhone(value) {
   return !value || /^[0-9\s\-+()]{5,20}$/.test(value);
+}
+
+function validDate(value) {
+  if (typeof value !== 'string' || !DATE_PATTERN.test(value)) return false;
+  const parsed = new Date(value + 'T00:00:00Z');
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+function localDate(now = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(now);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
 }
 
 function normalizeDateTime(value) {
@@ -113,6 +130,31 @@ export async function createEmployee(client, { installationId, payload, createdB
   const validation = validateEmployeeInput(payload);
   if (!validation.ok) return validation;
 
+  const workPolicyId = normalizeText(payload?.workPolicyId) || null;
+  const policyEffectiveFrom = normalizeText(payload?.policyEffectiveFrom) || localDate();
+  let policy = null;
+  if (workPolicyId) {
+    if (!isValidUuid(workPolicyId)) {
+      return { ok: false, code: 'POLICY_NOT_FOUND', message: 'Chính sách làm việc không hợp lệ' };
+    }
+    if (!validDate(policyEffectiveFrom)) {
+      return { ok: false, code: 'INVALID_EFFECTIVE_DATE', message: 'Ngày áp dụng chính sách không hợp lệ' };
+    }
+    if (policyEffectiveFrom < localDate()) {
+      return { ok: false, code: 'RETROACTIVE_ASSIGNMENT_FORBIDDEN', message: 'Nhân sự mới không được gán chính sách lùi ngày' };
+    }
+    policy = await workforceRepo.getWorkPolicyById(client, { installationId, id: workPolicyId });
+    if (!policy || !policy.is_active) {
+      return { ok: false, code: 'POLICY_NOT_FOUND', message: 'Không tìm thấy chính sách làm việc đang hiệu lực' };
+    }
+    if (
+      String(policy.effective_from) > policyEffectiveFrom
+      || (policy.effective_to && String(policy.effective_to) < policyEffectiveFrom)
+    ) {
+      return { ok: false, code: 'POLICY_NOT_EFFECTIVE', message: 'Chính sách không có hiệu lực tại ngày bắt đầu đã chọn' };
+    }
+  }
+
   const existing = await employeeRepo.getEmployeeByCode(client, {
     installationId,
     code: validation.normalized.code,
@@ -141,7 +183,19 @@ export async function createEmployee(client, { installationId, payload, createdB
   if (!employee) {
     return { ok: false, code: 'DUPLICATE_CODE', message: 'An employee with this code already exists' };
   }
-  return { ok: true, employee };
+
+  let policyAssignment = null;
+  if (policy) {
+    policyAssignment = await workforceRepo.insertEmployeePolicyAssignment(client, {
+      installationId,
+      employeeId: employee.id,
+      workPolicyId: policy.id,
+      effectiveFrom: policyEffectiveFrom,
+      reason: 'Gán khi tạo hồ sơ nhân sự',
+      createdBy,
+    });
+  }
+  return { ok: true, employee, policyAssignment };
 }
 
 export async function getEmployee(client, { installationId, id }) {

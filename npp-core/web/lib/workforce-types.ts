@@ -45,6 +45,40 @@ export type EmployeeWorkPolicyAssignment = {
   policy_timezone: string;
 };
 
+export type WorkPolicyCoverageEmployee = {
+  id: string;
+  code: string;
+  name: string;
+  branchId: string | null;
+  branchCode: string | null;
+  branchName: string | null;
+  assignment: {
+    id: string;
+    workPolicyId: string;
+    effectiveFrom: string;
+    effectiveTo: string | null;
+    policyCode: string;
+    policyVersion: number;
+    policyName: string;
+  } | null;
+};
+
+export type WorkPolicyCoverage = {
+  asOfDate: string;
+  totalActive: number;
+  assignedCount: number;
+  missingCount: number;
+  employees: WorkPolicyCoverageEmployee[];
+};
+
+export type BulkPolicyAssignmentResult = {
+  affectedCount: number;
+  bootstrap: boolean;
+  targetMode: 'ALL_ACTIVE' | 'BRANCH' | 'EMPLOYEES';
+  workPolicyId: string;
+  effectiveFrom: string;
+};
+
 export type WorkSchedule = {
   id: string;
   installation_id: string;

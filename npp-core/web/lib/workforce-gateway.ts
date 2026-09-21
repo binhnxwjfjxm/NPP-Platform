@@ -6,7 +6,7 @@ import { requireNppWorkforceSessionToken } from './internal-auth-client';
 
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 const REQUEST_TIMEOUT_MS = 8_000;
-const ALLOWED_QUERY_KEYS = new Set(['employeeId', 'employeeQuery', 'branchId', 'from', 'to', 'view', 'status', 'limit', 'offset']);
+const ALLOWED_QUERY_KEYS = new Set(['employeeId', 'employeeQuery', 'branchId', 'from', 'to', 'view', 'status', 'limit', 'offset', 'date']);
 
 interface CoreEnvelope<T> {
   data?: T;
@@ -147,6 +147,15 @@ export function assignEmployeeWorkPolicy<T>(requestId: string, body: unknown, id
   return requestCore<T>({
     path: '/assignments', method: 'POST', requestId, body,
     idempotencyKey: mutationKey(idempotencyKey, 'employee-policy-assign'),
+  });
+}
+export function getWorkPolicyCoverage<T>(requestId: string, searchParams: URLSearchParams): Promise<T> {
+  return requestCore<T>({ path: '/assignments/coverage', method: 'GET', requestId, searchParams });
+}
+export function bulkAssignEmployeeWorkPolicy<T>(requestId: string, body: unknown, idempotencyKey?: string): Promise<T> {
+  return requestCore<T>({
+    path: '/assignments/bulk', method: 'POST', requestId, body,
+    idempotencyKey: mutationKey(idempotencyKey, 'employee-policy-bulk-assign'),
   });
 }
 export function listWorkSchedules<T>(requestId: string, searchParams: URLSearchParams): Promise<T> {

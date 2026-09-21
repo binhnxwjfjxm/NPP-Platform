@@ -1,0 +1,62 @@
+.workingDaysFieldset {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid #e1dcd7;
+  border-radius: 9px;
+  background: #fbfaf9;
+}
+
+.workingDaysFieldset legend {
+  padding: 0 5px;
+  color: #625952;
+  font-size: 0.7rem;
+  font-weight: 740;
+}
+
+.workingDaysGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.workingDayOption,
+.inlineCheckbox {
+  display: flex !important;
+  align-items: center;
+  gap: 8px !important;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid #e5e0dc;
+  border-radius: 8px;
+  background: #fff;
+  letter-spacing: 0 !important;
+}
+
+.workingDayOption input[type='checkbox'],
+.inlineCheckbox input[type='checkbox'] {
+  width: 18px !important;
+  min-width: 18px;
+  height: 18px;
+  min-height: 18px !important;
+  margin: 0;
+  padding: 0 !important;
+  box-shadow: none !important;
+}
+
+.bootstrapNote {
+  grid-column: 1 / -1;
+  padding: 10px 12px;
+  border: 1px solid #e7d7c7;
+  border-radius: 8px;
+  background: #fff9f3;
+  color: #73513f;
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+@media (max-width: 760px) {
+  .workingDaysGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

@@ -189,6 +189,61 @@ export async function getEffectiveEmployeePolicyAssignment(client, { installatio
   return result.rows?.[0] ?? null;
 }
 
+export async function listEmployeePolicyCoverage(client, {
+  installationId,
+  workDate,
+  branchId = null,
+  branchIds = null,
+  employeeIds = null,
+}) {
+  const params = [installationId, workDate];
+  let query = `
+    SELECT e.id AS employee_id, e.code AS employee_code, e.full_name AS employee_name,
+           e.branch_id AS employee_branch_id, b.code AS branch_code, b.name AS branch_name,
+           current_assignment.assignment_id, current_assignment.work_policy_id,
+           current_assignment.effective_from, current_assignment.effective_to,
+           current_assignment.policy_code, current_assignment.policy_version,
+           current_assignment.policy_name
+      FROM shared.employees e
+      LEFT JOIN shared.branches b
+        ON b.installation_id = e.installation_id AND b.id = e.branch_id
+      LEFT JOIN LATERAL (
+        SELECT a.id AS assignment_id, a.work_policy_id,
+               to_char(a.effective_from, 'YYYY-MM-DD') AS effective_from,
+               CASE WHEN a.effective_to IS NULL THEN NULL ELSE to_char(a.effective_to, 'YYYY-MM-DD') END AS effective_to,
+               p.code AS policy_code, p.version AS policy_version, p.name AS policy_name
+          FROM shared.employee_work_policy_assignments a
+          JOIN shared.work_policies p
+            ON p.installation_id = a.installation_id AND p.id = a.work_policy_id
+         WHERE a.installation_id = e.installation_id
+           AND a.employee_id = e.id
+           AND a.effective_from <= $2::date
+           AND (a.effective_to IS NULL OR a.effective_to >= $2::date)
+           AND p.effective_from <= $2::date
+           AND (p.effective_to IS NULL OR p.effective_to >= $2::date)
+           AND p.is_active = true
+         ORDER BY a.effective_from DESC, p.version DESC
+         LIMIT 1
+      ) current_assignment ON true
+     WHERE e.installation_id = $1
+       AND e.is_active = true`;
+  if (branchId) {
+    params.push(branchId);
+    query += ` AND e.branch_id = $${params.length}`;
+  }
+  if (Array.isArray(branchIds)) {
+    params.push(branchIds);
+    query += ` AND e.branch_id = ANY($${params.length}::uuid[])`;
+  }
+  if (Array.isArray(employeeIds)) {
+    params.push(employeeIds);
+    query += ` AND e.id = ANY($${params.length}::uuid[])`;
+  }
+  query += ' ORDER BY e.code ASC';
+  const result = await client.query(query, params);
+  return result.rows ?? [];
+}
+
 export async function listWorkSchedules(client, {
   installationId,
   employeeId = null,

@@ -5,6 +5,7 @@ import { useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
 import shellStyles from '../../components/app-shell.module.css';
 import styles from '../../organization/organization.module.css';
+import localStyles from './work-policy.module.css';
 import type { WorkPolicy } from '../../../lib/workforce-types';
 
 type ApiEnvelope<T> = { data?: T; error?: { message?: string } };
@@ -215,16 +216,29 @@ export default function WorkPolicyWorkspace({ initialPolicies, initialError }: {
                 <label>Tính chất công việc<input value={draft.workNature} onChange={(e) => setDraft((c) => ({ ...c, workNature: e.target.value }))} maxLength={128} /></label>
                 <label>Kiểu thời gian<select value={draft.timeMode} onChange={(e) => setDraft((c) => ({ ...c, timeMode: e.target.value as WorkPolicy['time_mode'] }))}><option value="FIXED">Giờ cố định</option><option value="SHIFT">Theo ca</option><option value="FLEXIBLE">Linh hoạt</option><option value="NO_ATTENDANCE">Không bắt buộc chấm công</option></select></label>
                 {draft.timeMode === 'FIXED' ? <><label>Giờ bắt đầu<input type="time" value={draft.fixedStartTime} onChange={(e) => setDraft((c) => ({ ...c, fixedStartTime: e.target.value }))} required /></label><label>Giờ kết thúc<input type="time" value={draft.fixedEndTime} onChange={(e) => setDraft((c) => ({ ...c, fixedEndTime: e.target.value }))} required /></label></> : null}
-                <fieldset><legend>Ngày làm việc</legend>{DAY_OPTIONS.map((day) => <label key={day.value}><input type="checkbox" checked={draft.workingDays.includes(day.value)} onChange={() => toggleDay(day.value)} /> {day.label}</label>)}</fieldset>
+                <fieldset className={localStyles.workingDaysFieldset}>
+                  <legend>Ngày làm việc</legend>
+                  <div className={localStyles.workingDaysGrid}>
+                    {DAY_OPTIONS.map((day) => (
+                      <label className={localStyles.workingDayOption} key={day.value}>
+                        <input type="checkbox" checked={draft.workingDays.includes(day.value)} onChange={() => toggleDay(day.value)} />
+                        <span>{day.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
                 <label>Nghỉ giữa ca (phút)<input type="number" min={0} max={720} value={draft.breakMinutes} onChange={(e) => setDraft((c) => ({ ...c, breakMinutes: e.target.value }))} /></label>
                 <label>Ngưỡng ghi nhận đi trễ (phút)<input type="number" min={0} max={240} value={draft.lateGraceMinutes} onChange={(e) => setDraft((c) => ({ ...c, lateGraceMinutes: e.target.value }))} /></label>
                 <label>Ngưỡng ghi nhận về sớm (phút)<input type="number" min={0} max={240} value={draft.earlyLeaveGraceMinutes} onChange={(e) => setDraft((c) => ({ ...c, earlyLeaveGraceMinutes: e.target.value }))} /></label>
                 <div className={styles.banner} role="note">Các ngưỡng này dùng để ghi nhận sai lệch công. Bảng công không tự điều chỉnh thu nhập; xử lý vi phạm là quy trình riêng.</div>
                 {draft.timeMode !== 'NO_ATTENDANCE' ? <label>Phương thức chấm công<select value={draft.attendanceMethod} onChange={(e) => setDraft((c) => ({ ...c, attendanceMethod: e.target.value as WorkPolicy['attendance_method'] }))}><option value="QR">QR</option><option value="MANUAL">Nhập tay</option><option value="BOTH">QR và nhập tay</option></select></label> : null}
                 <label>Múi giờ<input value={draft.timezone} onChange={(e) => setDraft((c) => ({ ...c, timezone: e.target.value }))} maxLength={64} /></label>
-                <label>Ngày bắt đầu hiệu lực<input type="date" min={todayPlus(1)} value={draft.effectiveFrom} onChange={(e) => setDraft((c) => ({ ...c, effectiveFrom: e.target.value }))} required /></label>
-                <label><input type="checkbox" checked={draft.overtimeEnabled} onChange={(e) => setDraft((c) => ({ ...c, overtimeEnabled: e.target.checked }))} /> Có áp dụng tăng ca</label>
-                {draft.overtimeEnabled ? <label><input type="checkbox" checked={draft.overtimeRequiresApproval} onChange={(e) => setDraft((c) => ({ ...c, overtimeRequiresApproval: e.target.checked }))} /> Tăng ca cần duyệt</label> : null}
+                <label>Ngày bắt đầu hiệu lực<input type="date" min={basePolicyId ? todayPlus(1) : undefined} value={draft.effectiveFrom} onChange={(e) => setDraft((c) => ({ ...c, effectiveFrom: e.target.value }))} required /></label>
+                {!basePolicyId && draft.effectiveFrom < todayPlus(0) ? (
+                  <div className={localStyles.bootstrapNote}>Ngày hiệu lực trong quá khứ chỉ nên dùng khi khởi tạo hệ thống lần đầu. Việc áp dụng cho nhân sự vẫn phải đi qua thao tác “Khởi tạo chính sách ban đầu” có lý do và audit.</div>
+                ) : null}
+                <label className={localStyles.inlineCheckbox}><input type="checkbox" checked={draft.overtimeEnabled} onChange={(e) => setDraft((c) => ({ ...c, overtimeEnabled: e.target.checked }))} /><span>Có áp dụng tăng ca</span></label>
+                {draft.overtimeEnabled ? <label className={localStyles.inlineCheckbox}><input type="checkbox" checked={draft.overtimeRequiresApproval} onChange={(e) => setDraft((c) => ({ ...c, overtimeRequiresApproval: e.target.checked }))} /><span>Tăng ca cần duyệt</span></label> : null}
                 <div className={styles.formActions}><button type="button" className={styles.secondaryButton} onClick={() => setEditing(false)}>Hủy</button><button type="submit" className={styles.primaryButton} disabled={busy}>{busy ? 'Đang lưu…' : basePolicyId ? 'Tạo phiên bản mới' : 'Tạo chính sách'}</button></div>
               </form>
             </div>
