@@ -292,18 +292,45 @@ export async function listLeaveRequests(client, {
   const limit = integer(rawLimit, 1, 100, 50);
   const offset = integer(rawOffset, 0, 1_000_000, 0);
   if (Number.isNaN(limit) || Number.isNaN(offset)) return fail('INVALID_PAGINATION', 'Thông tin phân trang không hợp lệ');
-  const [page, branches] = await Promise.all([
+  const balanceAsOfDate = dateTo ?? dateFrom ?? businessDate();
+  const balanceBranchIds = selfOnly || companyScope ? null : (branchId ? [branchId] : branchIds);
+  const [page, branches, leaveBalances, balanceEntries] = await Promise.all([
     leaveRepo.listLeaveRequests(client, {
       installationId, employeeId, employeeQuery: selfOnly ? null : employeeQuery,
       branchId: selfOnly ? null : branchId, branchIds: selfOnly || companyScope ? null : branchIds,
       status, dateFrom, dateTo, limit, offset,
     }),
     workforceRepo.listAttendanceBranches(client, { installationId, branchIds: selfOnly ? [] : (companyScope ? null : branchIds) }),
+    leaveRepo.listLeaveBalances(client, {
+      installationId,
+      asOfDate: balanceAsOfDate,
+      employeeId,
+      employeeQuery: selfOnly ? null : employeeQuery,
+      branchIds: balanceBranchIds,
+      leaveTypeId: null,
+      limit: 100,
+    }),
+    employeeId && (selfOnly || companyScope)
+      ? leaveRepo.listLeaveBalanceEntries(client, { installationId, employeeId, leaveTypeId: null, limit: 100 })
+      : Promise.resolve([]),
   ]);
   if (selfOnly && employeeId) {
-    selectedEmployee = employeeSummary(await workforceRepo.getEmployeeScopeRecord(client, { installationId, employeeId, lock: 'share' }));
+    selectedEmployee = employeeSummary(await employeeRepo.resolveEmployeeAtDate(client, {
+      installationId, employeeId, businessDate: balanceAsOfDate,
+    }));
   }
-  return { ok: true, data: { selectedEmployee, branches, pagination: { limit, offset, total: page.total, hasPrevious: offset > 0, hasNext: offset + page.rows.length < page.total }, requests: page.rows } };
+  return {
+    ok: true,
+    data: {
+      selectedEmployee,
+      branches,
+      balanceAsOfDate,
+      leaveBalances: leaveBalances.map((row) => ({ ...row, balance_days: Number(row.balance_days ?? 0) })),
+      balanceEntries: balanceEntries.map((row) => ({ ...row, quantity_days: Number(row.quantity_days ?? 0) })),
+      pagination: { limit, offset, total: page.total, hasPrevious: offset > 0, hasNext: offset + page.rows.length < page.total },
+      requests: page.rows,
+    },
+  };
 }
 
 export async function submitLeaveRequest(client, { requestContext, payload }) {
