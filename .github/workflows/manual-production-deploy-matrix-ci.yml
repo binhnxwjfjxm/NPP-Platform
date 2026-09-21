@@ -8,9 +8,12 @@ on:
       - .github/workflows/heroku-npp-backend-manual.yml
       - .github/workflows/heroku-mcp-backend-manual.yml
       - .github/workflows/vps-production-migration-135-manual.yml
+      - .github/workflows/vps-production-migration-148-manual.yml
       - .github/workflows/manual-production-deploy-matrix-ci.yml
+      - npp-core/api/scripts/vps-production-migrate-workforce-148.sh
       - mcp/test/manual-production-deploy-matrix.test.mjs
       - mcp/test/vps-production-migration-135.test.mjs
+      - mcp/test/vps-production-migration-148.test.mjs
   push:
     branches:
       - agent/manual-production-deploy-matrix
@@ -20,9 +23,12 @@ on:
       - .github/workflows/heroku-npp-backend-manual.yml
       - .github/workflows/heroku-mcp-backend-manual.yml
       - .github/workflows/vps-production-migration-135-manual.yml
+      - .github/workflows/vps-production-migration-148-manual.yml
       - .github/workflows/manual-production-deploy-matrix-ci.yml
+      - npp-core/api/scripts/vps-production-migrate-workforce-148.sh
       - mcp/test/manual-production-deploy-matrix.test.mjs
       - mcp/test/vps-production-migration-135.test.mjs
+      - mcp/test/vps-production-migration-148.test.mjs
   workflow_dispatch:
 
 permissions:
@@ -45,3 +51,4 @@ jobs:
         run: |
           node --test mcp/test/manual-production-deploy-matrix.test.mjs
           node --test mcp/test/vps-production-migration-135.test.mjs
+          node --test mcp/test/vps-production-migration-148.test.mjs
