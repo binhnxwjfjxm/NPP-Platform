@@ -724,7 +724,7 @@ async function handleLeaveTypeUpdate(req, res, context, options = {}) {
   if (!parsed.ok) return;
   const payload = parsed.payload;
   const command = new URL('http://localhost' + req.url).searchParams.get('operation');
-  const balanceEntry = options.balanceEntry ?? command === 'balance-entry' || payload?.operation === 'balance-entry';
+  const balanceEntry = options.balanceEntry ?? (command === 'balance-entry' || payload?.operation === 'balance-entry');
   await runIdempotentMutation(req, res, context, {
     route: balanceEntry ? '/api/workforce/leave/balances/entries' : '/api/workforce/leave-types/update',
     payload,
