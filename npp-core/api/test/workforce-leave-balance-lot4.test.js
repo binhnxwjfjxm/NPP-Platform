@@ -57,6 +57,9 @@ test('Issue #1140 Lô 4 posts usage and reversal entries instead of rewriting ba
   assert.match(service, /listUsageEntriesForRequest/);
   assert.match(service, /insertLeaveBalanceEntries/);
   assert.match(service, /LEAVE_BALANCE_INSUFFICIENT/);
+  assert.match(service, /effectiveDate: String\(usage\.effective_date\)/);
+  assert.match(repository, /getMinimumLeaveBalanceFromDate/);
+  assert.match(service, /minimumFutureBalance/);
 });
 
 test('Issue #1140 Lô 4 exposes a dedicated audited and idempotent leave balance API', async () => {
