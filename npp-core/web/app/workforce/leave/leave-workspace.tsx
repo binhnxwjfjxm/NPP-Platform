@@ -361,7 +361,6 @@ export default function LeaveWorkspace({
     if (balanceEntryType !== 'ADJUSTMENT' && days < 0) { setError('Phát sinh này phải nhập số ngày lớn hơn 0.'); return; }
     if (!balanceReason.trim()) { setError('Vui lòng nhập lý do cập nhật sổ phép.'); return; }
     const payload = {
-      operation: 'balance-entry',
       employeeId: balanceEmployeeId,
       leaveTypeId: balanceLeaveTypeId,
       entryType: balanceEntryType,
@@ -372,7 +371,7 @@ export default function LeaveWorkspace({
     const key = stableKey(balanceAttempt, 'web-leave-balance-entry', payload);
     setBusy(true); setError(null); setNotice(null);
     try {
-      await requestJson<unknown>('/api/workforce/leave-types/update', {
+      await requestJson<unknown>('/api/workforce/leave/balances/entries', {
         method: 'POST',
         headers: { 'Idempotency-Key': key },
         body: JSON.stringify(payload),
