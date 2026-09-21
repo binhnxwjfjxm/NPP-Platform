@@ -515,7 +515,7 @@ export async function listLeaveBalances(client, {
 }
 
 export async function listLeaveBalanceEntries(client, {
-  installationId, employeeId, leaveTypeId, limit = 100,
+  installationId, employeeId, leaveTypeId = null, branchIds = null, limit = 100,
 }) {
   const result = await client.query(
     `SELECT ledger.id, ledger.employee_id, employee.code AS employee_code,
@@ -529,12 +529,23 @@ export async function listLeaveBalanceEntries(client, {
        JOIN shared.employees employee
          ON employee.installation_id = ledger.installation_id
         AND employee.id = ledger.employee_id
+       LEFT JOIN LATERAL (
+         SELECT assignment.branch_id
+           FROM shared.employee_assignments assignment
+          WHERE assignment.installation_id = ledger.installation_id
+            AND assignment.employee_id = ledger.employee_id
+            AND assignment.effective_from <= ledger.effective_date
+            AND (assignment.effective_to IS NULL OR assignment.effective_to >= ledger.effective_date)
+          ORDER BY assignment.effective_from DESC
+          LIMIT 1
+       ) entry_assignment ON true
       WHERE ledger.installation_id = $1
         AND ledger.employee_id = $2
-        AND ledger.leave_type_id = $3
+        AND ($3::uuid IS NULL OR ledger.leave_type_id = $3::uuid)
+        AND ($4::uuid[] IS NULL OR entry_assignment.branch_id = ANY($4::uuid[]))
       ORDER BY ledger.effective_date DESC, ledger.created_at DESC
-      LIMIT $4`,
-    [installationId, employeeId, leaveTypeId, limit],
+      LIMIT $5`,
+    [installationId, employeeId, leaveTypeId, branchIds, limit],
   );
   return result.rows ?? [];
 }
