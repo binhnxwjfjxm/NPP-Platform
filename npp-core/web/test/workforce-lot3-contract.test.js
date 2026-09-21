@@ -19,11 +19,12 @@ test('Issue #1110 Lô 3 uses camera QR scan and policy-controlled manual attenda
   assert.match(workspace, /formats: \['qr_code'\]/);
   assert.match(workspace, /Mở camera quét QR/);
   assert.match(workspace, /Chấm công trực tiếp/);
-  assert.match(workspace, /method: 'MANUAL'/);
+  assert.match(workspace, /attendancePayload\('MANUAL'\)/);
   assert.match(workspace, /không cần nhập thời gian hoặc chọn nơi làm việc/);
   assert.doesNotMatch(workspace, /Dán mã QR/);
-  assert.match(workspace, /Ghi nhận giờ vào/);
-  assert.match(workspace, /Ghi nhận giờ ra/);
+  assert.match(workspace, /Ghi nhận vào làm/);
+  assert.match(workspace, /Ghi nhận rời nơi làm việc/);
+  assert.match(workspace, /Ghi nhận quay lại/);
   assert.match(workspace, /Nơi làm việc/);
   assert.match(workspace, /Hiển thị mã QR/);
   assert.match(workspace, /const payload = \{ branchId: selectedWorkplaceId \}/);
@@ -38,8 +39,10 @@ test('Issue #1110 Lô 3 reuses canonical idempotency keys and does not send empl
     source('lib/workforce-gateway.ts'),
   ]);
   assert.match(workspace, /createIdempotencyKey\(operation\)/);
-  assert.match(workspace, /const payload = \{ method: 'QR', qrPayload: normalized \}/);
-  assert.match(workspace, /const payload = \{ method: 'MANUAL' as const \}/);
+  assert.match(workspace, /attendancePayload\('QR', normalized\)/);
+  assert.match(workspace, /attendancePayload\('MANUAL'\)/);
+  assert.match(workspace, /if \(today\?\.nextAction === 'EXIT'\)/);
+  assert.match(workspace, /payload\.exitReason = exitReason/);
   assert.doesNotMatch(workspace, /employeeId:\s*today|occurredAt:/);
   assert.match(gateway, /mutationKey\(idempotencyKey, 'attendance-record'\)/);
   assert.match(gateway, /mutationKey\(idempotencyKey, 'attendance-qr-token'\)/);
