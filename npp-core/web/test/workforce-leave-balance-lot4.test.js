@@ -21,12 +21,17 @@ test('Issue #1140 Lô 4 renders leave balance inside Nghỉ và đơn nghỉ wit
 });
 
 test('Issue #1140 Lô 4 exposes balance policy controls and canonical retry-safe mutation', async () => {
-  const workspace = await source('app/workforce/leave/leave-workspace.tsx');
+  const [workspace, gateway, route] = await Promise.all([
+    source('app/workforce/leave/leave-workspace.tsx'),
+    source('lib/workforce-gateway.ts'),
+    source('app/api/workforce/leave/balances/entries/route.ts'),
+  ]);
   assert.match(workspace, /Theo dõi số dư phép/);
   assert.match(workspace, /Cho phép số dư âm/);
-  assert.match(workspace, /operation: 'balance-entry'/);
+  assert.match(workspace, /\/api\/workforce\/leave\/balances\/entries/);
   assert.match(workspace, /stableKey\(balanceAttempt, 'web-leave-balance-entry'/);
-  assert.match(workspace, /Idempotency-Key/);
+  assert.match(gateway, /mutationKey\(idempotencyKey, 'leave-balance-entry'\)/);
+  assert.match(route, /request\.headers\.get\('idempotency-key'\)/);
 });
 
 test('Issue #1140 Lô 4 keeps office-language balance UX and does not expose delete/edit ledger actions', async () => {
