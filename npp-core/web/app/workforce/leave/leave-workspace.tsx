@@ -18,6 +18,36 @@ import type {
 
 type ApiEnvelope<T> = { data?: T; error?: { message?: string } };
 type Attempt = { payload: string; key: string } | null;
+type LeaveTypeBalanceFields = { tracks_balance?: boolean; allow_negative_balance?: boolean };
+type LeaveBalanceRow = {
+  employee_id: string;
+  employee_code: string;
+  employee_name: string;
+  branch_name: string | null;
+  leave_type_id: string;
+  leave_type_code: string;
+  leave_type_name: string;
+  balance_days: number;
+  allow_negative_balance: boolean;
+  last_activity_date: string | null;
+};
+type LeaveBalanceEntry = {
+  id: string;
+  employee_id: string;
+  employee_code: string;
+  employee_name: string;
+  leave_type_id: string;
+  leave_type_name_snapshot: string;
+  entry_type: string;
+  quantity_days: number;
+  effective_date: string;
+  reason: string;
+};
+type LeaveDataWithBalance = LeaveRequestListResponse & {
+  balanceAsOfDate?: string;
+  leaveBalances?: LeaveBalanceRow[];
+  balanceEntries?: LeaveBalanceEntry[];
+};
 
 const STATUS_LABEL: Record<LeaveRequestStatus, string> = {
   SUBMITTED: 'Chờ duyệt',
