@@ -540,6 +540,58 @@ export default function LeaveWorkspace({
               </div> : null}
             </section>
 
+            <section className={sharedStyles.tableSection}>
+              <div className={sharedStyles.sectionHeader}>
+                <div><p className={sharedStyles.panelKicker}>Số dư / Sổ phép</p><h2>Số dư theo ngày và lịch sử phát sinh</h2></div>
+                <span className={sharedStyles.panelChip}>Đến {dateLabel(data?.balanceAsOfDate ?? to)}</span>
+              </div>
+              <div className={sharedStyles.tableWrap}>
+                <table className={sharedStyles.table}>
+                  <thead><tr><th>Nhân sự</th><th>Chế độ nghỉ</th><th>Số dư</th><th>Phát sinh gần nhất</th><th>Xử lý</th></tr></thead>
+                  <tbody>
+                    {balanceRows.map((row) => <tr key={row.employee_id + ':' + row.leave_type_id}>
+                      <td><div className={styles.meta}><strong>{row.employee_code} · {row.employee_name}</strong><small>{row.branch_name || 'Chưa gán chi nhánh'}</small></div></td>
+                      <td><div className={styles.meta}><strong>{row.leave_type_name}</strong><small>{row.leave_type_code}{row.allow_negative_balance ? ' · Cho phép âm' : ''}</small></div></td>
+                      <td><strong>{Number(row.balance_days).toLocaleString('vi-VN', { maximumFractionDigits: 2 })} ngày</strong></td>
+                      <td>{dateLabel(row.last_activity_date)}</td>
+                      <td>{data?.capabilities.selfOnly
+                        ? <span>—</span>
+                        : <button type="button" className={styles.secondary} disabled={busy} onClick={() => void viewBalanceEmployee(row.employee_id, row.leave_type_id)}>Xem sổ</button>}</td>
+                    </tr>)}
+                    {!balanceRows.length ? <tr><td colSpan={5}><div className={sharedStyles.emptyState}>Chưa có chế độ nghỉ theo dõi số dư trong phạm vi đang xem.</div></td></tr> : null}
+                  </tbody>
+                </table>
+              </div>
+
+              {balanceEntries.length ? <div className={sharedStyles.tableWrap}>
+                <table className={sharedStyles.table}>
+                  <thead><tr><th>Ngày hiệu lực</th><th>Nhân sự</th><th>Chế độ nghỉ</th><th>Phát sinh</th><th>Lý do</th></tr></thead>
+                  <tbody>{balanceEntries.map((entry) => <tr key={entry.id}>
+                    <td>{dateLabel(entry.effective_date)}</td>
+                    <td>{entry.employee_code} · {entry.employee_name}</td>
+                    <td>{entry.leave_type_name_snapshot}</td>
+                    <td><strong>{entry.quantity_days > 0 ? '+' : ''}{Number(entry.quantity_days).toLocaleString('vi-VN', { maximumFractionDigits: 2 })} ngày</strong></td>
+                    <td>{entry.reason}</td>
+                  </tr>)}</tbody>
+                </table>
+              </div> : null}
+
+              {typesData?.capabilities.canManage ? <form onSubmit={(event) => void saveBalanceEntry(event)}>
+                <div className={styles.formGrid}>
+                  <label>Nhân sự<select value={balanceEmployeeId} onChange={(event) => setBalanceEmployeeId(event.target.value)} required><option value="">Chọn nhân sự</option>{balanceEmployees.map((employee) => <option key={employee.id} value={employee.id}>{employee.label}</option>)}</select></label>
+                  <label>Chế độ nghỉ<select value={balanceLeaveTypeId} onChange={(event) => setBalanceLeaveTypeId(event.target.value)} required><option value="">Chọn chế độ nghỉ</option>{trackedTypes.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}</select></label>
+                  <label>Loại phát sinh<select value={balanceEntryType} onChange={(event) => setBalanceEntryType(event.target.value)}><option value="OPENING_GRANT">Cấp đầu kỳ</option><option value="ACCRUAL">Phát sinh định kỳ</option><option value="ADJUSTMENT">Điều chỉnh</option><option value="CARRY_OVER">Chuyển năm</option><option value="EXPIRY">Hết hạn</option><option value="COMPENSATORY">Nghỉ bù</option></select></label>
+                  <label>Số ngày<input type="number" step="0.01" value={balanceDays} onChange={(event) => setBalanceDays(event.target.value)} placeholder={balanceEntryType === 'ADJUSTMENT' ? 'Có thể âm hoặc dương' : 'Nhập số ngày'} required /></label>
+                  <label>Ngày hiệu lực<input type="date" value={balanceEffectiveDate} onChange={(event) => setBalanceEffectiveDate(event.target.value)} required /></label>
+                  <label>Lý do<input value={balanceReason} onChange={(event) => setBalanceReason(event.target.value)} maxLength={1000} placeholder="Nội dung cấp phép hoặc điều chỉnh" required /></label>
+                </div>
+                <div className={styles.actions}>
+                  <button type="submit" className={styles.primary} disabled={busy || !trackedTypes.length}>Ghi sổ phép</button>
+                  {balanceEmployeeId && !data?.capabilities.selfOnly ? <button type="button" className={styles.secondary} disabled={busy} onClick={() => { setBalanceEmployeeId(''); setBalanceLeaveTypeId(''); void load(0); }}>Xem lại tất cả</button> : null}
+                </div>
+              </form> : null}
+            </section>
+
             {typesData?.capabilities.canManage ? <section className={styles.panel}>
               <h3>Chế độ nghỉ</h3>
               <p className={styles.note}>Thiết lập áp dụng cho Công Ty. Thay đổi sau này không làm đổi nội dung các đơn đã gửi trước đó.</p>
