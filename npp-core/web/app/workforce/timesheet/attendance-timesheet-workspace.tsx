@@ -738,11 +738,11 @@ export default function AttendanceTimesheetWorkspace({
                 {selectedDay.leave.requests.length ? <Link className={localStyles.inlineLink} href="/workforce/leave">Mở đơn nghỉ</Link> : null}
               </div>
               <div className={localStyles.dayDetailSection}>
-                <strong>Nguồn dữ liệu và kiểm soát</strong>
+                <strong>Kiểm soát và nguồn dữ liệu</strong>
                 <span>{sourceSummary(selectedDay)}</span>
                 <span>{selectedDay.policy ? `Chính sách: ${selectedDay.policy.code} · ${selectedDay.policy.name} · bản ${selectedDay.policy.version}` : 'Chưa có chính sách phù hợp'}</span>
                 <span>{selectedDay.adjustment ? (selectedDay.adjustment.status === 'SUBMITTED' ? 'Điều chỉnh: Chờ duyệt' : selectedDay.adjustment.status === 'APPROVED' ? 'Điều chỉnh: Đã duyệt' : 'Điều chỉnh: Từ chối') : 'Chưa có điều chỉnh'}</span>
-                {selectedDay.periodLock ? <span>Kỳ công đã khóa</span> : <span>Kỳ công đang mở</span>}
+                {selectedDay.periodLock ? <span>Đã khóa kỳ công</span> : <span>Kỳ công đang mở</span>}
               </div>
               <div className={localStyles.dayDetailSection}>
                 <strong>Đánh giá vi phạm</strong>
@@ -766,6 +766,7 @@ export default function AttendanceTimesheetWorkspace({
                 {selectedDay.violationEvaluation.items.length ? <Link className={localStyles.inlineLink} href="/workforce/violations">Mở xử lý vi phạm</Link> : null}
               </div>
               <div className={localStyles.dayDetailEvents}>
+                <strong>Chi tiết sự kiện</strong>
                 {selectedDay.events.map((event) => (
                   <div className={localStyles.eventItem} key={event.id}>
                     <div>
