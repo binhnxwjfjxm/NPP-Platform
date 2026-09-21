@@ -58,6 +58,10 @@ test('Issue #1110 Lô 3 attendance record trusts session employee and server tim
   assert.match(service, /ATTENDANCE_MIN_EVENT_GAP_MS = 60_000/);
   assert.match(service, /QR_TOKEN_EXPIRED/);
   assert.match(service, /attendance_method/);
+  assert.match(service, /attendance\.employee\.branch_id/);
+  assert.match(service, /tokenRow\.branch_id/);
+  assert.match(service, /ATTENDANCE_WORKPLACE_MISMATCH/);
+  assert.match(service, /Hồ sơ nhân sự chưa có nơi làm việc/);
   assert.match(service, /sourceReference = createHash\('sha256'\)/);
   assert.doesNotMatch(service, /payload\?\.occurredAt|payload\?\.eventType/);
 
@@ -67,15 +71,23 @@ test('Issue #1110 Lô 3 attendance record trusts session employee and server tim
   assert.doesNotMatch(repository, /UPDATE shared\.attendance_events/);
 });
 
-test('Issue #1110 Lô 3 attendance point management remains branch scoped', async () => {
-  const [route, repository] = await Promise.all([
+test('Issue #1110 Lô 3 attendance QR setup uses canonical employee workplace and remains branch scoped', async () => {
+  const [route, service, repository] = await Promise.all([
     source('src/routes/workforce.js'),
+    source('src/services/workforce.js'),
     source('src/db/repositories/workforce.js'),
   ]);
 
   assert.match(route, /requestContext\.scopes\.branchIds/);
   assert.match(route, /companyScope: isCompanyScope\(context\.requestContext\)/);
+  assert.match(route, /const mutationPayload = \{ branchId \}/);
+  assert.doesNotMatch(route, /payload:\s*\{[^}]*code|payload:\s*\{[^}]*name/);
   assert.match(route, /SCOPE_FORBIDDEN/);
+  assert.match(service, /attendancePointCode\(branch\)/);
+  assert.match(service, /name: branch\.name/);
+  assert.match(service, /getActiveAttendancePointByBranchId/);
+  assert.doesNotMatch(service, /payload\?\.code|payload\?\.name/);
   assert.match(repository, /p\.branch_id = ANY\(/);
   assert.match(repository, /id = ANY\(/);
+  assert.match(repository, /getActiveAttendancePointByBranchId/);
 });
