@@ -84,6 +84,16 @@ function tomorrowDate() {
   return localDate(1);
 }
 
+function effectiveDate(value: string | null | undefined) {
+  return value ? value.slice(0, 10) : '';
+}
+
+function dateLabel(value: string | null | undefined) {
+  const date = effectiveDate(value);
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : (value || '—');
+}
+
 function nextDate(value: string) {
   const date = new Date(`${value}T00:00:00Z`);
   date.setUTCDate(date.getUTCDate() + 1);
@@ -96,10 +106,10 @@ function nextDate(value: string) {
 function assignmentMinimumDate(history: EmployeeWorkPolicyAssignment[]) {
   const today = todayDate();
   const futureOrCurrent = history
-    .filter((item) => item.effective_from > today || !item.effective_to || item.effective_to >= today)
-    .sort((left, right) => right.effective_from.localeCompare(left.effective_from));
+    .filter((item) => effectiveDate(item.effective_from) > today || !item.effective_to || effectiveDate(item.effective_to) >= today)
+    .sort((left, right) => effectiveDate(right.effective_from).localeCompare(effectiveDate(left.effective_from)));
   if (!futureOrCurrent.length) return today;
-  const afterLatest = nextDate(futureOrCurrent[0].effective_from);
+  const afterLatest = nextDate(effectiveDate(futureOrCurrent[0].effective_from));
   return afterLatest > tomorrowDate() ? afterLatest : tomorrowDate();
 }
 
@@ -180,7 +190,7 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
     const today = todayDate();
     const latest = new Map<string, WorkPolicy>();
     for (const policy of policies) {
-      if (!policy.is_active || (policy.effective_to && policy.effective_to < today)) continue;
+      if (!policy.is_active || (policy.effective_to && effectiveDate(policy.effective_to) < today)) continue;
       const current = latest.get(policy.code);
       if (!current || policy.version > current.version) latest.set(policy.code, policy);
     }
@@ -474,8 +484,9 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
       setError('Vui lòng chọn chính sách làm việc.');
       return;
     }
-    if (bulkDraft.effectiveFrom < selectedPolicy.effective_from) {
-      setError(`Chính sách này chỉ có hiệu lực từ ${selectedPolicy.effective_from}; không thể áp dụng từ ngày sớm hơn.`);
+    const policyEffectiveFrom = effectiveDate(selectedPolicy.effective_from);
+    if (!policyEffectiveFrom || bulkDraft.effectiveFrom < policyEffectiveFrom) {
+      setError(`Chính sách này chỉ có hiệu lực từ ${dateLabel(selectedPolicy.effective_from)}; không thể áp dụng từ ngày sớm hơn.`);
       return;
     }
     const isPast = bulkDraft.effectiveFrom < todayDate();
@@ -857,8 +868,8 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
                       {assignmentHistory.length ? assignmentHistory.map((assignment) => (
                         <tr key={assignment.id}>
                           <td><strong>{assignment.policy_name}</strong><br /><small>{assignment.policy_code} · phiên bản {assignment.policy_version}</small></td>
-                          <td>{assignment.effective_from}</td>
-                          <td>{assignment.effective_to || 'Đang áp dụng'}</td>
+                          <td>{dateLabel(assignment.effective_from)}</td>
+                          <td>{assignment.effective_to ? dateLabel(assignment.effective_to) : 'Đang áp dụng'}</td>
                           <td>{assignment.reason || 'Không có ghi chú'}</td>
                         </tr>
                       )) : <tr><td colSpan={4}><div className={styles.emptyState}>{assignmentBusy ? 'Đang tải lịch sử…' : 'Chưa có chính sách làm việc được gán.'}</div></td></tr>}

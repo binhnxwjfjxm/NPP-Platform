@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { effectiveDateOnly } from '../src/services/workforce.js';
 
 async function source(path) {
   return readFile(new URL(`../${path}`, import.meta.url), 'utf8');
@@ -66,4 +67,17 @@ test('Issue #1110 Lô 2 preserves policy history and blocks retroactive schedule
   assert.match(service, /workDate <= localDate\(\)/);
   assert.match(service, /expectedUpdatedAt/);
   assert.match(service, /SCHEDULE_CONFLICT/);
+});
+
+
+test('Issue #1110 normalizes PostgreSQL effective dates before workforce comparisons', async () => {
+  assert.equal(effectiveDateOnly('2026-09-20'), '2026-09-20');
+  assert.equal(effectiveDateOnly('2026-09-20T00:00:00.000Z'), '2026-09-20');
+  assert.equal(effectiveDateOnly(new Date('2026-09-20T00:00:00.000Z')), '2026-09-20');
+
+  const service = await source('src/services/workforce.js');
+  assert.match(service, /policyEffectiveFrom > effectiveFrom/);
+  assert.match(service, /policyEffectiveTo < effectiveFrom/);
+  assert.match(service, /policyEffectiveFrom > workDate/);
+  assert.doesNotMatch(service, /String\([^\n)]*effective_(?:from|to)/);
 });

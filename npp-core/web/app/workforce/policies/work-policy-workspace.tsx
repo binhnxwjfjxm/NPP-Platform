@@ -79,6 +79,13 @@ function fromPolicy(policy: WorkPolicy): PolicyDraft {
     effectiveFrom: todayPlus(1),
   };
 }
+function dateLabel(value: string | null | undefined) {
+  if (!value) return '—';
+  const date = value.slice(0, 10);
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : value;
+}
+
 function stableKey(ref: React.MutableRefObject<Attempt>, payload: unknown) {
   const serialized = JSON.stringify(payload);
   if (ref.current?.payload === serialized) return ref.current.key;
@@ -193,7 +200,7 @@ export default function WorkPolicyWorkspace({ initialPolicies, initialError }: {
                     <td>{TIME_MODE_LABEL[policy.time_mode]}</td>
                     <td>{ATTENDANCE_LABEL[policy.attendance_method]}</td>
                     <td>{ATTENDANCE_BASIS_LABEL[policy.attendance_basis ?? (policy.time_mode === 'NO_ATTENDANCE' ? 'NONE' : 'TIME')]}</td>
-                    <td>{policy.effective_from} → {policy.effective_to || 'Đang mở'}</td>
+                    <td>{dateLabel(policy.effective_from)} → {policy.effective_to ? dateLabel(policy.effective_to) : 'Đang mở'}</td>
                     <td>{policy.version} <small>({policies.filter((item) => item.code === policy.code).length} bản)</small></td>
                     <td><button type="button" onClick={() => openVersion(policy)}>Tạo phiên bản mới</button></td>
                   </tr>
@@ -209,7 +216,7 @@ export default function WorkPolicyWorkspace({ initialPolicies, initialError }: {
           <div className={styles.tableWrap}>
             <table className={styles.table} data-testid="work-policy-history">
               <thead><tr><th>Mã</th><th>Phiên bản</th><th>Tên</th><th>Từ ngày</th><th>Đến ngày</th><th>Người tạo</th></tr></thead>
-              <tbody>{policies.map((policy) => <tr key={policy.id}><td>{policy.code}</td><td>{policy.version}</td><td>{policy.name}</td><td>{policy.effective_from}</td><td>{policy.effective_to || 'Đang mở'}</td><td>{policy.created_by}</td></tr>)}</tbody>
+              <tbody>{policies.map((policy) => <tr key={policy.id}><td>{policy.code}</td><td>{policy.version}</td><td>{policy.name}</td><td>{dateLabel(policy.effective_from)}</td><td>{policy.effective_to ? dateLabel(policy.effective_to) : 'Đang mở'}</td><td>{policy.created_by}</td></tr>)}</tbody>
             </table>
           </div>
         </section>

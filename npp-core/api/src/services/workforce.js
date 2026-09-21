@@ -20,6 +20,29 @@ function validDate(value) {
   const parsed = new Date(`${value}T00:00:00Z`);
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }
+export function effectiveDateOnly(value) {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value === 'string') {
+    const prefix = value.trim().slice(0, 10);
+    if (validDate(prefix)) return prefix;
+  }
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+    timeZone: INSTALLATION_TIMEZONE,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(parsed).map((part) => [part.type, part.value]));
+  const normalized = `${parts.year}-${parts.month}-${parts.day}`;
+  return validDate(normalized) ? normalized : null;
+}
+function withEffectiveDates(record) {
+  if (!record) return record;
+  return {
+    ...record,
+    effective_from: effectiveDateOnly(record.effective_from),
+    effective_to: record.effective_to ? effectiveDateOnly(record.effective_to) : null,
+  };
+}
 function previousDate(value) {
   const date = new Date(`${value}T00:00:00Z`);
   date.setUTCDate(date.getUTCDate() - 1);
@@ -117,7 +140,8 @@ function normalizePolicy(payload, codeOverride = null) {
 }
 
 export async function listWorkPolicies(client, { installationId }) {
-  return { ok: true, policies: await workforceRepo.listWorkPolicies(client, { installationId }) };
+  const policies = await workforceRepo.listWorkPolicies(client, { installationId });
+  return { ok: true, policies: policies.map(withEffectiveDates) };
 }
 
 export async function createWorkPolicyVersion(client, { installationId, payload, actorId }) {
@@ -147,11 +171,13 @@ export async function createWorkPolicyVersion(client, { installationId, payload,
   }
 
   const version = latest ? Number(latest.version) + 1 : 1;
-  if (latest && validation.normalized.effectiveFrom <= String(latest.effective_from)) {
+  const latestEffectiveFrom = latest ? effectiveDateOnly(latest.effective_from) : null;
+  const latestEffectiveTo = latest?.effective_to ? effectiveDateOnly(latest.effective_to) : null;
+  if (latest && (!latestEffectiveFrom || validation.normalized.effectiveFrom <= latestEffectiveFrom)) {
     return fail('POLICY_EFFECTIVE_DATE_CONFLICT', 'Phiên bản mới phải có ngày hiệu lực sau phiên bản hiện tại');
   }
 
-  if (latest && (!latest.effective_to || String(latest.effective_to) >= validation.normalized.effectiveFrom)) {
+  if (latest && (!latest.effective_to || !latestEffectiveTo || latestEffectiveTo >= validation.normalized.effectiveFrom)) {
     await workforceRepo.closeWorkPolicyVersion(client, {
       installationId,
       id: latest.id,
@@ -166,7 +192,12 @@ export async function createWorkPolicyVersion(client, { installationId, payload,
     supersedesPolicyId: latest?.id ?? null,
     createdBy: actorId,
   });
-  return { ok: true, policy, beforePolicy: latest, action: latest ? 'version' : 'create' };
+  return {
+    ok: true,
+    policy: withEffectiveDates(policy),
+    beforePolicy: withEffectiveDates(latest),
+    action: latest ? 'version' : 'create',
+  };
 }
 
 export async function getEmployeeScopeRecord(client, { installationId, employeeId }) {
@@ -177,9 +208,10 @@ export async function getEmployeeScopeRecord(client, { installationId, employeeI
 
 export async function listEmployeePolicyAssignments(client, { installationId, employeeId }) {
   if (!validUuid(employeeId)) return fail('EMPLOYEE_NOT_FOUND', 'Không tìm thấy nhân sự');
+  const assignments = await workforceRepo.listEmployeePolicyAssignments(client, { installationId, employeeId });
   return {
     ok: true,
-    assignments: await workforceRepo.listEmployeePolicyAssignments(client, { installationId, employeeId }),
+    assignments: assignments.map(withEffectiveDates),
   };
 }
 
@@ -204,7 +236,13 @@ async function preparePolicyAssignment(client, {
 
   const policy = await workforceRepo.getWorkPolicyById(client, { installationId, id: workPolicyId });
   if (!policy || !policy.is_active) return fail('POLICY_NOT_FOUND', 'Không tìm thấy chính sách làm việc đang hiệu lực');
-  if (String(policy.effective_from) > effectiveFrom || (policy.effective_to && String(policy.effective_to) < effectiveFrom)) {
+  const policyEffectiveFrom = effectiveDateOnly(policy.effective_from);
+  const policyEffectiveTo = policy.effective_to ? effectiveDateOnly(policy.effective_to) : null;
+  if (
+    !policyEffectiveFrom
+    || policyEffectiveFrom > effectiveFrom
+    || (policy.effective_to && (!policyEffectiveTo || policyEffectiveTo < effectiveFrom))
+  ) {
     return fail(
       'POLICY_NOT_EFFECTIVE',
       effectiveFrom < today
@@ -220,7 +258,8 @@ async function preparePolicyAssignment(client, {
   if (effectiveFrom < today && bootstrap && latest) {
     return fail('BOOTSTRAP_ASSIGNMENT_EXISTS', `${employee.code} đã có lịch sử chính sách; không được dùng khởi tạo lùi ngày`);
   }
-  if (latest && effectiveFrom <= String(latest.effective_from)) {
+  const latestAssignmentFrom = latest ? effectiveDateOnly(latest.effective_from) : null;
+  if (latest && (!latestAssignmentFrom || effectiveFrom <= latestAssignmentFrom)) {
     return fail('ASSIGNMENT_EFFECTIVE_DATE_CONFLICT', `Ngày áp dụng của ${employee.code} phải sau lần gán chính sách gần nhất`);
   }
   return { ok: true, policy, latest };
@@ -235,7 +274,10 @@ async function applyPreparedPolicyAssignment(client, {
   actorId,
   prepared,
 }) {
-  if (prepared.latest && (!prepared.latest.effective_to || String(prepared.latest.effective_to) >= effectiveFrom)) {
+  const latestEffectiveTo = prepared.latest?.effective_to
+    ? effectiveDateOnly(prepared.latest.effective_to)
+    : null;
+  if (prepared.latest && (!prepared.latest.effective_to || !latestEffectiveTo || latestEffectiveTo >= effectiveFrom)) {
     await workforceRepo.closeEmployeePolicyAssignment(client, {
       installationId,
       id: prepared.latest.id,
@@ -250,7 +292,10 @@ async function applyPreparedPolicyAssignment(client, {
     reason,
     createdBy: actorId,
   });
-  return { assignment, beforeAssignment: prepared.latest ?? null };
+  return {
+    assignment: withEffectiveDates(assignment),
+    beforeAssignment: withEffectiveDates(prepared.latest ?? null),
+  };
 }
 
 export async function listWorkPolicyCoverage(client, {
@@ -278,8 +323,8 @@ export async function listWorkPolicyCoverage(client, {
     assignment: row.assignment_id ? {
       id: row.assignment_id,
       workPolicyId: row.work_policy_id,
-      effectiveFrom: String(row.effective_from),
-      effectiveTo: row.effective_to ? String(row.effective_to) : null,
+      effectiveFrom: effectiveDateOnly(row.effective_from),
+      effectiveTo: row.effective_to ? effectiveDateOnly(row.effective_to) : null,
       policyCode: row.policy_code,
       policyVersion: Number(row.policy_version),
       policyName: row.policy_name,
@@ -447,7 +492,15 @@ export async function upsertWorkSchedule(client, { installationId, payload, acto
     workPolicyId = assignment?.work_policy_id ?? null;
     if (workPolicyId) policy = await workforceRepo.getWorkPolicyById(client, { installationId, id: workPolicyId });
   }
-  if (!policy || !policy.is_active || String(policy.effective_from) > workDate || (policy.effective_to && String(policy.effective_to) < workDate)) {
+  const policyEffectiveFrom = policy ? effectiveDateOnly(policy.effective_from) : null;
+  const policyEffectiveTo = policy?.effective_to ? effectiveDateOnly(policy.effective_to) : null;
+  if (
+    !policy
+    || !policy.is_active
+    || !policyEffectiveFrom
+    || policyEffectiveFrom > workDate
+    || (policy.effective_to && (!policyEffectiveTo || policyEffectiveTo < workDate))
+  ) {
     return fail('WORK_POLICY_REQUIRED', 'Nhân sự chưa có chính sách làm việc phù hợp cho ngày đã chọn');
   }
 
