@@ -141,13 +141,6 @@ function sourceSummary(day: AttendanceTimesheetDay) {
   return [...new Set(values)].join(' · ') || 'Chưa có sự kiện';
 }
 
-function monthSourceSummary(row: AttendanceTimesheetMonth) {
-  const values = row.attendanceSources.map((source) => SOURCE_LABEL[source]);
-  if (row.scheduleSources.includes('OVERRIDE')) values.push('Lịch điều chỉnh');
-  if (row.scheduleSources.includes('POLICY')) values.push('Lịch chính sách');
-  return [...new Set(values)].join(' · ') || 'Chưa có sự kiện';
-}
-
 function validationLabel(value: AttendanceEvent['validation_status']) {
   if (value === 'VALID') return 'Hợp lệ';
   if (value === 'PENDING') return 'Chờ kiểm tra';
@@ -464,6 +457,8 @@ export default function AttendanceTimesheetWorkspace({
                     <th>Đi trễ</th>
                     <th>Về sớm</th>
                     <th>Giờ được tính</th>
+                    <th>Điều chỉnh</th>
+                    <th>Ngày khóa</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -503,12 +498,16 @@ export default function AttendanceTimesheetWorkspace({
                         <td className={localStyles.matrixTotal}>{minutesLabel(row.lateMinutes)}</td>
                         <td className={localStyles.matrixTotal}>{minutesLabel(row.earlyLeaveMinutes)}</td>
                         <td className={localStyles.matrixTotal}>{minutesLabel(row.countedMinutes)}</td>
+                        <td className={localStyles.matrixTotal}>
+                          {row.adjustedDays} đã duyệt{row.pendingAdjustmentDays ? ` · ${row.pendingAdjustmentDays} chờ duyệt` : ''}
+                        </td>
+                        <td className={localStyles.matrixTotal}>{row.lockedDays}</td>
                       </tr>
                     );
                   })}
                   {!monthlyRows.length ? (
                     <tr>
-                      <td colSpan={37}><div className={styles.emptyState}>Không có nhân sự trong phạm vi và tháng đã chọn.</div></td>
+                      <td colSpan={39}><div className={styles.emptyState}>Không có nhân sự trong phạm vi và tháng đã chọn.</div></td>
                     </tr>
                   ) : null}
                 </tbody>
