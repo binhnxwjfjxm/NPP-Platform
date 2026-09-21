@@ -3,14 +3,14 @@ import { randomUUID } from 'node:crypto';
 const POLICY_COLUMNS = `id, installation_id, code, version, name, work_nature, time_mode,
   fixed_start_time, fixed_end_time, working_days, break_minutes, late_grace_minutes,
   early_leave_grace_minutes, overtime_enabled, overtime_requires_approval, attendance_method,
-  timezone, rounding_minutes, minimum_full_day_minutes, minimum_half_day_minutes,
+  attendance_basis, timezone, rounding_minutes, minimum_full_day_minutes, minimum_half_day_minutes,
   effective_from, effective_to, supersedes_policy_id, is_active, created_at, created_by`;
 
 const ASSIGNMENT_COLUMNS = `a.id, a.installation_id, a.employee_id, a.work_policy_id,
   a.effective_from, a.effective_to, a.reason, a.created_at, a.created_by,
   p.code AS policy_code, p.version AS policy_version, p.name AS policy_name,
   p.time_mode AS policy_time_mode, p.attendance_method AS policy_attendance_method,
-  p.timezone AS policy_timezone`;
+  p.attendance_basis AS policy_attendance_basis, p.timezone AS policy_timezone`;
 
 const SCHEDULE_COLUMNS = `s.id, s.installation_id, s.employee_id, s.work_policy_id,
   s.work_date, s.schedule_kind, s.scheduled_start_at, s.scheduled_end_at, s.source,
@@ -79,12 +79,12 @@ export async function insertWorkPolicy(client, values) {
        id, installation_id, code, version, name, work_nature, time_mode,
        fixed_start_time, fixed_end_time, working_days, break_minutes, late_grace_minutes,
        early_leave_grace_minutes, overtime_enabled, overtime_requires_approval,
-       attendance_method, timezone, rounding_minutes, minimum_full_day_minutes,
+       attendance_method, attendance_basis, timezone, rounding_minutes, minimum_full_day_minutes,
        minimum_half_day_minutes, effective_from, effective_to, supersedes_policy_id,
        is_active, created_at, created_by
      ) VALUES (
-       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10::smallint[],$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
-       $21,$22,$23,true,now(),$24
+       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10::smallint[],$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,
+       $22,$23,$24,true,now(),$25
      )
      RETURNING ${POLICY_COLUMNS}`,
     [
@@ -92,7 +92,7 @@ export async function insertWorkPolicy(client, values) {
       values.timeMode, values.fixedStartTime, values.fixedEndTime, values.workingDays,
       values.breakMinutes, values.lateGraceMinutes, values.earlyLeaveGraceMinutes,
       values.overtimeEnabled, values.overtimeRequiresApproval, values.attendanceMethod,
-      values.timezone, values.roundingMinutes, values.minimumFullDayMinutes,
+      values.attendanceBasis, values.timezone, values.roundingMinutes, values.minimumFullDayMinutes,
       values.minimumHalfDayMinutes, values.effectiveFrom, values.effectiveTo,
       values.supersedesPolicyId, values.createdBy,
     ],
@@ -491,7 +491,7 @@ export async function listAttendanceEventsForRange(client, {
 }) {
   const result = await client.query(
     `SELECT e.id, e.installation_id, e.employee_id, e.schedule_id, e.work_policy_id,
-            e.attendance_point_id, e.event_type, e.occurred_at, e.source,
+            e.attendance_point_id, e.event_type, e.movement_reason, e.occurred_at, e.source,
             e.validation_status, e.source_reference, e.note, e.recorded_by,
             e.request_id, e.created_at,
             p.code AS point_code, p.name AS point_name
@@ -513,21 +513,21 @@ export async function insertAttendanceEvent(client, values) {
   const result = await client.query(
     `INSERT INTO shared.attendance_events (
        id, installation_id, employee_id, schedule_id, work_policy_id,
-       attendance_point_id, event_type, occurred_at, source, validation_status,
+       attendance_point_id, event_type, movement_reason, occurred_at, source, validation_status,
        source_reference, note, recorded_by, request_id, created_at
      ) VALUES (
-       $1,$2,$3,$4,$5,$6,$7,$8,$9,'VALID',$10,$11,$12,$13,now()
+       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'VALID',$11,$12,$13,$14,now()
      )
      ON CONFLICT (installation_id, source, source_reference)
      WHERE source_reference IS NOT NULL
      DO NOTHING
      RETURNING id, installation_id, employee_id, schedule_id, work_policy_id,
-               attendance_point_id, event_type, occurred_at, source, validation_status,
+               attendance_point_id, event_type, movement_reason, occurred_at, source, validation_status,
                source_reference, note, recorded_by, request_id, created_at`,
     [
       id, values.installationId, values.employeeId, values.scheduleId,
       values.workPolicyId, values.attendancePointId, values.eventType,
-      values.occurredAt, values.source ?? 'QR', values.sourceReference,
+      values.movementReason ?? null, values.occurredAt, values.source ?? 'QR', values.sourceReference,
       values.note ?? null, values.actorId, values.requestId,
     ],
   );

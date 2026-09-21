@@ -24,6 +24,7 @@ type PolicyDraft = {
   overtimeEnabled: boolean;
   overtimeRequiresApproval: boolean;
   attendanceMethod: WorkPolicy['attendance_method'];
+  attendanceBasis: WorkPolicy['attendance_basis'];
   timezone: string;
   roundingMinutes: string;
   minimumFullDayMinutes: string;
@@ -40,7 +41,12 @@ const TIME_MODE_LABEL: Record<WorkPolicy['time_mode'], string> = {
   FIXED: 'Giờ cố định', SHIFT: 'Theo ca', FLEXIBLE: 'Linh hoạt', NO_ATTENDANCE: 'Không bắt buộc chấm công',
 };
 const ATTENDANCE_LABEL: Record<WorkPolicy['attendance_method'], string> = {
-  QR: 'QR', MANUAL: 'Nhập tay', BOTH: 'QR và nhập tay', NONE: 'Không chấm công',
+  QR: 'QR', MANUAL: 'Chấm trực tiếp', BOTH: 'QR và chấm trực tiếp', NONE: 'Không chấm công',
+};
+const ATTENDANCE_BASIS_LABEL: Record<WorkPolicy['attendance_basis'], string> = {
+  TIME: 'Theo thời gian vào / ra',
+  PRESENCE: 'Chỉ xác nhận có mặt',
+  NONE: 'Không chấm công',
 };
 
 function todayPlus(days: number) {
@@ -53,7 +59,7 @@ function emptyDraft(): PolicyDraft {
     code: '', name: '', workNature: '', timeMode: 'FIXED',
     fixedStartTime: '08:00', fixedEndTime: '17:00', workingDays: [1, 2, 3, 4, 5],
     breakMinutes: '60', lateGraceMinutes: '0', earlyLeaveGraceMinutes: '0',
-    overtimeEnabled: false, overtimeRequiresApproval: true, attendanceMethod: 'QR',
+    overtimeEnabled: false, overtimeRequiresApproval: true, attendanceMethod: 'QR', attendanceBasis: 'TIME',
     timezone: 'Asia/Ho_Chi_Minh', roundingMinutes: '0',
     minimumFullDayMinutes: '', minimumHalfDayMinutes: '', effectiveFrom: todayPlus(1),
   };
@@ -66,7 +72,7 @@ function fromPolicy(policy: WorkPolicy): PolicyDraft {
     breakMinutes: String(policy.break_minutes), lateGraceMinutes: String(policy.late_grace_minutes),
     earlyLeaveGraceMinutes: String(policy.early_leave_grace_minutes),
     overtimeEnabled: policy.overtime_enabled, overtimeRequiresApproval: policy.overtime_requires_approval,
-    attendanceMethod: policy.attendance_method, timezone: policy.timezone,
+    attendanceMethod: policy.attendance_method, attendanceBasis: policy.attendance_basis ?? (policy.time_mode === 'NO_ATTENDANCE' ? 'NONE' : 'TIME'), timezone: policy.timezone,
     roundingMinutes: String(policy.rounding_minutes),
     minimumFullDayMinutes: policy.minimum_full_day_minutes == null ? '' : String(policy.minimum_full_day_minutes),
     minimumHalfDayMinutes: policy.minimum_half_day_minutes == null ? '' : String(policy.minimum_half_day_minutes),
@@ -132,6 +138,7 @@ export default function WorkPolicyWorkspace({ initialPolicies, initialError }: {
       overtimeEnabled: draft.overtimeEnabled,
       overtimeRequiresApproval: draft.overtimeRequiresApproval,
       attendanceMethod: draft.timeMode === 'NO_ATTENDANCE' ? 'NONE' : draft.attendanceMethod,
+      attendanceBasis: draft.timeMode === 'NO_ATTENDANCE' ? 'NONE' : draft.attendanceBasis,
       timezone: draft.timezone.trim(),
       roundingMinutes: Number(draft.roundingMinutes || 0),
       minimumFullDayMinutes: draft.minimumFullDayMinutes ? Number(draft.minimumFullDayMinutes) : null,
@@ -177,7 +184,7 @@ export default function WorkPolicyWorkspace({ initialPolicies, initialError }: {
           <div className={styles.sectionHeader}><div><p className={styles.panelKicker}>Danh sách</p><h2>Chính sách và phiên bản hiện hành</h2></div></div>
           <div className={styles.tableWrap}>
             <table className={styles.table}>
-              <thead><tr><th>Mã</th><th>Tên chính sách</th><th>Kiểu thời gian</th><th>Chấm công</th><th>Hiệu lực</th><th>Phiên bản</th><th>Thao tác</th></tr></thead>
+              <thead><tr><th>Mã</th><th>Tên chính sách</th><th>Kiểu thời gian</th><th>Chấm công</th><th>Ghi nhận công</th><th>Hiệu lực</th><th>Phiên bản</th><th>Thao tác</th></tr></thead>
               <tbody>
                 {latestPolicies.map((policy) => (
                   <tr key={policy.id}>
@@ -185,12 +192,13 @@ export default function WorkPolicyWorkspace({ initialPolicies, initialError }: {
                     <td><strong>{policy.name}</strong><br /><small>{policy.work_nature || 'Chưa ghi tính chất công việc'}</small></td>
                     <td>{TIME_MODE_LABEL[policy.time_mode]}</td>
                     <td>{ATTENDANCE_LABEL[policy.attendance_method]}</td>
+                    <td>{ATTENDANCE_BASIS_LABEL[policy.attendance_basis ?? (policy.time_mode === 'NO_ATTENDANCE' ? 'NONE' : 'TIME')]}</td>
                     <td>{policy.effective_from} → {policy.effective_to || 'Đang mở'}</td>
                     <td>{policy.version} <small>({policies.filter((item) => item.code === policy.code).length} bản)</small></td>
                     <td><button type="button" onClick={() => openVersion(policy)}>Tạo phiên bản mới</button></td>
                   </tr>
                 ))}
-                {!latestPolicies.length ? <tr><td colSpan={7}><div className={styles.emptyState}>Chưa có chính sách làm việc.</div></td></tr> : null}
+                {!latestPolicies.length ? <tr><td colSpan={8}><div className={styles.emptyState}>Chưa có chính sách làm việc.</div></td></tr> : null}
               </tbody>
             </table>
           </div>
@@ -231,7 +239,26 @@ export default function WorkPolicyWorkspace({ initialPolicies, initialError }: {
                 <label>Ngưỡng ghi nhận đi trễ (phút)<input type="number" min={0} max={240} value={draft.lateGraceMinutes} onChange={(e) => setDraft((c) => ({ ...c, lateGraceMinutes: e.target.value }))} /></label>
                 <label>Ngưỡng ghi nhận về sớm (phút)<input type="number" min={0} max={240} value={draft.earlyLeaveGraceMinutes} onChange={(e) => setDraft((c) => ({ ...c, earlyLeaveGraceMinutes: e.target.value }))} /></label>
                 <div className={styles.banner} role="note">Các ngưỡng này dùng để ghi nhận sai lệch công. Bảng công không tự điều chỉnh thu nhập; xử lý vi phạm là quy trình riêng.</div>
-                {draft.timeMode !== 'NO_ATTENDANCE' ? <label>Phương thức chấm công<select value={draft.attendanceMethod} onChange={(e) => setDraft((c) => ({ ...c, attendanceMethod: e.target.value as WorkPolicy['attendance_method'] }))}><option value="QR">QR</option><option value="MANUAL">Nhập tay</option><option value="BOTH">QR và nhập tay</option></select></label> : null}
+                {draft.timeMode !== 'NO_ATTENDANCE' ? <>
+                  <label>
+                    Phương thức chấm công
+                    <select value={draft.attendanceMethod} onChange={(e) => setDraft((c) => ({ ...c, attendanceMethod: e.target.value as WorkPolicy['attendance_method'] }))}>
+                      <option value="QR">QR</option>
+                      <option value="MANUAL">Chấm trực tiếp</option>
+                      <option value="BOTH">QR và chấm trực tiếp</option>
+                    </select>
+                  </label>
+                  <label>
+                    Cách ghi nhận công
+                    <select value={draft.attendanceBasis} onChange={(e) => setDraft((c) => ({ ...c, attendanceBasis: e.target.value as WorkPolicy['attendance_basis'] }))}>
+                      <option value="TIME">Theo thời gian vào / ra</option>
+                      <option value="PRESENCE">Chỉ xác nhận có mặt</option>
+                    </select>
+                  </label>
+                  {draft.attendanceBasis === 'PRESENCE' ? (
+                    <div className={localStyles.bootstrapNote}>Nhân sự chỉ cần ghi nhận có mặt. Bảng công không lấy số phút giữa giờ vào / ra làm căn cứ tính công và không ghi nhận vi phạm về sớm.</div>
+                  ) : null}
+                </> : null}
                 <label>Múi giờ<input value={draft.timezone} onChange={(e) => setDraft((c) => ({ ...c, timezone: e.target.value }))} maxLength={64} /></label>
                 <label>Ngày bắt đầu hiệu lực<input type="date" min={basePolicyId ? todayPlus(1) : undefined} value={draft.effectiveFrom} onChange={(e) => setDraft((c) => ({ ...c, effectiveFrom: e.target.value }))} required /></label>
                 {!basePolicyId && draft.effectiveFrom < todayPlus(0) ? (

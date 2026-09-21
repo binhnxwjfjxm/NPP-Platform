@@ -7,6 +7,8 @@ const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/;
 const POLICY_TIME_MODES = new Set(['FIXED', 'SHIFT', 'FLEXIBLE', 'NO_ATTENDANCE']);
 const ATTENDANCE_METHODS = new Set(['QR', 'MANUAL', 'BOTH', 'NONE']);
+const ATTENDANCE_BASES = new Set(['TIME', 'PRESENCE', 'NONE']);
+const TEMP_EXIT_REASONS = new Set(['WORK_BUSINESS', 'PERSONAL', 'BREAK', 'OTHER']);
 const SCHEDULE_KINDS = new Set(['WORK', 'OFF']);
 const INSTALLATION_TIMEZONE = 'Asia/Ho_Chi_Minh';
 
@@ -78,8 +80,13 @@ function normalizePolicy(payload, codeOverride = null) {
   }
   const attendanceMethod = text(payload.attendanceMethod).toUpperCase();
   if (!ATTENDANCE_METHODS.has(attendanceMethod)) return fail('INVALID_ATTENDANCE_METHOD', 'Phương thức chấm công không hợp lệ');
-  if (timeMode === 'NO_ATTENDANCE' && attendanceMethod !== 'NONE') {
-    return fail('ATTENDANCE_METHOD_CONFLICT', 'Chính sách không bắt buộc chấm công phải dùng phương thức Không chấm công');
+  const attendanceBasis = (text(payload.attendanceBasis) || (timeMode === 'NO_ATTENDANCE' ? 'NONE' : 'TIME')).toUpperCase();
+  if (!ATTENDANCE_BASES.has(attendanceBasis)) return fail('INVALID_ATTENDANCE_BASIS', 'Cách ghi nhận công không hợp lệ');
+  if (timeMode === 'NO_ATTENDANCE' && (attendanceMethod !== 'NONE' || attendanceBasis !== 'NONE')) {
+    return fail('ATTENDANCE_METHOD_CONFLICT', 'Chính sách không bắt buộc chấm công phải dùng phương thức và cách ghi nhận Không chấm công');
+  }
+  if ((attendanceBasis === 'NONE') !== (attendanceMethod === 'NONE')) {
+    return fail('ATTENDANCE_METHOD_CONFLICT', 'Phương thức chấm công và cách ghi nhận công đang mâu thuẫn');
   }
   const timezone = text(payload.timezone) || INSTALLATION_TIMEZONE;
   if (timezone.length > 64) return fail('INVALID_TIMEZONE', 'Múi giờ không hợp lệ');
@@ -102,7 +109,7 @@ function normalizePolicy(payload, codeOverride = null) {
       breakMinutes, lateGraceMinutes, earlyLeaveGraceMinutes,
       overtimeEnabled: payload.overtimeEnabled === true,
       overtimeRequiresApproval: payload.overtimeRequiresApproval !== false,
-      attendanceMethod, timezone, roundingMinutes,
+      attendanceMethod, attendanceBasis, timezone, roundingMinutes,
       minimumFullDayMinutes, minimumHalfDayMinutes,
       effectiveFrom, effectiveTo,
     },
@@ -480,7 +487,7 @@ export async function upsertWorkSchedule(client, { installationId, payload, acto
 
 const ATTENDANCE_QR_PREFIX = 'NPPATT.';
 const ATTENDANCE_QR_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
-const ATTENDANCE_QR_TTL_MS = 90_000;
+const ATTENDANCE_QR_TTL_MS = 120_000;
 const ATTENDANCE_MIN_EVENT_GAP_MS = 60_000;
 
 function nextDate(value) {
@@ -552,20 +559,57 @@ function attendanceEventWindow({ workDate, timeZone, expectedStartAt, expectedEn
   return { fromAt: start, toAt: end };
 }
 
-function attendanceState(events, now) {
+function attendanceState(events, now, attendanceBasis = 'TIME') {
   const validEvents = events.filter((event) => event.validation_status === 'VALID');
   const latest = validEvents.at(-1) ?? null;
-  if (!latest) return { status: 'NOT_STARTED', nextAction: 'CHECK_IN', latestEvent: null };
-  if (latest.event_type === 'CHECK_IN') {
-    const elapsed = now.getTime() - new Date(latest.occurred_at).getTime();
-    return {
-      status: 'WORKING',
-      nextAction: 'CHECK_OUT',
-      latestEvent: latest,
-      tooSoon: elapsed >= 0 && elapsed < ATTENDANCE_MIN_EVENT_GAP_MS,
-    };
+  if (!latest) return { status: 'NOT_STARTED', nextAction: 'CHECK_IN', latestEvent: null, tooSoon: false };
+  const elapsed = now.getTime() - new Date(latest.occurred_at).getTime();
+  const tooSoon = elapsed >= 0 && elapsed < ATTENDANCE_MIN_EVENT_GAP_MS;
+  if (latest.event_type === 'CHECK_IN' || latest.event_type === 'RETURN') {
+    if (attendanceBasis === 'PRESENCE' && latest.event_type === 'CHECK_IN') {
+      return { status: 'COMPLETE', nextAction: null, latestEvent: latest, tooSoon: false };
+    }
+    return { status: 'WORKING', nextAction: 'EXIT', latestEvent: latest, tooSoon };
   }
-  return { status: 'COMPLETE', nextAction: null, latestEvent: latest };
+  if (latest.event_type === 'TEMP_EXIT') {
+    return { status: 'OUTSIDE', nextAction: 'RETURN', latestEvent: latest, tooSoon };
+  }
+  return { status: 'COMPLETE', nextAction: null, latestEvent: latest, tooSoon: false };
+}
+
+function attendanceEventChoice(attendance, payload) {
+  if (attendance.nextAction === 'CHECK_IN') {
+    return { ok: true, eventType: 'CHECK_IN', movementReason: null, note: null };
+  }
+  if (attendance.nextAction === 'RETURN') {
+    return { ok: true, eventType: 'RETURN', movementReason: null, note: 'Quay lại nơi làm việc' };
+  }
+  if (attendance.nextAction !== 'EXIT') {
+    return fail('ATTENDANCE_ALREADY_COMPLETE', 'Ngày làm việc này đã kết thúc');
+  }
+  const exitReason = text(payload?.exitReason).toUpperCase();
+  const note = text(payload?.note) || null;
+  if (exitReason === 'END_WORK') {
+    return { ok: true, eventType: 'CHECK_OUT', movementReason: null, note: note || 'Kết thúc làm việc' };
+  }
+  if (!TEMP_EXIT_REASONS.has(exitReason)) {
+    return fail('EXIT_REASON_REQUIRED', 'Vui lòng chọn lý do rời nơi làm việc');
+  }
+  if (exitReason === 'OTHER' && !note) {
+    return fail('EXIT_NOTE_REQUIRED', 'Lý do khác phải có ghi chú');
+  }
+  const labels = {
+    WORK_BUSINESS: 'Ra ngoài làm công việc',
+    PERSONAL: 'Ra ngoài việc cá nhân',
+    BREAK: 'Nghỉ giữa ca',
+    OTHER: 'Lý do khác',
+  };
+  return {
+    ok: true,
+    eventType: 'TEMP_EXIT',
+    movementReason: exitReason,
+    note: note || labels[exitReason],
+  };
 }
 
 async function policyForDate(client, { installationId, employeeId, workDate }) {
@@ -676,7 +720,7 @@ async function resolveAttendanceContext(client, { installationId, employeeId, no
   const events = await workforceRepo.listAttendanceEventsForRange(client, {
     installationId, employeeId, ...window,
   });
-  const state = attendanceState(events, now);
+  const state = attendanceState(events, now, policy.attendance_basis);
 
   return {
     ok: true,
@@ -799,6 +843,7 @@ export async function getAttendanceToday(client, { installationId, employeeId, n
         name: value.policy.name,
         timeMode: value.policy.time_mode,
         attendanceMethod: value.policy.attendance_method,
+        attendanceBasis: value.policy.attendance_basis,
         timezone: value.timeZone,
       },
       schedule: value.schedule ? {
@@ -840,7 +885,7 @@ export async function recordQrAttendance(client, {
   if (!['QR', 'BOTH'].includes(attendance.policy.attendance_method)) {
     return fail('QR_ATTENDANCE_NOT_ALLOWED', 'Chính sách làm việc hiện tại không cho phép chấm công bằng QR');
   }
-  if (!attendance.nextAction) return fail('ATTENDANCE_ALREADY_COMPLETE', 'Ngày làm việc này đã có đủ giờ vào và giờ ra');
+  if (!attendance.nextAction) return fail('ATTENDANCE_ALREADY_COMPLETE', 'Ngày làm việc này đã kết thúc');
   if (attendance.tooSoon) return fail('ATTENDANCE_TOO_SOON', 'Vừa ghi nhận chấm công; vui lòng đợi một phút trước thao tác tiếp theo');
 
   const employeeBranchId = attendance.employee.branch_id ? String(attendance.employee.branch_id) : null;
@@ -852,8 +897,10 @@ export async function recordQrAttendance(client, {
     return fail('ATTENDANCE_WORKPLACE_MISMATCH', 'Mã QR này không thuộc nơi làm việc đã gắn cho bạn');
   }
 
+  const choice = attendanceEventChoice(attendance, payload);
+  if (!choice.ok) return choice;
   const sourceReference = createHash('sha256')
-    .update(`attendance-qr|${tokenRow.id}|${employeeId}|${attendance.nextAction}`)
+    .update(`attendance-qr|${tokenRow.id}|${employeeId}|${attendance.latestEvent?.id ?? 'START'}|${choice.eventType}|${choice.movementReason ?? 'NONE'}`)
     .digest('hex');
   const event = await workforceRepo.insertAttendanceEvent(client, {
     installationId,
@@ -861,10 +908,12 @@ export async function recordQrAttendance(client, {
     scheduleId: attendance.schedule?.id ?? null,
     workPolicyId: attendance.policy.id,
     attendancePointId: tokenRow.attendance_point_id,
-    eventType: attendance.nextAction,
+    eventType: choice.eventType,
+    movementReason: choice.movementReason,
     occurredAt: now.toISOString(),
     source: 'QR',
     sourceReference,
+    note: choice.note,
     actorId,
     requestId,
   });
@@ -891,6 +940,7 @@ export async function recordQrAttendance(client, {
 export async function recordManualAttendance(client, {
   installationId,
   employeeId,
+  payload,
   actorId,
   requestId,
   now = new Date(),
@@ -902,11 +952,13 @@ export async function recordManualAttendance(client, {
   if (!['MANUAL', 'BOTH'].includes(attendance.policy.attendance_method)) {
     return fail('MANUAL_ATTENDANCE_NOT_ALLOWED', 'Chính sách làm việc hiện tại không cho phép chấm công trực tiếp');
   }
-  if (!attendance.nextAction) return fail('ATTENDANCE_ALREADY_COMPLETE', 'Ngày làm việc này đã có đủ giờ vào và giờ ra');
+  if (!attendance.nextAction) return fail('ATTENDANCE_ALREADY_COMPLETE', 'Ngày làm việc này đã kết thúc');
   if (attendance.tooSoon) return fail('ATTENDANCE_TOO_SOON', 'Vừa ghi nhận chấm công; vui lòng đợi một phút trước thao tác tiếp theo');
 
+  const choice = attendanceEventChoice(attendance, payload);
+  if (!choice.ok) return choice;
   const sourceReference = createHash('sha256')
-    .update(`attendance-manual|${employeeId}|${attendance.workDate}|${attendance.nextAction}`)
+    .update(`attendance-manual|${employeeId}|${attendance.workDate}|${attendance.latestEvent?.id ?? 'START'}|${choice.eventType}|${choice.movementReason ?? 'NONE'}`)
     .digest('hex');
   const event = await workforceRepo.insertAttendanceEvent(client, {
     installationId,
@@ -914,11 +966,12 @@ export async function recordManualAttendance(client, {
     scheduleId: attendance.schedule?.id ?? null,
     workPolicyId: attendance.policy.id,
     attendancePointId: null,
-    eventType: attendance.nextAction,
+    eventType: choice.eventType,
+    movementReason: choice.movementReason,
     occurredAt: now.toISOString(),
     source: 'MANUAL',
     sourceReference,
-    note: 'Nhân viên chấm công trực tiếp theo chính sách làm việc',
+    note: choice.note || 'Nhân viên chấm công trực tiếp theo chính sách làm việc',
     actorId,
     requestId,
   });

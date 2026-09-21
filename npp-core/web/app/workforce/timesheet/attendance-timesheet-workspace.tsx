@@ -24,6 +24,7 @@ const STATUS_LABEL: Record<AttendanceDayStatus, string> = {
   MISSING_SCHEDULE: 'Thiếu lịch làm việc',
   NOT_STARTED: 'Chưa chấm công',
   WORKING: 'Đang làm việc',
+  OUTSIDE: 'Đang ra ngoài',
   MISSING_CHECK_IN: 'Thiếu giờ vào',
   MISSING_CHECK_OUT: 'Thiếu giờ ra',
   INCOMPLETE: 'Chấm công chưa đầy đủ',
@@ -123,6 +124,7 @@ function compactDayLabel(day: AttendanceTimesheetDay) {
     case 'UNEXCUSED_ABSENCE': return 'Vắng';
     case 'NO_ATTENDANCE_REQUIRED': return 'Không YC';
     case 'WORKING': return 'Đang';
+    case 'OUTSIDE': return 'Ra ngoài';
     case 'UPCOMING': return '';
     case 'NOT_STARTED': return 'Chưa';
     case 'MISSING_POLICY': return 'Thiếu CS';
@@ -134,7 +136,7 @@ function compactDayLabel(day: AttendanceTimesheetDay) {
 function compactDayTone(day: AttendanceTimesheetDay) {
   if (day.status === 'COMPLETE') return 'good';
   if (day.status === 'DAY_OFF' || day.status === 'APPROVED_LEAVE' || day.status === 'NO_ATTENDANCE_REQUIRED' || day.status === 'UPCOMING') return 'muted';
-  if (day.status === 'MISSING_POLICY' || day.status === 'MISSING_SCHEDULE' || day.status === 'PENDING_LEAVE' || day.status === 'PENDING_ADJUSTMENT' || day.status === 'LATE' || day.status === 'EARLY' || day.status === 'LATE_AND_EARLY' || day.status === 'WORKING') return 'warn';
+  if (day.status === 'MISSING_POLICY' || day.status === 'MISSING_SCHEDULE' || day.status === 'PENDING_LEAVE' || day.status === 'PENDING_ADJUSTMENT' || day.status === 'LATE' || day.status === 'EARLY' || day.status === 'LATE_AND_EARLY' || day.status === 'WORKING' || day.status === 'OUTSIDE') return 'warn';
   return 'danger';
 }
 

@@ -13,7 +13,8 @@ const DAY_COLUMNS = `c.employee_id, c.employee_code, c.employee_name,
   p.minimum_half_day_minutes AS policy_minimum_half_day_minutes,
   p.late_grace_minutes AS policy_late_grace_minutes,
   p.early_leave_grace_minutes AS policy_early_leave_grace_minutes,
-  p.attendance_method AS policy_attendance_method, p.timezone AS policy_timezone`;
+  p.attendance_method AS policy_attendance_method, p.attendance_basis AS policy_attendance_basis,
+  p.timezone AS policy_timezone`;
 
 const DAY_JOINS = `
   LEFT JOIN shared.work_schedules s
@@ -186,7 +187,7 @@ export async function listEvents(client, {
   if (!Array.isArray(employeeIds) || employeeIds.length === 0) return [];
   const result = await client.query(
     `SELECT e.id, e.installation_id, e.employee_id, e.schedule_id, e.work_policy_id,
-            e.attendance_point_id, e.event_type, e.occurred_at, e.source,
+            e.attendance_point_id, e.event_type, e.movement_reason, e.occurred_at, e.source,
             e.validation_status, e.source_reference, e.note, e.recorded_by,
             e.request_id, e.created_at, p.code AS point_code, p.name AS point_name
        FROM shared.attendance_events e

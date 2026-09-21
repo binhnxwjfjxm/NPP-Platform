@@ -1101,7 +1101,7 @@ async function handleAttendanceRecord(req, res, context) {
         data: { event: result.event, workDate: result.workDate, point: result.point },
         audit: {
           requestContext: context.requestContext,
-          action: result.event.event_type === 'CHECK_IN' ? 'check-in' : 'check-out',
+          action: result.event.event_type === 'CHECK_IN' ? 'check-in' : result.event.event_type === 'TEMP_EXIT' ? 'temporary-exit' : result.event.event_type === 'RETURN' ? 'return-to-work' : 'check-out',
           resourceType: 'attendance-event',
           resourceId: result.event.id,
           beforeData: null,
@@ -1111,6 +1111,7 @@ async function handleAttendanceRecord(req, res, context) {
             workDate: result.workDate,
             attendancePointId: result.point?.id ?? null,
             eventType: result.event.event_type,
+            movementReason: result.event.movement_reason ?? null,
           },
         },
       };
