@@ -1256,7 +1256,7 @@ export async function handleWorkforceRoutes(req, res, options) {
   const pathname = new URL(`http://localhost${req.url}`).pathname;
   if (!pathname.startsWith('/api/workforce/')) return false;
   const route = pathname.slice('/api/workforce'.length);
-  if (!['/policies', '/assignments', '/assignments/coverage', '/assignments/bulk', '/schedules', '/schedule-planning', '/attendance/today', '/attendance/timesheet', '/attendance/record', '/attendance/points', '/attendance/qr-token', '/attendance/adjustments', '/attendance/adjustments/review', '/attendance/adjustments/direct', '/attendance/period-locks', '/leave-types', '/leave-types/update', '/leave/requests', '/leave/requests/review', '/leave/requests/cancel', '/attendance/violations', '/attendance/violations/explain', '/attendance/violations/review'].includes(route)) return false;
+  if (!['/policies', '/assignments', '/assignments/coverage', '/assignments/bulk', '/schedules', '/schedule-planning', '/attendance/today', '/attendance/timesheet', '/attendance/record', '/attendance/points', '/attendance/qr-token', '/attendance/adjustments', '/attendance/adjustments/review', '/attendance/adjustments/direct', '/attendance/period-locks', '/leave-types', '/leave-types/update', '/leave/requests', '/leave/requests/review', '/leave/requests/cancel', '/leave/balances', '/leave/balances/entries', '/attendance/violations', '/attendance/violations/explain', '/attendance/violations/review'].includes(route)) return false;
 
   const auth = options.authenticate(req, options.config);
   if (!auth.ok) {
@@ -1289,6 +1289,8 @@ export async function handleWorkforceRoutes(req, res, options) {
     || (route === '/leave/requests' && ['GET', 'POST'].includes(method))
     || (route === '/leave/requests/review' && method === 'POST')
     || (route === '/leave/requests/cancel' && method === 'POST')
+    || (route === '/leave/balances' && method === 'GET')
+    || (route === '/leave/balances/entries' && method === 'POST')
     || (['/policies', '/assignments', '/schedules', '/schedule-planning'].includes(route) && ['GET', 'POST'].includes(method))
     || (route === '/assignments/coverage' && method === 'GET')
     || (route === '/assignments/bulk' && method === 'POST')
@@ -1311,6 +1313,7 @@ export async function handleWorkforceRoutes(req, res, options) {
   let timesheetSelfOnly = false;
   let adjustmentSelfOnly = false;
   let leaveRequestSelfOnly = false;
+  let leaveBalanceSelfOnly = false;
   let violationSelfOnly = false;
   let permission;
   if (route === '/attendance/timesheet') {
@@ -1361,6 +1364,12 @@ export async function handleWorkforceRoutes(req, res, options) {
   } else if (route === '/leave/requests/cancel') {
     permission = { ok: canApproveLeaves || canSubmitOwnLeave };
     leaveRequestSelfOnly = !canApproveLeaves;
+  } else if (route === '/leave/balances') {
+    const canReadScopedBalances = canReadLeaves || canApproveLeaves || canManageLeaveTypes;
+    permission = { ok: canReadScopedBalances || canSelfReadLeaves || canSubmitOwnLeave };
+    leaveBalanceSelfOnly = !canReadScopedBalances;
+  } else if (route === '/leave/balances/entries') {
+    permission = { ok: canManageLeaveTypes };
   } else {
     const permissionKey = route === '/schedules' || route === '/schedule-planning'
       ? (method === 'GET' ? options.PERMISSIONS.coreWorkScheduleRead : options.PERMISSIONS.coreWorkScheduleManage)
@@ -1413,6 +1422,8 @@ export async function handleWorkforceRoutes(req, res, options) {
     else if (route === '/leave/requests') await handleLeaveRequests(req, res, context, method, { selfOnly: leaveRequestSelfOnly });
     else if (route === '/leave/requests/review') await handleLeaveRequestReview(req, res, context);
     else if (route === '/leave/requests/cancel') await handleLeaveRequestCancel(req, res, context, { selfOnly: leaveRequestSelfOnly });
+    else if (route === '/leave/balances') await handleLeaveBalances(req, res, context, { selfOnly: leaveBalanceSelfOnly });
+    else if (route === '/leave/balances/entries') await handleLeaveBalanceEntry(req, res, context);
     else await handleAttendanceQrToken(req, res, context);
   } catch (error) {
     console.error(JSON.stringify({
