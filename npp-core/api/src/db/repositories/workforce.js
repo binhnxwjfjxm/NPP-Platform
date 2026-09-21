@@ -103,9 +103,15 @@ export async function insertWorkPolicy(client, values) {
 export async function getEmployeeScopeRecord(client, { installationId, employeeId, lock = 'share' }) {
   const suffix = lock === 'update' ? ' FOR UPDATE' : lock === 'share' ? ' FOR SHARE' : '';
   const result = await client.query(
-    `SELECT id, code, full_name, branch_id, is_active
-       FROM shared.employees
-      WHERE installation_id = $1 AND id = $2${suffix}`,
+    `SELECT e.id, e.code, e.full_name, e.branch_id, e.is_active,
+            (SELECT b.code
+               FROM shared.branches b
+              WHERE b.installation_id = e.installation_id AND b.id = e.branch_id) AS branch_code,
+            (SELECT b.name
+               FROM shared.branches b
+              WHERE b.installation_id = e.installation_id AND b.id = e.branch_id) AS branch_name
+       FROM shared.employees e
+      WHERE e.installation_id = $1 AND e.id = $2${suffix}`,
     [installationId, employeeId],
   );
   return result.rows?.[0] ?? null;
@@ -327,6 +333,22 @@ export async function getAttendancePointById(client, { installationId, id }) {
   return result.rows?.[0] ?? null;
 }
 
+export async function getActiveAttendancePointByBranchId(client, { installationId, branchId }) {
+  const result = await client.query(
+    `SELECT ${ATTENDANCE_POINT_COLUMNS}
+       FROM shared.attendance_points p
+       LEFT JOIN shared.branches b
+         ON b.installation_id = p.installation_id AND b.id = p.branch_id
+      WHERE p.installation_id = $1
+        AND p.branch_id = $2
+        AND p.is_active = true
+      ORDER BY p.created_at ASC, p.id ASC
+      LIMIT 1`,
+    [installationId, branchId],
+  );
+  return result.rows?.[0] ?? null;
+}
+
 export async function getAttendanceBranchById(client, { installationId, id }) {
   const result = await client.query(
     `SELECT id, code, name, is_active
@@ -344,6 +366,12 @@ export async function insertAttendancePoint(client, values) {
        id, installation_id, code, name, branch_id, is_active,
        created_at, updated_at, created_by, updated_by
      ) VALUES ($1,$2,$3,$4,$5,true,now(),now(),$6,$6)
+     ON CONFLICT (installation_id, code) DO UPDATE
+       SET name = EXCLUDED.name,
+           branch_id = EXCLUDED.branch_id,
+           is_active = true,
+           updated_at = GREATEST(date_trunc('milliseconds', clock_timestamp()), shared.attendance_points.updated_at + interval '1 millisecond'),
+           updated_by = EXCLUDED.updated_by
      RETURNING id`,
     [id, values.installationId, values.code, values.name, values.branchId, values.actorId],
   );

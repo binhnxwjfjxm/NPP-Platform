@@ -122,6 +122,8 @@ export type AttendanceToday = {
     code: string;
     full_name: string;
     branch_id: string | null;
+    branch_code?: string | null;
+    branch_name?: string | null;
     is_active: boolean;
   };
   policy: {

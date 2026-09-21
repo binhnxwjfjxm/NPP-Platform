@@ -596,22 +596,25 @@ async function handleAttendancePoints(req, res, context, method) {
 
   const parsed = await parsePayload(req, res, context);
   if (!parsed.ok) return;
-  const payload = parsed.payload;
-  const branchId = String(payload?.branchId ?? '').trim() || null;
-  if (!isCompanyScope(context.requestContext)) {
-    if (!branchId || !new Set(branchIds).has(branchId)) {
-      sendError(res, createError('SCOPE_FORBIDDEN', 'Bạn không có quyền tạo điểm chấm công ngoài phạm vi được cấp', {}, false, 403), context.requestId, context.receivedAt);
-      return;
-    }
+  const branchId = String(parsed.payload?.branchId ?? '').trim();
+  if (!branchId) {
+    sendError(res, createError('WORKPLACE_REQUIRED', 'Vui lòng chọn nơi làm việc', {}, false, 400), context.requestId, context.receivedAt);
+    return;
   }
+  if (!isCompanyScope(context.requestContext) && !new Set(branchIds).has(branchId)) {
+    sendError(res, createError('SCOPE_FORBIDDEN', 'Bạn không có quyền thiết lập mã QR cho nơi làm việc này', {}, false, 403), context.requestId, context.receivedAt);
+    return;
+  }
+
+  const mutationPayload = { branchId };
   await runIdempotentMutation(req, res, context, {
     route: '/api/workforce/attendance/points',
-    payload,
+    payload: mutationPayload,
     successStatus: 201,
     mutate: async (client) => {
       const result = await workforceService.createAttendancePoint(client, {
         installationId: context.requestContext.installationId,
-        payload,
+        payload: mutationPayload,
         actorId: context.requestContext.actorId,
       });
       if (!result.ok) return result;
@@ -620,12 +623,12 @@ async function handleAttendancePoints(req, res, context, method) {
         data: result.point,
         audit: {
           requestContext: context.requestContext,
-          action: 'create',
+          action: result.reused ? 'reuse' : 'create',
           resourceType: 'attendance-point',
           resourceId: result.point.id,
           beforeData: null,
           afterData: result.point,
-          metadata: { code: result.point.code, branchId: result.point.branch_id },
+          metadata: { branchId: result.point.branch_id },
         },
       };
     },

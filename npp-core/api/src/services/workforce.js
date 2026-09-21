@@ -525,6 +525,12 @@ export function hashAttendanceQrToken(token) {
   return createHash('sha256').update(token).digest('hex');
 }
 
+function attendancePointCode(branch) {
+  const branchCode = text(branch?.code).toUpperCase();
+  const branchKey = text(branch?.id).replace(/-/g, '').toUpperCase();
+  return `WORK_${branchCode.slice(0, 26)}_${branchKey}`;
+}
+
 export async function listAttendancePointManagement(client, { installationId, branchIds = null }) {
   const [points, branches] = await Promise.all([
     workforceRepo.listAttendancePoints(client, { installationId, branchIds }),
@@ -534,31 +540,30 @@ export async function listAttendancePointManagement(client, { installationId, br
 }
 
 export async function createAttendancePoint(client, { installationId, payload, actorId }) {
-  const code = text(payload?.code).toUpperCase();
-  const name = text(payload?.name);
-  const branchId = text(payload?.branchId) || null;
-  if (!CODE_PATTERN.test(code)) return fail('INVALID_ATTENDANCE_POINT_CODE', 'Mã điểm chấm công chỉ dùng chữ in hoa, số, gạch ngang hoặc gạch dưới');
-  if (!name || name.length > 256) return fail('INVALID_ATTENDANCE_POINT_NAME', 'Tên điểm chấm công là bắt buộc và tối đa 256 ký tự');
-  if (branchId && !validUuid(branchId)) return fail('BRANCH_NOT_FOUND', 'Chi nhánh không hợp lệ');
-  if (branchId) {
-    const branch = await workforceRepo.getAttendanceBranchById(client, { installationId, id: branchId });
-    if (!branch || !branch.is_active) return fail('BRANCH_NOT_FOUND', 'Không tìm thấy chi nhánh đang hoạt động');
-  }
-  try {
-    const point = await workforceRepo.insertAttendancePoint(client, {
-      installationId, code, name, branchId, actorId,
-    });
-    return { ok: true, point };
-  } catch (error) {
-    if (error?.code === '23505') return fail('ATTENDANCE_POINT_CODE_EXISTS', 'Mã điểm chấm công đã tồn tại');
-    throw error;
-  }
+  const branchId = text(payload?.branchId);
+  if (!validUuid(branchId)) return fail('WORKPLACE_REQUIRED', 'Vui lòng chọn nơi làm việc');
+
+  const branch = await workforceRepo.getAttendanceBranchById(client, { installationId, id: branchId });
+  if (!branch || !branch.is_active) return fail('BRANCH_NOT_FOUND', 'Không tìm thấy nơi làm việc đang hoạt động');
+
+  const existing = await workforceRepo.getActiveAttendancePointByBranchId(client, { installationId, branchId });
+  if (existing) return { ok: true, point: existing, reused: true };
+
+  const point = await workforceRepo.insertAttendancePoint(client, {
+    installationId,
+    code: attendancePointCode(branch),
+    name: branch.name,
+    branchId,
+    actorId,
+  });
+  if (!point) return fail('ATTENDANCE_POINT_CREATE_FAILED', 'Không thiết lập được mã QR cho nơi làm việc này');
+  return { ok: true, point, reused: false };
 }
 
 export async function createAttendanceQrToken(client, { installationId, attendancePointId, actorId, now = new Date() }) {
-  if (!validUuid(attendancePointId)) return fail('ATTENDANCE_POINT_NOT_FOUND', 'Không tìm thấy điểm chấm công');
+  if (!validUuid(attendancePointId)) return fail('ATTENDANCE_POINT_NOT_FOUND', 'Không tìm thấy nơi chấm công');
   const point = await workforceRepo.getAttendancePointById(client, { installationId, id: attendancePointId });
-  if (!point || !point.is_active) return fail('ATTENDANCE_POINT_NOT_FOUND', 'Không tìm thấy điểm chấm công đang hoạt động');
+  if (!point || !point.is_active || !point.branch_id) return fail('ATTENDANCE_POINT_NOT_FOUND', 'Không tìm thấy nơi chấm công đang hoạt động');
 
   const token = randomBytes(32).toString('base64url');
   const tokenHash = hashAttendanceQrToken(token);
@@ -578,7 +583,7 @@ export async function createAttendanceQrToken(client, { installationId, attendan
       id: row.id,
       attendancePointId,
       pointCode: point.code,
-      pointName: point.name,
+      pointName: point.branch_name ?? point.name,
       branchName: point.branch_name ?? null,
       qrPayload: `${ATTENDANCE_QR_PREFIX}${token}`,
       expiresAt: row.expires_at,
@@ -646,7 +651,7 @@ export async function recordQrAttendance(client, {
   if (!tokenRow) return fail('QR_TOKEN_INVALID', 'Mã QR chấm công không hợp lệ');
   if (!tokenRow.point_active) return fail('ATTENDANCE_POINT_INACTIVE', 'Điểm chấm công hiện không hoạt động');
   if (new Date(tokenRow.expires_at).getTime() <= now.getTime()) {
-    return fail('QR_TOKEN_EXPIRED', 'Mã QR đã hết hạn; vui lòng quét mã đang hiển thị tại điểm chấm công');
+    return fail('QR_TOKEN_EXPIRED', 'Mã QR đã hết hạn; vui lòng quét mã đang hiển thị tại nơi làm việc');
   }
 
   const resolved = await resolveAttendanceContext(client, { installationId, employeeId, now });
@@ -657,6 +662,15 @@ export async function recordQrAttendance(client, {
   }
   if (!attendance.nextAction) return fail('ATTENDANCE_ALREADY_COMPLETE', 'Ngày làm việc này đã có đủ giờ vào và giờ ra');
   if (attendance.tooSoon) return fail('ATTENDANCE_TOO_SOON', 'Vừa ghi nhận chấm công; vui lòng đợi một phút trước thao tác tiếp theo');
+
+  const employeeBranchId = attendance.employee.branch_id ? String(attendance.employee.branch_id) : null;
+  const pointBranchId = tokenRow.branch_id ? String(tokenRow.branch_id) : null;
+  if (!employeeBranchId) {
+    return fail('EMPLOYEE_WORKPLACE_REQUIRED', 'Hồ sơ nhân sự chưa có nơi làm việc; vui lòng liên hệ quản lý');
+  }
+  if (!pointBranchId || pointBranchId !== employeeBranchId) {
+    return fail('ATTENDANCE_WORKPLACE_MISMATCH', 'Mã QR này không thuộc nơi làm việc đã gắn cho bạn');
+  }
 
   const sourceReference = createHash('sha256')
     .update(`attendance-qr|${tokenRow.id}|${employeeId}|${attendance.nextAction}`)
@@ -681,13 +695,13 @@ export async function recordQrAttendance(client, {
     event: {
       ...event,
       point_code: tokenRow.point_code,
-      point_name: tokenRow.point_name,
+      point_name: tokenRow.branch_name ?? tokenRow.point_name,
     },
     workDate: attendance.workDate,
     point: {
       id: tokenRow.attendance_point_id,
       code: tokenRow.point_code,
-      name: tokenRow.point_name,
+      name: tokenRow.branch_name ?? tokenRow.point_name,
       branchId: tokenRow.branch_id,
       branchName: tokenRow.branch_name,
     },
@@ -706,7 +720,7 @@ export async function recordManualAttendance(client, {
   if (!resolved.ok) return resolved;
   const attendance = resolved.context;
   if (!['MANUAL', 'BOTH'].includes(attendance.policy.attendance_method)) {
-    return fail('MANUAL_ATTENDANCE_NOT_ALLOWED', 'Chính sách làm việc hiện tại không cho phép chấm công thủ công');
+    return fail('MANUAL_ATTENDANCE_NOT_ALLOWED', 'Chính sách làm việc hiện tại không cho phép chấm công trực tiếp');
   }
   if (!attendance.nextAction) return fail('ATTENDANCE_ALREADY_COMPLETE', 'Ngày làm việc này đã có đủ giờ vào và giờ ra');
   if (attendance.tooSoon) return fail('ATTENDANCE_TOO_SOON', 'Vừa ghi nhận chấm công; vui lòng đợi một phút trước thao tác tiếp theo');
@@ -724,7 +738,7 @@ export async function recordManualAttendance(client, {
     occurredAt: now.toISOString(),
     source: 'MANUAL',
     sourceReference,
-    note: 'Nhân viên chấm công thủ công theo chính sách làm việc',
+    note: 'Nhân viên chấm công trực tiếp theo chính sách làm việc',
     actorId,
     requestId,
   });

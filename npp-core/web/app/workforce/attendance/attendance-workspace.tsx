@@ -27,6 +27,13 @@ const STATUS_LABEL: Record<AttendanceToday['status'], string> = {
   COMPLETE: 'Đã hoàn tất',
 };
 
+const ATTENDANCE_METHOD_LABEL: Record<AttendanceToday['policy']['attendanceMethod'], string> = {
+  QR: 'Quét mã tại nơi làm việc',
+  MANUAL: 'Chấm công trực tiếp',
+  BOTH: 'Quét mã hoặc chấm trực tiếp',
+  NONE: 'Không yêu cầu chấm công',
+};
+
 function stableKey(ref: React.MutableRefObject<Attempt>, operation: string, payload: unknown) {
   const serialized = JSON.stringify(payload);
   if (ref.current?.payload === serialized) return ref.current.key;
@@ -111,11 +118,7 @@ export default function AttendanceWorkspace({
   const [busy, setBusy] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [cameraMessage, setCameraMessage] = useState<string | null>(null);
-  const [pointDraft, setPointDraft] = useState({
-    code: '',
-    name: '',
-    branchId: initialManagement?.branches[0]?.id ?? '',
-  });
+  const [selectedWorkplaceId, setSelectedWorkplaceId] = useState(initialManagement?.branches[0]?.id ?? '');
   const [qrToken, setQrToken] = useState<AttendanceQrToken | null>(null);
   const [clock, setClock] = useState(Date.now());
 
@@ -196,7 +199,7 @@ export default function AttendanceWorkspace({
       });
       recordAttempt.current = null;
       const verb = result.event.event_type === 'CHECK_IN' ? 'giờ vào' : 'giờ ra';
-      setNotice(`Đã ghi nhận ${verb} lúc ${formatDateTime(result.event.occurred_at, timeZone)} tại ${result.point?.name || 'điểm chấm công'}.`);
+      setNotice(`Đã ghi nhận ${verb} lúc ${formatDateTime(result.event.occurred_at, timeZone)} tại ${result.point?.branchName || result.point?.name || 'nơi làm việc'}.`);
       await reloadToday();
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Không ghi nhận được chấm công');
@@ -221,10 +224,10 @@ export default function AttendanceWorkspace({
       });
       manualRecordAttempt.current = null;
       const verb = result.event.event_type === 'CHECK_IN' ? 'giờ vào' : 'giờ ra';
-      setNotice(`Đã ghi nhận ${verb} lúc ${formatDateTime(result.event.occurred_at, timeZone)} bằng chấm công thủ công.`);
+      setNotice(`Đã ghi nhận ${verb} lúc ${formatDateTime(result.event.occurred_at, timeZone)} bằng chấm công trực tiếp.`);
       await reloadToday();
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : 'Không ghi nhận được chấm công thủ công');
+      setError(saveError instanceof Error ? saveError.message : 'Không ghi nhận được chấm công trực tiếp');
     } finally {
       setBusy(false);
     }
@@ -236,7 +239,7 @@ export default function AttendanceWorkspace({
     setCameraMessage(null);
     const Detector = (window as unknown as { BarcodeDetector?: BarcodeDetectorConstructor }).BarcodeDetector;
     if (!Detector) {
-      setCameraMessage(manualAllowed ? 'Thiết bị này chưa hỗ trợ quét QR bằng camera. Anh/chị có thể dùng Chấm công thủ công bên dưới.' : 'Thiết bị này chưa hỗ trợ quét QR bằng camera. Vui lòng dùng thiết bị có camera hỗ trợ quét QR.');
+      setCameraMessage(manualAllowed ? 'Thiết bị này chưa hỗ trợ quét QR bằng camera. Anh/chị có thể dùng Chấm công trực tiếp bên dưới.' : 'Thiết bị này chưa hỗ trợ quét QR bằng camera. Vui lòng dùng thiết bị có camera hỗ trợ quét QR.');
       return;
     }
     if (!navigator.mediaDevices?.getUserMedia) {
@@ -278,47 +281,48 @@ export default function AttendanceWorkspace({
       }, 350);
     } catch {
       stopScanner();
-      setCameraMessage('Không mở được camera. Kiểm tra quyền camera hoặc dùng ô nhập mã bên dưới.');
+      setCameraMessage(manualAllowed ? 'Không mở được camera. Kiểm tra quyền camera hoặc dùng Chấm công trực tiếp bên dưới.' : 'Không mở được camera. Vui lòng kiểm tra quyền camera trên thiết bị.');
     }
   }
 
   async function reloadPointManagement() {
-    if (!management) return;
+    if (!management) return null;
     try {
       const value = await requestJson<AttendancePointManagement>('/api/workforce/attendance/points');
       setManagement(value);
-      if (!pointDraft.branchId && value.branches[0]?.id) {
-        setPointDraft((current) => ({ ...current, branchId: value.branches[0].id }));
+      if (!value.branches.some((branch) => branch.id === selectedWorkplaceId)) {
+        setSelectedWorkplaceId(value.branches[0]?.id ?? '');
       }
+      return value;
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Không tải được điểm chấm công');
+      setError(loadError instanceof Error ? loadError.message : 'Không tải được danh sách nơi làm việc');
+      return null;
     }
   }
 
-  async function createPoint(event: React.FormEvent<HTMLFormElement>) {
+  async function showWorkplaceQr(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!management) return;
-    const payload = {
-      code: pointDraft.code.trim().toUpperCase(),
-      name: pointDraft.name.trim(),
-      branchId: pointDraft.branchId || null,
-    };
-    const key = stableKey(pointAttempt, 'web-attendance-point-create', payload);
+    if (!management || !selectedWorkplaceId) return;
+
     setBusy(true);
     setError(null);
     setNotice(null);
     try {
-      const point = await requestJson<AttendancePoint>('/api/workforce/attendance/points', {
-        method: 'POST',
-        headers: { 'Idempotency-Key': key },
-        body: JSON.stringify(payload),
-      });
-      pointAttempt.current = null;
-      setPointDraft((current) => ({ ...current, code: '', name: '' }));
-      setNotice(`Đã tạo điểm chấm công ${point.name}.`);
-      await reloadPointManagement();
+      let point = management.points.find((item) => item.is_active && item.branch_id === selectedWorkplaceId) ?? null;
+      if (!point) {
+        const payload = { branchId: selectedWorkplaceId };
+        const key = stableKey(pointAttempt, 'web-attendance-point-create', payload);
+        point = await requestJson<AttendancePoint>('/api/workforce/attendance/points', {
+          method: 'POST',
+          headers: { 'Idempotency-Key': key },
+          body: JSON.stringify(payload),
+        });
+        pointAttempt.current = null;
+        await reloadPointManagement();
+      }
+      await issueQrToken(point.id);
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : 'Không tạo được điểm chấm công');
+      setError(saveError instanceof Error ? saveError.message : 'Không hiển thị được mã QR chấm công');
     } finally {
       setBusy(false);
     }
@@ -360,7 +364,7 @@ export default function AttendanceWorkspace({
   return (
     <AppShell
       title="Chấm công"
-      subtitle="Ghi nhận giờ vào, giờ ra theo phương thức được chính sách làm việc cho phép."
+      subtitle="Nhân viên chấm công theo nơi làm việc đã gắn trong hồ sơ. Không cần chọn lại nơi làm việc mỗi ngày."
       kicker="Nhân sự"
       actions={actions}
     >
@@ -375,7 +379,7 @@ export default function AttendanceWorkspace({
           <article className={styles.summaryCard}>
             <span>Ngày làm việc</span>
             <strong>{today?.workDate || '—'}</strong>
-            <small>{today?.employee ? `${today.employee.code} · ${today.employee.full_name}` : 'Chưa xác định hồ sơ nhân sự'}</small>
+            <small>{today?.employee ? `${today.employee.full_name} · Nơi làm việc: ${today.employee.branch_name || 'Chưa gắn'}` : 'Chưa xác định hồ sơ nhân sự'}</small>
           </article>
           <article className={styles.summaryCard}>
             <span>Trạng thái hôm nay</span>
@@ -385,7 +389,7 @@ export default function AttendanceWorkspace({
           <article className={styles.summaryCard}>
             <span>Chính sách làm việc</span>
             <strong>{today?.policy.name || '—'}</strong>
-            <small>{today ? `${today.policy.code} · phiên bản ${today.policy.version}` : 'Chưa có chính sách phù hợp'}</small>
+            <small>{today ? ATTENDANCE_METHOD_LABEL[today.policy.attendanceMethod] : 'Chưa có chính sách phù hợp'}</small>
           </article>
         </section>
 
@@ -418,7 +422,7 @@ export default function AttendanceWorkspace({
                   {!scanning ? (
                     <div className={styles.emptyState}>
                       {today?.nextAction
-                        ? `Sẵn sàng: ${nextActionLabel.toLowerCase()} bằng QR.`
+                        ? `Sẵn sàng: ${nextActionLabel.toLowerCase()} bằng mã QR tại nơi làm việc.`
                         : 'Ngày làm việc này đã có đủ giờ vào và giờ ra.'}
                     </div>
                   ) : null}
@@ -445,15 +449,15 @@ export default function AttendanceWorkspace({
               </>
             ) : (
               <div className={localStyles.methodNotice}>
-                Chính sách hiện tại không dùng QR. Chấm công theo phương thức được hiển thị bên dưới.
+                Chính sách hiện tại không yêu cầu quét mã. Dùng cách chấm công được hiển thị bên dưới.
               </div>
             )}
 
             {manualAllowed ? (
               <div className={localStyles.manualAttendanceCard} data-testid="attendance-manual-record">
                 <div>
-                  <strong>Chấm công thủ công</strong>
-                  <span>Hệ thống dùng giờ hiện tại của máy chủ. Không nhập hoặc sửa giờ tại đây.</span>
+                  <strong>Chấm công trực tiếp</strong>
+                  <span>Hệ thống tự ghi giờ hiện tại. Anh/chị không cần nhập thời gian hoặc chọn nơi làm việc.</span>
                 </div>
                 <button
                   type="button"
@@ -469,7 +473,7 @@ export default function AttendanceWorkspace({
             <div className={localStyles.eventList} data-testid="attendance-today-events">
               {(today?.events ?? []).map((event) => (
                 <div className={localStyles.eventItem} key={event.id}>
-                  <span><strong>{event.event_type === 'CHECK_IN' ? 'Giờ vào' : 'Giờ ra'}</strong><br /><small>{event.point_name || (event.source === 'MANUAL' ? 'Chấm công thủ công' : 'Điểm chấm công')}</small></span>
+                  <span><strong>{event.event_type === 'CHECK_IN' ? 'Giờ vào' : 'Giờ ra'}</strong><br /><small>{event.point_name || (event.source === 'MANUAL' ? 'Chấm công trực tiếp' : 'Nơi làm việc')}</small></span>
                   <span>{formatDateTime(event.occurred_at, timeZone)}</span>
                 </div>
               ))}
@@ -480,60 +484,42 @@ export default function AttendanceWorkspace({
           {management ? (
             <section className={localStyles.qrPanel} data-testid="attendance-point-management">
               <div className={styles.sectionHeader}>
-                <div><p className={styles.panelKicker}>Dành cho quản lý</p><h2>Điểm chấm công và mã QR</h2></div>
-                <span className={styles.panelChip}>{management.points.length} điểm</span>
+                <div><p className={styles.panelKicker}>Dành cho quản lý</p><h2>Mã QR theo nơi làm việc</h2></div>
+                <span className={styles.panelChip}>{management.branches.length} nơi làm việc</span>
               </div>
 
-              <form className={localStyles.pointForm} onSubmit={(event) => void createPoint(event)}>
+              <form className={localStyles.pointForm} onSubmit={(event) => void showWorkplaceQr(event)}>
                 <label>
-                  Mã điểm
-                  <input value={pointDraft.code} onChange={(event) => setPointDraft((current) => ({ ...current, code: event.target.value }))} maxLength={64} required />
-                </label>
-                <label>
-                  Tên điểm chấm công
-                  <input value={pointDraft.name} onChange={(event) => setPointDraft((current) => ({ ...current, name: event.target.value }))} maxLength={256} required />
-                </label>
-                <label>
-                  Chi nhánh
+                  Nơi làm việc
                   <select
-                    value={pointDraft.branchId}
-                    onChange={(event) => setPointDraft((current) => ({ ...current, branchId: event.target.value }))}
-                    required={!management.companyScope}
+                    value={selectedWorkplaceId}
+                    onChange={(event) => {
+                      setSelectedWorkplaceId(event.target.value);
+                      setQrToken(null);
+                    }}
+                    required
                   >
-                    {management.companyScope ? <option value="">Toàn Công Ty</option> : null}
+                    <option value="">Chọn nơi làm việc</option>
                     {management.branches.map((branch) => (
-                      <option key={branch.id} value={branch.id}>{branch.code} · {branch.name}</option>
+                      <option key={branch.id} value={branch.id}>{branch.name}</option>
                     ))}
                   </select>
                 </label>
-                <button type="submit" className={styles.secondaryButton} disabled={busy}>Tạo điểm chấm công</button>
+                <small className={localStyles.pointHelp}>Thiết lập theo nơi làm việc có sẵn. Nhân viên không chọn lại nơi làm việc khi chấm công.</small>
+                <button type="submit" className={styles.secondaryButton} disabled={busy || !selectedWorkplaceId}>Hiển thị mã QR</button>
               </form>
-
-              <div className={localStyles.pointActions}>
-                {management.points.map((point) => (
-                  <button
-                    type="button"
-                    key={point.id}
-                    className={styles.secondaryButton}
-                    onClick={() => void issueQrToken(point.id)}
-                    disabled={busy || !point.is_active}
-                  >
-                    QR · {point.code}
-                  </button>
-                ))}
-              </div>
 
               {qrToken ? (
                 <div className={localStyles.qrWrap}>
                   <QrCode payload={qrToken.qrPayload} />
                   <div className={localStyles.qrMeta}>
-                    <strong>{qrToken.pointCode} · {qrToken.pointName}</strong>
-                    <div>{qrToken.branchName || 'Toàn Công Ty'}</div>
+                    <strong>{qrToken.branchName || qrToken.pointName}</strong>
+                    <div>Dùng mã này để chấm công tại nơi làm việc trên.</div>
                     <div>Còn hiệu lực khoảng {remainingSeconds} giây · mã tự làm mới trước khi hết hạn</div>
                   </div>
                 </div>
               ) : (
-                <div className={styles.emptyState}>Chọn một điểm chấm công để hiển thị mã QR.</div>
+                <div className={styles.emptyState}>Chọn nơi làm việc rồi bấm “Hiển thị mã QR”.</div>
               )}
             </section>
           ) : null}

@@ -18,12 +18,18 @@ test('Issue #1110 Lô 3 uses camera QR scan and policy-controlled manual attenda
   assert.match(workspace, /BarcodeDetector/);
   assert.match(workspace, /formats: \['qr_code'\]/);
   assert.match(workspace, /Mở camera quét QR/);
-  assert.match(workspace, /Chấm công thủ công/);
+  assert.match(workspace, /Chấm công trực tiếp/);
   assert.match(workspace, /method: 'MANUAL'/);
-  assert.match(workspace, /Không nhập hoặc sửa giờ tại đây/);
+  assert.match(workspace, /không cần nhập thời gian hoặc chọn nơi làm việc/);
   assert.doesNotMatch(workspace, /Dán mã QR/);
   assert.match(workspace, /Ghi nhận giờ vào/);
   assert.match(workspace, /Ghi nhận giờ ra/);
+  assert.match(workspace, /Nơi làm việc/);
+  assert.match(workspace, /Hiển thị mã QR/);
+  assert.match(workspace, /const payload = \{ branchId: selectedWorkplaceId \}/);
+  assert.doesNotMatch(workspace, /Mã điểm/);
+  assert.doesNotMatch(workspace, /Tên điểm chấm công/);
+  assert.doesNotMatch(workspace, /pointDraft\.code|pointDraft\.name/);
 });
 
 test('Issue #1110 Lô 3 reuses canonical idempotency keys and does not send employee or timestamp from browser', async () => {
