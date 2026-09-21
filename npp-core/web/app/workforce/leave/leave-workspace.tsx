@@ -235,6 +235,7 @@ export default function LeaveWorkspace({
       if (!data?.capabilities.selfOnly && branchId) params.set('branchId', branchId);
       const next = await requestJson<LeaveDataWithBalance>('/api/workforce/leave/requests?' + params.toString());
       setData(next);
+      setBalanceEmployeeId(next.selectedEmployee?.id ?? '');
       if (branchId && !next.branches.some((branch) => branch.id === branchId)) setBranchId('');
       await loadTypes();
     } catch (loadError) {
