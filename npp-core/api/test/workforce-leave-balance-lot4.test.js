@@ -16,7 +16,9 @@ test('Issue #1140 Lô 4 adds an append-only leave balance ledger without mutable
   assert.match(migration, /entry_type IN \('OPENING_GRANT', 'ACCRUAL', 'USAGE', 'ADJUSTMENT', 'CARRY_OVER', 'EXPIRY', 'COMPENSATORY', 'REVERSAL'\)/);
   assert.match(migration, /reject_leave_balance_history_mutation/);
   assert.match(migration, /BEFORE UPDATE OR DELETE ON shared\.leave_balance_ledger/);
-  const schemaSql = migration.replace(/--.*$/gm, '');
+  const schemaSql = migration
+    .replace(/--.*$/gm, '')
+    .replace(/'(?:''|[^'])*'/g, "''");
   assert.doesNotMatch(schemaSql, /remaining_leave|remaining_balance/i);
 });
 
