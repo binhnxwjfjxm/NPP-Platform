@@ -9,7 +9,7 @@ import styles from '../../organization/organization.module.css';
 import localStyles from './employee-workspace.module.css';
 import type { Branch } from '../../../lib/organization-types';
 import { formatCompactNumber, formatDateTime, matchTerm, normalizeSearch, toUpperCode } from '../../../lib/organization-types';
-import type { Employee, EmploymentType } from '../../../lib/employee-types';
+import type { Employee, EmployeeOrganizationCatalog, EmploymentType, HrDepartment, HrPosition } from '../../../lib/employee-types';
 import type { BulkPolicyAssignmentResult, EmployeeWorkPolicyAssignment, WorkPolicy, WorkPolicyCoverage } from '../../../lib/workforce-types';
 
 type FilterState = 'all' | 'active' | 'inactive';
@@ -20,6 +20,9 @@ type EmployeeDraft = {
   phone: string;
   email: string;
   branchId: string;
+  departmentId: string;
+  positionId: string;
+  managerEmployeeId: string;
   employmentStartDate: string;
   employmentEndDate: string;
   employmentType: EmploymentType;
@@ -64,6 +67,8 @@ type BulkAssignmentDraft = {
   bootstrap: boolean;
 };
 type MutationAttempt = { payload: string; key: string } | null;
+type DepartmentDraft = { code: string; name: string; parentDepartmentId: string };
+type PositionDraft = { code: string; name: string; departmentId: string };
 
 function mutationKeyForPayload(
   ref: React.MutableRefObject<MutationAttempt>,
@@ -151,6 +156,7 @@ function historyQualityLabel(value: string | null | undefined) {
 function emptyDraft(branchId = ''): EmployeeDraft {
   return {
     code: '', fullName: '', jobTitle: '', phone: '', email: '', branchId,
+    departmentId: '', positionId: '', managerEmployeeId: '',
     employmentStartDate: todayDate(), employmentEndDate: '', employmentType: 'PERMANENT',
     employmentEndReason: '', confirmEmployment: true,
     assignmentEffectiveFrom: todayDate(), assignmentReason: '', confirmAssignment: true,
@@ -197,6 +203,10 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
   const [coverage, setCoverage] = useState<WorkPolicyCoverage | null>(initialCoverage);
   const [editor, setEditor] = useState<EditorState>(null);
   const [editorDetail, setEditorDetail] = useState<Employee | null>(null);
+  const [organization, setOrganization] = useState<EmployeeOrganizationCatalog>({ departments: [], positions: [], managers: [] });
+  const [organizationOpen, setOrganizationOpen] = useState(false);
+  const [departmentDraft, setDepartmentDraft] = useState<DepartmentDraft>({ code: '', name: '', parentDepartmentId: '' });
+  const [positionDraft, setPositionDraft] = useState<PositionDraft>({ code: '', name: '', departmentId: '' });
   const [toggleState, setToggleState] = useState<ToggleState>(null);
   const [draft, setDraft] = useState<EmployeeDraft>(emptyDraft());
   const [policyEmployeeId, setPolicyEmployeeId] = useState<string | null>(null);
@@ -218,9 +228,12 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
   const employeeStatusAttempt = useRef<MutationAttempt>(null);
   const assignmentAttempt = useRef<MutationAttempt>(null);
   const bulkAssignmentAttempt = useRef<MutationAttempt>(null);
+  const organizationSaveAttempt = useRef<MutationAttempt>(null);
 
   const branchMap = useMemo(() => new Map(branches.map((branch) => [branch.id, branch])), [branches]);
   const activeBranches = useMemo(() => branches.filter((branch) => branch.is_active), [branches]);
+  const activeDepartments = useMemo(() => organization.departments.filter((item) => item.is_active), [organization.departments]);
+  const activePositions = useMemo(() => organization.positions.filter((item) => item.is_active), [organization.positions]);
   const activePolicies = useMemo(() => {
     const today = todayDate();
     const latest = new Map<string, WorkPolicy>();
@@ -290,15 +303,17 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
     setError(null);
     if (successMessage) setNotice(null);
     try {
-      const [nextEmployees, nextBranches, nextCoverage] = await Promise.all([
+      const [nextEmployees, nextBranches, nextCoverage, nextOrganization] = await Promise.all([
         requestJson<Employee[]>('/api/access/employees?limit=1000'),
         requestJson<Branch[]>('/api/organization/branches?limit=1000'),
         requestJson<WorkPolicyCoverage>(`/api/workforce/assignments/coverage?date=${encodeURIComponent(todayDate())}`),
+        requestJson<EmployeeOrganizationCatalog>('/api/access/employees/organization'),
       ]);
       if (sequence !== loadSequence.current) return false;
       setEmployees(nextEmployees);
       setBranches(nextBranches);
       setCoverage(nextCoverage);
+      setOrganization(nextOrganization);
       window.sessionStorage.removeItem(EMPLOYEE_DIRECTORY_DIRTY_KEY);
       if (successMessage) setNotice(successMessage);
       if (options.refreshRouter !== false) router.refresh();
@@ -324,6 +339,14 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
     if (window.sessionStorage.getItem(EMPLOYEE_DIRECTORY_DIRTY_KEY) !== '1') return;
     void loadAll(null, { silent: true, refreshRouter: false });
   }, [loadAll]);
+
+  useEffect(() => {
+    let active = true;
+    void requestJson<EmployeeOrganizationCatalog>('/api/access/employees/organization')
+      .then((value) => { if (active) setOrganization(value); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
 
   function openCreate() {
     setError(null);
@@ -353,6 +376,9 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
         phone: employee.phone ?? '',
         email: employee.email ?? '',
         branchId: employee.branch_id ?? '',
+        departmentId: assignment?.department_id ?? '',
+        positionId: assignment?.position_id ?? '',
+        managerEmployeeId: assignment?.manager_employee_id ?? '',
         employmentStartDate: employment?.effective_from ?? todayDate(),
         employmentEndDate: employment?.effective_to ?? '',
         employmentType: employment?.employment_type ?? 'OTHER',
@@ -380,6 +406,13 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
       ? employees.find((employee) => employee.id === editor.employeeId)
       : null;
     const branchChanged = Boolean(current) && (draft.branchId || null) !== (current?.branch_id ?? null);
+    const currentAssignment = current?.current_assignment ?? editorDetail?.current_assignment ?? null;
+    const organizationChanged = Boolean(current) && (
+      (draft.departmentId || null) !== (currentAssignment?.department_id ?? null)
+      || (draft.positionId || null) !== (currentAssignment?.position_id ?? null)
+      || (draft.managerEmployeeId || null) !== (currentAssignment?.manager_employee_id ?? null)
+    );
+    const assignmentChanged = branchChanged || organizationChanged;
     const payload = {
       ...(editor?.mode === 'create' ? { code: toUpperCode(draft.code) } : {}),
       fullName: draft.fullName.trim(),
@@ -387,6 +420,9 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
       phone: draft.phone.trim(),
       email: draft.email.trim(),
       branchId: draft.branchId || null,
+      departmentId: draft.departmentId || null,
+      positionId: draft.positionId || null,
+      managerEmployeeId: draft.managerEmployeeId || null,
       ...(current
         ? {
             expectedUpdatedAt: current.updated_at,
@@ -397,7 +433,7 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
               employmentType: draft.employmentType,
               employmentEndReason: draft.employmentEndReason.trim() || null,
             } : {}),
-            ...(branchChanged || draft.confirmAssignment ? {
+            ...(assignmentChanged || draft.confirmAssignment ? {
               ...(draft.confirmAssignment ? { confirmAssignment: true } : {}),
               assignmentEffectiveFrom: draft.assignmentEffectiveFrom,
               assignmentReason: draft.assignmentReason.trim(),
@@ -542,6 +578,92 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
     }
   }
 
+  async function reloadOrganization() {
+    const next = await requestJson<EmployeeOrganizationCatalog>('/api/access/employees/organization');
+    setOrganization(next);
+    return next;
+  }
+
+  function openOrganization() {
+    setError(null);
+    setNotice(null);
+    setDepartmentDraft({ code: '', name: '', parentDepartmentId: '' });
+    setPositionDraft({ code: '', name: '', departmentId: '' });
+    setOrganizationOpen(true);
+    void reloadOrganization().catch((loadError) => {
+      setError(loadError instanceof Error ? loadError.message : 'Không tải được cơ cấu tổ chức');
+    });
+  }
+
+  async function saveOrganizationResource(payload: Record<string, unknown>, successMessage: string) {
+    const key = mutationKeyForPayload(organizationSaveAttempt, 'web-employee-organization-save', payload);
+    setBusy('organization');
+    setError(null);
+    setNotice(null);
+    try {
+      await requestJson<unknown>('/api/access/employees/organization', {
+        method: 'POST',
+        headers: { 'Idempotency-Key': key },
+        body: JSON.stringify(payload),
+      });
+      organizationSaveAttempt.current = null;
+      await reloadOrganization();
+      setNotice(successMessage);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Không lưu được cơ cấu tổ chức');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function submitDepartment(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const payload = {
+      resource: 'DEPARTMENT',
+      code: toUpperCode(departmentDraft.code),
+      name: departmentDraft.name.trim(),
+      parentDepartmentId: departmentDraft.parentDepartmentId || null,
+    };
+    await saveOrganizationResource(payload, 'Đã thêm Phòng/Bộ phận.');
+    setDepartmentDraft({ code: '', name: '', parentDepartmentId: '' });
+  }
+
+  async function submitPosition(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const payload = {
+      resource: 'POSITION',
+      code: toUpperCode(positionDraft.code),
+      name: positionDraft.name.trim(),
+      departmentId: positionDraft.departmentId || null,
+    };
+    await saveOrganizationResource(payload, 'Đã thêm Vị trí công việc.');
+    setPositionDraft({ code: '', name: '', departmentId: '' });
+  }
+
+  async function toggleDepartment(item: HrDepartment) {
+    await saveOrganizationResource({
+      resource: 'DEPARTMENT',
+      id: item.id,
+      code: item.code,
+      name: item.name,
+      parentDepartmentId: item.parent_department_id,
+      isActive: !item.is_active,
+      expectedUpdatedAt: item.updated_at,
+    }, item.is_active ? 'Đã ngừng sử dụng Phòng/Bộ phận.' : 'Đã đưa Phòng/Bộ phận vào sử dụng.');
+  }
+
+  async function togglePosition(item: HrPosition) {
+    await saveOrganizationResource({
+      resource: 'POSITION',
+      id: item.id,
+      code: item.code,
+      name: item.name,
+      departmentId: item.department_id,
+      isActive: !item.is_active,
+      expectedUpdatedAt: item.updated_at,
+    }, item.is_active ? 'Đã ngừng sử dụng Vị trí công việc.' : 'Đã đưa Vị trí công việc vào sử dụng.');
+  }
+
   function openBulkAssignment() {
     setBulkDraft({
       targetMode: coverage?.missingCount ? 'MISSING' : 'FILTERED',
@@ -646,6 +768,14 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
       </button>
       <button
         type="button"
+        className={shellStyles.actionButton}
+        onClick={openOrganization}
+        data-testid="employees-organization-button"
+      >
+        Cơ cấu tổ chức
+      </button>
+      <button
+        type="button"
         className={joinClasses(shellStyles.actionButton, shellStyles.actionButtonPrimary)}
         onClick={openCreate}
         data-testid="employees-topbar-create-button"
@@ -658,7 +788,7 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
   return (
     <AppShell
       title="Danh mục nhân sự"
-      subtitle="Quản lý hồ sơ nhân sự, chức danh, thông tin liên hệ và đơn vị công tác."
+      subtitle="Quản lý hồ sơ nhân sự, Phòng/Bộ phận, Vị trí công việc, quản lý trực tiếp và đơn vị công tác."
       kicker="Nhân sự"
       actions={shellActions}
     >
@@ -783,11 +913,16 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
                       <td>
                         <div className={styles.entityStack}>
                           <strong>{employee.full_name}</strong>
-                          <span>{employee.job_title || 'Chưa khai báo chức danh'}</span>
+                          <span>{employee.current_assignment?.position_name || employee.job_title || 'Chưa phân công vị trí'}</span>
+                          {employee.current_assignment?.department_name ? <small>{employee.current_assignment.department_name}</small> : null}
                         </div>
                       </td>
                       <td className={styles.relationCell}>
-                        {branch ? `${branch.code} · ${branch.name}` : 'Chưa phân công chi nhánh'}
+                        <div className={styles.entityStack}>
+                          <span>{branch ? `${branch.code} · ${branch.name}` : 'Chưa phân công chi nhánh'}</span>
+                          <span>{employee.current_assignment?.department_name || 'Chưa phân công Phòng/Bộ phận'}</span>
+                          <small>{employee.current_assignment?.manager_name ? `Quản lý: ${employee.current_assignment.manager_name}` : 'Chưa có quản lý trực tiếp'}</small>
+                        </div>
                       </td>
                       <td>
                         {coverageMap.get(employee.id)?.assignment ? (
@@ -841,6 +976,74 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
             </table>
           </div>
         </section>
+
+        {organizationOpen ? (
+          <div className={styles.modalBackdrop} role="presentation" onClick={() => setOrganizationOpen(false)}>
+            <div className={styles.modal} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+              <div className={styles.modalHeader}>
+                <div>
+                  <p className={styles.panelKicker}>Thiết lập nhân sự</p>
+                  <h3>Cơ cấu tổ chức</h3>
+                </div>
+                <button type="button" className={styles.modalClose} onClick={() => setOrganizationOpen(false)}>Đóng</button>
+              </div>
+
+              <section className={styles.tableSection}>
+                <div className={styles.sectionHeader}><div><p className={styles.panelKicker}>Đơn vị nội bộ</p><h2>Phòng/Bộ phận</h2></div></div>
+                <form className={styles.form} onSubmit={(event) => void submitDepartment(event)}>
+                  <label>Mã<input value={departmentDraft.code} onChange={(event) => setDepartmentDraft((current) => ({ ...current, code: event.target.value }))} required maxLength={64} /></label>
+                  <label>Tên Phòng/Bộ phận<input value={departmentDraft.name} onChange={(event) => setDepartmentDraft((current) => ({ ...current, name: event.target.value }))} required maxLength={256} /></label>
+                  <label>Cấp trên
+                    <select value={departmentDraft.parentDepartmentId} onChange={(event) => setDepartmentDraft((current) => ({ ...current, parentDepartmentId: event.target.value }))}>
+                      <option value="">Không có</option>
+                      {activeDepartments.map((item) => <option key={item.id} value={item.id}>{item.code} · {item.name}</option>)}
+                    </select>
+                  </label>
+                  <div className={styles.formActions}><button type="submit" className={styles.primaryButton} disabled={busy !== null}>Thêm Phòng/Bộ phận</button></div>
+                </form>
+                <div className={styles.tableWrap}>
+                  <table className={styles.table} data-testid="employee-departments-table">
+                    <thead><tr><th>Mã</th><th>Phòng/Bộ phận</th><th>Cấp trên</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+                    <tbody>{organization.departments.length ? organization.departments.map((item) => (
+                      <tr key={item.id}>
+                        <td><code>{item.code}</code></td><td>{item.name}</td><td>{item.parent_name || '—'}</td>
+                        <td>{item.is_active ? 'Đang sử dụng' : 'Ngừng sử dụng'}</td>
+                        <td><button type="button" onClick={() => void toggleDepartment(item)} disabled={busy !== null}>{item.is_active ? 'Ngừng sử dụng' : 'Dùng lại'}</button></td>
+                      </tr>
+                    )) : <tr><td colSpan={5}><div className={styles.emptyState}>Chưa có Phòng/Bộ phận.</div></td></tr>}</tbody>
+                  </table>
+                </div>
+              </section>
+
+              <section className={styles.tableSection}>
+                <div className={styles.sectionHeader}><div><p className={styles.panelKicker}>Chức năng công việc</p><h2>Vị trí công việc</h2></div></div>
+                <form className={styles.form} onSubmit={(event) => void submitPosition(event)}>
+                  <label>Mã<input value={positionDraft.code} onChange={(event) => setPositionDraft((current) => ({ ...current, code: event.target.value }))} required maxLength={64} /></label>
+                  <label>Tên Vị trí<input value={positionDraft.name} onChange={(event) => setPositionDraft((current) => ({ ...current, name: event.target.value }))} required maxLength={256} /></label>
+                  <label>Thuộc Phòng/Bộ phận
+                    <select value={positionDraft.departmentId} onChange={(event) => setPositionDraft((current) => ({ ...current, departmentId: event.target.value }))}>
+                      <option value="">Dùng chung</option>
+                      {activeDepartments.map((item) => <option key={item.id} value={item.id}>{item.code} · {item.name}</option>)}
+                    </select>
+                  </label>
+                  <div className={styles.formActions}><button type="submit" className={styles.primaryButton} disabled={busy !== null}>Thêm Vị trí</button></div>
+                </form>
+                <div className={styles.tableWrap}>
+                  <table className={styles.table} data-testid="employee-positions-table">
+                    <thead><tr><th>Mã</th><th>Vị trí</th><th>Phòng/Bộ phận</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+                    <tbody>{organization.positions.length ? organization.positions.map((item) => (
+                      <tr key={item.id}>
+                        <td><code>{item.code}</code></td><td>{item.name}</td><td>{item.department_name || 'Dùng chung'}</td>
+                        <td>{item.is_active ? 'Đang sử dụng' : 'Ngừng sử dụng'}</td>
+                        <td><button type="button" onClick={() => void togglePosition(item)} disabled={busy !== null}>{item.is_active ? 'Ngừng sử dụng' : 'Dùng lại'}</button></td>
+                      </tr>
+                    )) : <tr><td colSpan={5}><div className={styles.emptyState}>Chưa có Vị trí công việc.</div></td></tr>}</tbody>
+                  </table>
+                </div>
+              </section>
+            </div>
+          </div>
+        ) : null}
 
         {bulkOpen ? (
           <div className={styles.modalBackdrop} role="presentation" onClick={() => setBulkOpen(false)}>
@@ -1043,12 +1246,15 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
                     <div className={styles.sectionHeader}><div><p className={styles.panelKicker}>Lịch sử hiệu lực</p><h2>Lịch sử điều chuyển</h2></div></div>
                     <div className={styles.tableWrap}>
                       <table className={styles.table} data-testid="employee-assignment-history">
-                        <thead><tr><th>Từ ngày</th><th>Đến ngày</th><th>Chi nhánh</th><th>Trạng thái dữ liệu</th><th>Lý do</th></tr></thead>
+                        <thead><tr><th>Từ ngày</th><th>Đến ngày</th><th>Chi nhánh</th><th>Phòng/Bộ phận</th><th>Vị trí</th><th>Quản lý trực tiếp</th><th>Trạng thái dữ liệu</th><th>Lý do</th></tr></thead>
                         <tbody>{(editorDetail.assignment_history ?? []).map((item) => (
                           <tr key={item.id}>
                             <td>{dateLabel(item.effective_from)}</td>
                             <td>{item.effective_to ? dateLabel(item.effective_to) : 'Đang áp dụng'}</td>
                             <td>{item.branch_id ? `${item.branch_code || ''} · ${item.branch_name || ''}` : 'Chưa phân công'}</td>
+                            <td>{item.department_name || '—'}</td>
+                            <td>{item.position_name || '—'}</td>
+                            <td>{item.manager_name || '—'}</td>
                             <td>{historyQualityLabel(item.data_quality)}</td>
                             <td>{item.reason || '—'}</td>
                           </tr>
@@ -1128,13 +1334,59 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
                   </>
                 ) : null}
                 <label>
-                  Chức danh công việc
-                  <input
-                    data-testid="employee-title-input"
-                    value={draft.jobTitle}
-                    onChange={(event) => setDraft((current) => ({ ...current, jobTitle: event.target.value }))}
-                    maxLength={128}
-                  />
+                  Phòng/Bộ phận
+                  <select
+                    data-testid="employee-department-select"
+                    value={draft.departmentId}
+                    onChange={(event) => setDraft((current) => {
+                      const departmentId = event.target.value;
+                      const selectedPosition = organization.positions.find((item) => item.id === current.positionId);
+                      return {
+                        ...current,
+                        departmentId,
+                        positionId: selectedPosition?.department_id && selectedPosition.department_id !== departmentId ? '' : current.positionId,
+                      };
+                    })}
+                  >
+                    <option value="">Chưa phân công</option>
+                    {activeDepartments.map((item) => <option key={item.id} value={item.id}>{item.code} · {item.name}</option>)}
+                  </select>
+                </label>
+                <label>
+                  Vị trí công việc
+                  <select
+                    data-testid="employee-position-select"
+                    value={draft.positionId}
+                    onChange={(event) => {
+                      const positionId = event.target.value;
+                      const selected = organization.positions.find((item) => item.id === positionId);
+                      setDraft((current) => ({
+                        ...current,
+                        positionId,
+                        departmentId: selected?.department_id || current.departmentId,
+                        jobTitle: selected?.name || current.jobTitle,
+                      }));
+                    }}
+                  >
+                    <option value="">Chưa phân công</option>
+                    {activePositions
+                      .filter((item) => !draft.departmentId || !item.department_id || item.department_id === draft.departmentId)
+                      .map((item) => <option key={item.id} value={item.id}>{item.code} · {item.name}</option>)}
+                  </select>
+                  {!draft.positionId && draft.jobTitle ? <small>Chức danh cũ: {draft.jobTitle}. Hãy chọn Vị trí công việc để chuẩn hóa.</small> : null}
+                </label>
+                <label>
+                  Quản lý trực tiếp
+                  <select
+                    data-testid="employee-manager-select"
+                    value={draft.managerEmployeeId}
+                    onChange={(event) => setDraft((current) => ({ ...current, managerEmployeeId: event.target.value }))}
+                  >
+                    <option value="">Chưa phân công</option>
+                    {organization.managers
+                      .filter((item) => item.id !== editor.employeeId)
+                      .map((item) => <option key={item.id} value={item.id}>{item.code} · {item.full_name}{item.position_name ? ` · ${item.position_name}` : ''}{item.is_active ? '' : ' · Đã nghỉ'}</option>)}
+                  </select>
                 </label>
                 <label>
                   Chi nhánh công tác
@@ -1150,13 +1402,13 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
                   </select>
                 </label>
                 <label>
-                  {editor.mode === 'create' ? 'Phân công chi nhánh từ ngày' : 'Ngày hiệu lực điều chuyển / xác nhận'}
+                  {editor.mode === 'create' ? 'Phân công từ ngày' : 'Ngày hiệu lực thay đổi phân công / xác nhận'}
                   <input
                     type="date"
                     data-testid="employee-assignment-effective-from"
                     value={draft.assignmentEffectiveFrom}
                     onChange={(event) => setDraft((current) => ({ ...current, assignmentEffectiveFrom: event.target.value }))}
-                    required={editor.mode === 'create' || (draft.branchId || null) !== (employees.find((item) => item.id === editor.employeeId)?.branch_id ?? null)}
+                    required
                   />
                 </label>
                 <label>

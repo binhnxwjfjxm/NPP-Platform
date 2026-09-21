@@ -131,6 +131,7 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   migration('147_workforce_violation_handling', 'shared/147_workforce_violation_handling.sql'),
   migration('148_workforce_attendance_movement', 'shared/148_workforce_attendance_movement.sql'),
   migration('149_workforce_employee_history', 'shared/149_workforce_employee_history.sql'),
+  migration('150_workforce_organization_structure', 'shared/150_workforce_organization_structure.sql'),
 ]);
 
 export { runMigrations };

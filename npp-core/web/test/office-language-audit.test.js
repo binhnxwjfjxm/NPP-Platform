@@ -112,7 +112,7 @@ test('roles, employees, customers, suppliers and organization use neutral admini
   assert.match(roles, /moduleLabel\(group\.module\)/);
   assert.doesNotMatch(roles, /installation hiện tại|registry canonical|Ma trận quyền|Chọn quyền theo module|permissionKey\}>\{permission\.permission_key/);
 
-  assert.match(employees, /Quản lý hồ sơ nhân sự, chức danh/);
+  assert.match(employees, /Quản lý hồ sơ nhân sự, Phòng\/Bộ phận, Vị trí công việc, quản lý trực tiếp/);
   assert.doesNotMatch(employees, /installation hiện tại|trước khi liên kết tài khoản/);
 
   assert.match(customers, /kicker="Quản lý khách hàng"/);

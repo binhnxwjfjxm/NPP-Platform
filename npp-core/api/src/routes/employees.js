@@ -4,6 +4,7 @@ import { readJsonBody, normalizeIdempotencyKey } from '../idempotency.js';
 import { buildAuditRecord, insertAuditRecord, withAuditOutboxTransaction } from '../audit-outbox.js';
 import { canManageSecurityOwners, guardSecurityOwnerEmployeeMutation } from '../internal-workforce-auth.js';
 import * as employeeService from '../services/employee.js';
+import * as employeeOrganizationService from '../services/employee-organization.js';
 
 function createError(code, message, details = {}, retryable = false, statusCode = 500) {
   return { code, message, details, retryable, statusCode };
@@ -51,10 +52,104 @@ function requireIdempotencyKey(req) {
 }
 
 function serviceStatus(result) {
-  if (result.code === 'NOT_FOUND' || result.code === 'BRANCH_NOT_FOUND') return 404;
+  if (['NOT_FOUND', 'BRANCH_NOT_FOUND', 'DEPARTMENT_NOT_FOUND', 'DEPARTMENT_PARENT_NOT_FOUND', 'POSITION_NOT_FOUND', 'POSITION_DEPARTMENT_NOT_FOUND'].includes(result.code)) return 404;
   if (result.code === 'SECURITY_OWNER_PROTECTED') return 403;
-  if (['DUPLICATE_CODE', 'CONFLICT', 'BRANCH_INACTIVE', 'EMPLOYMENT_PERIOD_CONFLICT', 'ASSIGNMENT_PERIOD_CONFLICT', 'ASSIGNMENT_EFFECTIVE_DATE_CONFLICT', 'EMPLOYMENT_STATUS_CONFLICT'].includes(result.code)) return 409;
+  if (['DUPLICATE_CODE', 'CONFLICT', 'BRANCH_INACTIVE', 'EMPLOYMENT_PERIOD_CONFLICT', 'ASSIGNMENT_PERIOD_CONFLICT', 'ASSIGNMENT_EFFECTIVE_DATE_CONFLICT', 'EMPLOYMENT_STATUS_CONFLICT', 'DEPARTMENT_CODE_EXISTS', 'POSITION_CODE_EXISTS', 'ORGANIZATION_CONFLICT', 'DEPARTMENT_HIERARCHY_CYCLE', 'DEPARTMENT_HAS_ACTIVE_CHILDREN', 'DEPARTMENT_HAS_ACTIVE_POSITIONS', 'MANAGER_HIERARCHY_CYCLE'].includes(result.code)) return 409;
   return 400;
+}
+
+async function handleOrganization(req, res, context, method) {
+  if (method === 'GET') {
+    try {
+      const result = await employeeOrganizationService.listOrganizationCatalog(context.getPool(), {
+        installationId: context.requestContext.installationId,
+      });
+      sendSuccess(res, result.catalog, context.requestId, context.receivedAt);
+    } catch {
+      sendError(res, createError('INTERNAL_ERROR', 'Không tải được cơ cấu tổ chức', {}, true, 500), context.requestId, context.receivedAt);
+    }
+    return;
+  }
+
+  const keyResult = requireIdempotencyKey(req);
+  if (!keyResult.ok) {
+    sendError(res, createError(keyResult.code, keyResult.message, {}, false, 400), context.requestId, context.receivedAt);
+    return;
+  }
+
+  let payload;
+  try {
+    payload = await readJsonBody(req);
+  } catch (error) {
+    sendError(res, createError(error.code, error.publicMessage, {}, false, error.statusCode), context.requestId, context.receivedAt);
+    return;
+  }
+
+  try {
+    const execution = await context.executeRequestWithIdempotency({
+      idempotencyStore: context.idempotencyStore,
+      req,
+      requestContext: context.requestContext,
+      requestId: context.requestId,
+      receivedAt: context.receivedAt,
+      route: '/api/employees/organization',
+      payload,
+      onProcess: async () => {
+        const result = await withAuditOutboxTransaction({
+          adapter: context.getPool(),
+          mutate: async (client) => {
+            const serviceResult = await employeeOrganizationService.saveOrganizationResource(client, {
+              installationId: context.requestContext.installationId,
+              payload,
+              actorId: context.requestContext.actorId,
+            });
+            if (!serviceResult.ok) return { serviceResult, skipAudit: true };
+
+            await insertAuditRecord(client, buildAuditRecord({
+              requestContext: context.requestContext,
+              action: serviceResult.action,
+              resourceType: serviceResult.resourceType,
+              resourceId: serviceResult.afterData.id,
+              beforeData: serviceResult.beforeData,
+              afterData: serviceResult.afterData,
+              metadata: { code: serviceResult.afterData.code },
+            }));
+            return { data: serviceResult.afterData };
+          },
+        });
+
+        if (result.skipAudit) {
+          return {
+            statusCode: serviceStatus(result.serviceResult),
+            contentType: 'application/json',
+            requestId: context.requestId,
+            body: {
+              error: {
+                code: result.serviceResult.code,
+                message: result.serviceResult.message,
+                retryable: false,
+                details: {},
+              },
+              requestId: context.requestId,
+              receivedAt: context.receivedAt,
+            },
+          };
+        }
+
+        return {
+          statusCode: 200,
+          contentType: 'application/json',
+          requestId: context.requestId,
+          body: createSuccessEnvelope(result.data, context.requestId, context.receivedAt),
+        };
+      },
+    });
+
+    res.setHeader('Cache-Control', 'no-store');
+    sendJson(res, execution.response.statusCode, execution.response.body, execution.response.requestId ?? context.requestId, execution.response.contentType);
+  } catch {
+    sendError(res, createError('IDEMPOTENCY_STORAGE_ERROR', 'Idempotency storage unavailable', {}, true, 503), context.requestId, context.receivedAt);
+  }
 }
 
 async function handleList(req, res, context) {
@@ -362,6 +457,10 @@ export async function handleEmployeeRoutes(req, res, options) {
   }
 
   const context = { ...options, requestContext };
+  if (pathname === '/api/employees/organization' && (method === 'GET' || method === 'POST')) {
+    await handleOrganization(req, res, context, method);
+    return true;
+  }
   if (pathname === '/api/employees' && method === 'GET') {
     await handleList(req, res, context);
     return true;

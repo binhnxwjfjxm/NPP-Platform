@@ -1,6 +1,7 @@
 import * as employeeRepo from '../db/repositories/employee.js';
 import * as branchRepo from '../db/repositories/branch.js';
 import * as workforceRepo from '../db/repositories/workforce.js';
+import * as organizationRepo from '../db/repositories/employee-organization.js';
 import { effectiveDateOnly } from './workforce.js';
 
 const CODE_PATTERN = /^[A-Z0-9_-]{1,64}$/;
@@ -144,6 +145,78 @@ async function employeeWithHistory(client, employee) {
     current_assignment: assignmentHistory.find((item) => item.effective_to == null) ?? assignmentHistory[0] ?? null,
   };
 }
+function assignmentIds(payload) {
+  const departmentId = normalizeOptionalUuid(payload?.departmentId);
+  const positionId = normalizeOptionalUuid(payload?.positionId);
+  const managerEmployeeId = normalizeOptionalUuid(payload?.managerEmployeeId);
+  if (departmentId && !isValidUuid(departmentId)) return { ok: false, code: 'INVALID_DEPARTMENT_ID', message: 'Phòng/Bộ phận không hợp lệ' };
+  if (positionId && !isValidUuid(positionId)) return { ok: false, code: 'INVALID_POSITION_ID', message: 'Vị trí công việc không hợp lệ' };
+  if (managerEmployeeId && !isValidUuid(managerEmployeeId)) return { ok: false, code: 'INVALID_MANAGER_EMPLOYEE_ID', message: 'Quản lý trực tiếp không hợp lệ' };
+  return { ok: true, departmentId, positionId, managerEmployeeId };
+}
+
+async function resolveAssignmentReferences(client, {
+  installationId, payload, effectiveDate, employeeId = null, requireActive = true,
+}) {
+  const ids = assignmentIds(payload);
+  if (!ids.ok) return ids;
+
+  const [department, position] = await Promise.all([
+    ids.departmentId ? organizationRepo.getDepartmentById(client, { installationId, id: ids.departmentId }) : null,
+    ids.positionId ? organizationRepo.getPositionById(client, { installationId, id: ids.positionId }) : null,
+  ]);
+
+  if (ids.departmentId && !department) return { ok: false, code: 'DEPARTMENT_NOT_FOUND', message: 'Không tìm thấy Phòng/Bộ phận' };
+  if (ids.positionId && !position) return { ok: false, code: 'POSITION_NOT_FOUND', message: 'Không tìm thấy Vị trí công việc' };
+  if (requireActive && department && !department.is_active) return { ok: false, code: 'DEPARTMENT_INACTIVE', message: 'Phòng/Bộ phận đang ngừng sử dụng' };
+  if (requireActive && position && !position.is_active) return { ok: false, code: 'POSITION_INACTIVE', message: 'Vị trí công việc đang ngừng sử dụng' };
+  if (position?.department_id && position.department_id !== ids.departmentId) {
+    return { ok: false, code: 'POSITION_DEPARTMENT_MISMATCH', message: 'Vị trí công việc không thuộc Phòng/Bộ phận đã chọn' };
+  }
+  if (ids.managerEmployeeId && ids.managerEmployeeId === employeeId) {
+    return { ok: false, code: 'MANAGER_SELF_REFERENCE', message: 'Nhân sự không thể là quản lý trực tiếp của chính mình' };
+  }
+
+  let manager = null;
+  if (ids.managerEmployeeId) {
+    manager = await employeeRepo.resolveEmployeeAtDate(client, {
+      installationId,
+      employeeId: ids.managerEmployeeId,
+      businessDate: effectiveDate,
+    });
+    if (!manager) {
+      return { ok: false, code: 'MANAGER_NOT_EFFECTIVE', message: 'Quản lý trực tiếp không thuộc lực lượng lao động tại ngày hiệu lực đã chọn' };
+    }
+
+    if (employeeId) {
+      const visited = new Set();
+      let cursor = manager;
+      while (cursor) {
+        if (cursor.id === employeeId || cursor.manager_employee_id === employeeId) {
+          return { ok: false, code: 'MANAGER_HIERARCHY_CYCLE', message: 'Tuyến quản lý trực tiếp không được tạo vòng lặp' };
+        }
+        if (!cursor.manager_employee_id || visited.has(cursor.manager_employee_id)) break;
+        visited.add(cursor.id);
+        cursor = await employeeRepo.resolveEmployeeAtDate(client, {
+          installationId,
+          employeeId: cursor.manager_employee_id,
+          businessDate: effectiveDate,
+        });
+      }
+    }
+  }
+
+  return {
+    ok: true,
+    departmentId: ids.departmentId,
+    positionId: ids.positionId,
+    managerEmployeeId: ids.managerEmployeeId,
+    department,
+    position,
+    manager,
+  };
+}
+
 async function resolveBranch(client, { installationId, branchId, requireActive }) {
   if (!branchId) return { ok: true, branch: null };
   const branch = await branchRepo.getBranchByIdForInstallationForShare(client, { id: branchId, installationId });
@@ -170,6 +243,14 @@ export async function createEmployee(client, { installationId, payload, createdB
     return { ok: false, code: 'INVALID_ASSIGNMENT_EFFECTIVE_DATE', message: 'Ngày bắt đầu đơn vị công tác không hợp lệ' };
   }
 
+  const assignmentRefs = await resolveAssignmentReferences(client, {
+    installationId,
+    payload,
+    effectiveDate: assignmentEffectiveFrom,
+    requireActive: true,
+  });
+  if (!assignmentRefs.ok) return assignmentRefs;
+
   const workPolicyId = normalizeText(payload?.workPolicyId) || null;
   const policyEffectiveFrom = normalizeText(payload?.policyEffectiveFrom) || today;
   let policy = null;
@@ -187,23 +268,30 @@ export async function createEmployee(client, { installationId, payload, createdB
   }
 
   const existing = await employeeRepo.getEmployeeByCode(client, { installationId, code: validation.normalized.code });
-  if (existing) return { ok: false, code: 'DUPLICATE_CODE', message: 'An employee with this code already exists' };
+  if (existing) return { ok: false, code: 'DUPLICATE_CODE', message: 'Mã nhân sự đã tồn tại' };
   const branchResult = await resolveBranch(client, { installationId, branchId: validation.normalized.branchId, requireActive: true });
   if (!branchResult.ok) return branchResult;
 
+  const jobTitle = assignmentRefs.position?.name ?? validation.normalized.jobTitle;
   const employee = await employeeRepo.insertEmployee(client, {
     installationId, code: validation.normalized.code, fullName: validation.normalized.fullName,
-    jobTitle: validation.normalized.jobTitle, phone: validation.normalized.phone, email: validation.normalized.email,
+    jobTitle, phone: validation.normalized.phone, email: validation.normalized.email,
     branchId: validation.normalized.branchId, createdBy,
   });
-  if (!employee) return { ok: false, code: 'DUPLICATE_CODE', message: 'An employee with this code already exists' };
+  if (!employee) return { ok: false, code: 'DUPLICATE_CODE', message: 'Mã nhân sự đã tồn tại' };
 
   await employeeRepo.insertEmployeeEmployment(client, {
     installationId, employeeId: employee.id, employmentType, effectiveFrom: employmentStartDate,
     dataQuality: 'CONFIRMED', source: 'HR', sourceReference: 'employee-create', createdBy,
   });
   await employeeRepo.insertEmployeeAssignment(client, {
-    installationId, employeeId: employee.id, branchId: validation.normalized.branchId, effectiveFrom: assignmentEffectiveFrom,
+    installationId,
+    employeeId: employee.id,
+    branchId: validation.normalized.branchId,
+    departmentId: assignmentRefs.departmentId,
+    positionId: assignmentRefs.positionId,
+    managerEmployeeId: assignmentRefs.managerEmployeeId,
+    effectiveFrom: assignmentEffectiveFrom,
     reason: normalizeText(payload?.assignmentReason) || 'Phân công khi tạo hồ sơ nhân sự',
     dataQuality: 'CONFIRMED', source: 'HR', sourceReference: 'employee-create', createdBy,
   });
@@ -230,13 +318,31 @@ export async function listEmployees(client, { installationId, active, branchId, 
   if (branchId && !isValidUuid(branchId)) {
     return { ok: false, code: 'INVALID_BRANCH_ID', message: 'Branch ID must be a valid UUID' };
   }
-  const employees = await employeeRepo.listEmployeesForInstallation(client, {
+  const rows = await employeeRepo.listEmployeesForInstallation(client, {
     installationId,
     active,
     branchId: branchId || null,
     limit,
     offset,
   });
+  const employees = rows.map((row) => ({
+    ...row,
+    current_assignment: row.assignment_id ? {
+      id: row.assignment_id,
+      branch_id: row.branch_id,
+      department_id: row.department_id,
+      department_code: row.department_code,
+      department_name: row.department_name,
+      position_id: row.position_id,
+      position_code: row.position_code,
+      position_name: row.position_name,
+      manager_employee_id: row.manager_employee_id,
+      manager_code: row.manager_code,
+      manager_name: row.manager_name,
+      effective_from: row.assignment_effective_from,
+      effective_to: row.assignment_effective_to,
+    } : null,
+  }));
   return { ok: true, employees };
 }
 
@@ -256,12 +362,43 @@ export async function updateEmployee(client, { id, installationId, payload, upda
   if (!expected.ok) return expected;
   if (normalizeDateTime(existing.updated_at) !== expected.value) return conflictResult();
 
-  const branchChanged = validation.normalized.branchId !== existing.branch_id;
-  const branchResult = await resolveBranch(client, { installationId, branchId: validation.normalized.branchId, requireActive: branchChanged });
-  if (!branchResult.ok) return branchResult;
   const today = localDate();
   const latestEmployment = await employeeRepo.getLatestEmployeeEmploymentForUpdate(client, { installationId, employeeId: existing.id });
   const latestAssignment = await employeeRepo.getLatestEmployeeAssignmentForUpdate(client, { installationId, employeeId: existing.id });
+  const effectiveFrom = normalizeText(payload?.assignmentEffectiveFrom) || latestAssignment?.effective_from || today;
+  const proposedIds = assignmentIds({
+    departmentId: Object.prototype.hasOwnProperty.call(payload ?? {}, 'departmentId') ? payload.departmentId : latestAssignment?.department_id,
+    positionId: Object.prototype.hasOwnProperty.call(payload ?? {}, 'positionId') ? payload.positionId : latestAssignment?.position_id,
+    managerEmployeeId: Object.prototype.hasOwnProperty.call(payload ?? {}, 'managerEmployeeId') ? payload.managerEmployeeId : latestAssignment?.manager_employee_id,
+  });
+  if (!proposedIds.ok) return proposedIds;
+
+  const branchChanged = validation.normalized.branchId !== existing.branch_id;
+  const assignmentChanged = !latestAssignment
+    || branchChanged
+    || proposedIds.departmentId !== latestAssignment.department_id
+    || proposedIds.positionId !== latestAssignment.position_id
+    || proposedIds.managerEmployeeId !== latestAssignment.manager_employee_id;
+  let assignmentRefs = {
+    ok: true,
+    departmentId: proposedIds.departmentId,
+    positionId: proposedIds.positionId,
+    managerEmployeeId: proposedIds.managerEmployeeId,
+    position: latestAssignment?.position_id ? { name: latestAssignment.position_name } : null,
+  };
+  if (assignmentChanged || payload?.confirmAssignment === true) {
+    assignmentRefs = await resolveAssignmentReferences(client, {
+      installationId,
+      payload: proposedIds,
+      effectiveDate: effectiveFrom,
+      employeeId: existing.id,
+      requireActive: assignmentChanged,
+    });
+    if (!assignmentRefs.ok) return assignmentRefs;
+  }
+
+  const branchResult = await resolveBranch(client, { installationId, branchId: validation.normalized.branchId, requireActive: branchChanged });
+  if (!branchResult.ok) return branchResult;
 
   if (payload?.confirmEmployment === true) {
     if (!latestEmployment) return { ok: false, code: 'EMPLOYMENT_HISTORY_REQUIRED', message: 'Chưa có lịch sử lao động để xác nhận' };
@@ -281,40 +418,60 @@ export async function updateEmployee(client, { id, installationId, payload, upda
     });
   }
 
-  if (branchChanged) {
-    const effectiveFrom = normalizeText(payload?.assignmentEffectiveFrom);
+  if (assignmentChanged) {
     const reason = normalizeText(payload?.assignmentReason);
     if (!validDate(effectiveFrom) || effectiveFrom > today) return { ok: false, code: 'INVALID_ASSIGNMENT_EFFECTIVE_DATE', message: 'Ngày điều chuyển không hợp lệ' };
-    if (!reason) return { ok: false, code: 'ASSIGNMENT_REASON_REQUIRED', message: 'Vui lòng nhập lý do điều chuyển' };
+    if (!reason) return { ok: false, code: 'ASSIGNMENT_REASON_REQUIRED', message: 'Vui lòng nhập lý do thay đổi phân công' };
     if (latestEmployment && effectiveFrom < latestEmployment.effective_from) return { ok: false, code: 'ASSIGNMENT_EFFECTIVE_DATE_CONFLICT', message: 'Ngày điều chuyển không được trước ngày bắt đầu làm việc' };
     if (latestAssignment && effectiveFrom <= latestAssignment.effective_from) return { ok: false, code: 'ASSIGNMENT_EFFECTIVE_DATE_CONFLICT', message: 'Ngày điều chuyển phải sau lần phân công gần nhất' };
     if (latestAssignment?.effective_to == null) {
       await employeeRepo.updateEmployeeAssignmentPeriod(client, {
-        installationId, id: latestAssignment.id, branchId: latestAssignment.branch_id,
-        effectiveFrom: latestAssignment.effective_from, effectiveTo: previousDate(effectiveFrom),
-        reason: latestAssignment.reason, dataQuality: latestAssignment.data_quality,
+        installationId,
+        id: latestAssignment.id,
+        branchId: latestAssignment.branch_id,
+        departmentId: latestAssignment.department_id,
+        positionId: latestAssignment.position_id,
+        managerEmployeeId: latestAssignment.manager_employee_id,
+        effectiveFrom: latestAssignment.effective_from,
+        effectiveTo: previousDate(effectiveFrom),
+        reason: latestAssignment.reason,
+        dataQuality: latestAssignment.data_quality,
       });
     }
     await employeeRepo.insertEmployeeAssignment(client, {
-      installationId, employeeId: existing.id, branchId: validation.normalized.branchId, effectiveFrom, reason,
+      installationId,
+      employeeId: existing.id,
+      branchId: validation.normalized.branchId,
+      departmentId: assignmentRefs.departmentId,
+      positionId: assignmentRefs.positionId,
+      managerEmployeeId: assignmentRefs.managerEmployeeId,
+      effectiveFrom,
+      reason,
       dataQuality: 'CONFIRMED', source: 'HR', sourceReference: 'employee-transfer', createdBy: updatedBy,
     });
   } else if (payload?.confirmAssignment === true && latestAssignment) {
-    const effectiveFrom = normalizeText(payload?.assignmentEffectiveFrom);
     if (!validDate(effectiveFrom) || effectiveFrom > today) return { ok: false, code: 'INVALID_ASSIGNMENT_EFFECTIVE_DATE', message: 'Ngày bắt đầu đơn vị công tác không hợp lệ' };
     const overlap = await employeeRepo.findAssignmentOverlap(client, {
       installationId, employeeId: existing.id, effectiveFrom, effectiveTo: latestAssignment.effective_to, excludeId: latestAssignment.id,
     });
     if (overlap) return { ok: false, code: 'ASSIGNMENT_PERIOD_CONFLICT', message: 'Khoảng phân công bị chồng với lịch sử hiện có' };
     await employeeRepo.updateEmployeeAssignmentPeriod(client, {
-      installationId, id: latestAssignment.id, branchId: validation.normalized.branchId,
-      effectiveFrom, effectiveTo: latestAssignment.effective_to,
-      reason: normalizeText(payload?.assignmentReason) || latestAssignment.reason, dataQuality: 'CONFIRMED',
+      installationId,
+      id: latestAssignment.id,
+      branchId: validation.normalized.branchId,
+      departmentId: assignmentRefs.departmentId,
+      positionId: assignmentRefs.positionId,
+      managerEmployeeId: assignmentRefs.managerEmployeeId,
+      effectiveFrom,
+      effectiveTo: latestAssignment.effective_to,
+      reason: normalizeText(payload?.assignmentReason) || latestAssignment.reason,
+      dataQuality: 'CONFIRMED',
     });
   }
 
+  const projectedJobTitle = assignmentRefs.position?.name ?? validation.normalized.jobTitle;
   const employee = await employeeRepo.updateEmployee(client, {
-    id: existing.id, installationId, fullName: validation.normalized.fullName, jobTitle: validation.normalized.jobTitle,
+    id: existing.id, installationId, fullName: validation.normalized.fullName, jobTitle: projectedJobTitle,
     phone: validation.normalized.phone, email: validation.normalized.email, branchId: validation.normalized.branchId,
     updatedBy, expectedUpdatedAt: expected.value,
   });
@@ -349,8 +506,16 @@ export async function updateEmployeeStatus(client, { id, installationId, isActiv
     });
     if (latestAssignment?.effective_to == null && effectiveDate >= latestAssignment.effective_from) {
       await employeeRepo.updateEmployeeAssignmentPeriod(client, {
-        installationId, id: latestAssignment.id, branchId: latestAssignment.branch_id, effectiveFrom: latestAssignment.effective_from,
-        effectiveTo: effectiveDate, reason: latestAssignment.reason, dataQuality: latestAssignment.data_quality,
+        installationId,
+        id: latestAssignment.id,
+        branchId: latestAssignment.branch_id,
+        departmentId: latestAssignment.department_id,
+        positionId: latestAssignment.position_id,
+        managerEmployeeId: latestAssignment.manager_employee_id,
+        effectiveFrom: latestAssignment.effective_from,
+        effectiveTo: effectiveDate,
+        reason: latestAssignment.reason,
+        dataQuality: latestAssignment.data_quality,
       });
     }
   } else {
@@ -364,7 +529,14 @@ export async function updateEmployeeStatus(client, { id, installationId, isActiv
       dataQuality: 'CONFIRMED', source: 'HR', sourceReference: 'employee-reactivate', createdBy: updatedBy,
     });
     await employeeRepo.insertEmployeeAssignment(client, {
-      installationId, employeeId: existing.id, branchId: existing.branch_id, effectiveFrom: effectiveDate, reason,
+      installationId,
+      employeeId: existing.id,
+      branchId: existing.branch_id,
+      departmentId: latestAssignment?.department_id ?? null,
+      positionId: latestAssignment?.position_id ?? null,
+      managerEmployeeId: latestAssignment?.manager_employee_id ?? null,
+      effectiveFrom: effectiveDate,
+      reason,
       dataQuality: 'CONFIRMED', source: 'HR', sourceReference: 'employee-reactivate', createdBy: updatedBy,
     });
   }
