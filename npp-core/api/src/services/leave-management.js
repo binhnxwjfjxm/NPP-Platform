@@ -582,6 +582,7 @@ export async function postLeaveBalanceEntry(client, {
 }) {
   const normalized = normalizeBalanceEntry(payload);
   if (!normalized.ok) return normalized;
+  await adjustmentRepo.lockAttendanceMutationScope(client, { installationId: requestContext.installationId });
   const scoped = await employeeForScope(client, {
     installationId: requestContext.installationId,
     employeeId: normalized.value.employeeId,
@@ -596,14 +597,14 @@ export async function postLeaveBalanceEntry(client, {
   if (!leaveType) return fail('LEAVE_TYPE_NOT_FOUND', 'Không tìm thấy chế độ nghỉ');
   if (!leaveType.tracks_balance) return fail('LEAVE_BALANCE_NOT_TRACKED', 'Chế độ nghỉ này không theo dõi số dư phép');
   if (normalized.value.quantityDays < 0 && !leaveType.allow_negative_balance) {
-    const current = await leaveRepo.getLeaveBalanceAsOf(client, {
+    const minimumFutureBalance = await leaveRepo.getMinimumLeaveBalanceFromDate(client, {
       installationId: requestContext.installationId,
       employeeId: normalized.value.employeeId,
       leaveTypeId: leaveType.id,
-      asOfDate: normalized.value.effectiveDate,
+      fromDate: normalized.value.effectiveDate,
     });
-    if (current + normalized.value.quantityDays < -0.00001) {
-      return fail('LEAVE_BALANCE_INSUFFICIENT', 'Phát sinh này làm số dư phép âm tại ngày hiệu lực');
+    if (minimumFutureBalance + normalized.value.quantityDays < -0.00001) {
+      return fail('LEAVE_BALANCE_INSUFFICIENT', 'Phát sinh này làm số dư phép âm tại ngày hiệu lực hoặc một ngày sau đó');
     }
   }
   const [entry] = await leaveRepo.insertLeaveBalanceEntries(client, {
