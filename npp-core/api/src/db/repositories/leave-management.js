@@ -47,7 +47,7 @@ function requestFilters(params, {
     params.push(employeeQuery);
     sql += ` AND (position(lower($${params.length}) in lower(e.code)) > 0 OR position(lower($${params.length}) in lower(e.full_name)) > 0)`;
   }
-  if (branchId) { params.push(branchId); sql += ` AND org_assignment.branch_id = ${params.length}`; }
+  if (branchId) { params.push(branchId); sql += ` AND org_assignment.branch_id = $${params.length}`; }
   if (Array.isArray(branchIds)) {
     params.push(branchIds);
     sql += ` AND NOT EXISTS (
@@ -64,7 +64,7 @@ function requestFilters(params, {
            LIMIT 1
         ) scoped_assignment ON true
        WHERE scoped_assignment.branch_id IS NULL
-          OR NOT (scoped_assignment.branch_id = ANY(${params.length}::uuid[]))
+          OR NOT (scoped_assignment.branch_id = ANY($${params.length}::uuid[]))
     )`;
   }
   if (status) { params.push(status); sql += ` AND r.status = $${params.length}`; }
