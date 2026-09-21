@@ -17,7 +17,7 @@ jobs:
     if: >-
       github.event.issue.number == 5 &&
       github.event.comment.body == '/deploy-vercel-retail-production' &&
-      contains(fromJSON('["binhnxwjfjxm","khuongbinhinfo-a11y"]'), github.actor)
+      contains(fromJSON('["binhnxwjfjxm","khuongbinhinfo-a11y","gustavjung01"]'), github.actor)
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
