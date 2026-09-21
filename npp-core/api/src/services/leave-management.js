@@ -187,11 +187,11 @@ async function reverseUsage(client, { requestContext, request, reason }) {
     installationId: requestContext.installationId, requestId: request.id,
   });
   if (usages.length === 0) return fail('LEAVE_BALANCE_LEDGER_MISSING', 'Không tìm thấy bút toán trừ phép của đơn đã duyệt');
-  const effectiveDate = businessDate();
+  const cancellationDate = businessDate();
   const entries = usages.map((usage) => ({
     entryType: 'REVERSAL',
     quantityDays: -Number(usage.quantity_days),
-    effectiveDate,
+    effectiveDate: String(usage.effective_date) > cancellationDate ? String(usage.effective_date) : cancellationDate,
     sourceType: 'LEAVE_CANCELLATION',
     sourceId: `${request.id}:${usage.id}`,
     reversesEntryId: usage.id,
