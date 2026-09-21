@@ -774,7 +774,7 @@ export async function listAttendanceTimesheet(client, {
   let employees = null;
   if (view === 'monthly' || view === 'employee') {
     const page = await timesheetRepo.listEmployeePage(client, {
-      installationId, employeeId, employeeQuery, branchId, branchIds, limit, offset,
+      installationId, dateFrom, dateTo, employeeId, employeeQuery, branchId, branchIds, limit, offset,
     });
     employees = page.rows;
     total = page.total;
@@ -783,6 +783,8 @@ export async function listAttendanceTimesheet(client, {
       dateFrom,
       dateTo,
       employeeIds: employees.map((employee) => employee.id),
+      branchId,
+      branchIds,
     });
   } else {
     const page = await timesheetRepo.listDayFacts(client, {

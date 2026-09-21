@@ -399,13 +399,8 @@ async function handleAttendanceTimesheet(req, res, context, { selfOnly, capabili
       return;
     }
   } else {
-    if (employeeId) {
-      const scope = await requireEmployeeScope(context.getPool(), context.requestContext, employeeId);
-      if (!scope.ok) {
-        sendError(res, createError(scope.code, scope.message, {}, false, statusFor(scope)), context.requestId, context.receivedAt);
-        return;
-      }
-    }
+    // Historical Timesheet scope is enforced by effective-dated branch assignment inside the
+    // Timesheet repository. Current shared.employees.branch_id must not authorize historical rows.
     branchIds = isCompanyScope(context.requestContext)
       ? null
       : [...(context.requestContext.scopes.branchIds ?? [])];

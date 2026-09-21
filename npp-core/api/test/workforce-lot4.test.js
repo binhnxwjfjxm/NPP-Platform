@@ -150,7 +150,10 @@ test('Issue #1110 Lô 4 is read-only, scoped and paginated with self fallback', 
   assert.match(route, /timesheetSelfOnly/);
   assert.match(route, /branchIds/);
   assert.match(repository, /generate_series/);
-  assert.match(repository, /e\.branch_id = ANY/);
+  assert.match(repository, /shared\.employee_assignments/);
+  assert.match(repository, /branchPredicate/);
+  assert.match(repository, /org_assignment\.branch_id/);
+  assert.doesNotMatch(repository, /e\.branch_id = ANY/);
   assert.match(repository, /LIMIT \$\$\{limitIndex\} OFFSET \$\$\{offsetIndex\}/);
   assert.doesNotMatch(repository, /INSERT INTO|UPDATE shared|DELETE FROM/);
   assert.doesNotMatch(registry, /142_workforce_timesheet/);

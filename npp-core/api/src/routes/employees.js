@@ -53,7 +53,7 @@ function requireIdempotencyKey(req) {
 function serviceStatus(result) {
   if (result.code === 'NOT_FOUND' || result.code === 'BRANCH_NOT_FOUND') return 404;
   if (result.code === 'SECURITY_OWNER_PROTECTED') return 403;
-  if (result.code === 'DUPLICATE_CODE' || result.code === 'CONFLICT' || result.code === 'BRANCH_INACTIVE') return 409;
+  if (['DUPLICATE_CODE', 'CONFLICT', 'BRANCH_INACTIVE', 'EMPLOYMENT_PERIOD_CONFLICT', 'ASSIGNMENT_PERIOD_CONFLICT', 'ASSIGNMENT_EFFECTIVE_DATE_CONFLICT', 'EMPLOYMENT_STATUS_CONFLICT'].includes(result.code)) return 409;
   return 400;
 }
 
@@ -265,6 +265,9 @@ async function handlePatch(req, res, context, id) {
                 isActive: payload.isActive,
                 updatedBy: context.requestContext.actorId,
                 expectedUpdatedAt: payload.expectedUpdatedAt,
+                employmentEffectiveDate: payload.employmentEffectiveDate,
+                employmentReason: payload.employmentReason,
+                employmentType: payload.employmentType,
               })
               : await employeeService.updateEmployee(client, {
                 id,
