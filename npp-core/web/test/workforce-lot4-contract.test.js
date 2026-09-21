@@ -32,9 +32,15 @@ test('Issue #1110 Lô 4 renders daily and monthly timesheets with office languag
 
   assert.match(workspace, /title="Bảng công"/);
   assert.match(workspace, /Theo ngày/);
+  assert.match(workspace, /Công theo ngày/);
+  assert.match(workspace, /Mỗi nhân sự một hàng/);
+  assert.match(workspace, /Xem từng ngày/);
+  assert.match(workspace, /view: nextView === 'daily' \? 'employee' : 'monthly'/);
   assert.match(workspace, /Theo tháng/);
   assert.match(workspace, /Bảng công 31 ngày/);
   assert.match(workspace, /Array\.from\(\{ length: 31 \}/);
+  assert.match(workspace, /matrixSaturday/);
+  assert.match(workspace, /matrixSunday/);
   assert.match(workspace, /setSelectedDay/);
   assert.match(workspace, /type="month"/);
   assert.match(workspace, /Thực tế/);
@@ -54,7 +60,8 @@ test('Issue #1110 Lô 4 uses bounded pagination instead of loading the full Côn
     source('app/workforce/timesheet/attendance-timesheet-workspace.tsx'),
   ]);
 
-  assert.match(page, /limit: '50'/);
+  assert.match(page, /view: 'employee'/);
+  assert.match(page, /limit: '100'/);
   assert.match(workspace, /Trang trước/);
   assert.match(workspace, /Trang sau/);
   assert.match(workspace, /Tối đa 93 ngày mỗi lần xem/);

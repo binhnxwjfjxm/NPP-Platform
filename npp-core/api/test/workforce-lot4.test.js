@@ -155,3 +155,11 @@ test('Issue #1110 Lô 4 is read-only, scoped and paginated with self fallback', 
   assert.doesNotMatch(repository, /INSERT INTO|UPDATE shared|DELETE FROM/);
   assert.doesNotMatch(registry, /142_workforce_timesheet/);
 });
+
+
+test('Issue #1110 Bảng công theo ngày supports employee-grouped view without multiplying rows by day', async () => {
+  const service = await source('src/services/attendance-timesheet.js');
+  assert.match(service, /\['daily', 'employee', 'monthly'\]/);
+  assert.match(service, /view === 'monthly' \|\| view === 'employee'/);
+  assert.match(service, /view === 'employee' \? 100 : 50/);
+});

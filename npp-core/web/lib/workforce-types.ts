@@ -497,7 +497,7 @@ export type AttendanceTimesheetMonth = {
 };
 
 export type AttendanceTimesheetResponse = {
-  view: 'daily' | 'monthly';
+  view: 'daily' | 'employee' | 'monthly';
   period: { from: string; to: string; timezone: string };
   scope: {
     companyScope: boolean;
