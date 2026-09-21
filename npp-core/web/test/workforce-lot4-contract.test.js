@@ -33,6 +33,10 @@ test('Issue #1110 Lô 4 renders daily and monthly timesheets with office languag
   assert.match(workspace, /title="Bảng công"/);
   assert.match(workspace, /Theo ngày/);
   assert.match(workspace, /Theo tháng/);
+  assert.match(workspace, /Bảng công 31 ngày/);
+  assert.match(workspace, /Array\.from\(\{ length: 31 \}/);
+  assert.match(workspace, /setSelectedDay/);
+  assert.match(workspace, /type="month"/);
   assert.match(workspace, /Thực tế/);
   assert.match(workspace, /Được tính/);
   assert.match(workspace, /Đi trễ/);

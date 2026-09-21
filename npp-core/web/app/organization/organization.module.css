@@ -514,6 +514,9 @@
 
 .modal {
   width: min(100%, 540px);
+  max-height: calc(100vh - 36px);
+  overflow: auto;
+  overscroll-behavior: contain;
   padding: 17px;
   border: 1px solid #d8d0c9;
   border-radius: 13px;

@@ -433,7 +433,7 @@ export async function insertAttendanceEvent(client, values) {
        attendance_point_id, event_type, occurred_at, source, validation_status,
        source_reference, note, recorded_by, request_id, created_at
      ) VALUES (
-       $1,$2,$3,$4,$5,$6,$7,$8,'QR','VALID',$9,NULL,$10,$11,now()
+       $1,$2,$3,$4,$5,$6,$7,$8,$9,'VALID',$10,$11,$12,$13,now()
      )
      ON CONFLICT (installation_id, source, source_reference)
      WHERE source_reference IS NOT NULL
@@ -444,7 +444,8 @@ export async function insertAttendanceEvent(client, values) {
     [
       id, values.installationId, values.employeeId, values.scheduleId,
       values.workPolicyId, values.attendancePointId, values.eventType,
-      values.occurredAt, values.sourceReference, values.actorId, values.requestId,
+      values.occurredAt, values.source ?? 'QR', values.sourceReference,
+      values.note ?? null, values.actorId, values.requestId,
     ],
   );
   return result.rows?.[0] ?? null;

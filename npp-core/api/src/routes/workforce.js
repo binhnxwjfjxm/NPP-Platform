@@ -679,7 +679,7 @@ async function handleAttendanceRecord(req, res, context) {
     payload,
     successStatus: 201,
     mutate: async (client) => {
-      const result = await workforceService.recordQrAttendance(client, {
+      const result = await workforceService.recordAttendance(client, {
         installationId: context.requestContext.installationId,
         employeeId: context.requestContext.employeeId,
         payload,
@@ -700,7 +700,7 @@ async function handleAttendanceRecord(req, res, context) {
           metadata: {
             employeeId: context.requestContext.employeeId,
             workDate: result.workDate,
-            attendancePointId: result.point.id,
+            attendancePointId: result.point?.id ?? null,
             eventType: result.event.event_type,
           },
         },

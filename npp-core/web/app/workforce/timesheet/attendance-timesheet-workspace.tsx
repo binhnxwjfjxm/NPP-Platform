@@ -45,6 +45,48 @@ function dateLabel(value: string) {
   return year && month && day ? `${day}/${month}/${year}` : value;
 }
 
+function monthBounds(value: string) {
+  const match = /^(\d{4})-(\d{2})$/.exec(value);
+  if (!match) return { from: value + '-01', to: value + '-31' };
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return {
+    from: `${match[1]}-${match[2]}-01`,
+    to: `${match[1]}-${match[2]}-${String(lastDay).padStart(2, '0')}`,
+  };
+}
+
+function monthDayDate(value: string, day: number) {
+  const bounds = monthBounds(value);
+  const lastDay = Number(bounds.to.slice(-2));
+  return day <= lastDay ? `${value}-${String(day).padStart(2, '0')}` : null;
+}
+
+function compactDayLabel(day: AttendanceTimesheetDay) {
+  switch (day.status) {
+    case 'COMPLETE': return '✓';
+    case 'LATE': return 'Trễ';
+    case 'EARLY': return 'Sớm';
+    case 'LATE_AND_EARLY': return 'Trễ/Sớm';
+    case 'DAY_OFF': return 'Nghỉ';
+    case 'NO_ATTENDANCE_REQUIRED': return 'Không YC';
+    case 'WORKING': return 'Đang';
+    case 'UPCOMING': return '—';
+    case 'NOT_STARTED': return 'Chưa';
+    case 'MISSING_POLICY': return 'Thiếu CS';
+    case 'MISSING_SCHEDULE': return 'Thiếu ca';
+    default: return 'Thiếu';
+  }
+}
+
+function compactDayTone(day: AttendanceTimesheetDay) {
+  if (day.status === 'COMPLETE') return 'good';
+  if (day.status === 'DAY_OFF' || day.status === 'NO_ATTENDANCE_REQUIRED' || day.status === 'UPCOMING') return 'muted';
+  if (day.status === 'LATE' || day.status === 'EARLY' || day.status === 'LATE_AND_EARLY' || day.status === 'WORKING') return 'warn';
+  return 'danger';
+}
+
 function timeLabel(value: string | null, timeZone = 'Asia/Ho_Chi_Minh') {
   if (!value) return '—';
   try {
@@ -99,13 +141,6 @@ function sourceSummary(day: AttendanceTimesheetDay) {
   return [...new Set(values)].join(' · ') || 'Chưa có sự kiện';
 }
 
-function monthSourceSummary(row: AttendanceTimesheetMonth) {
-  const values = row.attendanceSources.map((source) => SOURCE_LABEL[source]);
-  if (row.scheduleSources.includes('OVERRIDE')) values.push('Lịch điều chỉnh');
-  if (row.scheduleSources.includes('POLICY')) values.push('Lịch chính sách');
-  return [...new Set(values)].join(' · ') || 'Chưa có sự kiện';
-}
-
 function validationLabel(value: AttendanceEvent['validation_status']) {
   if (value === 'VALID') return 'Hợp lệ';
   if (value === 'PENDING') return 'Chờ kiểm tra';
@@ -127,10 +162,12 @@ export default function AttendanceTimesheetWorkspace({
   const [view, setView] = useState<'daily' | 'monthly'>(initialData?.view ?? 'daily');
   const [from, setFrom] = useState(initialData?.period.from ?? initialFrom);
   const [to, setTo] = useState(initialData?.period.to ?? initialTo);
+  const [month, setMonth] = useState((initialData?.period.from ?? initialFrom).slice(0, 7));
   const [employeeQuery, setEmployeeQuery] = useState('');
   const [branchId, setBranchId] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(initialError);
+  const [selectedDay, setSelectedDay] = useState<AttendanceTimesheetDay | null>(null);
 
   const dailyRows = useMemo(
     () => data?.view === 'daily' ? data.rows as AttendanceTimesheetDay[] : [],
@@ -141,14 +178,19 @@ export default function AttendanceTimesheetWorkspace({
     [data],
   );
 
-  async function load(nextOffset = 0, nextView = view) {
+  async function load(
+    nextOffset = 0,
+    nextView = view,
+    nextPeriod?: { from: string; to: string },
+  ) {
+    const period = nextPeriod ?? (nextView === 'monthly' ? monthBounds(month) : { from, to });
     setBusy(true);
     setError(null);
     try {
       const params = new URLSearchParams({
         view: nextView,
-        from,
-        to,
+        from: period.from,
+        to: period.to,
         limit: nextView === 'monthly' ? '20' : '50',
         offset: String(Math.max(0, nextOffset)),
       });
@@ -164,6 +206,10 @@ export default function AttendanceTimesheetWorkspace({
       }
       setData(payload.data);
       setView(nextView);
+      setFrom(payload.data.period.from);
+      setTo(payload.data.period.to);
+      if (nextView === 'monthly') setMonth(payload.data.period.from.slice(0, 7));
+      setSelectedDay(null);
       if (branchId && !payload.data.scope.branches.some((branch) => branch.id === branchId)) {
         setBranchId('');
       }
@@ -175,8 +221,13 @@ export default function AttendanceTimesheetWorkspace({
   }
 
   function changeView(nextView: 'daily' | 'monthly') {
-    setView(nextView);
-    void load(0, nextView);
+    if (nextView === 'monthly') {
+      const nextMonth = (from || initialFrom).slice(0, 7);
+      setMonth(nextMonth);
+      void load(0, nextView, monthBounds(nextMonth));
+      return;
+    }
+    void load(0, nextView, { from, to });
   }
 
   const actions = (
@@ -249,14 +300,23 @@ export default function AttendanceTimesheetWorkspace({
             </button>
           </div>
 
-          <div className={styles.toolbarFilter}>
-            <label htmlFor="timesheet-from">Từ ngày</label>
-            <input id="timesheet-from" type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
-          </div>
-          <div className={styles.toolbarFilter}>
-            <label htmlFor="timesheet-to">Đến ngày</label>
-            <input id="timesheet-to" type="date" value={to} onChange={(event) => setTo(event.target.value)} />
-          </div>
+          {view === 'monthly' ? (
+            <div className={styles.toolbarFilter}>
+              <label htmlFor="timesheet-month">Tháng</label>
+              <input id="timesheet-month" type="month" value={month} onChange={(event) => setMonth(event.target.value)} />
+            </div>
+          ) : (
+            <>
+              <div className={styles.toolbarFilter}>
+                <label htmlFor="timesheet-from">Từ ngày</label>
+                <input id="timesheet-from" type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
+              </div>
+              <div className={styles.toolbarFilter}>
+                <label htmlFor="timesheet-to">Đến ngày</label>
+                <input id="timesheet-to" type="date" value={to} onChange={(event) => setTo(event.target.value)} />
+              </div>
+            </>
+          )}
 
           {!data?.scope.selfOnly ? (
             <div className={styles.toolbarFilter}>
@@ -371,60 +431,141 @@ export default function AttendanceTimesheetWorkspace({
         ) : (
           <section className={styles.tableSection}>
             <div className={styles.sectionHeader}>
-              <div><p className={styles.panelKicker}>Theo tháng</p><h2>Tổng hợp theo nhân sự</h2></div>
+              <div>
+                <p className={styles.panelKicker}>Theo tháng</p>
+                <h2>Bảng công 31 ngày</h2>
+                <small>Bấm vào từng ngày để xem giờ vào, giờ ra và nguồn chấm công.</small>
+              </div>
               <span className={styles.panelChip}>{total} nhân sự</span>
             </div>
-            <div className={styles.tableWrap}>
-              <table className={styles.table} data-testid="attendance-timesheet-monthly-table">
+            <div className={localStyles.matrixLegend} aria-label="Chú thích bảng công">
+              <span><strong>✓</strong> Đủ</span>
+              <span><strong>Trễ/Sớm</strong> Có sai lệch giờ</span>
+              <span><strong>Thiếu</strong> Thiếu chấm công</span>
+              <span><strong>Nghỉ</strong> Ngày nghỉ</span>
+            </div>
+            <div className={localStyles.matrixWrap}>
+              <table className={localStyles.matrixTable} data-testid="attendance-timesheet-monthly-table">
                 <thead>
                   <tr>
-                    <th>Nhân sự</th><th>Chi nhánh</th><th>Kỳ</th><th>Ngày làm việc</th><th>Hoàn tất</th>
-                    <th>Ngày thiếu</th><th>Thực tế</th><th>Được tính</th><th>Đi trễ</th><th>Về sớm</th>
-                    <th>Điều chỉnh</th><th>Ngày khóa</th><th>Nguồn dữ liệu</th><th>Chi tiết</th>
+                    <th className={localStyles.matrixSticky}>Nhân sự</th>
+                    {Array.from({ length: 31 }, (_, index) => index + 1).map((dayNumber) => (
+                      <th className={localStyles.matrixDayHead} key={dayNumber}>{dayNumber}</th>
+                    ))}
+                    <th>Ngày đủ</th>
+                    <th>Thiếu công</th>
+                    <th>Đi trễ</th>
+                    <th>Về sớm</th>
+                    <th>Giờ được tính</th>
+                    <th>Điều chỉnh</th>
+                    <th>Ngày khóa</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {monthlyRows.map((row) => (
-                    <tr key={row.employee.id}>
-                      <td><strong>{row.employee.code} · {row.employee.name}</strong></td>
-                      <td>{row.employee.branchName || 'Chưa gán chi nhánh'}</td>
-                      <td>{dateLabel(row.period.from)} – {dateLabel(row.period.to)}</td>
-                      <td>{row.workDays}</td>
-                      <td>{row.completedDays}</td>
-                      <td>{row.missingDays}</td>
-                      <td>{minutesLabel(row.actualMinutes)}</td>
-                      <td>{minutesLabel(row.countedMinutes)}</td>
-                      <td>{minutesLabel(row.lateMinutes)}</td>
-                      <td>{minutesLabel(row.earlyLeaveMinutes)}</td>
-                      <td>{row.adjustedDays} đã duyệt{row.pendingAdjustmentDays ? ` · ${row.pendingAdjustmentDays} chờ duyệt` : ''}</td>
-                      <td>{row.lockedDays}</td>
-                      <td>{monthSourceSummary(row)}</td>
-                      <td>
-                        <details className={localStyles.details}>
-                          <summary>Xem từng ngày</summary>
-                          <div className={localStyles.dayList}>
-                            {row.days.map((day) => (
-                              <div className={localStyles.dayItem} key={day.workDate}>
-                                <strong>{dateLabel(day.workDate)} · {STATUS_LABEL[day.status]}</strong>
-                                <span>
-                                  Vào {timeLabel(day.checkInAt, day.policy?.timezone)} · Ra {timeLabel(day.checkOutAt, day.policy?.timezone)}
-                                  {' · '}Được tính {minutesLabel(day.countedMinutes)}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        </details>
-                      </td>
-                    </tr>
-                  ))}
+                  {monthlyRows.map((row) => {
+                    const dayMap = new Map(row.days.map((day) => [day.workDate, day]));
+                    return (
+                      <tr key={row.employee.id}>
+                        <td className={localStyles.matrixSticky}>
+                          <strong>{row.employee.code} · {row.employee.name}</strong>
+                          <small>{row.employee.branchName || 'Chưa gán chi nhánh'}</small>
+                        </td>
+                        {Array.from({ length: 31 }, (_, index) => index + 1).map((dayNumber) => {
+                          const date = monthDayDate(month, dayNumber);
+                          const day = date ? dayMap.get(date) : null;
+                          return (
+                            <td className={localStyles.matrixDayCell} key={dayNumber}>
+                              {!date ? (
+                                <span className={localStyles.matrixUnavailable}>—</span>
+                              ) : day ? (
+                                <button
+                                  type="button"
+                                  className={`${localStyles.matrixCellButton} ${localStyles[`matrixTone_${compactDayTone(day)}`]}`}
+                                  onClick={() => setSelectedDay(day)}
+                                  title={`${dateLabel(day.workDate)} · ${STATUS_LABEL[day.status]}`}
+                                  aria-label={`${dateLabel(day.workDate)} · ${STATUS_LABEL[day.status]} · ${row.employee.name}`}
+                                >
+                                  {compactDayLabel(day)}
+                                </button>
+                              ) : (
+                                <span className={localStyles.matrixUnavailable}>—</span>
+                              )}
+                            </td>
+                          );
+                        })}
+                        <td className={localStyles.matrixTotal}>{row.completedDays}</td>
+                        <td className={localStyles.matrixTotal}>{row.missingDays}</td>
+                        <td className={localStyles.matrixTotal}>{minutesLabel(row.lateMinutes)}</td>
+                        <td className={localStyles.matrixTotal}>{minutesLabel(row.earlyLeaveMinutes)}</td>
+                        <td className={localStyles.matrixTotal}>{minutesLabel(row.countedMinutes)}</td>
+                        <td className={localStyles.matrixTotal}>
+                          {row.adjustedDays} đã duyệt{row.pendingAdjustmentDays ? ` · ${row.pendingAdjustmentDays} chờ duyệt` : ''}
+                        </td>
+                        <td className={localStyles.matrixTotal}>{row.lockedDays}</td>
+                      </tr>
+                    );
+                  })}
                   {!monthlyRows.length ? (
-                    <tr><td colSpan={14}><div className={styles.emptyState}>Không có nhân sự trong phạm vi và kỳ đã chọn.</div></td></tr>
+                    <tr>
+                      <td colSpan={39}><div className={styles.emptyState}>Không có nhân sự trong phạm vi và tháng đã chọn.</div></td>
+                    </tr>
                   ) : null}
                 </tbody>
               </table>
             </div>
           </section>
         )}
+
+        {selectedDay ? (
+          <div className={styles.modalBackdrop} role="presentation" onClick={() => setSelectedDay(null)}>
+            <div className={`${styles.modal} ${localStyles.dayModal}`} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+              <div className={styles.modalHeader}>
+                <div>
+                  <p className={styles.panelKicker}>Chi tiết ngày công</p>
+                  <h3>{selectedDay.employee.code} · {selectedDay.employee.name}</h3>
+                </div>
+                <button type="button" className={styles.modalClose} onClick={() => setSelectedDay(null)}>Đóng</button>
+              </div>
+              <div className={localStyles.dayDetailGrid}>
+                <div><span>Ngày</span><strong>{dateLabel(selectedDay.workDate)}</strong></div>
+                <div><span>Trạng thái</span><strong>{STATUS_LABEL[selectedDay.status]}</strong></div>
+                <div><span>Giờ vào</span><strong>{timeLabel(selectedDay.checkInAt, selectedDay.policy?.timezone)}</strong></div>
+                <div><span>Giờ ra</span><strong>{timeLabel(selectedDay.checkOutAt, selectedDay.policy?.timezone)}</strong></div>
+                <div><span>Thực tế</span><strong>{minutesLabel(selectedDay.actualMinutes)}</strong></div>
+                <div><span>Được tính</span><strong>{minutesLabel(selectedDay.countedMinutes)}</strong></div>
+                <div><span>Đi trễ</span><strong>{minutesLabel(selectedDay.lateMinutes)}</strong></div>
+                <div><span>Về sớm</span><strong>{minutesLabel(selectedDay.earlyLeaveMinutes)}</strong></div>
+              </div>
+              <div className={localStyles.dayDetailSection}>
+                <strong>Nguồn dữ liệu</strong>
+                <span>{sourceSummary(selectedDay)}</span>
+                <span>{selectedDay.policy ? `Chính sách: ${selectedDay.policy.code} · ${selectedDay.policy.name} · bản ${selectedDay.policy.version}` : 'Chưa có chính sách phù hợp'}</span>
+                {selectedDay.periodLock ? <span>Kỳ công đã khóa</span> : <span>Kỳ công đang mở</span>}
+              </div>
+              <div className={localStyles.dayDetailEvents}>
+                {selectedDay.events.map((event) => (
+                  <div className={localStyles.eventItem} key={event.id}>
+                    <div>
+                      <strong>{event.event_type === 'CHECK_IN' ? 'Giờ vào' : 'Giờ ra'} · {SOURCE_LABEL[event.source]}</strong>
+                      <small>{event.point_name || (event.source === 'MANUAL' ? 'Chấm công thủ công' : 'Không có điểm chấm công')} · {validationLabel(event.validation_status)}</small>
+                      {event.note ? <small>Ghi chú: {event.note}</small> : null}
+                    </div>
+                    <span>{dateTimeLabel(event.occurred_at, selectedDay.policy?.timezone)}</span>
+                  </div>
+                ))}
+                {!selectedDay.events.length ? <div className={styles.emptyState}>Ngày này chưa có sự kiện chấm công.</div> : null}
+              </div>
+              <div className={styles.formActions}>
+                {data?.capabilities.canManage && (!selectedDay.periodLock || data?.capabilities.canLock) ? (
+                  <Link href={'/workforce/adjustments?employeeId=' + encodeURIComponent(selectedDay.employee.id) + '&workDate=' + selectedDay.workDate}>Điều chỉnh công</Link>
+                ) : !selectedDay.periodLock && data?.capabilities.canSubmitOwn ? (
+                  <Link href={'/workforce/adjustments?workDate=' + selectedDay.workDate}>Yêu cầu điều chỉnh</Link>
+                ) : null}
+                <button type="button" className={styles.secondaryButton} onClick={() => setSelectedDay(null)}>Đóng</button>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         {data ? (
           <div className={localStyles.pagination} aria-label="Phân trang bảng công">
