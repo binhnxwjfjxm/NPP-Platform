@@ -169,7 +169,7 @@ export type AttendanceRecordResult = {
     name: string;
     branchId: string | null;
     branchName: string | null;
-  };
+  } | null;
 };
 
 export type AttendanceAdjustmentStatus = 'SUBMITTED' | 'APPROVED' | 'REJECTED';

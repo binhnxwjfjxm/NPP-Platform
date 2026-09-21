@@ -453,9 +453,6 @@ async function resolveAttendanceContext(client, { installationId, employeeId, no
   if (!policyBundle) return fail('WORK_POLICY_REQUIRED', 'Nhân sự chưa có chính sách làm việc phù hợp cho ngày chấm công');
 
   const policy = policyBundle.policy;
-  if (!['QR', 'BOTH'].includes(policy.attendance_method)) {
-    return fail('QR_ATTENDANCE_NOT_ALLOWED', 'Chính sách làm việc hiện tại không cho phép chấm công bằng QR');
-  }
   if (policy.time_mode === 'NO_ATTENDANCE') {
     return fail('ATTENDANCE_NOT_REQUIRED', 'Chính sách làm việc hiện tại không yêu cầu chấm công');
   }
@@ -655,6 +652,9 @@ export async function recordQrAttendance(client, {
   const resolved = await resolveAttendanceContext(client, { installationId, employeeId, now });
   if (!resolved.ok) return resolved;
   const attendance = resolved.context;
+  if (!['QR', 'BOTH'].includes(attendance.policy.attendance_method)) {
+    return fail('QR_ATTENDANCE_NOT_ALLOWED', 'Chính sách làm việc hiện tại không cho phép chấm công bằng QR');
+  }
   if (!attendance.nextAction) return fail('ATTENDANCE_ALREADY_COMPLETE', 'Ngày làm việc này đã có đủ giờ vào và giờ ra');
   if (attendance.tooSoon) return fail('ATTENDANCE_TOO_SOON', 'Vừa ghi nhận chấm công; vui lòng đợi một phút trước thao tác tiếp theo');
 
@@ -669,6 +669,7 @@ export async function recordQrAttendance(client, {
     attendancePointId: tokenRow.attendance_point_id,
     eventType: attendance.nextAction,
     occurredAt: now.toISOString(),
+    source: 'QR',
     sourceReference,
     actorId,
     requestId,
@@ -691,4 +692,55 @@ export async function recordQrAttendance(client, {
       branchName: tokenRow.branch_name,
     },
   };
+}
+
+export async function recordManualAttendance(client, {
+  installationId,
+  employeeId,
+  actorId,
+  requestId,
+  now = new Date(),
+}) {
+  if (!validUuid(employeeId)) return fail('EMPLOYEE_ID_REQUIRED', 'Tài khoản chưa liên kết hồ sơ nhân sự để chấm công');
+  const resolved = await resolveAttendanceContext(client, { installationId, employeeId, now });
+  if (!resolved.ok) return resolved;
+  const attendance = resolved.context;
+  if (!['MANUAL', 'BOTH'].includes(attendance.policy.attendance_method)) {
+    return fail('MANUAL_ATTENDANCE_NOT_ALLOWED', 'Chính sách làm việc hiện tại không cho phép chấm công thủ công');
+  }
+  if (!attendance.nextAction) return fail('ATTENDANCE_ALREADY_COMPLETE', 'Ngày làm việc này đã có đủ giờ vào và giờ ra');
+  if (attendance.tooSoon) return fail('ATTENDANCE_TOO_SOON', 'Vừa ghi nhận chấm công; vui lòng đợi một phút trước thao tác tiếp theo');
+
+  const sourceReference = createHash('sha256')
+    .update(`attendance-manual|${employeeId}|${attendance.workDate}|${attendance.nextAction}`)
+    .digest('hex');
+  const event = await workforceRepo.insertAttendanceEvent(client, {
+    installationId,
+    employeeId,
+    scheduleId: attendance.schedule?.id ?? null,
+    workPolicyId: attendance.policy.id,
+    attendancePointId: null,
+    eventType: attendance.nextAction,
+    occurredAt: now.toISOString(),
+    source: 'MANUAL',
+    sourceReference,
+    note: 'Nhân viên chấm công thủ công theo chính sách làm việc',
+    actorId,
+    requestId,
+  });
+  if (!event) return fail('ATTENDANCE_DUPLICATE_SCAN', 'Lần chấm công này đã được ghi nhận trước đó');
+
+  return {
+    ok: true,
+    event,
+    workDate: attendance.workDate,
+    point: null,
+  };
+}
+
+export async function recordAttendance(client, options) {
+  const method = text(options?.payload?.method || (options?.payload?.qrPayload ? 'QR' : '')).toUpperCase();
+  if (method === 'QR') return recordQrAttendance(client, options);
+  if (method === 'MANUAL') return recordManualAttendance(client, options);
+  return fail('INVALID_ATTENDANCE_METHOD', 'Phương thức chấm công không hợp lệ');
 }

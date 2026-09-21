@@ -109,7 +109,6 @@ export default function AttendanceWorkspace({
   const [error, setError] = useState<string | null>(initialError);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [manualQr, setManualQr] = useState('');
   const [scanning, setScanning] = useState(false);
   const [cameraMessage, setCameraMessage] = useState<string | null>(null);
   const [pointDraft, setPointDraft] = useState({
@@ -121,6 +120,7 @@ export default function AttendanceWorkspace({
   const [clock, setClock] = useState(Date.now());
 
   const recordAttempt = useRef<Attempt>(null);
+  const manualRecordAttempt = useRef<Attempt>(null);
   const pointAttempt = useRef<Attempt>(null);
   const tokenAttempt = useRef<Attempt>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -134,6 +134,8 @@ export default function AttendanceWorkspace({
     : today?.nextAction === 'CHECK_OUT'
       ? 'Ghi nhận giờ ra'
       : 'Đã đủ giờ vào / ra';
+  const qrAllowed = today?.policy.attendanceMethod === 'QR' || today?.policy.attendanceMethod === 'BOTH';
+  const manualAllowed = today?.policy.attendanceMethod === 'MANUAL' || today?.policy.attendanceMethod === 'BOTH';
   const remainingSeconds = qrToken
     ? Math.max(0, Math.ceil((new Date(qrToken.expiresAt).getTime() - clock) / 1000))
     : 0;
@@ -181,7 +183,7 @@ export default function AttendanceWorkspace({
   async function submitQr(qrPayload: string) {
     const normalized = qrPayload.trim();
     if (!normalized) return;
-    const payload = { qrPayload: normalized };
+    const payload = { method: 'QR', qrPayload: normalized };
     const key = stableKey(recordAttempt, 'web-attendance-record', payload);
     setBusy(true);
     setError(null);
@@ -193,12 +195,36 @@ export default function AttendanceWorkspace({
         body: JSON.stringify(payload),
       });
       recordAttempt.current = null;
-      setManualQr('');
       const verb = result.event.event_type === 'CHECK_IN' ? 'giờ vào' : 'giờ ra';
-      setNotice(`Đã ghi nhận ${verb} lúc ${formatDateTime(result.event.occurred_at, timeZone)} tại ${result.point.name}.`);
+      setNotice(`Đã ghi nhận ${verb} lúc ${formatDateTime(result.event.occurred_at, timeZone)} tại ${result.point?.name || 'điểm chấm công'}.`);
       await reloadToday();
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Không ghi nhận được chấm công');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+
+  async function submitManualAttendance() {
+    if (!today?.nextAction || !manualAllowed) return;
+    const payload = { method: 'MANUAL' as const };
+    const key = stableKey(manualRecordAttempt, 'web-attendance-manual-record', payload);
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await requestJson<AttendanceRecordResult>('/api/workforce/attendance/record', {
+        method: 'POST',
+        headers: { 'Idempotency-Key': key },
+        body: JSON.stringify(payload),
+      });
+      manualRecordAttempt.current = null;
+      const verb = result.event.event_type === 'CHECK_IN' ? 'giờ vào' : 'giờ ra';
+      setNotice(`Đã ghi nhận ${verb} lúc ${formatDateTime(result.event.occurred_at, timeZone)} bằng chấm công thủ công.`);
+      await reloadToday();
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Không ghi nhận được chấm công thủ công');
     } finally {
       setBusy(false);
     }
@@ -210,7 +236,7 @@ export default function AttendanceWorkspace({
     setCameraMessage(null);
     const Detector = (window as unknown as { BarcodeDetector?: BarcodeDetectorConstructor }).BarcodeDetector;
     if (!Detector) {
-      setCameraMessage('Trình duyệt này chưa hỗ trợ quét QR bằng camera. Anh/chị có thể dán mã vào ô bên dưới.');
+      setCameraMessage(manualAllowed ? 'Thiết bị này chưa hỗ trợ quét QR bằng camera. Anh/chị có thể dùng Chấm công thủ công bên dưới.' : 'Thiết bị này chưa hỗ trợ quét QR bằng camera. Vui lòng dùng thiết bị có camera hỗ trợ quét QR.');
       return;
     }
     if (!navigator.mediaDevices?.getUserMedia) {
@@ -334,7 +360,7 @@ export default function AttendanceWorkspace({
   return (
     <AppShell
       title="Chấm công"
-      subtitle="Quét mã tại điểm chấm công để ghi nhận giờ vào hoặc giờ ra theo lịch làm việc."
+      subtitle="Ghi nhận giờ vào, giờ ra theo phương thức được chính sách làm việc cho phép."
       kicker="Nhân sự"
       actions={actions}
     >
@@ -368,7 +394,7 @@ export default function AttendanceWorkspace({
             <div className={styles.sectionHeader}>
               <div>
                 <p className={styles.panelKicker}>Hôm nay</p>
-                <h2>Quét mã QR tại điểm chấm công</h2>
+                <h2>Chấm công hôm nay</h2>
               </div>
               {today ? <span className={localStyles.statusPill}>{STATUS_LABEL[today.status]}</span> : null}
             </div>
@@ -378,64 +404,72 @@ export default function AttendanceWorkspace({
               <span className={localStyles.statusPill}>Dự kiến ra: {formatDateTime(today?.expectedEndAt, timeZone)}</span>
             </div>
 
-            <div className={localStyles.cameraBox}>
-              <video
-                ref={videoRef}
-                className={localStyles.video}
-                muted
-                playsInline
-                hidden={!scanning}
-                aria-label="Camera quét mã QR chấm công"
-              />
-              {!scanning ? (
-                <div className={styles.emptyState}>
-                  {today?.nextAction
-                    ? `Sẵn sàng: ${nextActionLabel.toLowerCase()}.`
-                    : 'Ngày làm việc này đã có đủ giờ vào và giờ ra.'}
+            {qrAllowed ? (
+              <>
+                <div className={localStyles.cameraBox}>
+                  <video
+                    ref={videoRef}
+                    className={localStyles.video}
+                    muted
+                    playsInline
+                    hidden={!scanning}
+                    aria-label="Camera quét mã QR chấm công"
+                  />
+                  {!scanning ? (
+                    <div className={styles.emptyState}>
+                      {today?.nextAction
+                        ? `Sẵn sàng: ${nextActionLabel.toLowerCase()} bằng QR.`
+                        : 'Ngày làm việc này đã có đủ giờ vào và giờ ra.'}
+                    </div>
+                  ) : null}
                 </div>
-              ) : null}
-            </div>
-            {cameraMessage ? <p role="status">{cameraMessage}</p> : null}
+                {cameraMessage ? <p role="status">{cameraMessage}</p> : null}
 
-            <div className={localStyles.scanActions}>
-              {!scanning ? (
+                <div className={localStyles.scanActions}>
+                  {!scanning ? (
+                    <button
+                      type="button"
+                      className={styles.primaryButton}
+                      onClick={() => void startScanner()}
+                      disabled={busy || !today?.nextAction}
+                      data-testid="attendance-start-camera"
+                    >
+                      Mở camera quét QR
+                    </button>
+                  ) : (
+                    <button type="button" className={styles.secondaryButton} onClick={stopScanner}>
+                      Dừng camera
+                    </button>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className={localStyles.methodNotice}>
+                Chính sách hiện tại không dùng QR. Chấm công theo phương thức được hiển thị bên dưới.
+              </div>
+            )}
+
+            {manualAllowed ? (
+              <div className={localStyles.manualAttendanceCard} data-testid="attendance-manual-record">
+                <div>
+                  <strong>Chấm công thủ công</strong>
+                  <span>Hệ thống dùng giờ hiện tại của máy chủ. Không nhập hoặc sửa giờ tại đây.</span>
+                </div>
                 <button
                   type="button"
                   className={styles.primaryButton}
-                  onClick={() => void startScanner()}
+                  onClick={() => void submitManualAttendance()}
                   disabled={busy || !today?.nextAction}
-                  data-testid="attendance-start-camera"
                 >
-                  Mở camera quét QR
+                  {nextActionLabel}
                 </button>
-              ) : (
-                <button type="button" className={styles.secondaryButton} onClick={stopScanner}>
-                  Dừng camera
-                </button>
-              )}
-            </div>
-
-            <div className={localStyles.manualRow}>
-              <input
-                value={manualQr}
-                onChange={(event) => setManualQr(event.target.value)}
-                placeholder="Dán mã QR nếu thiết bị không quét được camera"
-                aria-label="Mã QR chấm công"
-              />
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={() => void submitQr(manualQr)}
-                disabled={busy || !today?.nextAction || !manualQr.trim()}
-              >
-                Ghi nhận
-              </button>
-            </div>
+              </div>
+            ) : null}
 
             <div className={localStyles.eventList} data-testid="attendance-today-events">
               {(today?.events ?? []).map((event) => (
                 <div className={localStyles.eventItem} key={event.id}>
-                  <span><strong>{event.event_type === 'CHECK_IN' ? 'Giờ vào' : 'Giờ ra'}</strong><br /><small>{event.point_name || 'Điểm chấm công'}</small></span>
+                  <span><strong>{event.event_type === 'CHECK_IN' ? 'Giờ vào' : 'Giờ ra'}</strong><br /><small>{event.point_name || (event.source === 'MANUAL' ? 'Chấm công thủ công' : 'Điểm chấm công')}</small></span>
                   <span>{formatDateTime(event.occurred_at, timeZone)}</span>
                 </div>
               ))}
@@ -446,7 +480,7 @@ export default function AttendanceWorkspace({
           {management ? (
             <section className={localStyles.qrPanel} data-testid="attendance-point-management">
               <div className={styles.sectionHeader}>
-                <div><p className={styles.panelKicker}>Điểm chấm công</p><h2>Phát mã QR ngắn hạn</h2></div>
+                <div><p className={styles.panelKicker}>Dành cho quản lý</p><h2>Điểm chấm công và mã QR</h2></div>
                 <span className={styles.panelChip}>{management.points.length} điểm</span>
               </div>
 

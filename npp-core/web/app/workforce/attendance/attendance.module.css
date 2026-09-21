@@ -1,6 +1,6 @@
 .attendanceGrid {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(300px, .65fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
 }
 
@@ -50,7 +50,6 @@
 }
 
 .scanActions,
-.manualRow,
 .pointActions {
   display: flex;
   flex-wrap: wrap;
@@ -58,7 +57,6 @@
   margin-top: 12px;
 }
 
-.manualRow input,
 .pointForm input,
 .pointForm select {
   min-height: 40px;
@@ -68,8 +66,35 @@
   background: #fff;
 }
 
-.manualRow input {
-  flex: 1 1 280px;
+.methodNotice {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line, #dfe3e8);
+  border-radius: 10px;
+  color: #667085;
+  background: #fff;
+}
+
+.manualAttendanceCard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid var(--line, #dfe3e8);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.manualAttendanceCard > div {
+  display: grid;
+  gap: 4px;
+}
+
+.manualAttendanceCard span {
+  color: #667085;
+  font-size: .78rem;
 }
 
 .pointForm {
@@ -125,4 +150,5 @@
 @media (max-width: 900px) {
   .attendanceGrid { grid-template-columns: 1fr; }
   .cameraBox { min-height: 220px; }
+  .manualAttendanceCard { align-items: stretch; flex-direction: column; }
 }

@@ -12,13 +12,16 @@ test('Issue #1110 Lô 3 adds Chấm công to the Nhân sự menu', async () => {
   assert.match(shell, /Hồ sơ, chấm công, chính sách và lịch làm việc/);
 });
 
-test('Issue #1110 Lô 3 uses camera QR scan with an office-friendly fallback', async () => {
+test('Issue #1110 Lô 3 uses camera QR scan and policy-controlled manual attendance', async () => {
   const workspace = await source('app/workforce/attendance/attendance-workspace.tsx');
   assert.match(workspace, /navigator\.mediaDevices\.getUserMedia/);
   assert.match(workspace, /BarcodeDetector/);
   assert.match(workspace, /formats: \['qr_code'\]/);
-  assert.match(workspace, /Dán mã QR nếu thiết bị không quét được camera/);
   assert.match(workspace, /Mở camera quét QR/);
+  assert.match(workspace, /Chấm công thủ công/);
+  assert.match(workspace, /method: 'MANUAL'/);
+  assert.match(workspace, /Không nhập hoặc sửa giờ tại đây/);
+  assert.doesNotMatch(workspace, /Dán mã QR/);
   assert.match(workspace, /Ghi nhận giờ vào/);
   assert.match(workspace, /Ghi nhận giờ ra/);
 });
@@ -29,7 +32,8 @@ test('Issue #1110 Lô 3 reuses canonical idempotency keys and does not send empl
     source('lib/workforce-gateway.ts'),
   ]);
   assert.match(workspace, /createIdempotencyKey\(operation\)/);
-  assert.match(workspace, /const payload = \{ qrPayload: normalized \}/);
+  assert.match(workspace, /const payload = \{ method: 'QR', qrPayload: normalized \}/);
+  assert.match(workspace, /const payload = \{ method: 'MANUAL' as const \}/);
   assert.doesNotMatch(workspace, /employeeId:\s*today|occurredAt:/);
   assert.match(gateway, /mutationKey\(idempotencyKey, 'attendance-record'\)/);
   assert.match(gateway, /mutationKey\(idempotencyKey, 'attendance-qr-token'\)/);

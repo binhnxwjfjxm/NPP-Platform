@@ -52,6 +52,9 @@ test('Issue #1110 Lô 3 attendance record trusts session employee and server tim
   assert.match(route, /withAuditOutboxTransaction/);
 
   assert.match(service, /occurredAt: now\.toISOString\(\)/);
+  assert.match(service, /recordManualAttendance/);
+  assert.match(service, /source: 'MANUAL'/);
+  assert.match(service, /attendance-manual/);
   assert.match(service, /ATTENDANCE_MIN_EVENT_GAP_MS = 60_000/);
   assert.match(service, /QR_TOKEN_EXPIRED/);
   assert.match(service, /attendance_method/);
@@ -59,6 +62,7 @@ test('Issue #1110 Lô 3 attendance record trusts session employee and server tim
   assert.doesNotMatch(service, /payload\?\.occurredAt|payload\?\.eventType/);
 
   assert.match(repository, /INSERT INTO shared\.attendance_events/);
+  assert.match(repository, /values\.source \?\? 'QR'/);
   assert.match(repository, /ON CONFLICT \(installation_id, source, source_reference\)/);
   assert.doesNotMatch(repository, /UPDATE shared\.attendance_events/);
 });

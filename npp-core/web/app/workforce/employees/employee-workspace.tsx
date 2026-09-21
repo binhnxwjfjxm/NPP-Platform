@@ -51,13 +51,40 @@ function mutationKeyForPayload(
   return key;
 }
 
-function tomorrowDate() {
+function localDate(offsetDays = 0) {
   const date = new Date();
+  date.setDate(date.getDate() + offsetDays);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function todayDate() {
+  return localDate(0);
+}
+
+function tomorrowDate() {
+  return localDate(1);
+}
+
+function nextDate(value: string) {
+  const date = new Date(`${value}T00:00:00`);
   date.setDate(date.getDate() + 1);
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+function assignmentMinimumDate(history: EmployeeWorkPolicyAssignment[]) {
+  const today = todayDate();
+  const futureOrCurrent = history
+    .filter((item) => item.effective_from > today || !item.effective_to || item.effective_to >= today)
+    .sort((left, right) => right.effective_from.localeCompare(left.effective_from));
+  if (!futureOrCurrent.length) return today;
+  const afterLatest = nextDate(futureOrCurrent[0].effective_from);
+  return afterLatest > tomorrowDate() ? afterLatest : tomorrowDate();
 }
 
 const EMPLOYEE_DIRECTORY_DIRTY_KEY = 'npp-core-employee-directory-dirty';
@@ -111,7 +138,7 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
   const [draft, setDraft] = useState<EmployeeDraft>(emptyDraft());
   const [policyEmployeeId, setPolicyEmployeeId] = useState<string | null>(null);
   const [assignmentHistory, setAssignmentHistory] = useState<EmployeeWorkPolicyAssignment[]>([]);
-  const [assignmentDraft, setAssignmentDraft] = useState({ workPolicyId: '', effectiveFrom: tomorrowDate(), reason: '' });
+  const [assignmentDraft, setAssignmentDraft] = useState({ workPolicyId: '', effectiveFrom: todayDate(), reason: '' });
   const [assignmentBusy, setAssignmentBusy] = useState(false);
   const employeeSaveAttempt = useRef<MutationAttempt>(null);
   const employeeStatusAttempt = useRef<MutationAttempt>(null);
@@ -123,6 +150,10 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
   const policyEmployee = useMemo(
     () => employees.find((employee) => employee.id === policyEmployeeId) ?? null,
     [employees, policyEmployeeId],
+  );
+  const policyAssignmentMinDate = useMemo(
+    () => assignmentMinimumDate(assignmentHistory),
+    [assignmentHistory],
   );
   const normalizedSearch = normalizeSearch(search);
 
@@ -303,7 +334,7 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
     setAssignmentHistory([]);
     setAssignmentDraft({
       workPolicyId: activePolicies[0]?.id ?? '',
-      effectiveFrom: tomorrowDate(),
+      effectiveFrom: todayDate(),
       reason: '',
     });
     setAssignmentBusy(true);
@@ -313,6 +344,10 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
         `/api/workforce/assignments?employeeId=${encodeURIComponent(employeeId)}`,
       );
       setAssignmentHistory(history);
+      setAssignmentDraft((current) => ({
+        ...current,
+        effectiveFrom: assignmentMinimumDate(history),
+      }));
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Không tải được lịch sử chính sách làm việc');
     } finally {
@@ -568,7 +603,7 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
                   Áp dụng từ ngày
                   <input
                     type="date"
-                    min={tomorrowDate()}
+                    min={policyAssignmentMinDate}
                     value={assignmentDraft.effectiveFrom}
                     onChange={(event) => setAssignmentDraft((current) => ({ ...current, effectiveFrom: event.target.value }))}
                     required
