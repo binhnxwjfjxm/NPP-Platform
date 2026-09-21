@@ -91,6 +91,8 @@ const blankTypeForm = {
   allowsFullDay: true,
   allowsHalfDay: true,
   requiresAttachment: false,
+  tracksBalance: false,
+  allowNegativeBalance: false,
 };
 
 export default function LeaveWorkspace({
