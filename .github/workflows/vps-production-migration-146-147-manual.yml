@@ -105,9 +105,13 @@ jobs:
         run: |
           set -euo pipefail
           out="$RUNNER_TEMP/vps-production-migration-146-147.txt"
-          ssh -i "$SSH_KEY" -o BatchMode=yes -o ConnectTimeout=10 -o ConnectionAttempts=1             -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN_HOSTS"             "$VPS_SSH_USER@$VPS_DB_HOST"             "chmod 0700 /tmp/npp-migrate-workforce-146-147-$SOURCE_SHA.sh && /tmp/npp-migrate-workforce-146-147-$SOURCE_SHA.sh '$SOURCE_SHA' '$GITHUB_RUN_ID'; status=\$?; rm -f /tmp/npp-migrate-workforce-146-147-$SOURCE_SHA.sh; exit \$status"             > "$out"
+          set +e
+          ssh -i "$SSH_KEY" -o BatchMode=yes -o ConnectTimeout=10 -o ConnectionAttempts=1             -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN_HOSTS"             "$VPS_SSH_USER@$VPS_DB_HOST"             "chmod 0700 /tmp/npp-migrate-workforce-146-147-$SOURCE_SHA.sh && /tmp/npp-migrate-workforce-146-147-$SOURCE_SHA.sh '$SOURCE_SHA' '$GITHUB_RUN_ID'; status=\$?; rm -f /tmp/npp-migrate-workforce-146-147-$SOURCE_SHA.sh; exit \$status"             > "$out" 2>&1
+          status=$?
+          set -e
           cat "$out"
           echo "report=$out" >> "$GITHUB_OUTPUT"
+          exit "$status"
 
       - name: Publish sanitized migration evidence to Issue 958
         if: always() && steps.migrate.outputs.report != ''

@@ -85,6 +85,8 @@ verify_target() {
     ('shared.attendance_violation_cases'::regclass)
   ) AS t(rel) WHERE has_table_privilege('${runtime_role}', rel, 'SELECT,INSERT,UPDATE,DELETE')")"
 
+  echo "VERIFY_TARGET=$target REGISTRY=$registry TABLES=$tables PERMISSIONS=$permissions INDEXES=$indexes RUNTIME_ROLE=$runtime_role_count RUNTIME_PRIVILEGES=$runtime_privileges/3"
+
   test "$registry" = 2
   test "$tables" = 3
   test "$permissions" = 7
@@ -101,6 +103,7 @@ SET LOCAL lock_timeout = '5s';
 SET LOCAL statement_timeout = '10min';
 \i :migration_146_sql
 \i :migration_147_sql
+SELECT shared.grant_company_runtime_access('npp_company_runtime'::name);
 INSERT INTO shared.schema_migrations (id)
 VALUES (:'migration_146'), (:'migration_147')
 ON CONFLICT (id) DO NOTHING;

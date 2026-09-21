@@ -20,6 +20,9 @@ test('VPS production migrations 146-147 use exact main and a separate guarded DB
   assert.match(workflow, /vps-production-migrate-workforce-146-147\.sh/);
   assert.match(workflow, /VPS_SSH_USER@\$VPS_DB_HOST/);
   assert.doesNotMatch(workflow, /\$VPS_SSH_USER\$@VPS_DB_HOST/);
+  assert.match(workflow, /set \+e/);
+  assert.match(workflow, /> "\$out" 2>&1/);
+  assert.match(workflow, /exit "\$status"/);
 
   assert.match(script, /145_company_runtime_privileges/);
   assert.match(script, /146_workforce_leave_absence/);
@@ -29,6 +32,8 @@ test('VPS production migrations 146-147 use exact main and a separate guarded DB
   assert.match(script, /RESTORE_REHEARSAL=PASS/);
   assert.match(script, /PROTECTED_ROWS_UNCHANGED=PASS/);
   assert.match(script, /WORKFORCE_WORKFLOW_ROWS_STABLE=PASS/);
+  assert.match(script, /grant_company_runtime_access\('npp_company_runtime'::name\)/);
+  assert.match(script, /VERIFY_TARGET=/);
   assert.match(script, /RUNTIME_PRIVILEGES=PASS/);
   assert.match(script, /PRODUCTION_RERUN_NOOP=PASS/);
   assert.match(script, /PRODUCTION_VERIFY=PASS/);
