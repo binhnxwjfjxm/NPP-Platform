@@ -99,12 +99,15 @@ function requestPeriod(row: LeaveRequest) {
 }
 
 function typeBadges(type: LeaveType) {
+  const balance = type as LeaveType & LeaveTypeBalanceFields;
   return [
     type.is_paid ? 'Hưởng lương' : 'Không lương',
     type.counts_as_workday ? 'Tính ngày công' : 'Không tính ngày công',
     type.requires_approval ? 'Cần duyệt' : 'Tự động duyệt',
     type.allows_half_day ? 'Có nửa ngày' : null,
     type.requires_attachment ? 'Cần chứng từ' : null,
+    balance.tracks_balance ? 'Theo dõi số dư' : null,
+    balance.allow_negative_balance ? 'Cho phép âm' : null,
     !type.is_active ? 'Ngừng áp dụng' : null,
   ].filter(Boolean) as string[];
 }
