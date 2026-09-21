@@ -1,11 +1,18 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
 };
+
+const RETAIL_PWA_INSTALL_EVENT = 'retail:pwa-install';
+
+export function requestRetailPwaInstall() {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new Event(RETAIL_PWA_INSTALL_EVENT));
+}
 
 export function PwaRegistration() {
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
@@ -40,9 +47,25 @@ export function PwaRegistration() {
     };
   }, []);
 
-  async function installRetail() {
+  const installRetail = useCallback(async () => {
+    const android = /Android/i.test(navigator.userAgent);
+    const standalone = window.matchMedia('(display-mode: standalone)').matches;
+
+    if (standalone) {
+      setInstallMessage('Retail đã được cài trên thiết bị này.');
+      setShowInstall(true);
+      return;
+    }
+
+    if (!android) {
+      setInstallMessage('Mở Retail bằng Chrome trên Android để cài ra màn hình chính.');
+      setShowInstall(true);
+      return;
+    }
+
     if (!installPrompt) {
-      setInstallMessage('Mở Retail bằng Chrome trên Android rồi bấm lại Cài Retail.');
+      setInstallMessage('Trong Chrome Android, mở menu ⋮ rồi chọn Cài ứng dụng hoặc Thêm vào màn hình chính.');
+      setShowInstall(true);
       return;
     }
 
@@ -54,7 +77,16 @@ export function PwaRegistration() {
       return;
     }
     setInstallMessage('Chưa cài ứng dụng. Có thể bấm Cài Retail lại khi cần.');
-  }
+    setShowInstall(true);
+  }, [installPrompt]);
+
+  useEffect(() => {
+    const handleInstallRequest = () => {
+      void installRetail();
+    };
+    window.addEventListener(RETAIL_PWA_INSTALL_EVENT, handleInstallRequest);
+    return () => window.removeEventListener(RETAIL_PWA_INSTALL_EVENT, handleInstallRequest);
+  }, [installRetail]);
 
   if (!showInstall) return null;
 

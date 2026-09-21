@@ -59,3 +59,18 @@ test('Retail product cards are keyboard operable through the same selection cont
   assert.match(runtime, /event\.key !== 'Enter' && event\.key !== ' '/);
   assert.match(runtime, /document\.addEventListener\('keydown', handlePickerKeyDown, true\)/);
 });
+
+
+test('Retail có điểm cài PWA Android rõ ràng trong Cài đặt và vẫn dùng browser install prompt', async () => {
+  const [pwa, workspace] = await Promise.all([
+    read('app/pwa-registration.tsx'),
+    read('app/retail-workspace.tsx'),
+  ]);
+  assert.match(pwa, /beforeinstallprompt/);
+  assert.match(pwa, /RETAIL_PWA_INSTALL_EVENT = 'retail:pwa-install'/);
+  assert.match(pwa, /requestRetailPwaInstall/);
+  assert.match(pwa, /Cài ứng dụng hoặc Thêm vào màn hình chính/);
+  assert.match(workspace, /import \{ requestRetailPwaInstall \} from '\.\/pwa-registration';/);
+  assert.match(workspace, /onClick=\{requestRetailPwaInstall\}/);
+  assert.match(workspace, /Cài ứng dụng Android/);
+});

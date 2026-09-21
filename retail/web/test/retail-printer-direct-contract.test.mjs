@@ -97,6 +97,9 @@ test('direct print dùng payload chứng từ chuẩn hóa và fallback hệ th�
   assert.match(bridge, /unitName\?: string \| null/);
   assert.match(bridge, /line\.unitName\?\.trim\(\) \|\| line\.unitCode/);
   assert.match(workspace, /unitName: line\.unitName/);
+  assert.match(workspace, /const displayUnit = .*unitName\?\.trim\(\) \|\| unitCode\?\.trim\(\)/);
+  assert.match(workspace, /displayUnit\(line\.unitName, line\.unitCode\)/);
+  assert.match(workspace, /displayUnit\(product\.unitName, product\.unitCode\)/);
   assert.match(bridge, /safeToFallback/);
   assert.match(workspace, /reason instanceof RetailPrinterError && reason\.safeToFallback/);
   assert.match(workspace, /printBySystem\(settings\.paper\)/);
