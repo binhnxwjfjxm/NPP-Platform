@@ -164,6 +164,43 @@ export function getAttendanceTimesheet<T>(requestId: string, searchParams: URLSe
   return requestCore<T>({ path: '/attendance/timesheet', method: 'GET', requestId, searchParams });
 }
 
+export function listLeaveTypes<T>(requestId: string): Promise<T> {
+  return requestCore<T>({ path: '/leave-types', method: 'GET', requestId });
+}
+export function createLeaveType<T>(requestId: string, body: unknown, idempotencyKey?: string): Promise<T> {
+  return requestCore<T>({
+    path: '/leave-types', method: 'POST', requestId, body,
+    idempotencyKey: mutationKey(idempotencyKey, 'leave-type-create'),
+  });
+}
+export function updateLeaveType<T>(requestId: string, body: unknown, idempotencyKey?: string): Promise<T> {
+  return requestCore<T>({
+    path: '/leave-types/update', method: 'POST', requestId, body,
+    idempotencyKey: mutationKey(idempotencyKey, 'leave-type-update'),
+  });
+}
+export function listLeaveRequests<T>(requestId: string, searchParams: URLSearchParams): Promise<T> {
+  return requestCore<T>({ path: '/leave/requests', method: 'GET', requestId, searchParams });
+}
+export function submitLeaveRequest<T>(requestId: string, body: unknown, idempotencyKey?: string): Promise<T> {
+  return requestCore<T>({
+    path: '/leave/requests', method: 'POST', requestId, body,
+    idempotencyKey: mutationKey(idempotencyKey, 'leave-request-submit'),
+  });
+}
+export function reviewLeaveRequest<T>(requestId: string, body: unknown, idempotencyKey?: string): Promise<T> {
+  return requestCore<T>({
+    path: '/leave/requests/review', method: 'POST', requestId, body,
+    idempotencyKey: mutationKey(idempotencyKey, 'leave-request-review'),
+  });
+}
+export function cancelLeaveRequest<T>(requestId: string, body: unknown, idempotencyKey?: string): Promise<T> {
+  return requestCore<T>({
+    path: '/leave/requests/cancel', method: 'POST', requestId, body,
+    idempotencyKey: mutationKey(idempotencyKey, 'leave-request-cancel'),
+  });
+}
+
 export function listAttendanceAdjustments<T>(requestId: string, searchParams: URLSearchParams): Promise<T> {
   return requestCore<T>({ path: '/attendance/adjustments', method: 'GET', requestId, searchParams });
 }

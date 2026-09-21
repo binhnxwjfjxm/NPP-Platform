@@ -354,3 +354,90 @@ export type AttendanceTimesheetResponse = {
   rows: AttendanceTimesheetDay[] | AttendanceTimesheetMonth[];
 };
 
+
+
+export type LeaveDayPart = 'FULL_DAY' | 'FIRST_HALF' | 'SECOND_HALF';
+export type LeaveRequestStatus = 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
+
+export type LeaveType = {
+  id: string;
+  installation_id: string;
+  code: string;
+  name: string;
+  is_active: boolean;
+  is_paid: boolean;
+  counts_as_workday: boolean;
+  requires_approval: boolean;
+  allows_full_day: boolean;
+  allows_half_day: boolean;
+  requires_attachment: boolean;
+  version: number;
+  created_at: string;
+  updated_at: string;
+  created_by: string;
+  updated_by: string;
+};
+
+export type LeaveRequest = {
+  id: string;
+  installation_id: string;
+  employee_id: string;
+  leave_type_id: string;
+  leave_type_code_snapshot: string;
+  leave_type_name_snapshot: string;
+  leave_is_paid_snapshot: boolean;
+  leave_counts_as_workday_snapshot: boolean;
+  leave_requires_approval_snapshot: boolean;
+  date_from: string;
+  date_to: string;
+  day_part: LeaveDayPart;
+  reason: string;
+  attachment_reference: string | null;
+  status: LeaveRequestStatus;
+  requested_by_actor_id: string;
+  requested_by_employee_id: string;
+  reviewed_by_actor_id: string | null;
+  review_reason: string | null;
+  reviewed_at: string | null;
+  cancelled_by_actor_id: string | null;
+  cancel_reason: string | null;
+  cancelled_at: string | null;
+  version: number;
+  request_id: string;
+  created_at: string;
+  updated_at: string;
+  employee_code?: string;
+  employee_name?: string;
+  employee_branch_id?: string | null;
+  branch_code?: string | null;
+  branch_name?: string | null;
+};
+
+export type LeaveTypeListResponse = {
+  leaveTypes: LeaveType[];
+  capabilities: { canManage: boolean };
+};
+
+export type LeaveRequestListResponse = {
+  selectedEmployee: {
+    id: string;
+    code: string;
+    name: string;
+    branchId: string | null;
+  } | null;
+  branches: AttendanceBranch[];
+  pagination: {
+    limit: number;
+    offset: number;
+    total: number;
+    hasPrevious: boolean;
+    hasNext: boolean;
+  };
+  requests: LeaveRequest[];
+  capabilities: {
+    selfOnly: boolean;
+    canSubmitOwn: boolean;
+    canApprove: boolean;
+    canManageTypes: boolean;
+  };
+};
