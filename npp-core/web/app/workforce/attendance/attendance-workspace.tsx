@@ -22,10 +22,28 @@ type BarcodeDetectorLike = { detect(source: HTMLVideoElement): Promise<BarcodeRe
 type BarcodeDetectorConstructor = new (options: { formats: string[] }) => BarcodeDetectorLike;
 
 const STATUS_LABEL: Record<AttendanceToday['status'], string> = {
-  NOT_STARTED: 'Chưa vào ca',
-  WORKING: 'Đã vào ca',
+  NOT_STARTED: 'Chưa vào làm',
+  WORKING: 'Đang làm việc',
+  OUTSIDE: 'Đang ra ngoài',
   COMPLETE: 'Đã hoàn tất',
 };
+
+type ExitReason = '' | 'END_WORK' | 'WORK_BUSINESS' | 'PERSONAL' | 'BREAK' | 'OTHER';
+
+const EXIT_REASON_LABEL: Record<Exclude<ExitReason, ''>, string> = {
+  END_WORK: 'Kết thúc làm việc / Đi về',
+  WORK_BUSINESS: 'Ra ngoài làm công việc',
+  PERSONAL: 'Ra ngoài việc cá nhân',
+  BREAK: 'Nghỉ giữa ca',
+  OTHER: 'Lý do khác',
+};
+
+function eventLabel(event: AttendanceToday['events'][number]) {
+  if (event.event_type === 'CHECK_IN') return 'Vào làm';
+  if (event.event_type === 'CHECK_OUT') return 'Kết thúc làm việc';
+  if (event.event_type === 'RETURN') return 'Quay lại nơi làm việc';
+  return event.movement_reason ? EXIT_REASON_LABEL[event.movement_reason] : 'Ra tạm thời';
+}
 
 const ATTENDANCE_METHOD_LABEL: Record<AttendanceToday['policy']['attendanceMethod'], string> = {
   QR: 'Quét mã tại nơi làm việc',
@@ -121,6 +139,8 @@ export default function AttendanceWorkspace({
   const [selectedWorkplaceId, setSelectedWorkplaceId] = useState(initialManagement?.branches[0]?.id ?? '');
   const [qrToken, setQrToken] = useState<AttendanceQrToken | null>(null);
   const [clock, setClock] = useState(Date.now());
+  const [exitReason, setExitReason] = useState<ExitReason>('');
+  const [exitNote, setExitNote] = useState('');
 
   const recordAttempt = useRef<Attempt>(null);
   const manualRecordAttempt = useRef<Attempt>(null);
@@ -133,10 +153,14 @@ export default function AttendanceWorkspace({
 
   const timeZone = today?.policy.timezone || 'Asia/Ho_Chi_Minh';
   const nextActionLabel = today?.nextAction === 'CHECK_IN'
-    ? 'Ghi nhận giờ vào'
-    : today?.nextAction === 'CHECK_OUT'
-      ? 'Ghi nhận giờ ra'
-      : 'Đã đủ giờ vào / ra';
+    ? 'Ghi nhận vào làm'
+    : today?.nextAction === 'EXIT'
+      ? 'Chọn lý do rời nơi làm việc'
+      : today?.nextAction === 'RETURN'
+        ? 'Ghi nhận quay lại'
+        : 'Đã hoàn tất chấm công';
+  const exitSelectionReady = today?.nextAction !== 'EXIT'
+    || (Boolean(exitReason) && (exitReason !== 'OTHER' || Boolean(exitNote.trim())));
   const qrAllowed = today?.policy.attendanceMethod === 'QR' || today?.policy.attendanceMethod === 'BOTH';
   const manualAllowed = today?.policy.attendanceMethod === 'MANUAL' || today?.policy.attendanceMethod === 'BOTH';
   const remainingSeconds = qrToken
@@ -165,12 +189,23 @@ export default function AttendanceWorkspace({
 
   useEffect(() => {
     if (!qrToken) return undefined;
-    const delay = Math.max(5_000, new Date(qrToken.expiresAt).getTime() - Date.now() - 30_000);
+    const delay = Math.max(5_000, new Date(qrToken.expiresAt).getTime() - Date.now() - 15_000);
     const timer = window.setTimeout(() => {
       void issueQrToken(qrToken.attendancePointId);
     }, delay);
     return () => window.clearTimeout(timer);
   }, [qrToken?.id]);
+
+  function attendancePayload(method: 'QR' | 'MANUAL', qrPayload?: string) {
+    const payload: Record<string, string> = { method };
+    if (qrPayload) payload.qrPayload = qrPayload;
+    if (today?.nextAction === 'EXIT') {
+      if (!exitReason) throw new Error('Vui lòng chọn lý do rời nơi làm việc');
+      payload.exitReason = exitReason;
+      if (exitNote.trim()) payload.note = exitNote.trim();
+    }
+    return payload;
+  }
 
   async function reloadToday() {
     try {
@@ -186,7 +221,13 @@ export default function AttendanceWorkspace({
   async function submitQr(qrPayload: string) {
     const normalized = qrPayload.trim();
     if (!normalized) return;
-    const payload = { method: 'QR', qrPayload: normalized };
+    let payload: Record<string, string>;
+    try {
+      payload = attendancePayload('QR', normalized);
+    } catch (payloadError) {
+      setError(payloadError instanceof Error ? payloadError.message : 'Vui lòng chọn lý do rời nơi làm việc');
+      return;
+    }
     const key = stableKey(recordAttempt, 'web-attendance-record', payload);
     setBusy(true);
     setError(null);
@@ -198,8 +239,9 @@ export default function AttendanceWorkspace({
         body: JSON.stringify(payload),
       });
       recordAttempt.current = null;
-      const verb = result.event.event_type === 'CHECK_IN' ? 'giờ vào' : 'giờ ra';
-      setNotice(`Đã ghi nhận ${verb} lúc ${formatDateTime(result.event.occurred_at, timeZone)} tại ${result.point?.branchName || result.point?.name || 'nơi làm việc'}.`);
+      setNotice(`Đã ghi nhận ${eventLabel(result.event).toLowerCase()} lúc ${formatDateTime(result.event.occurred_at, timeZone)} tại ${result.point?.branchName || result.point?.name || 'nơi làm việc'}.`);
+      setExitReason('');
+      setExitNote('');
       await reloadToday();
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Không ghi nhận được chấm công');
@@ -211,7 +253,13 @@ export default function AttendanceWorkspace({
 
   async function submitManualAttendance() {
     if (!today?.nextAction || !manualAllowed) return;
-    const payload = { method: 'MANUAL' as const };
+    let payload: Record<string, string>;
+    try {
+      payload = attendancePayload('MANUAL');
+    } catch (payloadError) {
+      setError(payloadError instanceof Error ? payloadError.message : 'Vui lòng chọn lý do rời nơi làm việc');
+      return;
+    }
     const key = stableKey(manualRecordAttempt, 'web-attendance-manual-record', payload);
     setBusy(true);
     setError(null);
@@ -223,8 +271,9 @@ export default function AttendanceWorkspace({
         body: JSON.stringify(payload),
       });
       manualRecordAttempt.current = null;
-      const verb = result.event.event_type === 'CHECK_IN' ? 'giờ vào' : 'giờ ra';
-      setNotice(`Đã ghi nhận ${verb} lúc ${formatDateTime(result.event.occurred_at, timeZone)} bằng chấm công trực tiếp.`);
+      setNotice(`Đã ghi nhận ${eventLabel(result.event).toLowerCase()} lúc ${formatDateTime(result.event.occurred_at, timeZone)} bằng chấm công trực tiếp.`);
+      setExitReason('');
+      setExitNote('');
       await reloadToday();
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Không ghi nhận được chấm công trực tiếp');
@@ -435,7 +484,7 @@ export default function AttendanceWorkspace({
                       type="button"
                       className={styles.primaryButton}
                       onClick={() => void startScanner()}
-                      disabled={busy || !today?.nextAction}
+                      disabled={busy || !today?.nextAction || !exitSelectionReady}
                       data-testid="attendance-start-camera"
                     >
                       Mở camera quét QR
@@ -453,6 +502,43 @@ export default function AttendanceWorkspace({
               </div>
             )}
 
+            {today?.nextAction === 'EXIT' ? (
+              <div className={localStyles.exitPanel} data-testid="attendance-exit-reason">
+                <strong>Lý do rời nơi làm việc</strong>
+                <span>Chọn đúng mục để Bảng công phân biệt kết thúc ngày với ra tạm thời.</span>
+                <div className={localStyles.exitReasonGrid}>
+                  {(Object.keys(EXIT_REASON_LABEL) as Array<Exclude<ExitReason, ''>>).map((reason) => (
+                    <label key={reason} className={localStyles.exitReasonOption}>
+                      <input
+                        type="radio"
+                        name="exit-reason"
+                        value={reason}
+                        checked={exitReason === reason}
+                        onChange={() => setExitReason(reason)}
+                      />
+                      <span>{EXIT_REASON_LABEL[reason]}</span>
+                    </label>
+                  ))}
+                </div>
+                {exitReason === 'OTHER' ? (
+                  <label className={localStyles.exitNoteField}>
+                    Ghi rõ lý do
+                    <input
+                      value={exitNote}
+                      onChange={(event) => setExitNote(event.target.value)}
+                      maxLength={1024}
+                      placeholder="Nhập lý do"
+                      required
+                    />
+                  </label>
+                ) : null}
+              </div>
+            ) : null}
+
+            {today?.policy.attendanceBasis === 'PRESENCE' ? (
+              <div className={localStyles.methodNotice}>Chính sách này chỉ xác nhận có mặt. Sau khi ghi nhận vào làm, Bảng công không dùng số phút làm việc để tính công và không yêu cầu ghi nhận giờ ra.</div>
+            ) : null}
+
             {manualAllowed ? (
               <div className={localStyles.manualAttendanceCard} data-testid="attendance-manual-record">
                 <div>
@@ -463,9 +549,9 @@ export default function AttendanceWorkspace({
                   type="button"
                   className={styles.primaryButton}
                   onClick={() => void submitManualAttendance()}
-                  disabled={busy || !today?.nextAction}
+                  disabled={busy || !today?.nextAction || !exitSelectionReady}
                 >
-                  {nextActionLabel}
+                  {today?.nextAction === 'EXIT' ? 'Ghi nhận rời nơi làm việc' : nextActionLabel}
                 </button>
               </div>
             ) : null}
@@ -473,7 +559,7 @@ export default function AttendanceWorkspace({
             <div className={localStyles.eventList} data-testid="attendance-today-events">
               {(today?.events ?? []).map((event) => (
                 <div className={localStyles.eventItem} key={event.id}>
-                  <span><strong>{event.event_type === 'CHECK_IN' ? 'Giờ vào' : 'Giờ ra'}</strong><br /><small>{event.point_name || (event.source === 'MANUAL' ? 'Chấm công trực tiếp' : 'Nơi làm việc')}</small></span>
+                  <span><strong>{eventLabel(event)}</strong><br /><small>{event.note || event.point_name || (event.source === 'MANUAL' ? 'Chấm công trực tiếp' : 'Nơi làm việc')}</small></span>
                   <span>{formatDateTime(event.occurred_at, timeZone)}</span>
                 </div>
               ))}
@@ -516,6 +602,7 @@ export default function AttendanceWorkspace({
                     <strong>{qrToken.branchName || qrToken.pointName}</strong>
                     <div>Dùng mã này để chấm công tại nơi làm việc trên.</div>
                     <div>Còn hiệu lực khoảng {remainingSeconds} giây · mã tự làm mới trước khi hết hạn</div>
+                    <button type="button" className={styles.secondaryButton} onClick={() => setQrToken(null)}>Tắt mã QR</button>
                   </div>
                 </div>
               ) : (

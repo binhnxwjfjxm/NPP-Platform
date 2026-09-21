@@ -15,6 +15,7 @@ export type WorkPolicy = {
   overtime_enabled: boolean;
   overtime_requires_approval: boolean;
   attendance_method: 'QR' | 'MANUAL' | 'BOTH' | 'NONE';
+  attendance_basis: 'TIME' | 'PRESENCE' | 'NONE';
   timezone: string;
   rounding_minutes: number;
   minimum_full_day_minutes: number | null;
@@ -42,6 +43,7 @@ export type EmployeeWorkPolicyAssignment = {
   policy_name: string;
   policy_time_mode: WorkPolicy['time_mode'];
   policy_attendance_method: WorkPolicy['attendance_method'];
+  policy_attendance_basis: WorkPolicy['attendance_basis'];
   policy_timezone: string;
 };
 
@@ -133,7 +135,8 @@ export type AttendanceEvent = {
   schedule_id: string | null;
   work_policy_id: string | null;
   attendance_point_id: string | null;
-  event_type: 'CHECK_IN' | 'CHECK_OUT';
+  event_type: 'CHECK_IN' | 'TEMP_EXIT' | 'RETURN' | 'CHECK_OUT';
+  movement_reason: 'WORK_BUSINESS' | 'PERSONAL' | 'BREAK' | 'OTHER' | null;
   occurred_at: string;
   source: 'QR' | 'MANUAL' | 'ADJUSTMENT' | 'SYSTEM';
   validation_status: 'VALID' | 'PENDING' | 'INVALID';
@@ -148,8 +151,8 @@ export type AttendanceEvent = {
 
 export type AttendanceToday = {
   workDate: string;
-  status: 'NOT_STARTED' | 'WORKING' | 'COMPLETE';
-  nextAction: 'CHECK_IN' | 'CHECK_OUT' | null;
+  status: 'NOT_STARTED' | 'WORKING' | 'OUTSIDE' | 'COMPLETE';
+  nextAction: 'CHECK_IN' | 'EXIT' | 'RETURN' | null;
   tooSoon: boolean;
   employee: {
     id: string;
@@ -167,6 +170,7 @@ export type AttendanceToday = {
     name: string;
     timeMode: WorkPolicy['time_mode'];
     attendanceMethod: WorkPolicy['attendance_method'];
+    attendanceBasis: WorkPolicy['attendance_basis'];
     timezone: string;
   };
   schedule: {
@@ -383,6 +387,7 @@ export type AttendanceDayStatus =
   | 'MISSING_SCHEDULE'
   | 'NOT_STARTED'
   | 'WORKING'
+  | 'OUTSIDE'
   | 'MISSING_CHECK_IN'
   | 'MISSING_CHECK_OUT'
   | 'INCOMPLETE'
@@ -411,6 +416,7 @@ export type AttendanceTimesheetDay = {
     version: number;
     name: string;
     timeMode: WorkPolicy['time_mode'];
+    attendanceBasis: WorkPolicy['attendance_basis'];
     timezone: string;
     breakMinutes: number;
     lateGraceMinutes: number;

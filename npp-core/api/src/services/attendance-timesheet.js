@@ -159,7 +159,7 @@ function eventsForDay(row, events) {
 
 export function selectEffectiveAttendanceEvents(events) {
   const valid = events.filter((event) => event.validation_status === 'VALID');
-  const selected = [];
+  const selected = valid.filter((event) => event.event_type === 'TEMP_EXIT' || event.event_type === 'RETURN');
   for (const eventType of ['CHECK_IN', 'CHECK_OUT']) {
     const typed = valid.filter((event) => event.event_type === eventType);
     const adjustments = typed.filter((event) => event.source === 'ADJUSTMENT');
@@ -183,22 +183,54 @@ function pairValidEvents(events) {
   const valid = selectEffectiveAttendanceEvents(events);
   const pairs = [];
   let open = null;
+  let temporaryExit = null;
   let unmatchedOut = 0;
-  for (const event of valid) {
-    if (event.event_type === 'CHECK_IN') {
-      if (!open) open = event;
-      continue;
-    }
+  let sequenceErrors = 0;
+
+  const closeOpen = (event) => {
     if (!open) {
       unmatchedOut += 1;
-      continue;
+      return;
     }
     const start = new Date(open.occurred_at).getTime();
     const end = new Date(event.occurred_at).getTime();
     if (end >= start) pairs.push({ checkIn: open, checkOut: event, start, end });
+    else sequenceErrors += 1;
     open = null;
+  };
+
+  for (const event of valid) {
+    if (event.event_type === 'CHECK_IN') {
+      if (open || temporaryExit) sequenceErrors += 1;
+      else open = event;
+      continue;
+    }
+    if (event.event_type === 'TEMP_EXIT') {
+      if (!open) {
+        unmatchedOut += 1;
+        temporaryExit = event;
+        continue;
+      }
+      if (event.movement_reason !== 'WORK_BUSINESS') closeOpen(event);
+      temporaryExit = event;
+      continue;
+    }
+    if (event.event_type === 'RETURN') {
+      if (!temporaryExit) {
+        sequenceErrors += 1;
+        if (!open) open = event;
+        continue;
+      }
+      if (temporaryExit.movement_reason !== 'WORK_BUSINESS' && !open) open = event;
+      temporaryExit = null;
+      continue;
+    }
+    if (event.event_type === 'CHECK_OUT') {
+      closeOpen(event);
+      temporaryExit = null;
+    }
   }
-  return { valid, pairs, open, unmatchedOut };
+  return { valid, pairs, open, temporaryExit, unmatchedOut, sequenceErrors };
 }
 
 function overlapMinutes(pairs, startAt, endAt) {
@@ -417,7 +449,8 @@ export function summarizeAttendanceDay(row, employeeEvents, now = new Date(), co
   const { expectedStartAt, expectedEndAt } = expectedTimes(row);
   const leave = buildLeaveProjection(control.leaveRequests ?? []);
   const requiredWindow = attendanceWindowForLeave(expectedStartAt, expectedEndAt, leave.approvedSegments);
-  const actualMinutes = Math.round(
+  const presenceOnly = row.policy_attendance_basis === 'PRESENCE';
+  const actualMinutes = presenceOnly ? 0 : Math.round(
     pairing.pairs.reduce((sum, pair) => sum + Math.max(0, pair.end - pair.start), 0) / 60_000,
   );
   const fullTarget = fullDayTargetMinutes(row, expectedStartAt, expectedEndAt);
@@ -428,18 +461,24 @@ export function summarizeAttendanceDay(row, employeeEvents, now = new Date(), co
     ? overlapMinutes(pairing.pairs, requiredWindow.startAt, requiredWindow.endAt)
     : (leave.approvedFraction >= 1 ? 0 : actualMinutes);
   const countedBeforeBreak = overlapMinutes(pairing.pairs, expectedStartAt, expectedEndAt);
-  const attendanceCountedMinutes = leave.approvedFraction > 0
-    ? Math.min(requiredTarget, attendanceOverlap)
-    : Math.max(0, countedBeforeBreak - Number(row.policy_break_minutes || 0));
+  const hasRecordedBreak = pairing.valid.some(
+    (event) => event.event_type === 'TEMP_EXIT' && event.movement_reason === 'BREAK',
+  );
+  const breakDeduction = hasRecordedBreak ? 0 : Number(row.policy_break_minutes || 0);
+  const attendanceCountedMinutes = presenceOnly
+    ? 0
+    : leave.approvedFraction > 0
+      ? Math.min(requiredTarget, attendanceOverlap)
+      : Math.max(0, countedBeforeBreak - breakDeduction);
   const countedMinutes = fullTarget > 0
     ? Math.min(fullTarget, attendanceCountedMinutes + leaveCreditedMinutes)
     : Math.max(0, attendanceCountedMinutes + leaveCreditedMinutes);
-  const lateMinutes = leave.approvedFraction >= 1 ? 0 : minutesAfter(
+  const lateMinutes = presenceOnly || leave.approvedFraction >= 1 ? 0 : minutesAfter(
     firstCheckIn?.occurred_at,
     requiredWindow.startAt,
     row.policy_late_grace_minutes,
   );
-  const earlyLeaveMinutes = leave.approvedFraction >= 1 ? 0 : minutesBefore(
+  const earlyLeaveMinutes = presenceOnly || leave.approvedFraction >= 1 ? 0 : minutesBefore(
     lastCheckOut?.occurred_at,
     requiredWindow.endAt,
     row.policy_early_leave_grace_minutes,
@@ -464,9 +503,10 @@ export function summarizeAttendanceDay(row, employeeEvents, now = new Date(), co
   const hasCheckOut = Boolean(lastCheckOut);
   const attendanceRequired = scheduledWorkDay && leave.approvedFraction < 1;
   const missingCheckIn = !isFuture && attendanceRequired && !hasCheckIn && (isPast || startDue || hasCheckOut);
-  const missingCheckOut = !isFuture && attendanceRequired
-    && (!hasCheckOut || Boolean(pairing.open)) && (isPast || endDue);
+  const missingCheckOut = !presenceOnly && !isFuture && attendanceRequired
+    && (!hasCheckOut || Boolean(pairing.open) || Boolean(pairing.temporaryExit)) && (isPast || endDue);
   const incompleteSequence = pairing.unmatchedOut > 0
+    || pairing.sequenceErrors > 0
     || (hasCheckIn && hasCheckOut && pairing.pairs.length === 0);
   const configurationIssue = !hasPolicy
     ? 'MISSING_POLICY'
@@ -475,7 +515,7 @@ export function summarizeAttendanceDay(row, employeeEvents, now = new Date(), co
     && (row.policy_time_mode === 'NO_ATTENDANCE' || row.policy_attendance_method === 'NONE');
   const dayEnded = isPast || endDue;
   const uncoveredFraction = Math.max(0, 1 - leave.approvedFraction - leave.pendingFraction);
-  const noValidAttendance = pairing.valid.length === 0;
+  const noValidAttendance = !hasCheckIn;
   const unexcusedAbsenceFraction = !isFuture
     && !offDay
     && scheduledWorkDay
@@ -507,6 +547,10 @@ export function summarizeAttendanceDay(row, employeeEvents, now = new Date(), co
     attendanceStatus = 'MISSING_CHECK_OUT';
   } else if (incompleteSequence) {
     attendanceStatus = 'INCOMPLETE';
+  } else if (presenceOnly && hasCheckIn) {
+    attendanceStatus = 'COMPLETE';
+  } else if (pairing.temporaryExit && !dayEnded) {
+    attendanceStatus = 'OUTSIDE';
   } else if (pairing.open) {
     attendanceStatus = 'WORKING';
   } else if (!hasCheckIn && !hasCheckOut) {
@@ -541,7 +585,9 @@ export function summarizeAttendanceDay(row, employeeEvents, now = new Date(), co
     ? 0
     : Math.max(0, countedMinutes - leaveCreditedMinutes + effectiveLeaveCreditedMinutes);
   const attendanceSources = [...new Set(events.map((event) => String(event.source)))];
-  const validWork = ['COMPLETE', 'LATE', 'EARLY', 'LATE_AND_EARLY'].includes(attendanceStatus);
+  const validWork = presenceOnly
+    ? hasCheckIn
+    : ['COMPLETE', 'LATE', 'EARLY', 'LATE_AND_EARLY'].includes(attendanceStatus);
   const projection = {
     workDate,
     employee: {
@@ -558,6 +604,7 @@ export function summarizeAttendanceDay(row, employeeEvents, now = new Date(), co
       version: Number(row.policy_version),
       name: row.policy_name,
       timeMode: row.policy_time_mode,
+      attendanceBasis: row.policy_attendance_basis || (row.policy_time_mode === 'NO_ATTENDANCE' ? 'NONE' : 'TIME'),
       timezone: timeZone,
       breakMinutes: Number(row.policy_break_minutes || 0),
       lateGraceMinutes: Number(row.policy_late_grace_minutes || 0),

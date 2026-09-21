@@ -129,6 +129,7 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   migration('145_company_runtime_privileges', 'shared/145_company_runtime_privileges.sql'),
   migration('146_workforce_leave_absence', 'shared/146_workforce_leave_absence.sql'),
   migration('147_workforce_violation_handling', 'shared/147_workforce_violation_handling.sql'),
+  migration('148_workforce_attendance_movement', 'shared/148_workforce_attendance_movement.sql'),
 ]);
 
 export { runMigrations };

@@ -158,3 +158,64 @@
   .cameraBox { min-height: 220px; }
   .manualAttendanceCard { align-items: stretch; flex-direction: column; }
 }
+
+.exitPanel {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid var(--line, #dfe3e8);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.exitPanel > span {
+  color: #667085;
+  font-size: .78rem;
+}
+
+.exitReasonGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.exitReasonOption {
+  display: flex !important;
+  align-items: center;
+  gap: 8px !important;
+  min-height: 42px;
+  padding: 9px 10px;
+  border: 1px solid var(--line, #dfe3e8);
+  border-radius: 10px;
+  background: #f8fafc;
+  letter-spacing: 0 !important;
+}
+
+.exitReasonOption input[type='radio'] {
+  width: 18px !important;
+  min-width: 18px;
+  height: 18px;
+  min-height: 18px !important;
+  margin: 0;
+  padding: 0 !important;
+  box-shadow: none !important;
+}
+
+.exitNoteField {
+  display: grid;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.exitNoteField input {
+  min-height: 40px;
+  border: 1px solid var(--line, #dfe3e8);
+  border-radius: 10px;
+  padding: 0 11px;
+  background: #fff;
+}
+
+@media (max-width: 640px) {
+  .exitReasonGrid { grid-template-columns: 1fr; }
+}
