@@ -133,7 +133,7 @@ export default function LeaveWorkspace({
   initialToday,
   initialError,
 }: {
-  initialData: LeaveRequestListResponse | null;
+  initialData: LeaveDataWithBalance | null;
   initialTypes: LeaveTypeListResponse | null;
   initialFrom: string;
   initialTo: string;
@@ -209,7 +209,7 @@ export default function LeaveWorkspace({
       if (status) params.set('status', status);
       if (!data?.capabilities.selfOnly && employeeQuery.trim()) params.set('employeeQuery', employeeQuery.trim());
       if (!data?.capabilities.selfOnly && branchId) params.set('branchId', branchId);
-      const next = await requestJson<LeaveRequestListResponse>('/api/workforce/leave/requests?' + params.toString());
+      const next = await requestJson<LeaveDataWithBalance>('/api/workforce/leave/requests?' + params.toString());
       setData(next);
       if (branchId && !next.branches.some((branch) => branch.id === branchId)) setBranchId('');
       await loadTypes();
