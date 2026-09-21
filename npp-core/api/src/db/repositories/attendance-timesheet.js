@@ -9,6 +9,8 @@ const DAY_COLUMNS = `c.employee_id, c.employee_code, c.employee_name,
   p.name AS policy_name, p.time_mode AS policy_time_mode,
   p.fixed_start_time AS policy_fixed_start_time, p.fixed_end_time AS policy_fixed_end_time,
   p.working_days AS policy_working_days, p.break_minutes AS policy_break_minutes,
+  p.minimum_full_day_minutes AS policy_minimum_full_day_minutes,
+  p.minimum_half_day_minutes AS policy_minimum_half_day_minutes,
   p.late_grace_minutes AS policy_late_grace_minutes,
   p.early_leave_grace_minutes AS policy_early_leave_grace_minutes,
   p.attendance_method AS policy_attendance_method, p.timezone AS policy_timezone`;

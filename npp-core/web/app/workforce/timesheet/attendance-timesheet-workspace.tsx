@@ -27,6 +27,10 @@ const STATUS_LABEL: Record<AttendanceDayStatus, string> = {
   MISSING_CHECK_IN: 'Thiếu giờ vào',
   MISSING_CHECK_OUT: 'Thiếu giờ ra',
   INCOMPLETE: 'Chấm công chưa đầy đủ',
+  APPROVED_LEAVE: 'Nghỉ được duyệt',
+  PENDING_LEAVE: 'Chờ duyệt nghỉ',
+  PENDING_ADJUSTMENT: 'Chờ duyệt điều chỉnh',
+  UNEXCUSED_ABSENCE: 'Vắng không phép',
   LATE_AND_EARLY: 'Đi trễ và về sớm',
   LATE: 'Đi trễ',
   EARLY: 'Về sớm',
@@ -43,6 +47,49 @@ const SOURCE_LABEL: Record<AttendanceEvent['source'], string> = {
 function dateLabel(value: string) {
   const [year, month, day] = value.split('-');
   return year && month && day ? `${day}/${month}/${year}` : value;
+}
+
+function dayCountLabel(value: number) {
+  return new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 1 }).format(Math.max(0, value || 0));
+}
+
+function statusLabel(day: AttendanceTimesheetDay) {
+  if (day.status === 'APPROVED_LEAVE') {
+    const label = day.leave.approvedLabels.join(' + ') || 'Nghỉ được duyệt';
+    return day.leave.approvedFraction < 1 ? `${label} · Nửa ngày` : label;
+  }
+  if (day.status === 'PENDING_LEAVE') {
+    return day.leave.pendingFraction < 1 ? 'Chờ duyệt nghỉ · Nửa ngày' : 'Chờ duyệt nghỉ';
+  }
+  return STATUS_LABEL[day.status];
+}
+
+function leaveSegmentLabel(day: AttendanceTimesheetDay) {
+  const approved = new Set(day.leave.approvedSegments);
+  if (approved.has('FIRST_HALF') && approved.has('SECOND_HALF')) return 'Cả ngày';
+  if (approved.has('FIRST_HALF')) return 'Nửa ca đầu';
+  if (approved.has('SECOND_HALF')) return 'Nửa ca sau';
+  const pending = new Set(day.leave.pendingSegments);
+  if (pending.has('FIRST_HALF') && pending.has('SECOND_HALF')) return 'Cả ngày đang chờ duyệt';
+  if (pending.has('FIRST_HALF')) return 'Nửa ca đầu đang chờ duyệt';
+  if (pending.has('SECOND_HALF')) return 'Nửa ca sau đang chờ duyệt';
+  return 'Không có';
+}
+
+function leaveSummary(day: AttendanceTimesheetDay) {
+  if (!day.leave.requests.length) return 'Không có đơn nghỉ';
+  const approved = day.leave.approvedLabels.length ? `Đã duyệt: ${day.leave.approvedLabels.join(' + ')}` : '';
+  const pending = day.leave.pendingLabels.length ? `Chờ duyệt: ${day.leave.pendingLabels.join(' + ')}` : '';
+  return [approved, pending].filter(Boolean).join(' · ');
+}
+
+function requiredWorkLabel(day: AttendanceTimesheetDay) {
+  if (!day.scheduledWorkDay || day.status === 'DAY_OFF') return 'Không phải làm';
+  if (day.leave.approvedFraction >= 1) return 'Không phải làm';
+  if (day.requiredStartAt && day.requiredEndAt) {
+    return `${timeLabel(day.requiredStartAt, day.policy?.timezone)} – ${timeLabel(day.requiredEndAt, day.policy?.timezone)}`;
+  }
+  return 'Theo chính sách làm việc';
 }
 
 function monthBounds(value: string) {
@@ -70,20 +117,24 @@ function compactDayLabel(day: AttendanceTimesheetDay) {
     case 'EARLY': return 'Sớm';
     case 'LATE_AND_EARLY': return 'Trễ/Sớm';
     case 'DAY_OFF': return 'Nghỉ';
+    case 'APPROVED_LEAVE': return day.leave.approvedFraction < 1 ? '½ Phép' : 'Phép';
+    case 'PENDING_LEAVE': return 'Chờ';
+    case 'PENDING_ADJUSTMENT': return 'Chờ ĐC';
+    case 'UNEXCUSED_ABSENCE': return 'Vắng';
     case 'NO_ATTENDANCE_REQUIRED': return 'Không YC';
     case 'WORKING': return 'Đang';
-    case 'UPCOMING': return '—';
+    case 'UPCOMING': return '';
     case 'NOT_STARTED': return 'Chưa';
-    case 'MISSING_POLICY': return 'Thiếu CS';
-    case 'MISSING_SCHEDULE': return 'Thiếu ca';
+    case 'MISSING_POLICY': return 'Lỗi CS';
+    case 'MISSING_SCHEDULE': return 'Lỗi ca';
     default: return 'Thiếu';
   }
 }
 
 function compactDayTone(day: AttendanceTimesheetDay) {
   if (day.status === 'COMPLETE') return 'good';
-  if (day.status === 'DAY_OFF' || day.status === 'NO_ATTENDANCE_REQUIRED' || day.status === 'UPCOMING') return 'muted';
-  if (day.status === 'LATE' || day.status === 'EARLY' || day.status === 'LATE_AND_EARLY' || day.status === 'WORKING') return 'warn';
+  if (day.status === 'DAY_OFF' || day.status === 'APPROVED_LEAVE' || day.status === 'NO_ATTENDANCE_REQUIRED' || day.status === 'UPCOMING') return 'muted';
+  if (day.status === 'PENDING_LEAVE' || day.status === 'PENDING_ADJUSTMENT' || day.status === 'LATE' || day.status === 'EARLY' || day.status === 'LATE_AND_EARLY' || day.status === 'WORKING') return 'warn';
   return 'danger';
 }
 
@@ -129,8 +180,11 @@ function minutesLabel(value: number) {
 
 function missingLabel(day: AttendanceTimesheetDay) {
   const values = [];
+  if (day.unexcusedAbsenceFraction > 0) values.push(`Vắng không phép ${dayCountLabel(day.unexcusedAbsenceFraction)} ngày`);
   if (day.missingCheckIn) values.push('Thiếu giờ vào');
   if (day.missingCheckOut) values.push('Thiếu giờ ra');
+  if (day.configurationIssue === 'MISSING_POLICY') values.push('Thiếu chính sách làm việc');
+  if (day.configurationIssue === 'MISSING_SCHEDULE') values.push('Thiếu lịch làm việc');
   return values.length ? values.join(' · ') : 'Đủ';
 }
 
@@ -138,6 +192,7 @@ function sourceSummary(day: AttendanceTimesheetDay) {
   const values = day.attendanceSources.map((source) => SOURCE_LABEL[source]);
   if (day.scheduleSource === 'OVERRIDE') values.push('Lịch điều chỉnh');
   else if (day.scheduleSource === 'POLICY') values.push('Lịch chính sách');
+  if (day.leave.requests.length) values.push('Đơn nghỉ');
   return [...new Set(values)].join(' · ') || 'Chưa có sự kiện';
 }
 
@@ -249,7 +304,7 @@ export default function AttendanceTimesheetWorkspace({
   return (
     <AppShell
       title="Bảng công"
-      subtitle="Theo dõi giờ vào, giờ ra và tình trạng chấm công theo lịch làm việc trong phạm vi được cấp."
+      subtitle="Theo dõi lịch làm, nghỉ, phép, chấm công và tình trạng xử lý theo phạm vi được cấp."
       kicker="Nhân sự"
       actions={actions}
     >
@@ -351,8 +406,8 @@ export default function AttendanceTimesheetWorkspace({
         </section>
 
         <div className={styles.banner} role="note">
-          Thời gian được tính là thời gian chấm công hợp lệ nằm trong khung làm việc, sau khi trừ thời gian nghỉ theo chính sách.
-          Đây là dữ liệu theo dõi công, chưa phải dữ liệu tính lương.
+          Bảng công tổng hợp từ lịch làm việc, đơn nghỉ đã duyệt/chờ duyệt, chấm công và điều chỉnh công.
+          Nghỉ theo lịch, nghỉ được duyệt, vắng không phép và thiếu chấm công là các trạng thái khác nhau. Đây chưa phải dữ liệu tính lương.
         </div>
 
         {data?.view === 'daily' ? (
@@ -367,7 +422,7 @@ export default function AttendanceTimesheetWorkspace({
                   <tr>
                     <th>Ngày</th><th>Nhân sự</th><th>Chi nhánh</th><th>Trạng thái</th>
                     <th>Giờ vào</th><th>Giờ ra</th><th>Thực tế</th><th>Được tính</th>
-                    <th>Đi trễ</th><th>Về sớm</th><th>Thiếu chấm công</th><th>Nguồn dữ liệu</th><th>Kiểm soát</th><th>Chi tiết</th>
+                    <th>Đi trễ</th><th>Về sớm</th><th>Thiếu / Vắng</th><th>Nguồn dữ liệu</th><th>Kiểm soát</th><th>Chi tiết</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -376,7 +431,7 @@ export default function AttendanceTimesheetWorkspace({
                       <td>{dateLabel(day.workDate)}</td>
                       <td><strong>{day.employee.code} · {day.employee.name}</strong></td>
                       <td>{day.employee.branchName || 'Chưa gán chi nhánh'}</td>
-                      <td>{STATUS_LABEL[day.status]}</td>
+                      <td>{statusLabel(day)}</td>
                       <td>{timeLabel(day.checkInAt, day.policy?.timezone)}</td>
                       <td>{timeLabel(day.checkOutAt, day.policy?.timezone)}</td>
                       <td>{minutesLabel(day.actualMinutes)}</td>
@@ -389,6 +444,7 @@ export default function AttendanceTimesheetWorkspace({
                         <div className={localStyles.detailMeta}>
                           {day.periodLock ? <strong>Đã khóa kỳ</strong> : <span>Kỳ đang mở</span>}
                           {day.adjustment ? <span>{day.adjustment.status === 'SUBMITTED' ? 'Điều chỉnh: Chờ duyệt' : day.adjustment.status === 'APPROVED' ? 'Điều chỉnh: Đã duyệt' : 'Điều chỉnh: Từ chối'}</span> : <span>Chưa có điều chỉnh</span>}
+                          {day.leave.requests.length ? <span>Đơn nghỉ: {leaveSummary(day)}</span> : <span>Chưa có đơn nghỉ</span>}
                           {data?.capabilities.canManage && (!day.periodLock || data?.capabilities.canLock) ? (
                             <Link href={'/workforce/adjustments?employeeId=' + encodeURIComponent(day.employee.id) + '&workDate=' + day.workDate}>Điều chỉnh</Link>
                           ) : !day.periodLock && data?.capabilities.canSubmitOwn ? (
@@ -401,8 +457,10 @@ export default function AttendanceTimesheetWorkspace({
                           <summary>Chi tiết sự kiện ({day.events.length})</summary>
                           <div className={localStyles.detailBody}>
                             <div className={localStyles.detailMeta}>
-                              <span>Dự kiến vào: <strong>{timeLabel(day.expectedStartAt, day.policy?.timezone)}</strong></span>
-                              <span>Dự kiến ra: <strong>{timeLabel(day.expectedEndAt, day.policy?.timezone)}</strong></span>
+                              <span>Lịch dự kiến: <strong>{timeLabel(day.expectedStartAt, day.policy?.timezone)} – {timeLabel(day.expectedEndAt, day.policy?.timezone)}</strong></span>
+                              <span>Phần phải làm: <strong>{requiredWorkLabel(day)}</strong></span>
+                              <span>Đơn nghỉ: <strong>{leaveSummary(day)}</strong></span>
+                              <span>Phần nghỉ: <strong>{leaveSegmentLabel(day)}</strong></span>
                               <span>Chính sách: <strong>{day.policy ? `${day.policy.code} · ${day.policy.name} · bản ${day.policy.version}` : 'Chưa có'}</strong></span>
                             </div>
                             {day.events.map((event) => (
@@ -441,8 +499,11 @@ export default function AttendanceTimesheetWorkspace({
             <div className={localStyles.matrixLegend} aria-label="Chú thích bảng công">
               <span><strong>✓</strong> Đủ</span>
               <span><strong>Trễ/Sớm</strong> Có sai lệch giờ</span>
-              <span><strong>Thiếu</strong> Thiếu chấm công</span>
-              <span><strong>Nghỉ</strong> Ngày nghỉ</span>
+              <span><strong>Thiếu</strong> Có công nhưng chưa đủ</span>
+              <span><strong>Vắng</strong> Phải làm nhưng không có công hoặc phép</span>
+              <span><strong>Nghỉ</strong> Lịch không phải làm</span>
+              <span><strong>Phép</strong> Nghỉ đã được duyệt</span>
+              <span><strong>Chờ</strong> Đơn nghỉ đang chờ duyệt</span>
             </div>
             <div className={localStyles.matrixWrap}>
               <table className={localStyles.matrixTable} data-testid="attendance-timesheet-monthly-table">
@@ -452,8 +513,14 @@ export default function AttendanceTimesheetWorkspace({
                     {Array.from({ length: 31 }, (_, index) => index + 1).map((dayNumber) => (
                       <th className={localStyles.matrixDayHead} key={dayNumber}>{dayNumber}</th>
                     ))}
+                    <th>Ngày làm đến nay</th>
                     <th>Ngày đủ</th>
-                    <th>Thiếu công</th>
+                    <th>Nghỉ lịch</th>
+                    <th>Phép</th>
+                    <th>Chờ duyệt nghỉ</th>
+                    <th>Vắng</th>
+                    <th>Thiếu chấm công</th>
+                    <th>Lỗi cấu hình</th>
                     <th>Đi trễ</th>
                     <th>Về sớm</th>
                     <th>Giờ được tính</th>
@@ -482,8 +549,8 @@ export default function AttendanceTimesheetWorkspace({
                                   type="button"
                                   className={`${localStyles.matrixCellButton} ${localStyles[`matrixTone_${compactDayTone(day)}`]}`}
                                   onClick={() => setSelectedDay(day)}
-                                  title={`${dateLabel(day.workDate)} · ${STATUS_LABEL[day.status]}`}
-                                  aria-label={`${dateLabel(day.workDate)} · ${STATUS_LABEL[day.status]} · ${row.employee.name}`}
+                                  title={`${dateLabel(day.workDate)} · ${statusLabel(day)}`}
+                                  aria-label={`${dateLabel(day.workDate)} · ${statusLabel(day)} · ${row.employee.name}`}
                                 >
                                   {compactDayLabel(day)}
                                 </button>
@@ -493,8 +560,14 @@ export default function AttendanceTimesheetWorkspace({
                             </td>
                           );
                         })}
-                        <td className={localStyles.matrixTotal}>{row.completedDays}</td>
-                        <td className={localStyles.matrixTotal}>{row.missingDays}</td>
+                        <td className={localStyles.matrixTotal}>{dayCountLabel(row.workDays)}</td>
+                        <td className={localStyles.matrixTotal}>{dayCountLabel(row.completedDays)}</td>
+                        <td className={localStyles.matrixTotal}>{dayCountLabel(row.scheduledDaysOff)}</td>
+                        <td className={localStyles.matrixTotal}>{dayCountLabel(row.approvedLeaveDays)}</td>
+                        <td className={localStyles.matrixTotal}>{dayCountLabel(row.pendingLeaveDays)}</td>
+                        <td className={localStyles.matrixTotal}>{dayCountLabel(row.unexcusedAbsenceDays)}</td>
+                        <td className={localStyles.matrixTotal}>{dayCountLabel(row.incompleteDays)}</td>
+                        <td className={localStyles.matrixTotal}>{dayCountLabel(row.configurationIssueDays)}</td>
                         <td className={localStyles.matrixTotal}>{minutesLabel(row.lateMinutes)}</td>
                         <td className={localStyles.matrixTotal}>{minutesLabel(row.earlyLeaveMinutes)}</td>
                         <td className={localStyles.matrixTotal}>{minutesLabel(row.countedMinutes)}</td>
@@ -507,7 +580,7 @@ export default function AttendanceTimesheetWorkspace({
                   })}
                   {!monthlyRows.length ? (
                     <tr>
-                      <td colSpan={39}><div className={styles.emptyState}>Không có nhân sự trong phạm vi và tháng đã chọn.</div></td>
+                      <td colSpan={45}><div className={styles.emptyState}>Không có nhân sự trong phạm vi và tháng đã chọn.</div></td>
                     </tr>
                   ) : null}
                 </tbody>
@@ -528,19 +601,36 @@ export default function AttendanceTimesheetWorkspace({
               </div>
               <div className={localStyles.dayDetailGrid}>
                 <div><span>Ngày</span><strong>{dateLabel(selectedDay.workDate)}</strong></div>
-                <div><span>Trạng thái</span><strong>{STATUS_LABEL[selectedDay.status]}</strong></div>
+                <div><span>Trạng thái</span><strong>{statusLabel(selectedDay)}</strong></div>
                 <div><span>Giờ vào</span><strong>{timeLabel(selectedDay.checkInAt, selectedDay.policy?.timezone)}</strong></div>
                 <div><span>Giờ ra</span><strong>{timeLabel(selectedDay.checkOutAt, selectedDay.policy?.timezone)}</strong></div>
                 <div><span>Thực tế</span><strong>{minutesLabel(selectedDay.actualMinutes)}</strong></div>
                 <div><span>Được tính</span><strong>{minutesLabel(selectedDay.countedMinutes)}</strong></div>
+                <div><span>Được tính từ nghỉ</span><strong>{minutesLabel(selectedDay.leaveCreditedMinutes)}</strong></div>
+                <div><span>Phần phải làm</span><strong>{requiredWorkLabel(selectedDay)}</strong></div>
                 <div><span>Đi trễ</span><strong>{minutesLabel(selectedDay.lateMinutes)}</strong></div>
                 <div><span>Về sớm</span><strong>{minutesLabel(selectedDay.earlyLeaveMinutes)}</strong></div>
               </div>
               <div className={localStyles.dayDetailSection}>
-                <strong>Nguồn dữ liệu</strong>
+                <strong>Lịch và đơn nghỉ</strong>
+                <span>Lịch phải làm: {selectedDay.scheduledWorkDay ? `${timeLabel(selectedDay.expectedStartAt, selectedDay.policy?.timezone)} – ${timeLabel(selectedDay.expectedEndAt, selectedDay.policy?.timezone)}` : 'Không phải làm'}</span>
+                <span>Phần được nghỉ: {leaveSegmentLabel(selectedDay)}</span>
+                <span>{leaveSummary(selectedDay)}</span>
+                {selectedDay.unexcusedAbsenceFraction > 0 ? <span>Vắng không phép: {dayCountLabel(selectedDay.unexcusedAbsenceFraction)} ngày</span> : null}
+                {selectedDay.configurationIssue === 'MISSING_POLICY' ? <span>Cần bổ sung chính sách làm việc.</span> : null}
+                {selectedDay.configurationIssue === 'MISSING_SCHEDULE' ? <span>Cần bổ sung lịch/ca làm việc.</span> : null}
+                {selectedDay.leave.requests.length ? <Link className={localStyles.inlineLink} href="/workforce/leave">Mở đơn nghỉ</Link> : null}
+              </div>
+              <div className={localStyles.dayDetailSection}>
+                <strong>Nguồn dữ liệu và kiểm soát</strong>
                 <span>{sourceSummary(selectedDay)}</span>
                 <span>{selectedDay.policy ? `Chính sách: ${selectedDay.policy.code} · ${selectedDay.policy.name} · bản ${selectedDay.policy.version}` : 'Chưa có chính sách phù hợp'}</span>
+                <span>{selectedDay.adjustment ? (selectedDay.adjustment.status === 'SUBMITTED' ? 'Điều chỉnh: Chờ duyệt' : selectedDay.adjustment.status === 'APPROVED' ? 'Điều chỉnh: Đã duyệt' : 'Điều chỉnh: Từ chối') : 'Chưa có điều chỉnh'}</span>
                 {selectedDay.periodLock ? <span>Kỳ công đã khóa</span> : <span>Kỳ công đang mở</span>}
+              </div>
+              <div className={localStyles.dayDetailSection}>
+                <strong>Đánh giá vi phạm</strong>
+                <span>Chưa có kết quả đánh giá vi phạm tự động. Bảng công hiện chỉ tổng hợp sự thật về lịch, nghỉ và chấm công.</span>
               </div>
               <div className={localStyles.dayDetailEvents}>
                 {selectedDay.events.map((event) => (
