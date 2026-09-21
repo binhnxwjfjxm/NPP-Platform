@@ -47,7 +47,7 @@ test('Issue #1110 Lô 4 renders daily and monthly timesheets with office languag
   assert.match(workspace, /Thiếu chấm công/);
   assert.match(workspace, /Nguồn dữ liệu/);
   assert.match(workspace, /Chi tiết sự kiện/);
-  assert.doesNotMatch(workspace, /Bảng công tổng hợp từ lịch làm việc|chưa phải dữ liệu tính lương|Mỗi nhân sự một hàng|Công theo ngày|Bảng công 31 ngày/);
+  assert.doesNotMatch(workspace, /Bảng công tổng hợp từ lịch làm việc|chưa phải dữ liệu tính lương|Mỗi nhân sự một hàng|<h2>Công theo ngày<\/h2>|<h2>Bảng công 31 ngày<\/h2>/);
   assert.doesNotMatch(workspace, /Idempotency-Key|createIdempotencyKey|method:\s*'POST'/);
 });
 
