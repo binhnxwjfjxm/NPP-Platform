@@ -89,22 +89,42 @@ export async function listEmployeesForInstallation(client, {
   limit = 100,
   offset = 0,
 }) {
-  let query = `SELECT ${SELECT_COLUMNS}
-               FROM shared.employees
-               WHERE installation_id = $1`;
+  let query = `SELECT e.id, e.installation_id, e.code, e.full_name, e.job_title, e.phone, e.email, e.branch_id,
+                      e.is_active, e.created_at, e.updated_at, e.created_by, e.updated_by,
+                      a.id AS assignment_id, a.department_id, d.code AS department_code, d.name AS department_name,
+                      a.position_id, p.code AS position_code, p.name AS position_name,
+                      a.manager_employee_id, m.code AS manager_code, m.full_name AS manager_name,
+                      to_char(a.effective_from, 'YYYY-MM-DD') AS assignment_effective_from,
+                      CASE WHEN a.effective_to IS NULL THEN NULL ELSE to_char(a.effective_to, 'YYYY-MM-DD') END AS assignment_effective_to
+                 FROM shared.employees e
+                 LEFT JOIN LATERAL (
+                   SELECT x.*
+                     FROM shared.employee_assignments x
+                    WHERE x.installation_id = e.installation_id
+                      AND x.employee_id = e.id
+                    ORDER BY x.effective_from DESC, x.created_at DESC, x.id DESC
+                    LIMIT 1
+                 ) a ON true
+                 LEFT JOIN shared.hr_departments d
+                   ON d.installation_id = e.installation_id AND d.id = a.department_id
+                 LEFT JOIN shared.hr_positions p
+                   ON p.installation_id = e.installation_id AND p.id = a.position_id
+                 LEFT JOIN shared.employees m
+                   ON m.installation_id = e.installation_id AND m.id = a.manager_employee_id
+                WHERE e.installation_id = $1`;
   const params = [installationId];
 
   if (active !== undefined) {
-    query += ` AND is_active = $${params.length + 1}`;
+    query += ` AND e.is_active = $${params.length + 1}`;
     params.push(Boolean(active));
   }
 
   if (branchId) {
-    query += ` AND branch_id = $${params.length + 1}`;
+    query += ` AND e.branch_id = $${params.length + 1}`;
     params.push(branchId);
   }
 
-  query += ` ORDER BY code ASC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+  query += ` ORDER BY e.code ASC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
   params.push(limit, offset);
 
   const result = await client.query(query, params);
@@ -188,13 +208,23 @@ export async function listEmployeeEmployments(client, { installationId, employee
 export async function listEmployeeAssignments(client, { installationId, employeeId }) {
   const result = await client.query(
     `SELECT a.id, a.installation_id, a.employee_id, a.branch_id,
+            a.department_id, a.position_id, a.manager_employee_id,
             to_char(a.effective_from, 'YYYY-MM-DD') AS effective_from,
             CASE WHEN a.effective_to IS NULL THEN NULL ELSE to_char(a.effective_to, 'YYYY-MM-DD') END AS effective_to,
             a.reason, a.data_quality, a.source, a.source_reference, a.created_at, a.created_by,
-            b.code AS branch_code, b.name AS branch_name
+            b.code AS branch_code, b.name AS branch_name,
+            d.code AS department_code, d.name AS department_name,
+            p.code AS position_code, p.name AS position_name,
+            m.code AS manager_code, m.full_name AS manager_name
        FROM shared.employee_assignments a
        LEFT JOIN shared.branches b
          ON b.installation_id = a.installation_id AND b.id = a.branch_id
+       LEFT JOIN shared.hr_departments d
+         ON d.installation_id = a.installation_id AND d.id = a.department_id
+       LEFT JOIN shared.hr_positions p
+         ON p.installation_id = a.installation_id AND p.id = a.position_id
+       LEFT JOIN shared.employees m
+         ON m.installation_id = a.installation_id AND m.id = a.manager_employee_id
       WHERE a.installation_id = $1 AND a.employee_id = $2
       ORDER BY a.effective_from DESC, a.created_at DESC, a.id DESC`,
     [installationId, employeeId],
@@ -221,13 +251,23 @@ export async function getLatestEmployeeEmploymentForUpdate(client, { installatio
 export async function getLatestEmployeeAssignmentForUpdate(client, { installationId, employeeId }) {
   const result = await client.query(
     `SELECT a.id, a.installation_id, a.employee_id, a.branch_id,
+            a.department_id, a.position_id, a.manager_employee_id,
             to_char(a.effective_from, 'YYYY-MM-DD') AS effective_from,
             CASE WHEN a.effective_to IS NULL THEN NULL ELSE to_char(a.effective_to, 'YYYY-MM-DD') END AS effective_to,
             a.reason, a.data_quality, a.source, a.source_reference, a.created_at, a.created_by,
-            b.code AS branch_code, b.name AS branch_name
+            b.code AS branch_code, b.name AS branch_name,
+            d.code AS department_code, d.name AS department_name,
+            p.code AS position_code, p.name AS position_name,
+            m.code AS manager_code, m.full_name AS manager_name
        FROM shared.employee_assignments a
        LEFT JOIN shared.branches b
          ON b.installation_id = a.installation_id AND b.id = a.branch_id
+       LEFT JOIN shared.hr_departments d
+         ON d.installation_id = a.installation_id AND d.id = a.department_id
+       LEFT JOIN shared.hr_positions p
+         ON p.installation_id = a.installation_id AND p.id = a.position_id
+       LEFT JOIN shared.employees m
+         ON m.installation_id = a.installation_id AND m.id = a.manager_employee_id
       WHERE a.installation_id = $1 AND a.employee_id = $2
       ORDER BY a.effective_from DESC, a.created_at DESC, a.id DESC
       LIMIT 1
@@ -244,11 +284,14 @@ export async function resolveEmployeeAtDate(client, { installationId, employeeId
             to_char(emp.effective_from, 'YYYY-MM-DD') AS employment_effective_from,
             CASE WHEN emp.effective_to IS NULL THEN NULL ELSE to_char(emp.effective_to, 'YYYY-MM-DD') END AS employment_effective_to,
             emp.data_quality AS employment_data_quality,
-            a.id AS assignment_id, a.branch_id,
+            a.id AS assignment_id, a.branch_id, a.department_id, a.position_id, a.manager_employee_id,
             to_char(a.effective_from, 'YYYY-MM-DD') AS assignment_effective_from,
             CASE WHEN a.effective_to IS NULL THEN NULL ELSE to_char(a.effective_to, 'YYYY-MM-DD') END AS assignment_effective_to,
             a.data_quality AS assignment_data_quality,
-            b.code AS branch_code, b.name AS branch_name
+            b.code AS branch_code, b.name AS branch_name,
+            d.code AS department_code, d.name AS department_name,
+            p.code AS position_code, p.name AS position_name,
+            m.code AS manager_code, m.full_name AS manager_name
        FROM shared.employees e
        JOIN LATERAL (
          SELECT x.* FROM shared.employee_employments x
@@ -266,6 +309,12 @@ export async function resolveEmployeeAtDate(client, { installationId, employeeId
        ) a ON true
        LEFT JOIN shared.branches b
          ON b.installation_id = e.installation_id AND b.id = a.branch_id
+       LEFT JOIN shared.hr_departments d
+         ON d.installation_id = e.installation_id AND d.id = a.department_id
+       LEFT JOIN shared.hr_positions p
+         ON p.installation_id = e.installation_id AND p.id = a.position_id
+       LEFT JOIN shared.employees m
+         ON m.installation_id = e.installation_id AND m.id = a.manager_employee_id
       WHERE e.installation_id = $1 AND e.id = $2`,
     [installationId, employeeId, businessDate],
   );
@@ -301,31 +350,49 @@ export async function updateEmployeeEmploymentPeriod(client, { installationId, i
   return result.rows?.[0] ?? null;
 }
 
-export async function insertEmployeeAssignment(client, { installationId, employeeId, branchId, effectiveFrom, effectiveTo = null, reason = null, dataQuality = 'CONFIRMED', source = 'HR', sourceReference = null, createdBy }) {
+export async function insertEmployeeAssignment(client, {
+  installationId, employeeId, branchId, departmentId = null, positionId = null, managerEmployeeId = null,
+  effectiveFrom, effectiveTo = null, reason = null, dataQuality = 'CONFIRMED',
+  source = 'HR', sourceReference = null, createdBy,
+}) {
   const id = randomUUID();
   const result = await client.query(
-    `INSERT INTO shared.employee_assignments (id, installation_id, employee_id, branch_id, effective_from, effective_to, reason, data_quality, source, source_reference, created_by)
-     VALUES ($1,$2,$3,$4,$5::date,$6::date,$7,$8,$9,$10,$11)
-     RETURNING id, installation_id, employee_id, branch_id,
+    `INSERT INTO shared.employee_assignments (
+       id, installation_id, employee_id, branch_id, department_id, position_id, manager_employee_id,
+       effective_from, effective_to, reason, data_quality, source, source_reference, created_by
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::date,$9::date,$10,$11,$12,$13,$14)
+     RETURNING id, installation_id, employee_id, branch_id, department_id, position_id, manager_employee_id,
        to_char(effective_from, 'YYYY-MM-DD') AS effective_from,
        CASE WHEN effective_to IS NULL THEN NULL ELSE to_char(effective_to, 'YYYY-MM-DD') END AS effective_to,
        reason, data_quality, source, source_reference, created_at, created_by`,
-    [id, installationId, employeeId, branchId, effectiveFrom, effectiveTo, reason, dataQuality, source, sourceReference, createdBy],
+    [id, installationId, employeeId, branchId, departmentId, positionId, managerEmployeeId,
+      effectiveFrom, effectiveTo, reason, dataQuality, source, sourceReference, createdBy],
   );
   return result.rows[0];
 }
 
-export async function updateEmployeeAssignmentPeriod(client, { installationId, id, branchId, effectiveFrom, effectiveTo = null, reason = null, dataQuality = 'CONFIRMED' }) {
+export async function updateEmployeeAssignmentPeriod(client, {
+  installationId, id, branchId, departmentId = null, positionId = null, managerEmployeeId = null,
+  effectiveFrom, effectiveTo = null, reason = null, dataQuality = 'CONFIRMED',
+}) {
   const result = await client.query(
     `UPDATE shared.employee_assignments
-        SET branch_id = $3, effective_from = $4::date, effective_to = $5::date,
-            reason = $6, data_quality = $7, source = 'HR'
+        SET branch_id = $3,
+            department_id = $4,
+            position_id = $5,
+            manager_employee_id = $6,
+            effective_from = $7::date,
+            effective_to = $8::date,
+            reason = $9,
+            data_quality = $10,
+            source = 'HR'
       WHERE installation_id = $1 AND id = $2
-      RETURNING id, installation_id, employee_id, branch_id,
+      RETURNING id, installation_id, employee_id, branch_id, department_id, position_id, manager_employee_id,
         to_char(effective_from, 'YYYY-MM-DD') AS effective_from,
         CASE WHEN effective_to IS NULL THEN NULL ELSE to_char(effective_to, 'YYYY-MM-DD') END AS effective_to,
         reason, data_quality, source, source_reference, created_at, created_by`,
-    [installationId, id, branchId, effectiveFrom, effectiveTo, reason, dataQuality],
+    [installationId, id, branchId, departmentId, positionId, managerEmployeeId,
+      effectiveFrom, effectiveTo, reason, dataQuality],
   );
   return result.rows?.[0] ?? null;
 }
