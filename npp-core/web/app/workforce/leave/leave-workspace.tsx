@@ -313,6 +313,7 @@ export default function LeaveWorkspace({
   }
 
   function editType(type: LeaveType) {
+    const balance = type as LeaveType & LeaveTypeBalanceFields;
     setTypeForm({
       id: type.id,
       expectedVersion: type.version,
@@ -325,6 +326,8 @@ export default function LeaveWorkspace({
       allowsFullDay: type.allows_full_day,
       allowsHalfDay: type.allows_half_day,
       requiresAttachment: type.requires_attachment,
+      tracksBalance: Boolean(balance.tracks_balance),
+      allowNegativeBalance: Boolean(balance.allow_negative_balance),
     });
   }
 
@@ -333,6 +336,7 @@ export default function LeaveWorkspace({
     if (!typeForm.name.trim()) { setError('Vui lòng nhập tên chế độ nghỉ.'); return; }
     if (!typeForm.id && !typeForm.code.trim()) { setError('Vui lòng nhập mã chế độ nghỉ.'); return; }
     if (!typeForm.allowsFullDay && !typeForm.allowsHalfDay) { setError('Chế độ nghỉ phải cho phép cả ngày hoặc nửa ngày.'); return; }
+    if (typeForm.allowNegativeBalance && !typeForm.tracksBalance) { setError('Chỉ được cho phép âm khi chế độ nghỉ có theo dõi số dư.'); return; }
     const payload = typeForm.id ? {
       id: typeForm.id,
       expectedVersion: typeForm.expectedVersion,
@@ -344,6 +348,8 @@ export default function LeaveWorkspace({
       allowsFullDay: typeForm.allowsFullDay,
       allowsHalfDay: typeForm.allowsHalfDay,
       requiresAttachment: typeForm.requiresAttachment,
+      tracksBalance: typeForm.tracksBalance,
+      allowNegativeBalance: typeForm.allowNegativeBalance,
     } : {
       code: typeForm.code.trim().toUpperCase(),
       name: typeForm.name.trim(),
@@ -354,6 +360,8 @@ export default function LeaveWorkspace({
       allowsFullDay: typeForm.allowsFullDay,
       allowsHalfDay: typeForm.allowsHalfDay,
       requiresAttachment: typeForm.requiresAttachment,
+      tracksBalance: typeForm.tracksBalance,
+      allowNegativeBalance: typeForm.allowNegativeBalance,
     };
     const operation = typeForm.id ? 'web-leave-type-update' : 'web-leave-type-create';
     const key = stableKey(typeAttempt, operation, payload);
