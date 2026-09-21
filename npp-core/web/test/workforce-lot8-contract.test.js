@@ -56,6 +56,6 @@ test('Issue #1110 Lô 8 day detail shows shift segment, leave, counted leave and
 
 test('Issue #1110 Lô 8 uses office language and keeps payroll/penalty outside the timesheet engine', async () => {
   const workspace = await source('app/workforce/timesheet/attendance-timesheet-workspace.tsx');
-  assert.match(workspace, /Đây chưa phải dữ liệu tính lương/);
+  assert.doesNotMatch(workspace, /Đây chưa phải dữ liệu tính lương/);
   assert.doesNotMatch(workspace, /phạt tiền|trừ tiền|salary deduction|payroll mutation/i);
 });

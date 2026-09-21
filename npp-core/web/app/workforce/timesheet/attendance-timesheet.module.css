@@ -303,20 +303,6 @@ td.matrixSticky {
 }
 
 
-.compactSummaryGrid .summaryCard {
-  min-height: 0;
-  padding: 10px 14px 9px;
-}
-
-.compactSummaryGrid .summaryCard strong {
-  margin: 4px 0 2px;
-  font-size: clamp(1.05rem, 1.6vw, 1.35rem);
-}
-
-.compactSummaryGrid .summaryCard small {
-  line-height: 1.25;
-}
-
 .employeeSummaryTable th,
 .employeeSummaryTable td {
   vertical-align: middle;
@@ -459,5 +445,185 @@ td.matrixSunday .matrixCellButton {
 
   .employeeSummaryTable {
     min-width: 980px;
+  }
+}
+
+
+/* Bảng công là màn số liệu cố định: chỉ vùng bảng được cuộn. */
+.timesheetPage {
+  display: flex;
+  height: calc(100dvh - 152px);
+  min-height: 0;
+  flex-direction: column;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.timesheetTopbar {
+  display: grid;
+  flex: 0 0 auto;
+  grid-template-columns: minmax(300px, 0.72fr) minmax(0, 1.8fr);
+  gap: 8px;
+  min-width: 0;
+}
+
+.compactSummaryGrid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  min-width: 0;
+}
+
+.compactSummaryGrid article {
+  display: flex;
+  min-width: 0;
+  min-height: 38px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 7px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.9) inset,
+    0 2px 6px rgba(48, 34, 27, 0.035);
+}
+
+.compactSummaryGrid article span {
+  flex: 0 0 auto;
+  font-size: 0.56rem;
+  letter-spacing: 0.055em;
+}
+
+.compactSummaryGrid article strong {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: clamp(0.78rem, 1vw, 0.94rem);
+  line-height: 1.08;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compactToolbar {
+  display: flex;
+  min-width: 0;
+  align-items: flex-end;
+  gap: 6px;
+  padding: 6px 7px;
+}
+
+.compactToolbar > div {
+  min-width: 0;
+  flex: 1 1 112px;
+}
+
+.compactToolbar > div:first-child,
+.compactToolbar > div:last-child {
+  flex: 0 0 auto;
+}
+
+.compactToolbar > div:last-child {
+  align-self: flex-end;
+  margin: 0;
+  padding: 0;
+  border-top: 0;
+}
+
+.compactToolbar label {
+  gap: 2px;
+  font-size: 0.59rem;
+  letter-spacing: 0.025em;
+}
+
+.compactToolbar input,
+.compactToolbar select {
+  min-height: 31px;
+  padding: 4px 6px;
+  border-radius: 7px;
+  font-size: 0.69rem;
+}
+
+.compactToolbar button {
+  min-height: 30px;
+}
+
+.compactToolbar .viewSwitch {
+  min-height: 32px;
+  padding: 2px;
+}
+
+.compactToolbar .viewSwitch button {
+  min-height: 26px;
+  padding: 0 8px;
+  font-size: 0.69rem;
+}
+
+.timesheetTableSection {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 5px;
+  overflow: hidden;
+  padding: 7px;
+}
+
+.tableViewport {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.timesheetTableSection .matrixLegend {
+  flex: 0 0 auto;
+  gap: 9px;
+  margin: 0 0 2px;
+  font-size: 0.66rem;
+}
+
+.timesheetPage .pagination {
+  min-height: 30px;
+  flex: 0 0 auto;
+  gap: 8px;
+  margin-top: 0;
+}
+
+.timesheetPage .pagination button {
+  min-height: 28px;
+  padding-block: 4px;
+}
+
+@media (max-width: 1180px) {
+  .timesheetTopbar {
+    grid-template-columns: 1fr;
+  }
+
+  .compactToolbar {
+    overflow-x: auto;
+  }
+
+  .compactToolbar > div {
+    min-width: 126px;
+    flex: 0 0 126px;
+  }
+
+  .compactToolbar > div:first-child,
+  .compactToolbar > div:last-child {
+    min-width: max-content;
+    flex-basis: auto;
+  }
+}
+
+@media (max-width: 1080px) {
+  .timesheetPage {
+    height: calc(100dvh - 146px);
+  }
+}
+
+@media (max-width: 720px) {
+  .compactSummaryGrid {
+    grid-template-columns: repeat(3, minmax(120px, 1fr));
+    overflow-x: auto;
   }
 }
