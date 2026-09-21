@@ -1,5 +1,6 @@
 import * as timesheetRepo from '../db/repositories/attendance-timesheet.js';
 import * as adjustmentRepo from '../db/repositories/attendance-adjustments.js';
+import * as leaveRepo from '../db/repositories/leave-management.js';
 import * as workforceRepo from '../db/repositories/workforce.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -221,6 +222,98 @@ function minutesBefore(value, reference, graceMinutes) {
   return Math.max(0, Math.floor(difference / 60_000));
 }
 
+function leaveSegments(requests, status, predicate = () => true) {
+  const segments = new Set();
+  for (const request of requests ?? []) {
+    if (request.status !== status || !predicate(request)) continue;
+    if (request.day_part === 'FULL_DAY') {
+      segments.add('FIRST_HALF');
+      segments.add('SECOND_HALF');
+    } else if (request.day_part === 'FIRST_HALF' || request.day_part === 'SECOND_HALF') {
+      segments.add(request.day_part);
+    }
+  }
+  return segments;
+}
+
+function buildLeaveProjection(requests = []) {
+  const active = requests.filter((request) => request.status === 'APPROVED' || request.status === 'SUBMITTED');
+  const approved = leaveSegments(active, 'APPROVED');
+  const pendingRaw = leaveSegments(active, 'SUBMITTED');
+  const pending = new Set([...pendingRaw].filter((segment) => !approved.has(segment)));
+  const counted = leaveSegments(active, 'APPROVED', (request) => request.leave_counts_as_workday_snapshot === true);
+  const paid = leaveSegments(active, 'APPROVED', (request) => request.leave_is_paid_snapshot === true);
+  const labels = (status) => [...new Set(
+    active.filter((request) => request.status === status).map((request) => request.leave_type_name_snapshot),
+  )];
+  return {
+    requests: active,
+    approvedFraction: approved.size / 2,
+    pendingFraction: pending.size / 2,
+    countedAsWorkdayFraction: counted.size / 2,
+    paidFraction: paid.size / 2,
+    approvedSegments: [...approved],
+    pendingSegments: [...pending],
+    countedSegments: [...counted],
+    approvedLabels: labels('APPROVED'),
+    pendingLabels: labels('SUBMITTED'),
+  };
+}
+
+function attendanceWindowForLeave(expectedStartAt, expectedEndAt, approvedSegments) {
+  if (!expectedStartAt || !expectedEndAt) {
+    return { startAt: expectedStartAt, endAt: expectedEndAt };
+  }
+  const segments = new Set(approvedSegments ?? []);
+  if (segments.has('FIRST_HALF') && segments.has('SECOND_HALF')) {
+    return { startAt: null, endAt: null };
+  }
+  const start = new Date(expectedStartAt).getTime();
+  const end = new Date(expectedEndAt).getTime();
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+    return { startAt: expectedStartAt, endAt: expectedEndAt };
+  }
+  const midpoint = new Date(start + Math.floor((end - start) / 2)).toISOString();
+  return {
+    startAt: segments.has('FIRST_HALF') ? midpoint : expectedStartAt,
+    endAt: segments.has('SECOND_HALF') ? midpoint : expectedEndAt,
+  };
+}
+
+function fullDayTargetMinutes(row, expectedStartAt, expectedEndAt) {
+  if (expectedStartAt && expectedEndAt) {
+    const duration = Math.max(0, Math.round(
+      (new Date(expectedEndAt).getTime() - new Date(expectedStartAt).getTime()) / 60_000,
+    ));
+    return Math.max(0, duration - Number(row.policy_break_minutes || 0));
+  }
+  return Math.max(0, Number(row.policy_minimum_full_day_minutes || 0));
+}
+
+function segmentTargetMinutes(row, segments, fullTarget) {
+  const set = new Set(segments ?? []);
+  if (!set.size || fullTarget <= 0) return 0;
+  if (set.has('FIRST_HALF') && set.has('SECOND_HALF')) return fullTarget;
+  const configuredHalf = Math.max(0, Number(row.policy_minimum_half_day_minutes || 0));
+  return Math.min(fullTarget, configuredHalf || Math.round(fullTarget / 2));
+}
+
+function expandLeaveRequestsByDay(requests, dateFrom, dateTo) {
+  const byDay = new Map();
+  for (const request of requests ?? []) {
+    let cursor = String(request.date_from) < dateFrom ? dateFrom : String(request.date_from);
+    const end = String(request.date_to) > dateTo ? dateTo : String(request.date_to);
+    while (cursor <= end) {
+      const key = `${request.employee_id}:${cursor}`;
+      const bucket = byDay.get(key) ?? [];
+      bucket.push(request);
+      byDay.set(key, bucket);
+      cursor = nextDate(cursor);
+    }
+  }
+  return byDay;
+}
+
 export function summarizeAttendanceDay(row, employeeEvents, now = new Date(), control = {}) {
   const workDate = String(row.work_date);
   const timeZone = row.policy_timezone || INSTALLATION_TIMEZONE;
@@ -229,74 +322,133 @@ export function summarizeAttendanceDay(row, employeeEvents, now = new Date(), co
   const firstCheckIn = pairing.valid.find((event) => event.event_type === 'CHECK_IN') ?? null;
   const lastCheckOut = [...pairing.valid].reverse().find((event) => event.event_type === 'CHECK_OUT') ?? null;
   const { expectedStartAt, expectedEndAt } = expectedTimes(row);
+  const leave = buildLeaveProjection(control.leaveRequests ?? []);
+  const requiredWindow = attendanceWindowForLeave(expectedStartAt, expectedEndAt, leave.approvedSegments);
   const actualMinutes = Math.round(
     pairing.pairs.reduce((sum, pair) => sum + Math.max(0, pair.end - pair.start), 0) / 60_000,
   );
+  const fullTarget = fullDayTargetMinutes(row, expectedStartAt, expectedEndAt);
+  const approvedTarget = segmentTargetMinutes(row, leave.approvedSegments, fullTarget);
+  const leaveCreditedMinutes = segmentTargetMinutes(row, leave.countedSegments, fullTarget);
+  const requiredTarget = Math.max(0, fullTarget - approvedTarget);
+  const attendanceOverlap = requiredWindow.startAt && requiredWindow.endAt
+    ? overlapMinutes(pairing.pairs, requiredWindow.startAt, requiredWindow.endAt)
+    : (leave.approvedFraction >= 1 ? 0 : actualMinutes);
   const countedBeforeBreak = overlapMinutes(pairing.pairs, expectedStartAt, expectedEndAt);
-  const countedMinutes = Math.max(0, countedBeforeBreak - Number(row.policy_break_minutes || 0));
-  const lateMinutes = minutesAfter(
+  const attendanceCountedMinutes = leave.approvedFraction > 0
+    ? Math.min(requiredTarget, attendanceOverlap)
+    : Math.max(0, countedBeforeBreak - Number(row.policy_break_minutes || 0));
+  const countedMinutes = fullTarget > 0
+    ? Math.min(fullTarget, attendanceCountedMinutes + leaveCreditedMinutes)
+    : Math.max(0, attendanceCountedMinutes + leaveCreditedMinutes);
+  const lateMinutes = leave.approvedFraction >= 1 ? 0 : minutesAfter(
     firstCheckIn?.occurred_at,
-    expectedStartAt,
+    requiredWindow.startAt,
     row.policy_late_grace_minutes,
   );
-  const earlyLeaveMinutes = minutesBefore(
+  const earlyLeaveMinutes = leave.approvedFraction >= 1 ? 0 : minutesBefore(
     lastCheckOut?.occurred_at,
-    expectedEndAt,
+    requiredWindow.endAt,
     row.policy_early_leave_grace_minutes,
   );
 
   const hasPolicy = Boolean(row.policy_id);
   const scheduledWorkDay = row.schedule_kind === 'WORK'
     || (!row.schedule_kind && hasPolicy && policyWorkingDay(row));
+  const offDay = row.schedule_kind === 'OFF'
+    || (hasPolicy && !row.schedule_kind && !policyWorkingDay(row));
   const today = localDate(timeZone, now);
   const isPast = workDate < today;
   const isFuture = workDate > today;
   const nowMs = now.getTime();
-  const startDue = expectedStartAt
-    ? nowMs > new Date(expectedStartAt).getTime() + Number(row.policy_late_grace_minutes || 0) * 60_000
+  const startDue = requiredWindow.startAt
+    ? nowMs > new Date(requiredWindow.startAt).getTime() + Number(row.policy_late_grace_minutes || 0) * 60_000
     : false;
-  const endDue = expectedEndAt ? nowMs > new Date(expectedEndAt).getTime() : false;
+  const endDue = requiredWindow.endAt
+    ? nowMs > new Date(requiredWindow.endAt).getTime()
+    : false;
   const hasCheckIn = Boolean(firstCheckIn);
   const hasCheckOut = Boolean(lastCheckOut);
-  const missingCheckIn = !isFuture && scheduledWorkDay && !hasCheckIn && (isPast || startDue || hasCheckOut);
-  const missingCheckOut = !isFuture && scheduledWorkDay
+  const attendanceRequired = scheduledWorkDay && leave.approvedFraction < 1;
+  const missingCheckIn = !isFuture && attendanceRequired && !hasCheckIn && (isPast || startDue || hasCheckOut);
+  const missingCheckOut = !isFuture && attendanceRequired
     && (!hasCheckOut || Boolean(pairing.open)) && (isPast || endDue);
   const incompleteSequence = pairing.unmatchedOut > 0
     || (hasCheckIn && hasCheckOut && pairing.pairs.length === 0);
+  const configurationIssue = !hasPolicy
+    ? 'MISSING_POLICY'
+    : (row.policy_time_mode === 'SHIFT' && !row.schedule_id && scheduledWorkDay ? 'MISSING_SCHEDULE' : null);
+  const noAttendanceRequired = hasPolicy
+    && (row.policy_time_mode === 'NO_ATTENDANCE' || row.policy_attendance_method === 'NONE');
+  const dayEnded = isPast || endDue;
+  const uncoveredFraction = Math.max(0, 1 - leave.approvedFraction - leave.pendingFraction);
+  const noValidAttendance = pairing.valid.length === 0;
+  const unexcusedAbsenceFraction = !isFuture
+    && !offDay
+    && scheduledWorkDay
+    && !configurationIssue
+    && !noAttendanceRequired
+    && dayEnded
+    && noValidAttendance
+    ? uncoveredFraction
+    : 0;
 
-  let status = 'COMPLETE';
-  if (row.schedule_kind === 'OFF' || (hasPolicy && !row.schedule_kind && !policyWorkingDay(row))) {
-    status = 'DAY_OFF';
+  let attendanceStatus = 'COMPLETE';
+  if (offDay) {
+    attendanceStatus = 'DAY_OFF';
   } else if (!hasPolicy) {
-    status = 'MISSING_POLICY';
-  } else if (row.policy_time_mode === 'NO_ATTENDANCE' || row.policy_attendance_method === 'NONE') {
-    status = 'NO_ATTENDANCE_REQUIRED';
-  } else if (row.policy_time_mode === 'SHIFT' && !row.schedule_id && scheduledWorkDay) {
-    status = 'MISSING_SCHEDULE';
+    attendanceStatus = 'MISSING_POLICY';
+  } else if (noAttendanceRequired) {
+    attendanceStatus = 'NO_ATTENDANCE_REQUIRED';
+  } else if (configurationIssue === 'MISSING_SCHEDULE') {
+    attendanceStatus = 'MISSING_SCHEDULE';
   } else if (isFuture) {
-    status = 'UPCOMING';
+    attendanceStatus = 'UPCOMING';
+  } else if (unexcusedAbsenceFraction > 0) {
+    attendanceStatus = 'UNEXCUSED_ABSENCE';
   } else if (missingCheckIn && missingCheckOut) {
-    status = 'INCOMPLETE';
+    attendanceStatus = 'INCOMPLETE';
   } else if (missingCheckIn) {
-    status = 'MISSING_CHECK_IN';
+    attendanceStatus = 'MISSING_CHECK_IN';
   } else if (missingCheckOut) {
-    status = 'MISSING_CHECK_OUT';
+    attendanceStatus = 'MISSING_CHECK_OUT';
   } else if (incompleteSequence) {
-    status = 'INCOMPLETE';
+    attendanceStatus = 'INCOMPLETE';
   } else if (pairing.open) {
-    status = 'WORKING';
+    attendanceStatus = 'WORKING';
   } else if (!hasCheckIn && !hasCheckOut) {
-    status = 'NOT_STARTED';
+    attendanceStatus = 'NOT_STARTED';
   } else if (lateMinutes > 0 && earlyLeaveMinutes > 0) {
-    status = 'LATE_AND_EARLY';
+    attendanceStatus = 'LATE_AND_EARLY';
   } else if (lateMinutes > 0) {
-    status = 'LATE';
+    attendanceStatus = 'LATE';
   } else if (earlyLeaveMinutes > 0) {
-    status = 'EARLY';
+    attendanceStatus = 'EARLY';
   }
 
+  let status = attendanceStatus;
+  if (isFuture) {
+    status = 'UPCOMING';
+  } else if (offDay) {
+    status = 'DAY_OFF';
+  } else if (leave.approvedFraction > 0) {
+    status = 'APPROVED_LEAVE';
+  } else if (leave.pendingFraction > 0) {
+    status = 'PENDING_LEAVE';
+  } else if (
+    control.adjustment?.status === 'SUBMITTED'
+    && ['UNEXCUSED_ABSENCE', 'INCOMPLETE', 'MISSING_CHECK_IN', 'MISSING_CHECK_OUT'].includes(attendanceStatus)
+  ) {
+    status = 'PENDING_ADJUSTMENT';
+  }
+
+  const effectiveUnexcusedAbsenceFraction = status === 'PENDING_ADJUSTMENT' ? 0 : unexcusedAbsenceFraction;
+  const effectiveLeaveCreditedMinutes = isFuture || offDay ? 0 : leaveCreditedMinutes;
+  const effectiveCountedMinutes = isFuture
+    ? 0
+    : Math.max(0, countedMinutes - leaveCreditedMinutes + effectiveLeaveCreditedMinutes);
   const attendanceSources = [...new Set(events.map((event) => String(event.source)))];
-  const validWork = ['COMPLETE', 'LATE', 'EARLY', 'LATE_AND_EARLY'].includes(status);
+  const validWork = ['COMPLETE', 'LATE', 'EARLY', 'LATE_AND_EARLY'].includes(attendanceStatus);
   return {
     workDate,
     employee: {
@@ -323,10 +475,13 @@ export function summarizeAttendanceDay(row, employeeEvents, now = new Date(), co
     } : null,
     expectedStartAt,
     expectedEndAt,
+    requiredStartAt: requiredWindow.startAt,
+    requiredEndAt: requiredWindow.endAt,
     checkInAt: asIso(firstCheckIn?.occurred_at),
     checkOutAt: asIso(lastCheckOut?.occurred_at),
     actualMinutes,
-    countedMinutes,
+    countedMinutes: effectiveCountedMinutes,
+    leaveCreditedMinutes: effectiveLeaveCreditedMinutes,
     lateMinutes,
     earlyLeaveMinutes,
     missingCheckIn,
@@ -334,6 +489,10 @@ export function summarizeAttendanceDay(row, employeeEvents, now = new Date(), co
     scheduledWorkDay,
     validWork,
     status,
+    attendanceStatus,
+    configurationIssue,
+    unexcusedAbsenceFraction: effectiveUnexcusedAbsenceFraction,
+    leave,
     attendanceSources,
     scheduleSource: row.schedule_source ?? (hasPolicy ? 'POLICY' : null),
     adjustment: control.adjustment ?? null,
@@ -349,6 +508,14 @@ export function summarizeAttendanceDay(row, employeeEvents, now = new Date(), co
 export function summarizeAttendanceMonth(employee, days, period) {
   const attendanceSources = [...new Set(days.flatMap((day) => day.attendanceSources))];
   const scheduleSources = [...new Set(days.map((day) => day.scheduleSource).filter(Boolean))];
+  const currentDays = days.filter((day) => day.status !== 'UPCOMING');
+  const incompleteStatuses = new Set(['MISSING_CHECK_IN', 'MISSING_CHECK_OUT', 'INCOMPLETE']);
+  const incompleteDays = currentDays.reduce((sum, day) => {
+    if (day.status === 'DAY_OFF' || !incompleteStatuses.has(day.attendanceStatus)) return sum;
+    const uncovered = Math.max(0, 1 - day.leave.approvedFraction - day.leave.pendingFraction);
+    return sum + uncovered;
+  }, 0);
+  const configurationIssueDays = currentDays.filter((day) => Boolean(day.configurationIssue)).length;
   return {
     employee: {
       id: employee.id,
@@ -359,19 +526,22 @@ export function summarizeAttendanceMonth(employee, days, period) {
       branchName: employee.branch_name ?? null,
     },
     period,
-    workDays: days.filter((day) => day.scheduledWorkDay).length,
-    completedDays: days.filter((day) => day.validWork).length,
-    missingDays: days.filter((day) => (
-      day.missingCheckIn
-      || day.missingCheckOut
-      || day.status === 'MISSING_POLICY'
-      || day.status === 'MISSING_SCHEDULE'
-      || day.status === 'INCOMPLETE'
+    workDays: currentDays.filter((day) => day.scheduledWorkDay).length,
+    completedDays: currentDays.filter((day) => (
+      day.validWork && !['APPROVED_LEAVE', 'PENDING_LEAVE', 'DAY_OFF'].includes(day.status)
     )).length,
-    actualMinutes: days.reduce((sum, day) => sum + day.actualMinutes, 0),
-    countedMinutes: days.reduce((sum, day) => sum + day.countedMinutes, 0),
-    lateMinutes: days.reduce((sum, day) => sum + day.lateMinutes, 0),
-    earlyLeaveMinutes: days.reduce((sum, day) => sum + day.earlyLeaveMinutes, 0),
+    scheduledDaysOff: currentDays.filter((day) => day.status === 'DAY_OFF').length,
+    approvedLeaveDays: currentDays.reduce((sum, day) => sum + (day.status === 'APPROVED_LEAVE' ? day.leave.approvedFraction : 0), 0),
+    pendingLeaveDays: currentDays.reduce((sum, day) => sum + (day.status === 'PENDING_LEAVE' ? day.leave.pendingFraction : 0), 0),
+    unexcusedAbsenceDays: currentDays.reduce((sum, day) => sum + day.unexcusedAbsenceFraction, 0),
+    incompleteDays,
+    configurationIssueDays,
+    missingDays: incompleteDays,
+    actualMinutes: currentDays.reduce((sum, day) => sum + day.actualMinutes, 0),
+    countedMinutes: currentDays.reduce((sum, day) => sum + day.countedMinutes, 0),
+    leaveCreditedMinutes: currentDays.reduce((sum, day) => sum + day.leaveCreditedMinutes, 0),
+    lateMinutes: currentDays.reduce((sum, day) => sum + day.lateMinutes, 0),
+    earlyLeaveMinutes: currentDays.reduce((sum, day) => sum + day.earlyLeaveMinutes, 0),
     adjustedDays: days.filter((day) => day.attendanceSources.includes('ADJUSTMENT')).length,
     pendingAdjustmentDays: days.filter((day) => day.adjustment?.status === 'SUBMITTED').length,
     lockedDays: days.filter((day) => Boolean(day.periodLock)).length,
@@ -465,7 +635,7 @@ export async function listAttendanceTimesheet(client, {
 
   const employeeIds = [...new Set(facts.map((row) => String(row.employee_id)))];
   const window = broadEventWindow(dateFrom, dateTo);
-  const [events, adjustmentRequests, periodLocks] = await Promise.all([
+  const [events, adjustmentRequests, periodLocks, leaveRequests] = await Promise.all([
     timesheetRepo.listEvents(client, {
       installationId, employeeIds, ...window,
     }),
@@ -474,6 +644,9 @@ export async function listAttendanceTimesheet(client, {
     }),
     adjustmentRepo.listPeriodLocksForTimesheet(client, {
       installationId, dateFrom, dateTo,
+    }),
+    leaveRepo.listRequestsForTimesheet(client, {
+      installationId, employeeIds, dateFrom, dateTo,
     }),
   ]);
   const byEmployee = new Map();
@@ -488,6 +661,7 @@ export async function listAttendanceTimesheet(client, {
     const key = `${request.employee_id}:${request.work_date}`;
     if (!requestByDay.has(key)) requestByDay.set(key, request);
   }
+  const leaveByDay = expandLeaveRequestsByDay(leaveRequests, dateFrom, dateTo);
   const days = facts.map((row) => {
     const workDate = String(row.work_date);
     const branchId = row.employee_branch_id ? String(row.employee_branch_id) : null;
@@ -502,6 +676,7 @@ export async function listAttendanceTimesheet(client, {
       now,
       {
         adjustment: requestByDay.get(`${row.employee_id}:${workDate}`) ?? null,
+        leaveRequests: leaveByDay.get(`${row.employee_id}:${workDate}`) ?? [],
         periodLock,
       },
     );

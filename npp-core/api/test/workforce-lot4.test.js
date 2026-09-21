@@ -131,7 +131,9 @@ test('Issue #1110 Lô 4 monthly summary aggregates daily projection only', () =>
 
   assert.equal(month.workDays, 2);
   assert.equal(month.completedDays, 1);
-  assert.equal(month.missingDays, 1);
+  assert.equal(month.incompleteDays, 0);
+  assert.equal(month.unexcusedAbsenceDays, 1);
+  assert.equal(month.missingDays, 0);
   assert.equal(month.countedMinutes, 480);
 });
 

@@ -139,6 +139,35 @@ export async function listLeaveRequests(client, {
   return { total: count.rows?.[0]?.total ?? 0, rows: rows.rows ?? [] };
 }
 
+export async function listRequestsForTimesheet(client, {
+  installationId,
+  employeeIds,
+  dateFrom,
+  dateTo,
+}) {
+  if (!Array.isArray(employeeIds) || employeeIds.length === 0) return [];
+  const result = await client.query(
+    `SELECT r.id, r.installation_id, r.employee_id, r.leave_type_id,
+            r.leave_type_code_snapshot, r.leave_type_name_snapshot,
+            r.leave_is_paid_snapshot, r.leave_counts_as_workday_snapshot,
+            r.leave_requires_approval_snapshot,
+            to_char(r.date_from, 'YYYY-MM-DD') AS date_from,
+            to_char(r.date_to, 'YYYY-MM-DD') AS date_to,
+            r.day_part, r.reason, r.attachment_reference, r.status,
+            r.reviewed_by_actor_id, r.review_reason, r.reviewed_at,
+            r.version, r.request_id, r.created_at, r.updated_at
+       FROM shared.leave_requests r
+      WHERE r.installation_id = $1
+        AND r.employee_id = ANY($2::uuid[])
+        AND r.status IN ('SUBMITTED', 'APPROVED')
+        AND r.date_to >= $3::date
+        AND r.date_from <= $4::date
+      ORDER BY r.employee_id ASC, r.date_from ASC, r.created_at ASC`,
+    [installationId, employeeIds, dateFrom, dateTo],
+  );
+  return result.rows ?? [];
+}
+
 export async function findOverlappingLeaveRequest(client, {
   installationId, employeeId, dateFrom, dateTo, dayPart, excludeId = null,
 }) {

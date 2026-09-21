@@ -264,6 +264,10 @@ export type AttendanceDayStatus =
   | 'MISSING_CHECK_IN'
   | 'MISSING_CHECK_OUT'
   | 'INCOMPLETE'
+  | 'APPROVED_LEAVE'
+  | 'PENDING_LEAVE'
+  | 'PENDING_ADJUSTMENT'
+  | 'UNEXCUSED_ABSENCE'
   | 'LATE_AND_EARLY'
   | 'LATE'
   | 'EARLY'
@@ -295,10 +299,13 @@ export type AttendanceTimesheetDay = {
   } | null;
   expectedStartAt: string | null;
   expectedEndAt: string | null;
+  requiredStartAt: string | null;
+  requiredEndAt: string | null;
   checkInAt: string | null;
   checkOutAt: string | null;
   actualMinutes: number;
   countedMinutes: number;
+  leaveCreditedMinutes: number;
   lateMinutes: number;
   earlyLeaveMinutes: number;
   missingCheckIn: boolean;
@@ -306,6 +313,21 @@ export type AttendanceTimesheetDay = {
   scheduledWorkDay: boolean;
   validWork: boolean;
   status: AttendanceDayStatus;
+  attendanceStatus: AttendanceDayStatus;
+  configurationIssue: 'MISSING_POLICY' | 'MISSING_SCHEDULE' | null;
+  unexcusedAbsenceFraction: number;
+  leave: {
+    requests: LeaveRequest[];
+    approvedFraction: number;
+    pendingFraction: number;
+    countedAsWorkdayFraction: number;
+    paidFraction: number;
+    approvedSegments: LeaveDayPart[];
+    pendingSegments: LeaveDayPart[];
+    countedSegments: LeaveDayPart[];
+    approvedLabels: string[];
+    pendingLabels: string[];
+  };
   attendanceSources: AttendanceEvent['source'][];
   scheduleSource: 'POLICY' | 'OVERRIDE' | null;
   adjustment: AttendanceAdjustmentRequest | null;
@@ -318,9 +340,16 @@ export type AttendanceTimesheetMonth = {
   period: { from: string; to: string };
   workDays: number;
   completedDays: number;
+  scheduledDaysOff: number;
+  approvedLeaveDays: number;
+  pendingLeaveDays: number;
+  unexcusedAbsenceDays: number;
+  incompleteDays: number;
+  configurationIssueDays: number;
   missingDays: number;
   actualMinutes: number;
   countedMinutes: number;
+  leaveCreditedMinutes: number;
   lateMinutes: number;
   earlyLeaveMinutes: number;
   adjustedDays: number;
