@@ -750,6 +750,29 @@ async function handleLeaveTypeUpdate(req, res, context) {
   });
 }
 
+async function handleLeaveBalances(req, res, context, { selfOnly }) {
+  const url = new URL('http://localhost' + req.url);
+  const result = await leaveManagementService.listLeaveBalances(context.getPool(), {
+    installationId: context.requestContext.installationId,
+    selfOnly,
+    ownEmployeeId: context.requestContext.employeeId,
+    companyScope: isCompanyScope(context.requestContext),
+    branchIds: [...(context.requestContext.scopes.branchIds ?? [])],
+    rawEmployeeId: url.searchParams.get('employeeId'),
+    rawEmployeeQuery: url.searchParams.get('employeeQuery'),
+    rawLeaveTypeId: url.searchParams.get('leaveTypeId'),
+    rawAsOfDate: url.searchParams.get('asOfDate'),
+  });
+  if (!result.ok) {
+    sendError(res, createError(result.code, result.message, {}, false, statusFor(result)), context.requestId, context.receivedAt);
+    return;
+  }
+  sendSuccess(res, {
+    ...result.data,
+    capabilities: { selfOnly, canManage: context.canManageLeaveTypes },
+  }, context.requestId, context.receivedAt);
+}
+
 async function handleLeaveRequests(req, res, context, method, { selfOnly }) {
   if (method === 'GET') {
     const url = new URL('http://localhost' + req.url);
