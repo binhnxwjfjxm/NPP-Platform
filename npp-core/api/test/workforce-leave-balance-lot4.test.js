@@ -59,9 +59,10 @@ test('Issue #1140 Lô 4 posts usage and reversal entries instead of rewriting ba
   assert.match(service, /LEAVE_BALANCE_INSUFFICIENT/);
 });
 
-test('Issue #1140 Lô 4 reuses canonical leave administration mutation with audit and idempotency', async () => {
+test('Issue #1140 Lô 4 exposes a dedicated audited and idempotent leave balance API', async () => {
   const route = await source('src/routes/workforce.js');
-  assert.match(route, /payload\?\.operation === 'balance-entry'/);
+  assert.match(route, /'\/leave\/balances\/entries'/);
+  assert.match(route, /handleLeaveBalanceEntry/);
   assert.match(route, /postLeaveBalanceEntry/);
   assert.match(route, /post-leave-balance-entry/);
   assert.match(route, /resourceType: 'leave-balance-entry'/);
