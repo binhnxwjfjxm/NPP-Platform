@@ -720,11 +720,11 @@ async function handleLeaveTypes(req, res, context, method) {
 }
 
 async function handleLeaveTypeUpdate(req, res, context, options = {}) {
-  const command = new URL('http://localhost' + req.url).searchParams.get('operation');
-  const balanceEntry = options.balanceEntry ?? command === 'balance-entry';
   const parsed = await parsePayload(req, res, context);
   if (!parsed.ok) return;
   const payload = parsed.payload;
+  const command = new URL('http://localhost' + req.url).searchParams.get('operation');
+  const balanceEntry = options.balanceEntry ?? command === 'balance-entry' || payload?.operation === 'balance-entry';
   await runIdempotentMutation(req, res, context, {
     route: balanceEntry ? '/api/workforce/leave/balances/entries' : '/api/workforce/leave-types/update',
     payload,
