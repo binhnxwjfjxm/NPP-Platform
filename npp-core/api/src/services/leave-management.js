@@ -310,8 +310,14 @@ export async function listLeaveRequests(client, {
       leaveTypeId: null,
       limit: 100,
     }),
-    employeeId && (selfOnly || companyScope)
-      ? leaveRepo.listLeaveBalanceEntries(client, { installationId, employeeId, leaveTypeId: null, limit: 100 })
+    employeeId
+      ? leaveRepo.listLeaveBalanceEntries(client, {
+        installationId,
+        employeeId,
+        leaveTypeId: null,
+        branchIds: selfOnly || companyScope ? null : balanceBranchIds,
+        limit: 100,
+      })
       : Promise.resolve([]),
   ]);
   if (selfOnly && employeeId) {
@@ -553,7 +559,13 @@ export async function listLeaveBalances(client, {
     limit: 100,
   });
   const entries = employeeId && leaveTypeId
-    ? await leaveRepo.listLeaveBalanceEntries(client, { installationId, employeeId, leaveTypeId, limit: 100 })
+    ? await leaveRepo.listLeaveBalanceEntries(client, {
+      installationId,
+      employeeId,
+      leaveTypeId,
+      branchIds: selfOnly || companyScope ? null : branchIds,
+      limit: 100,
+    })
     : [];
   return {
     ok: true,
