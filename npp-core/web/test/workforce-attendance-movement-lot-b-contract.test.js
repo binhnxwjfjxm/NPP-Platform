@@ -12,7 +12,8 @@ test('Lô B exposes presence-only as an office-language policy option', async ()
   assert.match(workspace, /Cách ghi nhận công/);
   assert.match(workspace, /Theo thời gian vào \/ ra/);
   assert.match(workspace, /Chỉ xác nhận có mặt/);
-  assert.match(workspace, /Bảng công không (?:dùng|lấy) số phút làm việc để tính công/);
+  assert.match(workspace, /Bảng công không lấy số phút/);
+  assert.match(workspace, /làm căn cứ tính công/);
 });
 
 test('Lô B attendance UI requires a reason before leaving the workplace', async () => {
