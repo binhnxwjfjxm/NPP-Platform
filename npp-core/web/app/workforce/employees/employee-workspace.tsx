@@ -9,7 +9,7 @@ import styles from '../../organization/organization.module.css';
 import localStyles from './employee-workspace.module.css';
 import type { Branch } from '../../../lib/organization-types';
 import { formatCompactNumber, formatDateTime, matchTerm, normalizeSearch, toUpperCode } from '../../../lib/organization-types';
-import type { Employee } from '../../../lib/employee-types';
+import type { Employee, EmploymentType } from '../../../lib/employee-types';
 import type { BulkPolicyAssignmentResult, EmployeeWorkPolicyAssignment, WorkPolicy, WorkPolicyCoverage } from '../../../lib/workforce-types';
 
 type FilterState = 'all' | 'active' | 'inactive';
@@ -20,9 +20,23 @@ type EmployeeDraft = {
   phone: string;
   email: string;
   branchId: string;
+  employmentStartDate: string;
+  employmentEndDate: string;
+  employmentType: EmploymentType;
+  employmentEndReason: string;
+  confirmEmployment: boolean;
+  assignmentEffectiveFrom: string;
+  assignmentReason: string;
+  confirmAssignment: boolean;
 };
 type EditorState = { mode: 'create' | 'edit'; employeeId: string | null } | null;
-type ToggleState = { employeeId: string; nextActive: boolean } | null;
+type ToggleState = {
+  employeeId: string;
+  nextActive: boolean;
+  effectiveDate: string;
+  reason: string;
+  employmentType: EmploymentType;
+} | null;
 type ApiEnvelope<T> = {
   data?: T;
   error?: { code?: string; message?: string; retryable?: boolean };
@@ -119,8 +133,28 @@ function joinClasses(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(' ');
 }
 
+const EMPLOYMENT_TYPE_LABEL: Record<EmploymentType, string> = {
+  PROBATION: 'Thử việc',
+  PERMANENT: 'Chính thức',
+  FIXED_TERM: 'Hợp đồng xác định thời hạn',
+  PART_TIME: 'Bán thời gian',
+  TEMPORARY: 'Thời vụ',
+  OTHER: 'Khác',
+};
+
+function historyQualityLabel(value: string | null | undefined) {
+  if (value === 'CONFIRMED') return 'Đã xác nhận';
+  if (value === 'AUDIT_DERIVED') return 'Khôi phục từ lịch sử hệ thống';
+  return 'Cần HR xác nhận';
+}
+
 function emptyDraft(branchId = ''): EmployeeDraft {
-  return { code: '', fullName: '', jobTitle: '', phone: '', email: '', branchId };
+  return {
+    code: '', fullName: '', jobTitle: '', phone: '', email: '', branchId,
+    employmentStartDate: todayDate(), employmentEndDate: '', employmentType: 'PERMANENT',
+    employmentEndReason: '', confirmEmployment: true,
+    assignmentEffectiveFrom: todayDate(), assignmentReason: '', confirmAssignment: true,
+  };
 }
 
 function upsertEmployee(current: Employee[], next: Employee): Employee[] {
@@ -162,6 +196,7 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
   const [policyFilter, setPolicyFilter] = useState<PolicyFilter>('all');
   const [coverage, setCoverage] = useState<WorkPolicyCoverage | null>(initialCoverage);
   const [editor, setEditor] = useState<EditorState>(null);
+  const [editorDetail, setEditorDetail] = useState<Employee | null>(null);
   const [toggleState, setToggleState] = useState<ToggleState>(null);
   const [draft, setDraft] = useState<EmployeeDraft>(emptyDraft());
   const [policyEmployeeId, setPolicyEmployeeId] = useState<string | null>(null);
@@ -293,26 +328,46 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
   function openCreate() {
     setError(null);
     setNotice(null);
+    setEditorDetail(null);
     setDraft(emptyDraft(activeBranches[0]?.id ?? ''));
     setCreatePolicyId(activePolicies[0]?.id ?? '');
     setCreatePolicyEffectiveFrom(todayDate());
     setEditor({ mode: 'create', employeeId: null });
   }
 
-  function openEdit(employeeId: string) {
-    const employee = employees.find((item) => item.id === employeeId);
-    if (!employee) return;
+  async function openEdit(employeeId: string) {
+    const summary = employees.find((item) => item.id === employeeId);
+    if (!summary) return;
+    setBusy('detail');
     setError(null);
     setNotice(null);
-    setDraft({
-      code: employee.code,
-      fullName: employee.full_name,
-      jobTitle: employee.job_title ?? '',
-      phone: employee.phone ?? '',
-      email: employee.email ?? '',
-      branchId: employee.branch_id ?? '',
-    });
-    setEditor({ mode: 'edit', employeeId });
+    try {
+      const employee = await requestJson<Employee>(`/api/access/employees/${employeeId}`);
+      const employment = employee.current_employment ?? employee.employment_history?.[0] ?? null;
+      const assignment = employee.current_assignment ?? employee.assignment_history?.[0] ?? null;
+      setEditorDetail(employee);
+      setDraft({
+        code: employee.code,
+        fullName: employee.full_name,
+        jobTitle: employee.job_title ?? '',
+        phone: employee.phone ?? '',
+        email: employee.email ?? '',
+        branchId: employee.branch_id ?? '',
+        employmentStartDate: employment?.effective_from ?? todayDate(),
+        employmentEndDate: employment?.effective_to ?? '',
+        employmentType: employment?.employment_type ?? 'OTHER',
+        employmentEndReason: employment?.end_reason ?? '',
+        confirmEmployment: employment?.data_quality === 'CONFIRMED',
+        assignmentEffectiveFrom: assignment?.effective_from ?? todayDate(),
+        assignmentReason: assignment?.reason ?? '',
+        confirmAssignment: false,
+      });
+      setEditor({ mode: 'edit', employeeId });
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Không tải được lịch sử hồ sơ nhân sự');
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function submitEmployee(event: React.FormEvent<HTMLFormElement>) {
@@ -324,6 +379,7 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
     const current = editor?.mode === 'edit'
       ? employees.find((employee) => employee.id === editor.employeeId)
       : null;
+    const branchChanged = Boolean(current) && (draft.branchId || null) !== (current?.branch_id ?? null);
     const payload = {
       ...(editor?.mode === 'create' ? { code: toUpperCode(draft.code) } : {}),
       fullName: draft.fullName.trim(),
@@ -332,8 +388,29 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
       email: draft.email.trim(),
       branchId: draft.branchId || null,
       ...(current
-        ? { expectedUpdatedAt: current.updated_at }
-        : { workPolicyId: createPolicyId, policyEffectiveFrom: createPolicyEffectiveFrom }),
+        ? {
+            expectedUpdatedAt: current.updated_at,
+            ...(draft.confirmEmployment ? {
+              confirmEmployment: true,
+              employmentEffectiveFrom: draft.employmentStartDate,
+              employmentEffectiveTo: draft.employmentEndDate || null,
+              employmentType: draft.employmentType,
+              employmentEndReason: draft.employmentEndReason.trim() || null,
+            } : {}),
+            ...(branchChanged || draft.confirmAssignment ? {
+              ...(draft.confirmAssignment ? { confirmAssignment: true } : {}),
+              assignmentEffectiveFrom: draft.assignmentEffectiveFrom,
+              assignmentReason: draft.assignmentReason.trim(),
+            } : {}),
+          }
+        : {
+            employmentStartDate: draft.employmentStartDate,
+            employmentType: draft.employmentType,
+            assignmentEffectiveFrom: draft.assignmentEffectiveFrom,
+            assignmentReason: draft.assignmentReason.trim(),
+            workPolicyId: createPolicyId,
+            policyEffectiveFrom: createPolicyEffectiveFrom,
+          }),
     };
 
     try {
@@ -378,6 +455,9 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
       const statusPayload = {
         isActive: toggleState.nextActive,
         expectedUpdatedAt: employee.updated_at,
+        employmentEffectiveDate: toggleState.effectiveDate,
+        employmentReason: toggleState.reason.trim(),
+        employmentType: toggleState.employmentType,
       };
       const key = mutationKeyForPayload(employeeStatusAttempt, 'web-employee-status', {
         employeeId: employee.id,
@@ -733,12 +813,18 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
                       <td>{formatDateTime(employee.updated_at)}</td>
                       <td>
                         <div className={styles.rowActions}>
-                          <button type="button" data-testid={`edit-employee-${employee.code}`} onClick={() => openEdit(employee.id)}>Chỉnh sửa</button>
+                          <button type="button" data-testid={`edit-employee-${employee.code}`} onClick={() => void openEdit(employee.id)}>Chỉnh sửa</button>
                           <button type="button" data-testid={`policy-employee-${employee.code}`} onClick={() => void openPolicyAssignment(employee.id)}>Chính sách làm việc</button>
                           <button
                             type="button"
                             data-testid={`toggle-employee-${employee.code}`}
-                            onClick={() => setToggleState({ employeeId: employee.id, nextActive: !employee.is_active })}
+                            onClick={() => setToggleState({
+                              employeeId: employee.id,
+                              nextActive: !employee.is_active,
+                              effectiveDate: todayDate(),
+                              reason: '',
+                              employmentType: employee.current_employment?.employment_type ?? 'OTHER',
+                            })}
                           >
                             {employee.is_active ? 'Ngừng làm việc' : 'Đưa trở lại làm việc'}
                           </button>
@@ -934,6 +1020,45 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
                 <button type="button" className={styles.modalClose} onClick={() => setEditor(null)}>Đóng</button>
               </div>
 
+              {editor.mode === 'edit' && editorDetail ? (
+                <>
+                  <section className={styles.tableSection}>
+                    <div className={styles.sectionHeader}><div><p className={styles.panelKicker}>Lịch sử hiệu lực</p><h2>Lịch sử lao động</h2></div></div>
+                    <div className={styles.tableWrap}>
+                      <table className={styles.table} data-testid="employee-employment-history">
+                        <thead><tr><th>Từ ngày</th><th>Đến ngày</th><th>Hình thức</th><th>Trạng thái dữ liệu</th><th>Lý do kết thúc</th></tr></thead>
+                        <tbody>{(editorDetail.employment_history ?? []).map((item) => (
+                          <tr key={item.id}>
+                            <td>{dateLabel(item.effective_from)}</td>
+                            <td>{item.effective_to ? dateLabel(item.effective_to) : 'Đang làm việc'}</td>
+                            <td>{EMPLOYMENT_TYPE_LABEL[item.employment_type]}</td>
+                            <td>{historyQualityLabel(item.data_quality)}</td>
+                            <td>{item.end_reason || '—'}</td>
+                          </tr>
+                        ))}</tbody>
+                      </table>
+                    </div>
+                  </section>
+                  <section className={styles.tableSection}>
+                    <div className={styles.sectionHeader}><div><p className={styles.panelKicker}>Lịch sử hiệu lực</p><h2>Lịch sử điều chuyển</h2></div></div>
+                    <div className={styles.tableWrap}>
+                      <table className={styles.table} data-testid="employee-assignment-history">
+                        <thead><tr><th>Từ ngày</th><th>Đến ngày</th><th>Chi nhánh</th><th>Trạng thái dữ liệu</th><th>Lý do</th></tr></thead>
+                        <tbody>{(editorDetail.assignment_history ?? []).map((item) => (
+                          <tr key={item.id}>
+                            <td>{dateLabel(item.effective_from)}</td>
+                            <td>{item.effective_to ? dateLabel(item.effective_to) : 'Đang áp dụng'}</td>
+                            <td>{item.branch_id ? `${item.branch_code || ''} · ${item.branch_name || ''}` : 'Chưa phân công'}</td>
+                            <td>{historyQualityLabel(item.data_quality)}</td>
+                            <td>{item.reason || '—'}</td>
+                          </tr>
+                        ))}</tbody>
+                      </table>
+                    </div>
+                  </section>
+                </>
+              ) : null}
+
               <form className={styles.form} onSubmit={(event) => void submitEmployee(event)}>
                 <label>
                   Mã nhân sự
@@ -957,6 +1082,52 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
                   />
                 </label>
                 <label>
+                  Ngày bắt đầu làm việc
+                  <input
+                    type="date"
+                    data-testid="employee-employment-start"
+                    value={draft.employmentStartDate}
+                    onChange={(event) => setDraft((current) => ({ ...current, employmentStartDate: event.target.value }))}
+                    required
+                  />
+                </label>
+                <label>
+                  Hình thức lao động
+                  <select
+                    value={draft.employmentType}
+                    onChange={(event) => setDraft((current) => ({ ...current, employmentType: event.target.value as EmploymentType }))}
+                  >
+                    {(Object.keys(EMPLOYMENT_TYPE_LABEL) as EmploymentType[]).map((value) => (
+                      <option key={value} value={value}>{EMPLOYMENT_TYPE_LABEL[value]}</option>
+                    ))}
+                  </select>
+                </label>
+                {editor.mode === 'edit' && editorDetail?.current_employment?.data_quality !== 'CONFIRMED' ? (
+                  <label className={localStyles.checkOption}>
+                    <input
+                      type="checkbox"
+                      checked={draft.confirmEmployment}
+                      onChange={(event) => setDraft((current) => ({ ...current, confirmEmployment: event.target.checked }))}
+                    />
+                    <span>
+                      <strong>Xác nhận lịch sử lao động</strong>
+                      <small>Dữ liệu cũ đang được đánh dấu “Cần HR xác nhận”. Hãy kiểm tra ngày thực tế trước khi xác nhận.</small>
+                    </span>
+                  </label>
+                ) : null}
+                {editor.mode === 'edit' && !employees.find((item) => item.id === editor.employeeId)?.is_active ? (
+                  <>
+                    <label>
+                      Ngày nghỉ việc
+                      <input type="date" value={draft.employmentEndDate} onChange={(event) => setDraft((current) => ({ ...current, employmentEndDate: event.target.value }))} />
+                    </label>
+                    <label>
+                      Lý do nghỉ việc
+                      <input value={draft.employmentEndReason} onChange={(event) => setDraft((current) => ({ ...current, employmentEndReason: event.target.value }))} maxLength={1000} />
+                    </label>
+                  </>
+                ) : null}
+                <label>
                   Chức danh công việc
                   <input
                     data-testid="employee-title-input"
@@ -978,6 +1149,39 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
                     ))}
                   </select>
                 </label>
+                <label>
+                  {editor.mode === 'create' ? 'Phân công chi nhánh từ ngày' : 'Ngày hiệu lực điều chuyển / xác nhận'}
+                  <input
+                    type="date"
+                    data-testid="employee-assignment-effective-from"
+                    value={draft.assignmentEffectiveFrom}
+                    onChange={(event) => setDraft((current) => ({ ...current, assignmentEffectiveFrom: event.target.value }))}
+                    required={editor.mode === 'create' || (draft.branchId || null) !== (employees.find((item) => item.id === editor.employeeId)?.branch_id ?? null)}
+                  />
+                </label>
+                <label>
+                  Lý do phân công / điều chuyển
+                  <input
+                    value={draft.assignmentReason}
+                    onChange={(event) => setDraft((current) => ({ ...current, assignmentReason: event.target.value }))}
+                    maxLength={1000}
+                    placeholder="Ví dụ: Điều chuyển sang Chi nhánh B từ 01/10/2026"
+                  />
+                </label>
+                {editor.mode === 'edit' && editorDetail?.current_assignment?.data_quality !== 'CONFIRMED'
+                  && (draft.branchId || null) === (employees.find((item) => item.id === editor.employeeId)?.branch_id ?? null) ? (
+                  <label className={localStyles.checkOption}>
+                    <input
+                      type="checkbox"
+                      checked={draft.confirmAssignment}
+                      onChange={(event) => setDraft((current) => ({ ...current, confirmAssignment: event.target.checked }))}
+                    />
+                    <span>
+                      <strong>Xác nhận lịch sử đơn vị công tác</strong>
+                      <small>Chỉ xác nhận sau khi đã kiểm tra đúng ngày bắt đầu tại chi nhánh hiện tại.</small>
+                    </span>
+                  </label>
+                ) : null}
                 <label>
                   Số điện thoại
                   <input
@@ -1046,6 +1250,36 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
                   ? 'Hồ sơ sẽ được đưa trở lại trạng thái đang làm việc.'
                   : 'Hồ sơ sẽ chuyển sang trạng thái ngừng làm việc nhưng vẫn được giữ lại để đối soát và liên kết lịch sử.'}
               </p>
+              <label className={styles.form}>
+                Ngày hiệu lực
+                <input
+                  type="date"
+                  value={toggleState.effectiveDate}
+                  onChange={(event) => setToggleState((current) => current ? ({ ...current, effectiveDate: event.target.value }) : current)}
+                  required
+                />
+              </label>
+              {toggleState.nextActive ? (
+                <label className={styles.form}>
+                  Hình thức lao động
+                  <select
+                    value={toggleState.employmentType}
+                    onChange={(event) => setToggleState((current) => current ? ({ ...current, employmentType: event.target.value as EmploymentType }) : current)}
+                  >
+                    {(Object.keys(EMPLOYMENT_TYPE_LABEL) as EmploymentType[]).map((value) => <option key={value} value={value}>{EMPLOYMENT_TYPE_LABEL[value]}</option>)}
+                  </select>
+                </label>
+              ) : null}
+              <label className={styles.form}>
+                Lý do
+                <input
+                  value={toggleState.reason}
+                  onChange={(event) => setToggleState((current) => current ? ({ ...current, reason: event.target.value }) : current)}
+                  maxLength={1000}
+                  required
+                  placeholder={toggleState.nextActive ? 'Ví dụ: Quay lại làm việc' : 'Ví dụ: Kết thúc quan hệ lao động'}
+                />
+              </label>
               <div className={styles.formActions}>
                 <button type="button" className={styles.secondaryButton} onClick={() => setToggleState(null)}>Hủy</button>
                 <button type="button" className={styles.primaryButton} onClick={() => void confirmToggle()} disabled={busy !== null}>

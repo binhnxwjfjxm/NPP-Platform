@@ -40,71 +40,67 @@ const DAY_JOINS = `
     ON p.installation_id = c.installation_id
    AND p.id = COALESCE(assigned.work_policy_id, s.work_policy_id)`;
 
-function employeeFilters(params, {
-  employeeId = null,
-  employeeQuery = null,
-  branchId = null,
-  branchIds = null,
-}) {
+function employeeIdentityFilters(params, { employeeId = null, employeeQuery = null }) {
   let sql = '';
-  if (employeeId) {
-    params.push(employeeId);
-    sql += ` AND e.id = $${params.length}`;
-  }
+  if (employeeId) { params.push(employeeId); sql += ` AND e.id = $${params.length}`; }
   if (employeeQuery) {
     params.push(employeeQuery);
-    sql += ` AND (
-      position(lower($${params.length}) in lower(e.code)) > 0
-      OR position(lower($${params.length}) in lower(e.full_name)) > 0
-    )`;
-  }
-  if (branchId) {
-    params.push(branchId);
-    sql += ` AND e.branch_id = $${params.length}`;
-  }
-  if (Array.isArray(branchIds)) {
-    params.push(branchIds);
-    sql += ` AND e.branch_id = ANY($${params.length}::uuid[])`;
+    sql += ` AND (position(lower($${params.length}) in lower(e.code)) > 0 OR position(lower($${params.length}) in lower(e.full_name)) > 0)`;
   }
   return sql;
 }
 
-export async function listDayFacts(client, {
-  installationId,
-  dateFrom,
-  dateTo,
-  employeeId = null,
-  employeeQuery = null,
-  branchId = null,
-  branchIds = null,
-  limit = 50,
-  offset = 0,
-}) {
-  const params = [installationId, dateFrom, dateTo];
-  const filters = employeeFilters(params, { employeeId, employeeQuery, branchId, branchIds });
-  const count = await client.query(
-    `SELECT COUNT(*)::integer AS total
+function branchPredicate(params, { branchId = null, branchIds = null }, column = 'org_assignment.branch_id') {
+  if (branchId) { params.push(branchId); return `${column} = $${params.length}`; }
+  if (Array.isArray(branchIds)) { params.push(branchIds); return `${column} = ANY($${params.length}::uuid[])`; }
+  return '';
+}
+
+function dayCandidateSql(identityFilters, branchCondition = '') {
+  return `
        FROM shared.employees e
        CROSS JOIN generate_series($2::date, $3::date, interval '1 day') AS d(work_date)
-      WHERE e.installation_id = $1${filters}`,
-    params,
-  );
+       JOIN shared.employee_employments emp
+         ON emp.installation_id = e.installation_id
+        AND emp.employee_id = e.id
+        AND emp.effective_from <= d.work_date::date
+        AND (emp.effective_to IS NULL OR emp.effective_to >= d.work_date::date)
+       LEFT JOIN LATERAL (
+         SELECT a.id, a.branch_id, a.effective_from, a.effective_to, a.data_quality
+           FROM shared.employee_assignments a
+          WHERE a.installation_id = e.installation_id
+            AND a.employee_id = e.id
+            AND a.effective_from <= d.work_date::date
+            AND (a.effective_to IS NULL OR a.effective_to >= d.work_date::date)
+          ORDER BY a.effective_from DESC
+          LIMIT 1
+       ) org_assignment ON true
+       LEFT JOIN shared.branches b
+         ON b.installation_id = e.installation_id AND b.id = org_assignment.branch_id
+      WHERE e.installation_id = $1${identityFilters}${branchCondition ? ` AND ${branchCondition}` : ''}`;
+}
 
+export async function listDayFacts(client, {
+  installationId, dateFrom, dateTo, employeeId = null, employeeQuery = null,
+  branchId = null, branchIds = null, limit = 50, offset = 0,
+}) {
+  const params = [installationId, dateFrom, dateTo];
+  const identityFilters = employeeIdentityFilters(params, { employeeId, employeeQuery });
+  const branchCondition = branchPredicate(params, { branchId, branchIds });
+  const fromSql = dayCandidateSql(identityFilters, branchCondition);
+  const count = await client.query(`SELECT COUNT(*)::integer AS total ${fromSql}`, params);
   const pageParams = [...params, limit, offset];
   const limitIndex = pageParams.length - 1;
   const offsetIndex = pageParams.length;
   const rows = await client.query(
     `WITH candidate AS (
-       SELECT e.installation_id, e.id AS employee_id, e.code AS employee_code,
-              e.full_name AS employee_name, e.branch_id AS employee_branch_id,
-              b.code AS branch_code, b.name AS branch_name, d.work_date::date AS work_date_date
-         FROM shared.employees e
-         LEFT JOIN shared.branches b
-           ON b.installation_id = e.installation_id AND b.id = e.branch_id
-         CROSS JOIN generate_series($2::date, $3::date, interval '1 day') AS d(work_date)
-        WHERE e.installation_id = $1${filters}
-        ORDER BY d.work_date DESC, e.code ASC
-        LIMIT $${limitIndex} OFFSET $${offsetIndex}
+       SELECT e.installation_id, e.id AS employee_id, e.code AS employee_code, e.full_name AS employee_name,
+              org_assignment.branch_id AS employee_branch_id, b.code AS branch_code, b.name AS branch_name,
+              emp.data_quality AS employment_data_quality, org_assignment.data_quality AS assignment_data_quality,
+              d.work_date::date AS work_date_date
+       ${fromSql}
+       ORDER BY d.work_date DESC, e.code ASC
+       LIMIT $${limitIndex} OFFSET $${offsetIndex}
      )
      SELECT ${DAY_COLUMNS}
        FROM candidate c
@@ -116,32 +112,44 @@ export async function listDayFacts(client, {
 }
 
 export async function listEmployeePage(client, {
-  installationId,
-  employeeId = null,
-  employeeQuery = null,
-  branchId = null,
-  branchIds = null,
-  limit = 20,
-  offset = 0,
+  installationId, dateFrom, dateTo, employeeId = null, employeeQuery = null,
+  branchId = null, branchIds = null, limit = 20, offset = 0,
 }) {
-  const params = [installationId];
-  const filters = employeeFilters(params, { employeeId, employeeQuery, branchId, branchIds });
-  const count = await client.query(
-    `SELECT COUNT(*)::integer AS total
-       FROM shared.employees e
-      WHERE e.installation_id = $1${filters}`,
-    params,
-  );
+  const params = [installationId, dateFrom, dateTo];
+  const identityFilters = employeeIdentityFilters(params, { employeeId, employeeQuery });
+  const branchCondition = branchPredicate(params, { branchId, branchIds }, 'a.branch_id');
+  const branchExists = branchCondition ? ` AND EXISTS (
+    SELECT 1 FROM shared.employee_assignments a
+     WHERE a.installation_id = e.installation_id AND a.employee_id = e.id
+       AND a.effective_from <= $3::date AND (a.effective_to IS NULL OR a.effective_to >= $2::date)
+       AND ${branchCondition}
+  )` : '';
+  const eligibility = `
+      WHERE e.installation_id = $1${identityFilters}
+        AND EXISTS (
+          SELECT 1 FROM shared.employee_employments emp
+           WHERE emp.installation_id = e.installation_id AND emp.employee_id = e.id
+             AND emp.effective_from <= $3::date AND (emp.effective_to IS NULL OR emp.effective_to >= $2::date)
+        )${branchExists}`;
+  const count = await client.query(`SELECT COUNT(*)::integer AS total FROM shared.employees e ${eligibility}`, params);
   const pageParams = [...params, limit, offset];
   const limitIndex = pageParams.length - 1;
   const offsetIndex = pageParams.length;
   const rows = await client.query(
-    `SELECT e.id, e.code, e.full_name, e.branch_id,
+    `SELECT e.id, e.code, e.full_name, org_assignment.branch_id,
             b.code AS branch_code, b.name AS branch_name
        FROM shared.employees e
-       LEFT JOIN shared.branches b
-         ON b.installation_id = e.installation_id AND b.id = e.branch_id
-      WHERE e.installation_id = $1${filters}
+       LEFT JOIN LATERAL (
+         SELECT a.branch_id
+           FROM shared.employee_assignments a
+          WHERE a.installation_id = e.installation_id AND a.employee_id = e.id
+            AND a.effective_from <= $3::date AND (a.effective_to IS NULL OR a.effective_to >= $2::date)
+            ${branchCondition ? `AND ${branchCondition}` : ''}
+          ORDER BY LEAST(a.effective_from, $3::date) DESC
+          LIMIT 1
+       ) org_assignment ON true
+       LEFT JOIN shared.branches b ON b.installation_id = e.installation_id AND b.id = org_assignment.branch_id
+       ${eligibility}
       ORDER BY e.code ASC
       LIMIT $${limitIndex} OFFSET $${offsetIndex}`,
     pageParams,
@@ -150,34 +158,41 @@ export async function listEmployeePage(client, {
 }
 
 export async function listDayFactsForEmployees(client, {
-  installationId,
-  dateFrom,
-  dateTo,
-  employeeIds,
+  installationId, dateFrom, dateTo, employeeIds, branchId = null, branchIds = null,
 }) {
   if (!Array.isArray(employeeIds) || employeeIds.length === 0) return [];
+  const params = [installationId, dateFrom, dateTo, employeeIds];
+  const branchCondition = branchPredicate(params, { branchId, branchIds });
   const result = await client.query(
     `WITH candidate AS (
-       SELECT e.installation_id, e.id AS employee_id, e.code AS employee_code,
-              e.full_name AS employee_name, e.branch_id AS employee_branch_id,
-              b.code AS branch_code, b.name AS branch_name,
+       SELECT e.installation_id, e.id AS employee_id, e.code AS employee_code, e.full_name AS employee_name,
+              org_assignment.branch_id AS employee_branch_id, b.code AS branch_code, b.name AS branch_name,
+              emp.data_quality AS employment_data_quality, org_assignment.data_quality AS assignment_data_quality,
               d.work_date::date AS work_date_date, selected.position
          FROM unnest($4::uuid[]) WITH ORDINALITY AS selected(employee_id, position)
-         JOIN shared.employees e
-           ON e.installation_id = $1 AND e.id = selected.employee_id
-         LEFT JOIN shared.branches b
-           ON b.installation_id = e.installation_id AND b.id = e.branch_id
+         JOIN shared.employees e ON e.installation_id = $1 AND e.id = selected.employee_id
          CROSS JOIN generate_series($2::date, $3::date, interval '1 day') AS d(work_date)
+         JOIN shared.employee_employments emp
+           ON emp.installation_id = e.installation_id AND emp.employee_id = e.id
+          AND emp.effective_from <= d.work_date::date AND (emp.effective_to IS NULL OR emp.effective_to >= d.work_date::date)
+         LEFT JOIN LATERAL (
+           SELECT a.branch_id, a.data_quality
+             FROM shared.employee_assignments a
+            WHERE a.installation_id = e.installation_id AND a.employee_id = e.id
+              AND a.effective_from <= d.work_date::date AND (a.effective_to IS NULL OR a.effective_to >= d.work_date::date)
+            ORDER BY a.effective_from DESC LIMIT 1
+         ) org_assignment ON true
+         LEFT JOIN shared.branches b ON b.installation_id = e.installation_id AND b.id = org_assignment.branch_id
+        WHERE 1=1 ${branchCondition ? `AND ${branchCondition}` : ''}
      )
      SELECT ${DAY_COLUMNS}, c.position
        FROM candidate c
        ${DAY_JOINS}
       ORDER BY c.position ASC, c.work_date_date ASC`,
-    [installationId, dateFrom, dateTo, employeeIds],
+    params,
   );
   return result.rows ?? [];
 }
-
 export async function listEvents(client, {
   installationId,
   employeeIds,
