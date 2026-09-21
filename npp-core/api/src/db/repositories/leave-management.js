@@ -412,6 +412,45 @@ export async function getLeaveBalanceAsOf(client, { installationId, employeeId, 
   return Number(result.rows?.[0]?.balance_days ?? 0);
 }
 
+export async function getMinimumLeaveBalanceFromDate(client, {
+  installationId, employeeId, leaveTypeId, fromDate,
+}) {
+  const result = await client.query(
+    `WITH before_date AS (
+       SELECT COALESCE(SUM(quantity_days), 0)::numeric AS balance
+         FROM shared.leave_balance_ledger
+        WHERE installation_id = $1
+          AND employee_id = $2
+          AND leave_type_id = $3
+          AND effective_date < $4::date
+     ),
+     daily AS (
+       SELECT effective_date, SUM(quantity_days)::numeric AS delta
+         FROM shared.leave_balance_ledger
+        WHERE installation_id = $1
+          AND employee_id = $2
+          AND leave_type_id = $3
+          AND effective_date >= $4::date
+        GROUP BY effective_date
+     ),
+     trajectory AS (
+       SELECT daily.effective_date,
+              before_date.balance + SUM(daily.delta) OVER (
+                ORDER BY daily.effective_date
+                ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+              ) AS balance
+         FROM daily
+         CROSS JOIN before_date
+     )
+     SELECT COALESCE(
+       (SELECT MIN(balance) FROM trajectory),
+       (SELECT balance FROM before_date)
+     )::numeric AS minimum_balance`,
+    [installationId, employeeId, leaveTypeId, fromDate],
+  );
+  return Number(result.rows?.[0]?.minimum_balance ?? 0);
+}
+
 export async function insertLeaveBalanceEntries(client, {
   installationId, employeeId, leaveTypeId, leaveTypeCodeSnapshot, leaveTypeNameSnapshot,
   entries, actorId, requestId,
