@@ -137,6 +137,58 @@ export async function getWarehouseAvailableQuantity(client, {
   return result.rows[0]?.available_quantity ?? '0.000000000000';
 }
 
+export async function getWarehouseAvailableQuantities(client, {
+  installationId,
+  warehouseId,
+  baseVariantIds,
+  excludingSalesOrderId,
+}) {
+  if (!Array.isArray(baseVariantIds) || baseVariantIds.length === 0) return [];
+  const result = await client.query(
+    `WITH requested AS (
+       SELECT DISTINCT unnest($3::uuid[]) AS base_variant_id
+     ), inventory_scope AS (
+       SELECT
+         requested.base_variant_id,
+         COALESCE(sum(balance.on_hand_quantity), 0)::numeric(30,12) AS on_hand,
+         COALESCE(sum(balance.reserved_quantity), 0)::numeric(30,12) AS exact_reserved
+       FROM requested
+       LEFT JOIN inventory.inventory_balances balance
+         ON balance.installation_id = $1
+        AND balance.warehouse_id = $2
+        AND balance.base_variant_id = requested.base_variant_id
+       GROUP BY requested.base_variant_id
+     ), fulfillment_scope AS (
+       SELECT
+         requested.base_variant_id,
+         COALESCE(sum(
+           demand.reserved_base_quantity - demand.allocated_base_quantity
+         ), 0)::numeric(30,12) AS warehouse_reserved
+       FROM requested
+       LEFT JOIN sales.sales_order_fulfillment_demands demand
+         ON demand.installation_id = $1
+        AND demand.warehouse_id = $2
+        AND demand.base_variant_id = requested.base_variant_id
+        AND demand.state = 'ACTIVE'
+        AND demand.sales_order_id <> $4
+       GROUP BY requested.base_variant_id
+     )
+     SELECT
+       inventory_scope.base_variant_id,
+       greatest(
+         inventory_scope.on_hand
+         - inventory_scope.exact_reserved
+         - fulfillment_scope.warehouse_reserved,
+         0
+       )::numeric(30,12)::text AS available_quantity
+     FROM inventory_scope
+     JOIN fulfillment_scope USING (base_variant_id)
+     ORDER BY inventory_scope.base_variant_id`,
+    [installationId, warehouseId, baseVariantIds, excludingSalesOrderId],
+  );
+  return result.rows ?? [];
+}
+
 export async function supersedeActiveDemands(client, {
   installationId,
   salesOrderId,

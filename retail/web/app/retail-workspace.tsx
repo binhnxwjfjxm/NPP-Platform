@@ -195,7 +195,16 @@ const PRINT_PAPER_STORAGE_KEY = 'retail.print.paper';
 const PRINT_TEMPLATE_STORAGE_KEY = 'retail.print.template';
 const STOCK_ISSUED_FULFILLMENT_STATUSES = new Set(['partially_issued', 'issued', 'partially_fulfilled', 'fulfilled']);
 const linesOf = (order: Order | null) => order?.versions?.find((item) => item.versionNumber === order.currentVersionNumber)?.lines ?? order?.versions?.find((item) => item.status === 'draft')?.lines ?? order?.versions?.[0]?.lines ?? [];
-const cartFromOrder = (order: Order): CartLine[] => linesOf(order).map((line) => ({ id: line.variantId, productCode: line.sku, imageKey: null, productName: line.itemName, sku: line.sku, unitCode: line.unitCode, unitName: line.unitName, allowsFractional: null, quantity: line.quantity, taxMode: line.taxMode, taxRate: line.taxRate }));
+function normalizeQuantityInput(value: string | number | null | undefined) {
+    const text = String(value ?? '').trim();
+    const match = /^(\d+)(?:\.(\d+))?$/.exec(text);
+    if (!match)
+        return text;
+    const whole = match[1].replace(/^0+(?=\d)/, '') || '0';
+    const fraction = (match[2] ?? '').replace(/0+$/, '');
+    return fraction ? `${whole}.${fraction}` : whole;
+}
+const cartFromOrder = (order: Order): CartLine[] => linesOf(order).map((line) => ({ id: line.variantId, productCode: line.sku, imageKey: null, productName: line.itemName, sku: line.sku, unitCode: line.unitCode, unitName: line.unitName, allowsFractional: null, quantity: normalizeQuantityInput(line.quantity), taxMode: line.taxMode, taxRate: line.taxRate }));
 const manualPricesFromOrder = (order: Order): Record<string, string> => Object.fromEntries(linesOf(order).filter((line) => line.priceSource === 'MANUAL_OVERRIDE').map((line) => [line.variantId, normalizeVndInput(line.unitPrice)]));
 async function api<T>(path: string, init?: RequestInit) {
     const response = await fetch(path, { cache: 'no-store', ...init, headers: { Accept: 'application/json', ...(init?.headers ?? {}) } });
@@ -315,10 +324,13 @@ export default function RetailWorkspace() {
     const [templateFontSizePercent, setTemplateFontSizePercent] = useState(100);
     const filterTabs = useRef<HTMLDivElement>(null);
     const [marker, setMarker] = useState({ left: 0, width: 0 });
+    const [draftSyncEpoch, setDraftSyncEpoch] = useState(0);
     const keys = useRef(new Map<string, string>());
     const operationKeys = useRef(new Map<string, string>());
     const priceRequests = useRef(new Set<string>());
     const lastDraftFingerprint = useRef('');
+    const draftSyncInFlight = useRef<string | null>(null);
+    const draftSyncPending = useRef(false);
     const videoRef = useRef<HTMLVideoElement>(null);
     const keyFor = useCallback((action: string, fingerprint = '') => {
         const slot = `${action}:${order?.id ?? 'new'}:${order?.revision ?? 'draft'}:${fingerprint}`;
@@ -544,37 +556,86 @@ export default function RetailWorkspace() {
         const fingerprint = JSON.stringify({ customerMode, customerId: customerMode === 'EXISTING' ? customerId : '', warehouseId, policy, lines: cart.map((line) => [line.id, line.quantity, prices[line.id]?.finalUnitPriceMinor ?? '', manualPriceFor(line.id)]) });
         if (lastDraftFingerprint.current === fingerprint)
             return;
+        if (draftSyncInFlight.current !== null) {
+            if (draftSyncInFlight.current !== fingerprint)
+                draftSyncPending.current = true;
+            return;
+        }
         const timer = window.setTimeout(() => {
+            if (draftSyncInFlight.current !== null) {
+                if (draftSyncInFlight.current !== fingerprint)
+                    draftSyncPending.current = true;
+                return;
+            }
+            draftSyncInFlight.current = fingerprint;
+            draftSyncPending.current = false;
             setBusy('draft-sync');
             setError(null);
             const currentOrder = order;
             const request = currentOrder
                 ? api<Order>(`/api/retail/orders/${currentOrder.id}/draft`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': keyFor('draft-sync', fingerprint) }, body: JSON.stringify(orderPayload(currentOrder.revision)) })
                 : api<Order>('/api/retail/orders', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': keyFor('create-draft', fingerprint) }, body: JSON.stringify(orderPayload(undefined)) });
-            void request.then((next) => { lastDraftFingerprint.current = fingerprint; setOrder(next); void refreshOrders().catch(() => undefined); }).catch((reason: Error) => setError(reason.message)).finally(() => setBusy((value) => value === 'draft-sync' ? null : value));
+            void request.then((next) => {
+                lastDraftFingerprint.current = fingerprint;
+                setOrder(next);
+            }).catch((reason: Error) => setError(reason.message)).finally(() => {
+                draftSyncInFlight.current = null;
+                setBusy((value) => value === 'draft-sync' ? null : value);
+                if (draftSyncPending.current) {
+                    draftSyncPending.current = false;
+                    setDraftSyncEpoch((value) => value + 1);
+                }
+            });
         }, 360);
         return () => window.clearTimeout(timer);
-    }, [cart, canPriceOverride, customerId, customerMode, editPickup, keyFor, manualPrices, order, policy, prices, refreshOrders, warehouseId]);
+    }, [cart, canPriceOverride, customerId, customerMode, draftSyncEpoch, editPickup, keyFor, manualPrices, order, policy, prices, warehouseId]);
     useEffect(() => {
-        if (!order?.id || ['closed', 'cancelled'].includes(order.status) || editPickup)
+        if (!order?.id || order.status !== 'confirmed' || editPickup)
             return;
+        const controller = new AbortController();
         setAvailabilityLoading(true);
-        void api<Availability[]>(`/api/retail/orders/${order.id}/availability`).then(setAvailable).catch((reason: Error) => setError(reason.message)).finally(() => setAvailabilityLoading(false));
-    }, [editPickup, order?.id, order?.revision, order?.status]);
+        void api<Availability[]>(`/api/retail/orders/${order.id}/availability`, { signal: controller.signal }).then((rows) => {
+            if (!controller.signal.aborted)
+                setAvailable(rows);
+        }).catch((reason: unknown) => {
+            if (!controller.signal.aborted)
+                setError(errorMessage(reason, 'Chưa thể tính Khả dụng.'));
+        }).finally(() => {
+            if (!controller.signal.aborted)
+                setAvailabilityLoading(false);
+        });
+        return () => controller.abort();
+    }, [editPickup, order?.id, order?.status]);
     useEffect(() => {
-        if (!editPickup || !order?.id || !warehouseId || !cart.length)
+        if (!cart.length || !warehouseId || (order && order.status !== 'draft' && !editPickup))
             return;
         const controller = new AbortController();
         setAvailabilityLoading(true);
         setAvailable([]);
         const timer = window.setTimeout(() => {
             const variantIds = cart.map((line) => line.id);
-            void api<Availability[]>('/api/retail/availability', { method: 'POST', signal: controller.signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ salesOrderId: order.id, warehouseId, variantIds }) }).then(setAvailable).catch((reason: unknown) => { if (!controller.signal.aborted)
-                setError(errorMessage(reason, 'Chưa thể tính Khả dụng.')); }).finally(() => { if (!controller.signal.aborted)
-                setAvailabilityLoading(false); });
-        }, 220);
-        return () => { controller.abort(); window.clearTimeout(timer); };
-    }, [cart, editPickup, order?.id, warehouseId]);
+            const salesOrderId = order?.id && order.warehouseId === warehouseId ? order.id : null;
+            void api<Availability[]>('/api/retail/availability', {
+                method: 'POST',
+                signal: controller.signal,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ...(salesOrderId ? { salesOrderId } : {}), warehouseId, variantIds }),
+            }).then((rows) => {
+                if (!controller.signal.aborted)
+                    setAvailable(rows);
+            }).catch((reason: unknown) => {
+                if (!controller.signal.aborted)
+                    setError(errorMessage(reason, 'Chưa thể tính Khả dụng.'));
+            }).finally(() => {
+                if (!controller.signal.aborted)
+                    setAvailabilityLoading(false);
+            });
+        }, 120);
+        return () => {
+            controller.abort();
+            window.clearTimeout(timer);
+        };
+    }, [cart, editPickup, order?.id, order?.status, order?.warehouseId, warehouseId]);
     useEffect(() => {
         const lines = linesOf(order);
         if (!lines.length)
@@ -588,7 +649,7 @@ export default function RetailWorkspace() {
         })).then((pairs) => { if (!cancelled)
             setLineImages(Object.fromEntries(pairs)); });
         return () => { cancelled = true; };
-    }, [order?.id, order?.revision]);
+    }, [order?.id]);
     useEffect(() => {
         if (!open)
             return;

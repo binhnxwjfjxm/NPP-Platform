@@ -42,3 +42,31 @@ test('URL Công Ty và token chỉ nằm phía server', async () => {
 test('đăng nhập Retail nhận được mã xác minh khi Công Ty yêu cầu', async () => { const login = await read('app/login/page.tsx'); assert.match(login, /name="ownerCode"/); assert.match(login, /one-time-code/); });
 
 test('route Công Ty chọn pickup engine nhưng vẫn giữ wrapper Giao thủ công', async () => { const route = await readRepo('npp-core/api/src/routes/sales-orders.js'); assert.match(route, /pickupStockIssueService\.issuePickupSalesOrderStock/); assert.match(route, /manualStockIssueService\.issueManualSalesOrderStock/); assert.match(route, /pickup \? 'pickup_stock_issue' : 'manual_stock_issue'/); });
+
+test('Retail chuẩn hóa số lượng thập phân tại biên API trước khi đưa vào ô nhập', async () => {
+  const page = await readWorkspace();
+  assert.match(page, /function normalizeQuantityInput/);
+  assert.match(page, /quantity: normalizeQuantityInput\(line\.quantity\)/);
+  assert.match(page, /const fraction = \(match\[2\] \?\? ''\)\.replace\(\/0\+\$\/, ''\)/);
+});
+
+test('autosave nháp Retail single-flight và coalesce thay đổi mới thay vì gửi trùng Idempotency-Key', async () => {
+  const page = await readWorkspace();
+  const start = page.indexOf("if (!cart.length || !warehouseId || editPickup");
+  const end = page.indexOf("if (!order?.id || order.status !== 'confirmed'", start);
+  const autosave = page.slice(start, end);
+  assert.match(autosave, /draftSyncInFlight\.current !== null/);
+  assert.match(autosave, /draftSyncInFlight\.current = fingerprint/);
+  assert.match(autosave, /draftSyncPending\.current = true/);
+  assert.match(autosave, /setDraftSyncEpoch\(\(value\) => value \+ 1\)/);
+  assert.doesNotMatch(autosave, /refreshOrders/);
+  assert.match(autosave, /keyFor\('draft-sync', fingerprint\)/);
+  assert.match(autosave, /keyFor\('create-draft', fingerprint\)/);
+});
+
+test('Khả dụng giỏ hàng tách khỏi revision autosave và ảnh không tải lại theo mỗi revision', async () => {
+  const page = await readWorkspace();
+  assert.match(page, /body: JSON\.stringify\(\{ \.\.\.\(salesOrderId \? \{ salesOrderId \} : \{\}\), warehouseId, variantIds \}\)/);
+  assert.match(page, /\}, \[cart, editPickup, order\?\.id, order\?\.status, order\?\.warehouseId, warehouseId\]\);/);
+  assert.match(page, /\}, \[order\?\.id\]\);/);
+});

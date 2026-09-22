@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
   getRetailOrderAvailability,
+  previewRetailAvailability,
   retailCatalogInternals,
 } from '../src/services/retail-catalog.js';
 import * as salesOrderRepository from '../src/db/repositories/sales-order.js';
@@ -97,7 +98,12 @@ test('Khả dụng chỉ trả một cột nghiệp vụ của các dòng thuộ
         };
       }
       if (statement.includes('AS available_quantity')) {
-        return { rows: [{ available_quantity: '5.000000000000' }] };
+        return {
+          rows: [{
+            base_variant_id: '55555555-5555-4555-8555-555555555555',
+            available_quantity: '5.000000000000',
+          }],
+        };
       }
       throw new Error('Truy vấn ngoài phạm vi kiểm thử');
     },
@@ -152,4 +158,59 @@ test('Khả dụng chặn scope kho trước khi truy vấn tồn', async () => 
     details: {},
   });
   assert.equal(queries.length, 1);
+});
+
+
+test('preview Khả dụng nhiều SKU dùng truy vấn batch thay vì tăng truy vấn theo số SKU', async () => {
+  const installationId = '66666666-6666-4666-8666-666666666666';
+  const warehouseId = '22222222-2222-4222-8222-222222222222';
+  const variants = [
+    ['11111111-1111-4111-8111-111111111111', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'],
+    ['33333333-3333-4333-8333-333333333333', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'],
+    ['44444444-4444-4444-8444-444444444444', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'],
+  ];
+  const queries = [];
+  const client = {
+    async query(statement, params) {
+      queries.push({ statement, params });
+      if (statement.includes('variant.id = ANY($2::uuid[])')) {
+        return {
+          rows: variants.map(([variantId, baseVariantId], index) => ({
+            variant_id: variantId,
+            sku: `SKU-${index + 1}`,
+            conversion_to_base: '1.000000000000',
+            item_name: `Sản phẩm ${index + 1}`,
+            is_inventory_managed: true,
+            base_variant_ids: [baseVariantId],
+          })),
+        };
+      }
+      if (statement.includes('WITH requested AS')) {
+        return {
+          rows: variants.map(([, baseVariantId], index) => ({
+            base_variant_id: baseVariantId,
+            available_quantity: `${index + 5}.000000000000`,
+          })),
+        };
+      }
+      throw new Error('Truy vấn ngoài phạm vi kiểm thử');
+    },
+  };
+
+  const result = await previewRetailAvailability(client, {
+    requestContext: {
+      installationId,
+      scopes: { warehouseIds: [warehouseId] },
+    },
+    payload: {
+      warehouseId,
+      variantIds: variants.map(([variantId]) => variantId),
+    },
+  });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.availability.map((row) => row.availableQuantity), ['5', '6', '7']);
+  assert.equal(queries.length, 2);
+  assert.equal(queries[0].params[1].length, 3);
+  assert.equal(queries[1].params[2].length, 3);
 });
