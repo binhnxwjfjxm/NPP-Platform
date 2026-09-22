@@ -37,14 +37,20 @@ test('Bộ lọc bán hàng gửi kỳ, kho và phân loại theo lựa chọn n
   assert.match(workspace, /query\.set\('to', filters\.to\)/);
   assert.match(workspace, /query\.set\('warehouseId', filters\.warehouseId\)/);
   assert.match(workspace, /query\.set\('productGroupId', filters\.productGroupId\)/);
+  assert.match(workspace, /query\.set\('brandId', filters\.brandId\)/);
   assert.match(workspace, /query\.set\('customerGroupId', filters\.customerGroupId\)/);
   assert.match(workspace, /query\.set\('includeZeroProducts', 'true'\)/);
   assert.match(workspace, /classification\.options\.productGroups/);
+  assert.match(workspace, /classification\.options\.brands/);
   assert.match(workspace, /classification\.options\.customerGroups/);
   assert.match(workspace, /Tất cả kho/);
-  assert.match(workspace, /Tất cả nhóm sản phẩm/);
+  assert.match(workspace, /Loại sản phẩm/);
+  assert.match(workspace, /Tất cả loại sản phẩm/);
+  assert.match(workspace, /Nhãn hàng/);
+  assert.match(workspace, /Tất cả nhãn hàng/);
   assert.match(workspace, /Tất cả nhóm khách hàng/);
-  for (const field of ['productGroupId', 'customerGroupId', 'includeZeroProducts']) {
+  assert.doesNotMatch(workspace, /<span>Tiền tệ<\/span>/);
+  for (const field of ['productGroupId', 'brandId', 'customerGroupId', 'includeZeroProducts']) {
     assert.match(gateway, new RegExp(field));
   }
 });

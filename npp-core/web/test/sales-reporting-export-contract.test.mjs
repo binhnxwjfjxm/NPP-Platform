@@ -91,12 +91,13 @@ test('Phân tích lấy danh sách cột từ báo cáo server theo đúng bộ 
   assert.match(dialog, /requestAnalysisReport\(filters\)/);
   assert.match(dialog, /\/api\/reporting\/sales/);
   assert.match(dialog, /query\.set\('productGroupId', filters\.productGroupId\)/);
+  assert.match(dialog, /query\.set\('brandId', filters\.brandId\)/);
   assert.match(dialog, /query\.set\('customerGroupId', filters\.customerGroupId\)/);
   assert.match(dialog, /mode === 'analysis'/);
   assert.match(dialog, /analysisSelectedColumns/);
   assert.match(dialog, /query\.append\('column', key\)/);
   assert.match(dialog, /query\.set\('sort', analysisSort\)/);
-  for (const field of ['productGroupId', 'customerGroupId', 'includeZeroProducts', 'dimension', 'format', 'column', 'sort']) {
+  for (const field of ['productGroupId', 'brandId', 'customerGroupId', 'includeZeroProducts', 'dimension', 'format', 'column', 'sort']) {
     assert.match(gateway, new RegExp(field));
   }
 });

@@ -331,6 +331,7 @@ async function handleExportRequest(req,res,options,url) {
   if(key==='sales-profit'){
     filters=normalizeSalesClassificationFilters({
       productGroupId:url.searchParams.get('productGroupId'),
+      brandId:url.searchParams.get('brandId'),
       customerGroupId:url.searchParams.get('customerGroupId'),
       includeZeroProducts:url.searchParams.get('includeZeroProducts'),
     },filters);

@@ -131,6 +131,13 @@ export function normalizeSalesClassificationFilters(input = {}, baseFilters = {}
   );
   if (!productGroup.ok) return productGroup;
 
+  const brand = optionalUuid(
+    input.brandId,
+    'INVALID_SALES_BRAND',
+    'Nhãn hàng báo cáo không hợp lệ',
+  );
+  if (!brand.ok) return brand;
+
   const customerGroup = optionalUuid(
     input.customerGroupId,
     'INVALID_SALES_CUSTOMER_GROUP',
@@ -145,6 +152,7 @@ export function normalizeSalesClassificationFilters(input = {}, baseFilters = {}
     ...baseFilters,
     ok: true,
     productGroupId: productGroup.value,
+    brandId: brand.value,
     customerGroupId: customerGroup.value,
     includeZeroProducts: includeZeroProducts.value,
   });
@@ -152,9 +160,11 @@ export function normalizeSalesClassificationFilters(input = {}, baseFilters = {}
 
 export function filterSalesFacts(facts, filters) {
   const productGroupId = normalizedId(filters?.productGroupId);
+  const brandId = normalizedId(filters?.brandId);
   const customerGroupId = normalizedId(filters?.customerGroupId);
   return Object.freeze((facts ?? []).filter((fact) => {
     if (productGroupId && normalizedId(fact?.productGroupId) !== productGroupId) return false;
+    if (brandId && normalizedId(fact?.brandId) !== brandId) return false;
     if (customerGroupId && normalizedId(fact?.customerGroupId) !== customerGroupId) return false;
     return true;
   }));
@@ -170,19 +180,26 @@ export function filterSalesFactsForDimension(facts, filters, dimension) {
   }
   if (dimension === 'products') {
     const productGroupId = normalizedId(filters?.productGroupId);
-    if (!productGroupId) return Object.freeze([...source]);
-    return Object.freeze(source.filter((fact) => normalizedId(fact?.productGroupId) === productGroupId));
+    const brandId = normalizedId(filters?.brandId);
+    if (!productGroupId && !brandId) return Object.freeze([...source]);
+    return Object.freeze(source.filter((fact) => {
+      if (productGroupId && normalizedId(fact?.productGroupId) !== productGroupId) return false;
+      if (brandId && normalizedId(fact?.brandId) !== brandId) return false;
+      return true;
+    }));
   }
   return Object.freeze([...source]);
 }
 
-export function appendZeroProductRows(rows, catalogRows, { productGroupId = null, currencyCode = '' } = {}) {
+export function appendZeroProductRows(rows, catalogRows, { productGroupId = null, brandId = null, currencyCode = '' } = {}) {
   const selectedProductGroupId = normalizedId(productGroupId);
+  const selectedBrandId = normalizedId(brandId);
   const output = [...(rows ?? [])];
   const existing = new Set(output.map(productRowIdentity));
 
   for (const catalogRow of catalogRows ?? []) {
     if (selectedProductGroupId && normalizedId(catalogRow?.productGroupId) !== selectedProductGroupId) continue;
+    if (selectedBrandId && normalizedId(catalogRow?.brandId) !== selectedBrandId) continue;
     const key = productRowIdentity(catalogRow);
     if (existing.has(key)) continue;
     output.push(Object.freeze({
@@ -214,7 +231,7 @@ export function appendZeroProductRows(rows, catalogRows, { productGroupId = null
   }));
 }
 
-export function buildSalesClassificationOptions(productGroups, customerGroups) {
+export function buildSalesClassificationOptions(productGroups, customerGroups, brands = []) {
   const normalizedProductGroups = (productGroups ?? []).map((row) => Object.freeze({
     id: normalizedId(row?.id),
     code: text(row?.code) || null,
@@ -228,8 +245,15 @@ export function buildSalesClassificationOptions(productGroups, customerGroups) {
     name: text(row?.name, 'Nhóm khách chưa có tên'),
   })).filter((row) => row.id).sort((left, right) => `${left.code ?? ''}|${left.name}`.localeCompare(`${right.code ?? ''}|${right.name}`, 'vi'));
 
+  const normalizedBrands = (brands ?? []).map((row) => Object.freeze({
+    id: normalizedId(row?.id),
+    code: text(row?.code) || null,
+    name: text(row?.name, 'Nhãn hàng chưa có tên'),
+  })).filter((row) => row.id).sort((left, right) => ((left.code ?? '') + '|' + left.name).localeCompare((right.code ?? '') + '|' + right.name, 'vi'));
+
   return Object.freeze({
     productGroups: Object.freeze(normalizedProductGroups),
+    brands: Object.freeze(normalizedBrands),
     customerGroups: Object.freeze(normalizedCustomerGroups),
   });
 }

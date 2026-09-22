@@ -733,7 +733,8 @@ async function loadSalesMatrixFacts(pool, requestContext, filters, warehouseIds)
      AND ($5::uuid IS NULL OR so.warehouse_id = $5::uuid)
      AND so.status IN ('confirmed','closed')
      AND ($6::uuid IS NULL OR (CASE WHEN line.reporting_dimension_snapshot_captured THEN line.product_category_id_snapshot ELSE product.category_id END) = $6::uuid)
-     AND ($7::uuid IS NULL OR customer.group_id = $7::uuid)
+     AND ($7::uuid IS NULL OR product.brand_id = $7::uuid)
+     AND ($8::uuid IS NULL OR customer.group_id = $8::uuid)
    ORDER BY line.item_name_snapshot, line.sku_snapshot, so.id, line.line_number`, [
     requestContext.installationId,
     warehouseIds,
@@ -741,6 +742,7 @@ async function loadSalesMatrixFacts(pool, requestContext, filters, warehouseIds)
     filters.toExclusiveInstant,
     filters.warehouseId,
     filters.productGroupId ?? null,
+    filters.brandId ?? null,
     filters.customerGroupId ?? null,
   ]);
   return result.rows ?? [];

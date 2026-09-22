@@ -463,6 +463,7 @@ export async function handleReportingRoutes(req, res, options) {
   if (family === 'sales' || family === 'sales-export') {
     const salesFilters = normalizeSalesClassificationFilters({
       productGroupId: url.searchParams.get('productGroupId'),
+      brandId: url.searchParams.get('brandId'),
       customerGroupId: url.searchParams.get('customerGroupId'),
       includeZeroProducts: url.searchParams.get('includeZeroProducts'),
     }, normalized);

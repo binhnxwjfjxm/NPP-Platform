@@ -3,6 +3,7 @@ export type SalesReportingFilters = Readonly<{
   to: string;
   warehouseId: string | null;
   productGroupId: string | null;
+  brandId: string | null;
   customerGroupId: string | null;
   includeZeroProducts: boolean;
 }>;
@@ -88,6 +89,7 @@ export type SalesProductGroupOption = SalesClassificationOption & Readonly<{
 export type SalesReportingClassification = Readonly<{
   options: Readonly<{
     productGroups: readonly SalesProductGroupOption[];
+    brands: readonly SalesClassificationOption[];
     customerGroups: readonly SalesClassificationOption[];
   }>;
 }>;

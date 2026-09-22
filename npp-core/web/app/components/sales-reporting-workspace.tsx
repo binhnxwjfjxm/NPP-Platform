@@ -26,6 +26,7 @@ type Filters = Readonly<{
   to: string;
   warehouseId: string;
   productGroupId: string;
+  brandId: string;
   customerGroupId: string;
   includeZeroProducts: boolean;
 }>;
@@ -40,6 +41,7 @@ const EMPTY_FILTERS: Filters = Object.freeze({
   to: '',
   warehouseId: '',
   productGroupId: '',
+  brandId: '',
   customerGroupId: '',
   includeZeroProducts: false,
 });
@@ -242,6 +244,7 @@ async function requestReport(filters: Filters): Promise<SalesReportingDashboard>
   if (filters.to) query.set('to', filters.to);
   if (filters.warehouseId) query.set('warehouseId', filters.warehouseId);
   if (filters.productGroupId) query.set('productGroupId', filters.productGroupId);
+  if (filters.brandId) query.set('brandId', filters.brandId);
   if (filters.customerGroupId) query.set('customerGroupId', filters.customerGroupId);
   if (filters.includeZeroProducts) query.set('includeZeroProducts', 'true');
   const serialized = query.toString();
@@ -262,7 +265,6 @@ export function SalesReportingWorkspace() {
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
   const [analysisSearch, setAnalysisSearch] = useState('');
-  const [currencyFilter, setCurrencyFilter] = useState('');
   const [comparisonFilter, setComparisonFilter] = useState<ComparisonFilter>('all');
   const [selectedRow, setSelectedRow] = useState<SalesBreakdownRow | null>(null);
   const [savedNotice, setSavedNotice] = useState('');
@@ -277,6 +279,7 @@ export function SalesReportingWorkspace() {
         to: next.filters.to,
         warehouseId: next.filters.warehouseId ?? '',
         productGroupId: next.filters.productGroupId ?? '',
+        brandId: next.filters.brandId ?? '',
         customerGroupId: next.filters.customerGroupId ?? '',
         includeZeroProducts: next.filters.includeZeroProducts === true,
       });
@@ -301,12 +304,10 @@ export function SalesReportingWorkspace() {
       const saved = JSON.parse(raw) as {
         dimension?: unknown;
         analysisSearch?: unknown;
-        currencyFilter?: unknown;
         comparisonFilter?: unknown;
       };
       if (isBreakdownKey(saved.dimension)) setActiveDimension(saved.dimension);
       if (typeof saved.analysisSearch === 'string') setAnalysisSearch(saved.analysisSearch.slice(0, 80));
-      if (typeof saved.currencyFilter === 'string') setCurrencyFilter(saved.currencyFilter.slice(0, 16));
       if (isComparisonFilter(saved.comparisonFilter)) setComparisonFilter(saved.comparisonFilter);
     } catch {
       window.localStorage.removeItem(SAVED_VIEW_KEY);
@@ -321,7 +322,6 @@ export function SalesReportingWorkspace() {
   function resetFilters() {
     setDraft(EMPTY_FILTERS);
     setAnalysisSearch('');
-    setCurrencyFilter('');
     setComparisonFilter('all');
     setSelectedRow(null);
     void load(EMPTY_FILTERS, true);
@@ -337,7 +337,6 @@ export function SalesReportingWorkspace() {
   function changeDimension(value: string) {
     if (!isBreakdownKey(value)) return;
     setActiveDimension(value);
-    setCurrencyFilter('');
     setComparisonFilter('all');
     setSelectedRow(null);
   }
@@ -346,7 +345,6 @@ export function SalesReportingWorkspace() {
     window.localStorage.setItem(SAVED_VIEW_KEY, JSON.stringify({
       dimension: activeDimension,
       analysisSearch,
-      currencyFilter,
       comparisonFilter,
     }));
     setSavedNotice('Đã lưu chế độ xem trên thiết bị này');
@@ -360,25 +358,18 @@ export function SalesReportingWorkspace() {
   const previousPeriod = report?.comparison.previous;
   const warnings = report?.dataQuality.warnings ?? [];
   const productGroupOptions = report?.classification.options.productGroups ?? [];
+  const brandOptions = report?.classification.options.brands ?? [];
   const customerGroupOptions = report?.classification.options.customerGroups ?? [];
   const totals = report?.breakdownTotals[activeDimension] ?? [];
-  const currencies = useMemo(
-    () => Array.from(new Set(rows.map((row) => row.currencyCode).filter(Boolean))).sort(),
-    [rows],
-  );
   const filteredRows = useMemo(() => {
     const needle = analysisSearch.trim().toLocaleLowerCase('vi');
     return rows.filter((row) => {
-      if (currencyFilter && row.currencyCode !== currencyFilter) return false;
       if (comparisonFilter !== 'all' && row.comparisonState !== comparisonFilter) return false;
       if (!needle) return true;
       return [row.code, row.name].filter(Boolean).some((value) => String(value).toLocaleLowerCase('vi').includes(needle));
     });
-  }, [rows, analysisSearch, currencyFilter, comparisonFilter]);
-  const visibleTotals = useMemo(
-    () => currencyFilter ? totals.filter((row) => row.currencyCode === currencyFilter) : totals,
-    [totals, currencyFilter],
-  );
+  }, [rows, analysisSearch, comparisonFilter]);
+  const visibleTotals = totals;
   const trendSeries = useMemo(() => {
     const grouped = new Map<string, SalesReportingTrendRow[]>();
     for (const row of report?.dailyTrend ?? []) {
@@ -494,15 +485,28 @@ export function SalesReportingWorkspace() {
             {activeDimension === 'products' ? (
               <>
                 <label className={`${styles.filterControl} ${styles.groupControl}`}>
-                  <span>Nhóm sản phẩm</span>
+                  <span>Loại sản phẩm</span>
                   <select
                     value={draft.productGroupId}
                     disabled={busy}
                     onChange={(event) => setDraft((current) => ({ ...current, productGroupId: event.target.value }))}
                   >
-                    <option value="">Tất cả nhóm sản phẩm</option>
+                    <option value="">Tất cả loại sản phẩm</option>
                     {productGroupOptions.map((group) => (
                       <option key={group.id} value={group.id}>{[group.code, group.name].filter(Boolean).join(' — ')}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className={`${styles.filterControl} ${styles.groupControl}`}>
+                  <span>Nhãn hàng</span>
+                  <select
+                    value={draft.brandId}
+                    disabled={busy}
+                    onChange={(event) => setDraft((current) => ({ ...current, brandId: event.target.value }))}
+                  >
+                    <option value="">Tất cả nhãn hàng</option>
+                    {brandOptions.map((brand) => (
+                      <option key={brand.id} value={brand.id}>{[brand.code, brand.name].filter(Boolean).join(' — ')}</option>
                     ))}
                   </select>
                 </label>
@@ -518,13 +522,6 @@ export function SalesReportingWorkspace() {
               </>
             ) : null}
 
-            <label className={styles.filterControl}>
-              <span>Tiền tệ</span>
-              <select value={currencyFilter} onChange={(event) => setCurrencyFilter(event.target.value)}>
-                <option value="">Tất cả</option>
-                {currencies.map((currency) => <option key={currency} value={currency}>{currency}</option>)}
-              </select>
-            </label>
 
             <label className={`${styles.filterControl} ${styles.comparisonControl}`}>
               <span>So với kỳ trước</span>
