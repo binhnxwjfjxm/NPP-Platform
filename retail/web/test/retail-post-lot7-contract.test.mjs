@@ -35,7 +35,7 @@ test('Khả dụng khi sửa đơn dùng preview theo kho và loại chính đơ
   assert.match(gateway, /path: '\/api\/retail\/availability'/);
   assert.match(route, /previewRetailAvailability/);
   assert.match(service, /excludingSalesOrderId = salesOrderId/);
-  assert.match(service, /getWarehouseAvailableQuantity/);
+  assert.match(service, /getWarehouseAvailableQuantities/);
 });
 
 test('thiếu Khả dụng được cảnh báo và chặn Chốt hoặc Xuất kho trước request chắc chắn thất bại', async () => {
