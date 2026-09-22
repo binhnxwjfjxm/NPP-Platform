@@ -29,7 +29,8 @@ test('Khả dụng khi sửa đơn dùng preview theo kho và loại chính đơ
     readWorkspace(), read('app/api/retail/[...segments]/route.ts'), readRepo('npp-core/api/src/routes/retail-catalog.js'), readRepo('npp-core/api/src/services/retail-catalog.js'),
   ]);
   assert.match(page, /\/api\/retail\/availability/);
-  assert.match(page, /salesOrderId: order\.id, warehouseId, variantIds/);
+  assert.match(page, /const salesOrderId = order\?\.id && order\.warehouseId === warehouseId \? order\.id : null/);
+  assert.match(page, /\.\.\.\(salesOrderId \? \{ salesOrderId \} : \{\}\), warehouseId, variantIds/);
   assert.match(page, /availabilityLoading/);
   assert.match(gateway, /path: '\/api\/retail\/availability'/);
   assert.match(route, /previewRetailAvailability/);

@@ -98,7 +98,12 @@ test('Khả dụng chỉ trả một cột nghiệp vụ của các dòng thuộ
         };
       }
       if (statement.includes('AS available_quantity')) {
-        return { rows: [{ available_quantity: '5.000000000000' }] };
+        return {
+          rows: [{
+            base_variant_id: '55555555-5555-4555-8555-555555555555',
+            available_quantity: '5.000000000000',
+          }],
+        };
       }
       throw new Error('Truy vấn ngoài phạm vi kiểm thử');
     },
