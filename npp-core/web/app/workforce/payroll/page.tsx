@@ -114,6 +114,7 @@ type PayrollFoundationData = {
   periods: PayrollPeriod[];
   selectedPeriod: PayrollPeriod | null;
   employees: PayrollEmployee[];
+  periodEmployees: PayrollEmployee[];
   componentTypes: ComponentType[];
   salaryProfiles: SalaryProfile[];
   fixedComponents: FixedComponent[];
@@ -281,7 +282,9 @@ export default function PayrollPage() {
       }
       if (!salaryEmployeeId && next.employees.length) setSalaryEmployeeId(next.employees[0].id);
       if (!fixedEmployeeId && next.employees.length) setFixedEmployeeId(next.employees[0].id);
-      if (!periodEmployeeId && next.employees.length) setPeriodEmployeeId(next.employees[0].id);
+      if (next.periodEmployees.length && !next.periodEmployees.some((employee) => employee.id === periodEmployeeId)) {
+        setPeriodEmployeeId(next.periodEmployees[0].id);
+      }
       if (!fixedComponentTypeId) {
         const first = next.componentTypes.find((item) => item.is_active && item.recurrence === 'FIXED' && item.input_mode === 'MANUAL');
         if (first) setFixedComponentTypeId(first.id);
@@ -765,7 +768,7 @@ export default function PayrollPage() {
                       Nhân sự
                       <select value={periodEmployeeId} onChange={(event) => setPeriodEmployeeId(event.target.value)} required>
                         <option value="">Chọn nhân sự</option>
-                        {(data?.employees ?? []).map((employee) => <option key={employee.id} value={employee.id}>{employee.code} · {employee.full_name}</option>)}
+                        {(data?.periodEmployees ?? []).map((employee) => <option key={employee.id} value={employee.id}>{employee.code} · {employee.full_name}</option>)}
                       </select>
                     </label>
                     <label>
