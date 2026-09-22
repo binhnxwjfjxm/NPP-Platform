@@ -6,7 +6,7 @@ import { requireNppWorkforceSessionToken } from './internal-auth-client';
 
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 const REQUEST_TIMEOUT_MS = 8_000;
-const ALLOWED_QUERY_KEYS = new Set(['employeeId', 'employeeQuery', 'branchId', 'from', 'to', 'view', 'status', 'limit', 'offset', 'date', 'leaveTypeId', 'asOfDate']);
+const ALLOWED_QUERY_KEYS = new Set(['employeeId', 'employeeQuery', 'branchId', 'from', 'to', 'view', 'status', 'limit', 'offset', 'date', 'leaveTypeId', 'asOfDate', 'periodId']);
 
 interface CoreEnvelope<T> {
   data?: T;
@@ -241,6 +241,49 @@ export function postLeaveBalanceEntry<T>(requestId: string, body: unknown, idemp
   return requestCore<T>({
     path: '/leave/balances/entries', method: 'POST', requestId, body,
     idempotencyKey: mutationKey(idempotencyKey, 'leave-balance-entry'),
+  });
+}
+
+export function listOvertimeRequests<T>(requestId: string, searchParams: URLSearchParams): Promise<T> {
+  return requestCore<T>({ path: '/overtime', method: 'GET', requestId, searchParams });
+}
+export function submitOvertimeRequest<T>(requestId: string, body: unknown, idempotencyKey?: string): Promise<T> {
+  return requestCore<T>({
+    path: '/overtime', method: 'POST', requestId, body,
+    idempotencyKey: mutationKey(idempotencyKey, 'overtime-submit'),
+  });
+}
+export function reviewOvertimeRequest<T>(requestId: string, body: unknown, idempotencyKey?: string): Promise<T> {
+  return requestCore<T>({
+    path: '/overtime/review', method: 'POST', requestId, body,
+    idempotencyKey: mutationKey(idempotencyKey, 'overtime-review'),
+  });
+}
+export function recordOvertimeActual<T>(requestId: string, body: unknown, idempotencyKey?: string): Promise<T> {
+  return requestCore<T>({
+    path: '/overtime/actual', method: 'POST', requestId, body,
+    idempotencyKey: mutationKey(idempotencyKey, 'overtime-actual'),
+  });
+}
+export function confirmOvertimeRequest<T>(requestId: string, body: unknown, idempotencyKey?: string): Promise<T> {
+  return requestCore<T>({
+    path: '/overtime/confirm', method: 'POST', requestId, body,
+    idempotencyKey: mutationKey(idempotencyKey, 'overtime-confirm'),
+  });
+}
+export function listAttendancePeriods<T>(requestId: string, searchParams: URLSearchParams): Promise<T> {
+  return requestCore<T>({ path: '/attendance/periods', method: 'GET', requestId, searchParams });
+}
+export function mutateAttendancePeriod<T>(requestId: string, body: unknown, idempotencyKey?: string): Promise<T> {
+  return requestCore<T>({
+    path: '/attendance/periods', method: 'POST', requestId, body,
+    idempotencyKey: mutationKey(idempotencyKey, 'attendance-period-action'),
+  });
+}
+export function getAttendancePayrollInput<T>(requestId: string, periodId: string): Promise<T> {
+  return requestCore<T>({
+    path: '/attendance/payroll-input', method: 'GET', requestId,
+    searchParams: new URLSearchParams({ periodId }),
   });
 }
 

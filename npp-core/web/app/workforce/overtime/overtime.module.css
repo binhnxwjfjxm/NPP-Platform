@@ -1,0 +1,108 @@
+.tabs {
+  display: flex;
+  gap: 8px;
+  padding: 4px;
+  border: 1px solid #dfe3e8;
+  border-radius: 12px;
+  background: #f4f5f7;
+  width: fit-content;
+}
+.tab {
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  padding: 8px 14px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.tabActive {
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, .12);
+}
+.stack { display: grid; gap: 14px; }
+.formGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.formGrid label, .actionPanel label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.formGrid input, .formGrid select, .formGrid textarea,
+.actionPanel input, .actionPanel textarea {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid #d7dce2;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+}
+.formGrid textarea, .actionPanel textarea { min-height: 72px; resize: vertical; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.primary, .secondary, .danger {
+  min-height: 36px;
+  border-radius: 8px;
+  padding: 7px 12px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.primary { border: 1px solid #1d4ed8; background: #1d4ed8; color: #fff; }
+.secondary { border: 1px solid #cfd5dc; background: #fff; color: #1f2937; }
+.danger { border: 1px solid #b91c1c; background: #fff; color: #991b1b; }
+.primary:disabled, .secondary:disabled, .danger:disabled { opacity: .55; cursor: not-allowed; }
+.status {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #d7dce2;
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: #fff;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 700;
+}
+.meta { display: grid; gap: 3px; }
+.meta small { color: #64748b; }
+.actionPanel {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #dfe3e8;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+.issueGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.issueCard {
+  border: 1px solid #dfe3e8;
+  border-radius: 9px;
+  background: #fff;
+  padding: 10px;
+}
+.issueCard strong { display: block; margin-bottom: 5px; }
+.issueCard p { margin: 2px 0; color: #475569; font-size: 13px; }
+.check { display: flex !important; grid-template-columns: 18px 1fr; align-items: center; gap: 8px !important; }
+.check input { width: 16px; min-height: 16px; }
+.payrollGrid { display: grid; gap: 8px; }
+.payrollRow {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.3fr) repeat(4, minmax(90px, .7fr));
+  gap: 8px;
+  padding: 9px 0;
+  border-bottom: 1px solid #edf0f3;
+  font-size: 13px;
+}
+@media (max-width: 900px) {
+  .formGrid, .issueGrid { grid-template-columns: 1fr; }
+  .payrollRow { grid-template-columns: 1fr 1fr; }
+}

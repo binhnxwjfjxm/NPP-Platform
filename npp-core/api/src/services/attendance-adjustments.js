@@ -1,5 +1,6 @@
 import * as adjustmentRepo from '../db/repositories/attendance-adjustments.js';
 import * as workforceRepo from '../db/repositories/workforce.js';
+import * as closeoutRepo from '../db/repositories/workforce-closeout.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -417,6 +418,16 @@ export async function reviewAdjustmentRequest(client, {
     });
     if (!applied.ok) return applied;
     events = applied.events;
+    if (locked) {
+      await closeoutRepo.markClosedAttendancePeriodsDirtyForEmployeeRange(client, {
+        installationId: requestContext.installationId,
+        employeeId: beforeRequest.employee_id,
+        dateFrom: String(beforeRequest.work_date),
+        dateTo: String(beforeRequest.work_date),
+        actorId: requestContext.actorId,
+        requestId: requestContext.requestId,
+      });
+    }
   }
   return {
     ok: true,
@@ -500,6 +511,16 @@ export async function directAdjustment(client, {
     requestId: requestContext.requestId,
   });
   if (!applied.ok) return applied;
+  if (locked) {
+    await closeoutRepo.markClosedAttendancePeriodsDirtyForEmployeeRange(client, {
+      installationId: requestContext.installationId,
+      employeeId,
+      dateFrom: workDate,
+      dateTo: workDate,
+      actorId: requestContext.actorId,
+      requestId: requestContext.requestId,
+    });
+  }
   return {
     ok: true,
     request,

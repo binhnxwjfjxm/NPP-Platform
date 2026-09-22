@@ -2,6 +2,7 @@ import * as leaveRepo from '../db/repositories/leave-management.js';
 import * as workforceRepo from '../db/repositories/workforce.js';
 import * as adjustmentRepo from '../db/repositories/attendance-adjustments.js';
 import * as employeeRepo from '../db/repositories/employee.js';
+import * as closeoutRepo from '../db/repositories/workforce-closeout.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -479,6 +480,16 @@ export async function reviewLeaveRequest(client, { requestContext, payload, comp
     request.leave_tracks_balance_snapshot = beforeRequest.leave_tracks_balance_snapshot;
     request.leave_allow_negative_balance_snapshot = beforeRequest.leave_allow_negative_balance_snapshot;
     await postUsage(client, { requestContext, request, days: plan.days });
+    if (locked) {
+      await closeoutRepo.markClosedAttendancePeriodsDirtyForEmployeeRange(client, {
+        installationId: requestContext.installationId,
+        employeeId: beforeRequest.employee_id,
+        dateFrom: String(beforeRequest.date_from),
+        dateTo: String(beforeRequest.date_to),
+        actorId: requestContext.actorId,
+        requestId: requestContext.requestId,
+      });
+    }
   }
   return { ok: true, request, beforeRequest, lockedOverride: Boolean(locked) };
 }
@@ -524,6 +535,16 @@ export async function cancelLeaveRequest(client, { requestContext, payload, self
     });
     if (!reversed.ok) return reversed;
     balanceEntries = reversed.entries;
+  }
+  if (locked) {
+    await closeoutRepo.markClosedAttendancePeriodsDirtyForEmployeeRange(client, {
+      installationId: requestContext.installationId,
+      employeeId: beforeRequest.employee_id,
+      dateFrom: String(beforeRequest.date_from),
+      dateTo: String(beforeRequest.date_to),
+      actorId: requestContext.actorId,
+      requestId: requestContext.requestId,
+    });
   }
   return { ok: true, request, beforeRequest, balanceEntries, lockedOverride: Boolean(locked) };
 }
