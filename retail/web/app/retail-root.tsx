@@ -14,9 +14,11 @@ type InventoryAccessResponse = {
 };
 
 type RetailMode = 'sales' | 'inventory';
+type RetailSalesTab = 'home' | 'entry' | 'orders' | 'settings';
 
 export default function RetailRoot() {
   const [mode, setMode] = useState<RetailMode>('sales');
+  const [salesTab, setSalesTab] = useState<RetailSalesTab>('home');
   const [inventoryAccess, setInventoryAccess] = useState<InventoryAccessPayload | null>(null);
 
   useEffect(() => {
@@ -35,15 +37,28 @@ export default function RetailRoot() {
     return () => controller.abort();
   }, []);
 
-  if (!inventoryAccess) return <RetailWorkspace />;
+  function openSales(tab: RetailSalesTab) {
+    setSalesTab(tab);
+    setMode('sales');
+  }
 
-  return <div className={styles.root}>
-    <nav className={styles.modeTabs} aria-label="Chức năng Retail">
-      <button type="button" className={mode === 'sales' ? styles.activeTab : ''} aria-current={mode === 'sales' ? 'page' : undefined} onClick={() => setMode('sales')}>Bán hàng</button>
-      <button type="button" className={mode === 'inventory' ? styles.activeTab : ''} aria-current={mode === 'inventory' ? 'page' : undefined} onClick={() => setMode('inventory')}>Tồn kho</button>
-    </nav>
-    {mode === 'inventory'
-      ? <RetailInventoryPanel warehouses={inventoryAccess.warehouses} />
-      : <RetailWorkspace />}
-  </div>;
+  if (mode === 'inventory' && inventoryAccess) {
+    return <div className={`${styles.root} retail-lot7 retail-issue675`}>
+      <RetailInventoryPanel warehouses={inventoryAccess.warehouses} />
+      <nav className="bottom-nav" aria-label="Điều hướng Retail">
+        <button type="button" onClick={() => openSales('home')}><span>⌂</span>Trang chủ</button>
+        <button type="button" onClick={() => openSales('entry')}><span>＋</span>Lên đơn</button>
+        <button type="button" onClick={() => openSales('orders')}><span>▤</span>Đơn hàng</button>
+        <button type="button" className="active" aria-current="page"><span>▣</span>Tồn kho</button>
+        <button type="button" onClick={() => openSales('settings')}><span>⚙</span>Cài đặt</button>
+      </nav>
+    </div>;
+  }
+
+  return <RetailWorkspace
+    initialTab={salesTab}
+    inventoryAvailable={Boolean(inventoryAccess)}
+    onOpenInventory={() => setMode('inventory')}
+    onTabChange={setSalesTab}
+  />;
 }

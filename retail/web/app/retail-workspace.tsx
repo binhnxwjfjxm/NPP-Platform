@@ -133,6 +133,12 @@ type CachedPriceFailure = {
     message?: string;
 };
 type RetailTab = 'home' | 'entry' | 'orders' | 'settings';
+type RetailWorkspaceProps = {
+    initialTab?: RetailTab;
+    inventoryAvailable?: boolean;
+    onOpenInventory?: () => void;
+    onTabChange?: (tab: RetailTab) => void;
+};
 type OrderFilter = 'all' | 'draft' | 'confirmed' | 'issued' | 'closed' | 'cancelled';
 type PaymentMethod = 'CASH' | 'BANK_TRANSFER';
 type PrintPaper = PrinterPaper;
@@ -273,7 +279,7 @@ function isToday(value?: string) {
     const now = new Date();
     return !Number.isNaN(date.getTime()) && date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate();
 }
-export default function RetailWorkspace() {
+export default function RetailWorkspace({ initialTab = 'home', inventoryAvailable = false, onOpenInventory, onTabChange }: RetailWorkspaceProps) {
     const [boot, setBoot] = useState<Bootstrap | null>(null);
     const [orders, setOrders] = useState<Order[]>([]);
     const [order, setOrder] = useState<Order | null>(null);
@@ -302,7 +308,7 @@ export default function RetailWorkspace() {
     const [payment, setPayment] = useState(false);
     const [paid, setPaid] = useState('');
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
-    const [activeTab, setActiveTab] = useState<RetailTab>('home');
+    const [activeTab, setActiveTab] = useState<RetailTab>(initialTab);
     const [orderFilter, setOrderFilter] = useState<OrderFilter>('all');
     const [editPickup, setEditPickup] = useState(false);
     const [prices, setPrices] = useState<Record<string, CachedPricePreview>>({});
@@ -1142,7 +1148,7 @@ export default function RetailWorkspace() {
       </section>
     </> : null}
 
-    <nav className="bottom-nav" aria-label="Điều hướng Retail"><button type="button" className={activeTab === 'home' ? 'active' : ''} onClick={() => setActiveTab('home')}><span>⌂</span>Trang chủ</button><button type="button" className={activeTab === 'entry' ? 'active' : ''} onClick={() => setActiveTab('entry')}><span>＋</span>Lên đơn</button><button type="button" className={activeTab === 'orders' ? 'active' : ''} onClick={() => { setActiveTab('orders'); void refreshOrders(); }}><span>▤</span>Đơn hàng</button><button type="button" className={activeTab === 'settings' ? 'active' : ''} onClick={() => setActiveTab('settings')}><span>⚙</span>Cài đặt</button></nav>
+    <nav className="bottom-nav" aria-label="Điều hướng Retail"><button type="button" className={activeTab === 'home' ? 'active' : ''} onClick={() => { setActiveTab('home'); onTabChange?.('home'); }}><span>⌂</span>Trang chủ</button><button type="button" className={activeTab === 'entry' ? 'active' : ''} onClick={() => { setActiveTab('entry'); onTabChange?.('entry'); }}><span>＋</span>Lên đơn</button><button type="button" className={activeTab === 'orders' ? 'active' : ''} onClick={() => { setActiveTab('orders'); onTabChange?.('orders'); void refreshOrders(); }}><span>▤</span>Đơn hàng</button>{inventoryAvailable && onOpenInventory ? <button type="button" onClick={onOpenInventory}><span>▣</span>Tồn kho</button> : null}<button type="button" className={activeTab === 'settings' ? 'active' : ''} onClick={() => { setActiveTab('settings'); onTabChange?.('settings'); }}><span>⚙</span>Cài đặt</button></nav>
 
     {settingsPanel ? <section className="dialog-backdrop settings-sheet-backdrop" role="dialog" aria-modal="true" aria-label={settingsPanel === 'account' ? 'Tài khoản' : settingsPanel === 'printer' ? 'Thiết lập in' : settingsPanel === 'template' ? 'Mẫu phiếu' : 'Đăng xuất'}><div className="settings-sheet sheet-enter">
       <header><div><p className="section-kicker">CÀI ĐẶT</p><h2>{settingsPanel === 'account' ? 'Tài khoản' : settingsPanel === 'printer' ? 'Thiết lập in' : settingsPanel === 'template' ? 'Mẫu phiếu' : 'Đăng xuất'}</h2></div><button className="text-action" type="button" onClick={() => setSettingsPanel(null)}>Đóng</button></header>

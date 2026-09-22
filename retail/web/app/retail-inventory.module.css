@@ -3,40 +3,11 @@
   background: #f6f7f9;
 }
 
-.modeTabs {
-  position: sticky;
-  top: 0;
-  z-index: 60;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px;
-  padding: 8px 12px;
-  border-bottom: 1px solid #e4e7ec;
-  background: rgba(255, 255, 255, 0.96);
-  backdrop-filter: blur(12px);
-}
-
-.modeTabs button {
-  min-height: 36px;
-  border: 0;
-  border-radius: 9px;
-  background: transparent;
-  color: #667085;
-  font: inherit;
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.modeTabs .activeTab {
-  background: #101828;
-  color: #fff;
-}
-
 .inventoryPage {
   width: min(760px, 100%);
-  min-height: calc(100dvh - 53px);
+  min-height: 100dvh;
   margin: 0 auto;
-  padding: 14px 12px 32px;
+  padding: 14px 12px calc(104px + env(safe-area-inset-bottom));
   color: #101828;
 }
 
