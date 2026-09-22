@@ -25,6 +25,7 @@ function statusFor(result) {
     'ATTENDANCE_PERIOD_LOCKED', 'ATTENDANCE_ADJUSTMENT_PENDING',
     'ADJUSTMENT_REQUEST_CONFLICT', 'ATTENDANCE_PERIOD_LOCK_OVERLAP',
     'LEAVE_TYPE_CODE_EXISTS', 'LEAVE_TYPE_CONFLICT', 'LEAVE_REQUEST_OVERLAP', 'LEAVE_REQUEST_CONFLICT',
+    'LEAVE_BALANCE_INSUFFICIENT', 'LEAVE_BALANCE_LEDGER_MISSING', 'LEAVE_NO_SCHEDULED_WORKDAYS', 'EMPLOYEE_NOT_EMPLOYED_ON_LEAVE_DATE',
     'VIOLATION_CASE_EXISTS', 'VIOLATION_CASE_CONFLICT', 'VIOLATION_CHANGED',
   ].includes(result.code)) return 409;
   return 400;
@@ -749,6 +750,67 @@ async function handleLeaveTypeUpdate(req, res, context) {
   });
 }
 
+async function handleLeaveBalanceEntry(req, res, context) {
+  const parsed = await parsePayload(req, res, context);
+  if (!parsed.ok) return;
+  const payload = parsed.payload;
+  await runIdempotentMutation(req, res, context, {
+    route: '/api/workforce/leave/balances/entries',
+    payload,
+    successStatus: 201,
+    mutate: async (client) => {
+      const result = await leaveManagementService.postLeaveBalanceEntry(client, {
+        requestContext: context.requestContext,
+        payload,
+        companyScope: isCompanyScope(context.requestContext),
+        branchIds: [...(context.requestContext.scopes.branchIds ?? [])],
+      });
+      if (!result.ok) return result;
+      return {
+        ok: true,
+        data: result.entry,
+        audit: {
+          requestContext: context.requestContext,
+          action: 'post-leave-balance-entry',
+          resourceType: 'leave-balance-entry',
+          resourceId: result.entry.id,
+          beforeData: null,
+          afterData: result.entry,
+          metadata: {
+            employeeId: result.entry.employee_id,
+            leaveTypeId: result.entry.leave_type_id,
+            entryType: result.entry.entry_type,
+            effectiveDate: result.entry.effective_date,
+          },
+        },
+      };
+    },
+  });
+}
+
+async function handleLeaveBalances(req, res, context, { selfOnly }) {
+  const url = new URL('http://localhost' + req.url);
+  const result = await leaveManagementService.listLeaveBalances(context.getPool(), {
+    installationId: context.requestContext.installationId,
+    selfOnly,
+    ownEmployeeId: context.requestContext.employeeId,
+    companyScope: isCompanyScope(context.requestContext),
+    branchIds: [...(context.requestContext.scopes.branchIds ?? [])],
+    rawEmployeeId: url.searchParams.get('employeeId'),
+    rawEmployeeQuery: url.searchParams.get('employeeQuery'),
+    rawLeaveTypeId: url.searchParams.get('leaveTypeId'),
+    rawAsOfDate: url.searchParams.get('asOfDate'),
+  });
+  if (!result.ok) {
+    sendError(res, createError(result.code, result.message, {}, false, statusFor(result)), context.requestId, context.receivedAt);
+    return;
+  }
+  sendSuccess(res, {
+    ...result.data,
+    capabilities: { selfOnly, canManage: context.canManageLeaveTypes },
+  }, context.requestId, context.receivedAt);
+}
+
 async function handleLeaveRequests(req, res, context, method, { selfOnly }) {
   if (method === 'GET') {
     const url = new URL('http://localhost' + req.url);
@@ -1164,7 +1226,7 @@ export async function handleWorkforceRoutes(req, res, options) {
   const pathname = new URL(`http://localhost${req.url}`).pathname;
   if (!pathname.startsWith('/api/workforce/')) return false;
   const route = pathname.slice('/api/workforce'.length);
-  if (!['/policies', '/assignments', '/assignments/coverage', '/assignments/bulk', '/schedules', '/schedule-planning', '/attendance/today', '/attendance/timesheet', '/attendance/record', '/attendance/points', '/attendance/qr-token', '/attendance/adjustments', '/attendance/adjustments/review', '/attendance/adjustments/direct', '/attendance/period-locks', '/leave-types', '/leave-types/update', '/leave/requests', '/leave/requests/review', '/leave/requests/cancel', '/attendance/violations', '/attendance/violations/explain', '/attendance/violations/review'].includes(route)) return false;
+  if (!['/policies', '/assignments', '/assignments/coverage', '/assignments/bulk', '/schedules', '/schedule-planning', '/attendance/today', '/attendance/timesheet', '/attendance/record', '/attendance/points', '/attendance/qr-token', '/attendance/adjustments', '/attendance/adjustments/review', '/attendance/adjustments/direct', '/attendance/period-locks', '/leave-types', '/leave-types/update', '/leave/requests', '/leave/requests/review', '/leave/requests/cancel', '/leave/balances', '/leave/balances/entries', '/attendance/violations', '/attendance/violations/explain', '/attendance/violations/review'].includes(route)) return false;
 
   const auth = options.authenticate(req, options.config);
   if (!auth.ok) {
@@ -1197,6 +1259,8 @@ export async function handleWorkforceRoutes(req, res, options) {
     || (route === '/leave/requests' && ['GET', 'POST'].includes(method))
     || (route === '/leave/requests/review' && method === 'POST')
     || (route === '/leave/requests/cancel' && method === 'POST')
+    || (route === '/leave/balances' && method === 'GET')
+    || (route === '/leave/balances/entries' && method === 'POST')
     || (['/policies', '/assignments', '/schedules', '/schedule-planning'].includes(route) && ['GET', 'POST'].includes(method))
     || (route === '/assignments/coverage' && method === 'GET')
     || (route === '/assignments/bulk' && method === 'POST')
@@ -1219,6 +1283,7 @@ export async function handleWorkforceRoutes(req, res, options) {
   let timesheetSelfOnly = false;
   let adjustmentSelfOnly = false;
   let leaveRequestSelfOnly = false;
+  let leaveBalanceSelfOnly = false;
   let violationSelfOnly = false;
   let permission;
   if (route === '/attendance/timesheet') {
@@ -1269,6 +1334,12 @@ export async function handleWorkforceRoutes(req, res, options) {
   } else if (route === '/leave/requests/cancel') {
     permission = { ok: canApproveLeaves || canSubmitOwnLeave };
     leaveRequestSelfOnly = !canApproveLeaves;
+  } else if (route === '/leave/balances') {
+    const canReadScopedBalances = canReadLeaves || canApproveLeaves || canManageLeaveTypes;
+    permission = { ok: canReadScopedBalances || canSelfReadLeaves || canSubmitOwnLeave };
+    leaveBalanceSelfOnly = !canReadScopedBalances;
+  } else if (route === '/leave/balances/entries') {
+    permission = { ok: canManageLeaveTypes };
   } else {
     const permissionKey = route === '/schedules' || route === '/schedule-planning'
       ? (method === 'GET' ? options.PERMISSIONS.coreWorkScheduleRead : options.PERMISSIONS.coreWorkScheduleManage)
@@ -1321,6 +1392,8 @@ export async function handleWorkforceRoutes(req, res, options) {
     else if (route === '/leave/requests') await handleLeaveRequests(req, res, context, method, { selfOnly: leaveRequestSelfOnly });
     else if (route === '/leave/requests/review') await handleLeaveRequestReview(req, res, context);
     else if (route === '/leave/requests/cancel') await handleLeaveRequestCancel(req, res, context, { selfOnly: leaveRequestSelfOnly });
+    else if (route === '/leave/balances') await handleLeaveBalances(req, res, context, { selfOnly: leaveBalanceSelfOnly });
+    else if (route === '/leave/balances/entries') await handleLeaveBalanceEntry(req, res, context);
     else await handleAttendanceQrToken(req, res, context);
   } catch (error) {
     console.error(JSON.stringify({

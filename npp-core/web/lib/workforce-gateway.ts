@@ -6,7 +6,7 @@ import { requireNppWorkforceSessionToken } from './internal-auth-client';
 
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 const REQUEST_TIMEOUT_MS = 8_000;
-const ALLOWED_QUERY_KEYS = new Set(['employeeId', 'employeeQuery', 'branchId', 'from', 'to', 'view', 'status', 'limit', 'offset', 'date']);
+const ALLOWED_QUERY_KEYS = new Set(['employeeId', 'employeeQuery', 'branchId', 'from', 'to', 'view', 'status', 'limit', 'offset', 'date', 'leaveTypeId', 'asOfDate']);
 
 interface CoreEnvelope<T> {
   data?: T;
@@ -232,6 +232,15 @@ export function cancelLeaveRequest<T>(requestId: string, body: unknown, idempote
   return requestCore<T>({
     path: '/leave/requests/cancel', method: 'POST', requestId, body,
     idempotencyKey: mutationKey(idempotencyKey, 'leave-request-cancel'),
+  });
+}
+export function listLeaveBalances<T>(requestId: string, searchParams: URLSearchParams): Promise<T> {
+  return requestCore<T>({ path: '/leave/balances', method: 'GET', requestId, searchParams });
+}
+export function postLeaveBalanceEntry<T>(requestId: string, body: unknown, idempotencyKey?: string): Promise<T> {
+  return requestCore<T>({
+    path: '/leave/balances/entries', method: 'POST', requestId, body,
+    idempotencyKey: mutationKey(idempotencyKey, 'leave-balance-entry'),
   });
 }
 

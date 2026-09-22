@@ -133,6 +133,7 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   migration('149_workforce_employee_history', 'shared/149_workforce_employee_history.sql'),
   migration('150_workforce_organization_structure', 'shared/150_workforce_organization_structure.sql'),
   migration('151_workforce_schedule_planning', 'shared/151_workforce_schedule_planning.sql'),
+  migration('152_workforce_leave_balance_ledger', 'shared/152_workforce_leave_balance_ledger.sql'),
 ]);
 
 export { runMigrations };

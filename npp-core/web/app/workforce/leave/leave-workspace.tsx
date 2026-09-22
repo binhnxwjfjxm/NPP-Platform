@@ -18,6 +18,36 @@ import type {
 
 type ApiEnvelope<T> = { data?: T; error?: { message?: string } };
 type Attempt = { payload: string; key: string } | null;
+type LeaveTypeBalanceFields = { tracks_balance?: boolean; allow_negative_balance?: boolean };
+type LeaveBalanceRow = {
+  employee_id: string;
+  employee_code: string;
+  employee_name: string;
+  branch_name: string | null;
+  leave_type_id: string;
+  leave_type_code: string;
+  leave_type_name: string;
+  balance_days: number;
+  allow_negative_balance: boolean;
+  last_activity_date: string | null;
+};
+type LeaveBalanceEntry = {
+  id: string;
+  employee_id: string;
+  employee_code: string;
+  employee_name: string;
+  leave_type_id: string;
+  leave_type_name_snapshot: string;
+  entry_type: string;
+  quantity_days: number;
+  effective_date: string;
+  reason: string;
+};
+type LeaveDataWithBalance = LeaveRequestListResponse & {
+  balanceAsOfDate?: string;
+  leaveBalances?: LeaveBalanceRow[];
+  balanceEntries?: LeaveBalanceEntry[];
+};
 
 const STATUS_LABEL: Record<LeaveRequestStatus, string> = {
   SUBMITTED: 'Chờ duyệt',
@@ -69,12 +99,15 @@ function requestPeriod(row: LeaveRequest) {
 }
 
 function typeBadges(type: LeaveType) {
+  const balance = type as LeaveType & LeaveTypeBalanceFields;
   return [
     type.is_paid ? 'Hưởng lương' : 'Không lương',
     type.counts_as_workday ? 'Tính ngày công' : 'Không tính ngày công',
     type.requires_approval ? 'Cần duyệt' : 'Tự động duyệt',
     type.allows_half_day ? 'Có nửa ngày' : null,
     type.requires_attachment ? 'Cần chứng từ' : null,
+    balance.tracks_balance ? 'Theo dõi số dư' : null,
+    balance.allow_negative_balance ? 'Cho phép âm' : null,
     !type.is_active ? 'Ngừng áp dụng' : null,
   ].filter(Boolean) as string[];
 }
@@ -91,6 +124,8 @@ const blankTypeForm = {
   allowsFullDay: true,
   allowsHalfDay: true,
   requiresAttachment: false,
+  tracksBalance: false,
+  allowNegativeBalance: false,
 };
 
 export default function LeaveWorkspace({
@@ -101,7 +136,7 @@ export default function LeaveWorkspace({
   initialToday,
   initialError,
 }: {
-  initialData: LeaveRequestListResponse | null;
+  initialData: LeaveDataWithBalance | null;
   initialTypes: LeaveTypeListResponse | null;
   initialFrom: string;
   initialTo: string;
@@ -137,11 +172,32 @@ export default function LeaveWorkspace({
   const [cancelReason, setCancelReason] = useState('');
 
   const [typeForm, setTypeForm] = useState(blankTypeForm);
+  const [balanceEmployeeId, setBalanceEmployeeId] = useState(initialData?.selectedEmployee?.id ?? '');
+  const [balanceLeaveTypeId, setBalanceLeaveTypeId] = useState('');
+  const [balanceEntryType, setBalanceEntryType] = useState('OPENING_GRANT');
+  const [balanceDays, setBalanceDays] = useState('');
+  const [balanceEffectiveDate, setBalanceEffectiveDate] = useState(initialToday);
+  const [balanceReason, setBalanceReason] = useState('');
 
   const submitAttempt = useRef<Attempt>(null);
   const reviewAttempt = useRef<Attempt>(null);
   const cancelAttempt = useRef<Attempt>(null);
   const typeAttempt = useRef<Attempt>(null);
+  const balanceAttempt = useRef<Attempt>(null);
+
+  const balanceRows = data?.leaveBalances ?? [];
+  const balanceEntries = data?.balanceEntries ?? [];
+  const trackedTypes = useMemo(
+    () => (typesData?.leaveTypes ?? []).filter((item) => Boolean((item as LeaveType & LeaveTypeBalanceFields).tracks_balance)),
+    [typesData],
+  );
+  const balanceEmployees = useMemo(() => {
+    const unique = new Map<string, { id: string; label: string }>();
+    for (const row of balanceRows) {
+      unique.set(row.employee_id, { id: row.employee_id, label: `${row.employee_code} · ${row.employee_name}` });
+    }
+    return [...unique.values()];
+  }, [balanceRows]);
 
   const selectedType = useMemo(
     () => activeTypes.find((item) => item.id === leaveTypeId) ?? null,
@@ -177,8 +233,9 @@ export default function LeaveWorkspace({
       if (status) params.set('status', status);
       if (!data?.capabilities.selfOnly && employeeQuery.trim()) params.set('employeeQuery', employeeQuery.trim());
       if (!data?.capabilities.selfOnly && branchId) params.set('branchId', branchId);
-      const next = await requestJson<LeaveRequestListResponse>('/api/workforce/leave/requests?' + params.toString());
+      const next = await requestJson<LeaveDataWithBalance>('/api/workforce/leave/requests?' + params.toString());
       setData(next);
+      setBalanceEmployeeId(next.selectedEmployee?.id ?? '');
       if (branchId && !next.branches.some((branch) => branch.id === branchId)) setBranchId('');
       await loadTypes();
     } catch (loadError) {
@@ -277,7 +334,60 @@ export default function LeaveWorkspace({
     } finally { setBusy(false); }
   }
 
+  async function viewBalanceEmployee(employeeId: string, leaveTypeId?: string) {
+    if (!employeeId) return;
+    setBusy(true); setError(null); setNotice(null);
+    try {
+      const params = new URLSearchParams({ from, to, limit: '50', offset: '0', employeeId });
+      if (status) params.set('status', status);
+      if (branchId) params.set('branchId', branchId);
+      const next = await requestJson<LeaveDataWithBalance>('/api/workforce/leave/requests?' + params.toString());
+      setData(next);
+      setBalanceEmployeeId(employeeId);
+      if (leaveTypeId) setBalanceLeaveTypeId(leaveTypeId);
+      await loadTypes();
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Không tải được sổ phép');
+    } finally { setBusy(false); }
+  }
+
+  async function saveBalanceEntry(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const days = Number(balanceDays);
+    if (!balanceEmployeeId) { setError('Vui lòng chọn nhân sự cần cập nhật sổ phép.'); return; }
+    if (!balanceLeaveTypeId) { setError('Vui lòng chọn chế độ nghỉ có theo dõi số dư.'); return; }
+    if (!balanceEffectiveDate) { setError('Vui lòng chọn ngày hiệu lực.'); return; }
+    if (!Number.isFinite(days) || days === 0) { setError('Số ngày phải khác 0.'); return; }
+    if (balanceEntryType !== 'ADJUSTMENT' && days < 0) { setError('Phát sinh này phải nhập số ngày lớn hơn 0.'); return; }
+    if (!balanceReason.trim()) { setError('Vui lòng nhập lý do cập nhật sổ phép.'); return; }
+    const payload = {
+      employeeId: balanceEmployeeId,
+      leaveTypeId: balanceLeaveTypeId,
+      entryType: balanceEntryType,
+      days,
+      effectiveDate: balanceEffectiveDate,
+      reason: balanceReason.trim(),
+    };
+    const key = stableKey(balanceAttempt, 'web-leave-balance-entry', payload);
+    setBusy(true); setError(null); setNotice(null);
+    try {
+      await requestJson<unknown>('/api/workforce/leave/balances/entries', {
+        method: 'POST',
+        headers: { 'Idempotency-Key': key },
+        body: JSON.stringify(payload),
+      });
+      balanceAttempt.current = null;
+      setBalanceDays('');
+      setBalanceReason('');
+      await viewBalanceEmployee(balanceEmployeeId, balanceLeaveTypeId);
+      setNotice('Sổ phép đã được cập nhật.');
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Không cập nhật được sổ phép');
+    } finally { setBusy(false); }
+  }
+
   function editType(type: LeaveType) {
+    const balance = type as LeaveType & LeaveTypeBalanceFields;
     setTypeForm({
       id: type.id,
       expectedVersion: type.version,
@@ -290,6 +400,8 @@ export default function LeaveWorkspace({
       allowsFullDay: type.allows_full_day,
       allowsHalfDay: type.allows_half_day,
       requiresAttachment: type.requires_attachment,
+      tracksBalance: Boolean(balance.tracks_balance),
+      allowNegativeBalance: Boolean(balance.allow_negative_balance),
     });
   }
 
@@ -298,6 +410,7 @@ export default function LeaveWorkspace({
     if (!typeForm.name.trim()) { setError('Vui lòng nhập tên chế độ nghỉ.'); return; }
     if (!typeForm.id && !typeForm.code.trim()) { setError('Vui lòng nhập mã chế độ nghỉ.'); return; }
     if (!typeForm.allowsFullDay && !typeForm.allowsHalfDay) { setError('Chế độ nghỉ phải cho phép cả ngày hoặc nửa ngày.'); return; }
+    if (typeForm.allowNegativeBalance && !typeForm.tracksBalance) { setError('Chỉ được cho phép âm khi chế độ nghỉ có theo dõi số dư.'); return; }
     const payload = typeForm.id ? {
       id: typeForm.id,
       expectedVersion: typeForm.expectedVersion,
@@ -309,6 +422,8 @@ export default function LeaveWorkspace({
       allowsFullDay: typeForm.allowsFullDay,
       allowsHalfDay: typeForm.allowsHalfDay,
       requiresAttachment: typeForm.requiresAttachment,
+      tracksBalance: typeForm.tracksBalance,
+      allowNegativeBalance: typeForm.allowNegativeBalance,
     } : {
       code: typeForm.code.trim().toUpperCase(),
       name: typeForm.name.trim(),
@@ -319,6 +434,8 @@ export default function LeaveWorkspace({
       allowsFullDay: typeForm.allowsFullDay,
       allowsHalfDay: typeForm.allowsHalfDay,
       requiresAttachment: typeForm.requiresAttachment,
+      tracksBalance: typeForm.tracksBalance,
+      allowNegativeBalance: typeForm.allowNegativeBalance,
     };
     const operation = typeForm.id ? 'web-leave-type-update' : 'web-leave-type-create';
     const key = stableKey(typeAttempt, operation, payload);
@@ -422,6 +539,58 @@ export default function LeaveWorkspace({
               </div> : null}
             </section>
 
+            <section className={sharedStyles.tableSection}>
+              <div className={sharedStyles.sectionHeader}>
+                <div><p className={sharedStyles.panelKicker}>Số dư / Sổ phép</p><h2>Số dư theo ngày và lịch sử phát sinh</h2></div>
+                <span className={sharedStyles.panelChip}>Đến {dateLabel(data?.balanceAsOfDate ?? to)}</span>
+              </div>
+              <div className={sharedStyles.tableWrap}>
+                <table className={sharedStyles.table}>
+                  <thead><tr><th>Nhân sự</th><th>Chế độ nghỉ</th><th>Số dư</th><th>Phát sinh gần nhất</th><th>Xử lý</th></tr></thead>
+                  <tbody>
+                    {balanceRows.map((row) => <tr key={row.employee_id + ':' + row.leave_type_id}>
+                      <td><div className={styles.meta}><strong>{row.employee_code} · {row.employee_name}</strong><small>{row.branch_name || 'Chưa gán chi nhánh'}</small></div></td>
+                      <td><div className={styles.meta}><strong>{row.leave_type_name}</strong><small>{row.leave_type_code}{row.allow_negative_balance ? ' · Cho phép âm' : ''}</small></div></td>
+                      <td><strong>{Number(row.balance_days).toLocaleString('vi-VN', { maximumFractionDigits: 2 })} ngày</strong></td>
+                      <td>{dateLabel(row.last_activity_date)}</td>
+                      <td>{data?.capabilities.selfOnly
+                        ? <span>—</span>
+                        : <button type="button" className={styles.secondary} disabled={busy} onClick={() => void viewBalanceEmployee(row.employee_id, row.leave_type_id)}>Xem sổ</button>}</td>
+                    </tr>)}
+                    {!balanceRows.length ? <tr><td colSpan={5}><div className={sharedStyles.emptyState}>Chưa có chế độ nghỉ theo dõi số dư trong phạm vi đang xem.</div></td></tr> : null}
+                  </tbody>
+                </table>
+              </div>
+
+              {balanceEntries.length ? <div className={sharedStyles.tableWrap}>
+                <table className={sharedStyles.table}>
+                  <thead><tr><th>Ngày hiệu lực</th><th>Nhân sự</th><th>Chế độ nghỉ</th><th>Phát sinh</th><th>Lý do</th></tr></thead>
+                  <tbody>{balanceEntries.map((entry) => <tr key={entry.id}>
+                    <td>{dateLabel(entry.effective_date)}</td>
+                    <td>{entry.employee_code} · {entry.employee_name}</td>
+                    <td>{entry.leave_type_name_snapshot}</td>
+                    <td><strong>{entry.quantity_days > 0 ? '+' : ''}{Number(entry.quantity_days).toLocaleString('vi-VN', { maximumFractionDigits: 2 })} ngày</strong></td>
+                    <td>{entry.reason}</td>
+                  </tr>)}</tbody>
+                </table>
+              </div> : null}
+
+              {typesData?.capabilities.canManage ? <form onSubmit={(event) => void saveBalanceEntry(event)}>
+                <div className={styles.formGrid}>
+                  <label>Nhân sự<select value={balanceEmployeeId} onChange={(event) => setBalanceEmployeeId(event.target.value)} required><option value="">Chọn nhân sự</option>{balanceEmployees.map((employee) => <option key={employee.id} value={employee.id}>{employee.label}</option>)}</select></label>
+                  <label>Chế độ nghỉ<select value={balanceLeaveTypeId} onChange={(event) => setBalanceLeaveTypeId(event.target.value)} required><option value="">Chọn chế độ nghỉ</option>{trackedTypes.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}</select></label>
+                  <label>Loại phát sinh<select value={balanceEntryType} onChange={(event) => setBalanceEntryType(event.target.value)}><option value="OPENING_GRANT">Cấp đầu kỳ</option><option value="ACCRUAL">Phát sinh định kỳ</option><option value="ADJUSTMENT">Điều chỉnh</option><option value="CARRY_OVER">Chuyển năm</option><option value="EXPIRY">Hết hạn</option><option value="COMPENSATORY">Nghỉ bù</option></select></label>
+                  <label>Số ngày<input type="number" step="0.01" value={balanceDays} onChange={(event) => setBalanceDays(event.target.value)} placeholder={balanceEntryType === 'ADJUSTMENT' ? 'Có thể âm hoặc dương' : 'Nhập số ngày'} required /></label>
+                  <label>Ngày hiệu lực<input type="date" value={balanceEffectiveDate} onChange={(event) => setBalanceEffectiveDate(event.target.value)} required /></label>
+                  <label>Lý do<input value={balanceReason} onChange={(event) => setBalanceReason(event.target.value)} maxLength={1000} placeholder="Nội dung cấp phép hoặc điều chỉnh" required /></label>
+                </div>
+                <div className={styles.actions}>
+                  <button type="submit" className={styles.primary} disabled={busy || !trackedTypes.length}>Ghi sổ phép</button>
+                  {balanceEmployeeId && !data?.capabilities.selfOnly ? <button type="button" className={styles.secondary} disabled={busy} onClick={() => { setBalanceEmployeeId(''); setBalanceLeaveTypeId(''); void load(0); }}>Xem lại tất cả</button> : null}
+                </div>
+              </form> : null}
+            </section>
+
             {typesData?.capabilities.canManage ? <section className={styles.panel}>
               <h3>Chế độ nghỉ</h3>
               <p className={styles.note}>Thiết lập áp dụng cho Công Ty. Thay đổi sau này không làm đổi nội dung các đơn đã gửi trước đó.</p>
@@ -438,6 +607,8 @@ export default function LeaveWorkspace({
                   <label><input type="checkbox" checked={typeForm.allowsFullDay} onChange={(event) => setTypeForm((current) => ({ ...current, allowsFullDay: event.target.checked }))} />Cho phép cả ngày</label>
                   <label><input type="checkbox" checked={typeForm.allowsHalfDay} onChange={(event) => setTypeForm((current) => ({ ...current, allowsHalfDay: event.target.checked }))} />Cho phép nửa ngày</label>
                   <label><input type="checkbox" checked={typeForm.requiresAttachment} onChange={(event) => setTypeForm((current) => ({ ...current, requiresAttachment: event.target.checked }))} />Cần chứng từ</label>
+                  <label><input type="checkbox" checked={typeForm.tracksBalance} onChange={(event) => setTypeForm((current) => ({ ...current, tracksBalance: event.target.checked, allowNegativeBalance: event.target.checked ? current.allowNegativeBalance : false }))} />Theo dõi số dư phép</label>
+                  <label><input type="checkbox" checked={typeForm.allowNegativeBalance} disabled={!typeForm.tracksBalance} onChange={(event) => setTypeForm((current) => ({ ...current, allowNegativeBalance: event.target.checked }))} />Cho phép số dư âm</label>
                 </div>
                 {configWarning ? <div className={styles.warning} role="status">{configWarning}</div> : null}
                 <div className={styles.actions}><button type="submit" className={styles.primary} disabled={busy}>{typeForm.id ? 'Lưu thay đổi' : 'Thêm chế độ nghỉ'}</button>{typeForm.id ? <button type="button" className={styles.secondary} disabled={busy} onClick={() => setTypeForm(blankTypeForm)}>Hủy sửa</button> : null}</div>

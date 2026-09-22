@@ -59,7 +59,7 @@ test('Issue #1110 Lô 7 blocks invalid request shape in UI and warns without blo
   assert.match(workspace, /tự động duyệt khi nhân viên gửi đơn/);
 });
 
-test('Issue #1110 Lô 7 does not invent leave balance when Lô 6 has no canonical balance contract', async () => {
+test('Issue #1110 Lô 7 keeps the original leave request surface compatible after Issue #1140 Lô 4', async () => {
   const [types, page, workspace] = await Promise.all([
     source('lib/workforce-types.ts'),
     source('app/workforce/leave/page.tsx'),
@@ -69,5 +69,6 @@ test('Issue #1110 Lô 7 does not invent leave balance when Lô 6 has no canonica
   assert.match(types, /LeaveRequestListResponse/);
   assert.match(page, /listLeaveRequests/);
   assert.match(page, /listLeaveTypes/);
-  assert.doesNotMatch(workspace, /Số dư phép|leaveBalance|remainingBalance/);
+  assert.match(workspace, /Nghỉ và đơn nghỉ/);
+  assert.match(workspace, /Số dư \/ Sổ phép/);
 });
