@@ -80,3 +80,30 @@
 @media (max-width: 620px) {
   .summaryStrip { grid-template-columns: 1fr; }
 }
+
+.detailSection label {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+  color: #625952;
+  font-size: 0.72rem;
+  font-weight: 680;
+}
+.detailSection input,
+.detailSection select,
+.detailSection textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid #d8d1cb;
+  border-radius: 8px;
+  background: #fff;
+  color: #302a26;
+  font: inherit;
+  font-size: 0.78rem;
+}
+.detailSection textarea {
+  min-height: 82px;
+  resize: vertical;
+}

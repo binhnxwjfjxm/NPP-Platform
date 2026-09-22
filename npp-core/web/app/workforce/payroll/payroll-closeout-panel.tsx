@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import sharedStyles from '../../organization/organization.module.css';
-import styles from '../overtime/overtime.module.css';
+import styles from './payroll-aggregation.module.css';
 
 type Period = {
   id: string;
