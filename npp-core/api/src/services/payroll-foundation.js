@@ -79,10 +79,15 @@ export async function listPayrollFoundation(client, {
     : periods[0] ?? null;
   if (payrollPeriodId && !selectedPeriod) return fail('PAYROLL_PERIOD_NOT_FOUND', 'Kỳ lương không tồn tại trong phạm vi được cấp');
   const asOfDate = selectedPeriod?.period_end ?? businessDate();
-  const [employees, periodComponents] = await Promise.all([
-    payrollRepo.listPayrollEmployees(client, { installationId, asOfDate, companyScope, branchIds }),
-    payrollRepo.listPeriodComponents(client, { installationId, payrollPeriodId: selectedPeriod?.id ?? null }),
-  ]);
+  const employees = await payrollRepo.listPayrollEmployees(client, {
+    installationId, asOfDate, companyScope, branchIds,
+  });
+  const periodComponents = selectedPeriod
+    ? await payrollRepo.listPeriodComponents(client, {
+        installationId,
+        payrollPeriodId: selectedPeriod.id,
+      })
+    : [];
   return {
     ok: true,
     data: {
