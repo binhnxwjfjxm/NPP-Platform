@@ -138,6 +138,7 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   migration('154_workforce_payroll_foundation', 'shared/154_workforce_payroll_foundation.sql'),
   migration('155_workforce_payroll_aggregation', 'shared/155_workforce_payroll_aggregation.sql'),
   migration('156_workforce_payroll_closeout', 'shared/156_workforce_payroll_closeout.sql'),
+  migration('157_workforce_face_attendance', 'shared/157_workforce_face_attendance.sql'),
 ]);
 
 export { runMigrations };

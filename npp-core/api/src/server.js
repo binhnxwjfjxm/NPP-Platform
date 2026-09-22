@@ -31,6 +31,7 @@ import { executeR2ContractOperation } from './storage/r2-contract.js';
 import { handleOrganizationRoutes } from './routes/organization.js';
 import { handleEmployeeRoutes } from './routes/employees.js';
 import { handleWorkforceRoutes } from './routes/workforce.js';
+import { handleWorkforceFaceRoutes } from './routes/workforce-face.js';
 import { handleAccessUserRoutes } from './routes/access-users.js';
 import { handleAccessRoutes } from './routes/access.js';
 import { handleCustomerRoutes } from './routes/customers.js';
@@ -55,7 +56,7 @@ import { handleAiUsageRoutes } from './routes/ai-usage.js';
 import { handleAdminAiAssistantRoutes } from './routes/admin-ai-assistant.js';
 
 const __filename = fileURLToPath(import.meta.url);
-const CORS_ALLOWED_HEADERS = 'authorization, content-type, idempotency-key, x-request-id';
+const CORS_ALLOWED_HEADERS = 'authorization, content-type, idempotency-key, x-request-id, x-npp-face-device-token';
 
 function createError(code, message, details = {}, retryable = false, statusCode = 500) {
   return { code, message, details, retryable, statusCode };
@@ -478,6 +479,7 @@ export function createCoreApiServer(options = {}) {
       backupRunner: options.backupRunner,
     };
 
+    if (await handleWorkforceFaceRoutes(req, res, routeContext)) return;
     if (await handleWorkforceRoutes(req, res, routeContext)) return;
     if (await handleEmployeeRoutes(req, res, routeContext)) return;
     if (await handleAccessUserRoutes(req, res, routeContext)) return;
