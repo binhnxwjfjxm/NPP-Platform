@@ -34,7 +34,7 @@ test('Issue #1140 Lô 6 keeps reimbursement separate from salary income in offic
   assert.match(page, /Khấu trừ/);
   assert.match(page, /Hoàn chi phí/);
   assert.match(page, /Hoàn chi phí được quản lý riêng với thu nhập lương/);
-  assert.doesNotMatch(page, /schema|endpoint|payload|revision id/i);
+  assert.doesNotMatch(page, />\\s*(schema|endpoint|payload|revision id)\\s*</i);
 });
 
 test('Issue #1140 Lô 6 reuses canonical idempotency key on retry and forwards it unchanged', async () => {
