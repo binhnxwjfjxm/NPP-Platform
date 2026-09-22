@@ -7,6 +7,7 @@ import shellStyles from '../../components/app-shell.module.css';
 import sharedStyles from '../../organization/organization.module.css';
 import styles from '../overtime/overtime.module.css';
 import { PayrollAggregationPanel, type PayrollCalculation } from './payroll-aggregation-panel';
+import { PayrollCloseoutPanel, type PayrollCloseoutData } from './payroll-closeout-panel';
 
 type Tab = 'board' | 'reconcile' | 'settings' | 'components' | 'payslips' | 'history';
 type AttemptMap = Record<string, { payload: string; key: string }>;
@@ -121,8 +122,9 @@ type PayrollFoundationData = {
   fixedComponents: FixedComponent[];
   periodComponents: PeriodComponent[];
   calculation: PayrollCalculation | null;
+  closeout: PayrollCloseoutData;
   asOfDate: string;
-  capabilities: { canManage: boolean };
+  capabilities: { canManage: boolean; canClose: boolean; canAdjust: boolean; canExport: boolean };
 };
 
 type ApiEnvelope<T> = {
@@ -366,6 +368,26 @@ export default function PayrollPage() {
     if (result) await load(data.selectedPeriod.id);
   }
 
+  async function closePayroll() {
+    if (!data?.selectedPeriod) return;
+    const result = await mutate(
+      'web-payroll-close',
+      { command: 'CLOSE', payrollPeriodId: data.selectedPeriod.id },
+      'Đã chốt kỳ lương và tạo phiếu lương bất biến.',
+    );
+    if (result) await load(data.selectedPeriod.id);
+  }
+
+  async function adjustPayroll(input: { employeeId: string; componentTypeId: string; direction: 'ADD' | 'REVERSE'; amount: string; reason: string }) {
+    if (!data?.selectedPeriod) return;
+    const result = await mutate(
+      'web-payroll-adjust',
+      { command: 'ADJUST', payrollPeriodId: data.selectedPeriod.id, ...input },
+      'Đã ghi điều chỉnh lương và tạo phiên bản phiếu lương mới.',
+    );
+    if (result) await load(data.selectedPeriod.id);
+  }
+
   async function saveSalary(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const payload = {
@@ -580,6 +602,19 @@ export default function PayrollPage() {
                   busy={busy}
                   onAggregate={aggregatePayroll}
                   onReconcile={reconcilePayroll}
+                />
+                <PayrollCloseoutPanel
+                  mode="closeout"
+                  period={selectedPeriod}
+                  closeout={data?.closeout ?? null}
+                  componentTypes={data?.componentTypes ?? []}
+                  canClose={Boolean(data?.capabilities.canClose)}
+                  canAdjust={Boolean(data?.capabilities.canAdjust)}
+                  canExport={Boolean(data?.capabilities.canExport)}
+                  busy={busy}
+                  onClose={closePayroll}
+                  onAdjust={adjustPayroll}
+                  onOpenPeriod={(periodId) => { setTab('board'); void load(periodId); }}
                 />
               </section>
             ) : null}
@@ -850,38 +885,35 @@ export default function PayrollPage() {
         ) : null}
 
         {tab === 'payslips' ? (
-          <section className={sharedStyles.tableSection}>
-            <div className={sharedStyles.sectionHeader}>
-              <div><p className={sharedStyles.panelKicker}>Phiếu lương</p><h2>Phiếu lương nhân sự</h2></div>
-              <span className={sharedStyles.panelChip}>{selectedPeriod ? PERIOD_STATUS[selectedPeriod.status] : 'Chưa chọn kỳ'}</span>
-            </div>
-            <div className={sharedStyles.emptyState}>Phiếu lương chỉ xuất hiện sau khi kỳ lương được chốt.</div>
-          </section>
+          <PayrollCloseoutPanel
+            mode="payslips"
+            period={selectedPeriod}
+            closeout={data?.closeout ?? null}
+            componentTypes={data?.componentTypes ?? []}
+            canClose={Boolean(data?.capabilities.canClose)}
+            canAdjust={Boolean(data?.capabilities.canAdjust)}
+            canExport={Boolean(data?.capabilities.canExport)}
+            busy={busy}
+            onClose={closePayroll}
+            onAdjust={adjustPayroll}
+            onOpenPeriod={(periodId) => { setTab('board'); void load(periodId); }}
+          />
         ) : null}
 
         {tab === 'history' ? (
-          <section className={sharedStyles.tableSection}>
-            <div className={sharedStyles.sectionHeader}>
-              <div><p className={sharedStyles.panelKicker}>Lịch sử</p><h2>Các kỳ lương đã tạo</h2></div>
-              <span className={sharedStyles.panelChip}>Giữ nguyên nguồn kỳ công</span>
-            </div>
-            <div className={sharedStyles.tableWrap}>
-              <table className={sharedStyles.table}>
-                <thead><tr><th>Kỳ</th><th>Nguồn bảng công</th><th>Trạng thái</th><th>Xử lý</th></tr></thead>
-                <tbody>
-                  {(data?.periods ?? []).map((period) => (
-                    <tr key={period.id}>
-                      <td>{periodLabel(period)}</td>
-                      <td>Bản chốt lần {period.attendance_revision}</td>
-                      <td><span className={styles.status}>{PERIOD_STATUS[period.status]}</span></td>
-                      <td><button type="button" className={styles.secondary} disabled={busy} onClick={() => { setTab('board'); void load(period.id); }}>Mở kỳ</button></td>
-                    </tr>
-                  ))}
-                  {!data?.periods?.length ? <tr><td colSpan={4}><div className={sharedStyles.emptyState}>Chưa có lịch sử kỳ lương.</div></td></tr> : null}
-                </tbody>
-              </table>
-            </div>
-          </section>
+          <PayrollCloseoutPanel
+            mode="history"
+            period={selectedPeriod}
+            closeout={data?.closeout ?? null}
+            componentTypes={data?.componentTypes ?? []}
+            canClose={Boolean(data?.capabilities.canClose)}
+            canAdjust={Boolean(data?.capabilities.canAdjust)}
+            canExport={Boolean(data?.capabilities.canExport)}
+            busy={busy}
+            onClose={closePayroll}
+            onAdjust={adjustPayroll}
+            onOpenPeriod={(periodId) => { setTab('board'); void load(periodId); }}
+          />
         ) : null}
       </section>
     </AppShell>

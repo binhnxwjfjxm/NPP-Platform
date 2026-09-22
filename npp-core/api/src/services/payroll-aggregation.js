@@ -307,7 +307,7 @@ export function calculatePayrollSnapshot({
   };
 }
 
-async function buildCalculation(client, source) {
+export async function buildPayrollCalculation(client, source) {
   const inputs = await payrollAggregationRepo.loadPayrollCalculationInputs(client, source);
   const manifest = sourceManifest(source, inputs.salaryProfiles, inputs.fixedComponents, inputs.periodComponents);
   const calculated = calculatePayrollSnapshot({
@@ -387,7 +387,7 @@ async function aggregate(client, {
   if (!resolved.ok) return resolved;
   const source = resolved.source;
   if (source.status === 'CLOSED') return fail('PAYROLL_PERIOD_CLOSED', 'Kỳ lương đã chốt, không thể tổng hợp lại trực tiếp');
-  const calculation = await buildCalculation(client, source);
+  const calculation = await buildPayrollCalculation(client, source);
 
   if (
     Number(source.calculation_revision ?? 0) > 0
@@ -469,7 +469,7 @@ async function reconcile(client, {
   if (Number(source.calculation_revision ?? 0) < 1 || !source.calculation_fingerprint) {
     return fail('PAYROLL_CALCULATION_MISSING', 'Cần tổng hợp lương trước khi đối soát');
   }
-  const calculation = await buildCalculation(client, source);
+  const calculation = await buildPayrollCalculation(client, source);
   if (calculation.sourceFingerprint !== source.calculation_fingerprint) {
     return fail('PAYROLL_PERIOD_CHANGED', 'Dữ liệu tính lương đã thay đổi; cần tổng hợp lại trước khi đối soát');
   }

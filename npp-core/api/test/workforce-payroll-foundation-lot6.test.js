@@ -66,7 +66,8 @@ test('Issue #1140 Lô 6 uses deny-by-default payroll permissions and shared idem
   assert.match(permissions, /corePayrollRead: 'core\.payroll\.read'/);
   assert.match(permissions, /corePayrollManage: 'core\.payroll\.manage'/);
   assert.match(routes, /route === '\/payroll'/);
-  assert.match(routes, /method === 'POST' \? canManagePayroll : \(canReadPayroll \|\| canManagePayroll\)/);
+  assert.match(routes, /canManagePayroll \|\| canClosePayroll \|\| canAdjustPayroll/);
+  assert.match(routes, /canReadPayroll \|\| canManagePayroll \|\| canClosePayroll \|\| canAdjustPayroll \|\| canExportPayroll/);
   assert.match(routes, /runIdempotentMutation\(req, res, context/);
   assert.match(routes, /route: '\/api\/workforce\/payroll'/);
   assert.match(routes, /withAuditOutboxTransaction/);
