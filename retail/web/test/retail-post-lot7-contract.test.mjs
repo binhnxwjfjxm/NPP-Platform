@@ -59,19 +59,27 @@ test('xóa dòng giỏ rõ ràng, số lượng về 0 xóa dòng và không see
   assert.doesNotMatch(addSelected, /cartFromOrder\(order\)/);
 });
 
-test('điều hướng Retail đúng bốn mục và Trang chủ không có nút quay lại', async () => {
-  const page = await readWorkspace();
+test('điều hướng Retail đưa Tồn kho xuống bottom nav và bỏ thanh chuyển chế độ phía trên', async () => {
+  const [page, root, inventoryStyles] = await Promise.all([
+    readWorkspace(),
+    read('app/retail-root.tsx'),
+    read('app/retail-inventory.module.css'),
+  ]);
   assert.match(page, /type RetailTab = 'home' \| 'entry' \| 'orders' \| 'settings'/);
   assert.match(page, />Trang chủ<\/button>/);
   assert.match(page, />Lên đơn<\/button>/);
   assert.match(page, />Đơn hàng<\/button>/);
+  assert.match(page, />Tồn kho<\/button>/);
   assert.match(page, />Cài đặt<\/button>/);
+  assert.match(root, /<RetailInventoryPanel warehouses=\{inventoryAccess\.warehouses\} \/>/);
+  assert.match(root, /className="bottom-nav" aria-label="Điều hướng Retail"/);
+  assert.doesNotMatch(root, /modeTabs|Chức năng Retail/);
+  assert.doesNotMatch(inventoryStyles, /\.modeTabs/);
   assert.match(page, /activeTab === 'home' \? <span className="topbar-spacer"/);
   assert.doesNotMatch(page, /activeTab === 'account'/);
   assert.match(page, /action="\/api\/auth\/logout"/);
   assert.doesNotMatch(page, /window\.history\.back/);
 });
-
 test('Cài đặt dùng hàng có chevron và bottom sheet cho Tài khoản Thiết lập in Mẫu phiếu Đăng xuất', async () => {
   const [page, panel, bridge] = await Promise.all([
     readWorkspace(), read('app/printer-settings-panel.tsx'), read('lib/printer-bridge.ts'),
