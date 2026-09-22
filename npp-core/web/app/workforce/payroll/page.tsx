@@ -6,6 +6,7 @@ import { AppShell } from '../../components/app-shell';
 import shellStyles from '../../components/app-shell.module.css';
 import sharedStyles from '../../organization/organization.module.css';
 import styles from '../overtime/overtime.module.css';
+import { PayrollAggregationPanel, type PayrollCalculation } from './payroll-aggregation-panel';
 
 type Tab = 'board' | 'reconcile' | 'settings' | 'components' | 'payslips' | 'history';
 type AttemptMap = Record<string, { payload: string; key: string }>;
@@ -119,6 +120,7 @@ type PayrollFoundationData = {
   salaryProfiles: SalaryProfile[];
   fixedComponents: FixedComponent[];
   periodComponents: PeriodComponent[];
+  calculation: PayrollCalculation | null;
   asOfDate: string;
   capabilities: { canManage: boolean };
 };
@@ -339,6 +341,31 @@ export default function PayrollPage() {
     }
   }
 
+  async function aggregatePayroll() {
+    if (!data?.selectedPeriod) return;
+    const result = await mutate(
+      'web-payroll-aggregate',
+      { command: 'AGGREGATE', payrollPeriodId: data.selectedPeriod.id },
+      'Đã tổng hợp lại bảng lương từ dữ liệu hiện hành của kỳ.',
+    );
+    if (result) await load(data.selectedPeriod.id);
+  }
+
+  async function reconcilePayroll(acknowledgeWarnings: boolean, note: string) {
+    if (!data?.selectedPeriod) return;
+    const result = await mutate(
+      'web-payroll-reconcile',
+      {
+        command: 'RECONCILE',
+        payrollPeriodId: data.selectedPeriod.id,
+        acknowledgeWarnings,
+        note,
+      },
+      'Đã đối soát kỳ lương.',
+    );
+    if (result) await load(data.selectedPeriod.id);
+  }
+
   async function saveSalary(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const payload = {
@@ -545,9 +572,15 @@ export default function PayrollPage() {
                   </div>
                   <span className={sharedStyles.panelChip}>Bản chốt công lần {selectedPeriod.attendance_revision}</span>
                 </div>
-                <div className={sharedStyles.emptyState}>
-                  Kỳ đã có nguồn bảng công cố định và sẵn sàng để tổng hợp khi mức lương, khoản cố định và khoản phát sinh đã được thiết lập đầy đủ.
-                </div>
+                <PayrollAggregationPanel
+                  mode="board"
+                  period={selectedPeriod}
+                  calculation={data?.calculation ?? null}
+                  canManage={Boolean(data?.capabilities.canManage)}
+                  busy={busy}
+                  onAggregate={aggregatePayroll}
+                  onReconcile={reconcilePayroll}
+                />
               </section>
             ) : null}
           </div>
@@ -559,9 +592,17 @@ export default function PayrollPage() {
               <div><p className={sharedStyles.panelKicker}>Đối soát</p><h2>Kiểm tra kỳ lương</h2></div>
               <span className={sharedStyles.panelChip}>{selectedPeriod ? PERIOD_STATUS[selectedPeriod.status] : 'Chưa chọn kỳ'}</span>
             </div>
-            <div className={sharedStyles.emptyState}>
-              Chưa có số liệu tổng hợp để đối soát. Dữ liệu nền hiện được giữ nguyên để chuẩn bị cho bước tổng hợp lương.
-            </div>
+            {selectedPeriod ? (
+              <PayrollAggregationPanel
+                mode="reconcile"
+                period={selectedPeriod}
+                calculation={data?.calculation ?? null}
+                canManage={Boolean(data?.capabilities.canManage)}
+                busy={busy}
+                onAggregate={aggregatePayroll}
+                onReconcile={reconcilePayroll}
+              />
+            ) : <div className={sharedStyles.emptyState}>Chọn một kỳ lương để đối soát.</div>}
           </section>
         ) : null}
 

@@ -1,0 +1,82 @@
+.summaryStrip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.summaryItem {
+  min-width: 0;
+  padding: 9px 11px;
+  border: 1px solid #e1dbd5;
+  border-radius: 9px;
+  background: #f8f6f4;
+}
+.summaryItem span,
+.summaryItem small {
+  display: block;
+  color: #786e68;
+  font-size: 0.68rem;
+}
+.summaryItem strong {
+  display: block;
+  margin: 3px 0;
+  color: #49352c;
+  font-size: 0.98rem;
+}
+.issueBox {
+  display: grid;
+  gap: 7px;
+  padding: 10px 12px;
+  border: 1px solid #e3d9d2;
+  border-radius: 9px;
+  background: #fbf9f7;
+}
+.issueBox strong { color: #573b2f; font-size: 0.78rem; }
+.issueList { display: grid; gap: 5px; margin: 0; padding-left: 18px; color: #675d57; font-size: 0.74rem; }
+.issueList li { line-height: 1.4; }
+.actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.inlineMeta { color: #766b65; font-size: 0.7rem; }
+.employeeButton {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #503428;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: left;
+}
+.employeeButton:hover { text-decoration: underline; }
+.metricCell { white-space: nowrap; }
+.detailGrid { display: grid; gap: 10px; }
+.detailSection {
+  padding: 11px 12px;
+  border: 1px solid #e5dfda;
+  border-radius: 9px;
+  background: #fbfaf9;
+}
+.detailSection h4 { margin: 0 0 8px; color: #54382c; font-size: 0.8rem; }
+.detailRow { display: flex; justify-content: space-between; gap: 14px; padding: 4px 0; color: #665d57; font-size: 0.74rem; }
+.detailRow strong { color: #403631; text-align: right; }
+.reconcileForm { display: grid; gap: 10px; }
+.reconcileForm textarea {
+  min-height: 82px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 10px;
+  border: 1px solid #d8d1cb;
+  border-radius: 8px;
+  background: #fff;
+  color: #302a26;
+  font: inherit;
+  font-size: 0.78rem;
+  resize: vertical;
+}
+.reconcileForm label { color: #625952; font-size: 0.72rem; font-weight: 680; }
+.checkRow { display: flex; align-items: flex-start; gap: 8px; }
+.checkRow input { margin-top: 2px; }
+@media (max-width: 900px) {
+  .summaryStrip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 620px) {
+  .summaryStrip { grid-template-columns: 1fr; }
+}
