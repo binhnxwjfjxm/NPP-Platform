@@ -287,6 +287,16 @@ export function getAttendancePayrollInput<T>(requestId: string, periodId: string
   });
 }
 
+export function getPayrollFoundation<T>(requestId: string, searchParams: URLSearchParams): Promise<T> {
+  return requestCore<T>({ path: '/payroll', method: 'GET', requestId, searchParams });
+}
+export function mutatePayrollFoundation<T>(requestId: string, body: unknown, idempotencyKey?: string): Promise<T> {
+  return requestCore<T>({
+    path: '/payroll', method: 'POST', requestId, body,
+    idempotencyKey: mutationKey(idempotencyKey, 'payroll-foundation'),
+  });
+}
+
 export function listAttendanceAdjustments<T>(requestId: string, searchParams: URLSearchParams): Promise<T> {
   return requestCore<T>({ path: '/attendance/adjustments', method: 'GET', requestId, searchParams });
 }
