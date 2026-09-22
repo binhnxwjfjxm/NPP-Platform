@@ -35,7 +35,6 @@ CREATE TABLE IF NOT EXISTS shared.payroll_periods (
   updated_by text NOT NULL CHECK (char_length(updated_by) BETWEEN 1 AND 128),
   CONSTRAINT payroll_periods_installation_id_unique UNIQUE (installation_id, id),
   CONSTRAINT payroll_periods_attendance_unique UNIQUE (installation_id, attendance_period_id, attendance_revision),
-  CONSTRAINT payroll_periods_scope_unique UNIQUE (installation_id, scope_key, period_start, period_end),
   CONSTRAINT payroll_periods_range_check CHECK (period_end >= period_start),
   CONSTRAINT payroll_periods_branch_fk
     FOREIGN KEY (installation_id, branch_id)
