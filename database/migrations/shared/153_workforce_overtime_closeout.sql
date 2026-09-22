@@ -5,10 +5,10 @@ INSERT INTO shared.permission_catalog (
   permission_key, module, label, description, is_system, created_at
 ) VALUES
   ('core.overtime.self-request', 'Nhân sự', 'Đăng ký tăng ca', 'Cho phép nhân viên đăng ký và xem tăng ca của chính mình theo chính sách làm việc hiệu lực.', true, now()),
-  ('core.overtime.read', 'Nhân sự', 'Xem tăng ca', 'Cho phép đọc yêu cầu tăng ca trong phạm vi nhân sự được cấp.', true, now()),
+  ('core.overtime.read', 'Nhân sự', 'Xem tăng ca', 'Cho phép đọc hồ sơ tăng ca trong phạm vi nhân sự được cấp.', true, now()),
   ('core.overtime.approve', 'Nhân sự', 'Duyệt và ghi nhận tăng ca', 'Cho phép duyệt, từ chối và ghi nhận thời gian tăng ca thực tế trong phạm vi được cấp.', true, now()),
   ('core.overtime.confirm', 'Nhân sự', 'Xác nhận giờ tăng ca được tính', 'Cho phép xác nhận số phút tăng ca đủ điều kiện chuyển sang đầu vào tính lương.', true, now()),
-  ('core.attendance.reconcile', 'Nhân sự', 'Đối soát kỳ công', 'Cho phép tổng hợp, đối soát và chuẩn bị kỳ công trước khi chốt; chốt kỳ vẫn yêu cầu quyền khóa kỳ công.', true, now())
+  ('core.attendance.reconcile', 'Nhân sự', 'Đối soát kỳ công', 'Cho phép tổng hợp và đối soát kỳ công; chốt kỳ vẫn yêu cầu quyền khóa kỳ công.', true, now())
 ON CONFLICT (permission_key) DO UPDATE
 SET module = EXCLUDED.module,
     label = EXCLUDED.label,

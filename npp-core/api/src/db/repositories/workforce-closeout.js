@@ -10,7 +10,17 @@ const OVERTIME_COLUMNS = `r.id, r.installation_id, r.employee_id,
   r.confirmed_minutes, r.confirm_note, r.confirmed_by_actor_id, r.confirmed_at,
   r.version, r.request_id, r.created_at, r.updated_at`;
 
-const OVERTIME_RETURNING_COLUMNS = `id, installation_id, employee_id,\n  to_char(work_date, 'YYYY-MM-DD') AS work_date,\n  requested_minutes, reason, policy_id_snapshot, policy_code_snapshot,\n  policy_version_snapshot, overtime_requires_approval_snapshot, status,\n  requested_by_actor_id, requested_by_employee_id,\n  reviewed_by_actor_id, review_reason, reviewed_at,\n  actual_minutes, actual_note, actual_recorded_by_actor_id, actual_recorded_at,\n  confirmed_minutes, confirm_note, confirmed_by_actor_id, confirmed_at,\n  version, request_id, created_at, updated_at`;\n\nconst PERIOD_COLUMNS = `p.id, p.installation_id, p.branch_id, p.scope_key,
+const OVERTIME_RETURNING_COLUMNS = `id, installation_id, employee_id,
+  to_char(work_date, 'YYYY-MM-DD') AS work_date,
+  requested_minutes, reason, policy_id_snapshot, policy_code_snapshot,
+  policy_version_snapshot, overtime_requires_approval_snapshot, status,
+  requested_by_actor_id, requested_by_employee_id,
+  reviewed_by_actor_id, review_reason, reviewed_at,
+  actual_minutes, actual_note, actual_recorded_by_actor_id, actual_recorded_at,
+  confirmed_minutes, confirm_note, confirmed_by_actor_id, confirmed_at,
+  version, request_id, created_at, updated_at`;
+
+const PERIOD_COLUMNS = `p.id, p.installation_id, p.branch_id, p.scope_key,
   to_char(p.period_start, 'YYYY-MM-DD') AS period_start,
   to_char(p.period_end, 'YYYY-MM-DD') AS period_end,
   p.status, p.issue_summary, p.source_fingerprint, p.reconciled_fingerprint,

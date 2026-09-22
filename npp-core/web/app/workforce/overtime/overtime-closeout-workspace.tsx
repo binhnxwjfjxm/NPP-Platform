@@ -66,7 +66,7 @@ function hours(minutes: number | null | undefined) {
   return (Number(minutes ?? 0) / 60).toLocaleString('vi-VN', { maximumFractionDigits: 2 });
 }
 function issueTotal(group: Record<string, number | undefined> | undefined) {
-  return Object.values(group ?? {}).reduce((sum, value) => sum + Number(value ?? 0), 0);
+  return Object.values(group ?? {}).reduce<number>((sum, value) => sum + Number(value ?? 0), 0);
 }
 
 export default function OvertimeCloseoutWorkspace({
