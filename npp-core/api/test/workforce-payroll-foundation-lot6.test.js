@@ -7,15 +7,18 @@ async function source(path) {
 }
 
 test('Issue #1140 Lô 6 pins payroll periods to immutable closed attendance snapshots', async () => {
-  const [migration, service] = await Promise.all([
+  const [migration, service, repository] = await Promise.all([
     source('../../database/migrations/shared/154_workforce_payroll_foundation.sql'),
     source('src/services/payroll-foundation.js'),
+    source('src/db/repositories/payroll-foundation.js'),
   ]);
   assert.match(migration, /FOREIGN KEY \(installation_id, attendance_period_id, attendance_revision\)/);
   assert.match(migration, /REFERENCES shared\.attendance_period_snapshots \(installation_id, period_id, revision\)/);
   assert.match(migration, /attendance_source_fingerprint/);
   assert.match(service, /source\.status !== 'CLOSED'/);
   assert.match(service, /sourceFingerprint: source\.source_fingerprint/);
+  assert.match(service, /getPayrollPeriodEmployee/);
+  assert.match(repository, /jsonb_array_elements\(COALESCE\(s\.snapshot->'employees'/);
   assert.doesNotMatch(service, /UPDATE shared\.attendance_/);
 });
 
