@@ -67,7 +67,7 @@ Không dùng CA test `npp958-company.test` cho production. Không mang `NODE_EXT
 | Delivery | `npp-delivery` | `CORE_API_INTERNAL_URL` -> Công Ty VPS HTTPS |
 | Retail | `npp-retail` | `CORE_API_INTERNAL_URL` -> Công Ty VPS HTTPS |
 | Customer Ordering | `customer-ordering` | `CORE_API_BASE_URL` -> Công Ty VPS HTTPS |
-| Website | `nguyenlieuhungphat` | không có backend binding trong contract hiện tại; giữ nguyên |
+| Website | `nguyenlieuhungphat` | `COMPANY_API_URL` -> Công Ty VPS HTTPS cho ghi nhận AI và xác thực gateway Ordering |
 
 MCP Field có **hai dependency độc lập**: đăng nhập/phiên nhân sự đi qua Công Ty, còn nghiệp vụ MCP đi qua backend MCP. Không được chỉ cấu hình một trong hai rồi coi frontend MCP đã hoàn tất cutover.
 
@@ -92,7 +92,7 @@ Không có `push`, `pull_request` hay auto-deploy trigger cho production mutatio
 - **Gate B — Preflight:** exact main/CI, 7 Vercel projects, 3 VPS, PostgreSQL 17, nginx/Node, proxy 300 listeners và production config nguồn đều xác minh được.
 - **Gate C — Final DB:** write-freeze Heroku, fresh backup, restore `npp_production`, migration/reconciliation PASS, final dump R2 PASS.
 - **Gate D — Runtime + HTTPS:** production roles/env, exact `CUTOVER_SHA` deploy lên 2 VPS, trusted HTTPS health PASS, proxy không suy giảm.
-- **Gate E — Frontend wiring:** 6 frontend consumers đổi đúng binding và được redeploy; Website xác nhận N/A.
+- **Gate E — Frontend wiring:** đủ 7 frontend được đối chiếu; mọi frontend có backend dependency đổi đúng binding và được redeploy, gồm Website `COMPANY_API_URL` -> Công Ty VPS.
 - **Gate F — Authority proof:** business ingress mở, URL production thật smoke PASS, Heroku web formations vẫn `0`, VPS DB/runtime là authority, proxy 300 listeners còn nguyên.
 
 ## 8. Rollback boundary
