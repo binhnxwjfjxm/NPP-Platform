@@ -78,10 +78,16 @@ export async function listPayrollFoundation(client, {
     ? periods.find((period) => String(period.id) === payrollPeriodId) ?? null
     : periods[0] ?? null;
   if (payrollPeriodId && !selectedPeriod) return fail('PAYROLL_PERIOD_NOT_FOUND', 'Kỳ lương không tồn tại trong phạm vi được cấp');
-  const asOfDate = selectedPeriod?.period_end ?? businessDate();
+  const asOfDate = businessDate();
   const employees = await payrollRepo.listPayrollEmployees(client, {
     installationId, asOfDate, companyScope, branchIds,
   });
+  const periodEmployees = selectedPeriod
+    ? await payrollRepo.listPayrollPeriodEmployees(client, {
+        installationId,
+        payrollPeriodId: selectedPeriod.id,
+      })
+    : [];
   const periodComponents = selectedPeriod
     ? await payrollRepo.listPeriodComponents(client, {
         installationId,
@@ -95,6 +101,7 @@ export async function listPayrollFoundation(client, {
       periods,
       selectedPeriod,
       employees,
+      periodEmployees,
       componentTypes,
       salaryProfiles,
       fixedComponents,
@@ -336,14 +343,12 @@ async function addPeriodComponent(client, { requestContext, payload, companyScop
   if (!period) return fail('PAYROLL_PERIOD_NOT_FOUND', 'Không tìm thấy kỳ lương');
   if (!scopeAllowsBranch(period.branch_id, { companyScope, branchIds })) return fail('SCOPE_FORBIDDEN', 'Kỳ lương nằm ngoài phạm vi được cấp');
   if (period.status === 'CLOSED') return fail('PAYROLL_PERIOD_CLOSED', 'Kỳ lương đã chốt, không thể thêm khoản phát sinh trực tiếp');
-  const employee = await payrollRepo.employeeOverlapsPeriod(client, {
+  const employee = await payrollRepo.getPayrollPeriodEmployee(client, {
     installationId: requestContext.installationId,
+    payrollPeriodId,
     employeeId,
-    periodStart: period.period_start,
-    periodEnd: period.period_end,
-    branchId: period.branch_id,
   });
-  if (!employee) return fail('EMPLOYEE_NOT_IN_PAYROLL_PERIOD', 'Nhân sự không thuộc phạm vi lao động của kỳ lương');
+  if (!employee) return fail('EMPLOYEE_NOT_IN_PAYROLL_PERIOD', 'Nhân sự không có trong bản chốt kỳ công của kỳ lương');
   const component = await payrollRepo.getComponentTypeById(client, {
     installationId: requestContext.installationId,
     id: componentTypeId,
