@@ -5,14 +5,16 @@ import test from 'node:test';
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
 test('Retail chỉ hiện tab Tồn kho sau khi backend xác nhận quyền xem', async () => {
-  const [page, root] = await Promise.all([
+  const [page, root, workspace] = await Promise.all([
     read('app/page.tsx'),
     read('app/retail-root.tsx'),
+    read('app/retail-workspace.tsx'),
   ]);
   assert.match(page, /retail-root/);
   assert.match(root, /fetch\('\/api\/retail\/inventory'/);
-  assert.match(root, /if \(!inventoryAccess\) return <RetailWorkspace \/>/);
-  assert.match(root, />Tồn kho<\/button>/);
+  assert.match(root, /inventoryAvailable=\{Boolean\(inventoryAccess\)\}/);
+  assert.match(workspace, /inventoryAvailable && onOpenInventory/);
+  assert.match(workspace, />Tồn kho<\/button>/);
 });
 
 test('Retail inventory gateway dùng quyền Công Ty và chỉ cho chọn kho có trong danh sách được trả về', async () => {
