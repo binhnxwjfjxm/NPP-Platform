@@ -129,6 +129,37 @@ async function loadVariantAvailabilityInput(client, { installationId, variantId 
   return result.rows?.[0] ?? null;
 }
 
+
+async function loadVariantAvailabilityInputs(client, { installationId, variantIds }) {
+  if (!Array.isArray(variantIds) || variantIds.length === 0) return [];
+  const result = await client.query(
+    `SELECT variant.id AS variant_id,
+            variant.sku,
+            variant.conversion_to_base,
+            product.name AS item_name,
+            product.is_inventory_managed,
+            ARRAY(
+              SELECT base_variant.id
+                FROM shared.product_variants base_variant
+               WHERE base_variant.installation_id = variant.installation_id
+                 AND base_variant.product_id = variant.product_id
+                 AND base_variant.is_inventory_base = true
+                 AND base_variant.is_active = true
+               ORDER BY base_variant.id
+            ) AS base_variant_ids
+       FROM shared.product_variants variant
+       JOIN shared.products product
+         ON product.installation_id = variant.installation_id
+        AND product.id = variant.product_id
+      WHERE variant.installation_id = $1
+        AND variant.id = ANY($2::uuid[])
+        AND variant.is_active = true
+        AND product.is_active = true`,
+    [installationId, variantIds],
+  );
+  return result.rows ?? [];
+}
+
 export async function searchRetailCatalog(client, {
   requestContext,
   search,
@@ -329,11 +360,28 @@ export async function previewRetailAvailability(client, {
     excludingSalesOrderId = salesOrderId;
   }
 
-  const availability = await Promise.all(requestedVariantIds.map(async (variantId) => {
-    const row = await loadVariantAvailabilityInput(client, {
-      installationId: requestContext.installationId,
-      variantId,
-    });
+  const variantRows = await loadVariantAvailabilityInputs(client, {
+    installationId: requestContext.installationId,
+    variantIds: requestedVariantIds,
+  });
+  const variantsById = new Map(variantRows.map((row) => [String(row.variant_id), row]));
+  const baseVariantIds = [...new Set(variantRows
+    .filter((row) => row.is_inventory_managed !== false && Array.isArray(row.base_variant_ids) && row.base_variant_ids.length === 1)
+    .map((row) => String(row.base_variant_ids[0])))];
+  const baseAvailabilityRows = baseVariantIds.length
+    ? await fulfillmentRepository.getWarehouseAvailableQuantities(client, {
+        installationId: requestContext.installationId,
+        warehouseId,
+        baseVariantIds,
+        excludingSalesOrderId,
+      })
+    : [];
+  const availableByBaseVariant = new Map(
+    baseAvailabilityRows.map((row) => [String(row.base_variant_id), row.available_quantity]),
+  );
+
+  const availability = requestedVariantIds.map((variantId) => {
+    const row = variantsById.get(variantId);
     if (!row) {
       return Object.freeze({ variantId, availabilityStatus: 'UNAVAILABLE', availableQuantity: null });
     }
@@ -343,19 +391,14 @@ export async function previewRetailAvailability(client, {
     if (!Array.isArray(row.base_variant_ids) || row.base_variant_ids.length !== 1) {
       return Object.freeze({ variantId, availabilityStatus: 'UNAVAILABLE', availableQuantity: null });
     }
-    const baseAvailable = await fulfillmentRepository.getWarehouseAvailableQuantity(client, {
-      installationId: requestContext.installationId,
-      warehouseId,
-      baseVariantId: row.base_variant_ids[0],
-      excludingSalesOrderId,
-    });
+    const baseAvailable = availableByBaseVariant.get(String(row.base_variant_ids[0])) ?? '0.000000000000';
     const availableQuantity = convertBaseToSalesQuantity(baseAvailable, row.conversion_to_base);
     return Object.freeze({
       variantId,
       availabilityStatus: availableQuantity === null ? 'UNAVAILABLE' : 'AVAILABLE',
       availableQuantity,
     });
-  }));
+  });
 
   return Object.freeze({ ok: true, availability: Object.freeze(availability) });
 }
@@ -379,6 +422,24 @@ export async function getRetailOrderAvailability(client, {
     return failure('RETAIL_AVAILABILITY_NOT_AVAILABLE', 'Chỉ có thể xem Khả dụng khi đơn đang lập hoặc đã Chốt');
   }
 
+  const freeBaseVariantIds = [...new Set(lines
+    .filter((line) => !line.fulfillment_demand_id
+      && line.is_inventory_managed !== false
+      && Array.isArray(line.base_variant_ids)
+      && line.base_variant_ids.length === 1)
+    .map((line) => String(line.base_variant_ids[0])))];
+  const freeAvailabilityRows = freeBaseVariantIds.length
+    ? await fulfillmentRepository.getWarehouseAvailableQuantities(client, {
+        installationId: requestContext.installationId,
+        warehouseId: lines[0].warehouse_id,
+        baseVariantIds: freeBaseVariantIds,
+        excludingSalesOrderId: salesOrderId,
+      })
+    : [];
+  const freeAvailableByBaseVariant = new Map(
+    freeAvailabilityRows.map((row) => [String(row.base_variant_id), row.available_quantity]),
+  );
+
   const availability = await Promise.all(lines.map(async (line) => {
     const common = {
       salesOrderLineId: line.sales_order_line_id,
@@ -399,12 +460,7 @@ export async function getRetailOrderAvailability(client, {
           installationId: requestContext.installationId,
           demandId: line.fulfillment_demand_id,
         }))?.capacityBaseQuantity
-      : await fulfillmentRepository.getWarehouseAvailableQuantity(client, {
-          installationId: requestContext.installationId,
-          warehouseId: line.warehouse_id,
-          baseVariantId: line.base_variant_ids[0],
-          excludingSalesOrderId: salesOrderId,
-        });
+      : freeAvailableByBaseVariant.get(String(line.base_variant_ids[0])) ?? '0.000000000000';
     const availableQuantity = convertBaseToSalesQuantity(baseAvailable, line.conversion_to_base);
     return Object.freeze({
       ...common,
