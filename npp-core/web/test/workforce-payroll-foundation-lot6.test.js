@@ -19,13 +19,10 @@ test('Issue #1140 Lô 6 adds exactly one Tính lương sidebar item and keeps si
   assert.equal((shell.match(/Phiếu lương|Lịch sử kỳ lương|Thiết lập lương|Khoản thu & khấu trừ/g) ?? []).length, 0);
 });
 
-test('Issue #1140 Lô 6 defaults to Bảng lương and does not implement later close/export actions', async () => {
+test('Issue #1140 Lô 6 keeps Bảng lương as the default payroll tab as later slices extend the page', async () => {
   const page = await source('app/workforce/payroll/page.tsx');
   assert.match(page, /useState<Tab>\('board'\)/);
   assert.match(page, /Bảng lương kỳ hiện tại/);
-  assert.doesNotMatch(page, />Chốt lương</);
-  assert.doesNotMatch(page, />Xuất PDF</);
-  assert.doesNotMatch(page, />Xuất Excel</);
 });
 
 test('Issue #1140 Lô 6 keeps reimbursement separate from salary income in office language', async () => {

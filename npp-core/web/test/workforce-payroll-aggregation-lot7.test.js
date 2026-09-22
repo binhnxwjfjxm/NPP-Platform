@@ -35,9 +35,9 @@ test('Issue #1140 Lô 7 exposes blockers, warnings and reconciliation but still 
   assert.match(panel, /giờ tăng ca đã xác nhận/);
   assert.match(page, /command: 'AGGREGATE'/);
   assert.match(page, /command: 'RECONCILE'/);
-  assert.doesNotMatch(page + panel, />Chốt lương</);
-  assert.doesNotMatch(page + panel, />Xuất PDF</);
-  assert.doesNotMatch(page + panel, />Xuất Excel</);
+  assert.doesNotMatch(panel, />Chốt lương</);
+  assert.doesNotMatch(panel, />Xuất PDF</);
+  assert.doesNotMatch(panel, />Xuất Excel</);
 });
 
 test('Issue #1140 Lô 7 keeps all money totals server-side and reuses canonical idempotency keys', async () => {

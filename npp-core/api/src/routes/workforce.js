@@ -11,13 +11,14 @@ import * as attendanceViolationService from '../services/attendance-violations.j
 import * as workforceCloseoutService from '../services/workforce-closeout.js';
 import * as payrollFoundationService from '../services/payroll-foundation.js';
 import * as payrollAggregationService from '../services/payroll-aggregation.js';
+import * as payrollCloseoutService from '../services/payroll-closeout.js';
 
 function createError(code, message, details = {}, retryable = false, statusCode = 500) {
   return { code, message, details, retryable, statusCode };
 }
 
 function statusFor(result) {
-  if (['EMPLOYEE_NOT_FOUND', 'POLICY_NOT_FOUND', 'SHIFT_TEMPLATE_NOT_FOUND', 'WEEK_TEMPLATE_NOT_FOUND', 'ATTENDANCE_POINT_NOT_FOUND', 'BRANCH_NOT_FOUND', 'ADJUSTMENT_REQUEST_NOT_FOUND', 'LEAVE_TYPE_NOT_FOUND', 'LEAVE_REQUEST_NOT_FOUND', 'VIOLATION_CASE_NOT_FOUND', 'ATTENDANCE_DAY_NOT_FOUND', 'OVERTIME_REQUEST_NOT_FOUND', 'ATTENDANCE_PERIOD_NOT_FOUND', 'PAYROLL_PERIOD_NOT_FOUND', 'PAYROLL_COMPONENT_NOT_FOUND'].includes(result.code)) return 404;
+  if (['EMPLOYEE_NOT_FOUND', 'POLICY_NOT_FOUND', 'SHIFT_TEMPLATE_NOT_FOUND', 'WEEK_TEMPLATE_NOT_FOUND', 'ATTENDANCE_POINT_NOT_FOUND', 'BRANCH_NOT_FOUND', 'ADJUSTMENT_REQUEST_NOT_FOUND', 'LEAVE_TYPE_NOT_FOUND', 'LEAVE_REQUEST_NOT_FOUND', 'VIOLATION_CASE_NOT_FOUND', 'ATTENDANCE_DAY_NOT_FOUND', 'OVERTIME_REQUEST_NOT_FOUND', 'ATTENDANCE_PERIOD_NOT_FOUND', 'PAYROLL_PERIOD_NOT_FOUND', 'PAYROLL_COMPONENT_NOT_FOUND', 'PAYROLL_PAYSLIP_NOT_FOUND'].includes(result.code)) return 404;
   if (result.code === 'QR_TOKEN_EXPIRED') return 410;
   if (['SCOPE_FORBIDDEN', 'ATTENDANCE_CLOSE_REQUIRES_LOCK_PERMISSION'].includes(result.code)) return 403;
   if ([
@@ -36,7 +37,8 @@ function statusFor(result) {
     'ATTENDANCE_PERIOD_NOT_CLOSED', 'ATTENDANCE_PERIOD_SNAPSHOT_MISSING', 'ATTENDANCE_PERIOD_IN_FUTURE',
     'PAYROLL_PERIOD_EXISTS', 'PAYROLL_EFFECTIVE_DATE_CONFLICT', 'PAYROLL_COMPONENT_CODE_EXISTS', 'PAYROLL_PERIOD_CLOSED', 'EMPLOYEE_NOT_IN_PAYROLL_PERIOD',
     'PAYROLL_CALCULATION_MISSING', 'PAYROLL_PERIOD_CHANGED', 'PAYROLL_PERIOD_HAS_BLOCKERS', 'PAYROLL_WARNINGS_UNACKNOWLEDGED', 'PAYROLL_PERIOD_CONFLICT',
-    'PAYROLL_ATTENDANCE_SNAPSHOT_MISSING', 'PAYROLL_ATTENDANCE_SNAPSHOT_CHANGED',
+    'PAYROLL_ATTENDANCE_SNAPSHOT_MISSING', 'PAYROLL_ATTENDANCE_SNAPSHOT_CHANGED', 'PAYROLL_PERIOD_NOT_RECONCILED',
+    'PAYROLL_CLOSE_SNAPSHOT_MISSING',
   ].includes(result.code)) return 409;
   return 400;
 }
@@ -173,10 +175,25 @@ async function handlePayrollFoundation(req, res, context, method) {
       sendError(res, createError(calculation.code, calculation.message, {}, false, statusFor(calculation)), context.requestId, context.receivedAt);
       return;
     }
+    const closeout = await payrollCloseoutService.getPayrollCloseout(context.getPool(), {
+      ...payrollScope,
+      payrollPeriodId: result.data.selectedPeriod?.id ?? null,
+      visiblePeriodIds: result.data.periods.map((period) => period.id),
+    });
+    if (!closeout.ok) {
+      sendError(res, createError(closeout.code, closeout.message, {}, false, statusFor(closeout)), context.requestId, context.receivedAt);
+      return;
+    }
     sendSuccess(res, {
       ...result.data,
       calculation: calculation.data,
-      capabilities: { canManage: context.canManagePayroll },
+      closeout: closeout.data,
+      capabilities: {
+        canManage: context.canManagePayroll,
+        canClose: context.canClosePayroll,
+        canAdjust: context.canAdjustPayroll,
+        canExport: context.canExportPayroll,
+      },
     }, context.requestId, context.receivedAt);
     return;
   }
@@ -186,14 +203,26 @@ async function handlePayrollFoundation(req, res, context, method) {
   const payload = parsed.payload;
   const command = String(payload?.command ?? '').trim().toUpperCase();
   const aggregationCommand = ['AGGREGATE', 'RECONCILE'].includes(command);
+  const closeoutCommand = ['CLOSE', 'ADJUST'].includes(command);
+  const allowed = command === 'CLOSE'
+    ? context.canClosePayroll
+    : command === 'ADJUST'
+      ? context.canAdjustPayroll
+      : context.canManagePayroll;
+  if (!allowed) {
+    sendError(res, createError('FORBIDDEN', 'Bạn không có quyền thực hiện thao tác này', {}, false, 403), context.requestId, context.receivedAt);
+    return;
+  }
   await runIdempotentMutation(req, res, context, {
     route: '/api/workforce/payroll',
     payload,
-    successStatus: aggregationCommand ? 200 : 201,
+    successStatus: (aggregationCommand || closeoutCommand) ? 200 : 201,
     mutate: async (client) => {
-      const result = aggregationCommand
-        ? await payrollAggregationService.mutatePayrollAggregation(client, { ...payrollScope, payload })
-        : await payrollFoundationService.mutatePayrollFoundation(client, { ...payrollScope, payload });
+      const result = closeoutCommand
+        ? await payrollCloseoutService.mutatePayrollCloseout(client, { ...payrollScope, payload })
+        : aggregationCommand
+          ? await payrollAggregationService.mutatePayrollAggregation(client, { ...payrollScope, payload })
+          : await payrollFoundationService.mutatePayrollFoundation(client, { ...payrollScope, payload });
       if (!result.ok) return result;
       return {
         ok: true,
@@ -1606,6 +1635,9 @@ export async function handleWorkforceRoutes(req, res, options) {
   const canReconcilePeriods = options.authorize(requestContext, options.PERMISSIONS.coreAttendanceReconcile).ok;
   const canReadPayroll = options.authorize(requestContext, options.PERMISSIONS.corePayrollRead).ok;
   const canManagePayroll = options.authorize(requestContext, options.PERMISSIONS.corePayrollManage).ok;
+  const canClosePayroll = options.authorize(requestContext, options.PERMISSIONS.corePayrollClose).ok;
+  const canAdjustPayroll = options.authorize(requestContext, options.PERMISSIONS.corePayrollAdjust).ok;
+  const canExportPayroll = options.authorize(requestContext, options.PERMISSIONS.corePayrollExport).ok;
   let timesheetSelfOnly = false;
   let adjustmentSelfOnly = false;
   let leaveRequestSelfOnly = false;
@@ -1638,7 +1670,11 @@ export async function handleWorkforceRoutes(req, res, options) {
   } else if (route === '/attendance/payroll-input') {
     permission = { ok: canReconcilePeriods || options.authorize(requestContext, options.PERMISSIONS.coreAttendanceRead).ok };
   } else if (route === '/payroll') {
-    permission = { ok: method === 'POST' ? canManagePayroll : (canReadPayroll || canManagePayroll) };
+    permission = {
+      ok: method === 'POST'
+        ? (canManagePayroll || canClosePayroll || canAdjustPayroll)
+        : (canReadPayroll || canManagePayroll || canClosePayroll || canAdjustPayroll || canExportPayroll),
+    };
   } else if (route === '/attendance/adjustments') {
     if (method === 'GET') {
       permission = canManageAdjustments ? { ok: true } : { ok: canSubmitOwnAdjustment };
@@ -1709,7 +1745,7 @@ export async function handleWorkforceRoutes(req, res, options) {
     canSelfReadLeaves, canSubmitOwnLeave, canReadLeaves, canApproveLeaves, canManageLeaveTypes,
     canExplainOwnViolation, canResolveViolations,
     canSelfOvertime, canReadOvertime, canApproveOvertime, canConfirmOvertime, canReconcilePeriods,
-    canReadPayroll, canManagePayroll,
+    canReadPayroll, canManagePayroll, canClosePayroll, canAdjustPayroll, canExportPayroll,
   };
   try {
     if (route === '/policies') await handlePolicies(req, res, context, method);
