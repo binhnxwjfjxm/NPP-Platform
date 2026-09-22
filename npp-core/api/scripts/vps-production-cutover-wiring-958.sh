@@ -22,6 +22,7 @@ restore_vercel_bindings() {
   upsert_env "$PROJECT_ADMIN" CORE_API_INTERNAL_URL "$old_admin_core"
   upsert_env "$PROJECT_DELIVERY" CORE_API_INTERNAL_URL "$old_delivery_core"
   upsert_env "$PROJECT_RETAIL" CORE_API_INTERNAL_URL "$old_retail_core"
+  upsert_env "$PROJECT_WEBSITE" COMPANY_API_URL "$old_website_company"
   upsert_env "$PROJECT_ORDERING" CORE_API_BASE_URL "$old_ordering_core"
   upsert_env "$PROJECT_MCP" CORE_API_INTERNAL_URL "$old_mcp_core"
   upsert_env "$PROJECT_MCP" BACKEND_API_BASE_URL "$old_mcp_backend"
@@ -40,21 +41,22 @@ restore_vercel_bindings() {
   return "$rollback_failed"
 }
 
-# Gate E: wire every backend-consuming frontend; Website is explicitly unchanged because it has no backend binding contract.
+# Gate E: wire every backend-consuming frontend, including Website AI -> Công Ty.
 upsert_env "$PROJECT_COMPANY" CORE_API_INTERNAL_URL "$company_api_url"
 upsert_env "$PROJECT_COMPANY" NEXT_PUBLIC_CORE_API_URL "$company_api_url"
 upsert_env "$PROJECT_ADMIN" CORE_API_INTERNAL_URL "$company_api_url"
 upsert_env "$PROJECT_DELIVERY" CORE_API_INTERNAL_URL "$company_api_url"
 upsert_env "$PROJECT_RETAIL" CORE_API_INTERNAL_URL "$company_api_url"
+upsert_env "$PROJECT_WEBSITE" COMPANY_API_URL "$company_api_url"
 upsert_env "$PROJECT_ORDERING" CORE_API_BASE_URL "$company_api_url"
 upsert_env "$PROJECT_MCP" CORE_API_INTERNAL_URL "$company_api_url"
 upsert_env "$PROJECT_MCP" BACKEND_API_BASE_URL "$mcp_api_url"
 vercel_mutated=true
-for spec in "$PROJECT_COMPANY:npp-platform" "$PROJECT_ADMIN:admin-mcp-npp" "$PROJECT_DELIVERY:npp-delivery" "$PROJECT_RETAIL:npp-retail" "$PROJECT_ORDERING:customer-ordering" "$PROJECT_MCP:mcp-field"; do
+for spec in "$PROJECT_COMPANY:npp-platform" "$PROJECT_ADMIN:admin-mcp-npp" "$PROJECT_DELIVERY:npp-delivery" "$PROJECT_RETAIL:npp-retail" "$PROJECT_WEBSITE:nguyenlieuhungphat" "$PROJECT_ORDERING:customer-ordering" "$PROJECT_MCP:mcp-field"; do
   redeploy_project "${spec%%:*}" "${spec#*:}"
 done
 
-echo 'WEBSITE_BACKEND_BINDING=not_applicable' >> "$REPORT_FILE"
+echo 'WEBSITE_BACKEND_BINDING=company_vps' >> "$REPORT_FILE"
 echo 'GATE_E_FRONTEND_WIRING=PASS' >> "$REPORT_FILE"
 
 set_ingress_mode() {

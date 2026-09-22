@@ -20,19 +20,19 @@ jobs:
       (github.event_name == 'issue_comment' &&
        github.event.issue.number == 5 &&
        github.event.comment.body == '/configure-ordering-ai-production' &&
-       contains(fromJSON('["binhnxwjfjxm","khuongbinhinfo-a11y"]'), github.actor))
+       contains(fromJSON('["binhnxwjfjxm","khuongbinhinfo-a11y","gustavjung01"]'), github.actor))
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 20
     env:
       DEPLOY_REF: main
-      HEROKU_APP_NAME: hung-phat
-      HEROKU_FORBIDDEN_APP_NAME: hung-phat-mcp
+      VPS_COMPANY_HOST: ${{ vars.VPS_COMPANY_HOST }}
+      VPS_SSH_USER: ${{ vars.VPS_SSH_USER }}
       VERCEL_ORG_ID: team_hBA8rX68UHC8ogvREkOyQlJ2
       VERCEL_WEBSITE_PROJECT_ID: prj_rXqH83GFDHuEGUcQrrv82JBPWnjU
       VERCEL_ORDERING_PROJECT_ID: prj_btLk3p4FhmShgKFdRBMq6ZFOagKe
-      COMPANY_API_URL: ${{ vars.COMPANY_API_URL }}
       WEBSITE_AI_BASE_URL: https://www.nguyenlieuhungphat.com
-      ORDERING_AI_ACTOR_ID: service:ordering-ai
+      ORDERING_PRODUCTION_URL: https://sales.nguyenlieuhungphat.com
+
     steps:
       - name: Validate exact issue command
         if: github.event_name == 'issue_comment'
@@ -67,91 +67,121 @@ jobs:
         working-directory: mcp
         run: npm install --global vercel@58.0.0
 
-      - name: Resolve canonical Ordering token and synchronize plain production URLs
+      - name: Prepare Công Ty VPS SSH credential
+        id: ssh
         shell: bash
         env:
-          HEROKU_API_KEY: '${{ secrets.HEROKU_API_KEY }}'
+          VPS_COMPANY_SSH_KEY: ${{ secrets.VPS_COMPANY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$VPS_COMPANY_HOST"
+          test -n "$VPS_SSH_USER"
+          test -n "$VPS_COMPANY_SSH_KEY"
+
+          umask 077
+          key="$RUNNER_TEMP/vps-company.key"
+          printf '%s\n' "$VPS_COMPANY_SSH_KEY" > "$key"
+          chmod 600 "$key"
+          ssh-keygen -y -f "$key" >/dev/null
+
+          known_hosts="$RUNNER_TEMP/vps-company-known-hosts"
+          ssh-keyscan -T 10 -H "$VPS_COMPANY_HOST" > "$known_hosts" 2>/dev/null
+          test -s "$known_hosts"
+          chmod 600 "$known_hosts"
+
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+          echo "known_hosts=$known_hosts" >> "$GITHUB_OUTPUT"
+
+      - name: Read canonical AI capability tokens from Công Ty VPS
+        id: runtime
+        shell: bash
+        env:
+          SSH_KEY: ${{ steps.ssh.outputs.key }}
+          KNOWN_HOSTS: ${{ steps.ssh.outputs.known_hosts }}
+        run: |
+          set -euo pipefail
+          runtime_file="$RUNNER_TEMP/company-ai-runtime.env"
+          ssh             -i "$SSH_KEY"             -o BatchMode=yes             -o ConnectTimeout=10             -o ConnectionAttempts=1             -o StrictHostKeyChecking=yes             -o UserKnownHostsFile="$KNOWN_HOSTS"             "$VPS_SSH_USER@$VPS_COMPANY_HOST" 'bash -s' > "$runtime_file" <<'REMOTE'
+          set -euo pipefail
+          env_file=/etc/npp/company.env
+          sudo -n test -r "$env_file"
+
+          read_env() {
+            local key="$1"
+            sudo -n awk -v key="$key" 'index($0,key "=")==1 { value=substr($0,length(key)+2); gsub(/^"|"$/,"",value); print value; exit }' "$env_file"
+          }
+
+          ordering_token="$(read_env ORDERING_AI_API_TOKEN)"
+          website_token="$(read_env WEBSITE_AI_API_TOKEN)"
+          ordering_actor="$(read_env ORDERING_AI_ACTOR_ID)"
+          website_actor="$(read_env WEBSITE_AI_ACTOR_ID)"
+
+          test "${#ordering_token}" -ge 32
+          test "${#website_token}" -ge 32
+          test "$ordering_actor" = "service:ordering-ai"
+          test "$website_actor" = "service:website-ai"
+
+          printf 'ORDERING_AI_API_TOKEN=%s\n' "$ordering_token"
+          printf 'WEBSITE_AI_API_TOKEN=%s\n' "$website_token"
+          REMOTE
+
+          chmod 600 "$runtime_file"
+          ordering_token="$(sed -n 's/^ORDERING_AI_API_TOKEN=//p' "$runtime_file")"
+          website_token="$(sed -n 's/^WEBSITE_AI_API_TOKEN=//p' "$runtime_file")"
+          test -n "$ordering_token"
+          test -n "$website_token"
+          echo "::add-mask::$ordering_token"
+          echo "::add-mask::$website_token"
+          echo "file=$runtime_file" >> "$GITHUB_OUTPUT"
+
+      - name: Synchronize Website and Ordering production URLs
+        shell: bash
+        env:
           VERCEL_TOKEN: '${{ secrets.VERCEL_TOKEN }}'
         run: |
           set -euo pipefail
+          export COMPANY_API_URL="https://$VPS_COMPANY_HOST"
           node --input-type=module <<'NODE'
-          import { randomBytes } from 'node:crypto';
-          import { appendFileSync } from 'node:fs';
-
           const env = process.env;
           const required = (value, name) => {
             if (!value) throw new Error(`${name}_missing`);
             return value;
           };
-          required(env.HEROKU_API_KEY, 'heroku_api_key');
           required(env.VERCEL_TOKEN, 'vercel_token');
-          if (env.HEROKU_APP_NAME !== 'hung-phat' || env.HEROKU_APP_NAME === env.HEROKU_FORBIDDEN_APP_NAME) {
-            throw new Error('unexpected_heroku_target');
-          }
+          required(env.COMPANY_API_URL, 'company_api_url');
 
-          const herokuHeaders = {
-            Accept: 'application/vnd.heroku+json; version=3',
-            Authorization: `Bearer ${env.HEROKU_API_KEY}`,
-            'Content-Type': 'application/json',
-          };
-          const vercelHeaders = {
+          const headers = {
             Authorization: `Bearer ${env.VERCEL_TOKEN}`,
             'Content-Type': 'application/json',
           };
           async function jsonRequest(url, options = {}) {
             const response = await fetch(url, options);
             const body = await response.json().catch(() => null);
-            if (!response.ok) throw new Error(`provider_request_failed:${response.status}:${body?.error?.code || body?.id || 'unknown'}`);
+            if (!response.ok) throw new Error(`provider_request_failed:${response.status}:${body?.error?.code || 'unknown'}`);
             return body;
           }
           async function project(projectId) {
-            return jsonRequest(`https://api.vercel.com/v9/projects/${encodeURIComponent(projectId)}?teamId=${encodeURIComponent(env.VERCEL_ORG_ID)}`, { headers: vercelHeaders });
+            return jsonRequest(`https://api.vercel.com/v9/projects/${encodeURIComponent(projectId)}?teamId=${encodeURIComponent(env.VERCEL_ORG_ID)}`, { headers });
           }
           const website = await project(env.VERCEL_WEBSITE_PROJECT_ID);
           const ordering = await project(env.VERCEL_ORDERING_PROJECT_ID);
           if (website?.name !== 'nguyenlieuhungphat') throw new Error('website_project_identity_mismatch');
           if (ordering?.name !== 'customer-ordering') throw new Error('ordering_project_identity_mismatch');
           if ((ordering?.rootDirectory || '.') !== 'customer-ordering') throw new Error('ordering_project_root_mismatch');
-          if (website?.nodeVersion !== '24.x' || ordering?.nodeVersion !== '24.x') throw new Error('unexpected_node_runtime');
-
-          const herokuConfigUrl = `https://api.heroku.com/apps/${encodeURIComponent(env.HEROKU_APP_NAME)}/config-vars`;
-          const herokuConfig = await jsonRequest(herokuConfigUrl, { headers: herokuHeaders });
-          const reservedTokens = [
-            herokuConfig?.BACKEND_API_TOKEN,
-            herokuConfig?.MCP_ONBOARDING_API_TOKEN,
-            herokuConfig?.MCP_SALES_API_TOKEN,
-            herokuConfig?.WEBSITE_AI_API_TOKEN,
-            herokuConfig?.DELIVERY_FRONTEND_API_TOKEN,
-          ].filter(Boolean);
-          let sharedToken = String(herokuConfig?.ORDERING_AI_API_TOKEN || '');
-          if (!sharedToken || reservedTokens.includes(sharedToken)) sharedToken = randomBytes(48).toString('base64url');
-          console.log(`::add-mask::${sharedToken}`);
-
-          const herokuPatch = {};
-          if (String(herokuConfig?.ORDERING_AI_API_TOKEN || '') !== sharedToken) herokuPatch.ORDERING_AI_API_TOKEN = sharedToken;
-          if (String(herokuConfig?.ORDERING_AI_ACTOR_ID || '') !== env.ORDERING_AI_ACTOR_ID) herokuPatch.ORDERING_AI_ACTOR_ID = env.ORDERING_AI_ACTOR_ID;
-          if (Object.keys(herokuPatch).length) {
-            await jsonRequest(herokuConfigUrl, {
-              method: 'PATCH', headers: herokuHeaders, body: JSON.stringify(herokuPatch),
-            });
-          }
 
           async function productionEnv(projectId) {
             const url = new URL(`https://api.vercel.com/v9/projects/${encodeURIComponent(projectId)}/env`);
             url.searchParams.set('teamId', env.VERCEL_ORG_ID);
             url.searchParams.set('decrypt', 'true');
             url.searchParams.set('source', 'vercel-cli:pull');
-            const body = await jsonRequest(url, { headers: vercelHeaders });
+            const body = await jsonRequest(url, { headers });
             const entries = Array.isArray(body) ? body : Array.isArray(body?.envs) ? body.envs : [];
             return entries.filter((entry) => {
               const targets = Array.isArray(entry?.target) ? entry.target : [entry?.target].filter(Boolean);
               return targets.includes('production') && !entry?.gitBranch;
             });
           }
-          const websiteEnv = await productionEnv(env.VERCEL_WEBSITE_PROJECT_ID);
-          const orderingEnv = await productionEnv(env.VERCEL_ORDERING_PROJECT_ID);
           const entriesFor = (entries, key) => entries.filter((entry) => entry?.key === key);
-
           async function syncPlain(projectId, entries, key, value, comment) {
             const matches = entriesFor(entries, key);
             if (matches.length > 1) throw new Error(`vercel_env_count_invalid:${key}:${matches.length}`);
@@ -161,7 +191,8 @@ jobs:
               const url = new URL(`https://api.vercel.com/v9/projects/${encodeURIComponent(projectId)}/env/${encodeURIComponent(id)}`);
               url.searchParams.set('teamId', env.VERCEL_ORG_ID);
               await jsonRequest(url, {
-                method: 'PATCH', headers: vercelHeaders,
+                method: 'PATCH',
+                headers,
                 body: JSON.stringify({ key, value, type: 'plain', target: ['production'], comment }),
               });
               return;
@@ -169,54 +200,159 @@ jobs:
             const url = new URL(`https://api.vercel.com/v10/projects/${encodeURIComponent(projectId)}/env`);
             url.searchParams.set('teamId', env.VERCEL_ORG_ID);
             await jsonRequest(url, {
-              method: 'POST', headers: vercelHeaders,
+              method: 'POST',
+              headers,
               body: JSON.stringify([{ key, value, type: 'plain', target: ['production'], comment }]),
             });
           }
 
-          await syncPlain(env.VERCEL_WEBSITE_PROJECT_ID, websiteEnv, 'COMPANY_API_URL', env.COMPANY_API_URL, 'Công Ty API for Ordering gateway');
-          await syncPlain(env.VERCEL_ORDERING_PROJECT_ID, orderingEnv, 'CORE_API_BASE_URL', env.COMPANY_API_URL, 'Công Ty API');
-          await syncPlain(env.VERCEL_ORDERING_PROJECT_ID, orderingEnv, 'WEBSITE_AI_BASE_URL', env.WEBSITE_AI_BASE_URL, 'Website AI gateway');
-
-          appendFileSync(process.env.GITHUB_ENV, `ORDERING_SHARED_TOKEN=${sharedToken}\n`);
+          const websiteEnv = await productionEnv(env.VERCEL_WEBSITE_PROJECT_ID);
+          const orderingEnv = await productionEnv(env.VERCEL_ORDERING_PROJECT_ID);
+          await syncPlain(env.VERCEL_WEBSITE_PROJECT_ID, websiteEnv, 'COMPANY_API_URL', env.COMPANY_API_URL, 'Công Ty VPS API for Website AI');
+          await syncPlain(env.VERCEL_ORDERING_PROJECT_ID, orderingEnv, 'CORE_API_BASE_URL', env.COMPANY_API_URL, 'Công Ty VPS API');
+          await syncPlain(env.VERCEL_ORDERING_PROJECT_ID, orderingEnv, 'WEBSITE_AI_BASE_URL', env.WEBSITE_AI_BASE_URL, 'Website Dialogflow CX gateway');
           NODE
 
-      - name: Update Customer Ordering production capability token with Vercel CLI
+      - name: Synchronize Website and Ordering capability tokens
         shell: bash
         env:
           VERCEL_TOKEN: '${{ secrets.VERCEL_TOKEN }}'
+          RUNTIME_FILE: ${{ steps.runtime.outputs.file }}
         run: |
           set -euo pipefail
-          export VERCEL_ORG_ID
-          export VERCEL_PROJECT_ID="$VERCEL_ORDERING_PROJECT_ID"
-          printf '%s\n' "$ORDERING_SHARED_TOKEN" | vercel env update ORDERING_AI_API_TOKEN production --sensitive --yes --token "$VERCEL_TOKEN"
+          ordering_token="$(sed -n 's/^ORDERING_AI_API_TOKEN=//p' "$RUNTIME_FILE")"
+          website_token="$(sed -n 's/^WEBSITE_AI_API_TOKEN=//p' "$RUNTIME_FILE")"
+          test -n "$ordering_token"
+          test -n "$website_token"
+          echo "::add-mask::$ordering_token"
+          echo "::add-mask::$website_token"
 
-      - name: Verify production runtime contract end to end
+          export VERCEL_ORG_ID
+          export VERCEL_PROJECT_ID="$VERCEL_WEBSITE_PROJECT_ID"
+          printf '%s\n' "$website_token" | vercel env update COMPANY_WEBSITE_AI_API_TOKEN production --sensitive --yes --token "$VERCEL_TOKEN"
+
+          export VERCEL_PROJECT_ID="$VERCEL_ORDERING_PROJECT_ID"
+          printf '%s\n' "$ordering_token" | vercel env update ORDERING_AI_API_TOKEN production --sensitive --yes --token "$VERCEL_TOKEN"
+
+      - name: Redeploy Website before Ordering
         shell: bash
         env:
-          HEROKU_API_KEY: '${{ secrets.HEROKU_API_KEY }}'
           VERCEL_TOKEN: '${{ secrets.VERCEL_TOKEN }}'
         run: |
           set -euo pipefail
+          website_url="$(
+            curl --fail --silent --show-error               -H "Authorization: Bearer $VERCEL_TOKEN"               "https://api.vercel.com/v6/deployments?projectId=$VERCEL_WEBSITE_PROJECT_ID&target=production&state=READY&limit=1&teamId=$VERCEL_ORG_ID"               | jq -r '.deployments[0].url // empty'
+          )"
+          test -n "$website_url"
+          vercel redeploy "https://$website_url" --target=production --token="$VERCEL_TOKEN" >/dev/null
+
+      - name: Verify Công Ty auth, Website usage binding and Dialogflow CX gateway
+        shell: bash
+        env:
+          RUNTIME_FILE: ${{ steps.runtime.outputs.file }}
+        run: |
+          set -euo pipefail
+          export COMPANY_API_URL="https://$VPS_COMPANY_HOST"
+          export ORDERING_AI_API_TOKEN="$(sed -n 's/^ORDERING_AI_API_TOKEN=//p' "$RUNTIME_FILE")"
+          export WEBSITE_AI_API_TOKEN="$(sed -n 's/^WEBSITE_AI_API_TOKEN=//p' "$RUNTIME_FILE")"
+          test -n "$ORDERING_AI_API_TOKEN"
+          test -n "$WEBSITE_AI_API_TOKEN"
+          echo "::add-mask::$ORDERING_AI_API_TOKEN"
+          echo "::add-mask::$WEBSITE_AI_API_TOKEN"
+
           node --input-type=module <<'NODE'
           const env = process.env;
-          const herokuHeaders = {
-            Accept: 'application/vnd.heroku+json; version=3',
-            Authorization: `Bearer ${env.HEROKU_API_KEY}`,
-          };
-          const vercelHeaders = { Authorization: `Bearer ${env.VERCEL_TOKEN}` };
-          async function jsonRequest(url, options = {}) {
-            const response = await fetch(url, options);
-            const body = await response.json().catch(() => null);
-            if (!response.ok) throw new Error(`provider_request_failed:${response.status}:${body?.error?.code || 'unknown'}`);
-            return body;
+          for (const path of ['/health/live', '/health/ready']) {
+            const response = await fetch(`${env.COMPANY_API_URL}${path}`, { signal: AbortSignal.timeout(15_000) });
+            if (response.status !== 200) throw new Error(`company_health_failed:${path}:${response.status}`);
           }
+
+          const gateway = await fetch(new URL('/api/ai/ordering-gateway-auth', env.COMPANY_API_URL), {
+            headers: { authorization: `Bearer ${env.ORDERING_AI_API_TOKEN}` },
+            signal: AbortSignal.timeout(15_000),
+          });
+          const gatewayBody = await gateway.json().catch(() => null);
+          if (gateway.status !== 200 || gatewayBody?.data?.authorized !== true || gatewayBody?.data?.capability !== 'ordering-ai') {
+            throw new Error(`ordering_gateway_auth_probe_failed:${gateway.status}:${gatewayBody?.error?.code || 'unknown'}`);
+          }
+
+          const websiteUsage = await fetch(new URL('/api/ai/usage-summary?limit=1', env.COMPANY_API_URL), {
+            headers: { authorization: `Bearer ${env.WEBSITE_AI_API_TOKEN}` },
+            signal: AbortSignal.timeout(15_000),
+          });
+          const websiteUsageBody = await websiteUsage.json().catch(() => null);
+          if (websiteUsage.status !== 403 || websiteUsageBody?.error?.code !== 'FORBIDDEN') {
+            throw new Error(`website_ai_token_probe_failed:${websiteUsage.status}:${websiteUsageBody?.error?.code || 'unknown'}`);
+          }
+
+          const dialogflow = await fetch(new URL('/api/dialogflow/chat', env.WEBSITE_AI_BASE_URL), {
+            method: 'POST',
+            redirect: 'error',
+            headers: {
+              authorization: `Bearer ${env.ORDERING_AI_API_TOKEN}`,
+              'x-ordering-ai-gateway': 'customer-ordering',
+              'content-type': 'application/json; charset=utf-8',
+              accept: 'application/json',
+            },
+            body: JSON.stringify({
+              sessionId: `ordering-config-smoke-${env.GITHUB_RUN_ID}`,
+              message: 'Xin chào',
+              source: 'customer-ordering',
+            }),
+            signal: AbortSignal.timeout(35_000),
+          });
+          const dialogflowBody = await dialogflow.json().catch(() => null);
+          if (
+            dialogflow.status !== 200 ||
+            dialogflowBody?.ok !== true ||
+            dialogflowBody?.capability !== 'advisory-only' ||
+            typeof dialogflowBody?.replyText !== 'string' ||
+            !dialogflowBody.replyText.trim() ||
+            !/^dialogflow-cx-(?:flow|playbook)-text$/.test(String(dialogflowBody?.model || ''))
+          ) {
+            throw new Error(`ordering_dialogflow_cx_probe_failed:${dialogflow.status}:${dialogflowBody?.code || 'unknown'}`);
+          }
+
+          console.log('COMPANY_VPS_AI_AUTH=success');
+          console.log('WEBSITE_AI_USAGE_BINDING=success');
+          console.log(`ORDERING_DIALOGFLOW_CX_MODEL=${dialogflowBody.model}`);
+          NODE
+
+      - name: Redeploy Customer Ordering after Website gateway passes
+        shell: bash
+        env:
+          VERCEL_TOKEN: '${{ secrets.VERCEL_TOKEN }}'
+        run: |
+          set -euo pipefail
+          ordering_url="$(
+            curl --fail --silent --show-error               -H "Authorization: Bearer $VERCEL_TOKEN"               "https://api.vercel.com/v6/deployments?projectId=$VERCEL_ORDERING_PROJECT_ID&target=production&state=READY&limit=1&teamId=$VERCEL_ORG_ID"               | jq -r '.deployments[0].url // empty'
+          )"
+          test -n "$ordering_url"
+          vercel redeploy "https://$ordering_url" --target=production --token="$VERCEL_TOKEN" >/dev/null
+
+      - name: Verify final production contract
+        shell: bash
+        env:
+          VERCEL_TOKEN: '${{ secrets.VERCEL_TOKEN }}'
+          RUNTIME_FILE: ${{ steps.runtime.outputs.file }}
+        run: |
+          set -euo pipefail
+          export COMPANY_API_URL="https://$VPS_COMPANY_HOST"
+          export ORDERING_AI_API_TOKEN="$(sed -n 's/^ORDERING_AI_API_TOKEN=//p' "$RUNTIME_FILE")"
+          test -n "$ORDERING_AI_API_TOKEN"
+          echo "::add-mask::$ORDERING_AI_API_TOKEN"
+
+          node --input-type=module <<'NODE'
+          const env = process.env;
+          const headers = { Authorization: `Bearer ${env.VERCEL_TOKEN}` };
           async function productionEnv(projectId) {
             const url = new URL(`https://api.vercel.com/v9/projects/${encodeURIComponent(projectId)}/env`);
             url.searchParams.set('teamId', env.VERCEL_ORG_ID);
             url.searchParams.set('decrypt', 'true');
             url.searchParams.set('source', 'vercel-cli:pull');
-            const body = await jsonRequest(url, { headers: vercelHeaders });
+            const response = await fetch(url, { headers });
+            const body = await response.json().catch(() => null);
+            if (!response.ok) throw new Error(`vercel_env_read_failed:${response.status}`);
             const entries = Array.isArray(body) ? body : Array.isArray(body?.envs) ? body.envs : [];
             return entries.filter((entry) => {
               const targets = Array.isArray(entry?.target) ? entry.target : [entry?.target].filter(Boolean);
@@ -229,55 +365,44 @@ jobs:
             return String(matches[0]?.value || '');
           };
 
-          const herokuConfig = await jsonRequest(`https://api.heroku.com/apps/${encodeURIComponent(env.HEROKU_APP_NAME)}/config-vars`, { headers: herokuHeaders });
-          const orderingEnv = await productionEnv(env.VERCEL_ORDERING_PROJECT_ID);
           const websiteEnv = await productionEnv(env.VERCEL_WEBSITE_PROJECT_ID);
-          const orderingSecretEntries = orderingEnv.filter((entry) => entry?.key === 'ORDERING_AI_API_TOKEN');
-          if (orderingSecretEntries.length !== 1) throw new Error(`ordering_token_metadata_count_invalid:${orderingSecretEntries.length}`);
-          const orderingSecretType = String(orderingSecretEntries[0]?.type || '');
-          if (!['sensitive', 'encrypted'].includes(orderingSecretType)) throw new Error(`ordering_token_metadata_type_invalid:${orderingSecretType || 'missing'}`);
-
-          const orderingToken = String(env.ORDERING_SHARED_TOKEN || '').trim();
-          if (!orderingToken) throw new Error('ordering_shared_token_missing');
-          console.log(`::add-mask::${orderingToken}`);
-          if (orderingToken !== String(herokuConfig?.ORDERING_AI_API_TOKEN || '')) throw new Error('ordering_token_runtime_mismatch');
+          const orderingEnv = await productionEnv(env.VERCEL_ORDERING_PROJECT_ID);
+          if (valueFor(websiteEnv, 'COMPANY_API_URL').replace(/\/$/, '') !== env.COMPANY_API_URL) throw new Error('website_company_api_url_mismatch');
           if (valueFor(orderingEnv, 'CORE_API_BASE_URL').replace(/\/$/, '') !== env.COMPANY_API_URL) throw new Error('ordering_api_url_mismatch');
           if (valueFor(orderingEnv, 'WEBSITE_AI_BASE_URL').replace(/\/$/, '') !== env.WEBSITE_AI_BASE_URL) throw new Error('ordering_website_url_mismatch');
-          if (valueFor(websiteEnv, 'COMPANY_API_URL').replace(/\/$/, '') !== env.COMPANY_API_URL) throw new Error('website_company_api_url_mismatch');
 
-          const websiteGatewayProbe = await fetch(new URL('/api/dialogflow/chat', env.WEBSITE_AI_BASE_URL), {
-            method: 'GET',
-            redirect: 'manual',
-            signal: AbortSignal.timeout(15_000),
-          });
-          if (websiteGatewayProbe.status >= 300 && websiteGatewayProbe.status < 400) {
-            throw new Error(`ordering_website_gateway_redirected:${websiteGatewayProbe.status}`);
+          const websiteSecret = websiteEnv.filter((entry) => entry?.key === 'COMPANY_WEBSITE_AI_API_TOKEN');
+          const orderingSecret = orderingEnv.filter((entry) => entry?.key === 'ORDERING_AI_API_TOKEN');
+          if (websiteSecret.length !== 1 || !['sensitive', 'encrypted'].includes(String(websiteSecret[0]?.type || ''))) {
+            throw new Error('website_ai_token_metadata_invalid');
           }
-
-          for (const path of ['/health/live', '/health/ready']) {
-            const response = await fetch(`${env.COMPANY_API_URL}${path}`, { signal: AbortSignal.timeout(15_000) });
-            if (response.status !== 200) throw new Error(`company_health_failed:${path}:${response.status}`);
-          }
-
-          const gateway = await fetch(new URL('/api/ai/ordering-gateway-auth', env.COMPANY_API_URL), {
-            headers: { authorization: `Bearer ${orderingToken}` }, signal: AbortSignal.timeout(15_000),
-          });
-          const gatewayBody = await gateway.json().catch(() => null);
-          if (gateway.status !== 200 || gatewayBody?.data?.authorized !== true || gatewayBody?.data?.capability !== 'ordering-ai') {
-            throw new Error(`ordering_gateway_auth_probe_failed:${gateway.status}:${gatewayBody?.error?.code || 'unknown'}`);
+          if (orderingSecret.length !== 1 || !['sensitive', 'encrypted'].includes(String(orderingSecret[0]?.type || ''))) {
+            throw new Error('ordering_ai_token_metadata_invalid');
           }
 
           const contextUrl = new URL('/api/ai/ordering-context', env.COMPANY_API_URL);
           contextUrl.searchParams.set('customerCode', '__ordering_config_probe__');
           const context = await fetch(contextUrl, {
-            headers: { authorization: `Bearer ${orderingToken}` }, signal: AbortSignal.timeout(15_000),
+            headers: { authorization: `Bearer ${env.ORDERING_AI_API_TOKEN}` },
+            signal: AbortSignal.timeout(15_000),
           });
           const contextBody = await context.json().catch(() => null);
           if (context.status !== 404 || contextBody?.error?.code !== 'AI_ORDERING_CUSTOMER_NOT_FOUND') {
             throw new Error(`ordering_service_probe_failed:${context.status}:${contextBody?.error?.code || 'unknown'}`);
           }
 
+          const orderingBoundary = await fetch(new URL('/api/assistant/chat', env.ORDERING_PRODUCTION_URL), {
+            method: 'POST',
+            headers: { 'content-type': 'application/json; charset=utf-8' },
+            body: JSON.stringify({ message: 'Alo' }),
+            signal: AbortSignal.timeout(15_000),
+          });
+          const orderingBoundaryBody = await orderingBoundary.json().catch(() => null);
+          if (orderingBoundary.status !== 401 || orderingBoundaryBody?.code !== 'UNAUTHORIZED') {
+            throw new Error(`ordering_route_boundary_failed:${orderingBoundary.status}:${orderingBoundaryBody?.code || 'unknown'}`);
+          }
+
           console.log('ORDERING_AI_CONFIG=success');
-          console.log('ORDERING_AI_GATEWAY_AUTH=success');
-          console.log('ORDERING_AI_BACKEND_TOKEN=success');
+          console.log('ORDERING_AI_PROVIDER=dialogflow-cx');
+          console.log('ORDERING_AI_BACKEND=company-vps');
           NODE
