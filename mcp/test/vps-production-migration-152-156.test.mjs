@@ -12,6 +12,7 @@ test('VPS workforce production migration 152-156 is exact-main, manual-only and 
   assert.match(workflow, /github\.event\.issue\.number == 5/);
   assert.match(workflow, /github\.event\.comment\.body == '\/migrate-vps-production-152-156'/);
   assert.match(workflow, /group: vps-production-db-migration/);
+  assert.match(workflow, /jobs:\s*\n\s+migrate-152-156:\s*\n\s+concurrency:/);
   assert.match(workflow, /ref: main/);
   assert.match(workflow, /git rev-parse origin\/main/);
   for (const id of ['152','153','154','155','156']) assert.match(workflow, new RegExp(id));
