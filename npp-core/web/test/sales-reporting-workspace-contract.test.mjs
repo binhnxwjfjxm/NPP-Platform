@@ -37,19 +37,25 @@ test('Bộ lọc bán hàng gửi kỳ, kho và phân loại theo lựa chọn n
   assert.match(workspace, /query\.set\('to', filters\.to\)/);
   assert.match(workspace, /query\.set\('warehouseId', filters\.warehouseId\)/);
   assert.match(workspace, /query\.set\('productGroupId', filters\.productGroupId\)/);
+  assert.match(workspace, /query\.set\('brandId', filters\.brandId\)/);
   assert.match(workspace, /query\.set\('customerGroupId', filters\.customerGroupId\)/);
   assert.match(workspace, /query\.set\('includeZeroProducts', 'true'\)/);
   assert.match(workspace, /classification\.options\.productGroups/);
+  assert.match(workspace, /classification\.options\.brands/);
   assert.match(workspace, /classification\.options\.customerGroups/);
   assert.match(workspace, /Tất cả kho/);
-  assert.match(workspace, /Tất cả nhóm sản phẩm/);
+  assert.match(workspace, /Loại sản phẩm/);
+  assert.match(workspace, /Tất cả loại sản phẩm/);
+  assert.match(workspace, /Nhãn hàng/);
+  assert.match(workspace, /Tất cả nhãn hàng/);
   assert.match(workspace, /Tất cả nhóm khách hàng/);
-  for (const field of ['productGroupId', 'customerGroupId', 'includeZeroProducts']) {
+  assert.doesNotMatch(workspace, /<span>Tiền tệ<\/span>/);
+  for (const field of ['productGroupId', 'brandId', 'customerGroupId', 'includeZeroProducts']) {
     assert.match(gateway, new RegExp(field));
   }
 });
 
-test('Nhóm khách và nhóm sản phẩm vẫn là bộ lọc theo chiều, bảng có dòng Tổng', () => {
+test('Nhóm khách, loại sản phẩm và nhãn hàng vẫn là bộ lọc theo chiều, bảng có dòng Tổng', () => {
   const workspace = read('app/components/sales-reporting-workspace.tsx');
   const styles = read('app/components/sales-reporting-workspace.module.css');
   const types = read('lib/sales-reporting-types.ts');
@@ -57,7 +63,8 @@ test('Nhóm khách và nhóm sản phẩm vẫn là bộ lọc theo chiều, b�
   assert.match(workspace, /activeDimension === 'customers'/);
   assert.match(workspace, /Nhóm khách/);
   assert.match(workspace, /activeDimension === 'products'/);
-  assert.match(workspace, /Nhóm sản phẩm/);
+  assert.match(workspace, /Loại sản phẩm/);
+  assert.match(workspace, /Nhãn hàng/);
   assert.match(workspace, /Hiện mã không phát sinh/);
   assert.match(workspace, /report\?\.breakdownTotals\[activeDimension\]/);
   assert.match(workspace, /<tfoot>/);
@@ -107,7 +114,7 @@ test('Preset kỳ, biểu đồ xu hướng, chi tiết và bộ lọc phân tí
   assert.match(workspace, /BigInt/);
   assert.doesNotMatch(workspace, /parseFloat\(|parseInt\(|Number\(/);
   assert.match(workspace, /analysisSearch/);
-  assert.match(workspace, /currencyFilter/);
+  assert.doesNotMatch(workspace, /currencyFilter/);
   assert.match(workspace, /comparisonFilter/);
   assert.match(workspace, /selectedRow/);
   assert.match(workspace, />Xem<\/button>/);

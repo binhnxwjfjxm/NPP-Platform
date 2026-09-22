@@ -14,6 +14,7 @@ type Filters = Readonly<{
   to: string;
   warehouseId: string;
   productGroupId: string;
+  brandId: string;
   customerGroupId: string;
   includeZeroProducts: boolean;
 }>;
@@ -174,6 +175,7 @@ async function requestAnalysisReport(filters: Filters): Promise<SalesReportingDa
   if (filters.to) query.set('to', filters.to);
   if (filters.warehouseId) query.set('warehouseId', filters.warehouseId);
   if (filters.productGroupId) query.set('productGroupId', filters.productGroupId);
+  if (filters.brandId) query.set('brandId', filters.brandId);
   if (filters.customerGroupId) query.set('customerGroupId', filters.customerGroupId);
   const serialized = query.toString();
   const response = await fetch(`/api/reporting/sales${serialized ? `?${serialized}` : ''}`, {
@@ -300,7 +302,7 @@ export function SalesReportingExportDialog({
         if (active) setAnalysisLoading(false);
       });
     return () => { active = false; };
-  }, [open, mode, filters.from, filters.to, filters.warehouseId, filters.productGroupId, filters.customerGroupId]);
+  }, [open, mode, filters.from, filters.to, filters.warehouseId, filters.productGroupId, filters.brandId, filters.customerGroupId]);
 
   useEffect(() => {
     setAnalysisSelectedColumns(analysisColumnOptions.map((item) => item.key));
@@ -376,6 +378,7 @@ export function SalesReportingExportDialog({
 
       if (mode === 'analysis') {
         if (filters.productGroupId) query.set('productGroupId', filters.productGroupId);
+        if (filters.brandId) query.set('brandId', filters.brandId);
         if (filters.customerGroupId) query.set('customerGroupId', filters.customerGroupId);
         if (analysisMetrics.includes('quantity')) query.set('quantityDisplay', quantityDisplay);
         query.set('sort', analysisSort);
@@ -383,6 +386,7 @@ export function SalesReportingExportDialog({
       } else {
         if (dimension === 'products') {
           if (filters.productGroupId) query.set('productGroupId', filters.productGroupId);
+          if (filters.brandId) query.set('brandId', filters.brandId);
           if (filters.includeZeroProducts) query.set('includeZeroProducts', 'true');
         }
         if (dimension === 'customers' && filters.customerGroupId) {

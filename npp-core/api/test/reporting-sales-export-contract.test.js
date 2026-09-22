@@ -253,6 +253,8 @@ test('Sales export dùng dữ liệu server, đối soát trước khi xuất v�
   assert.match(source, /mergeCells count=/);
   assert.match(source, /orientation="landscape"/);
   assert.match(source, /text\/csv; charset=utf-8/);
+  assert.match(source, /filters\.brandId \?\? null/);
+  assert.match(source, /product\.brand_id = \$7::uuid/);
   assert.match(source, /ĐVT/);
 });
 
@@ -262,6 +264,7 @@ test('Route Sales export yêu cầu đồng thời quyền xem Sales và quyền
   assert.match(route, /family === 'sales-export'[\s\S]*coreReportingExport/);
   assert.match(route, /coreReportingSalesRead/);
   assert.match(route, /normalizeSalesReportingExportSelection/);
+  assert.match(route, /brandId: url\.searchParams\.get\('brandId'\)/);
   assert.match(route, /url\.searchParams\.getAll\('column'\)/);
   assert.match(route, /quantityDisplay: url\.searchParams\.get\('quantityDisplay'\)/);
   assert.match(route, /sort: url\.searchParams\.get\('sort'\)/);

@@ -92,7 +92,7 @@ test('Nhóm sản phẩm của Báo cáo bán hàng dùng Danh mục sản phẩ
   assert.match(source, /product_category\.name AS product_group_name/);
   assert.doesNotMatch(source, /CASE WHEN line\.reporting_dimension_snapshot_captured THEN line\.product_category_id_snapshot ELSE product\.category_id END AS product_group_id/);
   assert.doesNotMatch(source, /CASE WHEN line\.reporting_dimension_snapshot_captured THEN line\.product_category_code_snapshot ELSE product_category\.code END AS product_group_code/);
-  assert.match(source, /product group analysis use the current master data/);
+  assert.match(source, /product group and brand analysis use the current product master/);
   assert.match(source, /product-group snapshots remain immutable for audit/);
   assert.match(source, /row\.productGroupSource === 'legacy-unavailable'/);
 });

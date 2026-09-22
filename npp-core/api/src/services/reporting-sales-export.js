@@ -627,10 +627,11 @@ async function loadSalesAnalysisFacts(pool, requestContext, filters, warehouseId
      AND so.confirmed_at >= $3::timestamptz AND so.confirmed_at < $4::timestamptz
      AND ($5::uuid IS NULL OR so.warehouse_id = $5::uuid) AND so.status IN ('confirmed','closed')
      AND ($6::uuid IS NULL OR product.category_id = $6::uuid)
-     AND ($7::uuid IS NULL OR customer.group_id = $7::uuid)
+     AND ($7::uuid IS NULL OR product.brand_id = $7::uuid)
+     AND ($8::uuid IS NULL OR customer.group_id = $8::uuid)
    ORDER BY product.name, line.sku_snapshot, so.id, line.line_number`, [
     requestContext.installationId, warehouseIds, filters.fromInstant, filters.toExclusiveInstant, filters.warehouseId,
-    filters.productGroupId ?? null, filters.customerGroupId ?? null,
+    filters.productGroupId ?? null, filters.brandId ?? null, filters.customerGroupId ?? null,
   ]);
   return result.rows ?? [];
 }

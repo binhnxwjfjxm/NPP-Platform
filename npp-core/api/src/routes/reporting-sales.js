@@ -281,7 +281,7 @@ export async function salesReport(adapter, requestContext, filters, warehouseIds
   const previous = previousPeriod(filters);
   const factParams = [requestContext.installationId, warehouseIds, filters.fromInstant, filters.toExclusiveInstant, filters.warehouseId, previous.fromInstant];
   const currentParams = [requestContext.installationId, warehouseIds, filters.fromInstant, filters.toExclusiveInstant, filters.warehouseId];
-  const [scopeWarehouses, summaryResult, factResult, documentsResult, productGroupsResult, customerGroupsResult, catalogProductsResult] = await Promise.all([
+  const [scopeWarehouses, summaryResult, factResult, documentsResult, productGroupsResult, productBrandsResult, customerGroupsResult, catalogProductsResult] = await Promise.all([
     adapter.query(`SELECT warehouse.id AS warehouse_id,
               warehouse.code AS warehouse_code,
               warehouse.name AS warehouse_name
@@ -314,6 +314,10 @@ export async function salesReport(adapter, requestContext, filters, warehouseIds
               product_category.code AS product_group_code,
               product_category.name AS product_group_name,
               CASE WHEN product_category.id IS NOT NULL THEN 'legacy-current-master' ELSE 'legacy-unavailable' END AS product_group_source,
+              product.brand_id AS brand_id,
+              product_brand.code AS brand_code,
+              product_brand.name AS brand_name,
+              CASE WHEN product_brand.id IS NOT NULL THEN 'current-master' ELSE 'current-unavailable' END AS brand_source,
               line.unit_id, line.unit_code_snapshot AS unit_code,
               CASE WHEN line.reporting_dimension_snapshot_captured THEN line.unit_name_snapshot ELSE unit.name END AS unit_name,
               CASE WHEN line.reporting_dimension_snapshot_captured THEN 'snapshot' WHEN unit.id IS NOT NULL THEN 'legacy-current-master' ELSE 'legacy-unavailable' END AS unit_name_source,
@@ -330,6 +334,7 @@ export async function salesReport(adapter, requestContext, filters, warehouseIds
          LEFT JOIN shared.product_variants variant ON variant.installation_id = line.installation_id AND variant.id = line.variant_id
          LEFT JOIN shared.products product ON product.installation_id = variant.installation_id AND product.id = variant.product_id
          LEFT JOIN shared.product_categories product_category ON product_category.installation_id = product.installation_id AND product_category.id = product.category_id
+         LEFT JOIN shared.product_brands product_brand ON product_brand.installation_id = product.installation_id AND product_brand.id = product.brand_id
          LEFT JOIN shared.units_of_measure unit ON unit.installation_id = line.installation_id AND unit.id = line.unit_id
          LEFT JOIN shared.employees source_employee ON source_employee.installation_id = so.installation_id AND source_employee.id = so.source_employee_id
          LEFT JOIN shared.users creator_user ON creator_user.installation_id = so.installation_id AND so.created_by = ('user:' || creator_user.id::text)
@@ -350,6 +355,10 @@ export async function salesReport(adapter, requestContext, filters, warehouseIds
          FROM shared.product_categories category
         WHERE category.installation_id = $1 AND category.is_active = true
         ORDER BY category.sort_order, category.code, category.id`, [requestContext.installationId]),
+    adapter.query(`SELECT brand.id, brand.code, brand.name
+         FROM shared.product_brands brand
+        WHERE brand.installation_id = $1 AND brand.is_active = true
+        ORDER BY brand.code, brand.id`, [requestContext.installationId]),
     adapter.query(`SELECT customer_group.id, customer_group.code, customer_group.name
          FROM shared.customer_groups customer_group
         WHERE customer_group.installation_id = $1 AND customer_group.is_active = true
@@ -359,6 +368,9 @@ export async function salesReport(adapter, requestContext, filters, warehouseIds
                 product.category_id AS product_group_id,
                 category.code AS product_group_code,
                 category.name AS product_group_name,
+                product.brand_id AS brand_id,
+                brand.code AS brand_code,
+                brand.name AS brand_name,
                 variant.unit_id, unit.code AS unit_code, unit.name AS unit_name
            FROM shared.product_variants variant
            JOIN shared.products product
@@ -370,14 +382,18 @@ export async function salesReport(adapter, requestContext, filters, warehouseIds
            LEFT JOIN shared.product_categories category
              ON category.installation_id = product.installation_id
             AND category.id = product.category_id
+           LEFT JOIN shared.product_brands brand
+             ON brand.installation_id = product.installation_id
+            AND brand.id = product.brand_id
           WHERE variant.installation_id = $1
             AND variant.is_active = true
             AND variant.is_sellable = true
             AND product.is_active = true
             AND variant.unit_id IS NOT NULL
             AND ($2::uuid IS NULL OR product.category_id = $2::uuid)
-          ORDER BY category.code NULLS LAST, product.code, variant.sku, variant.id`,
-        [requestContext.installationId, filters.productGroupId])
+            AND ($3::uuid IS NULL OR product.brand_id = $3::uuid)
+          ORDER BY category.code NULLS LAST, brand.code NULLS LAST, product.code, variant.sku, variant.id`,
+        [requestContext.installationId, filters.productGroupId, filters.brandId])
       : Promise.resolve({ rows: [] }),
   ]);
 
@@ -395,6 +411,7 @@ export async function salesReport(adapter, requestContext, filters, warehouseIds
   const productRows = filters.includeZeroProducts
     ? appendZeroProductRows(filteredProducts, mapRows(catalogProductsResult.rows), {
         productGroupId: filters.productGroupId,
+        brandId: filters.brandId,
         currencyCode: revenues.length === 1 ? revenues[0].currencyCode : '',
       })
     : filteredProducts;
@@ -421,6 +438,7 @@ export async function salesReport(adapter, requestContext, filters, warehouseIds
   const classificationOptions = buildSalesClassificationOptions(
     mapRows(productGroupsResult.rows),
     mapRows(customerGroupsResult.rows),
+    mapRows(productBrandsResult.rows),
   );
   const documents = mapRows(documentsResult.rows);
 
@@ -431,11 +449,12 @@ export async function salesReport(adapter, requestContext, filters, warehouseIds
       to: filters.to,
       warehouseId: filters.warehouseId,
       productGroupId: filters.productGroupId ?? null,
+      brandId: filters.brandId ?? null,
       customerGroupId: filters.customerGroupId ?? null,
       includeZeroProducts: Boolean(filters.includeZeroProducts),
     }),
     scopeWarehouses: mapRows(scopeWarehouses.rows),
-    basis: Object.freeze({ date: 'sales.sales_orders.confirmed_at', revenue: 'sum(sales.sales_order_version_lines.line_total), reconciled exactly to latest confirmed/superseded version total', quantity: 'ordered_quantity is only shown on product rows where the product identity is explicit; quantities are never aggregated across different units or unrelated products', classification: 'customer group uses the current customer master and only filters the customer breakdown; product group and zero-product options only filter the product breakdown; summary, trend, documents, reconciliation and other breakdowns remain on the full selected period and warehouse scope', employee: 'sales_orders.source_employee_id, otherwise creator user employee mapping; customer responsible employee is not used', historicalDimensions: 'customer group analysis uses the current customer master; confirmed customer-group snapshots remain immutable for audit; product group analysis use the current master data; product-group snapshots remain immutable for audit; unit history still uses confirmed snapshots when captured with explicit legacy fallback', effectiveStates: Object.freeze(['confirmed', 'closed']) }),
+    basis: Object.freeze({ date: 'sales.sales_orders.confirmed_at', revenue: 'sum(sales.sales_order_version_lines.line_total), reconciled exactly to latest confirmed/superseded version total', quantity: 'ordered_quantity is only shown on product rows where the product identity is explicit; quantities are never aggregated across different units or unrelated products', classification: 'customer group uses the current customer master and only filters the customer breakdown; product group, brand and zero-product options only filter the product breakdown; summary, trend, documents, reconciliation and other breakdowns remain on the full selected period and warehouse scope', employee: 'sales_orders.source_employee_id, otherwise creator user employee mapping; customer responsible employee is not used', historicalDimensions: 'customer group analysis uses the current customer master; confirmed customer-group snapshots remain immutable for audit; product group and brand analysis use the current product master; product-group snapshots remain immutable for audit; brand is not snapshotted on historical order lines; unit history still uses confirmed snapshots when captured with explicit legacy fallback', effectiveStates: Object.freeze(['confirmed', 'closed']) }),
     comparison: Object.freeze({ current: Object.freeze({ from: filters.from, to: filters.to, dayCount: previous.dayCount }), previous: Object.freeze({ from: previous.from, to: previous.to, dayCount: previous.dayCount }) }),
     summary: Object.freeze({ ...summaryCounts, revenues, quantities, soldProductCount }),
     breakdowns,
