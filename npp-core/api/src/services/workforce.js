@@ -6,7 +6,7 @@ const CODE_PATTERN = /^[A-Z0-9_-]{1,64}$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/;
 const POLICY_TIME_MODES = new Set(['FIXED', 'SHIFT', 'FLEXIBLE', 'NO_ATTENDANCE']);
-const ATTENDANCE_METHODS = new Set(['QR', 'MANUAL', 'BOTH', 'NONE']);
+const ATTENDANCE_METHODS = new Set(['QR', 'MANUAL', 'BOTH', 'FACE', 'QR_FACE', 'NONE']);
 const ATTENDANCE_BASES = new Set(['TIME', 'PRESENCE', 'NONE']);
 const TEMP_EXIT_REASONS = new Set(['WORK_BUSINESS', 'PERSONAL', 'BREAK', 'OTHER']);
 const SCHEDULE_KINDS = new Set(['WORK', 'OFF']);
@@ -935,7 +935,7 @@ export async function recordQrAttendance(client, {
   const resolved = await resolveAttendanceContext(client, { installationId, employeeId, now });
   if (!resolved.ok) return resolved;
   const attendance = resolved.context;
-  if (!['QR', 'BOTH'].includes(attendance.policy.attendance_method)) {
+  if (!['QR', 'BOTH', 'QR_FACE'].includes(attendance.policy.attendance_method)) {
     return fail('QR_ATTENDANCE_NOT_ALLOWED', 'Chính sách làm việc hiện tại không cho phép chấm công bằng QR');
   }
   if (!attendance.nextAction) return fail('ATTENDANCE_ALREADY_COMPLETE', 'Ngày làm việc này đã kết thúc');
@@ -1035,6 +1035,75 @@ export async function recordManualAttendance(client, {
     event,
     workDate: attendance.workDate,
     point: null,
+  };
+}
+
+
+export async function recordFaceAttendance(client, {
+  installationId,
+  employeeId,
+  payload,
+  actorId,
+  requestId,
+  device,
+  now = new Date(),
+}) {
+  if (!validUuid(employeeId)) return fail('EMPLOYEE_ID_REQUIRED', 'Không tìm thấy hồ sơ nhân sự để chấm công');
+  if (!device?.id || !device?.branch_id || !device?.attendance_point_id) {
+    return fail('FACE_DEVICE_UNAUTHORIZED', 'Thiết bị chấm công chưa được xác thực');
+  }
+
+  const resolved = await resolveAttendanceContext(client, { installationId, employeeId, now });
+  if (!resolved.ok) return resolved;
+  const attendance = resolved.context;
+  if (!['FACE', 'QR_FACE'].includes(attendance.policy.attendance_method)) {
+    return fail('FACE_ATTENDANCE_NOT_ALLOWED', 'Chính sách làm việc hiện tại không cho phép chấm công bằng khuôn mặt');
+  }
+  if (!attendance.nextAction) return fail('ATTENDANCE_ALREADY_COMPLETE', 'Ngày làm việc này đã kết thúc');
+  if (attendance.tooSoon) return fail('ATTENDANCE_TOO_SOON', 'Vừa ghi nhận chấm công; vui lòng đợi một phút trước thao tác tiếp theo');
+
+  const employeeBranchId = attendance.employee.branch_id ? String(attendance.employee.branch_id) : null;
+  const deviceBranchId = device.branch_id ? String(device.branch_id) : null;
+  if (!employeeBranchId) {
+    return fail('EMPLOYEE_WORKPLACE_REQUIRED', 'Hồ sơ nhân sự chưa có nơi làm việc; vui lòng liên hệ quản lý');
+  }
+  if (!deviceBranchId || deviceBranchId !== employeeBranchId) {
+    return fail('ATTENDANCE_WORKPLACE_MISMATCH', 'Thiết bị này không thuộc nơi làm việc đã gắn cho nhân sự');
+  }
+
+  const choice = attendanceEventChoice(attendance, payload);
+  if (!choice.ok) return choice;
+  const sourceReference = createHash('sha256')
+    .update(`attendance-face|${device.id}|${employeeId}|${attendance.workDate}|${attendance.latestEvent?.id ?? 'START'}|${choice.eventType}|${choice.movementReason ?? 'NONE'}`)
+    .digest('hex');
+  const event = await workforceRepo.insertAttendanceEvent(client, {
+    installationId,
+    employeeId,
+    scheduleId: attendance.schedule?.id ?? null,
+    workPolicyId: attendance.policy.id,
+    attendancePointId: device.attendance_point_id,
+    eventType: choice.eventType,
+    movementReason: choice.movementReason,
+    occurredAt: now.toISOString(),
+    source: 'FACE',
+    sourceReference,
+    note: choice.note,
+    actorId,
+    requestId,
+  });
+  if (!event) return fail('ATTENDANCE_DUPLICATE_SCAN', 'Lần điểm danh này đã được ghi nhận trước đó');
+
+  return {
+    ok: true,
+    event,
+    workDate: attendance.workDate,
+    point: {
+      id: device.attendance_point_id,
+      code: device.point_code,
+      name: device.branch_name ?? device.point_name,
+      branchId: device.branch_id,
+      branchName: device.branch_name ?? null,
+    },
   };
 }
 
