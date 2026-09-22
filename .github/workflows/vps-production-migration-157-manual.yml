@@ -1,0 +1,146 @@
+name: VPS production DB migration 157
+
+on:
+  workflow_dispatch:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: vps-production-db-migration
+  cancel-in-progress: false
+
+jobs:
+  migrate-157:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.number == 5 &&
+        github.event.comment.body == '/migrate-vps-production-157' &&
+        contains(fromJSON('["binhnxwjfjxm","khuongbinhinfo-a11y","gustavjung01"]'), github.actor)
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      VPS_DB_HOST: ${{ vars.VPS_DB_HOST }}
+      VPS_SSH_USER: ${{ vars.VPS_SSH_USER }}
+
+    steps:
+      - name: Validate exact issue command
+        if: github.event_name == 'issue_comment'
+        shell: bash
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          test "$COMMENT_BODY" = '/migrate-vps-production-157'
+
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact origin/main SHA and migration contract
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          test "$(git rev-parse --is-shallow-repository)" = "false"
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          test -s database/migrations/shared/157_workforce_face_attendance.sql
+          test -s npp-core/api/scripts/vps-production-migrate-workforce-157.sh
+          grep -q "157_workforce_face_attendance" npp-core/api/src/migrations/index.js
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare DB SSH credential
+        id: ssh
+        shell: bash
+        env:
+          VPS_DB_SSH_KEY: ${{ secrets.VPS_DB_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$VPS_DB_HOST"
+          test -n "$VPS_SSH_USER"
+          test -n "$VPS_DB_SSH_KEY"
+          umask 077
+          key="$RUNNER_TEMP/vps-db.key"
+          printf '%s\n' "$VPS_DB_SSH_KEY" > "$key"
+          chmod 600 "$key"
+          ssh-keygen -y -f "$key" >/dev/null
+          known_hosts="$RUNNER_TEMP/vps-db-known-hosts"
+          ssh-keyscan -T 10 -H "$VPS_DB_HOST" > "$known_hosts" 2>/dev/null
+          test -s "$known_hosts"
+          chmod 600 "$known_hosts"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+          echo "known_hosts=$known_hosts" >> "$GITHUB_OUTPUT"
+
+      - name: Copy exact migration assets to DB VPS
+        shell: bash
+        env:
+          SSH_KEY: ${{ steps.ssh.outputs.key }}
+          KNOWN_HOSTS: ${{ steps.ssh.outputs.known_hosts }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          scp -i "$SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN_HOSTS" \
+            database/migrations/shared/157_workforce_face_attendance.sql \
+            "$VPS_SSH_USER@$VPS_DB_HOST:/tmp/npp-157-$SOURCE_SHA.sql"
+          scp -i "$SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN_HOSTS" \
+            npp-core/api/scripts/vps-production-migrate-workforce-157.sh \
+            "$VPS_SSH_USER@$VPS_DB_HOST:/tmp/npp-migrate-workforce-157-$SOURCE_SHA.sh"
+
+      - name: Fresh backup, restore rehearsal, migrate production and verify
+        id: migrate
+        shell: bash
+        env:
+          SSH_KEY: ${{ steps.ssh.outputs.key }}
+          KNOWN_HOSTS: ${{ steps.ssh.outputs.known_hosts }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/vps-production-migration-157.txt"
+          set +e
+          ssh -i "$SSH_KEY" -o BatchMode=yes -o ConnectTimeout=10 -o ConnectionAttempts=1 \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN_HOSTS" \
+            "$VPS_SSH_USER@$VPS_DB_HOST" \
+            "chmod 0700 /tmp/npp-migrate-workforce-157-$SOURCE_SHA.sh && /tmp/npp-migrate-workforce-157-$SOURCE_SHA.sh '$SOURCE_SHA' '$GITHUB_RUN_ID'; status=\$?; rm -f /tmp/npp-migrate-workforce-157-$SOURCE_SHA.sh; exit \$status" \
+            > "$out" 2>&1
+          status=$?
+          set -e
+          cat "$out"
+          echo "report=$out" >> "$GITHUB_OUTPUT"
+          exit "$status"
+
+      - name: Publish sanitized migration evidence to Issue 958
+        if: always() && steps.migrate.outputs.report != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPORT_FILE: ${{ steps.migrate.outputs.report }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/migration-evidence.md"
+          {
+            echo "## VPS production migration 157"
+            echo
+            echo "- Run ID: `$GITHUB_RUN_ID`"
+            echo "- Exact main SHA: `$SOURCE_SHA`"
+            echo '- Command: `/migrate-vps-production-157`'
+            echo "- Operation status: `${{ job.status }}`"
+            echo "- Secret values and database URLs are not included."
+            echo
+            echo '~~~text'
+            cat "$REPORT_FILE"
+            echo '~~~'
+          } > "$evidence"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/958/comments" \
+            -f body="$(cat "$evidence")" >/dev/null

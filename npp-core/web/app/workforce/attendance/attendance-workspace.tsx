@@ -47,6 +47,8 @@ function eventLabel(event: AttendanceToday['events'][number]) {
 
 const ATTENDANCE_METHOD_LABEL: Record<AttendanceToday['policy']['attendanceMethod'], string> = {
   QR: 'Quét mã tại nơi làm việc',
+  FACE: 'Quét khuôn mặt tại máy chấm công',
+  QR_FACE: 'Quét mã QR hoặc quét khuôn mặt',
   MANUAL: 'Chấm công trực tiếp',
   BOTH: 'Quét mã hoặc chấm trực tiếp',
   NONE: 'Không yêu cầu chấm công',
@@ -161,7 +163,8 @@ export default function AttendanceWorkspace({
         : 'Đã hoàn tất chấm công';
   const exitSelectionReady = today?.nextAction !== 'EXIT'
     || (Boolean(exitReason) && (exitReason !== 'OTHER' || Boolean(exitNote.trim())));
-  const qrAllowed = today?.policy.attendanceMethod === 'QR' || today?.policy.attendanceMethod === 'BOTH';
+  const qrAllowed = today?.policy.attendanceMethod === 'QR' || today?.policy.attendanceMethod === 'BOTH' || today?.policy.attendanceMethod === 'QR_FACE';
+  const faceAllowed = today?.policy.attendanceMethod === 'FACE' || today?.policy.attendanceMethod === 'QR_FACE';
   const manualAllowed = today?.policy.attendanceMethod === 'MANUAL' || today?.policy.attendanceMethod === 'BOTH';
   const remainingSeconds = qrToken
     ? Math.max(0, Math.ceil((new Date(qrToken.expiresAt).getTime() - clock) / 1000))
@@ -496,11 +499,17 @@ export default function AttendanceWorkspace({
                   )}
                 </div>
               </>
-            ) : (
+            ) : faceAllowed ? null : (
               <div className={localStyles.methodNotice}>
                 Chính sách hiện tại không yêu cầu quét mã. Dùng cách chấm công được hiển thị bên dưới.
               </div>
             )}
+
+            {faceAllowed ? (
+              <div className={localStyles.methodNotice} data-testid="attendance-face-method">
+                Quét khuôn mặt được thực hiện tại máy chấm công của nơi làm việc. Nhân sự không cần chọn tên hoặc nhập giờ trên trình duyệt.
+              </div>
+            ) : null}
 
             {today?.nextAction === 'EXIT' ? (
               <div className={localStyles.exitPanel} data-testid="attendance-exit-reason">
@@ -559,7 +568,7 @@ export default function AttendanceWorkspace({
             <div className={localStyles.eventList} data-testid="attendance-today-events">
               {(today?.events ?? []).map((event) => (
                 <div className={localStyles.eventItem} key={event.id}>
-                  <span><strong>{eventLabel(event)}</strong><br /><small>{event.note || event.point_name || (event.source === 'MANUAL' ? 'Chấm công trực tiếp' : 'Nơi làm việc')}</small></span>
+                  <span><strong>{eventLabel(event)}</strong><br /><small>{event.note || event.point_name || (event.source === 'MANUAL' ? 'Chấm công trực tiếp' : event.source === 'FACE' ? 'Máy chấm công khuôn mặt' : 'Nơi làm việc')}</small></span>
                   <span>{formatDateTime(event.occurred_at, timeZone)}</span>
                 </div>
               ))}

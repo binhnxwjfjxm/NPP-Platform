@@ -41,7 +41,7 @@ const TIME_MODE_LABEL: Record<WorkPolicy['time_mode'], string> = {
   FIXED: 'Giờ cố định', SHIFT: 'Theo ca', FLEXIBLE: 'Linh hoạt', NO_ATTENDANCE: 'Không bắt buộc chấm công',
 };
 const ATTENDANCE_LABEL: Record<WorkPolicy['attendance_method'], string> = {
-  QR: 'QR', MANUAL: 'Chấm trực tiếp', BOTH: 'QR và chấm trực tiếp', NONE: 'Không chấm công',
+  QR: 'QR', FACE: 'Quét khuôn mặt', QR_FACE: 'QR và quét khuôn mặt', MANUAL: 'Chấm trực tiếp', BOTH: 'QR và chấm trực tiếp', NONE: 'Không chấm công',
 };
 const ATTENDANCE_BASIS_LABEL: Record<WorkPolicy['attendance_basis'], string> = {
   TIME: 'Theo thời gian vào / ra',
@@ -251,6 +251,8 @@ export default function WorkPolicyWorkspace({ initialPolicies, initialError }: {
                     Phương thức chấm công
                     <select value={draft.attendanceMethod} onChange={(e) => setDraft((c) => ({ ...c, attendanceMethod: e.target.value as WorkPolicy['attendance_method'] }))}>
                       <option value="QR">QR</option>
+                      <option value="FACE">Quét khuôn mặt</option>
+                      <option value="QR_FACE">QR và quét khuôn mặt</option>
                       <option value="MANUAL">Chấm trực tiếp</option>
                       <option value="BOTH">QR và chấm trực tiếp</option>
                     </select>

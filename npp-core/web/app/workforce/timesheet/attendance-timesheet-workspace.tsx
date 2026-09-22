@@ -40,6 +40,7 @@ const STATUS_LABEL: Record<AttendanceDayStatus, string> = {
 
 const SOURCE_LABEL: Record<AttendanceEvent['source'], string> = {
   QR: 'QR',
+  FACE: 'Quét khuôn mặt',
   MANUAL: 'Chấm trực tiếp',
   ADJUSTMENT: 'Điều chỉnh',
   SYSTEM: 'Hệ thống',
@@ -749,7 +750,7 @@ export default function AttendanceTimesheetWorkspace({
                   <div className={localStyles.eventItem} key={event.id}>
                     <div>
                       <strong>{event.event_type === 'CHECK_IN' ? 'Giờ vào' : 'Giờ ra'} · {SOURCE_LABEL[event.source]}</strong>
-                      <small>{event.point_name || (event.source === 'MANUAL' ? 'Chấm công trực tiếp' : 'Không ghi nhận nơi chấm công')} · {validationLabel(event.validation_status)}</small>
+                      <small>{event.point_name || (event.source === 'MANUAL' ? 'Chấm công trực tiếp' : event.source === 'FACE' ? 'Máy chấm công khuôn mặt' : 'Không ghi nhận nơi chấm công')} · {validationLabel(event.validation_status)}</small>
                       {event.note ? <small>Ghi chú: {event.note}</small> : null}
                     </div>
                     <span>{dateTimeLabel(event.occurred_at, selectedDay.policy?.timezone)}</span>

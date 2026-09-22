@@ -1,5 +1,3 @@
-BEGIN;
-
 ALTER TABLE shared.work_policies
   DROP CONSTRAINT IF EXISTS work_policies_attendance_method_check,
   ADD CONSTRAINT work_policies_attendance_method_check
@@ -93,4 +91,3 @@ BEGIN
 END;
 $$;
 
-COMMIT;
