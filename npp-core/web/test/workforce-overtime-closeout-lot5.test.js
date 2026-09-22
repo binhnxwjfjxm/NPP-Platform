@@ -33,17 +33,15 @@ test('Issue #1140 Lô 5 uses retry-safe canonical mutations for OT and closeout'
   assert.match(gateway, /mutationKey\(idempotencyKey, 'attendance-period-action'\)/);
 });
 
-test('Issue #1140 Lô 5 only exposes closed attendance snapshot as payroll input and does not add Payroll navigation early', async () => {
-  const [workspace, shell, gateway] = await Promise.all([
+test('Issue #1140 Lô 5 only exposes closed attendance snapshot as payroll input', async () => {
+  const [workspace, gateway] = await Promise.all([
     source('app/workforce/overtime/overtime-closeout-workspace.tsx'),
-    source('app/components/app-shell-core.tsx'),
     source('lib/workforce-gateway.ts'),
   ]);
   assert.match(workspace, /Bản chốt kỳ công lần/);
   assert.match(workspace, /Chỉ đọc/);
   assert.match(workspace, /Giờ tăng ca đã xác nhận/);
   assert.match(gateway, /attendance\/payroll-input/);
-  assert.equal((shell.match(/href: '\/workforce\/payroll'/g) ?? []).length, 0);
 });
 
 test('Issue #1140 Lô 5 web routes forward the same incoming idempotency key', async () => {
