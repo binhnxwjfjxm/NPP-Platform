@@ -185,20 +185,9 @@ jobs:
           async function syncPlain(projectId, entries, key, value, comment) {
             const matches = entriesFor(entries, key);
             if (matches.length > 1) throw new Error(`vercel_env_count_invalid:${key}:${matches.length}`);
-            if (matches.length === 1) {
-              const id = String(matches[0]?.id || '');
-              if (!id) throw new Error(`vercel_env_id_missing:${key}`);
-              const url = new URL(`https://api.vercel.com/v9/projects/${encodeURIComponent(projectId)}/env/${encodeURIComponent(id)}`);
-              url.searchParams.set('teamId', env.VERCEL_ORG_ID);
-              await jsonRequest(url, {
-                method: 'PATCH',
-                headers,
-                body: JSON.stringify({ key, value, type: 'plain', target: ['production'], comment }),
-              });
-              return;
-            }
             const url = new URL(`https://api.vercel.com/v10/projects/${encodeURIComponent(projectId)}/env`);
             url.searchParams.set('teamId', env.VERCEL_ORG_ID);
+            url.searchParams.set('upsert', 'true');
             await jsonRequest(url, {
               method: 'POST',
               headers,

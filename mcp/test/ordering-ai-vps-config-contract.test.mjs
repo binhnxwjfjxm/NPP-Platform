@@ -24,6 +24,9 @@ test('Ordering AI production configuration uses Công Ty VPS as authority and ke
   assert.match(workflow, /Redeploy Customer Ordering after Website gateway passes/);
   assert.match(workflow, /website_ai_token_probe_failed/);
   assert.match(workflow, /ordering_gateway_auth_probe_failed/);
+  assert.match(workflow, /v10\/projects\/\$\{encodeURIComponent\(projectId\)\}\/env/);
+  assert.match(workflow, /url\.searchParams\.set\('upsert', 'true'\)/);
+  assert.doesNotMatch(workflow, /v9\/projects\/\$\{encodeURIComponent\(projectId\)\}\/env\/\$\{encodeURIComponent\(id\)\}/);
 
   assert.doesNotMatch(workflow, /HEROKU_API_KEY|api\.heroku\.com|HEROKU_APP_NAME|hung-phat-mcp/);
 
