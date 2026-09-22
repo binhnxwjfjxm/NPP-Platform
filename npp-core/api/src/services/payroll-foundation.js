@@ -1,4 +1,5 @@
 import * as payrollRepo from '../db/repositories/payroll-foundation.js';
+import * as payrollAggregationRepo from '../db/repositories/payroll-aggregation.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -199,6 +200,13 @@ async function saveSalary(client, { requestContext, payload, companyScope, branc
     requestId: requestContext.requestId,
     actorId: requestContext.actorId,
   });
+  await payrollAggregationRepo.markPayrollPeriodsDirtyForEmployeeFromDate(client, {
+    installationId: requestContext.installationId,
+    employeeId,
+    effectiveFrom,
+    actorId: requestContext.actorId,
+    requestId: requestContext.requestId,
+  });
   return {
     ok: true,
     data: profile,
@@ -310,6 +318,13 @@ async function assignFixedComponent(client, { requestContext, payload, companySc
     requestId: requestContext.requestId,
     actorId: requestContext.actorId,
   });
+  await payrollAggregationRepo.markPayrollPeriodsDirtyForEmployeeFromDate(client, {
+    installationId: requestContext.installationId,
+    employeeId,
+    effectiveFrom,
+    actorId: requestContext.actorId,
+    requestId: requestContext.requestId,
+  });
   return {
     ok: true,
     data: fixed,
@@ -365,6 +380,12 @@ async function addPeriodComponent(client, { requestContext, payload, companyScop
     note: note.value,
     requestId: requestContext.requestId,
     actorId: requestContext.actorId,
+  });
+  await payrollAggregationRepo.markPayrollPeriodDirty(client, {
+    installationId: requestContext.installationId,
+    payrollPeriodId,
+    actorId: requestContext.actorId,
+    requestId: requestContext.requestId,
   });
   return {
     ok: true,

@@ -10,6 +10,7 @@ import * as leaveManagementService from '../services/leave-management.js';
 import * as attendanceViolationService from '../services/attendance-violations.js';
 import * as workforceCloseoutService from '../services/workforce-closeout.js';
 import * as payrollFoundationService from '../services/payroll-foundation.js';
+import * as payrollAggregationService from '../services/payroll-aggregation.js';
 
 function createError(code, message, details = {}, retryable = false, statusCode = 500) {
   return { code, message, details, retryable, statusCode };
@@ -34,6 +35,8 @@ function statusFor(result) {
     'ATTENDANCE_PERIOD_NOT_RECONCILED', 'ATTENDANCE_PERIOD_CHANGED', 'ATTENDANCE_PERIOD_CONFLICT',
     'ATTENDANCE_PERIOD_NOT_CLOSED', 'ATTENDANCE_PERIOD_SNAPSHOT_MISSING', 'ATTENDANCE_PERIOD_IN_FUTURE',
     'PAYROLL_PERIOD_EXISTS', 'PAYROLL_EFFECTIVE_DATE_CONFLICT', 'PAYROLL_COMPONENT_CODE_EXISTS', 'PAYROLL_PERIOD_CLOSED', 'EMPLOYEE_NOT_IN_PAYROLL_PERIOD',
+    'PAYROLL_CALCULATION_MISSING', 'PAYROLL_PERIOD_CHANGED', 'PAYROLL_PERIOD_HAS_BLOCKERS', 'PAYROLL_WARNINGS_UNACKNOWLEDGED', 'PAYROLL_PERIOD_CONFLICT',
+    'PAYROLL_ATTENDANCE_SNAPSHOT_MISSING', 'PAYROLL_ATTENDANCE_SNAPSHOT_CHANGED',
   ].includes(result.code)) return 409;
   return 400;
 }
@@ -145,20 +148,34 @@ async function runIdempotentMutation(req, res, context, { route, payload, mutate
 
 
 async function handlePayrollFoundation(req, res, context, method) {
+  const payrollScope = {
+    requestContext: context.requestContext,
+    companyScope: isCompanyScope(context.requestContext),
+    branchIds: [...(context.requestContext.scopes.branchIds ?? [])],
+  };
   if (method === 'GET') {
     const url = new URL(`http://localhost${req.url}`);
     const result = await payrollFoundationService.listPayrollFoundation(context.getPool(), {
       installationId: context.requestContext.installationId,
-      companyScope: isCompanyScope(context.requestContext),
-      branchIds: [...(context.requestContext.scopes.branchIds ?? [])],
+      companyScope: payrollScope.companyScope,
+      branchIds: payrollScope.branchIds,
       rawPeriodId: url.searchParams.get('periodId'),
     });
     if (!result.ok) {
       sendError(res, createError(result.code, result.message, {}, false, statusFor(result)), context.requestId, context.receivedAt);
       return;
     }
+    const calculation = await payrollAggregationService.getPayrollCalculation(context.getPool(), {
+      ...payrollScope,
+      payrollPeriodId: result.data.selectedPeriod?.id ?? null,
+    });
+    if (!calculation.ok) {
+      sendError(res, createError(calculation.code, calculation.message, {}, false, statusFor(calculation)), context.requestId, context.receivedAt);
+      return;
+    }
     sendSuccess(res, {
       ...result.data,
+      calculation: calculation.data,
       capabilities: { canManage: context.canManagePayroll },
     }, context.requestId, context.receivedAt);
     return;
@@ -167,17 +184,16 @@ async function handlePayrollFoundation(req, res, context, method) {
   const parsed = await parsePayload(req, res, context);
   if (!parsed.ok) return;
   const payload = parsed.payload;
+  const command = String(payload?.command ?? '').trim().toUpperCase();
+  const aggregationCommand = ['AGGREGATE', 'RECONCILE'].includes(command);
   await runIdempotentMutation(req, res, context, {
     route: '/api/workforce/payroll',
     payload,
-    successStatus: 201,
+    successStatus: aggregationCommand ? 200 : 201,
     mutate: async (client) => {
-      const result = await payrollFoundationService.mutatePayrollFoundation(client, {
-        requestContext: context.requestContext,
-        payload,
-        companyScope: isCompanyScope(context.requestContext),
-        branchIds: [...(context.requestContext.scopes.branchIds ?? [])],
-      });
+      const result = aggregationCommand
+        ? await payrollAggregationService.mutatePayrollAggregation(client, { ...payrollScope, payload })
+        : await payrollFoundationService.mutatePayrollFoundation(client, { ...payrollScope, payload });
       if (!result.ok) return result;
       return {
         ok: true,
@@ -195,7 +211,6 @@ async function handlePayrollFoundation(req, res, context, method) {
     },
   });
 }
-
 
 async function handleOvertimeRequests(req, res, context, method, { selfOnly }) {
   if (method === 'GET') {
