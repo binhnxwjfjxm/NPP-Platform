@@ -684,3 +684,159 @@ export type LeaveRequestListResponse = {
     canManageTypes: boolean;
   };
 };
+
+
+export type OvertimeStatus = 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'ACTUAL_RECORDED' | 'CONFIRMED';
+
+export type OvertimeRequest = {
+  id: string;
+  installation_id: string;
+  employee_id: string;
+  work_date: string;
+  requested_minutes: number;
+  reason: string;
+  policy_id_snapshot: string;
+  policy_code_snapshot: string;
+  policy_version_snapshot: number;
+  overtime_requires_approval_snapshot: boolean;
+  status: OvertimeStatus;
+  requested_by_actor_id: string;
+  requested_by_employee_id: string;
+  reviewed_by_actor_id: string | null;
+  review_reason: string | null;
+  reviewed_at: string | null;
+  actual_minutes: number | null;
+  actual_note: string | null;
+  actual_recorded_by_actor_id: string | null;
+  actual_recorded_at: string | null;
+  confirmed_minutes: number | null;
+  confirm_note: string | null;
+  confirmed_by_actor_id: string | null;
+  confirmed_at: string | null;
+  version: number;
+  request_id: string;
+  created_at: string;
+  updated_at: string;
+  employee_code?: string;
+  employee_name?: string;
+  employee_branch_id?: string | null;
+  branch_code?: string | null;
+  branch_name?: string | null;
+};
+
+export type OvertimeListResponse = {
+  requests: OvertimeRequest[];
+  branches: AttendanceBranch[];
+  pagination: {
+    limit: number;
+    offset: number;
+    total: number;
+    hasPrevious: boolean;
+    hasNext: boolean;
+  };
+  capabilities: {
+    selfOnly: boolean;
+    canSubmitOwn: boolean;
+    canApprove: boolean;
+    canConfirm: boolean;
+  };
+};
+
+export type AttendancePeriodStatus = 'AGGREGATING' | 'NEEDS_ACTION' | 'RECONCILED' | 'CLOSED';
+
+export type AttendancePeriodIssueSummary = {
+  blockers?: {
+    configurationIssueDays?: number;
+    pendingAdjustmentDays?: number;
+    pendingLeaveDays?: number;
+    outstandingOvertimeRequests?: number;
+  };
+  warnings?: {
+    incompleteDays?: number;
+    unexcusedAbsenceDays?: number;
+    violationDays?: number;
+  };
+  postCloseCorrection?: boolean;
+};
+
+export type AttendancePeriod = {
+  id: string;
+  installation_id: string;
+  branch_id: string | null;
+  scope_key: string;
+  period_start: string;
+  period_end: string;
+  status: AttendancePeriodStatus;
+  issue_summary: AttendancePeriodIssueSummary;
+  source_fingerprint: string | null;
+  reconciled_fingerprint: string | null;
+  reconciled_by_actor_id: string | null;
+  reconciled_at: string | null;
+  reconciliation_note: string | null;
+  closed_by_actor_id: string | null;
+  closed_at: string | null;
+  lock_id: string | null;
+  revision: number;
+  request_id: string;
+  created_at: string;
+  updated_at: string;
+  created_by: string;
+  updated_by: string;
+  branch_code?: string | null;
+  branch_name?: string | null;
+};
+
+export type AttendancePeriodListResponse = {
+  periods: AttendancePeriod[];
+  branches: AttendanceBranch[];
+  capabilities: {
+    canReconcile: boolean;
+    canClose: boolean;
+  };
+};
+
+export type AttendancePeriodMutationResponse = {
+  period: AttendancePeriod;
+  issues: AttendancePeriodIssueSummary;
+  snapshot: {
+    id: string;
+    revision: number;
+    source_fingerprint: string;
+    snapshot: unknown;
+  } | null;
+};
+
+export type AttendancePayrollInput = {
+  period: AttendancePeriod;
+  revision: number;
+  sourceFingerprint: string;
+  payrollInput: {
+    contractVersion: number;
+    period: { from: string; to: string; branchId: string | null };
+    issueSummary: AttendancePeriodIssueSummary;
+    status: 'CLOSED';
+    revision: number;
+    employees: Array<{
+      employeeId: string;
+      employeeCode: string;
+      employeeName: string;
+      branchId: string | null;
+      branchCode: string | null;
+      branchName: string | null;
+      workDays: number;
+      completedDays: number;
+      countedMinutes: number;
+      leaveCreditedMinutes: number;
+      approvedLeaveDays: number;
+      paidLeaveDays: number;
+      unpaidLeaveDays: number;
+      unexcusedAbsenceDays: number;
+      incompleteDays: number;
+      configurationIssueDays: number;
+      violationDays: number;
+      pendingLeaveDays: number;
+      pendingAdjustmentDays: number;
+      confirmedOvertimeMinutes: number;
+    }>;
+  };
+};

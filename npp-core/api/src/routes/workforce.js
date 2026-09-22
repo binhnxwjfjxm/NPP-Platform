@@ -8,15 +8,16 @@ import * as attendanceTimesheetService from '../services/attendance-timesheet.js
 import * as attendanceAdjustmentService from '../services/attendance-adjustments.js';
 import * as leaveManagementService from '../services/leave-management.js';
 import * as attendanceViolationService from '../services/attendance-violations.js';
+import * as workforceCloseoutService from '../services/workforce-closeout.js';
 
 function createError(code, message, details = {}, retryable = false, statusCode = 500) {
   return { code, message, details, retryable, statusCode };
 }
 
 function statusFor(result) {
-  if (['EMPLOYEE_NOT_FOUND', 'POLICY_NOT_FOUND', 'SHIFT_TEMPLATE_NOT_FOUND', 'WEEK_TEMPLATE_NOT_FOUND', 'ATTENDANCE_POINT_NOT_FOUND', 'BRANCH_NOT_FOUND', 'ADJUSTMENT_REQUEST_NOT_FOUND', 'LEAVE_TYPE_NOT_FOUND', 'LEAVE_REQUEST_NOT_FOUND', 'VIOLATION_CASE_NOT_FOUND', 'ATTENDANCE_DAY_NOT_FOUND'].includes(result.code)) return 404;
+  if (['EMPLOYEE_NOT_FOUND', 'POLICY_NOT_FOUND', 'SHIFT_TEMPLATE_NOT_FOUND', 'WEEK_TEMPLATE_NOT_FOUND', 'ATTENDANCE_POINT_NOT_FOUND', 'BRANCH_NOT_FOUND', 'ADJUSTMENT_REQUEST_NOT_FOUND', 'LEAVE_TYPE_NOT_FOUND', 'LEAVE_REQUEST_NOT_FOUND', 'VIOLATION_CASE_NOT_FOUND', 'ATTENDANCE_DAY_NOT_FOUND', 'OVERTIME_REQUEST_NOT_FOUND', 'ATTENDANCE_PERIOD_NOT_FOUND'].includes(result.code)) return 404;
   if (result.code === 'QR_TOKEN_EXPIRED') return 410;
-  if (result.code === 'SCOPE_FORBIDDEN') return 403;
+  if (['SCOPE_FORBIDDEN', 'ATTENDANCE_CLOSE_REQUIRES_LOCK_PERMISSION'].includes(result.code)) return 403;
   if ([
     'POLICY_CODE_EXISTS', 'POLICY_VERSION_CONFLICT', 'POLICY_EFFECTIVE_DATE_CONFLICT',
     'SHIFT_TEMPLATE_CODE_EXISTS', 'WEEK_TEMPLATE_CODE_EXISTS',
@@ -27,6 +28,10 @@ function statusFor(result) {
     'LEAVE_TYPE_CODE_EXISTS', 'LEAVE_TYPE_CONFLICT', 'LEAVE_REQUEST_OVERLAP', 'LEAVE_REQUEST_CONFLICT',
     'LEAVE_BALANCE_INSUFFICIENT', 'LEAVE_BALANCE_LEDGER_MISSING', 'LEAVE_NO_SCHEDULED_WORKDAYS', 'EMPLOYEE_NOT_EMPLOYED_ON_LEAVE_DATE',
     'VIOLATION_CASE_EXISTS', 'VIOLATION_CASE_CONFLICT', 'VIOLATION_CHANGED',
+    'OVERTIME_REQUEST_EXISTS', 'OVERTIME_REQUEST_CONFLICT', 'OVERTIME_NOT_ENABLED', 'OVERTIME_CONFIRMED_EXCEEDS_ACTUAL', 'EMPLOYEE_NOT_EMPLOYED_ON_DATE',
+    'ATTENDANCE_PERIOD_ALREADY_CLOSED', 'ATTENDANCE_PERIOD_HAS_BLOCKERS', 'ATTENDANCE_PERIOD_WARNINGS_UNACKNOWLEDGED',
+    'ATTENDANCE_PERIOD_NOT_RECONCILED', 'ATTENDANCE_PERIOD_CHANGED', 'ATTENDANCE_PERIOD_CONFLICT',
+    'ATTENDANCE_PERIOD_NOT_CLOSED', 'ATTENDANCE_PERIOD_SNAPSHOT_MISSING', 'ATTENDANCE_PERIOD_IN_FUTURE',
   ].includes(result.code)) return 409;
   return 400;
 }
@@ -134,6 +139,245 @@ async function runIdempotentMutation(req, res, context, { route, payload, mutate
   } catch {
     sendError(res, createError('WORKFORCE_MUTATION_UNAVAILABLE', 'Không thể lưu thay đổi nhân sự lúc này', {}, true, 503), context.requestId, context.receivedAt);
   }
+}
+
+
+async function handleOvertimeRequests(req, res, context, method, { selfOnly }) {
+  if (method === 'GET') {
+    const url = new URL(`http://localhost${req.url}`);
+    const result = await workforceCloseoutService.listOvertimeRequests(context.getPool(), {
+      installationId: context.requestContext.installationId,
+      selfOnly,
+      ownEmployeeId: context.requestContext.employeeId,
+      companyScope: isCompanyScope(context.requestContext),
+      branchIds: [...(context.requestContext.scopes.branchIds ?? [])],
+      rawEmployeeId: url.searchParams.get('employeeId'),
+      rawEmployeeQuery: url.searchParams.get('employeeQuery'),
+      rawBranchId: url.searchParams.get('branchId'),
+      rawStatus: url.searchParams.get('status'),
+      rawDateFrom: url.searchParams.get('from'),
+      rawDateTo: url.searchParams.get('to'),
+      rawLimit: url.searchParams.get('limit'),
+      rawOffset: url.searchParams.get('offset'),
+    });
+    if (!result.ok) {
+      sendError(res, createError(result.code, result.message, {}, false, statusFor(result)), context.requestId, context.receivedAt);
+      return;
+    }
+    sendSuccess(res, {
+      ...result.data,
+      capabilities: {
+        selfOnly,
+        canSubmitOwn: context.canSelfOvertime,
+        canApprove: context.canApproveOvertime,
+        canConfirm: context.canConfirmOvertime,
+      },
+    }, context.requestId, context.receivedAt);
+    return;
+  }
+  const parsed = await parsePayload(req, res, context);
+  if (!parsed.ok) return;
+  const payload = parsed.payload;
+  await runIdempotentMutation(req, res, context, {
+    route: '/api/workforce/overtime',
+    payload,
+    successStatus: 201,
+    mutate: async (client) => {
+      const result = await workforceCloseoutService.submitOvertimeRequest(client, {
+        requestContext: context.requestContext,
+        payload,
+      });
+      if (!result.ok) return result;
+      return {
+        ok: true,
+        data: result.request,
+        audit: {
+          requestContext: context.requestContext,
+          action: 'submit-overtime',
+          resourceType: 'overtime-request',
+          resourceId: result.request.id,
+          beforeData: null,
+          afterData: result.request,
+          metadata: { workDate: result.request.work_date, autoApproved: result.autoApproved },
+        },
+      };
+    },
+  });
+}
+
+async function handleOvertimeReview(req, res, context) {
+  const parsed = await parsePayload(req, res, context);
+  if (!parsed.ok) return;
+  const payload = parsed.payload;
+  await runIdempotentMutation(req, res, context, {
+    route: '/api/workforce/overtime/review',
+    payload,
+    mutate: async (client) => {
+      const result = await workforceCloseoutService.reviewOvertimeRequest(client, {
+        requestContext: context.requestContext,
+        payload,
+        companyScope: isCompanyScope(context.requestContext),
+        branchIds: [...(context.requestContext.scopes.branchIds ?? [])],
+      });
+      if (!result.ok) return result;
+      return {
+        ok: true,
+        data: result.request,
+        audit: {
+          requestContext: context.requestContext,
+          action: result.request.status === 'APPROVED' ? 'approve-overtime' : 'reject-overtime',
+          resourceType: 'overtime-request',
+          resourceId: result.request.id,
+          beforeData: result.beforeRequest,
+          afterData: result.request,
+          metadata: { workDate: result.request.work_date },
+        },
+      };
+    },
+  });
+}
+
+async function handleOvertimeActual(req, res, context) {
+  const parsed = await parsePayload(req, res, context);
+  if (!parsed.ok) return;
+  const payload = parsed.payload;
+  await runIdempotentMutation(req, res, context, {
+    route: '/api/workforce/overtime/actual',
+    payload,
+    mutate: async (client) => {
+      const result = await workforceCloseoutService.recordOvertimeActual(client, {
+        requestContext: context.requestContext,
+        payload,
+        companyScope: isCompanyScope(context.requestContext),
+        branchIds: [...(context.requestContext.scopes.branchIds ?? [])],
+      });
+      if (!result.ok) return result;
+      return {
+        ok: true,
+        data: result.request,
+        audit: {
+          requestContext: context.requestContext,
+          action: 'record-overtime-actual',
+          resourceType: 'overtime-request',
+          resourceId: result.request.id,
+          beforeData: result.beforeRequest,
+          afterData: result.request,
+          metadata: { workDate: result.request.work_date, actualMinutes: result.request.actual_minutes },
+        },
+      };
+    },
+  });
+}
+
+async function handleOvertimeConfirm(req, res, context) {
+  const parsed = await parsePayload(req, res, context);
+  if (!parsed.ok) return;
+  const payload = parsed.payload;
+  await runIdempotentMutation(req, res, context, {
+    route: '/api/workforce/overtime/confirm',
+    payload,
+    mutate: async (client) => {
+      const result = await workforceCloseoutService.confirmOvertimeRequest(client, {
+        requestContext: context.requestContext,
+        payload,
+        companyScope: isCompanyScope(context.requestContext),
+        branchIds: [...(context.requestContext.scopes.branchIds ?? [])],
+      });
+      if (!result.ok) return result;
+      return {
+        ok: true,
+        data: result.request,
+        audit: {
+          requestContext: context.requestContext,
+          action: 'confirm-overtime',
+          resourceType: 'overtime-request',
+          resourceId: result.request.id,
+          beforeData: result.beforeRequest,
+          afterData: result.request,
+          metadata: { workDate: result.request.work_date, confirmedMinutes: result.request.confirmed_minutes },
+        },
+      };
+    },
+  });
+}
+
+async function handleAttendancePeriods(req, res, context, method) {
+  if (method === 'GET') {
+    const url = new URL(`http://localhost${req.url}`);
+    const result = await workforceCloseoutService.listAttendancePeriods(context.getPool(), {
+      installationId: context.requestContext.installationId,
+      companyScope: isCompanyScope(context.requestContext),
+      branchIds: [...(context.requestContext.scopes.branchIds ?? [])],
+      rawBranchId: url.searchParams.get('branchId'),
+      rawDateFrom: url.searchParams.get('from'),
+      rawDateTo: url.searchParams.get('to'),
+    });
+    if (!result.ok) {
+      sendError(res, createError(result.code, result.message, {}, false, statusFor(result)), context.requestId, context.receivedAt);
+      return;
+    }
+    sendSuccess(res, {
+      ...result.data,
+      capabilities: {
+        canReconcile: context.canReconcilePeriods,
+        canClose: context.canLockPeriods,
+      },
+    }, context.requestId, context.receivedAt);
+    return;
+  }
+  const parsed = await parsePayload(req, res, context);
+  if (!parsed.ok) return;
+  const payload = parsed.payload;
+  await runIdempotentMutation(req, res, context, {
+    route: '/api/workforce/attendance/periods',
+    payload,
+    mutate: async (client) => {
+      const result = await workforceCloseoutService.mutateAttendancePeriod(client, {
+        requestContext: context.requestContext,
+        payload,
+        companyScope: isCompanyScope(context.requestContext),
+        branchIds: [...(context.requestContext.scopes.branchIds ?? [])],
+        canLock: context.canLockPeriods,
+      });
+      if (!result.ok) return result;
+      const action = String(payload?.action ?? '').trim().toUpperCase();
+      const actionName = action === 'CLOSE' ? 'close-attendance-period'
+        : action === 'RECONCILE' ? 'reconcile-attendance-period' : 'refresh-attendance-period';
+      return {
+        ok: true,
+        data: { period: result.period, issues: result.issues, snapshot: result.snapshot },
+        audit: {
+          requestContext: context.requestContext,
+          action: actionName,
+          resourceType: 'attendance-period',
+          resourceId: result.period.id,
+          beforeData: result.beforePeriod ?? null,
+          afterData: { period: result.period, issues: result.issues, snapshot: result.snapshot },
+          metadata: {
+            branchId: result.period.branch_id,
+            periodStart: result.period.period_start,
+            periodEnd: result.period.period_end,
+            revision: result.period.revision,
+          },
+        },
+      };
+    },
+  });
+}
+
+async function handleAttendancePayrollInput(req, res, context) {
+  const url = new URL(`http://localhost${req.url}`);
+  const result = await workforceCloseoutService.getPayrollInput(context.getPool(), {
+    installationId: context.requestContext.installationId,
+    periodId: url.searchParams.get('periodId'),
+    companyScope: isCompanyScope(context.requestContext),
+    branchIds: [...(context.requestContext.scopes.branchIds ?? [])],
+  });
+  if (!result.ok) {
+    sendError(res, createError(result.code, result.message, {}, false, statusFor(result)), context.requestId, context.receivedAt);
+    return;
+  }
+  sendSuccess(res, result.data, context.requestId, context.receivedAt);
 }
 
 async function handlePolicies(req, res, context, method) {
@@ -1226,7 +1470,7 @@ export async function handleWorkforceRoutes(req, res, options) {
   const pathname = new URL(`http://localhost${req.url}`).pathname;
   if (!pathname.startsWith('/api/workforce/')) return false;
   const route = pathname.slice('/api/workforce'.length);
-  if (!['/policies', '/assignments', '/assignments/coverage', '/assignments/bulk', '/schedules', '/schedule-planning', '/attendance/today', '/attendance/timesheet', '/attendance/record', '/attendance/points', '/attendance/qr-token', '/attendance/adjustments', '/attendance/adjustments/review', '/attendance/adjustments/direct', '/attendance/period-locks', '/leave-types', '/leave-types/update', '/leave/requests', '/leave/requests/review', '/leave/requests/cancel', '/leave/balances', '/leave/balances/entries', '/attendance/violations', '/attendance/violations/explain', '/attendance/violations/review'].includes(route)) return false;
+  if (!['/policies', '/assignments', '/assignments/coverage', '/assignments/bulk', '/schedules', '/schedule-planning', '/attendance/today', '/attendance/timesheet', '/attendance/record', '/attendance/points', '/attendance/qr-token', '/attendance/adjustments', '/attendance/adjustments/review', '/attendance/adjustments/direct', '/attendance/period-locks', '/leave-types', '/leave-types/update', '/leave/requests', '/leave/requests/review', '/leave/requests/cancel', '/leave/balances', '/leave/balances/entries', '/overtime', '/overtime/review', '/overtime/actual', '/overtime/confirm', '/attendance/periods', '/attendance/payroll-input', '/attendance/violations', '/attendance/violations/explain', '/attendance/violations/review'].includes(route)) return false;
 
   const auth = options.authenticate(req, options.config);
   if (!auth.ok) {
@@ -1245,6 +1489,10 @@ export async function handleWorkforceRoutes(req, res, options) {
     (route === '/attendance/today' && method === 'GET')
     || (route === '/attendance/timesheet' && method === 'GET')
     || (route === '/attendance/record' && method === 'POST')
+    || (route === '/overtime' && ['GET', 'POST'].includes(method))
+    || (['/overtime/review', '/overtime/actual', '/overtime/confirm'].includes(route) && method === 'POST')
+    || (route === '/attendance/periods' && ['GET', 'POST'].includes(method))
+    || (route === '/attendance/payroll-input' && method === 'GET')
     || (route === '/attendance/qr-token' && method === 'POST')
     || (route === '/attendance/points' && ['GET', 'POST'].includes(method))
     || (route === '/attendance/adjustments' && ['GET', 'POST'].includes(method))
@@ -1280,11 +1528,17 @@ export async function handleWorkforceRoutes(req, res, options) {
   const canReadLeaves = options.authorize(requestContext, options.PERMISSIONS.coreLeaveRead).ok;
   const canApproveLeaves = options.authorize(requestContext, options.PERMISSIONS.coreLeaveApprove).ok;
   const canManageLeaveTypes = options.authorize(requestContext, options.PERMISSIONS.coreLeaveTypeManage).ok;
+  const canSelfOvertime = options.authorize(requestContext, options.PERMISSIONS.coreOvertimeSelfRequest).ok;
+  const canReadOvertime = options.authorize(requestContext, options.PERMISSIONS.coreOvertimeRead).ok;
+  const canApproveOvertime = options.authorize(requestContext, options.PERMISSIONS.coreOvertimeApprove).ok;
+  const canConfirmOvertime = options.authorize(requestContext, options.PERMISSIONS.coreOvertimeConfirm).ok;
+  const canReconcilePeriods = options.authorize(requestContext, options.PERMISSIONS.coreAttendanceReconcile).ok;
   let timesheetSelfOnly = false;
   let adjustmentSelfOnly = false;
   let leaveRequestSelfOnly = false;
   let leaveBalanceSelfOnly = false;
   let violationSelfOnly = false;
+  let overtimeSelfOnly = false;
   let permission;
   if (route === '/attendance/timesheet') {
     permission = options.authorize(requestContext, options.PERMISSIONS.coreAttendanceRead);
@@ -1292,6 +1546,24 @@ export async function handleWorkforceRoutes(req, res, options) {
       permission = options.authorize(requestContext, options.PERMISSIONS.coreAttendanceSelfRead);
       timesheetSelfOnly = permission.ok;
     }
+  } else if (route === '/overtime') {
+    if (method === 'POST') {
+      permission = { ok: canSelfOvertime };
+      overtimeSelfOnly = true;
+    } else {
+      const canReadScopedOvertime = canReadOvertime || canApproveOvertime || canConfirmOvertime;
+      const canReadOwnOvertime = canSelfOvertime || options.authorize(requestContext, options.PERMISSIONS.coreAttendanceSelfRead).ok;
+      permission = { ok: canReadScopedOvertime || canReadOwnOvertime };
+      overtimeSelfOnly = !canReadScopedOvertime;
+    }
+  } else if (route === '/overtime/review' || route === '/overtime/actual') {
+    permission = { ok: canApproveOvertime };
+  } else if (route === '/overtime/confirm') {
+    permission = { ok: canConfirmOvertime };
+  } else if (route === '/attendance/periods') {
+    permission = { ok: method === 'POST' ? canReconcilePeriods : (canReconcilePeriods || canLockPeriods || options.authorize(requestContext, options.PERMISSIONS.coreAttendanceRead).ok) };
+  } else if (route === '/attendance/payroll-input') {
+    permission = { ok: canReconcilePeriods || options.authorize(requestContext, options.PERMISSIONS.coreAttendanceRead).ok };
   } else if (route === '/attendance/adjustments') {
     if (method === 'GET') {
       permission = canManageAdjustments ? { ok: true } : { ok: canSubmitOwnAdjustment };
@@ -1361,6 +1633,7 @@ export async function handleWorkforceRoutes(req, res, options) {
     ...options, requestContext, canManageAdjustments, canSubmitOwnAdjustment, canLockPeriods,
     canSelfReadLeaves, canSubmitOwnLeave, canReadLeaves, canApproveLeaves, canManageLeaveTypes,
     canExplainOwnViolation, canResolveViolations,
+    canSelfOvertime, canReadOvertime, canApproveOvertime, canConfirmOvertime, canReconcilePeriods,
   };
   try {
     if (route === '/policies') await handlePolicies(req, res, context, method);
@@ -1379,6 +1652,12 @@ export async function handleWorkforceRoutes(req, res, options) {
       },
     });
     else if (route === '/attendance/record') await handleAttendanceRecord(req, res, context);
+    else if (route === '/overtime') await handleOvertimeRequests(req, res, context, method, { selfOnly: overtimeSelfOnly });
+    else if (route === '/overtime/review') await handleOvertimeReview(req, res, context);
+    else if (route === '/overtime/actual') await handleOvertimeActual(req, res, context);
+    else if (route === '/overtime/confirm') await handleOvertimeConfirm(req, res, context);
+    else if (route === '/attendance/periods') await handleAttendancePeriods(req, res, context, method);
+    else if (route === '/attendance/payroll-input') await handleAttendancePayrollInput(req, res, context);
     else if (route === '/attendance/points') await handleAttendancePoints(req, res, context, method);
     else if (route === '/attendance/adjustments') await handleAttendanceAdjustments(req, res, context, method, { selfOnly: adjustmentSelfOnly });
     else if (route === '/attendance/adjustments/review') await handleAttendanceAdjustmentReview(req, res, context);
