@@ -127,7 +127,7 @@ test('migration 157 production operation requires backup, restore rehearsal and 
   assert.match(script, /PRODUCTION_RERUN_NOOP=PASS/);
   assert.match(script, /PRODUCTION_VERIFY=PASS/);
 
-  const workflow = source('../../../.github/workflows/vps-production-migration-157-manual.yml');
+  const workflow = source('../../.github/workflows/vps-production-migration-157-manual.yml');
   assert.match(workflow, /\/migrate-vps-production-157/);
   assert.match(workflow, /Verify exact origin\/main SHA/);
   assert.match(workflow, /Fresh backup, restore rehearsal, migrate production and verify/);
