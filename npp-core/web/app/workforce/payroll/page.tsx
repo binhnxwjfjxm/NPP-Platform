@@ -449,7 +449,7 @@ export default function PayrollPage() {
       title="Tính lương"
       subtitle="Thiết lập dữ liệu nền theo kỳ, theo nhân sự và theo ngày áp dụng."
       kicker="Nhân sự"
-      actions={<button type="button" className={shellStyles.secondaryButton} disabled={busy} onClick={() => void load(selectedPeriodId)}>Tải lại</button>}
+      actions={<button type="button" className={shellStyles.actionButton} disabled={busy} onClick={() => void load(selectedPeriodId)}>Tải lại</button>}
     >
       <section className={styles.stack}>
         <div className={styles.tabs} role="tablist" aria-label="Tính lương">
@@ -467,8 +467,8 @@ export default function PayrollPage() {
           ))}
         </div>
 
-        {error ? <div className={sharedStyles.errorBanner} role="alert">{error}</div> : null}
-        {notice ? <div className={sharedStyles.successBanner} role="status">{notice}</div> : null}
+        {error ? <div className={`${sharedStyles.banner} ${sharedStyles.bannerError}`} role="alert">{error}</div> : null}
+        {notice ? <div className={`${sharedStyles.banner} ${sharedStyles.bannerSuccess}`} role="status">{notice}</div> : null}
 
         {tab === 'board' ? (
           <div className={styles.stack}>
@@ -691,7 +691,7 @@ export default function PayrollPage() {
                 <div><p className={sharedStyles.panelKicker}>Danh mục khoản</p><h2>Khoản thu, khấu trừ và hoàn chi phí</h2></div>
                 <span className={sharedStyles.panelChip}>Công Ty tự thiết lập</span>
               </div>
-              <p className={sharedStyles.sectionDescription}>
+              <p className={sharedStyles.treeMeta}>
                 Hoàn chi phí được quản lý riêng với thu nhập lương. Mặc định khoản hoàn chi phí không đưa vào tổng thu nhập lương nhưng có thể đưa vào số thực nhận.
               </p>
 
