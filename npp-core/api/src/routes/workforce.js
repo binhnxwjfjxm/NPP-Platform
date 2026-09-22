@@ -9,13 +9,14 @@ import * as attendanceAdjustmentService from '../services/attendance-adjustments
 import * as leaveManagementService from '../services/leave-management.js';
 import * as attendanceViolationService from '../services/attendance-violations.js';
 import * as workforceCloseoutService from '../services/workforce-closeout.js';
+import * as payrollFoundationService from '../services/payroll-foundation.js';
 
 function createError(code, message, details = {}, retryable = false, statusCode = 500) {
   return { code, message, details, retryable, statusCode };
 }
 
 function statusFor(result) {
-  if (['EMPLOYEE_NOT_FOUND', 'POLICY_NOT_FOUND', 'SHIFT_TEMPLATE_NOT_FOUND', 'WEEK_TEMPLATE_NOT_FOUND', 'ATTENDANCE_POINT_NOT_FOUND', 'BRANCH_NOT_FOUND', 'ADJUSTMENT_REQUEST_NOT_FOUND', 'LEAVE_TYPE_NOT_FOUND', 'LEAVE_REQUEST_NOT_FOUND', 'VIOLATION_CASE_NOT_FOUND', 'ATTENDANCE_DAY_NOT_FOUND', 'OVERTIME_REQUEST_NOT_FOUND', 'ATTENDANCE_PERIOD_NOT_FOUND'].includes(result.code)) return 404;
+  if (['EMPLOYEE_NOT_FOUND', 'POLICY_NOT_FOUND', 'SHIFT_TEMPLATE_NOT_FOUND', 'WEEK_TEMPLATE_NOT_FOUND', 'ATTENDANCE_POINT_NOT_FOUND', 'BRANCH_NOT_FOUND', 'ADJUSTMENT_REQUEST_NOT_FOUND', 'LEAVE_TYPE_NOT_FOUND', 'LEAVE_REQUEST_NOT_FOUND', 'VIOLATION_CASE_NOT_FOUND', 'ATTENDANCE_DAY_NOT_FOUND', 'OVERTIME_REQUEST_NOT_FOUND', 'ATTENDANCE_PERIOD_NOT_FOUND', 'PAYROLL_PERIOD_NOT_FOUND', 'PAYROLL_COMPONENT_NOT_FOUND'].includes(result.code)) return 404;
   if (result.code === 'QR_TOKEN_EXPIRED') return 410;
   if (['SCOPE_FORBIDDEN', 'ATTENDANCE_CLOSE_REQUIRES_LOCK_PERMISSION'].includes(result.code)) return 403;
   if ([
@@ -32,6 +33,7 @@ function statusFor(result) {
     'ATTENDANCE_PERIOD_ALREADY_CLOSED', 'ATTENDANCE_PERIOD_HAS_BLOCKERS', 'ATTENDANCE_PERIOD_WARNINGS_UNACKNOWLEDGED',
     'ATTENDANCE_PERIOD_NOT_RECONCILED', 'ATTENDANCE_PERIOD_CHANGED', 'ATTENDANCE_PERIOD_CONFLICT',
     'ATTENDANCE_PERIOD_NOT_CLOSED', 'ATTENDANCE_PERIOD_SNAPSHOT_MISSING', 'ATTENDANCE_PERIOD_IN_FUTURE',
+    'PAYROLL_PERIOD_EXISTS', 'PAYROLL_EFFECTIVE_DATE_CONFLICT', 'PAYROLL_COMPONENT_CODE_EXISTS', 'PAYROLL_PERIOD_CLOSED', 'EMPLOYEE_NOT_IN_PAYROLL_PERIOD',
   ].includes(result.code)) return 409;
   return 400;
 }
@@ -139,6 +141,59 @@ async function runIdempotentMutation(req, res, context, { route, payload, mutate
   } catch {
     sendError(res, createError('WORKFORCE_MUTATION_UNAVAILABLE', 'Không thể lưu thay đổi nhân sự lúc này', {}, true, 503), context.requestId, context.receivedAt);
   }
+}
+
+
+async function handlePayrollFoundation(req, res, context, method) {
+  if (method === 'GET') {
+    const url = new URL(`http://localhost${req.url}`);
+    const result = await payrollFoundationService.listPayrollFoundation(context.getPool(), {
+      installationId: context.requestContext.installationId,
+      companyScope: isCompanyScope(context.requestContext),
+      branchIds: [...(context.requestContext.scopes.branchIds ?? [])],
+      rawPeriodId: url.searchParams.get('periodId'),
+    });
+    if (!result.ok) {
+      sendError(res, createError(result.code, result.message, {}, false, statusFor(result)), context.requestId, context.receivedAt);
+      return;
+    }
+    sendSuccess(res, {
+      ...result.data,
+      capabilities: { canManage: context.canManagePayroll },
+    }, context.requestId, context.receivedAt);
+    return;
+  }
+
+  const parsed = await parsePayload(req, res, context);
+  if (!parsed.ok) return;
+  const payload = parsed.payload;
+  await runIdempotentMutation(req, res, context, {
+    route: '/api/workforce/payroll',
+    payload,
+    successStatus: 201,
+    mutate: async (client) => {
+      const result = await payrollFoundationService.mutatePayrollFoundation(client, {
+        requestContext: context.requestContext,
+        payload,
+        companyScope: isCompanyScope(context.requestContext),
+        branchIds: [...(context.requestContext.scopes.branchIds ?? [])],
+      });
+      if (!result.ok) return result;
+      return {
+        ok: true,
+        data: result.data,
+        audit: {
+          requestContext: context.requestContext,
+          action: result.audit.action,
+          resourceType: result.audit.resourceType,
+          resourceId: result.audit.resourceId,
+          beforeData: result.audit.beforeData,
+          afterData: result.audit.afterData,
+          metadata: result.audit.metadata,
+        },
+      };
+    },
+  });
 }
 
 
@@ -1470,7 +1525,7 @@ export async function handleWorkforceRoutes(req, res, options) {
   const pathname = new URL(`http://localhost${req.url}`).pathname;
   if (!pathname.startsWith('/api/workforce/')) return false;
   const route = pathname.slice('/api/workforce'.length);
-  if (!['/policies', '/assignments', '/assignments/coverage', '/assignments/bulk', '/schedules', '/schedule-planning', '/attendance/today', '/attendance/timesheet', '/attendance/record', '/attendance/points', '/attendance/qr-token', '/attendance/adjustments', '/attendance/adjustments/review', '/attendance/adjustments/direct', '/attendance/period-locks', '/leave-types', '/leave-types/update', '/leave/requests', '/leave/requests/review', '/leave/requests/cancel', '/leave/balances', '/leave/balances/entries', '/overtime', '/overtime/review', '/overtime/actual', '/overtime/confirm', '/attendance/periods', '/attendance/payroll-input', '/attendance/violations', '/attendance/violations/explain', '/attendance/violations/review'].includes(route)) return false;
+  if (!['/policies', '/assignments', '/assignments/coverage', '/assignments/bulk', '/schedules', '/schedule-planning', '/attendance/today', '/attendance/timesheet', '/attendance/record', '/attendance/points', '/attendance/qr-token', '/attendance/adjustments', '/attendance/adjustments/review', '/attendance/adjustments/direct', '/attendance/period-locks', '/leave-types', '/leave-types/update', '/leave/requests', '/leave/requests/review', '/leave/requests/cancel', '/leave/balances', '/leave/balances/entries', '/overtime', '/overtime/review', '/overtime/actual', '/overtime/confirm', '/attendance/periods', '/attendance/payroll-input', '/payroll', '/attendance/violations', '/attendance/violations/explain', '/attendance/violations/review'].includes(route)) return false;
 
   const auth = options.authenticate(req, options.config);
   if (!auth.ok) {
@@ -1493,6 +1548,7 @@ export async function handleWorkforceRoutes(req, res, options) {
     || (['/overtime/review', '/overtime/actual', '/overtime/confirm'].includes(route) && method === 'POST')
     || (route === '/attendance/periods' && ['GET', 'POST'].includes(method))
     || (route === '/attendance/payroll-input' && method === 'GET')
+    || (route === '/payroll' && ['GET', 'POST'].includes(method))
     || (route === '/attendance/qr-token' && method === 'POST')
     || (route === '/attendance/points' && ['GET', 'POST'].includes(method))
     || (route === '/attendance/adjustments' && ['GET', 'POST'].includes(method))
@@ -1533,6 +1589,8 @@ export async function handleWorkforceRoutes(req, res, options) {
   const canApproveOvertime = options.authorize(requestContext, options.PERMISSIONS.coreOvertimeApprove).ok;
   const canConfirmOvertime = options.authorize(requestContext, options.PERMISSIONS.coreOvertimeConfirm).ok;
   const canReconcilePeriods = options.authorize(requestContext, options.PERMISSIONS.coreAttendanceReconcile).ok;
+  const canReadPayroll = options.authorize(requestContext, options.PERMISSIONS.corePayrollRead).ok;
+  const canManagePayroll = options.authorize(requestContext, options.PERMISSIONS.corePayrollManage).ok;
   let timesheetSelfOnly = false;
   let adjustmentSelfOnly = false;
   let leaveRequestSelfOnly = false;
@@ -1564,6 +1622,8 @@ export async function handleWorkforceRoutes(req, res, options) {
     permission = { ok: method === 'POST' ? canReconcilePeriods : (canReconcilePeriods || canLockPeriods || options.authorize(requestContext, options.PERMISSIONS.coreAttendanceRead).ok) };
   } else if (route === '/attendance/payroll-input') {
     permission = { ok: canReconcilePeriods || options.authorize(requestContext, options.PERMISSIONS.coreAttendanceRead).ok };
+  } else if (route === '/payroll') {
+    permission = { ok: method === 'POST' ? canManagePayroll : (canReadPayroll || canManagePayroll) };
   } else if (route === '/attendance/adjustments') {
     if (method === 'GET') {
       permission = canManageAdjustments ? { ok: true } : { ok: canSubmitOwnAdjustment };
@@ -1634,6 +1694,7 @@ export async function handleWorkforceRoutes(req, res, options) {
     canSelfReadLeaves, canSubmitOwnLeave, canReadLeaves, canApproveLeaves, canManageLeaveTypes,
     canExplainOwnViolation, canResolveViolations,
     canSelfOvertime, canReadOvertime, canApproveOvertime, canConfirmOvertime, canReconcilePeriods,
+    canReadPayroll, canManagePayroll,
   };
   try {
     if (route === '/policies') await handlePolicies(req, res, context, method);
@@ -1658,6 +1719,7 @@ export async function handleWorkforceRoutes(req, res, options) {
     else if (route === '/overtime/confirm') await handleOvertimeConfirm(req, res, context);
     else if (route === '/attendance/periods') await handleAttendancePeriods(req, res, context, method);
     else if (route === '/attendance/payroll-input') await handleAttendancePayrollInput(req, res, context);
+    else if (route === '/payroll') await handlePayrollFoundation(req, res, context, method);
     else if (route === '/attendance/points') await handleAttendancePoints(req, res, context, method);
     else if (route === '/attendance/adjustments') await handleAttendanceAdjustments(req, res, context, method, { selfOnly: adjustmentSelfOnly });
     else if (route === '/attendance/adjustments/review') await handleAttendanceAdjustmentReview(req, res, context);
