@@ -74,6 +74,7 @@ test('migration 157 extends canonical attendance instead of creating a second at
   assert.match(migration, /encrypted_embedding bytea NOT NULL/);
   assert.doesNotMatch(migration, /\b(raw_image|face_image|photo_blob|image_blob)\b/i);
   assert.doesNotMatch(migration, /CREATE TABLE[^;]*face_attendance_events/i);
+  assert.doesNotMatch(migration, /^(?:BEGIN;|COMMIT;)$/m);
 
   const index = source('src/migrations/index.js');
   assert.match(index, /157_workforce_face_attendance/);
@@ -115,4 +116,19 @@ test('FACE contract pins the embedding model and does not expose raw images', ()
   assert.match(service, /aes-256-gcm/);
   assert.match(service, /FACE_TEMPLATE_ENCRYPTION_KEY/);
   assert.doesNotMatch(service, /writeFile|createWriteStream|R2|S3/);
+});
+
+
+test('migration 157 production operation requires backup, restore rehearsal and exact-main command', () => {
+  const script = source('scripts/vps-production-migrate-workforce-157.sh');
+  assert.match(script, /pg_dump -Fc/);
+  assert.match(script, /pg_restore --exit-on-error/);
+  assert.match(script, /rehearsal/);
+  assert.match(script, /PRODUCTION_RERUN_NOOP=PASS/);
+  assert.match(script, /PRODUCTION_VERIFY=PASS/);
+
+  const workflow = source('../../../.github/workflows/vps-production-migration-157-manual.yml');
+  assert.match(workflow, /\/migrate-vps-production-157/);
+  assert.match(workflow, /Verify exact origin\/main SHA/);
+  assert.match(workflow, /Fresh backup, restore rehearsal, migrate production and verify/);
 });

@@ -14,7 +14,7 @@ export type WorkPolicy = {
   early_leave_grace_minutes: number;
   overtime_enabled: boolean;
   overtime_requires_approval: boolean;
-  attendance_method: 'QR' | 'MANUAL' | 'BOTH' | 'NONE';
+  attendance_method: 'QR' | 'MANUAL' | 'BOTH' | 'FACE' | 'QR_FACE' | 'NONE';
   attendance_basis: 'TIME' | 'PRESENCE' | 'NONE';
   timezone: string;
   rounding_minutes: number;
@@ -216,7 +216,7 @@ export type AttendanceEvent = {
   event_type: 'CHECK_IN' | 'TEMP_EXIT' | 'RETURN' | 'CHECK_OUT';
   movement_reason: 'WORK_BUSINESS' | 'PERSONAL' | 'BREAK' | 'OTHER' | null;
   occurred_at: string;
-  source: 'QR' | 'MANUAL' | 'ADJUSTMENT' | 'SYSTEM';
+  source: 'QR' | 'FACE' | 'MANUAL' | 'ADJUSTMENT' | 'SYSTEM';
   validation_status: 'VALID' | 'PENDING' | 'INVALID';
   source_reference: string | null;
   note: string | null;
