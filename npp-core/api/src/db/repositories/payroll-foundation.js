@@ -120,6 +120,45 @@ export async function getPayrollPeriodById(client, { installationId, id, forUpda
   return result.rows?.[0] ?? null;
 }
 
+export async function listPayrollPeriodEmployees(client, { installationId, payrollPeriodId }) {
+  const result = await client.query(
+    `SELECT employee.value->>'employeeId' AS id,
+            employee.value->>'employeeCode' AS code,
+            employee.value->>'employeeName' AS full_name,
+            NULLIF(employee.value->>'branchId', '')::uuid AS branch_id,
+            employee.value->>'branchCode' AS branch_code,
+            employee.value->>'branchName' AS branch_name
+       FROM shared.payroll_periods p
+       JOIN shared.attendance_period_snapshots s
+         ON s.installation_id = p.installation_id
+        AND s.period_id = p.attendance_period_id
+        AND s.revision = p.attendance_revision
+       CROSS JOIN LATERAL jsonb_array_elements(COALESCE(s.snapshot->'employees', '[]'::jsonb)) employee(value)
+      WHERE p.installation_id = $1 AND p.id = $2::uuid
+      ORDER BY employee.value->>'employeeName', employee.value->>'employeeCode'`,
+    [installationId, payrollPeriodId],
+  );
+  return result.rows ?? [];
+}
+
+export async function getPayrollPeriodEmployee(client, { installationId, payrollPeriodId, employeeId }) {
+  const result = await client.query(
+    `SELECT employee.value AS snapshot_employee
+       FROM shared.payroll_periods p
+       JOIN shared.attendance_period_snapshots s
+         ON s.installation_id = p.installation_id
+        AND s.period_id = p.attendance_period_id
+        AND s.revision = p.attendance_revision
+       CROSS JOIN LATERAL jsonb_array_elements(COALESCE(s.snapshot->'employees', '[]'::jsonb)) employee(value)
+      WHERE p.installation_id = $1
+        AND p.id = $2::uuid
+        AND employee.value->>'employeeId' = $3
+      LIMIT 1`,
+    [installationId, payrollPeriodId, employeeId],
+  );
+  return result.rows?.[0]?.snapshot_employee ?? null;
+}
+
 export async function listPayrollEmployees(client, { installationId, asOfDate, companyScope, branchIds }) {
   const params = [installationId, asOfDate];
   const scope = scopeFilter({ companyScope, branchIds, params, expression: 'a.branch_id' });
