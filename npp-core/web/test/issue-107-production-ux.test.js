@@ -77,4 +77,6 @@ test('multi-SKU pricing previews conflicts and persists one SKU-keyed idempotent
   assert.match(fileAdjustment, /Nhập từ file/);
   assert.match(fileAdjustment, /replaceFrom:\s*true/);
   assert.match(fileAdjustment, /createIdempotencyKey\('pricing_adjust_file'\)/);
+  assert.match(overlay, /testId="bulk-pricing-modal" size="workspace"/);
+  assert.match(fileAdjustment, /testId="pricing-file-adjustment-modal" size="workspace"/);
 });

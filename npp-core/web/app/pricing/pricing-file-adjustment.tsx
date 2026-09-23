@@ -101,7 +101,7 @@ export default function PricingFileAdjustment({ priceLists, defaultPriceListId =
   return <>
     <button type="button" className={styles.secondaryButton} onClick={() => void downloadTemplate()} disabled={busy} data-testid="download-pricing-template">Tải file mẫu</button>
     <button type="button" className={styles.secondaryButton} onClick={openImport} disabled={busy} data-testid="open-pricing-file-adjustment">Nhập từ file</button>
-    <Modal open={open} title="Điều chỉnh giá từ file" description="File chỉ cần SKU và Giá bán (VND). Chỉ các SKU có trong file mới thay đổi." onClose={() => { if (!busy) setOpen(false); }} testId="pricing-file-adjustment-modal" size="large"
+    <Modal open={open} title="Điều chỉnh giá từ file" description="File chỉ cần SKU và Giá bán (VND). Chỉ các SKU có trong file mới thay đổi." onClose={() => { if (!busy) setOpen(false); }} testId="pricing-file-adjustment-modal" size="workspace"
       footer={<><button type="button" className={styles.secondaryButton} onClick={() => setOpen(false)} disabled={busy}>Đóng</button><button type="button" className={styles.primaryButton} onClick={() => void confirm()} disabled={busy || !rows.length}>{busy ? 'Đang cập nhật…' : `Xác nhận ${rows.length || ''} SKU`}</button></>}>
       {error ? <div className={styles.errorNotice} role="alert">{error}</div> : null}
       {message ? <div className={styles.notice} role="status">{message}</div> : null}
