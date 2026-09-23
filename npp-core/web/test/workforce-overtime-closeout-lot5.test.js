@@ -12,10 +12,10 @@ test('Issue #1140 Lô 5 adds one compact workforce navigation item with two busi
     source('app/workforce/overtime/overtime-closeout-workspace.tsx'),
   ]);
   assert.equal((shell.match(/href: '\/workforce\/overtime'/g) ?? []).length, 1);
-  assert.match(shell, /Tăng ca & chốt công/);
+  assert.match(shell, /Tăng ca và chốt công/);
   assert.match(workspace, />Tăng ca</);
   assert.match(workspace, />Chốt công</);
-  assert.match(workspace, /Đăng ký → duyệt → thực tế → xác nhận giờ tính/);
+  assert.match(workspace, /Theo dõi đăng ký, phê duyệt và giờ tăng ca được tính/);
   assert.match(workspace, /Đang tổng hợp → Cần xử lý → Đã đối soát → Đã chốt/);
 });
 
@@ -38,8 +38,8 @@ test('Issue #1140 Lô 5 only exposes closed attendance snapshot as payroll input
     source('app/workforce/overtime/overtime-closeout-workspace.tsx'),
     source('lib/workforce-gateway.ts'),
   ]);
-  assert.match(workspace, /Bản chốt kỳ công lần/);
-  assert.match(workspace, /Chỉ đọc/);
+  assert.match(workspace, /Kỳ công đã chốt · Lần/);
+  assert.match(workspace, /Chỉ xem/);
   assert.match(workspace, /Giờ tăng ca đã xác nhận/);
   assert.match(gateway, /attendance\/payroll-input/);
 });

@@ -76,8 +76,8 @@ export default function SchedulePlanningPanel({
       <div className={styles.formActions}>
         <button type="button" className={tab === 'SHIFT' ? styles.primaryButton : styles.secondaryButton} onClick={() => setTab('SHIFT')}>Ca mẫu</button>
         <button type="button" className={tab === 'WEEK' ? styles.primaryButton : styles.secondaryButton} onClick={() => setTab('WEEK')}>Lịch tuần</button>
-        <button type="button" className={tab === 'CALENDAR' ? styles.primaryButton : styles.secondaryButton} onClick={() => setTab('CALENDAR')}>Ngày lễ & ngày nghỉ</button>
-        <button type="button" className={tab === 'BULK' ? styles.primaryButton : styles.secondaryButton} onClick={() => setTab('BULK')}>Xếp hàng loạt</button>
+        <button type="button" className={tab === 'CALENDAR' ? styles.primaryButton : styles.secondaryButton} onClick={() => setTab('CALENDAR')}>Ngày lễ và ngày nghỉ</button>
+        <button type="button" className={tab === 'BULK' ? styles.primaryButton : styles.secondaryButton} onClick={() => setTab('BULK')}>Xếp lịch hàng loạt</button>
       </div>
       {tab === 'SHIFT' ? <ShiftTemplatePanel items={catalog?.shiftTemplates ?? []} mutate={mutate} refresh={refresh} /> : null}
       {tab === 'WEEK' ? <WeekTemplatePanel items={catalog?.weekTemplates ?? []} shifts={catalog?.shiftTemplates ?? []} mutate={mutate} refresh={refresh} /> : null}

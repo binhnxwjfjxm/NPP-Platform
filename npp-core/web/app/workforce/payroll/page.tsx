@@ -136,7 +136,7 @@ const TAB_LABELS: Array<{ id: Tab; label: string }> = [
   { id: 'board', label: 'Bảng lương' },
   { id: 'reconcile', label: 'Đối soát' },
   { id: 'settings', label: 'Thiết lập lương' },
-  { id: 'components', label: 'Khoản thu & khấu trừ' },
+  { id: 'components', label: 'Khoản tính lương' },
   { id: 'payslips', label: 'Phiếu lương' },
   { id: 'history', label: 'Lịch sử kỳ lương' },
 ];
@@ -161,7 +161,7 @@ const RECURRENCE_LABEL: Record<ComponentType['recurrence'], string> = {
 
 const INPUT_LABEL: Record<ComponentType['input_mode'], string> = {
   AUTOMATIC: 'Tự động',
-  MANUAL: 'Nhập tay',
+  MANUAL: 'Nhập thủ công',
 };
 
 function businessDate() {
@@ -335,7 +335,7 @@ export default function PayrollPage() {
     const result = await mutate<PayrollPeriod>(
       'web-payroll-create-period',
       { command: 'CREATE_PERIOD', attendancePeriodId: selectedAttendanceId },
-      'Đã tạo kỳ lương từ bản chốt kỳ công.',
+      'Đã tạo kỳ lương từ kỳ công đã chốt.',
     );
     if (result) {
       setSelectedPeriodId(result.id);
@@ -373,7 +373,7 @@ export default function PayrollPage() {
     const result = await mutate(
       'web-payroll-close',
       { command: 'CLOSE', payrollPeriodId: data.selectedPeriod.id },
-      'Đã chốt kỳ lương và tạo phiếu lương bất biến.',
+      'Đã chốt kỳ lương và lưu phiếu lương chính thức cho từng nhân sự.',
     );
     if (result) await load(data.selectedPeriod.id);
   }
@@ -383,7 +383,7 @@ export default function PayrollPage() {
     const result = await mutate(
       'web-payroll-adjust',
       { command: 'ADJUST', payrollPeriodId: data.selectedPeriod.id, ...input },
-      'Đã ghi điều chỉnh lương và tạo phiên bản phiếu lương mới.',
+      'Đã lưu điều chỉnh lương và cập nhật lịch sử phiếu lương.',
     );
     if (result) await load(data.selectedPeriod.id);
   }
@@ -496,9 +496,9 @@ export default function PayrollPage() {
   return (
     <AppShell
       title="Tính lương"
-      subtitle="Thiết lập dữ liệu nền theo kỳ, theo nhân sự và theo ngày áp dụng."
+      subtitle="Quản lý kỳ lương, mức lương và các khoản tính lương theo ngày áp dụng."
       kicker="Nhân sự"
-      actions={<button type="button" className={shellStyles.actionButton} disabled={busy} onClick={() => void load(selectedPeriodId)}>Tải lại</button>}
+      actions={<button type="button" className={shellStyles.actionButton} disabled={busy} onClick={() => void load(selectedPeriodId)}>Làm mới</button>}
     >
       <section className={styles.stack}>
         <div className={styles.tabs} role="tablist" aria-label="Tính lương">
@@ -568,7 +568,7 @@ export default function PayrollPage() {
                     {(data?.periods ?? []).map((period) => (
                       <tr key={period.id}>
                         <td><strong>{periodLabel(period)}</strong></td>
-                        <td>Bản chốt lần {period.attendance_revision}</td>
+                        <td>Kỳ công đã chốt · Lần {period.attendance_revision}</td>
                         <td><span className={styles.status}>{PERIOD_STATUS[period.status]}</span></td>
                         <td>
                           <button type="button" className={styles.secondary} disabled={busy} onClick={() => void load(period.id)}>
@@ -592,7 +592,7 @@ export default function PayrollPage() {
                     <p className={sharedStyles.panelKicker}>Kỳ đang xem</p>
                     <h2>{periodLabel(selectedPeriod)}</h2>
                   </div>
-                  <span className={sharedStyles.panelChip}>Bản chốt công lần {selectedPeriod.attendance_revision}</span>
+                  <span className={sharedStyles.panelChip}>Kỳ công đã chốt · Lần {selectedPeriod.attendance_revision}</span>
                 </div>
                 <PayrollAggregationPanel
                   mode="board"
@@ -646,7 +646,7 @@ export default function PayrollPage() {
             <section className={sharedStyles.tableSection}>
               <div className={sharedStyles.sectionHeader}>
                 <div><p className={sharedStyles.panelKicker}>Mức lương</p><h2>Mức lương theo ngày áp dụng</h2></div>
-                <span className={sharedStyles.panelChip}>Lưu lịch sử</span>
+                <span className={sharedStyles.panelChip}>Theo ngày áp dụng</span>
               </div>
 
               {data?.capabilities.canManage ? (
@@ -774,7 +774,7 @@ export default function PayrollPage() {
               {data?.capabilities.canManage ? (
                 <form className={styles.actionPanel} onSubmit={(event) => void createComponentType(event)}>
                   <div className={styles.formGrid}>
-                    <label>Mã khoản<input value={typeCode} onChange={(event) => setTypeCode(event.target.value.toUpperCase())} maxLength={32} placeholder="VD: THUONG_LE" required /></label>
+                    <label>Mã khoản<input value={typeCode} onChange={(event) => setTypeCode(event.target.value.toUpperCase())} maxLength={32} placeholder="Ví dụ: THUONG_LE" required /></label>
                     <label>Tên khoản<input value={typeName} onChange={(event) => setTypeName(event.target.value)} maxLength={120} required /></label>
                     <label>
                       Nhóm
@@ -794,7 +794,7 @@ export default function PayrollPage() {
                     <label>
                       Cách ghi nhận
                       <select value={typeInputMode} onChange={(event) => setTypeInputMode(event.target.value as ComponentType['input_mode'])}>
-                        <option value="MANUAL">Nhập tay</option>
+                        <option value="MANUAL">Nhập thủ công</option>
                         <option value="AUTOMATIC">Hệ thống tự tính</option>
                       </select>
                     </label>
@@ -813,7 +813,7 @@ export default function PayrollPage() {
 
               <div className={sharedStyles.tableWrap}>
                 <table className={sharedStyles.table}>
-                  <thead><tr><th>Khoản</th><th>Nhóm</th><th>Áp dụng</th><th>Ghi nhận</th><th>Tính vào</th><th>Hiệu lực</th></tr></thead>
+                  <thead><tr><th>Khoản</th><th>Nhóm</th><th>Áp dụng</th><th>Cách nhập</th><th>Tính vào</th><th>Hiệu lực</th></tr></thead>
                   <tbody>
                     {(data?.componentTypes ?? []).map((item) => (
                       <tr key={item.id}>
@@ -833,7 +833,7 @@ export default function PayrollPage() {
 
             <section className={sharedStyles.tableSection}>
               <div className={sharedStyles.sectionHeader}>
-                <div><p className={sharedStyles.panelKicker}>Khoản phát sinh</p><h2>Khoản linh động theo kỳ</h2></div>
+                <div><p className={sharedStyles.panelKicker}>Khoản phát sinh</p><h2>Khoản phát sinh theo kỳ</h2></div>
                 <span className={sharedStyles.panelChip}>{selectedPeriod ? periodLabel(selectedPeriod) : 'Chưa chọn kỳ'}</span>
               </div>
 
@@ -855,7 +855,7 @@ export default function PayrollPage() {
                       </select>
                     </label>
                     <label>Số tiền<input type="number" min="0" step="0.01" value={periodAmount} onChange={(event) => setPeriodAmount(event.target.value)} required /></label>
-                    <label>Lý do / ghi chú<input value={periodNote} onChange={(event) => setPeriodNote(event.target.value)} maxLength={1000} required /></label>
+                    <label>Lý do hoặc ghi chú<input value={periodNote} onChange={(event) => setPeriodNote(event.target.value)} maxLength={1000} required /></label>
                   </div>
                   <div className={styles.actions}>
                     <button type="submit" className={styles.primary} disabled={busy || !periodTypes.length}>Ghi khoản phát sinh</button>
@@ -865,7 +865,7 @@ export default function PayrollPage() {
 
               <div className={sharedStyles.tableWrap}>
                 <table className={sharedStyles.table}>
-                  <thead><tr><th>Nhân sự</th><th>Khoản</th><th>Nhóm</th><th>Số tiền</th><th>Lý do / ghi chú</th></tr></thead>
+                  <thead><tr><th>Nhân sự</th><th>Khoản</th><th>Nhóm</th><th>Số tiền</th><th>Lý do hoặc ghi chú</th></tr></thead>
                   <tbody>
                     {(data?.periodComponents ?? []).map((item) => (
                       <tr key={item.id}>
@@ -876,7 +876,7 @@ export default function PayrollPage() {
                         <td>{item.note}</td>
                       </tr>
                     ))}
-                    {!data?.periodComponents?.length ? <tr><td colSpan={5}><div className={sharedStyles.emptyState}>Chưa có khoản linh động trong kỳ đang xem.</div></td></tr> : null}
+                    {!data?.periodComponents?.length ? <tr><td colSpan={5}><div className={sharedStyles.emptyState}>Chưa có khoản phát sinh trong kỳ đang xem.</div></td></tr> : null}
                   </tbody>
                 </table>
               </div>

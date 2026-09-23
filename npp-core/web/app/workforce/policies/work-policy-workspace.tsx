@@ -41,10 +41,10 @@ const TIME_MODE_LABEL: Record<WorkPolicy['time_mode'], string> = {
   FIXED: 'Giờ cố định', SHIFT: 'Theo ca', FLEXIBLE: 'Linh hoạt', NO_ATTENDANCE: 'Không bắt buộc chấm công',
 };
 const ATTENDANCE_LABEL: Record<WorkPolicy['attendance_method'], string> = {
-  QR: 'QR', FACE: 'Quét khuôn mặt', QR_FACE: 'QR và quét khuôn mặt', MANUAL: 'Chấm trực tiếp', BOTH: 'QR và chấm trực tiếp', NONE: 'Không chấm công',
+  QR: 'Mã QR', FACE: 'Quét khuôn mặt', QR_FACE: 'Mã QR và quét khuôn mặt', MANUAL: 'Chấm công trực tiếp', BOTH: 'Mã QR và chấm công trực tiếp', NONE: 'Không chấm công',
 };
 const ATTENDANCE_BASIS_LABEL: Record<WorkPolicy['attendance_basis'], string> = {
-  TIME: 'Theo thời gian vào / ra',
+  TIME: 'Theo giờ vào và giờ ra',
   PRESENCE: 'Chỉ xác nhận có mặt',
   NONE: 'Không chấm công',
 };
@@ -161,7 +161,7 @@ export default function WorkPolicyWorkspace({ initialPolicies, initialError }: {
       attempt.current = null;
       await reload();
       setEditing(false);
-      setNotice(basePolicyId ? 'Phiên bản chính sách mới đã được tạo.' : 'Chính sách làm việc đã được tạo.');
+      setNotice(basePolicyId ? 'Chính sách đã được cập nhật và lưu lịch sử.' : 'Chính sách làm việc đã được tạo.');
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Không lưu được chính sách làm việc');
     } finally { setBusy(false); }
@@ -178,20 +178,20 @@ export default function WorkPolicyWorkspace({ initialPolicies, initialError }: {
   const actions = <button type="button" className={`${shellStyles.actionButton} ${shellStyles.actionButtonPrimary}`} onClick={openCreate}>Thêm chính sách</button>;
 
   return (
-    <AppShell title="Chính sách làm việc" subtitle="Thiết lập giờ làm, ngày làm việc, chấm công và lịch sử hiệu lực theo phiên bản." kicker="Nhân sự" actions={actions}>
+    <AppShell title="Chính sách làm việc" subtitle="Thiết lập giờ làm, ngày làm việc, chấm công và lịch sử thay đổi theo thời gian." kicker="Nhân sự" actions={actions}>
       <section className={styles.page} data-testid="work-policies-page">
         {(error || notice) ? <div className={`${styles.banner} ${error ? styles.bannerError : styles.bannerSuccess}`} role="status">{error ?? notice}</div> : null}
         <section className={styles.summaryGrid}>
           <article className={styles.summaryCard}><span>Chính sách</span><strong>{latestPolicies.length}</strong><small>Đang quản lý theo mã chính sách</small></article>
-          <article className={styles.summaryCard}><span>Phiên bản lưu lịch sử</span><strong>{policies.length}</strong><small>Không ghi đè chính sách đã có hiệu lực</small></article>
-          <article className={styles.summaryCard}><span>Chính sách đang dùng</span><strong>{latestPolicies.filter((p) => p.is_active).length}</strong><small>Có thể gán cho nhân sự theo thời gian</small></article>
+          <article className={styles.summaryCard}><span>Lịch sử chính sách</span><strong>{policies.length}</strong><small>Mỗi thay đổi được lưu theo thời gian</small></article>
+          <article className={styles.summaryCard}><span>Đang áp dụng</span><strong>{latestPolicies.filter((p) => p.is_active).length}</strong><small>Có thể gán cho nhân sự theo thời gian</small></article>
         </section>
 
         <section className={styles.tableSection}>
-          <div className={styles.sectionHeader}><div><p className={styles.panelKicker}>Danh sách</p><h2>Chính sách và phiên bản hiện hành</h2></div></div>
+          <div className={styles.sectionHeader}><div><p className={styles.panelKicker}>Danh sách</p><h2>Chính sách hiện hành</h2></div></div>
           <div className={styles.tableWrap}>
             <table className={styles.table}>
-              <thead><tr><th>Mã</th><th>Tên chính sách</th><th>Kiểu thời gian</th><th>Chấm công</th><th>Ghi nhận công</th><th>Hiệu lực</th><th>Phiên bản</th><th>Thao tác</th></tr></thead>
+              <thead><tr><th>Mã</th><th>Tên chính sách</th><th>Hình thức giờ làm</th><th>Chấm công</th><th>Ghi nhận công</th><th>Hiệu lực</th><th>Lần cập nhật</th><th>Thao tác</th></tr></thead>
               <tbody>
                 {latestPolicies.map((policy) => (
                   <tr key={policy.id}>
@@ -200,9 +200,9 @@ export default function WorkPolicyWorkspace({ initialPolicies, initialError }: {
                     <td>{TIME_MODE_LABEL[policy.time_mode]}</td>
                     <td>{ATTENDANCE_LABEL[policy.attendance_method]}</td>
                     <td>{ATTENDANCE_BASIS_LABEL[policy.attendance_basis ?? (policy.time_mode === 'NO_ATTENDANCE' ? 'NONE' : 'TIME')]}</td>
-                    <td>{dateLabel(policy.effective_from)} → {policy.effective_to ? dateLabel(policy.effective_to) : 'Đang mở'}</td>
-                    <td>{policy.version} <small>({policies.filter((item) => item.code === policy.code).length} bản)</small></td>
-                    <td><button type="button" onClick={() => openVersion(policy)}>Tạo phiên bản mới</button></td>
+                    <td>{dateLabel(policy.effective_from)} → {policy.effective_to ? dateLabel(policy.effective_to) : 'Không thời hạn'}</td>
+                    <td>Lần {policy.version} <small>({policies.filter((item) => item.code === policy.code).length} lần cập nhật)</small></td>
+                    <td><button type="button" onClick={() => openVersion(policy)}>Cập nhật chính sách</button></td>
                   </tr>
                 ))}
                 {!latestPolicies.length ? <tr><td colSpan={8}><div className={styles.emptyState}>Chưa có chính sách làm việc.</div></td></tr> : null}
@@ -212,11 +212,11 @@ export default function WorkPolicyWorkspace({ initialPolicies, initialError }: {
         </section>
 
         <section className={styles.tableSection}>
-          <div className={styles.sectionHeader}><div><p className={styles.panelKicker}>Lịch sử hiệu lực</p><h2>Toàn bộ phiên bản</h2></div></div>
+          <div className={styles.sectionHeader}><div><p className={styles.panelKicker}>Lịch sử hiệu lực</p><h2>Lịch sử thay đổi</h2></div></div>
           <div className={styles.tableWrap}>
             <table className={styles.table} data-testid="work-policy-history">
-              <thead><tr><th>Mã</th><th>Phiên bản</th><th>Tên</th><th>Từ ngày</th><th>Đến ngày</th><th>Người tạo</th></tr></thead>
-              <tbody>{policies.map((policy) => <tr key={policy.id}><td>{policy.code}</td><td>{policy.version}</td><td>{policy.name}</td><td>{dateLabel(policy.effective_from)}</td><td>{policy.effective_to ? dateLabel(policy.effective_to) : 'Đang mở'}</td><td>{policy.created_by}</td></tr>)}</tbody>
+              <thead><tr><th>Mã</th><th>Lần cập nhật</th><th>Tên</th><th>Từ ngày</th><th>Đến ngày</th><th>Người cập nhật</th></tr></thead>
+              <tbody>{policies.map((policy) => <tr key={policy.id}><td>{policy.code}</td><td>{policy.version}</td><td>{policy.name}</td><td>{dateLabel(policy.effective_from)}</td><td>{policy.effective_to ? dateLabel(policy.effective_to) : 'Không thời hạn'}</td><td>{policy.created_by}</td></tr>)}</tbody>
             </table>
           </div>
         </section>
@@ -224,12 +224,12 @@ export default function WorkPolicyWorkspace({ initialPolicies, initialError }: {
         {editing ? (
           <div className={styles.modalBackdrop} role="presentation" onClick={() => setEditing(false)}>
             <div className={styles.modal} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
-              <div className={styles.modalHeader}><div><p className={styles.panelKicker}>{basePolicyId ? 'Phiên bản mới' : 'Chính sách mới'}</p><h3>{basePolicyId ? draft.code : 'Thêm chính sách làm việc'}</h3></div><button type="button" className={styles.modalClose} onClick={() => setEditing(false)}>Đóng</button></div>
+              <div className={styles.modalHeader}><div><p className={styles.panelKicker}>{basePolicyId ? 'Cập nhật chính sách' : 'Chính sách mới'}</p><h3>{basePolicyId ? draft.code : 'Thêm chính sách làm việc'}</h3></div><button type="button" className={styles.modalClose} onClick={() => setEditing(false)}>Đóng</button></div>
               <form className={styles.form} onSubmit={(event) => void submit(event)}>
                 {!basePolicyId ? <label>Mã chính sách<input value={draft.code} onChange={(e) => setDraft((c) => ({ ...c, code: e.target.value }))} maxLength={64} required /></label> : null}
                 <label>Tên chính sách<input value={draft.name} onChange={(e) => setDraft((c) => ({ ...c, name: e.target.value }))} maxLength={256} required /></label>
                 <label>Tính chất công việc<input value={draft.workNature} onChange={(e) => setDraft((c) => ({ ...c, workNature: e.target.value }))} maxLength={128} /></label>
-                <label>Kiểu thời gian<select value={draft.timeMode} onChange={(e) => setDraft((c) => ({ ...c, timeMode: e.target.value as WorkPolicy['time_mode'] }))}><option value="FIXED">Giờ cố định</option><option value="SHIFT">Theo ca</option><option value="FLEXIBLE">Linh hoạt</option><option value="NO_ATTENDANCE">Không bắt buộc chấm công</option></select></label>
+                <label>Hình thức giờ làm<select value={draft.timeMode} onChange={(e) => setDraft((c) => ({ ...c, timeMode: e.target.value as WorkPolicy['time_mode'] }))}><option value="FIXED">Giờ cố định</option><option value="SHIFT">Theo ca</option><option value="FLEXIBLE">Linh hoạt</option><option value="NO_ATTENDANCE">Không bắt buộc chấm công</option></select></label>
                 {draft.timeMode === 'FIXED' ? <><label>Giờ bắt đầu<input type="time" value={draft.fixedStartTime} onChange={(e) => setDraft((c) => ({ ...c, fixedStartTime: e.target.value }))} required /></label><label>Giờ kết thúc<input type="time" value={draft.fixedEndTime} onChange={(e) => setDraft((c) => ({ ...c, fixedEndTime: e.target.value }))} required /></label></> : null}
                 <fieldset className={localStyles.workingDaysFieldset}>
                   <legend>Ngày làm việc</legend>
@@ -250,32 +250,32 @@ export default function WorkPolicyWorkspace({ initialPolicies, initialError }: {
                   <label>
                     Phương thức chấm công
                     <select value={draft.attendanceMethod} onChange={(e) => setDraft((c) => ({ ...c, attendanceMethod: e.target.value as WorkPolicy['attendance_method'] }))}>
-                      <option value="QR">QR</option>
+                      <option value="QR">Mã QR</option>
                       <option value="FACE">Quét khuôn mặt</option>
-                      <option value="QR_FACE">QR và quét khuôn mặt</option>
-                      <option value="MANUAL">Chấm trực tiếp</option>
-                      <option value="BOTH">QR và chấm trực tiếp</option>
+                      <option value="QR_FACE">Mã QR và quét khuôn mặt</option>
+                      <option value="MANUAL">Chấm công trực tiếp</option>
+                      <option value="BOTH">Mã QR và chấm công trực tiếp</option>
                     </select>
                   </label>
                   <label>
                     Cách ghi nhận công
                     <select value={draft.attendanceBasis} onChange={(e) => setDraft((c) => ({ ...c, attendanceBasis: e.target.value as WorkPolicy['attendance_basis'] }))}>
-                      <option value="TIME">Theo thời gian vào / ra</option>
+                      <option value="TIME">Theo giờ vào và giờ ra</option>
                       <option value="PRESENCE">Chỉ xác nhận có mặt</option>
                     </select>
                   </label>
                   {draft.attendanceBasis === 'PRESENCE' ? (
-                    <div className={localStyles.bootstrapNote}>Nhân sự chỉ cần ghi nhận có mặt. Bảng công không lấy số phút giữa giờ vào / ra làm căn cứ tính công và không ghi nhận vi phạm về sớm.</div>
+                    <div className={localStyles.bootstrapNote}>Nhân sự chỉ cần ghi nhận có mặt. Bảng công không dùng khoảng thời gian giữa giờ vào và giờ ra làm căn cứ tính công và không ghi nhận vi phạm về sớm.</div>
                   ) : null}
                 </> : null}
                 <label>Múi giờ<input value={draft.timezone} onChange={(e) => setDraft((c) => ({ ...c, timezone: e.target.value }))} maxLength={64} /></label>
                 <label>Ngày bắt đầu hiệu lực<input type="date" min={basePolicyId ? todayPlus(1) : undefined} value={draft.effectiveFrom} onChange={(e) => setDraft((c) => ({ ...c, effectiveFrom: e.target.value }))} required /></label>
                 {!basePolicyId && draft.effectiveFrom < todayPlus(0) ? (
-                  <div className={localStyles.bootstrapNote}>Ngày hiệu lực trong quá khứ chỉ nên dùng khi khởi tạo hệ thống lần đầu. Việc áp dụng cho nhân sự vẫn phải đi qua thao tác “Khởi tạo chính sách ban đầu” có lý do và audit.</div>
+                  <div className={localStyles.bootstrapNote}>Ngày hiệu lực trong quá khứ chỉ nên dùng khi khởi tạo hệ thống lần đầu. Việc áp dụng cho nhân sự vẫn phải đi qua thao tác “Áp dụng chính sách ban đầu” có lý do và được lưu trong lịch sử hệ thống.</div>
                 ) : null}
                 <label className={localStyles.inlineCheckbox}><input type="checkbox" checked={draft.overtimeEnabled} onChange={(e) => setDraft((c) => ({ ...c, overtimeEnabled: e.target.checked }))} /><span>Có áp dụng tăng ca</span></label>
                 {draft.overtimeEnabled ? <label className={localStyles.inlineCheckbox}><input type="checkbox" checked={draft.overtimeRequiresApproval} onChange={(e) => setDraft((c) => ({ ...c, overtimeRequiresApproval: e.target.checked }))} /><span>Tăng ca cần duyệt</span></label> : null}
-                <div className={styles.formActions}><button type="button" className={styles.secondaryButton} onClick={() => setEditing(false)}>Hủy</button><button type="submit" className={styles.primaryButton} disabled={busy}>{busy ? 'Đang lưu…' : basePolicyId ? 'Tạo phiên bản mới' : 'Tạo chính sách'}</button></div>
+                <div className={styles.formActions}><button type="button" className={styles.secondaryButton} onClick={() => setEditing(false)}>Hủy</button><button type="submit" className={styles.primaryButton} disabled={busy}>{busy ? 'Đang lưu…' : basePolicyId ? 'Cập nhật chính sách' : 'Tạo chính sách'}</button></div>
               </form>
             </div>
           </div>

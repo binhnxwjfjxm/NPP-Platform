@@ -10,18 +10,18 @@ test('Lô B exposes presence-only as an office-language policy option', async ()
   const workspace = await source('app/workforce/policies/work-policy-workspace.tsx');
 
   assert.match(workspace, /Cách ghi nhận công/);
-  assert.match(workspace, /Theo thời gian vào \/ ra/);
+  assert.match(workspace, /Theo giờ vào và giờ ra/);
   assert.match(workspace, /Chỉ xác nhận có mặt/);
-  assert.match(workspace, /Bảng công không lấy số phút/);
+  assert.match(workspace, /Bảng công không dùng khoảng thời gian giữa giờ vào và giờ ra làm căn cứ tính công/);
   assert.match(workspace, /làm căn cứ tính công/);
 });
 
 test('Lô B attendance UI requires a reason before leaving the workplace', async () => {
   const workspace = await source('app/workforce/attendance/attendance-workspace.tsx');
 
-  assert.match(workspace, /Kết thúc làm việc \/ Đi về/);
-  assert.match(workspace, /Ra ngoài làm công việc/);
-  assert.match(workspace, /Ra ngoài việc cá nhân/);
+  assert.match(workspace, /Kết thúc ngày làm việc/);
+  assert.match(workspace, /Ra ngoài làm việc/);
+  assert.match(workspace, /Ra ngoài vì việc cá nhân/);
   assert.match(workspace, /Nghỉ giữa ca/);
   assert.match(workspace, /Lý do khác/);
   assert.match(workspace, /nextAction === 'EXIT'/);

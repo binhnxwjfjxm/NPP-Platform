@@ -201,7 +201,7 @@ export default function WorkScheduleWorkspace({
   const actions = <button type="button" className={`${shellStyles.actionButton} ${shellStyles.actionButtonPrimary}`} onClick={openCreate}>Xếp lịch</button>;
 
   return (
-    <AppShell title="Ca / lịch làm việc" subtitle="Xem và điều chỉnh lịch làm việc tương lai theo chính sách đã áp dụng." kicker="Nhân sự" actions={actions}>
+    <AppShell title="Ca và lịch làm việc" subtitle="Xem và điều chỉnh lịch làm việc tương lai theo chính sách đã áp dụng." kicker="Nhân sự" actions={actions}>
       <section className={styles.page} data-testid="work-schedules-page">
         {(error || notice) ? <div className={`${styles.banner} ${error ? styles.bannerError : styles.bannerSuccess}`} role="status">{error ?? notice}</div> : null}
         <section className={styles.toolbar}>
@@ -247,14 +247,14 @@ export default function WorkScheduleWorkspace({
         {draft ? (
           <div className={styles.modalBackdrop} role="presentation" onClick={() => setDraft(null)}>
             <div className={styles.modal} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
-              <div className={styles.modalHeader}><div><p className={styles.panelKicker}>{draft.expectedUpdatedAt ? 'Điều chỉnh lịch' : 'Xếp lịch'}</p><h3>Ca / lịch làm việc</h3></div><button type="button" className={styles.modalClose} onClick={() => setDraft(null)}>Đóng</button></div>
+              <div className={styles.modalHeader}><div><p className={styles.panelKicker}>{draft.expectedUpdatedAt ? 'Điều chỉnh lịch' : 'Xếp lịch'}</p><h3>Ca và lịch làm việc</h3></div><button type="button" className={styles.modalClose} onClick={() => setDraft(null)}>Đóng</button></div>
               <form className={styles.form} onSubmit={(event) => void submit(event)}>
                 <label>Nhân sự<select value={draft.employeeId} onChange={(event) => setDraft((current) => current ? ({ ...current, employeeId: event.target.value }) : current)} disabled={Boolean(draft.expectedUpdatedAt)} required>{activeEmployees.map((employee) => <option key={employee.id} value={employee.id}>{employee.code} · {employee.full_name}</option>)}</select></label>
                 <label>Ngày làm việc<input type="date" min={tomorrowDate()} value={draft.workDate} onChange={(event) => setDraft((current) => current ? ({ ...current, workDate: event.target.value }) : current)} disabled={Boolean(draft.expectedUpdatedAt)} required /></label>
                 <label>Chính sách<select value={draft.workPolicyId} onChange={(event) => setDraft((current) => current ? ({ ...current, workPolicyId: event.target.value }) : current)} required>{activePolicies.map((policy) => <option key={policy.id} value={policy.id}>{policy.code} · {policy.name}</option>)}</select></label>
                 <label>Trạng thái<select value={draft.scheduleKind} onChange={(event) => setDraft((current) => current ? ({ ...current, scheduleKind: event.target.value as 'WORK' | 'OFF' }) : current)}><option value="WORK">Ngày làm việc</option><option value="OFF">Ngày nghỉ</option></select></label>
                 {draft.scheduleKind === 'WORK' ? <><label>Bắt đầu<input type="datetime-local" value={draft.startLocal} onChange={(event) => setDraft((current) => current ? ({ ...current, startLocal: event.target.value }) : current)} required /></label><label>Kết thúc<input type="datetime-local" value={draft.endLocal} onChange={(event) => setDraft((current) => current ? ({ ...current, endLocal: event.target.value }) : current)} required /></label></> : null}
-                <label>Lý do xếp / điều chỉnh lịch<input value={draft.overrideReason} onChange={(event) => setDraft((current) => current ? ({ ...current, overrideReason: event.target.value }) : current)} maxLength={512} required placeholder="Ví dụ: đổi ca theo kế hoạch tuần" /></label>
+                <label>Lý do xếp lịch hoặc điều chỉnh<input value={draft.overrideReason} onChange={(event) => setDraft((current) => current ? ({ ...current, overrideReason: event.target.value }) : current)} maxLength={512} required placeholder="Ví dụ: đổi ca theo kế hoạch tuần" /></label>
                 <div className={styles.formActions}><button type="button" className={styles.secondaryButton} onClick={() => setDraft(null)}>Hủy</button><button type="submit" className={styles.primaryButton} disabled={busy}>{busy ? 'Đang lưu…' : 'Lưu lịch'}</button></div>
               </form>
             </div>

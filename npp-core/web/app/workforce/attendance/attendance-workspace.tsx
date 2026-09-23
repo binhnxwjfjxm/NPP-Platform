@@ -31,9 +31,9 @@ const STATUS_LABEL: Record<AttendanceToday['status'], string> = {
 type ExitReason = '' | 'END_WORK' | 'WORK_BUSINESS' | 'PERSONAL' | 'BREAK' | 'OTHER';
 
 const EXIT_REASON_LABEL: Record<Exclude<ExitReason, ''>, string> = {
-  END_WORK: 'Kết thúc làm việc / Đi về',
-  WORK_BUSINESS: 'Ra ngoài làm công việc',
-  PERSONAL: 'Ra ngoài việc cá nhân',
+  END_WORK: 'Kết thúc ngày làm việc',
+  WORK_BUSINESS: 'Ra ngoài làm việc',
+  PERSONAL: 'Ra ngoài vì việc cá nhân',
   BREAK: 'Nghỉ giữa ca',
   OTHER: 'Lý do khác',
 };
@@ -46,11 +46,11 @@ function eventLabel(event: AttendanceToday['events'][number]) {
 }
 
 const ATTENDANCE_METHOD_LABEL: Record<AttendanceToday['policy']['attendanceMethod'], string> = {
-  QR: 'Quét mã tại nơi làm việc',
+  QR: 'Quét mã QR tại nơi làm việc',
   FACE: 'Quét khuôn mặt tại máy chấm công',
   QR_FACE: 'Quét mã QR hoặc quét khuôn mặt',
   MANUAL: 'Chấm công trực tiếp',
-  BOTH: 'Quét mã hoặc chấm trực tiếp',
+  BOTH: 'Quét mã QR hoặc chấm công trực tiếp',
   NONE: 'Không yêu cầu chấm công',
 };
 
@@ -291,7 +291,7 @@ export default function AttendanceWorkspace({
     setCameraMessage(null);
     const Detector = (window as unknown as { BarcodeDetector?: BarcodeDetectorConstructor }).BarcodeDetector;
     if (!Detector) {
-      setCameraMessage(manualAllowed ? 'Thiết bị này chưa hỗ trợ quét QR bằng camera. Anh/chị có thể dùng Chấm công trực tiếp bên dưới.' : 'Thiết bị này chưa hỗ trợ quét QR bằng camera. Vui lòng dùng thiết bị có camera hỗ trợ quét QR.');
+      setCameraMessage(manualAllowed ? 'Thiết bị này chưa hỗ trợ quét mã QR bằng camera. Có thể sử dụng chức năng Chấm công trực tiếp bên dưới.' : 'Thiết bị này chưa hỗ trợ quét mã QR bằng camera. Vui lòng sử dụng thiết bị có camera hỗ trợ quét mã QR.');
       return;
     }
     if (!navigator.mediaDevices?.getUserMedia) {
@@ -431,7 +431,7 @@ export default function AttendanceWorkspace({
           <article className={styles.summaryCard}>
             <span>Ngày làm việc</span>
             <strong>{today?.workDate || '—'}</strong>
-            <small>{today?.employee ? `${today.employee.full_name} · Nơi làm việc: ${today.employee.branch_name || 'Chưa gắn'}` : 'Chưa xác định hồ sơ nhân sự'}</small>
+            <small>{today?.employee ? `${today.employee.full_name} · Nơi làm việc: ${today.employee.branch_name || 'Chưa được phân công'}` : 'Chưa xác định hồ sơ nhân sự'}</small>
           </article>
           <article className={styles.summaryCard}>
             <span>Trạng thái hôm nay</span>
@@ -514,7 +514,7 @@ export default function AttendanceWorkspace({
             {today?.nextAction === 'EXIT' ? (
               <div className={localStyles.exitPanel} data-testid="attendance-exit-reason">
                 <strong>Lý do rời nơi làm việc</strong>
-                <span>Chọn đúng mục để Bảng công phân biệt kết thúc ngày với ra tạm thời.</span>
+                <span>Chọn đúng mục để bảng công phân biệt kết thúc ngày với ra tạm thời.</span>
                 <div className={localStyles.exitReasonGrid}>
                   {(Object.keys(EXIT_REASON_LABEL) as Array<Exclude<ExitReason, ''>>).map((reason) => (
                     <label key={reason} className={localStyles.exitReasonOption}>
@@ -552,7 +552,7 @@ export default function AttendanceWorkspace({
               <div className={localStyles.manualAttendanceCard} data-testid="attendance-manual-record">
                 <div>
                   <strong>Chấm công trực tiếp</strong>
-                  <span>Hệ thống tự ghi giờ hiện tại. Anh/chị không cần nhập thời gian hoặc chọn nơi làm việc.</span>
+                  <span>Hệ thống tự ghi nhận giờ hiện tại. Không cần nhập thời gian hoặc chọn nơi làm việc.</span>
                 </div>
                 <button
                   type="button"

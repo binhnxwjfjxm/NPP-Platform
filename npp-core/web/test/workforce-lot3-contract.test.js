@@ -20,7 +20,7 @@ test('Issue #1110 Lô 3 uses camera QR scan and policy-controlled manual attenda
   assert.match(workspace, /Mở camera quét QR/);
   assert.match(workspace, /Chấm công trực tiếp/);
   assert.match(workspace, /attendancePayload\('MANUAL'\)/);
-  assert.match(workspace, /không cần nhập thời gian hoặc chọn nơi làm việc/);
+  assert.match(workspace, /Không cần nhập thời gian hoặc chọn nơi làm việc/);
   assert.doesNotMatch(workspace, /Dán mã QR/);
   assert.match(workspace, /Ghi nhận vào làm/);
   assert.match(workspace, /Ghi nhận rời nơi làm việc/);

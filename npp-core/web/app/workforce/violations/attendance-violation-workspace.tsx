@@ -41,7 +41,7 @@ function violationDetail(entry: AttendanceViolationHandlingEntry) {
   return 'Không còn dữ liệu vi phạm hiện tại.';
 }
 function violationLabel(entry: AttendanceViolationHandlingEntry) {
-  return entry.violation?.label || entry.case?.violation_label_snapshot || 'Vi phạm công';
+  return entry.violation?.label || entry.case?.violation_label_snapshot || 'Vi phạm chấm công';
 }
 function caseStatus(entry: AttendanceViolationHandlingEntry) {
   if (!entry.case) return 'Chưa giải trình';
@@ -217,8 +217,8 @@ export default function AttendanceViolationWorkspace({
 
   return (
     <AppShell
-      title="Xử lý vi phạm công"
-      subtitle="Giải trình, xem xét và kết luận các sai lệch chấm công đã được Bảng công ghi nhận."
+      title="Xử lý vi phạm chấm công"
+      subtitle="Giải trình, xem xét và kết luận các sai lệch đã được bảng công ghi nhận."
       kicker="Nhân sự"
       actions={actions}
     >
@@ -228,10 +228,10 @@ export default function AttendanceViolationWorkspace({
         ) : null}
 
         <section className={styles.summaryGrid}>
-          <article className={styles.summaryCard}><span>Vi phạm hiện tại</span><strong>{counts.current}</strong><small>Theo dữ liệu Bảng công trong trang đang xem</small></article>
+          <article className={styles.summaryCard}><span>Vi phạm đang ghi nhận</span><strong>{counts.current}</strong><small>Theo dữ liệu bảng công trong trang đang xem</small></article>
           <article className={styles.summaryCard}><span>Chờ xem xét</span><strong>{counts.waiting}</strong><small>Nhân viên đã gửi giải trình</small></article>
           <article className={styles.summaryCard}><span>Đang xem xét</span><strong>{counts.reviewing}</strong><small>Quản lý đang xử lý hồ sơ</small></article>
-          <article className={styles.summaryCard}><span>Đã kết luận</span><strong>{counts.resolved}</strong><small>Không làm thay đổi dữ liệu chấm công gốc</small></article>
+          <article className={styles.summaryCard}><span>Đã kết luận</span><strong>{counts.resolved}</strong><small>Giữ nguyên dữ liệu chấm công đã ghi nhận</small></article>
         </section>
 
         <section className={styles.toolbar}>
@@ -264,7 +264,7 @@ export default function AttendanceViolationWorkspace({
         </section>
 
         <div className={styles.banner} role="note">
-          Vi phạm được đánh giá từ Bảng công hiện tại. Hồ sơ này chỉ lưu giải trình và kết luận xử lý; không sửa sự kiện chấm công và không tự điều chỉnh thu nhập.
+          Vi phạm được đánh giá từ bảng công hiện tại. Hồ sơ này chỉ lưu giải trình và kết luận xử lý; không sửa sự kiện chấm công và không tự điều chỉnh thu nhập.
         </div>
 
         <section className={styles.tableSection}>
@@ -277,7 +277,7 @@ export default function AttendanceViolationWorkspace({
               <thead>
                 <tr>
                   <th>Ngày</th><th>Nhân sự</th><th>Vi phạm</th><th>Ghi nhận</th>
-                  <th>Trạng thái xử lý</th><th>Giải trình / kết luận</th><th>Thao tác</th>
+                  <th>Trạng thái xử lý</th><th>Giải trình và kết luận</th><th>Thao tác</th>
                 </tr>
               </thead>
               <tbody>
@@ -295,7 +295,7 @@ export default function AttendanceViolationWorkspace({
                           {entry.violation?.dayFraction != null ? <small>{numberLabel(entry.violation.dayFraction)} ngày</small> : null}
                         </div>
                       </td>
-                      <td><div className={localStyles.statusStack}><strong>{caseStatus(entry)}</strong>{entry.case ? <small>Phiên bản {entry.case.version}</small> : null}</div></td>
+                      <td><div className={localStyles.statusStack}><strong>{caseStatus(entry)}</strong>{entry.case ? <small>Lần xử lý {entry.case.version}</small> : null}</div></td>
                       <td>
                         <div className={localStyles.detailBox}>
                           {entry.case ? <><span><strong>Giải trình:</strong> {entry.case.explanation}</span>{entry.case.review_note ? <span><strong>Kết luận:</strong> {entry.case.review_note}</span> : null}</> : <span className={localStyles.muted}>Chưa có giải trình.</span>}
@@ -327,7 +327,7 @@ export default function AttendanceViolationWorkspace({
         {data ? (
           <div className={localStyles.pagination}>
             <button type="button" className={styles.secondaryButton} disabled={busy || !data.pagination.hasPrevious} onClick={() => void load(Math.max(0, data.pagination.offset - data.pagination.limit))}>Trang trước</button>
-            <span>{data.pagination.total} dòng ngày công nền</span>
+            <span>{data.pagination.total} ngày công</span>
             <button type="button" className={styles.secondaryButton} disabled={busy || !data.pagination.hasNext} onClick={() => void load(data.pagination.offset + data.pagination.limit)}>Trang sau</button>
           </div>
         ) : null}
@@ -340,7 +340,7 @@ export default function AttendanceViolationWorkspace({
                 <button type="button" className={styles.modalClose} onClick={() => setExplainEntry(null)}>Đóng</button>
               </div>
               <form className={styles.form} onSubmit={(event) => void submitExplanation(event)}>
-                <div className={localStyles.readOnlyBox}><span>Ghi nhận trên Bảng công</span><strong>{violationDetail(explainEntry)}</strong></div>
+                <div className={localStyles.readOnlyBox}><span>Ghi nhận trên bảng công</span><strong>{violationDetail(explainEntry)}</strong></div>
                 <label>Nội dung giải trình<textarea value={explanation} onChange={(event) => setExplanation(event.target.value)} maxLength={2000} rows={6} required placeholder="Trình bày lý do và thông tin cần quản lý xem xét" /></label>
                 <div className={styles.formActions}><button type="button" className={styles.secondaryButton} onClick={() => setExplainEntry(null)}>Hủy</button><button type="submit" className={styles.primaryButton} disabled={busy}>{busy ? 'Đang gửi…' : 'Gửi giải trình'}</button></div>
               </form>
@@ -360,7 +360,7 @@ export default function AttendanceViolationWorkspace({
                 <fieldset className={localStyles.outcomeGroup}>
                   <legend>Kết luận</legend>
                   <label className={localStyles.outcomeChoice}><input type="radio" name="outcome" checked={outcome === 'EXCUSED'} onChange={() => setOutcome('EXCUSED')} /><span><strong>Chấp nhận giải trình</strong><br /><small>Hồ sơ được kết luận là có lý do được chấp nhận.</small></span></label>
-                  <label className={localStyles.outcomeChoice}><input type="radio" name="outcome" checked={outcome === 'CONFIRMED'} onChange={() => setOutcome('CONFIRMED')} /><span><strong>Xác nhận vi phạm</strong><br /><small>Chỉ xác nhận khi vi phạm vẫn còn trên Bảng công hiện tại.</small></span></label>
+                  <label className={localStyles.outcomeChoice}><input type="radio" name="outcome" checked={outcome === 'CONFIRMED'} onChange={() => setOutcome('CONFIRMED')} /><span><strong>Xác nhận vi phạm</strong><br /><small>Chỉ xác nhận khi vi phạm vẫn còn trên bảng công hiện tại.</small></span></label>
                 </fieldset>
                 <label>Kết luận xử lý<textarea value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} maxLength={2000} rows={5} required placeholder="Ghi rõ căn cứ và kết luận quản lý" /></label>
                 <div className={styles.banner} role="note">Kết luận này là hồ sơ quản lý. Mọi ảnh hưởng thu nhập nếu có trong tương lai phải đi qua quy trình riêng.</div>

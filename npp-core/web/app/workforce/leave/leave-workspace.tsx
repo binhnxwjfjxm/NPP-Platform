@@ -101,7 +101,7 @@ function requestPeriod(row: LeaveRequest) {
 function typeBadges(type: LeaveType) {
   const balance = type as LeaveType & LeaveTypeBalanceFields;
   return [
-    type.is_paid ? 'Hưởng lương' : 'Không lương',
+    type.is_paid ? 'Hưởng lương' : 'Không hưởng lương',
     type.counts_as_workday ? 'Tính ngày công' : 'Không tính ngày công',
     type.requires_approval ? 'Cần duyệt' : 'Tự động duyệt',
     type.allows_half_day ? 'Có nửa ngày' : null,
@@ -212,8 +212,8 @@ export default function LeaveWorkspace({
     [data, cancelId],
   );
   const configWarning = useMemo(() => {
-    if (!typeForm.isPaid && typeForm.countsAsWorkday) return 'Thiết lập không lương nhưng vẫn tính ngày công có thể làm thay đổi cách tính công. Bạn vẫn có thể lưu nếu đây là chính sách của Công Ty.';
-    if (!typeForm.requiresApproval) return 'Chế độ này sẽ tự động duyệt khi nhân viên gửi đơn. Bạn vẫn có thể lưu nếu đây là chính sách của Công Ty.';
+    if (!typeForm.isPaid && typeForm.countsAsWorkday) return 'Chế độ không hưởng lương nhưng vẫn tính ngày công có thể làm thay đổi cách tính công. Vẫn có thể lưu nếu đây là chính sách của Công Ty.';
+    if (!typeForm.requiresApproval) return 'Chế độ này sẽ tự động duyệt khi nhân viên gửi đơn. Vẫn có thể lưu nếu đây là chính sách của Công Ty.';
     return null;
   }, [typeForm]);
 
@@ -482,7 +482,7 @@ export default function LeaveWorkspace({
           <div className={sharedStyles.toolbarFilter}><label htmlFor="leave-status">Trạng thái</label><select id="leave-status" value={status} onChange={(event) => setStatus(event.target.value)}><option value="">Tất cả</option><option value="SUBMITTED">Chờ duyệt</option><option value="APPROVED">Đã duyệt</option><option value="REJECTED">Từ chối</option><option value="CANCELLED">Đã hủy</option></select></div>
           {!data?.capabilities.selfOnly ? <div className={sharedStyles.toolbarFilter}><label htmlFor="leave-employee">Nhân sự</label><input id="leave-employee" value={employeeQuery} onChange={(event) => setEmployeeQuery(event.target.value)} placeholder="Mã hoặc tên nhân sự" /></div> : null}
           {!data?.capabilities.selfOnly && (data?.branches.length ?? 0) > 0 ? <div className={sharedStyles.toolbarFilter}><label htmlFor="leave-branch">Chi nhánh</label><select id="leave-branch" value={branchId} onChange={(event) => setBranchId(event.target.value)}><option value="">Tất cả chi nhánh được cấp</option>{data?.branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.code} · {branch.name}</option>)}</select></div> : null}
-          <div className={sharedStyles.formActions}><button type="button" className={sharedStyles.secondaryButton} onClick={() => void load(0)} disabled={busy}>{busy ? 'Đang tải…' : 'Xem dữ liệu'}</button></div>
+          <div className={sharedStyles.formActions}><button type="button" className={sharedStyles.secondaryButton} onClick={() => void load(0)} disabled={busy}>{busy ? 'Đang tải…' : 'Xem danh sách'}</button></div>
         </section>
 
         <div className={styles.grid}>
@@ -499,11 +499,11 @@ export default function LeaveWorkspace({
                       return <tr key={row.id}>
                         <td><div className={styles.meta}><strong>{requestPeriod(row)}</strong><small>{DAY_PART_LABEL[row.day_part]}</small></div></td>
                         <td><div className={styles.meta}><strong>{row.employee_code ? row.employee_code + ' · ' + row.employee_name : data.selectedEmployee?.name || 'Bản thân'}</strong><small>{row.branch_name || 'Chưa gán chi nhánh'}</small></div></td>
-                        <td><div className={styles.meta}><strong>{row.leave_type_name_snapshot}</strong><small>{row.leave_is_paid_snapshot ? 'Hưởng lương' : 'Không lương'} · {row.leave_counts_as_workday_snapshot ? 'Tính ngày công' : 'Không tính ngày công'}</small></div></td>
+                        <td><div className={styles.meta}><strong>{row.leave_type_name_snapshot}</strong><small>{row.leave_is_paid_snapshot ? 'Hưởng lương' : 'Không hưởng lương'} · {row.leave_counts_as_workday_snapshot ? 'Tính ngày công' : 'Không tính ngày công'}</small></div></td>
                         <td><span className={styles.status}>{STATUS_LABEL[row.status]}</span></td>
                         <td>{row.reason}</td>
                         <td><div className={styles.actions}>
-                          {data.capabilities.canApprove && row.status === 'SUBMITTED' ? <button type="button" className={styles.secondary} onClick={() => { setReviewId(row.id); setReviewReason(''); }}>Duyệt / từ chối</button> : null}
+                          {data.capabilities.canApprove && row.status === 'SUBMITTED' ? <button type="button" className={styles.secondary} onClick={() => { setReviewId(row.id); setReviewReason(''); }}>Duyệt hoặc từ chối</button> : null}
                           {canCancel ? <button type="button" className={styles.secondary} onClick={() => { setCancelId(row.id); setCancelReason(''); }}>Hủy đơn</button> : null}
                           {!data.capabilities.canApprove && !canCancel ? <span>{row.review_reason || row.cancel_reason || '—'}</span> : null}
                         </div></td>
@@ -541,7 +541,7 @@ export default function LeaveWorkspace({
 
             <section className={sharedStyles.tableSection}>
               <div className={sharedStyles.sectionHeader}>
-                <div><p className={sharedStyles.panelKicker}>Số dư / Sổ phép</p><h2>Số dư theo ngày và lịch sử phát sinh</h2></div>
+                <div><p className={sharedStyles.panelKicker}>Số dư và sổ phép</p><h2>Số dư theo ngày và lịch sử phát sinh</h2></div>
                 <span className={sharedStyles.panelChip}>Đến {dateLabel(data?.balanceAsOfDate ?? to)}</span>
               </div>
               <div className={sharedStyles.tableWrap}>
@@ -596,8 +596,8 @@ export default function LeaveWorkspace({
               <p className={styles.note}>Thiết lập áp dụng cho Công Ty. Thay đổi sau này không làm đổi nội dung các đơn đã gửi trước đó.</p>
               <form onSubmit={(event) => void saveType(event)}>
                 <div className={styles.formGrid}>
-                  <label>Mã chế độ<input value={typeForm.code} onChange={(event) => setTypeForm((current) => ({ ...current, code: event.target.value.toUpperCase() }))} disabled={Boolean(typeForm.id)} maxLength={32} placeholder="VD: PHEP_NAM" required /></label>
-                  <label>Tên chế độ<input value={typeForm.name} onChange={(event) => setTypeForm((current) => ({ ...current, name: event.target.value }))} maxLength={100} placeholder="VD: Nghỉ phép năm" required /></label>
+                  <label>Mã chế độ<input value={typeForm.code} onChange={(event) => setTypeForm((current) => ({ ...current, code: event.target.value.toUpperCase() }))} disabled={Boolean(typeForm.id)} maxLength={32} placeholder="Ví dụ: PHEP_NAM" required /></label>
+                  <label>Tên chế độ<input value={typeForm.name} onChange={(event) => setTypeForm((current) => ({ ...current, name: event.target.value }))} maxLength={100} placeholder="Ví dụ: Nghỉ phép năm" required /></label>
                 </div>
                 <div className={styles.checkGrid}>
                   <label><input type="checkbox" checked={typeForm.isActive} onChange={(event) => setTypeForm((current) => ({ ...current, isActive: event.target.checked }))} />Đang áp dụng</label>

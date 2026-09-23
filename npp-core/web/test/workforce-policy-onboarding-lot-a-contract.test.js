@@ -37,8 +37,8 @@ test('Issue #1110 Lô A makes historical bootstrap explicit and canonical-idempo
     source('app/api/workforce/assignments/bulk/route.ts'),
   ]);
 
-  assert.match(workspace, /Khởi tạo chính sách ban đầu cho giai đoạn trước/);
-  assert.match(workspace, /không được áp dụng dở dang/i);
+  assert.match(workspace, /Áp dụng chính sách ban đầu cho giai đoạn trước/);
+  assert.match(workspace, /toàn bộ danh sách sẽ không được áp dụng/i);
   assert.match(gateway, /employee-policy-bulk-assign/);
   assert.match(gateway, /mutationKey\(idempotencyKey, 'employee-policy-bulk-assign'\)/);
   assert.match(route, /headers\.get\('idempotency-key'\)/);
@@ -61,7 +61,7 @@ test('Issue #1110 Lô A fixes the work-day checkbox layout instead of inheriting
 test('Issue #1110 Lô A presents missing policy as configuration work, not a red attendance violation', async () => {
   const workspace = await source('app/workforce/timesheet/attendance-timesheet-workspace.tsx');
 
-  assert.match(workspace, /case 'MISSING_POLICY': return 'Thiếu CS'/);
+  assert.match(workspace, /case 'MISSING_POLICY': return 'Thiếu chính sách'/);
   assert.match(workspace, /day\.status === 'MISSING_POLICY'.*return 'warn'/s);
   assert.match(workspace, /Nhân sự chưa có Chính sách làm việc hiệu lực tại ngày này/);
   assert.match(workspace, /href="\/workforce\/employees"/);

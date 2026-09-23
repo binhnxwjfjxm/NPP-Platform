@@ -11,7 +11,7 @@ test('Issue #1140 Lô 4 renders leave balance inside Nghỉ và đơn nghỉ wit
     source('app/workforce/leave/leave-workspace.tsx'),
     source('app/components/app-shell-core.tsx'),
   ]);
-  assert.match(workspace, /Số dư \/ Sổ phép/);
+  assert.match(workspace, /Số dư và sổ phép/);
   assert.match(workspace, /Số dư theo ngày và lịch sử phát sinh/);
   assert.match(workspace, /Ghi sổ phép/);
   assert.match(workspace, /Cấp đầu kỳ/);

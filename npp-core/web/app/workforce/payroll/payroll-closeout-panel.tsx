@@ -160,14 +160,14 @@ export function PayrollCloseoutPanel({
   if (mode === 'closeout') {
     if (!period) return null;
     if (period.status === 'CLOSED') {
-      return <div className={`${sharedStyles.banner} ${sharedStyles.bannerSuccess}`}>Kỳ lương đã chốt. Mọi thay đổi sau chốt được ghi bằng Điều chỉnh lương và giữ nguyên phiếu cũ.</div>;
+      return <div className={`${sharedStyles.banner} ${sharedStyles.bannerSuccess}`}>Kỳ lương đã chốt. Mọi thay đổi sau chốt được ghi bằng điều chỉnh lương và giữ nguyên phiếu đã phát hành.</div>;
     }
     if (period.status !== 'RECONCILED') {
-      return <div className={sharedStyles.emptyState}>Kỳ lương phải được đối soát trên bản tổng hợp hiện tại trước khi chốt.</div>;
+      return <div className={sharedStyles.emptyState}>Kỳ lương phải được đối soát theo số liệu tổng hợp hiện tại trước khi chốt.</div>;
     }
     return (
       <div className={styles.actions}>
-        <span className={styles.inlineMeta}>Chốt sẽ tạo hồ sơ kỳ và phiếu lương bất biến cho từng nhân sự.</span>
+        <span className={styles.inlineMeta}>Chốt lương sẽ lưu cố định số liệu kỳ và phiếu lương của từng nhân sự.</span>
         {canClose ? <button type="button" className={sharedStyles.primaryButton} disabled={busy} onClick={() => void onClose()}>Chốt lương</button> : null}
       </div>
     );
@@ -178,7 +178,7 @@ export function PayrollCloseoutPanel({
       <section className={sharedStyles.tableSection}>
         <div className={sharedStyles.sectionHeader}>
           <div><p className={sharedStyles.panelKicker}>Lịch sử</p><h2>Kỳ lương đã chốt</h2></div>
-          <span className={sharedStyles.panelChip}>Đọc từ hồ sơ kỳ đã chốt</span>
+          <span className={sharedStyles.panelChip}>Số liệu từ kỳ lương đã chốt</span>
         </div>
         <div className={sharedStyles.tableWrap}>
           <table className={sharedStyles.table}>
@@ -236,7 +236,7 @@ export function PayrollCloseoutPanel({
       </div>
       <div className={sharedStyles.tableWrap}>
         <table className={sharedStyles.table}>
-          <thead><tr><th>Nhân sự</th><th>Thu nhập</th><th>Hoàn chi</th><th>Khấu trừ</th><th>Thực nhận</th><th>Phiên bản</th><th>Xử lý</th></tr></thead>
+          <thead><tr><th>Nhân sự</th><th>Thu nhập</th><th>Hoàn chi</th><th>Khấu trừ</th><th>Thực nhận</th><th>Lần cập nhật</th><th>Xử lý</th></tr></thead>
           <tbody>
             {closeout.payslips.map((item) => (
               <tr key={item.id}>
@@ -295,13 +295,13 @@ export function PayrollCloseoutPanel({
                   <label>
                     Cách điều chỉnh
                     <select value={direction} onChange={(event) => setDirection(event.target.value as 'ADD' | 'REVERSE')}>
-                      <option value="ADD">Ghi thêm</option>
-                      <option value="REVERSE">Ghi giảm / hoàn lại</option>
+                      <option value="ADD">Tăng thêm</option>
+                      <option value="REVERSE">Giảm hoặc hoàn lại</option>
                     </select>
                   </label>
                   <label>Số tiền<input required inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0" /></label>
                   <label>Lý do<textarea required maxLength={1000} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Nêu rõ nguyên nhân điều chỉnh" /></label>
-                  <div className={styles.actions}><button type="submit" className={sharedStyles.primaryButton} disabled={busy || !componentTypeId || !amount || !reason.trim()}>Ghi điều chỉnh</button></div>
+                  <div className={styles.actions}><button type="submit" className={sharedStyles.primaryButton} disabled={busy || !componentTypeId || !amount || !reason.trim()}>Lưu điều chỉnh</button></div>
                 </form>
               ) : null}
             </div>
