@@ -175,9 +175,13 @@ export async function authenticateFaceDevice(client, {
     installationId,
     credentialHash: faceDeviceCredentialHash(parsed.token),
   });
-  if (!device || String(device.id).toLowerCase() !== parsed.deviceId) {
+  if (!device) {
     return fail('FACE_DEVICE_UNAUTHORIZED', 'Thiết bị chưa được xác thực', 401);
   }
+  // The full credential hash is the authentication secret. Older builds generated
+  // the UUID embedded in the token separately from the persisted device UUID.
+  // Accept those already-issued credentials by hash, while new provisioning keeps
+  // the two UUIDs aligned.
   await faceRepo.touchFaceDevice(client, { installationId, id: device.id });
   return { ok: true, device };
 }
@@ -208,6 +212,7 @@ export async function provisionFaceDevice(client, {
   const deviceId = randomUUID();
   const credential = createFaceDeviceCredential(deviceId);
   const device = await faceRepo.createFaceDevice(client, {
+    id: deviceId,
     installationId,
     name,
     branchId: point.branch_id,

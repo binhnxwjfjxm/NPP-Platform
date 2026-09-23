@@ -139,6 +139,7 @@ export async function replaceEmployeeFaceTemplate(client, {
 }
 
 export async function createFaceDevice(client, {
+  id,
   installationId,
   name,
   branchId,
@@ -146,7 +147,6 @@ export async function createFaceDevice(client, {
   credentialHash,
   actorId,
 }) {
-  const id = randomUUID();
   const result = await client.query(
     `INSERT INTO shared.attendance_face_devices (
        id, installation_id, name, branch_id, attendance_point_id, credential_hash,
