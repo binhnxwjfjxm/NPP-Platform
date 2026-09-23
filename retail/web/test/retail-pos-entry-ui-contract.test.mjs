@@ -10,7 +10,10 @@ test('Retail Lên đơn dùng POS popup, chọn một/chọn nhiều và không 
   assert.match(workspace, /Tìm và thêm sản phẩm vào đơn/);
   assert.match(workspace, /Chọn nhiều/);
   assert.match(workspace, /Tất cả loại sản phẩm/);
-  assert.match(workspace, /if \(!multiSelect\) return new Map/);
+  assert.match(workspace, /multiSelectRef = useRef\(false\)/);
+  assert.match(workspace, /multiSelectRef\.current = enabled/);
+  assert.match(workspace, /if \(!multiSelectRef\.current\)/);
+  assert.match(workspace, /setMultiSelectMode\(event\.target\.checked\)/);
   assert.match(workspace, /current\.has\(product\.id\)/);
   assert.match(workspace, /Xong\{selected\.size/);
   assert.match(workspace, /role="dialog"/);

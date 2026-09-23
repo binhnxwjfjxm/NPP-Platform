@@ -22,6 +22,7 @@ type InventoryBalance = {
   product_name?: unknown;
   on_hand_quantity?: unknown;
   reserved_quantity?: unknown;
+  business_held_quantity?: unknown;
 };
 
 type InventoryRow = {
@@ -30,6 +31,7 @@ type InventoryRow = {
   sku: string;
   onHandScaled: bigint;
   reservedScaled: bigint;
+  businessHeldScaled: bigint | null;
 };
 
 function requestId(request: NextRequest) {
@@ -107,9 +109,12 @@ function aggregate(rows: InventoryBalance[]) {
       sku: String(row.base_sku ?? '').trim() || '—',
       onHandScaled: BigInt(0),
       reservedScaled: BigInt(0),
+      businessHeldScaled: null,
     };
     current.onHandScaled += decimalToScaled(row.on_hand_quantity);
     current.reservedScaled += decimalToScaled(row.reserved_quantity);
+    if (row.business_held_quantity !== undefined && row.business_held_quantity !== null && String(row.business_held_quantity).trim() !== '')
+      current.businessHeldScaled = decimalToScaled(row.business_held_quantity);
     grouped.set(variantId, current);
   }
   return [...grouped.values()]
@@ -119,7 +124,7 @@ function aggregate(rows: InventoryBalance[]) {
       productName: row.productName,
       sku: row.sku,
       onHandQuantity: scaledToDecimal(row.onHandScaled),
-      reservedQuantity: scaledToDecimal(row.reservedScaled),
+      reservedQuantity: scaledToDecimal(row.businessHeldScaled ?? row.reservedScaled),
     }));
 }
 

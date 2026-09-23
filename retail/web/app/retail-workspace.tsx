@@ -317,6 +317,7 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
         quantity: string;
     }>>(new Map());
     const [multiSelect, setMultiSelect] = useState(false);
+    const multiSelectRef = useRef(false);
     const [customerPickerOpen, setCustomerPickerOpen] = useState(false);
     const [customerSearch, setCustomerSearch] = useState('');
     const [customerResults, setCustomerResults] = useState<Customer[]>([]);
@@ -832,6 +833,12 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
         lastDraftFingerprint.current = '';
         setCart((rows) => rows.map((row) => row.id === id ? { ...row, quantity: normalized } : row));
     }
+    function setMultiSelectMode(enabled: boolean) {
+        multiSelectRef.current = enabled;
+        setMultiSelect(enabled);
+        if (!enabled)
+            setSelected((current) => new Map([...current.entries()].slice(0, 1)));
+    }
     function toggleProduct(product: Product) {
         setSelected((current) => {
             if (current.has(product.id)) {
@@ -839,7 +846,8 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
                 next.delete(product.id);
                 return next;
             }
-            if (!multiSelect) return new Map([[product.id, { product, quantity: '1' }]]);
+            if (!multiSelectRef.current)
+                return new Map([[product.id, { product, quantity: '1' }]]);
             const next = new Map(current);
             next.set(product.id, { product, quantity: '1' });
             return next;
@@ -1343,7 +1351,7 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
         {order ? <div className="order-identity"><span className="order-document">▤</span><div><p className="section-kicker">ĐƠN BÁN HÀNG</p><h2>{order.number ?? 'Đơn đang lập'}</h2><p>{orderLabel(order)} · {dateLabel(order.updatedAt)}</p></div><div className="order-badges"><span className="mode-pill">{order.salesChannelName ?? order.salesChannelCode ?? 'Retail'}</span><span className="mode-pill">Giao tại quầy</span></div></div> : null}
         {order && order.status !== 'cancelled' ? <ol className="order-timeline">{['Lên đơn', 'Đã chốt', 'Xuất kho', 'Hoàn thành'].map((step, index) => <li className={index <= stage ? 'complete' : ''} key={step}><span>{index < stage ? '✓' : index + 1}</span><strong>{step}</strong></li>)}</ol> : null}
         {editable ? <>
-          <button className="pos-product-search-trigger" type="button" onClick={() => { setSelected(new Map()); setMultiSelect(false); setSearch(''); setOpen(true); }}>
+          <button className="pos-product-search-trigger" type="button" onClick={() => { setSelected(new Map()); setMultiSelectMode(false); setSearch(''); setOpen(true); }}>
             <span aria-hidden="true">⌕</span><strong>Tìm và thêm sản phẩm vào đơn</strong><b aria-hidden="true">▦</b>
           </button>
           <div className="pos-option-list">
@@ -1444,7 +1452,7 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
       <header className="sheet-header pos-picker-header"><button className="round-icon" type="button" onClick={() => setOpen(false)}>‹</button><div className="search-box picker-search"><span>⌕</span><input className="product-search" autoFocus placeholder="Nhập tên, SKU, Barcode" value={search} onChange={(event) => setSearch(event.target.value)}/><button className="picker-scan" type="button" aria-label="Quét mã" onClick={() => { setScannerMessage(null); setScannerOpen(true); }}>▦</button></div></header>
       <div className="picker-mode-row">
         <label className="picker-category-field"><span className="sr-only">Loại sản phẩm</span><select value={categoryId} onChange={(event) => setCategoryId(event.target.value)}><option value="">Tất cả loại sản phẩm</option>{(boot?.categories ?? []).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
-        <label className="multi-select-toggle"><span>Chọn nhiều</span><input type="checkbox" checked={multiSelect} onChange={(event) => { const checked = event.target.checked; setMultiSelect(checked); if (!checked) setSelected((current) => new Map([...current.entries()].slice(0, 1))); }}/><i aria-hidden="true"/></label>
+        <label className="multi-select-toggle"><span>Chọn nhiều</span><input type="checkbox" checked={multiSelect} onChange={(event) => setMultiSelectMode(event.target.checked)}/><i aria-hidden="true"/></label>
       </div>
       <div className="product-list pos-product-list">{products.map((product) => { const row = selected.get(product.id); const preview = prices[product.id]; const expectedKey = priceInputKey(product.id, row?.quantity ?? '1'); const price = preview?.inputKey === expectedKey ? preview : null; const priceFailure = priceFailures[product.id]?.inputKey === expectedKey ? priceFailures[product.id] : null; const availability = productAvailability.find((item) => item.variantId === product.id); const blocked = Boolean(priceFailure) && !canPriceOverride; return <article className={`product-row lot7-product-row pos-product-row ${row ? 'selected' : ''} ${blocked ? 'disabled' : ''}`} key={product.id} role="option" aria-selected={Boolean(row)} aria-disabled={blocked} tabIndex={blocked ? -1 : 0} onClick={() => { if (!blocked) toggleProduct(product); }} onKeyDown={(event) => { if (!blocked && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); toggleProduct(product); } }}>{productPicture(product.imageKey ?? product.productCode, product.productName)}<div className="product-copy"><strong>{product.productName}</strong><small>SKU: {product.sku}</small><em>{displayUnit(product.unitName, product.unitCode)} · Khả dụng: {!warehouseId ? '—' : productAvailabilityLoading ? 'Đang tải' : availability ? availabilityLabel(availability) : '—'}</em><b>{price ? money.format(Number(price.finalUnitPriceMinor)) : priceFailure ? 'Chưa có giá' : 'Đang tính giá'}</b></div>{row ? <span className="selection-mark" aria-hidden="true">✓</span> : <span className="selection-mark empty" aria-hidden="true"/>}</article>; })}{productsLoading && products.length === 0 ? <p className="empty-cart">Đang tải sản phẩm…</p> : null}{!productsLoading && products.length === 0 ? <p className="empty-cart">Không có sản phẩm phù hợp.</p> : null}{productsHasMore ? <button className="secondary-action" type="button" disabled={productsLoading} onClick={() => void loadMoreProducts()}>{productsLoading ? 'Đang tải thêm…' : 'Tải thêm sản phẩm'}</button> : null}</div>
       <button className="sheet-submit primary-action pos-picker-done" type="button" disabled={!selected.size} onClick={addSelected}>Xong{selected.size ? ` · ${selected.size} sản phẩm` : ''}</button>
