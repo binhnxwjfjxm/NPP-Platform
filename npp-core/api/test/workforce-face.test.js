@@ -10,6 +10,8 @@ import {
   createFaceDeviceCredential,
   parseFaceDeviceCredential,
   faceDeviceCredentialHash,
+  authenticateFaceDevice,
+  provisionFaceDevice,
 } from '../src/services/workforce-face.js';
 
 function source(path) {
@@ -63,6 +65,104 @@ test('face device credentials are random bearer secrets stored by hash contract'
   assert.equal(parsed.deviceId, '123e4567-e89b-42d3-a456-426614174000');
   assert.match(faceDeviceCredentialHash(token), /^[0-9a-f]{64}$/);
   assert.equal(parseFaceDeviceCredential('invalid'), null);
+});
+
+
+test('face device provisioning persists the same UUID embedded in the credential', async () => {
+  const attendancePointId = '123e4567-e89b-42d3-a456-426614174111';
+  const branchId = '123e4567-e89b-42d3-a456-426614174222';
+  let insertedDeviceId = null;
+
+  const client = {
+    async query(sql, params) {
+      if (sql.includes('FROM shared.attendance_points p')) {
+        return {
+          rows: [{
+            id: attendancePointId,
+            installation_id: 'npp-production',
+            code: 'HQ',
+            name: 'Văn phòng',
+            branch_id: branchId,
+            is_active: true,
+            branch_active: true,
+            branch_code: 'HQ',
+            branch_name: 'Văn phòng',
+          }],
+        };
+      }
+      if (sql.includes('INSERT INTO shared.attendance_face_devices')) {
+        insertedDeviceId = params[0];
+        return { rows: [{ id: insertedDeviceId }] };
+      }
+      if (sql.includes('FROM shared.attendance_face_devices d')) {
+        return {
+          rows: [{
+            id: params[1],
+            installation_id: 'npp-production',
+            name: 'Máy chấm công 1',
+            branch_id: branchId,
+            attendance_point_id: attendancePointId,
+            is_active: true,
+            point_active: true,
+            branch_active: true,
+          }],
+        };
+      }
+      throw new Error('unexpected query');
+    },
+  };
+
+  const result = await provisionFaceDevice(client, {
+    installationId: 'npp-production',
+    payload: { name: 'Máy chấm công 1', attendancePointId },
+    actorId: 'admin:test',
+    companyScope: true,
+  });
+
+  assert.equal(result.ok, true);
+  const parsed = parseFaceDeviceCredential(result.credential);
+  assert.equal(parsed.deviceId, result.device.id);
+  assert.equal(parsed.deviceId, insertedDeviceId);
+});
+
+test('face device authentication accepts legacy credentials by full secret hash', async () => {
+  const token = createFaceDeviceCredential('123e4567-e89b-42d3-a456-426614174333');
+  const persistedDeviceId = '123e4567-e89b-42d3-a456-426614174444';
+  let touchedDeviceId = null;
+
+  const client = {
+    async query(sql, params) {
+      if (sql.includes('d.credential_hash = $2')) {
+        assert.equal(params[1], faceDeviceCredentialHash(token));
+        return {
+          rows: [{
+            id: persistedDeviceId,
+            installation_id: 'npp-production',
+            name: 'Máy cũ',
+            branch_id: '123e4567-e89b-42d3-a456-426614174555',
+            attendance_point_id: '123e4567-e89b-42d3-a456-426614174666',
+            is_active: true,
+            point_active: true,
+            branch_active: true,
+          }],
+        };
+      }
+      if (sql.includes('UPDATE shared.attendance_face_devices')) {
+        touchedDeviceId = params[1];
+        return { rows: [] };
+      }
+      throw new Error('unexpected query');
+    },
+  };
+
+  const result = await authenticateFaceDevice(client, {
+    installationId: 'npp-production',
+    credential: token,
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.device.id, persistedDeviceId);
+  assert.equal(touchedDeviceId, persistedDeviceId);
 });
 
 test('migration 157 extends canonical attendance instead of creating a second attendance ledger', () => {
