@@ -12,7 +12,7 @@ test('Lô B exposes presence-only as an office-language policy option', async ()
   assert.match(workspace, /Cách ghi nhận công/);
   assert.match(workspace, /Theo giờ vào và giờ ra/);
   assert.match(workspace, /Chỉ xác nhận có mặt/);
-  assert.match(workspace, /Bảng công không lấy số phút/);
+  assert.match(workspace, /Bảng công không dùng khoảng thời gian giữa giờ vào và giờ ra làm căn cứ tính công/);
   assert.match(workspace, /làm căn cứ tính công/);
 });
 
