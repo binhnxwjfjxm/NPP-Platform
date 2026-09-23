@@ -12,7 +12,7 @@ test('Issue #1110 Lô 2 separates Nhân sự navigation from Người dùng & ph
 
   assert.match(shell, /const workforceItems/);
   assert.match(shell, /href: '\/workforce\/employees'.*Danh mục nhân sự/);
-  assert.match(shell, /href: '\/workforce\/schedules'.*Ca \/ lịch làm việc/);
+  assert.match(shell, /href: '\/workforce\/schedules'.*Ca và lịch làm việc/);
   assert.match(shell, /href: '\/workforce\/policies'.*Chính sách làm việc/);
   assert.match(shell, /title: 'Người dùng & phân quyền'/);
   const accessBlock = shell.match(/const accessItems:[\s\S]*?\n\];/)?.[0] ?? '';
@@ -52,10 +52,10 @@ test('Issue #1110 Lô 2 exposes employee policy history and future-only schedule
   assert.match(employees, /employee-policy-history/);
   assert.match(employees, /assignmentMinimumDate/);
   assert.match(employees, /min=\{policyAssignmentMinDate\}/);
-  assert.match(policies, /Toàn bộ phiên bản/);
+  assert.match(policies, /Lịch sử thay đổi/);
   assert.match(policies, /Cập nhật chính sách/);
   assert.match(schedules, /Lịch trong hôm nay và quá khứ chỉ dùng để đối chiếu/);
-  assert.match(schedules, /Ca \/ lịch làm việc/);
+  assert.match(schedules, /Ca và lịch làm việc/);
   assert.match(schedules, /expectedUpdatedAt/);
   assert.match(schedules, /zonedLocalToIso/);
 });

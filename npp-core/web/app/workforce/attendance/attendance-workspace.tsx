@@ -291,7 +291,7 @@ export default function AttendanceWorkspace({
     setCameraMessage(null);
     const Detector = (window as unknown as { BarcodeDetector?: BarcodeDetectorConstructor }).BarcodeDetector;
     if (!Detector) {
-      setCameraMessage(manualAllowed ? 'Thiết bị này chưa hỗ trợ quét QR bằng camera. Anh/chị có thể dùng Chấm công trực tiếp bên dưới.' : 'Thiết bị này chưa hỗ trợ quét QR bằng camera. Vui lòng dùng thiết bị có camera hỗ trợ quét QR.');
+      setCameraMessage(manualAllowed ? 'Thiết bị này chưa hỗ trợ quét mã QR bằng camera. Có thể sử dụng chức năng Chấm công trực tiếp bên dưới.' : 'Thiết bị này chưa hỗ trợ quét mã QR bằng camera. Vui lòng sử dụng thiết bị có camera hỗ trợ quét mã QR.');
       return;
     }
     if (!navigator.mediaDevices?.getUserMedia) {

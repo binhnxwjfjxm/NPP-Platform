@@ -41,7 +41,7 @@ function violationDetail(entry: AttendanceViolationHandlingEntry) {
   return 'Không còn dữ liệu vi phạm hiện tại.';
 }
 function violationLabel(entry: AttendanceViolationHandlingEntry) {
-  return entry.violation?.label || entry.case?.violation_label_snapshot || 'Vi phạm công';
+  return entry.violation?.label || entry.case?.violation_label_snapshot || 'Vi phạm chấm công';
 }
 function caseStatus(entry: AttendanceViolationHandlingEntry) {
   if (!entry.case) return 'Chưa giải trình';
@@ -217,7 +217,7 @@ export default function AttendanceViolationWorkspace({
 
   return (
     <AppShell
-      title="Xử lý vi phạm công"
+      title="Xử lý vi phạm chấm công"
       subtitle="Giải trình, xem xét và kết luận các sai lệch đã được bảng công ghi nhận."
       kicker="Nhân sự"
       actions={actions}
@@ -277,7 +277,7 @@ export default function AttendanceViolationWorkspace({
               <thead>
                 <tr>
                   <th>Ngày</th><th>Nhân sự</th><th>Vi phạm</th><th>Ghi nhận</th>
-                  <th>Trạng thái xử lý</th><th>Giải trình / kết luận</th><th>Thao tác</th>
+                  <th>Trạng thái xử lý</th><th>Giải trình và kết luận</th><th>Thao tác</th>
                 </tr>
               </thead>
               <tbody>

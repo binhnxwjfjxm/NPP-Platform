@@ -15,8 +15,8 @@ test('Issue #1140 Lô 3 keeps scheduling in one workforce screen with office-lan
   assert.match(workspace, /SchedulePlanningPanel/);
   assert.match(panel, />Ca mẫu</);
   assert.match(panel, />Lịch tuần</);
-  assert.match(panel, />Ngày lễ & ngày nghỉ</);
-  assert.match(panel, />Xếp hàng loạt</);
+  assert.match(panel, />Ngày lễ và ngày nghỉ</);
+  assert.match(panel, />Xếp lịch hàng loạt</);
   assert.doesNotMatch(workspace, /· bản \$\{schedule\.policy_version\}/);
   assert.doesNotMatch(workspace, /· bản \{policy\.version\}/);
 });
@@ -44,7 +44,7 @@ test('Issue #1140 Lô 3 covers weekly apply, schedule copy and Company days off'
 
   assert.match(bulk, /APPLY_WEEK_TEMPLATE/);
   assert.match(bulk, /COPY_SCHEDULE/);
-  assert.match(bulk, /ngoại lệ cá nhân/);
+  assert.match(bulk, /lịch điều chỉnh riêng/);
   assert.match(calendar, /Ngày nghỉ Công Ty/);
   assert.match(calendar, /nút Điều chỉnh/);
   assert.match(week, /Ngày làm việc/);

@@ -101,7 +101,7 @@ function requestPeriod(row: LeaveRequest) {
 function typeBadges(type: LeaveType) {
   const balance = type as LeaveType & LeaveTypeBalanceFields;
   return [
-    type.is_paid ? 'Hưởng lương' : 'Không lương',
+    type.is_paid ? 'Hưởng lương' : 'Không hưởng lương',
     type.counts_as_workday ? 'Tính ngày công' : 'Không tính ngày công',
     type.requires_approval ? 'Cần duyệt' : 'Tự động duyệt',
     type.allows_half_day ? 'Có nửa ngày' : null,
@@ -499,11 +499,11 @@ export default function LeaveWorkspace({
                       return <tr key={row.id}>
                         <td><div className={styles.meta}><strong>{requestPeriod(row)}</strong><small>{DAY_PART_LABEL[row.day_part]}</small></div></td>
                         <td><div className={styles.meta}><strong>{row.employee_code ? row.employee_code + ' · ' + row.employee_name : data.selectedEmployee?.name || 'Bản thân'}</strong><small>{row.branch_name || 'Chưa gán chi nhánh'}</small></div></td>
-                        <td><div className={styles.meta}><strong>{row.leave_type_name_snapshot}</strong><small>{row.leave_is_paid_snapshot ? 'Hưởng lương' : 'Không lương'} · {row.leave_counts_as_workday_snapshot ? 'Tính ngày công' : 'Không tính ngày công'}</small></div></td>
+                        <td><div className={styles.meta}><strong>{row.leave_type_name_snapshot}</strong><small>{row.leave_is_paid_snapshot ? 'Hưởng lương' : 'Không hưởng lương'} · {row.leave_counts_as_workday_snapshot ? 'Tính ngày công' : 'Không tính ngày công'}</small></div></td>
                         <td><span className={styles.status}>{STATUS_LABEL[row.status]}</span></td>
                         <td>{row.reason}</td>
                         <td><div className={styles.actions}>
-                          {data.capabilities.canApprove && row.status === 'SUBMITTED' ? <button type="button" className={styles.secondary} onClick={() => { setReviewId(row.id); setReviewReason(''); }}>Duyệt / từ chối</button> : null}
+                          {data.capabilities.canApprove && row.status === 'SUBMITTED' ? <button type="button" className={styles.secondary} onClick={() => { setReviewId(row.id); setReviewReason(''); }}>Duyệt hoặc từ chối</button> : null}
                           {canCancel ? <button type="button" className={styles.secondary} onClick={() => { setCancelId(row.id); setCancelReason(''); }}>Hủy đơn</button> : null}
                           {!data.capabilities.canApprove && !canCancel ? <span>{row.review_reason || row.cancel_reason || '—'}</span> : null}
                         </div></td>
@@ -541,7 +541,7 @@ export default function LeaveWorkspace({
 
             <section className={sharedStyles.tableSection}>
               <div className={sharedStyles.sectionHeader}>
-                <div><p className={sharedStyles.panelKicker}>Số dư / Sổ phép</p><h2>Số dư theo ngày và lịch sử phát sinh</h2></div>
+                <div><p className={sharedStyles.panelKicker}>Số dư và sổ phép</p><h2>Số dư theo ngày và lịch sử phát sinh</h2></div>
                 <span className={sharedStyles.panelChip}>Đến {dateLabel(data?.balanceAsOfDate ?? to)}</span>
               </div>
               <div className={sharedStyles.tableWrap}>

@@ -16,7 +16,7 @@ test('Issue #1140 Lô 1 shows effective-dated employment and transfer history in
   assert.match(workspace, /Hình thức lao động/);
   assert.match(workspace, /Lịch sử lao động/);
   assert.match(workspace, /Lịch sử điều chuyển/);
-  assert.match(workspace, /Cần HR xác nhận/);
+  assert.match(workspace, /Chờ Nhân sự xác nhận/);
   assert.match(workspace, /employee-employment-history/);
   assert.match(workspace, /employee-assignment-history/);
   assert.match(workspace, /employmentEffectiveFrom/);

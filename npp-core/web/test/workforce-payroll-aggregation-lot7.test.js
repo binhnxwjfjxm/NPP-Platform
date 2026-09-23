@@ -14,13 +14,13 @@ test('Issue #1140 Lô 7 turns Bảng lương into an aggregated payroll table wi
   assert.match(page, /PayrollAggregationPanel/);
   assert.match(panel, /Tổng hợp lương/);
   assert.match(panel, /Lương theo công/);
-  assert.match(panel, /Công & tăng ca/);
+  assert.match(panel, /Công và tăng ca/);
   assert.match(panel, /Thu nhập thêm/);
   assert.match(panel, /Hoàn chi/);
   assert.match(panel, /Khấu trừ/);
   assert.match(panel, /Thực nhận/);
   assert.match(panel, /Chi tiết lương/);
-  for (const label of ['Lương cố định', 'Ngày công & tăng ca', 'Thưởng & phụ cấp', 'Công tác phí & hoàn chi phí', 'Khấu trừ', 'Thực nhận']) {
+  for (const label of ['Lương cố định', 'Ngày công và tăng ca', 'Thưởng và phụ cấp', 'Công tác phí và hoàn chi phí', 'Khấu trừ', 'Thực nhận']) {
     assert.match(panel, new RegExp(label.replace(/[&]/g, '\\&')));
   }
 });

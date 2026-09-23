@@ -123,7 +123,7 @@ export function PayrollAggregationPanel({
   if (!calculation) {
     return (
       <div className={sharedStyles.emptyState}>
-        <p>Chưa có bản tổng hợp lương cho kỳ này.</p>
+        <p>Chưa có số liệu tổng hợp lương cho kỳ này.</p>
         {canManage ? (
           <button type="button" className={sharedStyles.primaryButton} disabled={busy} onClick={() => void onAggregate()}>
             Tổng hợp lương
@@ -156,7 +156,7 @@ export function PayrollAggregationPanel({
           <div className={`${sharedStyles.banner} ${sharedStyles.bannerSuccess}`}>Số liệu tổng hợp không còn cảnh báo cần xử lý.</div>
         ) : null}
         {period.status === 'RECONCILED' ? (
-          <div className={`${sharedStyles.banner} ${sharedStyles.bannerSuccess}`}>Kỳ lương đã được đối soát trên bản tổng hợp hiện tại.</div>
+          <div className={`${sharedStyles.banner} ${sharedStyles.bannerSuccess}`}>Kỳ lương đã được đối soát theo số liệu tổng hợp hiện tại.</div>
         ) : null}
         {canManage && period.status !== 'RECONCILED' ? (
           <>
@@ -190,7 +190,7 @@ export function PayrollAggregationPanel({
   return (
     <div className={styles.detailGrid}>
       <div className={styles.actions}>
-        <span className={styles.inlineMeta}>Bản tổng hợp lần {calculation.revision}</span>
+        <span className={styles.inlineMeta}>Lần tổng hợp {calculation.revision}</span>
         {canManage && period.status !== 'CLOSED' ? (
           <button type="button" className={sharedStyles.secondaryButton} disabled={busy} onClick={() => void onAggregate()}>
             Tổng hợp lại
@@ -220,7 +220,7 @@ export function PayrollAggregationPanel({
             <tr>
               <th>Nhân sự</th>
               <th>Lương theo công</th>
-              <th>Công & tăng ca</th>
+              <th>Công và tăng ca</th>
               <th>Thu nhập thêm</th>
               <th>Hoàn chi</th>
               <th>Khấu trừ</th>
@@ -238,7 +238,7 @@ export function PayrollAggregationPanel({
                   <div className={styles.inlineMeta}>{row.branchName || 'Toàn Công Ty'}</div>
                 </td>
                 <td className={styles.metricCell}><strong>{moneyLabel(row.salaryAmount)}</strong></td>
-                <td className={styles.metricCell}>{row.payableWorkDays}/{row.standardWorkDays} ngày · {hours(row.confirmedOvertimeMinutes)} giờ OT</td>
+                <td className={styles.metricCell}>{row.payableWorkDays}/{row.standardWorkDays} ngày · {hours(row.confirmedOvertimeMinutes)} giờ tăng ca</td>
                 <td className={styles.metricCell}>{moneyLabel(row.incomeTotal)}</td>
                 <td className={styles.metricCell}>{moneyLabel(row.reimbursementTotal)}</td>
                 <td className={styles.metricCell}>{moneyLabel(row.deductionTotal)}</td>
@@ -268,21 +268,21 @@ export function PayrollAggregationPanel({
                 <div className={styles.detailRow}><span>Lương theo công được tính</span><strong>{moneyLabel(selectedRow.salaryAmount)}</strong></div>
               </div>
               <div className={styles.detailSection}>
-                <h4>Ngày công & tăng ca</h4>
+                <h4>Ngày công và tăng ca</h4>
                 <div className={styles.detailRow}><span>Công chuẩn</span><strong>{selectedRow.standardWorkDays} ngày</strong></div>
                 <div className={styles.detailRow}><span>Công được tính</span><strong>{selectedRow.payableWorkDays} ngày</strong></div>
                 <div className={styles.detailRow}><span>Nghỉ không lương</span><strong>{selectedRow.unpaidLeaveDays} ngày</strong></div>
                 <div className={styles.detailRow}><span>Tăng ca đã xác nhận</span><strong>{hours(selectedRow.confirmedOvertimeMinutes)} giờ</strong></div>
               </div>
               <div className={styles.detailSection}>
-                <h4>Thưởng & phụ cấp</h4>
+                <h4>Thưởng và phụ cấp</h4>
                 {[...selectedRow.fixedComponents, ...selectedRow.periodComponents].filter((line) => line.category === 'INCOME').map((line) => (
                   <div className={styles.detailRow} key={line.id}><span>{line.name}</span><strong>{componentAmount(line)}</strong></div>
                 ))}
                 {![...selectedRow.fixedComponents, ...selectedRow.periodComponents].some((line) => line.category === 'INCOME') ? <div className={styles.inlineMeta}>Không có khoản phát sinh.</div> : null}
               </div>
               <div className={styles.detailSection}>
-                <h4>Công tác phí & hoàn chi phí</h4>
+                <h4>Công tác phí và hoàn chi phí</h4>
                 {[...selectedRow.fixedComponents, ...selectedRow.periodComponents].filter((line) => line.category === 'REIMBURSEMENT').map((line) => (
                   <div className={styles.detailRow} key={line.id}><span>{line.name}</span><strong>{componentAmount(line)}</strong></div>
                 ))}

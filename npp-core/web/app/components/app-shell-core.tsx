@@ -66,13 +66,13 @@ const organizationItems: NavItem[] = [
 const workforceItems: NavItem[] = [
   { href: '/workforce/attendance', label: 'Chấm công', icon: 'panel', testId: 'nav-attendance' },
   { href: '/workforce/timesheet', label: 'Bảng công', icon: 'dashboard', testId: 'nav-timesheet' },
-  { href: '/workforce/overtime', label: 'Tăng ca & chốt công', icon: 'panel', testId: 'nav-workforce-overtime-closeout' },
+  { href: '/workforce/overtime', label: 'Tăng ca và chốt công', icon: 'panel', testId: 'nav-workforce-overtime-closeout' },
   { href: '/workforce/payroll', label: 'Tính lương', icon: 'accounting', testId: 'nav-workforce-payroll' },
   { href: '/workforce/leave', label: 'Nghỉ và đơn nghỉ', icon: 'panel', testId: 'nav-workforce-leave' },
-  { href: '/workforce/violations', label: 'Xử lý vi phạm công', icon: 'panel', testId: 'nav-workforce-violations' },
+  { href: '/workforce/violations', label: 'Xử lý vi phạm chấm công', icon: 'panel', testId: 'nav-workforce-violations' },
   { href: '/workforce/adjustments', label: 'Điều chỉnh công', icon: 'panel', testId: 'nav-attendance-adjustments' },
   { href: '/workforce/employees', label: 'Danh mục nhân sự', icon: 'user', testId: 'nav-employees' },
-  { href: '/workforce/schedules', label: 'Ca / lịch làm việc', icon: 'panel', testId: 'nav-work-schedules' },
+  { href: '/workforce/schedules', label: 'Ca và lịch làm việc', icon: 'panel', testId: 'nav-work-schedules' },
   { href: '/workforce/policies', label: 'Chính sách làm việc', icon: 'panel', testId: 'nav-work-policies' },
 ];
 

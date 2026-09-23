@@ -229,7 +229,7 @@ export default function OvertimeCloseoutWorkspace({
     try {
       const data = await requestJson<AttendancePayrollInput>('/api/workforce/attendance/payroll-input?periodId=' + encodeURIComponent(period.id));
       setSelectedPeriod(period); setPayroll(data);
-    } catch (loadError) { setError(loadError instanceof Error ? loadError.message : 'Không tải được đầu vào tính lương'); }
+    } catch (loadError) { setError(loadError instanceof Error ? loadError.message : 'Không tải được dữ liệu tính lương'); }
     finally { setBusy(false); }
   }
 
@@ -239,7 +239,7 @@ export default function OvertimeCloseoutWorkspace({
 
   return (
     <AppShell
-      title="Tăng ca & chốt công"
+      title="Tăng ca và chốt công"
       subtitle="Quản lý tăng ca theo phê duyệt và chốt kỳ công làm căn cứ tính lương."
       kicker="Nhân sự"
       actions={<Link className={shellStyles.actionButton + ' ' + shellStyles.actionButtonPrimary} href="/workforce/timesheet">Mở Bảng công</Link>}
@@ -264,7 +264,7 @@ export default function OvertimeCloseoutWorkspace({
           <div className={sharedStyles.toolbarFilter}><label htmlFor="lot5-to">Đến ngày</label><input id="lot5-to" type="date" value={to} onChange={(event) => setTo(event.target.value)} /></div>
           {branches.length ? <div className={sharedStyles.toolbarFilter}><label htmlFor="lot5-branch">Chi nhánh</label><select id="lot5-branch" value={branchId} onChange={(event) => setBranchId(event.target.value)}><option value="">Toàn bộ phạm vi được cấp</option>{branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.code} · {branch.name}</option>)}</select></div> : null}
           {tab === 'overtime' ? <div className={sharedStyles.toolbarFilter}><label htmlFor="lot5-status">Trạng thái</label><select id="lot5-status" value={status} onChange={(event) => setStatus(event.target.value)}><option value="">Tất cả</option>{Object.entries(OT_STATUS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></div> : null}
-          <div className={sharedStyles.formActions}><button type="button" className={sharedStyles.secondaryButton} onClick={() => void loadAll()} disabled={busy}>{busy ? 'Đang tải…' : 'Xem dữ liệu'}</button></div>
+          <div className={sharedStyles.formActions}><button type="button" className={sharedStyles.secondaryButton} onClick={() => void loadAll()} disabled={busy}>{busy ? 'Đang tải…' : 'Xem danh sách'}</button></div>
         </section>
 
         {tab === 'overtime' ? <div className={styles.stack}>
@@ -361,7 +361,7 @@ export default function OvertimeCloseoutWorkspace({
           </section> : null}
 
           {payroll ? <section className={sharedStyles.tableSection}>
-            <div className={sharedStyles.sectionHeader}><div><p className={sharedStyles.panelKicker}>Dữ liệu tính lương</p><h2>Kỳ công đã chốt · Lần {payroll.revision}</h2></div><span className={sharedStyles.panelChip}>Chỉ đọc</span></div>
+            <div className={sharedStyles.sectionHeader}><div><p className={sharedStyles.panelKicker}>Dữ liệu tính lương</p><h2>Kỳ công đã chốt · Lần {payroll.revision}</h2></div><span className={sharedStyles.panelChip}>Chỉ xem</span></div>
             <div className={styles.payrollGrid}>
               <div className={styles.payrollRow}><strong>Nhân sự</strong><strong>Thời gian tính công (phút)</strong><strong>Phép hưởng lương</strong><strong>Vắng không phép</strong><strong>Tăng ca xác nhận</strong></div>
               {payroll.payrollInput.employees.map((row) => <div className={styles.payrollRow} key={row.employeeId}><span>{row.employeeCode} · {row.employeeName}</span><span>{row.countedMinutes}</span><span>{row.paidLeaveDays.toLocaleString('vi-VN', { maximumFractionDigits: 2 })} ngày</span><span>{row.unexcusedAbsenceDays.toLocaleString('vi-VN', { maximumFractionDigits: 2 })} ngày</span><span>{hours(row.confirmedOvertimeMinutes)} giờ</span></div>)}

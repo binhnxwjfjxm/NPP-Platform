@@ -928,7 +928,7 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
                         {coverageMap.get(employee.id)?.assignment ? (
                           <div className={styles.entityStack}>
                             <strong>{coverageMap.get(employee.id)?.assignment?.policyName}</strong>
-                            <span>{coverageMap.get(employee.id)?.assignment?.policyCode} · bản {coverageMap.get(employee.id)?.assignment?.policyVersion}</span>
+                            <span>{coverageMap.get(employee.id)?.assignment?.policyCode} · lần cập nhật {coverageMap.get(employee.id)?.assignment?.policyVersion}</span>
                           </div>
                         ) : employee.is_active ? (
                           <span className={joinClasses(styles.statusPill, styles.toneDanger)}>Chưa có chính sách</span>
@@ -1079,7 +1079,7 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
                   <select value={bulkDraft.workPolicyId} onChange={(event) => setBulkDraft((current) => ({ ...current, workPolicyId: event.target.value }))} required>
                     <option value="">Chọn chính sách</option>
                     {activePolicies.map((policy) => (
-                      <option key={policy.id} value={policy.id}>{policy.code} · {policy.name} · bản {policy.version}</option>
+                      <option key={policy.id} value={policy.id}>{policy.code} · {policy.name} · lần cập nhật {policy.version}</option>
                     ))}
                   </select>
                 </label>
@@ -1156,7 +1156,7 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
                     <tbody>
                       {assignmentHistory.length ? assignmentHistory.map((assignment) => (
                         <tr key={assignment.id}>
-                          <td><strong>{assignment.policy_name}</strong><br /><small>{assignment.policy_code} · phiên bản {assignment.policy_version}</small></td>
+                          <td><strong>{assignment.policy_name}</strong><br /><small>{assignment.policy_code} · lần cập nhật {assignment.policy_version}</small></td>
                           <td>{dateLabel(assignment.effective_from)}</td>
                           <td>{assignment.effective_to ? dateLabel(assignment.effective_to) : 'Đang áp dụng'}</td>
                           <td>{assignment.reason || 'Không có ghi chú'}</td>
@@ -1178,7 +1178,7 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
                   >
                     <option value="">Chọn chính sách</option>
                     {activePolicies.map((policy) => (
-                      <option key={policy.id} value={policy.id}>{policy.code} · {policy.name} · phiên bản {policy.version}</option>
+                      <option key={policy.id} value={policy.id}>{policy.code} · {policy.name} · lần cập nhật {policy.version}</option>
                     ))}
                   </select>
                 </label>
@@ -1317,7 +1317,7 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
                     />
                     <span>
                       <strong>Xác nhận lịch sử lao động</strong>
-                      <small>Dữ liệu cũ đang được đánh dấu “Cần HR xác nhận”. Hãy kiểm tra ngày thực tế trước khi xác nhận.</small>
+                      <small>Dữ liệu cũ đang ở trạng thái “Chờ Nhân sự xác nhận”. Hãy kiểm tra ngày thực tế trước khi xác nhận.</small>
                     </span>
                   </label>
                 ) : null}
@@ -1402,7 +1402,7 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
                   </select>
                 </label>
                 <label>
-                  {editor.mode === 'create' ? 'Phân công từ ngày' : 'Ngày hiệu lực thay đổi phân công / xác nhận'}
+                  {editor.mode === 'create' ? 'Phân công từ ngày' : 'Ngày hiệu lực thay đổi phân công hoặc xác nhận'}
                   <input
                     type="date"
                     data-testid="employee-assignment-effective-from"
@@ -1460,7 +1460,7 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
                       <select value={createPolicyId} onChange={(event) => setCreatePolicyId(event.target.value)} required data-testid="employee-create-policy-select">
                         <option value="">Chọn chính sách</option>
                         {activePolicies.map((policy) => (
-                          <option key={policy.id} value={policy.id}>{policy.code} · {policy.name} · bản {policy.version}</option>
+                          <option key={policy.id} value={policy.id}>{policy.code} · {policy.name} · lần cập nhật {policy.version}</option>
                         ))}
                       </select>
                     </label>

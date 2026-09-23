@@ -6,9 +6,9 @@ async function source(path) {
   return readFile(new URL('../' + path, import.meta.url), 'utf8');
 }
 
-test('Issue #1110 Lô 10 adds Xử lý vi phạm công to workforce navigation', async () => {
+test('Issue #1110 Lô 10 adds Xử lý vi phạm chấm công to workforce navigation', async () => {
   const shell = await source('app/components/app-shell-core.tsx');
-  assert.match(shell, /href: '\/workforce\/violations'.*Xử lý vi phạm công/);
+  assert.match(shell, /href: '\/workforce\/violations'.*Xử lý vi phạm chấm công/);
   assert.match(shell, /nav-workforce-violations/);
 });
 

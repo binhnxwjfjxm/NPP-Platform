@@ -39,7 +39,7 @@ const STATUS_LABEL: Record<AttendanceDayStatus, string> = {
 };
 
 const SOURCE_LABEL: Record<AttendanceEvent['source'], string> = {
-  QR: 'QR',
+  QR: 'Mã QR',
   FACE: 'Quét khuôn mặt',
   MANUAL: 'Chấm trực tiếp',
   ADJUSTMENT: 'Điều chỉnh',
@@ -117,7 +117,7 @@ function compactDayLabel(day: AttendanceTimesheetDay) {
     case 'COMPLETE': return '✓';
     case 'LATE': return 'Trễ';
     case 'EARLY': return 'Sớm';
-    case 'LATE_AND_EARLY': return 'Trễ/Sớm';
+    case 'LATE_AND_EARLY': return 'Trễ, sớm';
     case 'DAY_OFF': return 'Nghỉ';
     case 'APPROVED_LEAVE': return day.leave.approvedFraction < 1 ? '½ ngày phép' : 'Nghỉ phép';
     case 'PENDING_LEAVE': return 'Chờ duyệt nghỉ';
@@ -473,7 +473,7 @@ export default function AttendanceTimesheetWorkspace({
                     <th>Nhân sự</th>
                     <th>Ngày phải làm</th>
                     <th>Ngày đủ công</th>
-                    <th>Nghỉ / phép</th>
+                    <th>Nghỉ và phép</th>
                     <th>Cần xử lý</th>
                     <th>Giờ được tính</th>
                     <th>Điều chỉnh</th>
@@ -522,7 +522,7 @@ export default function AttendanceTimesheetWorkspace({
           <section className={`${styles.tableSection} ${localStyles.timesheetTableSection}`}>
             <div className={localStyles.matrixLegend} aria-label="Chú thích bảng công">
               <span><strong>✓</strong> Đủ</span>
-              <span><strong>Trễ/Sớm</strong> Có sai lệch giờ</span>
+              <span><strong>Trễ, sớm</strong> Có sai lệch giờ</span>
               <span><strong>Chưa đủ</strong> Có chấm công nhưng chưa đầy đủ</span>
               <span><strong>Vắng</strong> Có lịch làm nhưng không có chấm công hoặc đơn nghỉ được duyệt</span>
               <span><strong>Nghỉ</strong> Lịch không phải làm</span>
@@ -644,7 +644,7 @@ export default function AttendanceTimesheetWorkspace({
               <div className={localStyles.employeeModalSummary}>
                 <div><span>Ngày phải làm</span><strong>{dayCountLabel(selectedEmployee.workDays)}</strong></div>
                 <div><span>Ngày đủ công</span><strong>{dayCountLabel(selectedEmployee.completedDays)}</strong></div>
-                <div><span>Nghỉ / phép</span><strong>{employeeLeaveSummary(selectedEmployee)}</strong></div>
+                <div><span>Nghỉ và phép</span><strong>{employeeLeaveSummary(selectedEmployee)}</strong></div>
                 <div><span>Giờ được tính</span><strong>{minutesLabel(selectedEmployee.countedMinutes)}</strong></div>
               </div>
 

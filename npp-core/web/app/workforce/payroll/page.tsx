@@ -568,7 +568,7 @@ export default function PayrollPage() {
                     {(data?.periods ?? []).map((period) => (
                       <tr key={period.id}>
                         <td><strong>{periodLabel(period)}</strong></td>
-                        <td>Bản chốt lần {period.attendance_revision}</td>
+                        <td>Kỳ công đã chốt · Lần {period.attendance_revision}</td>
                         <td><span className={styles.status}>{PERIOD_STATUS[period.status]}</span></td>
                         <td>
                           <button type="button" className={styles.secondary} disabled={busy} onClick={() => void load(period.id)}>
@@ -592,7 +592,7 @@ export default function PayrollPage() {
                     <p className={sharedStyles.panelKicker}>Kỳ đang xem</p>
                     <h2>{periodLabel(selectedPeriod)}</h2>
                   </div>
-                  <span className={sharedStyles.panelChip}>Bản chốt công lần {selectedPeriod.attendance_revision}</span>
+                  <span className={sharedStyles.panelChip}>Kỳ công đã chốt · Lần {selectedPeriod.attendance_revision}</span>
                 </div>
                 <PayrollAggregationPanel
                   mode="board"
@@ -855,7 +855,7 @@ export default function PayrollPage() {
                       </select>
                     </label>
                     <label>Số tiền<input type="number" min="0" step="0.01" value={periodAmount} onChange={(event) => setPeriodAmount(event.target.value)} required /></label>
-                    <label>Lý do / ghi chú<input value={periodNote} onChange={(event) => setPeriodNote(event.target.value)} maxLength={1000} required /></label>
+                    <label>Lý do hoặc ghi chú<input value={periodNote} onChange={(event) => setPeriodNote(event.target.value)} maxLength={1000} required /></label>
                   </div>
                   <div className={styles.actions}>
                     <button type="submit" className={styles.primary} disabled={busy || !periodTypes.length}>Ghi khoản phát sinh</button>
@@ -865,7 +865,7 @@ export default function PayrollPage() {
 
               <div className={sharedStyles.tableWrap}>
                 <table className={sharedStyles.table}>
-                  <thead><tr><th>Nhân sự</th><th>Khoản</th><th>Nhóm</th><th>Số tiền</th><th>Lý do / ghi chú</th></tr></thead>
+                  <thead><tr><th>Nhân sự</th><th>Khoản</th><th>Nhóm</th><th>Số tiền</th><th>Lý do hoặc ghi chú</th></tr></thead>
                   <tbody>
                     {(data?.periodComponents ?? []).map((item) => (
                       <tr key={item.id}>

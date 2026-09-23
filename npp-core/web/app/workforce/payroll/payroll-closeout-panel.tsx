@@ -163,7 +163,7 @@ export function PayrollCloseoutPanel({
       return <div className={`${sharedStyles.banner} ${sharedStyles.bannerSuccess}`}>Kỳ lương đã chốt. Mọi thay đổi sau chốt được ghi bằng điều chỉnh lương và giữ nguyên phiếu đã phát hành.</div>;
     }
     if (period.status !== 'RECONCILED') {
-      return <div className={sharedStyles.emptyState}>Kỳ lương phải được đối soát trên bản tổng hợp hiện tại trước khi chốt.</div>;
+      return <div className={sharedStyles.emptyState}>Kỳ lương phải được đối soát theo số liệu tổng hợp hiện tại trước khi chốt.</div>;
     }
     return (
       <div className={styles.actions}>

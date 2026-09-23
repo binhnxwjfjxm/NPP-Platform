@@ -55,7 +55,7 @@ test('Issue #1110 Lô 7 blocks invalid request shape in UI and warns without blo
   assert.match(workspace, /Chế độ nghỉ này không cho phép nghỉ cả ngày/);
   assert.match(workspace, /Chế độ nghỉ này không cho phép nghỉ nửa ngày/);
   assert.match(workspace, /Chế độ nghỉ này yêu cầu thông tin chứng từ/);
-  assert.match(workspace, /Bạn vẫn có thể lưu nếu đây là chính sách của Công Ty/);
+  assert.match(workspace, /Vẫn có thể lưu nếu đây là chính sách của Công Ty/);
   assert.match(workspace, /tự động duyệt khi nhân viên gửi đơn/);
 });
 
@@ -70,5 +70,5 @@ test('Issue #1110 Lô 7 keeps the original leave request surface compatible afte
   assert.match(page, /listLeaveRequests/);
   assert.match(page, /listLeaveTypes/);
   assert.match(workspace, /Nghỉ và đơn nghỉ/);
-  assert.match(workspace, /Số dư \/ Sổ phép/);
+  assert.match(workspace, /Số dư và sổ phép/);
 });
