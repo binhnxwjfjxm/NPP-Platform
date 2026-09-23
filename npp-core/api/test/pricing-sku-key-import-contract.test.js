@@ -20,3 +20,14 @@ test('SKU-keyed pricing import does not require sourceKey and rejects ambiguous 
   assert.match(pricing, /IMPORT_IDENTITY_CONFLICT/);
   assert.match(pricing, /matching\.length > 1/);
 });
+
+
+test('SKU-keyed price adjustment preserves history and supports now or scheduled replacement', () => {
+  assert.match(pricing, /payload\.replaceFrom === true/);
+  assert.match(pricing, /replacementApplyAt/);
+  assert.match(pricing, /matchesSkuScope/);
+  assert.match(pricing, /effectiveTo: applyAt/);
+  assert.match(pricing, /effectiveFrom: applyAt/);
+  assert.match(pricing, /replacesPriceItemId/);
+  assert.match(pricing, /itemsReplaced/);
+});

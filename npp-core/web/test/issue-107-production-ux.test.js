@@ -52,23 +52,29 @@ test('purchase-order layout gives discovery results dedicated height and keeps t
 });
 
 test('multi-SKU pricing previews conflicts and persists one SKU-keyed idempotent import batch', async () => {
-  const [page, overlay] = await Promise.all([
+  const [page, overview, overlay, fileAdjustment] = await Promise.all([
     readSource('../app/pricing/page.tsx'),
+    readSource('../app/pricing/pricing-overview.tsx'),
     readSource('../app/pricing/pricing-bulk-overlay.tsx'),
+    readSource('../app/pricing/pricing-file-adjustment.tsx'),
   ]);
 
-  assert.match(page, /PricingBulkOverlay/);
-  assert.match(overlay, /Chọn kết quả/);
-  assert.match(overlay, /SKIP_EXISTING/);
-  assert.match(overlay, /UPSERT_SKU/);
-  assert.match(overlay, /không tạo dòng chồng lấn âm thầm/);
-  assert.match(overlay, /matchBySku:\s*true/);
-  assert.match(overlay, /sourceBatchId/);
-  assert.match(overlay, /'Idempotency-Key': sourceBatchId/);
+  assert.doesNotMatch(page, /PricingBulkOverlay/);
+  assert.match(overview, /PricingBulkOverlay/);
+  assert.match(overview, /PricingFileAdjustment/);
+  assert.match(overlay, /Điều chỉnh trực tiếp/);
+  assert.match(overlay, /Cập nhật ngay/);
+  assert.match(overlay, /Áp dụng từ ngày/);
+  assert.match(overlay, /replaceFrom:\s*true/);
+  assert.match(overlay, /createIdempotencyKey\('pricing_adjust'\)/);
+  assert.match(overlay, /sourceBatchId:\s*operationKey/);
+  assert.match(overlay, /'Idempotency-Key': operationKey/);
   assert.match(overlay, /requestJson<ImportResult>\('\/api\/pricing\/import'/);
   assert.equal((overlay.match(/\/api\/pricing\/import/g) ?? []).length, 1);
-  assert.doesNotMatch(overlay, /wildcard/i);
-  assert.match(overlay, /adjustmentType === 'FIXED_PRICE'[\s\S]*fixedPrices\[row\.sku\]/);
   assert.match(overlay, /listAllPriceListItems/);
   assert.match(overlay, /role="alert"/);
+  assert.match(fileAdjustment, /Tải file mẫu/);
+  assert.match(fileAdjustment, /Nhập từ file/);
+  assert.match(fileAdjustment, /replaceFrom:\s*true/);
+  assert.match(fileAdjustment, /createIdempotencyKey\('pricing_adjust_file'\)/);
 });

@@ -501,7 +501,7 @@ export default function PricingWorkspace({ initialTab = 'channels' }: { initialT
               {label}
             </button>
           ))}
-          <button type="button" className={styles.tab} onClick={() => router.push('/pricing?view=all')} data-testid="pricing-overview-tab">Bảng giá tổng hợp</button>
+          <button type="button" className={styles.tab} onClick={() => router.push('/pricing?view=all')} data-testid="pricing-overview-tab">Điều chỉnh giá</button>
           <button type="button" className={tab === 'resolver' ? styles.tabActive : styles.tab} onClick={() => changeTab('resolver')} data-testid="pricing-resolver-tab">Kiểm tra giá áp dụng</button>
         </div>
 

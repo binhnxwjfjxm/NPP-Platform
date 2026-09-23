@@ -1,10 +1,11 @@
 'use client';
 
 import { createIdempotencyKey } from '@npp/contracts';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../components/app-shell';
+import PricingBulkOverlay from './pricing-bulk-overlay';
+import PricingFileAdjustment from './pricing-file-adjustment';
 import type { PriceList, PriceListItem, PriceListType, PricingProduct, PricingVariant } from '../../lib/pricing-types';
 import styles from './pricing-overview.module.css';
 import workspaceStyles from './pricing.module.css';
@@ -367,6 +368,12 @@ export default function PricingOverview() {
     .sort((a, b) => Number(b.is_active) - Number(a.is_active) || b.priority - a.priority || a.code.localeCompare(b.code)), [lists]);
   const loadedListCodes = useMemo(() => new Set(Object.keys(rulesByListCode)), [rulesByListCode]);
   const selectedList = useMemo(() => listColumns.find((list) => listSelectionValue(list) === selectedListCode) ?? null, [listColumns, selectedListCode]);
+  const adjustmentDefaultListId = useMemo(() => {
+    if (selectedList?.is_active) return selectedList.id;
+    return lists.find((list) => list.is_active && list.list_type === 'BASE')?.id
+      ?? lists.find((list) => list.is_active)?.id
+      ?? '';
+  }, [lists, selectedList]);
   const visibleListColumns = useMemo(() => {
     if (selectedListCode === BASE_ONLY) return [];
     if (selectedListCode === ALL_LISTS) return listColumns.filter((list) => loadedListCodes.has(listKey(list.code)));
@@ -421,6 +428,21 @@ export default function PricingOverview() {
       ? listColumns
       : listColumns.filter((list) => listSelectionValue(list) === nextCode);
     void ensureRulesLoaded(targetLists);
+  }
+
+  async function refreshAdjustedPriceList(priceListId: string) {
+    const list = lists.find((item) => item.id === priceListId);
+    if (!list) return;
+    setLoadingPrices(true); setError('');
+    try {
+      const rows = await listRulesForPriceList(list);
+      const key = listKey(list.code);
+      loadedListCodesRef.current.add(key);
+      setRulesByListCode((current) => ({ ...current, [key]: rows }));
+      setMessage(`Đã làm mới ${list.code} · ${list.name}.`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Không làm mới được bảng giá sau điều chỉnh.');
+    } finally { setLoadingPrices(false); }
   }
 
   function currentExportKey(intent: string) {
@@ -513,20 +535,20 @@ export default function PricingOverview() {
     : '';
 
   return (
-    <AppShell title="Bảng giá tổng hợp" subtitle="Xem và đối chiếu giá bán của từng sản phẩm theo từng bảng giá.">
+    <AppShell title="Điều chỉnh giá" subtitle="Xem giá hiện tại, điều chỉnh trực tiếp hoặc bằng file và chọn thời điểm áp dụng.">
       <div className={styles.page} data-testid="pricing-overview-page">
         <div className={workspaceStyles.tabs} role="tablist" aria-label="Giá bán">
           <button type="button" className={workspaceStyles.tab} onClick={() => router.push('/pricing?tab=channels')}>Kênh bán</button>
           <button type="button" className={workspaceStyles.tab} onClick={() => router.push('/pricing?tab=lists')}>Danh mục giá</button>
           <button type="button" className={workspaceStyles.tab} onClick={() => router.push('/pricing?tab=items')}>Giá sản phẩm</button>
-          <button type="button" className={workspaceStyles.tabActive} aria-selected="true" disabled>Bảng giá tổng hợp</button>
+          <button type="button" className={workspaceStyles.tabActive} aria-selected="true" disabled>Điều chỉnh giá</button>
           <button type="button" className={workspaceStyles.tab} onClick={() => router.push('/pricing?tab=resolver')}>Kiểm tra giá áp dụng</button>
         </div>
 
         <div className={styles.toolbar}>
-          <div className={styles.actions}>
-            <Link className={styles.secondaryButton} href="/operations/data-exchange?tab=pricing">Cập nhật giá từ Excel</Link>
-            <Link className={styles.secondaryButton} href="/operations/import-export-history?definitionKey=pricing-items">Lịch sử cập nhật giá</Link>
+          <div className={styles.actions} aria-label="Thao tác điều chỉnh giá">
+            <PricingBulkOverlay priceLists={lists} defaultPriceListId={adjustmentDefaultListId} onApplied={refreshAdjustedPriceList} />
+            <PricingFileAdjustment priceLists={lists} defaultPriceListId={adjustmentDefaultListId} onApplied={refreshAdjustedPriceList} />
           </div>
           <div className={styles.exportGroup}>
             <label>Bảng giá hiển thị
