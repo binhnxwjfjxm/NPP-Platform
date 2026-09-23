@@ -13,10 +13,10 @@ test('Issue #1140 Lô 6 adds exactly one Tính lương sidebar item and keeps si
   ]);
   assert.equal((shell.match(/href: '\/workforce\/payroll'/g) ?? []).length, 1);
   assert.match(shell, /label: 'Tính lương'/);
-  for (const label of ['Bảng lương', 'Đối soát', 'Thiết lập lương', 'Khoản thu & khấu trừ', 'Phiếu lương', 'Lịch sử kỳ lương']) {
+  for (const label of ['Bảng lương', 'Đối soát', 'Thiết lập lương', 'Khoản tính lương', 'Phiếu lương', 'Lịch sử kỳ lương']) {
     assert.match(page, new RegExp(label.replace(/[&]/g, '\\&')));
   }
-  assert.equal((shell.match(/Phiếu lương|Lịch sử kỳ lương|Thiết lập lương|Khoản thu & khấu trừ/g) ?? []).length, 0);
+  assert.equal((shell.match(/Phiếu lương|Lịch sử kỳ lương|Thiết lập lương|Khoản tính lương/g) ?? []).length, 0);
 });
 
 test('Issue #1140 Lô 6 keeps Bảng lương as the default payroll tab as later slices extend the page', async () => {

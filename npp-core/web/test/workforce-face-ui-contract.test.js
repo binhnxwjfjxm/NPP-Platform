@@ -15,9 +15,9 @@ test('FACE attendance is available in Công Ty work policy UI and shared web typ
   assert.match(types, /attendance_method: 'QR' \| 'MANUAL' \| 'BOTH' \| 'FACE' \| 'QR_FACE' \| 'NONE'/);
   assert.match(types, /source: 'QR' \| 'FACE' \| 'MANUAL' \| 'ADJUSTMENT' \| 'SYSTEM'/);
   assert.match(policy, /FACE: 'Quét khuôn mặt'/);
-  assert.match(policy, /QR_FACE: 'QR và quét khuôn mặt'/);
+  assert.match(policy, /QR_FACE: 'Mã QR và quét khuôn mặt'/);
   assert.match(policy, /<option value="FACE">Quét khuôn mặt<\/option>/);
-  assert.match(policy, /<option value="QR_FACE">QR và quét khuôn mặt<\/option>/);
+  assert.match(policy, /<option value="QR_FACE">Mã QR và quét khuôn mặt<\/option>/);
 });
 
 test('Công Ty attendance screen explains FACE and keeps QR available for QR + FACE policy', async () => {

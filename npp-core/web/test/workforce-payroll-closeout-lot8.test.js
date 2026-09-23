@@ -19,7 +19,7 @@ test('Issue #1140 Lô 8 exposes close, post-close adjustment, payslip history an
   assert.match(panel, />Chốt lương</);
   assert.match(panel, /Điều chỉnh lương sau chốt/);
   assert.match(panel, /Lịch sử phiếu lương/);
-  assert.match(panel, /Đọc từ hồ sơ kỳ đã chốt/);
+  assert.match(panel, /Số liệu từ kỳ lương đã chốt/);
   assert.match(panel, />Xuất PDF</);
   assert.match(panel, />Xuất Excel</);
   assert.match(exportRoute, /createTabularXlsx/);

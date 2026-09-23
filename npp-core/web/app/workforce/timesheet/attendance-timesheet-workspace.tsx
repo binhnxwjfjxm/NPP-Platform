@@ -713,13 +713,13 @@ export default function AttendanceTimesheetWorkspace({
                 <span>{leaveSummary(selectedDay)}</span>
                 {selectedDay.unexcusedAbsenceFraction > 0 ? <span>Vắng không phép: {dayCountLabel(selectedDay.unexcusedAbsenceFraction)} ngày</span> : null}
                 {selectedDay.configurationIssue === 'MISSING_POLICY' ? <><span>Nhân sự chưa có Chính sách làm việc hiệu lực tại ngày này.</span><Link className={localStyles.inlineLink} href="/workforce/employees">Mở danh mục nhân sự để áp dụng chính sách</Link></> : null}
-                {selectedDay.configurationIssue === 'MISSING_SCHEDULE' ? <span>Cần bổ sung lịch/ca làm việc.</span> : null}
+                {selectedDay.configurationIssue === 'MISSING_SCHEDULE' ? <span>Cần bổ sung lịch làm việc hoặc ca làm việc.</span> : null}
                 {selectedDay.leave.requests.length ? <Link className={localStyles.inlineLink} href="/workforce/leave">Mở đơn nghỉ</Link> : null}
               </div>
               <div className={localStyles.dayDetailSection}>
                 <strong>Kiểm soát · Nguồn dữ liệu</strong>
                 <span>{sourceSummary(selectedDay)}</span>
-                <span>{selectedDay.policy ? `Chính sách: ${selectedDay.policy.code} · ${selectedDay.policy.name} · bản ${selectedDay.policy.version}` : 'Chưa có chính sách phù hợp'}</span>
+                <span>{selectedDay.policy ? `Chính sách: ${selectedDay.policy.code} · ${selectedDay.policy.name} · lần cập nhật ${selectedDay.policy.version}` : 'Chưa có chính sách phù hợp'}</span>
                 <span>{selectedDay.adjustment ? (selectedDay.adjustment.status === 'SUBMITTED' ? 'Điều chỉnh: Chờ duyệt' : selectedDay.adjustment.status === 'APPROVED' ? 'Điều chỉnh: Đã duyệt' : 'Điều chỉnh: Từ chối') : 'Chưa có điều chỉnh'}</span>
                 {selectedDay.periodLock ? <span>Đã khóa kỳ công</span> : <span>Kỳ công đang mở</span>}
               </div>

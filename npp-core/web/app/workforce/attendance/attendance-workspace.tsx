@@ -552,7 +552,7 @@ export default function AttendanceWorkspace({
               <div className={localStyles.manualAttendanceCard} data-testid="attendance-manual-record">
                 <div>
                   <strong>Chấm công trực tiếp</strong>
-                  <span>Hệ thống tự ghi giờ hiện tại. Anh/chị không cần nhập thời gian hoặc chọn nơi làm việc.</span>
+                  <span>Hệ thống tự ghi nhận giờ hiện tại. Không cần nhập thời gian hoặc chọn nơi làm việc.</span>
                 </div>
                 <button
                   type="button"

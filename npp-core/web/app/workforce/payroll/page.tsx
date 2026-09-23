@@ -774,7 +774,7 @@ export default function PayrollPage() {
               {data?.capabilities.canManage ? (
                 <form className={styles.actionPanel} onSubmit={(event) => void createComponentType(event)}>
                   <div className={styles.formGrid}>
-                    <label>Mã khoản<input value={typeCode} onChange={(event) => setTypeCode(event.target.value.toUpperCase())} maxLength={32} placeholder="VD: THUONG_LE" required /></label>
+                    <label>Mã khoản<input value={typeCode} onChange={(event) => setTypeCode(event.target.value.toUpperCase())} maxLength={32} placeholder="Ví dụ: THUONG_LE" required /></label>
                     <label>Tên khoản<input value={typeName} onChange={(event) => setTypeName(event.target.value)} maxLength={120} required /></label>
                     <label>
                       Nhóm
