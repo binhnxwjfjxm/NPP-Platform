@@ -1,0 +1,343 @@
+/* Retail POS entry — compact mobile-first order workspace */
+.retail-issue675 .retail-order-card {
+  padding-bottom: 180px;
+}
+.retail-issue675 .retail-order-card > .order-identity:first-child {
+  margin-bottom: 8px;
+}
+.retail-issue675 .retail-order-card .order-timeline {
+  margin: 0 0 8px;
+  transform: scale(.94);
+  transform-origin: left top;
+}
+.retail-issue675 .pos-product-search-trigger {
+  width: 100%;
+  min-height: 52px;
+  display: grid;
+  grid-template-columns: 28px minmax(0,1fr) 32px;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  padding: 0 14px;
+  border: 1px solid #d7dce3;
+  border-radius: 16px;
+  background: #f5f6f8;
+  color: #667085;
+  text-align: left;
+}
+.retail-issue675 .pos-product-search-trigger strong {
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.retail-issue675 .pos-product-search-trigger > b {
+  color: #667085;
+  font-size: 21px;
+  text-align: right;
+}
+.retail-issue675 .pos-option-list {
+  overflow: hidden;
+  margin: 10px 0 12px;
+  border: 1px solid #e6e9ee;
+  border-radius: 16px;
+  background: #fff;
+}
+.retail-issue675 .pos-option-row {
+  width: 100%;
+  min-height: 56px;
+  display: grid;
+  grid-template-columns: 32px minmax(0,1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border: 0;
+  border-bottom: 1px solid #eef0f3;
+  background: transparent;
+  color: #101828;
+  text-align: left;
+}
+.retail-issue675 .pos-option-row:last-child { border-bottom: 0; }
+.retail-issue675 .pos-option-row:disabled { opacity: .72; }
+.retail-issue675 .pos-option-row > span:nth-child(2) {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.retail-issue675 .pos-option-row small {
+  color: #667085;
+  font-size: 11px;
+}
+.retail-issue675 .pos-option-row strong {
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.retail-issue675 .pos-option-row > b { color: #98a2b3; font-size: 22px; font-weight: 500; }
+.retail-issue675 .pos-option-row > em {
+  color: #98a2b3;
+  font-size: 11px;
+  font-style: normal;
+}
+.retail-issue675 .pos-option-icon {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: #eff8f3;
+  color: #16794c;
+  font-size: 16px;
+  font-weight: 800;
+}
+.retail-issue675 .pos-order-total {
+  overflow: hidden;
+  padding: 0;
+  border: 1px solid #e6e9ee;
+  border-radius: 16px;
+}
+.retail-issue675 .pos-order-total > div {
+  padding: 8px 14px;
+}
+.retail-issue675 .pos-promotion-row {
+  width: 100%;
+  min-height: 50px;
+  display: grid;
+  grid-template-columns: 28px auto minmax(0,1fr) 20px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  border: 0;
+  border-bottom: 1px solid #eef0f3;
+  background: #fff;
+  color: #101828;
+  text-align: left;
+}
+.retail-issue675 .pos-promotion-row:disabled { opacity: .72; }
+.retail-issue675 .pos-promotion-row strong { font-size: 14px; }
+.retail-issue675 .pos-promotion-row em {
+  overflow: hidden;
+  color: #16794c;
+  font-size: 12px;
+  font-style: normal;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.retail-issue675 .pos-promotion-row b { color: #98a2b3; }
+.retail-issue675 .pos-checkout-bar {
+  grid-template-columns: auto auto minmax(150px,1fr);
+}
+.retail-issue675 .pos-checkout-bar .pos-checkout-action {
+  min-height: 52px;
+  font-size: 16px;
+  font-weight: 800;
+}
+.retail-issue675 .pos-dialog-backdrop {
+  align-items: flex-end;
+}
+.retail-issue675 .pos-sheet {
+  width: min(100%, 620px);
+  max-height: min(82dvh, 760px);
+  overflow: auto;
+  margin: auto auto 0;
+  padding: 16px;
+  border-radius: 22px 22px 0 0;
+  background: #fff;
+  box-shadow: 0 -12px 40px rgba(16,24,40,.16);
+}
+.retail-issue675 .pos-sheet > header {
+  position: sticky;
+  top: -16px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: -16px -16px 12px;
+  padding: 16px;
+  border-bottom: 1px solid #eef0f3;
+  background: rgba(255,255,255,.97);
+}
+.retail-issue675 .pos-sheet h2 { margin: 2px 0 0; font-size: 20px; }
+.retail-issue675 .pos-sheet-help { margin: 0 0 12px; color: #667085; font-size: 13px; line-height: 1.45; }
+.retail-issue675 .pos-search-field {
+  min-height: 46px;
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0;
+  padding: 0 12px;
+  border: 1px solid #d7dce3;
+  border-radius: 14px;
+  background: #f7f8fa;
+}
+.retail-issue675 .pos-search-field input {
+  min-width: 0;
+  height: 44px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font-size: 15px;
+}
+.retail-issue675 .pos-sheet-section-title {
+  padding: 8px 2px 6px;
+  color: #667085;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+.retail-issue675 .customer-choice-list {
+  overflow: hidden;
+  border: 1px solid #e6e9ee;
+  border-radius: 14px;
+}
+.retail-issue675 .customer-choice {
+  width: 100%;
+  min-height: 54px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  border: 0;
+  border-bottom: 1px solid #eef0f3;
+  background: #fff;
+  color: #101828;
+  text-align: left;
+}
+.retail-issue675 .pos-sheet > .customer-choice { border: 1px solid #dfe5e1; border-radius: 14px; }
+.retail-issue675 .customer-choice:last-child { border-bottom: 0; }
+.retail-issue675 .customer-choice.selected { background: #eff8f3; color: #116b43; }
+.retail-issue675 .customer-choice > span { min-width: 0; display: grid; gap: 2px; }
+.retail-issue675 .customer-choice strong { overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+.retail-issue675 .customer-choice small { color: #98a2b3; font-size: 11px; }
+.retail-issue675 .customer-choice b { color: #98a2b3; }
+.retail-issue675 .pos-form-field { display: grid; gap: 6px; margin: 12px 0; color: #344054; font-size: 12px; font-weight: 700; }
+.retail-issue675 .pos-form-field input,
+.retail-issue675 .pos-form-field select,
+.retail-issue675 .pos-form-field textarea {
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 12px;
+  border: 1px solid #d7dce3;
+  border-radius: 12px;
+  background: #fff;
+  color: #101828;
+  font: inherit;
+  font-size: 14px;
+}
+.retail-issue675 .pos-form-field textarea { min-height: 104px; resize: vertical; }
+.retail-issue675 .pos-sheet-actions { display: grid; grid-template-columns: 1fr 1.4fr; gap: 10px; margin-top: 14px; }
+.retail-issue675 .price-rule-list { display: grid; gap: 9px; }
+.retail-issue675 .price-rule-card { padding: 12px; border: 1px solid #e6e9ee; border-radius: 14px; background: #fff; }
+.retail-issue675 .price-rule-card > header { display: flex; justify-content: space-between; gap: 10px; }
+.retail-issue675 .price-rule-card > header strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.retail-issue675 .price-rule-card > header b { color: #116b43; white-space: nowrap; }
+.retail-issue675 .price-rule-card ul { display: grid; gap: 4px; margin: 8px 0 0; padding: 0; list-style: none; }
+.retail-issue675 .price-rule-card li { display: flex; justify-content: space-between; gap: 8px; color: #667085; font-size: 12px; }
+.retail-issue675 .price-rule-card li strong { color: #344054; font-size: 12px; }
+.retail-issue675 .price-rule-card small { display: block; margin-top: 7px; color: #98a2b3; }
+.retail-issue675 .pos-product-picker .pos-picker-header {
+  grid-template-columns: 40px minmax(0,1fr);
+}
+.retail-issue675 .pos-product-picker .picker-search {
+  margin: 0;
+  grid-template-columns: 24px minmax(0,1fr) 38px;
+}
+.retail-issue675 .picker-scan {
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-left: 1px solid #d7dce3;
+  background: transparent;
+  color: #667085;
+  font-size: 20px;
+}
+.retail-issue675 .picker-mode-row {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #eef0f3;
+  background: #fff;
+}
+.retail-issue675 .picker-mode-row .filter-tabs { min-width: 0; margin: 0; }
+.retail-issue675 .multi-select-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #344054;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.retail-issue675 .multi-select-toggle input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.retail-issue675 .multi-select-toggle i {
+  width: 42px;
+  height: 24px;
+  position: relative;
+  border-radius: 999px;
+  background: #d0d5dd;
+  transition: .18s ease;
+}
+.retail-issue675 .multi-select-toggle i::after {
+  content: "";
+  width: 20px;
+  height: 20px;
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(16,24,40,.2);
+  transition: .18s ease;
+}
+.retail-issue675 .multi-select-toggle input:checked + i { background: #12b76a; }
+.retail-issue675 .multi-select-toggle input:checked + i::after { transform: translateX(18px); }
+.retail-issue675 .pos-product-row {
+  cursor: pointer;
+  grid-template-columns: 62px minmax(0,1fr) auto;
+  min-height: 86px;
+}
+.retail-issue675 .pos-product-row.disabled { cursor: not-allowed; opacity: .58; }
+.retail-issue675 .pos-product-row .picker-selected-controls { display: grid; justify-items: end; gap: 8px; }
+.retail-issue675 .selection-mark {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: 2px solid #12b76a;
+  border-radius: 50%;
+  background: #12b76a;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 900;
+}
+.retail-issue675 .selection-mark.empty { border-color: #d0d5dd; background: #fff; }
+.retail-issue675 .pos-picker-done {
+  min-height: 52px;
+  font-size: 16px;
+  font-weight: 800;
+}
+@media (max-width: 560px) {
+  .retail-issue675 .order-identity,
+  .retail-issue675 .order-timeline { display: none; }
+  .retail-issue675 .retail-order-card { padding-top: 8px; }
+  .retail-issue675 .pos-checkout-bar {
+    grid-template-columns: auto minmax(0,1fr);
+  }
+  .retail-issue675 .pos-checkout-bar .secondary-action:first-child:nth-last-child(3) { display: none; }
+  .retail-issue675 .pos-sheet-actions { grid-template-columns: 1fr 1.2fr; }
+  .retail-issue675 .picker-mode-row { grid-template-columns: minmax(0,1fr) auto; }
+}

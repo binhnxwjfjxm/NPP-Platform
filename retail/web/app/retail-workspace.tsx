@@ -27,6 +27,18 @@ type Product = {
     unitName: string;
     allowsFractional: boolean | null;
 };
+type Customer = {
+    id: string;
+    code?: string | null;
+    name: string;
+};
+type PriceRule = {
+    priceListCode?: string | null;
+    priceListType?: string | null;
+    adjustmentType?: string | null;
+    beforeUnitPriceMinor?: string | null;
+    afterUnitPriceMinor?: string | null;
+};
 type OrderLine = {
     id: string;
     variantId: string;
@@ -61,6 +73,12 @@ type Order = {
     salesChannelName?: string | null;
     updatedAt: string;
     receivableRemainingAmount?: string;
+    subtotal?: string;
+    discountTotal?: string;
+    note?: string | null;
+    documentDiscountMode?: 'NONE' | 'TOTAL_AMOUNT' | 'PERCENT';
+    documentDiscountValue?: string;
+    documentDiscountReason?: string | null;
     versions?: {
         versionNumber: string;
         revision: string;
@@ -82,6 +100,7 @@ type Bootstrap = {
     settings: {
         defaultTaxMode: 'EXCLUSIVE' | 'INCLUSIVE';
         defaultTaxRate: string;
+        defaultWarehouseId?: string | null;
         permissions?: {
             canPriceOverride?: boolean;
             canDiscountOverride?: boolean;
@@ -94,11 +113,8 @@ type Bootstrap = {
         code: string;
         name: string;
     }[];
-    customers: {
-        id: string;
-        code: string;
-        name: string;
-    }[];
+    canBrowseCompanyCustomers: boolean;
+    recentCustomers: Customer[];
     categories: {
         id: string;
         code: string;
@@ -111,6 +127,7 @@ type PricePreview = {
     lineTotalMinor: string;
     resolutionFingerprint?: string;
     channelCode?: string;
+    appliedRules?: PriceRule[];
 };
 type PriceBatchResult = {
     variantId: string;
@@ -123,6 +140,7 @@ type PriceBatchResult = {
     lineTotalMinor?: string;
     resolutionFingerprint?: string;
     channelCode?: string;
+    appliedRules?: PriceRule[];
 };
 type CachedPricePreview = PricePreview & {
     inputKey: string;
@@ -298,9 +316,27 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
         product: Product;
         quantity: string;
     }>>(new Map());
+    const [multiSelect, setMultiSelect] = useState(false);
+    const [customerPickerOpen, setCustomerPickerOpen] = useState(false);
+    const [customerSearch, setCustomerSearch] = useState('');
+    const [customerResults, setCustomerResults] = useState<Customer[]>([]);
+    const [customerLoading, setCustomerLoading] = useState(false);
     const [customerMode, setCustomerMode] = useState<'WALK_IN' | 'EXISTING'>('WALK_IN');
     const [customerId, setCustomerId] = useState('');
+    const [customerName, setCustomerName] = useState('Khách lẻ');
     const [warehouseId, setWarehouseId] = useState('');
+    const [warehousePickerOpen, setWarehousePickerOpen] = useState(false);
+    const [priceDetailsOpen, setPriceDetailsOpen] = useState(false);
+    const [discountOpen, setDiscountOpen] = useState(false);
+    const [documentDiscountMode, setDocumentDiscountMode] = useState<'NONE' | 'TOTAL_AMOUNT' | 'PERCENT'>('NONE');
+    const [documentDiscountValue, setDocumentDiscountValue] = useState('0');
+    const [documentDiscountReason, setDocumentDiscountReason] = useState('');
+    const [discountDraftMode, setDiscountDraftMode] = useState<'NONE' | 'TOTAL_AMOUNT' | 'PERCENT'>('TOTAL_AMOUNT');
+    const [discountDraftValue, setDiscountDraftValue] = useState('');
+    const [discountDraftReason, setDiscountDraftReason] = useState('');
+    const [noteOpen, setNoteOpen] = useState(false);
+    const [note, setNote] = useState('');
+    const [noteDraft, setNoteDraft] = useState('');
     const [policy, setPolicy] = useState('COLLECT_ON_DELIVERY');
     const [notice, setNotice] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -360,6 +396,7 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
     const refreshOrders = useCallback(async () => { const list = await api<Order[]>('/api/retail/orders?limit=100&offset=0'); setOrders(list.filter((item) => item.deliveryMode === 'PICKUP')); }, []);
     const loadPrintTemplates = useCallback(async () => { const templates = await api<PrintTemplate[]>('/api/retail/print-templates'); setPrintTemplates(templates); return templates; }, []);
     const canPriceOverride = Boolean(boot?.settings.permissions?.canPriceOverride);
+    const canDiscountOverride = Boolean(boot?.settings.permissions?.canDiscountOverride);
     const canNegativeStockIssue = Boolean(boot?.settings.permissions?.canNegativeStockIssue);
     function priceInputKey(variantId: string, quantity: string) { return [customerMode, customerMode === 'EXISTING' ? customerId : '', variantId, quantity].join(':'); }
     function manualPriceFor(variantId: string) { return String(manualPrices[variantId] ?? '').trim(); }
@@ -409,7 +446,12 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
             throw new Error('Hãy chọn ít nhất một sản phẩm.');
         return {
             sourceType: 'MANUAL', customerMode, ...(customerMode === 'EXISTING' ? { customerId } : {}), warehouseId,
-            deliveryMode: 'PICKUP', collectionPolicy: policy, currency: 'VND', ...(revision ? { expectedRevision: revision } : {}),
+            deliveryMode: 'PICKUP', collectionPolicy: policy, currency: 'VND',
+            note: note.trim() || null,
+            documentDiscountMode,
+            documentDiscountValue: documentDiscountMode === 'NONE' ? '0' : documentDiscountValue,
+            ...(documentDiscountMode !== 'NONE' ? { documentDiscountReason: documentDiscountReason.trim() } : {}),
+            ...(revision ? { expectedRevision: revision } : {}),
             lines: cart.map((line) => {
                 const preview = prices[line.id];
                 const manualPrice = manualPriceFor(line.id);
@@ -430,9 +472,39 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
         void api<Bootstrap>('/api/retail/bootstrap').then((data) => {
             setBoot(data);
             setOrders(data.orders.filter((item) => item.deliveryMode === 'PICKUP'));
-            setWarehouseId(data.warehouses[0]?.id ?? '');
+            const preferredWarehouse = data.settings.defaultWarehouseId
+                && data.warehouses.some((warehouse) => warehouse.id === data.settings.defaultWarehouseId)
+                ? data.settings.defaultWarehouseId
+                : data.warehouses[0]?.id ?? '';
+            setWarehouseId(preferredWarehouse);
         }).catch((reason: Error) => setError(reason.message));
     }, []);
+    useEffect(() => {
+        if (!customerPickerOpen || !boot?.canBrowseCompanyCustomers) {
+            setCustomerResults([]);
+            setCustomerLoading(false);
+            return;
+        }
+        const needle = customerSearch.trim();
+        if (needle.length < 2) {
+            setCustomerResults([]);
+            setCustomerLoading(false);
+            return;
+        }
+        const controller = new AbortController();
+        const timer = window.setTimeout(() => {
+            setCustomerLoading(true);
+            const params = new URLSearchParams({ search: needle, active: 'true', limit: '20', offset: '0' });
+            void api<Customer[]>(`/api/retail/customers?${params}`, { signal: controller.signal })
+                .then((rows) => { if (!controller.signal.aborted) setCustomerResults(rows); })
+                .catch((reason: unknown) => { if (!controller.signal.aborted) setError(errorMessage(reason, 'Chưa thể tìm khách hàng.')); })
+                .finally(() => { if (!controller.signal.aborted) setCustomerLoading(false); });
+        }, 180);
+        return () => {
+            controller.abort();
+            window.clearTimeout(timer);
+        };
+    }, [boot?.canBrowseCompanyCustomers, customerPickerOpen, customerSearch]);
     useEffect(() => {
         if (!open)
             return;
@@ -518,6 +590,7 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
                             lineTotalMinor: result.lineTotalMinor,
                             resolutionFingerprint: result.resolutionFingerprint,
                             channelCode: result.channelCode,
+                            appliedRules: result.appliedRules ?? [],
                             inputKey: item.inputKey,
                         };
                     } else {
@@ -559,7 +632,17 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
         });
         if (!pricingReady)
             return;
-        const fingerprint = JSON.stringify({ customerMode, customerId: customerMode === 'EXISTING' ? customerId : '', warehouseId, policy, lines: cart.map((line) => [line.id, line.quantity, prices[line.id]?.finalUnitPriceMinor ?? '', manualPriceFor(line.id)]) });
+        const fingerprint = JSON.stringify({
+            customerMode,
+            customerId: customerMode === 'EXISTING' ? customerId : '',
+            warehouseId,
+            policy,
+            note,
+            documentDiscountMode,
+            documentDiscountValue,
+            documentDiscountReason,
+            lines: cart.map((line) => [line.id, line.quantity, prices[line.id]?.finalUnitPriceMinor ?? '', manualPriceFor(line.id)]),
+        });
         if (lastDraftFingerprint.current === fingerprint)
             return;
         if (draftSyncInFlight.current !== null) {
@@ -594,7 +677,7 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
             });
         }, 360);
         return () => window.clearTimeout(timer);
-    }, [cart, canPriceOverride, customerId, customerMode, draftSyncEpoch, editPickup, keyFor, manualPrices, order, policy, prices, warehouseId]);
+    }, [cart, canPriceOverride, customerId, customerMode, documentDiscountMode, documentDiscountReason, documentDiscountValue, draftSyncEpoch, editPickup, keyFor, manualPrices, note, order, policy, prices, warehouseId]);
     useEffect(() => {
         if (!order?.id || order.status !== 'confirmed' || editPickup)
             return;
@@ -711,7 +794,18 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
     const editingDraft = editable && (!order || order.status === 'draft' || editPickup);
     const total = order ? Number(order.total || 0) : 0;
     const cartTotal = cart.reduce((sum, line) => sum + effectiveLineTotal(line), 0);
-    const totalLabel = cart.length ? money.format(cartTotal || total) : money.format(total);
+    const syncedDraft = Boolean(order?.status === 'draft' && lastDraftFingerprint.current);
+    const totalLabel = cart.length ? money.format(syncedDraft ? total : (cartTotal || total)) : money.format(total);
+    const discountTotal = Number(order?.discountTotal ?? 0);
+    const discountDisplayLabel = syncedDraft || !editingDraft
+        ? money.format(discountTotal)
+        : documentDiscountMode === 'PERCENT' && Number(documentDiscountValue) > 0
+            ? `${documentDiscountValue}%`
+            : money.format(Number(documentDiscountValue || 0));
+    const currentCustomerName = customerMode === 'EXISTING' ? customerName : 'Khách lẻ';
+    const selectedWarehouseName = boot?.warehouses.find((warehouse) => warehouse.id === warehouseId)?.name ?? 'Chọn kho';
+    const customerOptions = customerSearch.trim().length >= 2 ? customerResults : (boot?.recentCustomers ?? []);
+    const promotionCount = Object.values(prices).reduce((count, preview) => count + (preview.appliedRules ?? []).filter((rule) => rule.priceListType === 'PROMOTION').length, 0);
     const stage = progressStage(order);
     const canEditPickup = order?.status === 'confirmed' && !STOCK_ISSUED_FULFILLMENT_STATUSES.has(order.fulfillmentStatus);
     const filteredOrders = orders.filter((item) => orderFilter === 'all' ? true : orderFilter === 'issued' ? item.status === 'confirmed' && STOCK_ISSUED_FULFILLMENT_STATUSES.has(item.fulfillmentStatus) : orderFilter === 'confirmed' ? item.status === 'confirmed' && !STOCK_ISSUED_FULFILLMENT_STATUSES.has(item.fulfillmentStatus) : item.status === orderFilter);
@@ -745,10 +839,19 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
         lastDraftFingerprint.current = '';
         setCart((rows) => rows.map((row) => row.id === id ? { ...row, quantity: normalized } : row));
     }
-    function toggleProduct(product: Product) { setSelected((current) => { const next = new Map(current); if (next.has(product.id))
-        next.delete(product.id);
-    else
-        next.set(product.id, { product, quantity: '1' }); return next; }); }
+    function toggleProduct(product: Product) {
+        setSelected((current) => {
+            if (current.has(product.id)) {
+                const next = new Map(current);
+                next.delete(product.id);
+                return next;
+            }
+            if (!multiSelect) return new Map([[product.id, { product, quantity: '1' }]]);
+            const next = new Map(current);
+            next.set(product.id, { product, quantity: '1' });
+            return next;
+        });
+    }
     function adjustSelected(product: Product, direction: -1 | 1) { setSelected((current) => { const next = new Map(current); const row = next.get(product.id); if (!row && direction > 0)
         next.set(product.id, { product, quantity: '1' });
     else if (row) {
@@ -773,6 +876,59 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
         setSelected(new Map());
         setOpen(false);
         setNotice('Đã thêm sản phẩm vào đơn. Khả dụng sẽ cập nhật theo kho đang chọn.');
+    }
+    function chooseWalkInCustomer() {
+        lastDraftFingerprint.current = '';
+        setCustomerMode('WALK_IN');
+        setCustomerId('');
+        setCustomerName('Khách lẻ');
+        setPrices({});
+        setPriceFailures({});
+        priceRequests.current.clear();
+        setCustomerPickerOpen(false);
+    }
+    function chooseCompanyCustomer(customer: Customer) {
+        lastDraftFingerprint.current = '';
+        setCustomerMode('EXISTING');
+        setCustomerId(customer.id);
+        setCustomerName(customer.name);
+        setPrices({});
+        setPriceFailures({});
+        priceRequests.current.clear();
+        setCustomerPickerOpen(false);
+    }
+    function saveDocumentDiscount() {
+        const mode = discountDraftMode === 'NONE' ? 'TOTAL_AMOUNT' : discountDraftMode;
+        const value = mode === 'TOTAL_AMOUNT'
+            ? normalizeVndInput(discountDraftValue)
+            : discountDraftValue.trim().replace(',', '.').replace(/[^0-9.]/g, '');
+        const numeric = Number(value || 0);
+        if (!Number.isFinite(numeric) || numeric < 0 || (mode === 'PERCENT' && numeric > 100)) {
+            setError(mode === 'PERCENT' ? 'Chiết khấu phần trăm phải từ 0 đến 100.' : 'Số tiền chiết khấu không hợp lệ.');
+            return;
+        }
+        if (numeric === 0) {
+            lastDraftFingerprint.current = '';
+            setDocumentDiscountMode('NONE');
+            setDocumentDiscountValue('0');
+            setDocumentDiscountReason('');
+            setDiscountOpen(false);
+            return;
+        }
+        if (!discountDraftReason.trim()) {
+            setError('Hãy nhập lý do chiết khấu.');
+            return;
+        }
+        lastDraftFingerprint.current = '';
+        setDocumentDiscountMode(mode);
+        setDocumentDiscountValue(value);
+        setDocumentDiscountReason(discountDraftReason.trim());
+        setDiscountOpen(false);
+    }
+    function saveOrderNote() {
+        lastDraftFingerprint.current = '';
+        setNote(noteDraft.trim());
+        setNoteOpen(false);
     }
     function assertStockGate(actionLabel: string) {
         if (stockGatePending) {
@@ -878,6 +1034,71 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
             setBusy(null);
         }
     }
+    async function checkout() {
+        if (!order) return;
+        if ((order.status === 'draft' || order.status === 'confirmed') && !assertStockGate('Thanh toán')) return;
+        if (order.status === 'closed') {
+            if (order.settlementStatus !== 'paid') {
+                setPaid(normalizeVndInput(order.receivableRemainingAmount ?? order.total));
+                setPayment(true);
+            }
+            return;
+        }
+        if (order.status === 'cancelled') return;
+        setBusy('checkout');
+        setError(null);
+        try {
+            let current = order;
+            if (current.status === 'draft') {
+                const intent = 'current-order';
+                current = await api<Order>(`/api/retail/orders/${current.id}/confirm`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Idempotency-Key': operationKeyFor('checkout-confirm', intent) },
+                    body: JSON.stringify({}),
+                });
+                forgetOperationKey('checkout-confirm', intent);
+                setOrder(current);
+                setCart([]);
+                setManualPrices({});
+            }
+            if (current.status === 'confirmed' && !STOCK_ISSUED_FULFILLMENT_STATUSES.has(current.fulfillmentStatus)) {
+                const intent = 'current-order';
+                const latest = await api<Order>(`/api/retail/orders/${current.id}`);
+                current = await api<Order>(`/api/retail/orders/${latest.id}/issue-stock`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Idempotency-Key': operationKeyFor('checkout-issue-stock', intent) },
+                    body: JSON.stringify({ expectedRevision: latest.revision }),
+                });
+                forgetOperationKey('checkout-issue-stock', intent);
+                setOrder(current);
+            }
+            if (current.status === 'confirmed' && STOCK_ISSUED_FULFILLMENT_STATUSES.has(current.fulfillmentStatus)) {
+                const intent = 'current-order';
+                current = await api<Order>(`/api/retail/orders/${current.id}/complete`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Idempotency-Key': operationKeyFor('checkout-complete', intent) },
+                    body: JSON.stringify({ expectedRevision: current.revision }),
+                });
+                forgetOperationKey('checkout-complete', intent);
+                setOrder(current);
+            }
+            void refreshOrders().catch(() => undefined);
+            if (current.status === 'closed' && current.settlementStatus !== 'paid') {
+                setPaid(normalizeVndInput(current.receivableRemainingAmount ?? current.total));
+                setPayment(true);
+            }
+        } catch (reason) {
+            if (isRevisionConflict(reason) && order?.id) {
+                void api<Order>(`/api/retail/orders/${order.id}`).then((next) => {
+                    setOrder(next);
+                    setNotice('Đơn vừa thay đổi. Đã nạp dữ liệu mới nhất để kiểm tra lại.');
+                }).catch(() => undefined);
+            }
+            setError(errorMessage(reason, 'Chưa thể chuyển sang thanh toán.'));
+        } finally {
+            setBusy(null);
+        }
+    }
     async function openOrder(id: string) {
         setError(null);
         try {
@@ -885,7 +1106,12 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
             setOrder(next);
             setCustomerMode(next.customerMode);
             setCustomerId(next.customerId);
+            setCustomerName(next.customerMode === 'EXISTING' ? next.customerName : 'Khách lẻ');
             setWarehouseId(next.warehouseId);
+            setNote(next.note ?? '');
+            setDocumentDiscountMode(next.documentDiscountMode ?? 'NONE');
+            setDocumentDiscountValue(next.documentDiscountValue ?? '0');
+            setDocumentDiscountReason(next.documentDiscountReason ?? '');
             setPolicy(next.collectionPolicy);
             setCart(next.status === 'draft' ? cartFromOrder(next) : []);
             setPrices({});
@@ -900,8 +1126,8 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
         }
     }
     function beginPickupEdit() { if (!order)
-        return; setCart(cartFromOrder(order)); setManualPrices(manualPricesFromOrder(order)); setCustomerMode(order.customerMode); setCustomerId(order.customerId); setWarehouseId(order.warehouseId); setPolicy(order.collectionPolicy); setEditPickup(true); setNotice('Có thể sửa đơn đến trước khi xuất kho.'); }
-    function resetEntry() { setOrder(null); setCart([]); setPrices({}); setPriceFailures({}); setManualPrices({}); setEditPickup(false); setAvailable([]); setNotice(null); setError(null); setActiveTab('entry'); lastDraftFingerprint.current = ''; }
+        return; setCart(cartFromOrder(order)); setManualPrices(manualPricesFromOrder(order)); setCustomerMode(order.customerMode); setCustomerId(order.customerId); setCustomerName(order.customerMode === 'EXISTING' ? order.customerName : 'Khách lẻ'); setWarehouseId(order.warehouseId); setPolicy(order.collectionPolicy); setNote(order.note ?? ''); setDocumentDiscountMode(order.documentDiscountMode ?? 'NONE'); setDocumentDiscountValue(order.documentDiscountValue ?? '0'); setDocumentDiscountReason(order.documentDiscountReason ?? ''); setEditPickup(true); setNotice('Có thể sửa đơn đến trước khi xuất kho.'); }
+    function resetEntry() { setOrder(null); setCart([]); setPrices({}); setPriceFailures({}); setManualPrices({}); setEditPickup(false); setAvailable([]); setCustomerMode('WALK_IN'); setCustomerId(''); setCustomerName('Khách lẻ'); setNote(''); setDocumentDiscountMode('NONE'); setDocumentDiscountValue('0'); setDocumentDiscountReason(''); setNotice(null); setError(null); setActiveTab('entry'); lastDraftFingerprint.current = ''; }
     function applyTemplate(template: PrintTemplate) {
         setPrintTemplate(template);
         setTemplateHeading(template.heading ?? '');
@@ -1123,8 +1349,28 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
       <section className="order-card retail-order-card">
         {order ? <div className="order-identity"><span className="order-document">▤</span><div><p className="section-kicker">ĐƠN BÁN HÀNG</p><h2>{order.number ?? 'Đơn đang lập'}</h2><p>{orderLabel(order)} · {dateLabel(order.updatedAt)}</p></div><div className="order-badges"><span className="mode-pill">{order.salesChannelName ?? order.salesChannelCode ?? 'Retail'}</span><span className="mode-pill">Giao tại quầy</span></div></div> : null}
         {order && order.status !== 'cancelled' ? <ol className="order-timeline">{['Lên đơn', 'Đã chốt', 'Xuất kho', 'Hoàn thành'].map((step, index) => <li className={index <= stage ? 'complete' : ''} key={step}><span>{index < stage ? '✓' : index + 1}</span><strong>{step}</strong></li>)}</ol> : null}
-        {editable ? <div className="order-fields order-choice-cards compact-choice-cards"><label><span>Khách hàng</span><select value={customerMode} onChange={(event) => { lastDraftFingerprint.current = ''; setCustomerMode(event.target.value as 'WALK_IN' | 'EXISTING'); }}><option value="WALK_IN">Khách lẻ</option><option value="EXISTING">Khách hàng Công Ty</option></select></label><label><span>Kho bán</span><select value={warehouseId} onChange={(event) => { lastDraftFingerprint.current = ''; setWarehouseId(event.target.value); }}><option value="">Chọn kho</option>{boot?.warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}</select></label>{customerMode === 'EXISTING' ? <label className="wide-choice"><span>Chọn khách hàng</span><select value={customerId} onChange={(event) => { lastDraftFingerprint.current = ''; setCustomerId(event.target.value); }}><option value="">Chọn khách hàng</option>{boot?.customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.code} · {customer.name}</option>)}</select></label> : null}</div> : <div className="order-facts"><span>Khách hàng <strong>{order?.customerName}</strong></span><span>Kho bán <strong>{order?.warehouseName}</strong></span></div>}
-        {editable ? <button className="choose-products" type="button" onClick={() => setOpen(true)}><span>＋</span><strong>Chọn sản phẩm</strong><b>›</b></button> : null}
+        {editable ? <>
+          <button className="pos-product-search-trigger" type="button" onClick={() => { setSelected(new Map()); setMultiSelect(false); setSearch(''); setOpen(true); }}>
+            <span aria-hidden="true">⌕</span><strong>Tìm và thêm sản phẩm vào đơn</strong><b aria-hidden="true">▦</b>
+          </button>
+          <div className="pos-option-list">
+            <button className="pos-option-row" type="button" disabled={!boot?.canBrowseCompanyCustomers} onClick={() => { setCustomerSearch(''); setCustomerResults([]); setCustomerPickerOpen(true); }}>
+              <span className="pos-option-icon" aria-hidden="true">♙</span><span><small>Khách hàng</small><strong>{currentCustomerName}</strong></span>{boot?.canBrowseCompanyCustomers ? <b aria-hidden="true">›</b> : <em>Khách lẻ</em>}
+            </button>
+            {(boot?.warehouses.length ?? 0) > 1 ? <button className="pos-option-row" type="button" onClick={() => setWarehousePickerOpen(true)}>
+              <span className="pos-option-icon" aria-hidden="true">⌂</span><span><small>Kho bán</small><strong>{selectedWarehouseName}</strong></span><b aria-hidden="true">›</b>
+            </button> : null}
+            <button className="pos-option-row" type="button" disabled={!cart.length} onClick={() => setPriceDetailsOpen(true)}>
+              <span className="pos-option-icon" aria-hidden="true">◇</span><span><small>Giá bán</small><strong>{customerMode === 'EXISTING' ? 'Theo khách hàng' : 'Giá bán lẻ'}</strong></span><b aria-hidden="true">›</b>
+            </button>
+            <button className="pos-option-row" type="button" disabled={!canDiscountOverride} onClick={() => { setDiscountDraftMode(documentDiscountMode === 'NONE' ? 'TOTAL_AMOUNT' : documentDiscountMode); setDiscountDraftValue(documentDiscountMode === 'NONE' ? '' : documentDiscountValue); setDiscountDraftReason(documentDiscountReason); setDiscountOpen(true); }}>
+              <span className="pos-option-icon" aria-hidden="true">%</span><span><small>Chiết khấu</small><strong>{discountDisplayLabel}</strong></span>{canDiscountOverride ? <b aria-hidden="true">›</b> : <em>Chỉ xem</em>}
+            </button>
+            <button className="pos-option-row" type="button" onClick={() => { setNoteDraft(note); setNoteOpen(true); }}>
+              <span className="pos-option-icon" aria-hidden="true">✎</span><span><small>Ghi chú</small><strong>{note || 'Thêm ghi chú'}</strong></span><b aria-hidden="true">›</b>
+            </button>
+          </div>
+        </> : <div className="order-facts"><span>Khách hàng <strong>{order?.customerName}</strong></span><span>Kho bán <strong>{order?.warehouseName}</strong></span>{order?.note ? <span>Ghi chú <strong>{order.note}</strong></span> : null}</div>}
         {editPickup ? <p className="edit-hint">Đơn đang được điều chỉnh. Lưu thay đổi sẽ giữ trạng thái Đã chốt.</p> : null}
         {stockGateText ? <p className={`stock-gate ${stockBlocked ? 'blocked' : ''}`} role={stockBlocked ? 'alert' : 'status'}>{stockGateText}</p> : null}
         <div className="cart-list" aria-live="polite">
@@ -1141,10 +1387,19 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
             })}
           {editingDraft && !cart.length ? <p className="empty-cart">Chưa có sản phẩm. Chọn sản phẩm để tiếp tục.</p> : null}
         </div>
-        <footer className="order-total lot7-total"><div><span>Tạm tính</span><strong>{totalLabel}</strong></div><div><span>Giảm giá</span><strong>0 ₫</strong></div><div className="grand-total"><span>Tổng cộng</span><strong>{totalLabel}</strong></div></footer>
+        <footer className="order-total lot7-total pos-order-total">
+          <button className="pos-promotion-row" type="button" disabled={!cart.length} onClick={() => setPriceDetailsOpen(true)}><span aria-hidden="true">🎁</span><strong>Khuyến mãi</strong><em>{promotionCount > 0 ? `${promotionCount} đang áp dụng` : 'Tự động theo chính sách'}</em><b aria-hidden="true">›</b></button>
+          <div><span>Tổng tiền hàng</span><strong>{cart.length ? money.format(cartTotal || total) : money.format(Number(order?.subtotal ?? total))}</strong></div>
+          <div><span>Chiết khấu</span><strong>{discountDisplayLabel}</strong></div>
+          <div className="grand-total"><span>Tạm tính</span><strong>{totalLabel}</strong></div>
+        </footer>
       </section>
-      <section className="order-action-bar" aria-label="Thao tác đơn">
-        {editPickup ? <button className="secondary-action" type="button" disabled={busy !== null || stockBlocked || stockGatePending || !cart.length} onClick={() => void savePickupEdit()}>{busy === 'save' ? 'Đang lưu…' : 'Lưu thay đổi'}</button> : order ? <>{canEditPickup ? <button className="secondary-action" type="button" disabled={busy !== null} onClick={beginPickupEdit}>Sửa đơn</button> : null}<button className="secondary-action" type="button" onClick={() => void openPrintPreview()}>In phiếu</button>{order.status === 'draft' ? <button className="primary-action" disabled={busy !== null || !cart.length || stockBlocked || stockGatePending} onClick={() => void action('confirm')}>Chốt đơn</button> : null}{order.status === 'confirmed' && !STOCK_ISSUED_FULFILLMENT_STATUSES.has(order.fulfillmentStatus) ? <button className="primary-action" disabled={busy !== null || stockBlocked || stockGatePending} onClick={() => void action('issue-stock')}>Xuất kho</button> : null}{order.status === 'confirmed' && STOCK_ISSUED_FULFILLMENT_STATUSES.has(order.fulfillmentStatus) ? <button className="primary-action" disabled={busy !== null} onClick={() => void action('complete')}>Hoàn thành</button> : null}{order.status === 'closed' && order.settlementStatus !== 'paid' ? <button className="primary-action" disabled={busy !== null} onClick={() => { setPaid(normalizeVndInput(order.receivableRemainingAmount ?? order.total)); setPayment(true); }}>Thu tiền / Nợ</button> : null}</> : cart.length ? <button className="primary-action" type="button" disabled>Đang chuẩn bị đơn…</button> : null}
+      <section className="order-action-bar pos-checkout-bar" aria-label="Thao tác đơn">
+        {editPickup ? <button className="primary-action" type="button" disabled={busy !== null || stockBlocked || stockGatePending || !cart.length} onClick={() => void savePickupEdit()}>{busy === 'save' ? 'Đang lưu…' : 'Lưu thay đổi'}</button> : order ? <>
+          {canEditPickup ? <button className="secondary-action" type="button" disabled={busy !== null} onClick={beginPickupEdit}>Sửa đơn</button> : null}
+          <button className="secondary-action" type="button" onClick={() => void openPrintPreview()}>In phiếu</button>
+          <button className="primary-action pos-checkout-action" type="button" disabled={busy !== null || order.status === 'cancelled' || (order.status === 'closed' && order.settlementStatus === 'paid') || stockBlocked || stockGatePending} onClick={() => void checkout()}>{busy === 'checkout' ? 'Đang xử lý…' : order.status === 'cancelled' ? 'Đơn đã hủy' : order.status === 'closed' && order.settlementStatus === 'paid' ? 'Đã thanh toán' : 'Thanh toán'}</button>
+        </> : cart.length ? <button className="primary-action pos-checkout-action" type="button" disabled>Đang chuẩn bị đơn…</button> : <button className="primary-action pos-checkout-action" type="button" disabled>Thanh toán</button>}
       </section>
     </> : null}
 
@@ -1159,9 +1414,47 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
       {settingsPanel === 'logout' ? <><p className="settings-help">Đăng xuất sẽ kết thúc phiên làm việc trên thiết bị này.</p><div className="settings-sheet-actions"><button className="secondary-action" type="button" onClick={() => setSettingsPanel(null)}>Hủy</button><form action="/api/auth/logout" method="post"><button className="primary-action logout-action" type="submit">Đăng xuất</button></form></div></> : null}
     </div></section> : null}
 
-    {open ? <section className="product-sheet sheet-enter" role="dialog" aria-modal="true" aria-label="Chọn sản phẩm"><header className="sheet-header"><button className="round-icon" type="button" onClick={() => setOpen(false)}>‹</button><div><h2>Chọn sản phẩm</h2></div><button className="text-action scan-action" type="button" onClick={() => { setScannerMessage(null); setScannerOpen(true); }}>Quét mã</button></header><div className="search-box"><span>⌕</span><input className="product-search" autoFocus placeholder="Tìm tên, SKU, quy cách" value={search} onChange={(event) => setSearch(event.target.value)}/></div><div className="filter-tabs" ref={filterTabs} role="tablist" aria-label="Nhóm sản phẩm"><span className="filter-highlight" aria-hidden="true" style={{ transform: `translateX(${marker.left}px)`, width: marker.width }}/>{[{ id: '', name: 'Tất cả' }, ...(boot?.categories ?? [])].map((category) => <button key={category.id || 'all'} className={categoryId === category.id ? 'active' : ''} type="button" role="tab" aria-selected={categoryId === category.id} onClick={() => setCategoryId(category.id)}>{category.name}</button>)}</div><div className="product-list">{products.map((product) => { const row = selected.get(product.id); const preview = prices[product.id]; const expectedKey = priceInputKey(product.id, row?.quantity ?? '1'); const price = preview?.inputKey === expectedKey ? preview : null; const priceFailure = priceFailures[product.id]?.inputKey === expectedKey ? priceFailures[product.id] : null; const availability = productAvailability.find((item) => item.variantId === product.id); return <article className={`product-row lot7-product-row ${row ? 'selected' : ''}`} key={product.id}>{productPicture(product.imageKey ?? product.productCode, product.productName)}<div className="product-copy"><strong>{product.productName}</strong><small>SKU: {product.sku}</small><em>{displayUnit(product.unitName, product.unitCode)} | Khả dụng: {!warehouseId ? '—' : productAvailabilityLoading ? 'Đang tải' : availability ? availabilityLabel(availability) : '—'}</em><b>{price ? money.format(Number(price.finalUnitPriceMinor)) : priceFailure ? 'Chưa có giá' : 'Đang tính giá'}</b></div>{row ? <div className="quantity-stepper"><button type="button" onClick={() => adjustSelected(product, -1)}>−</button><output>{row.quantity}</output><button type="button" onClick={() => adjustSelected(product, 1)}>+</button></div> : <button className="add-product" type="button" disabled={Boolean(priceFailure) && !canPriceOverride} onClick={() => toggleProduct(product)}>+</button>}</article>; })}{productsLoading && products.length === 0 ? <p className="empty-cart">Đang tải sản phẩm…</p> : null}{!productsLoading && products.length === 0 ? <p className="empty-cart">Không có sản phẩm phù hợp.</p> : null}{productsHasMore ? <button className="secondary-action" type="button" disabled={productsLoading} onClick={() => void loadMoreProducts()}>{productsLoading ? 'Đang tải thêm…' : 'Tải thêm sản phẩm'}</button> : null}</div><button className="sheet-submit primary-action" type="button" disabled={!selected.size} onClick={addSelected}><span className="selection-count">{selected.size}</span> Thêm {selected.size} sản phẩm vào đơn <b>›</b></button></section> : null}
+    {customerPickerOpen && boot?.canBrowseCompanyCustomers ? <section className="dialog-backdrop pos-dialog-backdrop" role="dialog" aria-modal="true" aria-label="Chọn khách hàng"><div className="pos-sheet sheet-enter">
+      <header><div><p className="section-kicker">KHÁCH HÀNG</p><h2>Chọn khách hàng</h2></div><button className="text-action" type="button" onClick={() => setCustomerPickerOpen(false)}>Đóng</button></header>
+      <button className={`customer-choice ${customerMode === 'WALK_IN' ? 'selected' : ''}`} type="button" onClick={chooseWalkInCustomer}><span><strong>Khách lẻ</strong><small>Không lưu tên khách</small></span><b>{customerMode === 'WALK_IN' ? '✓' : '›'}</b></button>
+      <label className="pos-search-field"><span>⌕</span><input autoFocus value={customerSearch} onChange={(event) => setCustomerSearch(event.target.value)} placeholder="Tìm tên, mã khách hàng" /></label>
+      <div className="pos-sheet-section-title">{customerSearch.trim().length >= 2 ? 'Kết quả tìm kiếm' : 'Khách mua gần đây'}</div>
+      <div className="customer-choice-list">{customerOptions.map((customer) => <button className={`customer-choice ${customerId === customer.id ? 'selected' : ''}`} type="button" key={customer.id} onClick={() => chooseCompanyCustomer(customer)}><span><strong>{customer.name}</strong>{customer.code ? <small>{customer.code}</small> : <small>Khách hàng Công Ty</small>}</span><b>{customerId === customer.id ? '✓' : '›'}</b></button>)}{customerLoading ? <p className="empty-cart">Đang tìm khách hàng…</p> : null}{!customerLoading && customerOptions.length === 0 ? <p className="empty-cart">{customerSearch.trim().length >= 2 ? 'Không tìm thấy khách hàng phù hợp.' : 'Chưa có khách mua gần đây.'}</p> : null}</div>
+    </div></section> : null}
+
+    {warehousePickerOpen ? <section className="dialog-backdrop pos-dialog-backdrop" role="dialog" aria-modal="true" aria-label="Chọn kho bán"><div className="pos-sheet sheet-enter">
+      <header><div><p className="section-kicker">KHO BÁN</p><h2>Chọn kho</h2></div><button className="text-action" type="button" onClick={() => setWarehousePickerOpen(false)}>Đóng</button></header>
+      <div className="customer-choice-list">{boot?.warehouses.map((warehouse) => <button className={`customer-choice ${warehouseId === warehouse.id ? 'selected' : ''}`} type="button" key={warehouse.id} onClick={() => { lastDraftFingerprint.current = ''; setWarehouseId(warehouse.id); setWarehousePickerOpen(false); }}><span><strong>{warehouse.name}</strong><small>{warehouse.code}</small></span><b>{warehouseId === warehouse.id ? '✓' : '›'}</b></button>)}</div>
+    </div></section> : null}
+
+    {priceDetailsOpen ? <section className="dialog-backdrop pos-dialog-backdrop" role="dialog" aria-modal="true" aria-label="Giá bán và khuyến mãi"><div className="pos-sheet sheet-enter">
+      <header><div><p className="section-kicker">GIÁ BÁN</p><h2>Giá & khuyến mãi</h2></div><button className="text-action" type="button" onClick={() => setPriceDetailsOpen(false)}>Đóng</button></header>
+      <p className="pos-sheet-help">Giá được Công Ty tự tính theo kênh Retail{customerMode === 'EXISTING' ? ', nhóm khách và khách hàng đã chọn' : ''}. Khuyến mãi phù hợp được áp dụng tự động.</p>
+      <div className="price-rule-list">{cart.map((line) => { const preview = prices[line.id]; const rules = preview?.appliedRules ?? []; return <article className="price-rule-card" key={line.id}><header><strong>{line.productName}</strong><b>{preview ? money.format(Number(preview.finalUnitPriceMinor)) : 'Đang tính'}</b></header>{rules.length ? <ul>{rules.map((rule, index) => <li key={`${line.id}-${rule.priceListCode ?? 'rule'}-${index}`}><span>{rule.priceListType === 'PROMOTION' ? 'Khuyến mãi' : rule.priceListType === 'CUSTOMER' ? 'Giá riêng khách' : rule.priceListType === 'CUSTOMER_GROUP' ? 'Giá nhóm khách' : rule.priceListType === 'CHANNEL' ? 'Giá kênh' : 'Chính sách giá'}</span><strong>{rule.priceListCode ?? 'Đang áp dụng'}</strong></li>)}</ul> : <small>Giá bán lẻ theo chính sách Retail.</small>}</article>; })}{cart.length === 0 ? <p className="empty-cart">Chọn sản phẩm để xem giá đang áp dụng.</p> : null}</div>
+    </div></section> : null}
+
+    {discountOpen ? <section className="dialog-backdrop pos-dialog-backdrop" role="dialog" aria-modal="true" aria-label="Chiết khấu đơn"><div className="pos-sheet sheet-enter">
+      <header><div><p className="section-kicker">CHIẾT KHẤU</p><h2>Chiết khấu đơn</h2></div><button className="text-action" type="button" onClick={() => setDiscountOpen(false)}>Đóng</button></header>
+      <label className="pos-form-field"><span>Kiểu chiết khấu</span><select value={discountDraftMode === 'NONE' ? 'TOTAL_AMOUNT' : discountDraftMode} onChange={(event) => setDiscountDraftMode(event.target.value as 'TOTAL_AMOUNT' | 'PERCENT')}><option value="TOTAL_AMOUNT">Số tiền</option><option value="PERCENT">Phần trăm</option></select></label>
+      <label className="pos-form-field"><span>{discountDraftMode === 'PERCENT' ? 'Phần trăm (%)' : 'Số tiền (₫)'}</span><input inputMode="decimal" value={discountDraftValue} onChange={(event) => setDiscountDraftValue(event.target.value)} placeholder="0" /></label>
+      <label className="pos-form-field"><span>Lý do</span><textarea value={discountDraftReason} onChange={(event) => setDiscountDraftReason(event.target.value)} maxLength={1000} placeholder="Nhập lý do chiết khấu" /></label>
+      <div className="pos-sheet-actions"><button className="secondary-action" type="button" onClick={() => { setDiscountDraftMode('TOTAL_AMOUNT'); setDiscountDraftValue(''); setDiscountDraftReason(''); setDocumentDiscountMode('NONE'); setDocumentDiscountValue('0'); setDocumentDiscountReason(''); lastDraftFingerprint.current = ''; setDiscountOpen(false); }}>Bỏ chiết khấu</button><button className="primary-action" type="button" onClick={saveDocumentDiscount}>Áp dụng</button></div>
+    </div></section> : null}
+
+    {noteOpen ? <section className="dialog-backdrop pos-dialog-backdrop" role="dialog" aria-modal="true" aria-label="Ghi chú đơn"><div className="pos-sheet sheet-enter">
+      <header><div><p className="section-kicker">GHI CHÚ</p><h2>Ghi chú đơn hàng</h2></div><button className="text-action" type="button" onClick={() => setNoteOpen(false)}>Đóng</button></header>
+      <label className="pos-form-field"><span>Nội dung</span><textarea autoFocus value={noteDraft} onChange={(event) => setNoteDraft(event.target.value)} maxLength={2000} placeholder="Nhập ghi chú cho đơn hàng" /></label>
+      <div className="pos-sheet-actions"><button className="secondary-action" type="button" onClick={() => setNoteOpen(false)}>Hủy</button><button className="primary-action" type="button" onClick={saveOrderNote}>Lưu ghi chú</button></div>
+    </div></section> : null}
+
+    {open ? <section className="product-sheet sheet-enter pos-product-picker" role="dialog" aria-modal="true" aria-label="Chọn sản phẩm">
+      <header className="sheet-header pos-picker-header"><button className="round-icon" type="button" onClick={() => setOpen(false)}>‹</button><div className="search-box picker-search"><span>⌕</span><input className="product-search" autoFocus placeholder="Nhập tên, SKU, Barcode" value={search} onChange={(event) => setSearch(event.target.value)}/><button className="picker-scan" type="button" aria-label="Quét mã" onClick={() => { setScannerMessage(null); setScannerOpen(true); }}>▦</button></div></header>
+      <div className="picker-mode-row"><div className="filter-tabs" ref={filterTabs} role="tablist" aria-label="Nhóm sản phẩm"><span className="filter-highlight" aria-hidden="true" style={{ transform: `translateX(${marker.left}px)`, width: marker.width }}/>{[{ id: '', name: 'Tất cả' }, ...(boot?.categories ?? [])].map((category) => <button key={category.id || 'all'} className={categoryId === category.id ? 'active' : ''} type="button" role="tab" aria-selected={categoryId === category.id} onClick={() => setCategoryId(category.id)}>{category.name}</button>)}</div><label className="multi-select-toggle"><span>Chọn nhiều</span><input type="checkbox" checked={multiSelect} onChange={(event) => { const checked = event.target.checked; setMultiSelect(checked); if (!checked) setSelected((current) => new Map([...current.entries()].slice(0, 1))); }}/><i aria-hidden="true"/></label></div>
+      <div className="product-list pos-product-list">{products.map((product) => { const row = selected.get(product.id); const preview = prices[product.id]; const expectedKey = priceInputKey(product.id, row?.quantity ?? '1'); const price = preview?.inputKey === expectedKey ? preview : null; const priceFailure = priceFailures[product.id]?.inputKey === expectedKey ? priceFailures[product.id] : null; const availability = productAvailability.find((item) => item.variantId === product.id); const blocked = Boolean(priceFailure) && !canPriceOverride; return <article className={`product-row lot7-product-row pos-product-row ${row ? 'selected' : ''} ${blocked ? 'disabled' : ''}`} key={product.id} role="option" aria-selected={Boolean(row)} aria-disabled={blocked} tabIndex={blocked ? -1 : 0} onClick={() => { if (!blocked) toggleProduct(product); }} onKeyDown={(event) => { if (!blocked && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); toggleProduct(product); } }}>{productPicture(product.imageKey ?? product.productCode, product.productName)}<div className="product-copy"><strong>{product.productName}</strong><small>SKU: {product.sku}</small><em>{displayUnit(product.unitName, product.unitCode)} · Khả dụng: {!warehouseId ? '—' : productAvailabilityLoading ? 'Đang tải' : availability ? availabilityLabel(availability) : '—'}</em><b>{price ? money.format(Number(price.finalUnitPriceMinor)) : priceFailure ? 'Chưa có giá' : 'Đang tính giá'}</b></div>{row ? <div className="picker-selected-controls" onClick={(event) => event.stopPropagation()}><span className="selection-mark" aria-hidden="true">✓</span><div className="quantity-stepper"><button type="button" onClick={() => adjustSelected(product, -1)}>−</button><output>{row.quantity}</output><button type="button" onClick={() => adjustSelected(product, 1)}>+</button></div></div> : <span className="selection-mark empty" aria-hidden="true"/>}</article>; })}{productsLoading && products.length === 0 ? <p className="empty-cart">Đang tải sản phẩm…</p> : null}{!productsLoading && products.length === 0 ? <p className="empty-cart">Không có sản phẩm phù hợp.</p> : null}{productsHasMore ? <button className="secondary-action" type="button" disabled={productsLoading} onClick={() => void loadMoreProducts()}>{productsLoading ? 'Đang tải thêm…' : 'Tải thêm sản phẩm'}</button> : null}</div>
+      <button className="sheet-submit primary-action pos-picker-done" type="button" disabled={!selected.size} onClick={addSelected}>Xong{selected.size ? ` · ${selected.size} sản phẩm` : ''}</button>
+    </section> : null}
     {scannerOpen ? <section className="dialog-backdrop" role="dialog" aria-modal="true"><div className="scanner-dialog sheet-enter"><header><div><p className="section-kicker">QUÉT MÃ</p><h2>Đưa mã vào khung hình</h2></div><button className="text-action" type="button" onClick={() => setScannerOpen(false)}>Đóng</button></header>{scannerMessage ? <p className="notice error">{scannerMessage}</p> : <video className="scanner-video" ref={videoRef} autoPlay muted playsInline/>}</div></section> : null}
     {payment ? <section className="dialog-backdrop payment-screen" role="dialog" aria-modal="true"><div className="payment-dialog sheet-enter lot7-payment"><header><button className="round-icon" type="button" onClick={() => setPayment(false)}>‹</button><div><p className="section-kicker">THANH TOÁN</p><h2>Thu tiền / Nợ</h2></div><span /></header><div className="payment-summary"><span>Tổng thanh toán</span><strong>{money.format(Number(order?.receivableRemainingAmount ?? total))}</strong><div className="payment-balance"><span>Đã thu</span><b>{money.format(Math.max(0, total - Number(order?.receivableRemainingAmount ?? total)))}</b><span>Còn lại</span><b>{money.format(Number(order?.receivableRemainingAmount ?? total))}</b></div></div><div className="payment-methods"><button type="button" className={paymentMethod === 'CASH' ? 'active' : ''} onClick={() => setPaymentMethod('CASH')}>Tiền mặt</button><button type="button" className={paymentMethod === 'BANK_TRANSFER' ? 'active' : ''} onClick={() => setPaymentMethod('BANK_TRANSFER')}>Chuyển khoản</button></div><label>Nhập số tiền nhận<input inputMode="numeric" value={paid} onChange={(event) => setPaid(normalizeVndInput(event.target.value))}/></label><div className="payment-footer"><button className="secondary-action" type="button" disabled={busy === 'settlement'} onClick={() => void settle('0')}>Ghi nợ</button><button className="primary-action" type="button" disabled={busy === 'settlement' || !paid.trim()} onClick={() => void settle()}>{busy === 'settlement' ? 'Đang ghi nhận…' : 'Hoàn tất thu tiền'}</button></div></div></section> : null}
-    {printOpen && order ? <section className={`print-screen paper-${printPaperClass(printPaper)}`} role="dialog" aria-modal="true"><div className="print-toolbar"><button className="round-icon" type="button" onClick={() => setPrintOpen(false)}>‹</button><div><h2>Xem trước phiếu</h2><small>{printTemplate?.name ?? 'Mẫu phiếu'}</small></div><button className="primary-action" type="button" onClick={() => void printNow()}>In</button></div><div className="print-paper-picker"><label>Khổ in<select value={printPaper} onChange={(event) => changePaper(event.target.value as PrintPaper)}><option value="A4">A4</option><option value="A5">A5</option><option value="80mm">80 mm</option><option value="58mm">58 mm</option></select></label><p>{printerSettings.method === 'DIRECT_WIFI' && printerSettings.profile ? `Máy mặc định: ${printerSettings.profile.name}.` : 'Khi bấm In, chọn máy in trong giao diện in của điện thoại.'}</p></div><article className="print-document" style={{ '--retail-print-font-scale': String(normalizePrintFontSizePercent(printTemplate?.fontSizePercent) / 100) } as CSSProperties}><header>{printTemplate?.heading ? <p>{printTemplate.heading}</p> : null}<h1>{printTemplate?.title ?? printTemplate?.name ?? 'Đơn bán hàng'}</h1>{printTemplate?.subtitle ? <p>{printTemplate.subtitle}</p> : null}<small>{order.number ?? 'Đơn bán hàng'}</small></header><div className="print-meta">{visiblePrintFields.has('customer') ? <p><span>Khách hàng</span><strong>{order.customerName}</strong></p> : null}{visiblePrintFields.has('warehouse') ? <p><span>Kho bán</span><strong>{order.warehouseName}</strong></p> : null}{visiblePrintFields.has('document_date') ? <p><span>Ngày</span><strong>{dateLabel(order.updatedAt)}</strong></p> : null}</div>{visiblePrintFields.has('line_item') ? <table><thead><tr>{visiblePrintFields.has('line_no') ? <th>STT</th> : null}<th>Sản phẩm</th>{visiblePrintFields.has('line_quantity') ? <th>SL</th> : null}<th>ĐVT</th>{visiblePrintFields.has('line_unit_price') ? <th>Đơn giá</th> : null}{visiblePrintFields.has('line_total') ? <th>Thành tiền</th> : null}</tr></thead><tbody>{lineItems.map((line, index) => <tr key={line.id}>{visiblePrintFields.has('line_no') ? <td>{index + 1}</td> : null}<td><strong>{line.itemName}</strong>{visiblePrintFields.has('line_sku') ? <small>{line.sku}</small> : null}</td>{visiblePrintFields.has('line_quantity') ? <td>{formatQuantity(line.quantity)}</td> : null}<td>{displayUnit(line.unitName, line.unitCode)}</td>{visiblePrintFields.has('line_unit_price') ? <td>{money.format(Number(line.unitPrice))}</td> : null}{visiblePrintFields.has('line_total') ? <td>{money.format(Number(line.lineTotal))}</td> : null}</tr>)}</tbody></table> : null}<footer>{visiblePrintFields.has('total_total') ? <p className="print-grand-total"><span>Tổng cộng</span><strong>{money.format(Number(order.total))}</strong></p> : null}{visiblePrintFields.has('note') ? <p className="print-note"><span>Ghi chú</span><strong>—</strong></p> : null}{visiblePrintFields.has('signatures') ? <div className="print-signatures"><span>Người lập</span><span>Khách hàng</span></div> : null}</footer></article></section> : null}
+    {printOpen && order ? <section className={`print-screen paper-${printPaperClass(printPaper)}`} role="dialog" aria-modal="true"><div className="print-toolbar"><button className="round-icon" type="button" onClick={() => setPrintOpen(false)}>‹</button><div><h2>Xem trước phiếu</h2><small>{printTemplate?.name ?? 'Mẫu phiếu'}</small></div><button className="primary-action" type="button" onClick={() => void printNow()}>In</button></div><div className="print-paper-picker"><label>Khổ in<select value={printPaper} onChange={(event) => changePaper(event.target.value as PrintPaper)}><option value="A4">A4</option><option value="A5">A5</option><option value="80mm">80 mm</option><option value="58mm">58 mm</option></select></label><p>{printerSettings.method === 'DIRECT_WIFI' && printerSettings.profile ? `Máy mặc định: ${printerSettings.profile.name}.` : 'Khi bấm In, chọn máy in trong giao diện in của điện thoại.'}</p></div><article className="print-document" style={{ '--retail-print-font-scale': String(normalizePrintFontSizePercent(printTemplate?.fontSizePercent) / 100) } as CSSProperties}><header>{printTemplate?.heading ? <p>{printTemplate.heading}</p> : null}<h1>{printTemplate?.title ?? printTemplate?.name ?? 'Đơn bán hàng'}</h1>{printTemplate?.subtitle ? <p>{printTemplate.subtitle}</p> : null}<small>{order.number ?? 'Đơn bán hàng'}</small></header><div className="print-meta">{visiblePrintFields.has('customer') ? <p><span>Khách hàng</span><strong>{order.customerName}</strong></p> : null}{visiblePrintFields.has('warehouse') ? <p><span>Kho bán</span><strong>{order.warehouseName}</strong></p> : null}{visiblePrintFields.has('document_date') ? <p><span>Ngày</span><strong>{dateLabel(order.updatedAt)}</strong></p> : null}</div>{visiblePrintFields.has('line_item') ? <table><thead><tr>{visiblePrintFields.has('line_no') ? <th>STT</th> : null}<th>Sản phẩm</th>{visiblePrintFields.has('line_quantity') ? <th>SL</th> : null}<th>ĐVT</th>{visiblePrintFields.has('line_unit_price') ? <th>Đơn giá</th> : null}{visiblePrintFields.has('line_total') ? <th>Thành tiền</th> : null}</tr></thead><tbody>{lineItems.map((line, index) => <tr key={line.id}>{visiblePrintFields.has('line_no') ? <td>{index + 1}</td> : null}<td><strong>{line.itemName}</strong>{visiblePrintFields.has('line_sku') ? <small>{line.sku}</small> : null}</td>{visiblePrintFields.has('line_quantity') ? <td>{formatQuantity(line.quantity)}</td> : null}<td>{displayUnit(line.unitName, line.unitCode)}</td>{visiblePrintFields.has('line_unit_price') ? <td>{money.format(Number(line.unitPrice))}</td> : null}{visiblePrintFields.has('line_total') ? <td>{money.format(Number(line.lineTotal))}</td> : null}</tr>)}</tbody></table> : null}<footer>{visiblePrintFields.has('total_total') ? <p className="print-grand-total"><span>Tổng cộng</span><strong>{money.format(Number(order.total))}</strong></p> : null}{visiblePrintFields.has('note') ? <p className="print-note"><span>Ghi chú</span><strong>{order.note?.trim() || '—'}</strong></p> : null}{visiblePrintFields.has('signatures') ? <div className="print-signatures"><span>Người lập</span><span>Khách hàng</span></div> : null}</footer></article></section> : null}
   </main>;
 }
