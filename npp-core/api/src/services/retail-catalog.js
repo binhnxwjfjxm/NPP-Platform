@@ -249,6 +249,15 @@ function retailPriceResult(result, { variantId, quantity }, retailChannel) {
     channelId: retailChannel.id,
     channelCode: retailChannel.code,
     channelName: retailChannel.name,
+    appliedRules: Object.freeze((Array.isArray(result.resolution?.steps) ? result.resolution.steps : [])
+      .filter((step) => step?.kind === 'RULE')
+      .map((step) => Object.freeze({
+        priceListCode: step.priceListCode ?? null,
+        priceListType: step.priceListType ?? null,
+        adjustmentType: step.adjustmentType ?? null,
+        beforeUnitPriceMinor: step.beforeUnitPriceMinor ?? null,
+        afterUnitPriceMinor: step.afterUnitPriceMinor ?? null,
+      }))),
   });
 }
 

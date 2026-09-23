@@ -10,6 +10,7 @@ import './retail-print-professional.css';
 import './retail-product-picker-polish.css';
 import './retail-print-template-editor.css';
 import './retail-printer.css';
+import './retail-pos-entry.css';
 import { PwaRegistration } from './pwa-registration';
 import { RetailProductPickerRuntime } from './retail-product-picker-runtime';
 import { RetailSystemPrintPageSizer } from './retail-system-print-page-sizer';

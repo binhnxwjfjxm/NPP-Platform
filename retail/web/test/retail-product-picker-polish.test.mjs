@@ -13,7 +13,8 @@ test('Retail product picker keeps fast search and removes category pills from th
   const page = await read('app/retail-workspace.tsx');
   const css = await read('app/retail-product-picker-polish.css');
   assert.match(page, /className="product-search"/);
-  assert.match(page, /placeholder="Tìm tên, SKU, quy cách"/);
+  assert.match(page, /placeholder="Nhập tên, SKU, Barcode"/);
+  assert.match(page, />Tất cả loại sản phẩm<\/option>/);
   assert.match(css, /\.product-sheet \.filter-tabs \{\s*display: none !important;/);
 });
 
@@ -27,11 +28,12 @@ test('Retail product card keeps current height, enlarges text and moves price pl
   assert.match(css, /\.product-copy em \{[\s\S]*grid-column: 2;[\s\S]*grid-row: 2;/);
 });
 
-test('Retail search result hides plus-minus buttons, shows tap quantity and keeps keyboard focus visible', async () => {
-  const css = await read('app/retail-product-picker-polish.css');
-  assert.match(css, /\.lot7-product-row \.add-product,[\s\S]*\.lot7-product-row \.quantity-stepper button \{\s*display: none !important;/);
-  assert.match(css, /\.lot7-product-row \.quantity-stepper output \{[\s\S]*background: var\(--green-dark\)/);
-  assert.match(css, /\.quantity-stepper output::before \{\s*content: '×';/);
+test('Retail search result dùng cả dòng để chọn/bỏ, có dấu chọn và keyboard focus rõ', async () => {
+  const [page, css] = await Promise.all([read('app/retail-workspace.tsx'), read('app/retail-product-picker-polish.css')]);
+  assert.match(page, /role="option"/);
+  assert.match(page, /current\.has\(product\.id\)/);
+  assert.match(page, /className="selection-mark"/);
+  assert.match(page, /className="selection-mark empty"/);
   assert.match(css, /\.lot7-product-row \{[\s\S]*cursor: pointer;/);
   assert.match(css, /\.lot7-product-row:focus-visible \{[\s\S]*outline:/);
 });

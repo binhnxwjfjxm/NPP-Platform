@@ -46,15 +46,60 @@ function query(request: NextRequest, allowed: string[]) {
   const serialized = next.toString(); return serialized ? `?${serialized}` : '';
 }
 async function body(request: NextRequest) { try { return await request.json() as Record<string, unknown>; } catch { throw new CompanyGatewayError('INVALID_INPUT', 'Nội dung yêu cầu không hợp lệ', 400, false); } }
+type RecentOrderCustomer = {
+  customerMode?: unknown;
+  customerId?: unknown;
+  customerName?: unknown;
+  updatedAt?: unknown;
+};
+
+async function canBrowseCompanyCustomers(id: string) {
+  try {
+    await companyRequest<unknown>({ path: '/api/customers?active=true&limit=1', requestId: id });
+    return true;
+  } catch (error) {
+    if (error instanceof CompanyGatewayError && (error.statusCode === 401 || error.statusCode === 403)) return false;
+    throw error;
+  }
+}
+
+function recentCustomersFromOrders(data: unknown) {
+  if (!Array.isArray(data)) return [];
+  const rows = [...data] as RecentOrderCustomer[];
+  rows.sort((left, right) => Date.parse(String(right.updatedAt ?? '')) - Date.parse(String(left.updatedAt ?? '')));
+  const seen = new Set<string>();
+  const customers: Array<{ id: string; code: string; name: string }> = [];
+  for (const row of rows) {
+    if (String(row.customerMode ?? '').toUpperCase() !== 'EXISTING') continue;
+    const id = String(row.customerId ?? '').trim();
+    const name = String(row.customerName ?? '').trim();
+    if (!UUID_PATTERN.test(id) || !name || seen.has(id)) continue;
+    seen.add(id);
+    customers.push({ id, code: '', name });
+    if (customers.length >= 8) break;
+  }
+  return customers;
+}
+
 async function bootstrap(id: string): Promise<GatewayResponse> {
-  const [settings, warehouses, customers, orders, categories] = await Promise.all([
+  const [settings, warehouses, customerAccess, orders, categories] = await Promise.all([
     companyRequest<unknown>({ path: '/api/sales-orders/entry-settings', requestId: id }),
     companyRequest<unknown>({ path: '/api/warehouses?active=true&limit=200', requestId: id }),
-    companyRequest<unknown>({ path: '/api/customers?active=true&limit=200', requestId: id }).catch(() => ({ data: [] })),
+    canBrowseCompanyCustomers(id),
     companyRequest<unknown>({ path: '/api/sales-orders?limit=100', requestId: id }).catch(() => ({ data: [] })),
     companyRequest<unknown>({ path: '/api/product-categories?active=true&limit=200', requestId: id }).catch(() => ({ data: [] })),
   ]);
-  return { data: { settings: settings.data, warehouses: warehouses.data, customers: customers.data, orders: orders.data, categories: categories.data }, requestId: settings.requestId };
+  return {
+    data: {
+      settings: settings.data,
+      warehouses: warehouses.data,
+      canBrowseCompanyCustomers: customerAccess,
+      recentCustomers: customerAccess ? recentCustomersFromOrders(orders.data) : [],
+      orders: orders.data,
+      categories: categories.data,
+    },
+    requestId: settings.requestId,
+  };
 }
 function parts(params: { segments: string[] }) { return params.segments.map((part) => String(part)); }
 function salesOrderId(value: string | undefined) { if (!value || !UUID_PATTERN.test(value)) throw new CompanyGatewayError('INVALID_ORDER_ID', 'Mã đơn bán hàng không hợp lệ', 400, false); return value; }
@@ -129,6 +174,7 @@ export async function GET(request: NextRequest, { params }: { params: { segments
   const id = requestId(request) ?? crypto.randomUUID(); const path = parts(params);
   try {
     if (path.length === 1 && path[0] === 'bootstrap') { const result = await bootstrap(id); return json(result.data, result.requestId); }
+    if (path.length === 1 && path[0] === 'customers') { const result = await companyRequest<unknown>({ path: `/api/customers${query(request, ['search', 'active', 'limit', 'offset'])}`, requestId: id }); return json(result.data, result.requestId); }
     if (path.length === 1 && path[0] === 'products') { const result = await companyRequest<unknown>({ path: `/api/retail/products${query(request, ['search', 'categoryId', 'limit', 'offset'])}`, requestId: id }); return json(result.data, result.requestId); }
     if (path.length === 1 && path[0] === 'print-templates') { const result = await companyRequest<unknown>({ path: '/api/document-print-templates', requestId: id }); return json(result.data, result.requestId); }
     if (path.length === 1 && path[0] === 'orders') { const result = await companyRequest<unknown>({ path: `/api/sales-orders${query(request, ['limit', 'offset', 'status', 'search'])}`, requestId: id }); return json(result.data, result.requestId); }

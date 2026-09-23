@@ -174,3 +174,30 @@
     padding-right: 10px;
   }
 }
+
+
+/* Retail inventory: explicit Sản phẩm | Tồn | Đang giữ columns */
+.stockHeader,
+.stockRow {
+  grid-template-columns: minmax(0, 1fr) 86px 86px;
+  column-gap: 8px;
+}
+.stockHeader > b,
+.quantityCell {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.stockHeader > b {
+  color: #667085;
+  font-size: 12px;
+}
+.quantityCell {
+  color: #344054;
+  font-size: 14px;
+}
+@media (max-width: 520px) {
+  .stockHeader,
+  .stockRow {
+    grid-template-columns: minmax(0, 1fr) 72px 72px;
+  }
+}

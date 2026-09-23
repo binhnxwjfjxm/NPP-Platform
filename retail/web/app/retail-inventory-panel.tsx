@@ -98,7 +98,8 @@ export function RetailInventoryPanel({ warehouses }: { warehouses: RetailInvento
     <section className={styles.stockCard} aria-label="Danh sách tồn kho">
       <div className={styles.stockHeader}>
         <span>Sản phẩm</span>
-        <span><b>Tồn</b><b>Đang giữ</b></span>
+        <b>Tồn</b>
+        <b>Đang giữ</b>
       </div>
       <div className={styles.stockList}>
         {visibleRows.map((row) => <article className={styles.stockRow} key={row.variantId}>
@@ -106,10 +107,8 @@ export function RetailInventoryPanel({ warehouses }: { warehouses: RetailInvento
             <strong>{row.productName}</strong>
             <small>SKU: {row.sku}</small>
           </span>
-          <span className={styles.quantities}>
-            <strong>{formatQuantity(row.onHandQuantity)}</strong>
-            <strong>{formatQuantity(row.reservedQuantity)}</strong>
-          </span>
+          <strong className={styles.quantityCell}>{formatQuantity(row.onHandQuantity)}</strong>
+          <strong className={styles.quantityCell}>{formatQuantity(row.reservedQuantity)}</strong>
         </article>)}
         {loading ? <p className={styles.empty}>Đang tải tồn kho…</p> : null}
         {!loading && visibleRows.length === 0 ? <p className={styles.empty}>Không có sản phẩm phù hợp.</p> : null}
