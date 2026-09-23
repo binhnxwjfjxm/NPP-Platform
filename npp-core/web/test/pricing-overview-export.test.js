@@ -38,7 +38,7 @@ test('pricing overview uses one business navigation level and filters price-list
   assert.match(page, /PricingWorkspaceTab/);
   assert.match(workspace, /Danh mục giá/);
   assert.match(workspace, /Giá sản phẩm/);
-  assert.match(workspace, /Bảng giá tổng hợp/);
+  assert.match(workspace, /Điều chỉnh giá/);
   assert.match(workspace, /Kiểm tra giá áp dụng/);
   assert.match(overview, /Bảng giá hiển thị/);
   assert.match(overview, /Giá nền/);
@@ -46,10 +46,13 @@ test('pricing overview uses one business navigation level and filters price-list
   assert.match(overview, /visibleListColumns/);
   assert.match(overview, /Xuất bảng giá đang chọn/);
   assert.match(overview, /Xuất toàn bộ bảng giá/);
-  assert.match(overview, /Cập nhật giá từ Excel/);
-  assert.match(overview, /Lịch sử cập nhật giá/);
+  assert.match(overview, /PricingBulkOverlay/);
+  assert.match(overview, /PricingFileAdjustment/);
+  assert.match(overview, /Điều chỉnh giá/);
+  assert.doesNotMatch(overview, /\/operations\/data-exchange\?tab=pricing/);
   assert.match(overview, /Điều kiện áp dụng/);
   assert.match(overview, /Nhiều mức giá/);
+  assert.match(overview, /refreshAdjustedPriceList/);
   assert.doesNotMatch(overview, /sourceKey/);
 });
 

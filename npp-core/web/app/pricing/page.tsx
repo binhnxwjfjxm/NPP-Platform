@@ -1,4 +1,3 @@
-import PricingBulkOverlay from './pricing-bulk-overlay';
 import PricingIdempotencyBoundary from './pricing-idempotency-boundary';
 import PricingOverview from './pricing-overview';
 import PricingWorkspace, { type PricingWorkspaceTab } from './pricing-workspace';
@@ -20,7 +19,7 @@ export default function PricingPage({ searchParams }: { searchParams?: Search })
 
   return (
     <PricingIdempotencyBoundary>
-      {showOverview ? <PricingOverview /> : <><PricingWorkspace initialTab={initialTab} /><PricingBulkOverlay /></>}
+      {showOverview ? <PricingOverview /> : <PricingWorkspace initialTab={initialTab} />}
     </PricingIdempotencyBoundary>
   );
 }
