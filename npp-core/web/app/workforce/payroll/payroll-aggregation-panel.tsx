@@ -66,14 +66,14 @@ type PayrollPeriod = {
 };
 
 const ISSUE_LABELS: Record<string, string> = {
-  emptyPayrollPeriod: 'Kỳ lương chưa có nhân sự từ bản chốt công.',
-  missingSalaryProfiles: 'nhân sự chưa có mức lương phủ đủ kỳ',
-  salaryCoverageConflicts: 'nhân sự có thay đổi/mâu thuẫn mức lương trong kỳ cần xử lý',
-  fixedComponentCoverageConflicts: 'khoản cố định thay đổi giữa kỳ chưa có quy tắc chia kỳ',
-  zeroStandardWorkdays: 'nhân sự có mức lương nhưng kỳ không có công chuẩn',
-  sourceChanged: 'Dữ liệu nguồn đã thay đổi sau lần tổng hợp trước.',
+  emptyPayrollPeriod: 'Kỳ lương chưa có nhân sự từ kỳ công đã chốt.',
+  missingSalaryProfiles: 'nhân sự chưa có mức lương áp dụng cho toàn kỳ',
+  salaryCoverageConflicts: 'nhân sự có nhiều mức lương trong kỳ cần kiểm tra',
+  fixedComponentCoverageConflicts: 'khoản cố định thay đổi trong kỳ cần kiểm tra cách tính',
+  zeroStandardWorkdays: 'nhân sự đã có mức lương nhưng chưa có ngày công chuẩn trong kỳ',
+  sourceChanged: 'Dữ liệu kỳ công hoặc thiết lập lương đã thay đổi sau lần tổng hợp trước.',
   confirmedOvertimeEmployees: 'nhân sự có giờ tăng ca đã xác nhận; cần kiểm tra khoản tiền tăng ca trước khi đối soát',
-  incompleteAttendanceDays: 'ngày công chưa hoàn chỉnh cần kiểm tra',
+  incompleteAttendanceDays: 'ngày công chưa đầy đủ cần kiểm tra',
   unexcusedAbsenceDays: 'ngày vắng không phép cần kiểm tra',
   violationDays: 'ngày có vi phạm công cần kiểm tra',
 };
@@ -220,7 +220,7 @@ export function PayrollAggregationPanel({
             <tr>
               <th>Nhân sự</th>
               <th>Lương theo công</th>
-              <th>Công / OT</th>
+              <th>Công & tăng ca</th>
               <th>Thu nhập thêm</th>
               <th>Hoàn chi</th>
               <th>Khấu trừ</th>
@@ -268,11 +268,11 @@ export function PayrollAggregationPanel({
                 <div className={styles.detailRow}><span>Lương theo công được tính</span><strong>{moneyLabel(selectedRow.salaryAmount)}</strong></div>
               </div>
               <div className={styles.detailSection}>
-                <h4>Theo công & OT</h4>
+                <h4>Ngày công & tăng ca</h4>
                 <div className={styles.detailRow}><span>Công chuẩn</span><strong>{selectedRow.standardWorkDays} ngày</strong></div>
                 <div className={styles.detailRow}><span>Công được tính</span><strong>{selectedRow.payableWorkDays} ngày</strong></div>
                 <div className={styles.detailRow}><span>Nghỉ không lương</span><strong>{selectedRow.unpaidLeaveDays} ngày</strong></div>
-                <div className={styles.detailRow}><span>OT đã xác nhận</span><strong>{hours(selectedRow.confirmedOvertimeMinutes)} giờ</strong></div>
+                <div className={styles.detailRow}><span>Tăng ca đã xác nhận</span><strong>{hours(selectedRow.confirmedOvertimeMinutes)} giờ</strong></div>
               </div>
               <div className={styles.detailSection}>
                 <h4>Thưởng & phụ cấp</h4>

@@ -79,13 +79,13 @@ export default function WeekTemplatePanel({
         </tbody>
       </table></div>
       <div className={styles.formActions}>
-        <button type="button" className={styles.secondaryButton} onClick={reset}>Mới</button>
+        <button type="button" className={styles.secondaryButton} onClick={reset}>Tạo mới</button>
         <button type="button" className={styles.primaryButton} disabled={busy} onClick={() => void save()}>{busy ? 'Đang lưu…' : 'Lưu lịch tuần'}</button>
       </div>
       <div className={styles.tableWrap}><table className={styles.table}>
         <thead><tr><th>Mã</th><th>Tên lịch</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
         <tbody>
-          {items.map((item) => <tr key={item.id}><td>{item.code}</td><td>{item.name}</td><td>{item.is_active ? 'Đang dùng' : 'Ngừng dùng'}</td><td><button type="button" onClick={() => edit(item)}>Sửa</button></td></tr>)}
+          {items.map((item) => <tr key={item.id}><td>{item.code}</td><td>{item.name}</td><td>{item.is_active ? 'Đang sử dụng' : 'Ngừng sử dụng'}</td><td><button type="button" onClick={() => edit(item)}>Sửa</button></td></tr>)}
           {!items.length ? <tr><td colSpan={4}><div className={styles.emptyState}>Chưa có mẫu lịch tuần.</div></td></tr> : null}
         </tbody>
       </table></div>

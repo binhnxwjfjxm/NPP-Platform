@@ -150,7 +150,7 @@ const EMPLOYMENT_TYPE_LABEL: Record<EmploymentType, string> = {
 function historyQualityLabel(value: string | null | undefined) {
   if (value === 'CONFIRMED') return 'Đã xác nhận';
   if (value === 'AUDIT_DERIVED') return 'Khôi phục từ lịch sử hệ thống';
-  return 'Cần HR xác nhận';
+  return 'Chờ Nhân sự xác nhận';
 }
 
 function emptyDraft(branchId = ''): EmployeeDraft {
@@ -755,7 +755,7 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
   const shellActions = (
     <>
       <button type="button" className={shellStyles.actionButton} onClick={() => void loadAll()} disabled={busy !== null}>
-        {busy === 'load' ? 'Đang cập nhật…' : 'Cập nhật dữ liệu'}
+        {busy === 'load' ? 'Đang làm mới…' : 'Làm mới dữ liệu'}
       </button>
       <button
         type="button"
@@ -801,19 +801,19 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
 
         <section className={styles.summaryGrid} aria-label="Số liệu nhân sự">
           <article className={styles.summaryCard}>
-            <span>Tổng hồ sơ</span>
+            <span>Tổng nhân sự</span>
             <strong>{formatCompactNumber(counts.total)}</strong>
-            <small>Toàn bộ hồ sơ nhân sự đang được quản lý</small>
+            <small>Toàn bộ nhân sự trong danh mục</small>
           </article>
           <article className={styles.summaryCard}>
             <span>Đang làm việc</span>
             <strong>{formatCompactNumber(counts.active)}</strong>
-            <small>{counts.inactive} hồ sơ đã ngừng làm việc</small>
+            <small>{counts.inactive} nhân sự đã ngừng làm việc</small>
           </article>
           <article className={styles.summaryCard}>
-            <span>Đã phân công</span>
+            <span>Đã phân công chi nhánh</span>
             <strong>{formatCompactNumber(counts.assigned)}</strong>
-            <small>{counts.unassigned} hồ sơ chưa gắn chi nhánh</small>
+            <small>{counts.unassigned} nhân sự chưa được phân công chi nhánh</small>
           </article>
           <article className={styles.summaryCard}>
             <span>Chưa có chính sách</span>
@@ -824,7 +824,7 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
 
         {coverage && coverage.missingCount > 0 ? (
           <div className={styles.banner} role="note">
-            Có {coverage.missingCount} nhân sự đang làm việc chưa có Chính sách làm việc hiệu lực. Hãy áp dụng chính sách hàng loạt trước khi dùng Bảng công.
+            Có {coverage.missingCount} nhân sự đang làm việc chưa có chính sách làm việc hiệu lực. Hãy áp dụng chính sách hàng loạt trước khi sử dụng bảng công.
           </div>
         ) : null}
 
@@ -1008,7 +1008,7 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
                       <tr key={item.id}>
                         <td><code>{item.code}</code></td><td>{item.name}</td><td>{item.parent_name || '—'}</td>
                         <td>{item.is_active ? 'Đang sử dụng' : 'Ngừng sử dụng'}</td>
-                        <td><button type="button" onClick={() => void toggleDepartment(item)} disabled={busy !== null}>{item.is_active ? 'Ngừng sử dụng' : 'Dùng lại'}</button></td>
+                        <td><button type="button" onClick={() => void toggleDepartment(item)} disabled={busy !== null}>{item.is_active ? 'Ngừng sử dụng' : 'Sử dụng lại'}</button></td>
                       </tr>
                     )) : <tr><td colSpan={5}><div className={styles.emptyState}>Chưa có Phòng/Bộ phận.</div></td></tr>}</tbody>
                   </table>
@@ -1035,7 +1035,7 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
                       <tr key={item.id}>
                         <td><code>{item.code}</code></td><td>{item.name}</td><td>{item.department_name || 'Dùng chung'}</td>
                         <td>{item.is_active ? 'Đang sử dụng' : 'Ngừng sử dụng'}</td>
-                        <td><button type="button" onClick={() => void togglePosition(item)} disabled={busy !== null}>{item.is_active ? 'Ngừng sử dụng' : 'Dùng lại'}</button></td>
+                        <td><button type="button" onClick={() => void togglePosition(item)} disabled={busy !== null}>{item.is_active ? 'Ngừng sử dụng' : 'Sử dụng lại'}</button></td>
                       </tr>
                     )) : <tr><td colSpan={5}><div className={styles.emptyState}>Chưa có Vị trí công việc.</div></td></tr>}</tbody>
                   </table>
@@ -1104,8 +1104,8 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
                       onChange={(event) => setBulkDraft((current) => ({ ...current, bootstrap: event.target.checked }))}
                     />
                     <span>
-                      <strong>Khởi tạo chính sách ban đầu cho giai đoạn trước</strong>
-                      <small>Chỉ áp dụng cho nhân sự chưa từng có lịch sử chính sách. Không dùng để sửa ngược lịch sử đã vận hành.</small>
+                      <strong>Áp dụng chính sách ban đầu cho giai đoạn trước</strong>
+                      <small>Chỉ dùng cho nhân sự chưa từng có chính sách. Không làm thay đổi dữ liệu đã ghi nhận trước đó.</small>
                     </span>
                   </label>
                 ) : null}
@@ -1121,7 +1121,7 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
                 </label>
                 <div className={localStyles.bulkInfo}>
                   <strong>Nguyên tắc an toàn</strong>
-                  <span>Thao tác được ghi audit. Nếu có một nhân sự không hợp lệ, cả lô sẽ không được áp dụng dở dang.</span>
+                  <span>Thao tác được lưu trong lịch sử hệ thống. Nếu có một hồ sơ không hợp lệ, toàn bộ danh sách sẽ không được áp dụng.</span>
                 </div>
                 <div className={styles.formActions}>
                   <button type="button" className={styles.secondaryButton} onClick={() => setBulkOpen(false)}>Hủy</button>
@@ -1161,7 +1161,7 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
                           <td>{assignment.effective_to ? dateLabel(assignment.effective_to) : 'Đang áp dụng'}</td>
                           <td>{assignment.reason || 'Không có ghi chú'}</td>
                         </tr>
-                      )) : <tr><td colSpan={4}><div className={styles.emptyState}>{assignmentBusy ? 'Đang tải lịch sử…' : 'Chưa có chính sách làm việc được gán.'}</div></td></tr>}
+                      )) : <tr><td colSpan={4}><div className={styles.emptyState}>{assignmentBusy ? 'Đang tải lịch sử…' : 'Chưa có chính sách làm việc.'}</div></td></tr>}
                     </tbody>
                   </table>
                 </div>
@@ -1204,7 +1204,7 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
                 <div className={styles.formActions}>
                   <button type="button" className={styles.secondaryButton} onClick={() => setPolicyEmployeeId(null)}>Đóng</button>
                   <button type="submit" className={styles.primaryButton} disabled={assignmentBusy || !assignmentDraft.workPolicyId}>
-                    {assignmentBusy ? 'Đang lưu…' : 'Gán chính sách'}
+                    {assignmentBusy ? 'Đang lưu…' : 'Áp dụng chính sách'}
                   </button>
                 </div>
               </form>

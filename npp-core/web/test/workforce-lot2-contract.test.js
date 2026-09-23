@@ -53,7 +53,7 @@ test('Issue #1110 Lô 2 exposes employee policy history and future-only schedule
   assert.match(employees, /assignmentMinimumDate/);
   assert.match(employees, /min=\{policyAssignmentMinDate\}/);
   assert.match(policies, /Toàn bộ phiên bản/);
-  assert.match(policies, /Tạo phiên bản mới/);
+  assert.match(policies, /Cập nhật chính sách/);
   assert.match(schedules, /Lịch trong hôm nay và quá khứ chỉ dùng để đối chiếu/);
   assert.match(schedules, /Ca \/ lịch làm việc/);
   assert.match(schedules, /expectedUpdatedAt/);

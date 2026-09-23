@@ -50,7 +50,7 @@ test('Issue #1140 Lô 6 shows dated salary/fixed history and period-specific ent
   const page = await source('app/workforce/payroll/page.tsx');
   assert.match(page, /Mức lương theo ngày áp dụng/);
   assert.match(page, /Khoản áp dụng định kỳ theo nhân sự/);
-  assert.match(page, /Khoản linh động theo kỳ/);
+  assert.match(page, /Khoản phát sinh theo kỳ/);
   assert.match(page, /Ngày áp dụng/);
   assert.doesNotMatch(page, /reduce\([^\n]*amount|grossTotal|netTotal|salaryTotal/);
 });

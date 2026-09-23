@@ -56,11 +56,11 @@ export default function CompanyCalendarPanel({
         <label>Tên ngày nghỉ<input value={name} onChange={(event) => setName(event.target.value)} maxLength={256} placeholder="Ví dụ: Tết Dương lịch" /></label>
         <label><input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} /> Áp dụng</label>
         <div className={styles.formActions}>
-          <button type="button" className={styles.secondaryButton} onClick={reset}>Mới</button>
+          <button type="button" className={styles.secondaryButton} onClick={reset}>Tạo mới</button>
           <button type="button" className={styles.primaryButton} disabled={busy} onClick={() => void save()}>{busy ? 'Đang lưu…' : 'Lưu ngày nghỉ'}</button>
         </div>
       </div>
-      <div className={styles.banner} role="note">Khi xếp lịch hàng loạt, ngày nghỉ Công Ty được ưu tiên. Ngoại lệ cho một người/ngày vẫn dùng nút Điều chỉnh ở bảng lịch phía trên và bắt buộc ghi lý do.</div>
+      <div className={styles.banner} role="note">Khi xếp lịch hàng loạt, ngày nghỉ của Công Ty được ưu tiên. Ngoại lệ cho một người/ngày vẫn dùng nút Điều chỉnh ở bảng lịch phía trên và bắt buộc ghi lý do.</div>
       <div className={styles.tableWrap}><table className={styles.table}>
         <thead><tr><th>Ngày</th><th>Tên</th><th>Loại</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
         <tbody>

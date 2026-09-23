@@ -57,14 +57,14 @@ export default function ShiftTemplatePanel({
         <label>Nghỉ giữa ca (phút)<input type="number" min={0} max={720} value={breakMinutes} onChange={(event) => setBreakMinutes(event.target.value)} /></label>
         <label><input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} /> Đang sử dụng</label>
         <div className={styles.formActions}>
-          <button type="button" className={styles.secondaryButton} onClick={reset}>Mới</button>
+          <button type="button" className={styles.secondaryButton} onClick={reset}>Tạo mới</button>
           <button type="button" className={styles.primaryButton} disabled={busy} onClick={() => void save()}>{busy ? 'Đang lưu…' : 'Lưu ca mẫu'}</button>
         </div>
       </div>
       <div className={styles.tableWrap}><table className={styles.table}>
         <thead><tr><th>Mã</th><th>Tên ca</th><th>Giờ làm việc</th><th>Nghỉ giữa ca</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
         <tbody>
-          {items.map((item) => <tr key={item.id}><td>{item.code}</td><td>{item.name}</td><td>{clock(item.start_time)} – {clock(item.end_time)}</td><td>{item.break_minutes} phút</td><td>{item.is_active ? 'Đang dùng' : 'Ngừng dùng'}</td><td><button type="button" onClick={() => edit(item)}>Sửa</button></td></tr>)}
+          {items.map((item) => <tr key={item.id}><td>{item.code}</td><td>{item.name}</td><td>{clock(item.start_time)} – {clock(item.end_time)}</td><td>{item.break_minutes} phút</td><td>{item.is_active ? 'Đang sử dụng' : 'Ngừng sử dụng'}</td><td><button type="button" onClick={() => edit(item)}>Sửa</button></td></tr>)}
           {!items.length ? <tr><td colSpan={6}><div className={styles.emptyState}>Chưa có ca mẫu.</div></td></tr> : null}
         </tbody>
       </table></div>

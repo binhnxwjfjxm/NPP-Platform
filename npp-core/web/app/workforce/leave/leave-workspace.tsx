@@ -212,8 +212,8 @@ export default function LeaveWorkspace({
     [data, cancelId],
   );
   const configWarning = useMemo(() => {
-    if (!typeForm.isPaid && typeForm.countsAsWorkday) return 'Thiết lập không lương nhưng vẫn tính ngày công có thể làm thay đổi cách tính công. Bạn vẫn có thể lưu nếu đây là chính sách của Công Ty.';
-    if (!typeForm.requiresApproval) return 'Chế độ này sẽ tự động duyệt khi nhân viên gửi đơn. Bạn vẫn có thể lưu nếu đây là chính sách của Công Ty.';
+    if (!typeForm.isPaid && typeForm.countsAsWorkday) return 'Chế độ không hưởng lương nhưng vẫn tính ngày công có thể làm thay đổi cách tính công. Vẫn có thể lưu nếu đây là chính sách của Công Ty.';
+    if (!typeForm.requiresApproval) return 'Chế độ này sẽ tự động duyệt khi nhân viên gửi đơn. Vẫn có thể lưu nếu đây là chính sách của Công Ty.';
     return null;
   }, [typeForm]);
 
@@ -482,7 +482,7 @@ export default function LeaveWorkspace({
           <div className={sharedStyles.toolbarFilter}><label htmlFor="leave-status">Trạng thái</label><select id="leave-status" value={status} onChange={(event) => setStatus(event.target.value)}><option value="">Tất cả</option><option value="SUBMITTED">Chờ duyệt</option><option value="APPROVED">Đã duyệt</option><option value="REJECTED">Từ chối</option><option value="CANCELLED">Đã hủy</option></select></div>
           {!data?.capabilities.selfOnly ? <div className={sharedStyles.toolbarFilter}><label htmlFor="leave-employee">Nhân sự</label><input id="leave-employee" value={employeeQuery} onChange={(event) => setEmployeeQuery(event.target.value)} placeholder="Mã hoặc tên nhân sự" /></div> : null}
           {!data?.capabilities.selfOnly && (data?.branches.length ?? 0) > 0 ? <div className={sharedStyles.toolbarFilter}><label htmlFor="leave-branch">Chi nhánh</label><select id="leave-branch" value={branchId} onChange={(event) => setBranchId(event.target.value)}><option value="">Tất cả chi nhánh được cấp</option>{data?.branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.code} · {branch.name}</option>)}</select></div> : null}
-          <div className={sharedStyles.formActions}><button type="button" className={sharedStyles.secondaryButton} onClick={() => void load(0)} disabled={busy}>{busy ? 'Đang tải…' : 'Xem dữ liệu'}</button></div>
+          <div className={sharedStyles.formActions}><button type="button" className={sharedStyles.secondaryButton} onClick={() => void load(0)} disabled={busy}>{busy ? 'Đang tải…' : 'Xem danh sách'}</button></div>
         </section>
 
         <div className={styles.grid}>
@@ -596,8 +596,8 @@ export default function LeaveWorkspace({
               <p className={styles.note}>Thiết lập áp dụng cho Công Ty. Thay đổi sau này không làm đổi nội dung các đơn đã gửi trước đó.</p>
               <form onSubmit={(event) => void saveType(event)}>
                 <div className={styles.formGrid}>
-                  <label>Mã chế độ<input value={typeForm.code} onChange={(event) => setTypeForm((current) => ({ ...current, code: event.target.value.toUpperCase() }))} disabled={Boolean(typeForm.id)} maxLength={32} placeholder="VD: PHEP_NAM" required /></label>
-                  <label>Tên chế độ<input value={typeForm.name} onChange={(event) => setTypeForm((current) => ({ ...current, name: event.target.value }))} maxLength={100} placeholder="VD: Nghỉ phép năm" required /></label>
+                  <label>Mã chế độ<input value={typeForm.code} onChange={(event) => setTypeForm((current) => ({ ...current, code: event.target.value.toUpperCase() }))} disabled={Boolean(typeForm.id)} maxLength={32} placeholder="Ví dụ: PHEP_NAM" required /></label>
+                  <label>Tên chế độ<input value={typeForm.name} onChange={(event) => setTypeForm((current) => ({ ...current, name: event.target.value }))} maxLength={100} placeholder="Ví dụ: Nghỉ phép năm" required /></label>
                 </div>
                 <div className={styles.checkGrid}>
                   <label><input type="checkbox" checked={typeForm.isActive} onChange={(event) => setTypeForm((current) => ({ ...current, isActive: event.target.checked }))} />Đang áp dụng</label>

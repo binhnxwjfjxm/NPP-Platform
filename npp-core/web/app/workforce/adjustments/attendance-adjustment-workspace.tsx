@@ -314,7 +314,7 @@ export default function AttendanceAdjustmentWorkspace({
         <section className={sharedStyles.summaryGrid}>
           <article className={sharedStyles.summaryCard}><span>Yêu cầu trong kỳ</span><strong>{total}</strong><small>{dateLabel(from)} – {dateLabel(to)}</small></article>
           <article className={sharedStyles.summaryCard}><span>Chờ duyệt</span><strong>{data?.requests.filter((item) => item.status === 'SUBMITTED').length ?? 0}</strong><small>Trong trang đang xem</small></article>
-          <article className={sharedStyles.summaryCard}><span>Kỳ đã khóa</span><strong>{locks?.locks.length ?? 0}</strong><small>Trong thời gian đang xem</small></article>
+          <article className={sharedStyles.summaryCard}><span>Kỳ công đã khóa</span><strong>{locks?.locks.length ?? 0}</strong><small>Trong thời gian đang xem</small></article>
         </section>
 
         <section className={sharedStyles.toolbar}>
@@ -380,7 +380,7 @@ export default function AttendanceAdjustmentWorkspace({
           <div>
             {data?.capabilities.canSubmitOwn ? <section className={styles.panel}>
               <h3>Gửi yêu cầu của tôi</h3>
-              <p className={styles.note}>Dùng khi quên chấm công, QR lỗi hoặc cần xác nhận thời gian thực tế.</p>
+              <p className={styles.note}>Dùng khi quên chấm công, không quét được mã QR hoặc cần xác nhận thời gian thực tế.</p>
               <form onSubmit={(event) => void submitOwn(event)}>
                 <div className={styles.formGrid}>
                   <label>Ngày công<input type="date" max={initialToday} value={requestDate} onChange={(event) => setRequestDate(event.target.value)} required /></label><span />
@@ -395,7 +395,7 @@ export default function AttendanceAdjustmentWorkspace({
             {data?.capabilities.canManage ? <section className={styles.panel}>
               <h3>Điều chỉnh trực tiếp</h3>
               {targetEmployeeId ? <>
-                <p className={styles.note}>Nhân sự: <strong>{data?.selectedEmployee ? data.selectedEmployee.code + ' · ' + data.selectedEmployee.name : 'Đã chọn từ Bảng công'}</strong></p>
+                <p className={styles.note}>Nhân sự: <strong>{data?.selectedEmployee ? data.selectedEmployee.code + ' · ' + data.selectedEmployee.name : 'Đã chọn từ bảng công'}</strong></p>
                 <form onSubmit={(event) => void submitDirect(event)}>
                   <div className={styles.formGrid}>
                     <label>Ngày công<input type="date" max={initialToday} value={directDate} onChange={(event) => setDirectDate(event.target.value)} required /></label><span />
@@ -405,7 +405,7 @@ export default function AttendanceAdjustmentWorkspace({
                   </div>
                   <div className={styles.actions}><button type="submit" className={styles.primary} disabled={busy || (!directIn && !directOut)}>Ghi nhận điều chỉnh</button></div>
                 </form>
-              </> : <p className={styles.note}>Chọn một ngày công tại <Link className={styles.inlineLink} href="/workforce/timesheet">Bảng công</Link> rồi chọn “Điều chỉnh” để tránh chọn nhầm nhân sự.</p>}
+              </> : <p className={styles.note}>Chọn một ngày công tại <Link className={styles.inlineLink} href="/workforce/timesheet">bảng công</Link> rồi chọn “Điều chỉnh” để tránh chọn nhầm nhân sự.</p>}
             </section> : null}
 
             {data?.capabilities.canLock ? <section className={styles.panel}>

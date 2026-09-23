@@ -240,7 +240,7 @@ export default function OvertimeCloseoutWorkspace({
   return (
     <AppShell
       title="Tăng ca & chốt công"
-      subtitle="Quản lý tăng ca theo phê duyệt và chốt kỳ công thành đầu vào sạch cho tính lương."
+      subtitle="Quản lý tăng ca theo phê duyệt và chốt kỳ công làm căn cứ tính lương."
       kicker="Nhân sự"
       actions={<Link className={shellStyles.actionButton + ' ' + shellStyles.actionButtonPrimary} href="/workforce/timesheet">Mở Bảng công</Link>}
     >
@@ -255,7 +255,7 @@ export default function OvertimeCloseoutWorkspace({
         <section className={sharedStyles.summaryGrid}>
           <article className={sharedStyles.summaryCard}><span>Hồ sơ tăng ca</span><strong>{totalOvertime}</strong><small>{dateLabel(from)} – {dateLabel(to)}</small></article>
           <article className={sharedStyles.summaryCard}><span>Chờ duyệt</span><strong>{pendingOvertime}</strong><small>Trong trang đang xem</small></article>
-          <article className={sharedStyles.summaryCard}><span>Giờ tăng ca đã xác nhận</span><strong>{hours(confirmedOvertime)}</strong><small>Chỉ số đã đủ điều kiện đầu vào lương</small></article>
+          <article className={sharedStyles.summaryCard}><span>Giờ tăng ca đã xác nhận</span><strong>{hours(confirmedOvertime)}</strong><small>Đã đủ điều kiện đưa vào tính lương</small></article>
           <article className={sharedStyles.summaryCard}><span>Kỳ đã chốt</span><strong>{periods?.periods.filter((row) => row.status === 'CLOSED').length ?? 0}</strong><small>Trong phạm vi đang xem</small></article>
         </section>
 
@@ -281,10 +281,10 @@ export default function OvertimeCloseoutWorkspace({
           </section> : null}
 
           <section className={sharedStyles.tableSection}>
-            <div className={sharedStyles.sectionHeader}><div><p className={sharedStyles.panelKicker}>Tăng ca</p><h2>Đăng ký → duyệt → thực tế → xác nhận giờ tính</h2></div><span className={sharedStyles.panelChip}>{totalOvertime} hồ sơ</span></div>
+            <div className={sharedStyles.sectionHeader}><div><p className={sharedStyles.panelKicker}>Tăng ca</p><h2>Theo dõi đăng ký, phê duyệt và giờ tăng ca được tính</h2></div><span className={sharedStyles.panelChip}>{totalOvertime} hồ sơ</span></div>
             <div className={sharedStyles.tableWrap}>
               <table className={sharedStyles.table}>
-                <thead><tr><th>Ngày</th><th>Nhân sự</th><th>Đăng ký</th><th>Thực tế</th><th>Được tính</th><th>Trạng thái</th><th>Xử lý</th></tr></thead>
+                <thead><tr><th>Ngày</th><th>Nhân sự</th><th>Đăng ký</th><th>Thực tế</th><th>Giờ được tính</th><th>Trạng thái</th><th>Xử lý</th></tr></thead>
                 <tbody>
                   {overtime?.requests.map((row) => <tr key={row.id}>
                     <td>{dateLabel(row.work_date)}</td>
@@ -334,7 +334,7 @@ export default function OvertimeCloseoutWorkspace({
                       <td>{row.branch_name || 'Toàn Công Ty'}</td>
                       <td><span className={styles.status}>{PERIOD_STATUS[row.status]}</span></td>
                       <td>{blockers}</td><td>{warnings}</td><td>{row.revision || '—'}</td>
-                      <td><div className={styles.actions}><button type="button" className={styles.secondary} onClick={() => { setSelectedPeriod(row); setPayroll(null); setPeriodNote(''); setAcknowledgeWarnings(false); }}>Mở</button>{row.status === 'CLOSED' ? <button type="button" className={styles.secondary} onClick={() => void viewPayroll(row)}>Xem đầu vào lương</button> : null}</div></td>
+                      <td><div className={styles.actions}><button type="button" className={styles.secondary} onClick={() => { setSelectedPeriod(row); setPayroll(null); setPeriodNote(''); setAcknowledgeWarnings(false); }}>Mở</button>{row.status === 'CLOSED' ? <button type="button" className={styles.secondary} onClick={() => void viewPayroll(row)}>Xem dữ liệu tính lương</button> : null}</div></td>
                     </tr>;
                   })}
                   {!periods?.periods.length ? <tr><td colSpan={7}><div className={sharedStyles.emptyState}>Chưa có kỳ công nghiệp vụ. Bấm “Tổng hợp kỳ đang chọn” để bắt đầu.</div></td></tr> : null}
@@ -346,7 +346,7 @@ export default function OvertimeCloseoutWorkspace({
           {selectedPeriod ? <section className={styles.actionPanel}>
             <div><strong>{dateLabel(selectedPeriod.period_start)} – {dateLabel(selectedPeriod.period_end)} · {selectedPeriod.branch_name || 'Toàn Công Ty'}</strong><div><span className={styles.status}>{PERIOD_STATUS[selectedPeriod.status]}</span></div></div>
             <div className={styles.issueGrid}>
-              <div className={styles.issueCard}><strong>Việc cần xử lý trước đối soát</strong><p>Thiếu cấu hình: {selectedPeriod.issue_summary?.blockers?.configurationIssueDays ?? 0}</p><p>Điều chỉnh đang chờ: {selectedPeriod.issue_summary?.blockers?.pendingAdjustmentDays ?? 0}</p><p>Đơn nghỉ đang chờ: {selectedPeriod.issue_summary?.blockers?.pendingLeaveDays ?? 0}</p><p>Tăng ca chưa xác nhận: {selectedPeriod.issue_summary?.blockers?.outstandingOvertimeRequests ?? 0}</p></div>
+              <div className={styles.issueCard}><strong>Việc cần xử lý trước đối soát</strong><p>Thiếu thiết lập: {selectedPeriod.issue_summary?.blockers?.configurationIssueDays ?? 0}</p><p>Điều chỉnh đang chờ: {selectedPeriod.issue_summary?.blockers?.pendingAdjustmentDays ?? 0}</p><p>Đơn nghỉ đang chờ: {selectedPeriod.issue_summary?.blockers?.pendingLeaveDays ?? 0}</p><p>Tăng ca chưa xác nhận: {selectedPeriod.issue_summary?.blockers?.outstandingOvertimeRequests ?? 0}</p></div>
               <div className={styles.issueCard}><strong>Cảnh báo cần kiểm tra</strong><p>Ngày công chưa đủ: {selectedPeriod.issue_summary?.warnings?.incompleteDays ?? 0}</p><p>Vắng không phép: {selectedPeriod.issue_summary?.warnings?.unexcusedAbsenceDays ?? 0}</p><p>Ngày có vi phạm: {selectedPeriod.issue_summary?.warnings?.violationDays ?? 0}</p></div>
             </div>
             <label>Ghi chú đối soát<textarea value={periodNote} onChange={(event) => setPeriodNote(event.target.value)} maxLength={1000} /></label>
@@ -355,15 +355,15 @@ export default function OvertimeCloseoutWorkspace({
               {periods?.capabilities.canReconcile ? <button type="button" className={styles.secondary} disabled={busy} onClick={() => void periodAction('REFRESH', selectedPeriod)}>Tổng hợp lại</button> : null}
               {periods?.capabilities.canReconcile && selectedPeriod.status !== 'CLOSED' ? <button type="button" className={styles.primary} disabled={busy} onClick={() => void periodAction('RECONCILE', selectedPeriod)}>Xác nhận đã đối soát</button> : null}
               {periods?.capabilities.canClose && selectedPeriod.status === 'RECONCILED' ? <button type="button" className={styles.primary} disabled={busy} onClick={() => void periodAction('CLOSE', selectedPeriod)}>Chốt kỳ công</button> : null}
-              {selectedPeriod.status === 'CLOSED' ? <button type="button" className={styles.secondary} disabled={busy} onClick={() => void viewPayroll(selectedPeriod)}>Xem đầu vào lương</button> : null}
+              {selectedPeriod.status === 'CLOSED' ? <button type="button" className={styles.secondary} disabled={busy} onClick={() => void viewPayroll(selectedPeriod)}>Xem dữ liệu tính lương</button> : null}
               <button type="button" className={styles.secondary} onClick={() => { setSelectedPeriod(null); setPayroll(null); }}>Đóng</button>
             </div>
           </section> : null}
 
           {payroll ? <section className={sharedStyles.tableSection}>
-            <div className={sharedStyles.sectionHeader}><div><p className={sharedStyles.panelKicker}>Đầu vào tính lương</p><h2>Bản chốt kỳ công lần {payroll.revision}</h2></div><span className={sharedStyles.panelChip}>Chỉ đọc</span></div>
+            <div className={sharedStyles.sectionHeader}><div><p className={sharedStyles.panelKicker}>Dữ liệu tính lương</p><h2>Kỳ công đã chốt · Lần {payroll.revision}</h2></div><span className={sharedStyles.panelChip}>Chỉ đọc</span></div>
             <div className={styles.payrollGrid}>
-              <div className={styles.payrollRow}><strong>Nhân sự</strong><strong>Phút tính công</strong><strong>Phép hưởng lương</strong><strong>Vắng không phép</strong><strong>Tăng ca xác nhận</strong></div>
+              <div className={styles.payrollRow}><strong>Nhân sự</strong><strong>Thời gian tính công (phút)</strong><strong>Phép hưởng lương</strong><strong>Vắng không phép</strong><strong>Tăng ca xác nhận</strong></div>
               {payroll.payrollInput.employees.map((row) => <div className={styles.payrollRow} key={row.employeeId}><span>{row.employeeCode} · {row.employeeName}</span><span>{row.countedMinutes}</span><span>{row.paidLeaveDays.toLocaleString('vi-VN', { maximumFractionDigits: 2 })} ngày</span><span>{row.unexcusedAbsenceDays.toLocaleString('vi-VN', { maximumFractionDigits: 2 })} ngày</span><span>{hours(row.confirmedOvertimeMinutes)} giờ</span></div>)}
             </div>
           </section> : null}

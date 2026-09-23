@@ -58,9 +58,9 @@ export default function BulkSchedulePanel({
         mode === 'APPLY' ? 'web-week-template-apply' : 'web-schedule-copy',
       );
       const preserved = result.skippedOverrides
-        ? ` Giữ nguyên ${result.skippedOverrides} ngoại lệ cá nhân.`
+        ? ` Giữ nguyên ${result.skippedOverrides} lịch điều chỉnh riêng.`
         : '';
-      setMessage({ error: false, text: `Đã ghi ${result.affectedCount}/${result.requestedCount} dòng lịch.${preserved}` });
+      setMessage({ error: false, text: `Đã cập nhật ${result.affectedCount}/${result.requestedCount} lịch.${preserved}` });
       setReason('');
       onSchedulesChanged();
     } catch (error) {
@@ -103,7 +103,7 @@ export default function BulkSchedulePanel({
           {!activeEmployees.length ? <tr><td colSpan={3}><div className={styles.emptyState}>Chưa có nhân sự đang làm việc.</div></td></tr> : null}
         </tbody>
       </table></div>
-      <div className={styles.banner} role="note">Lịch đã điều chỉnh riêng theo người/ngày sẽ được giữ nguyên, không bị xếp hàng loạt ghi đè.</div>
+      <div className={styles.banner} role="note">Lịch điều chỉnh riêng theo từng nhân sự và ngày làm việc sẽ được giữ nguyên khi xếp lịch hàng loạt.</div>
       <div className={styles.formActions}>
         <button type="button" className={styles.primaryButton} disabled={busy} onClick={() => void apply()}>
           {busy ? 'Đang xử lý…' : mode === 'APPLY' ? 'Xếp lịch hàng loạt' : 'Sao chép lịch'}
