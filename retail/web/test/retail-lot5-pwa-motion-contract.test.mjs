@@ -5,9 +5,18 @@ import test from 'node:test';
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 const readWorkspace = async () => (await Promise.all([read('app/page.tsx'), read('app/retail-workspace.tsx')])).join('\n');
 
-test('Lô 5 có vầng sáng filter trượt, timeline và chuyển cảnh thống nhất', async () => {
+test('Lô 5 giữ timeline và chuyển cảnh thống nhất với picker POS hiện hành', async () => {
   const [page, styles] = await Promise.all([readWorkspace(), read('app/globals.css')]);
-  assert.match(page, /const \[marker, setMarker\]/); assert.match(page, /className="filter-highlight"/); assert.match(page, /order-timeline/); assert.match(page, /order\.status !== 'cancelled'/); assert.doesNotMatch(page, /vẫn có thể sửa đơn/); assert.match(page, /Lên đơn', 'Đã chốt', 'Xuất kho', 'Hoàn thành/); assert.match(styles, /\.filter-highlight[\s\S]*?transition: transform var\(--motion-page\)/); assert.match(styles, /\.sheet-enter[\s\S]*?sheet-in/); assert.match(styles, /prefers-reduced-motion/);
+  assert.match(page, /className="picker-category-field"/);
+  assert.match(page, />Tất cả loại sản phẩm<\/option>/);
+  assert.doesNotMatch(page, /const \[marker, setMarker\]/);
+  assert.doesNotMatch(page, /className="filter-highlight"/);
+  assert.match(page, /order-timeline/);
+  assert.match(page, /order\.status !== 'cancelled'/);
+  assert.doesNotMatch(page, /vẫn có thể sửa đơn/);
+  assert.match(page, /Lên đơn', 'Đã chốt', 'Xuất kho', 'Hoàn thành/);
+  assert.match(styles, /\.sheet-enter[\s\S]*?sheet-in/);
+  assert.match(styles, /prefers-reduced-motion/);
 });
 
 test('Lô 5 chỉ cache static shell, không cache API hoặc mutation nghiệp vụ', async () => { const serviceWorker = await read('public/sw.js'); assert.match(serviceWorker, /request\.method !== 'GET'/); assert.match(serviceWorker, /url\.pathname\.startsWith\('\/api\/'\)/); assert.match(serviceWorker, /\['script', 'style', 'image', 'font'\]/); assert.doesNotMatch(serviceWorker, /POST|Idempotency-Key|settlement/); });
