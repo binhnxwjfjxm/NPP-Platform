@@ -134,7 +134,7 @@ test('topbar bỏ nút quét thô, quét mã nằm trong Chọn sản phẩm', a
   const topbar = page.slice(page.indexOf('className="retail-header retail-topbar"'), page.indexOf('{error ?'));
   assert.doesNotMatch(topbar, /scanner-button|Quét mã|⌗/);
   const sheet = page.slice(page.indexOf('className="product-sheet'));
-  assert.match(sheet, />Quét mã<\/button>/);
+  assert.match(sheet, /aria-label="Quét mã"[\s\S]*?setScannerOpen\(true\)/);
 });
 
 test('tiền VND không để phần thập phân rác ở ô thu tiền', async () => {

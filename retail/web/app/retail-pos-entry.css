@@ -129,9 +129,14 @@
 }
 .retail-issue675 .pos-promotion-row b { color: #98a2b3; }
 .retail-issue675 .pos-checkout-bar {
-  grid-template-columns: auto auto minmax(150px,1fr);
+  display: flex;
+  align-items: stretch;
+}
+.retail-issue675 .pos-checkout-bar .secondary-action {
+  flex: .72 1 0;
 }
 .retail-issue675 .pos-checkout-bar .pos-checkout-action {
+  flex: 1.8 1 0;
   min-height: 52px;
   font-size: 16px;
   font-weight: 800;
@@ -268,7 +273,19 @@
   border-bottom: 1px solid #eef0f3;
   background: #fff;
 }
-.retail-issue675 .picker-mode-row .filter-tabs { min-width: 0; margin: 0; }
+.retail-issue675 .picker-category-field {
+  min-width: 0;
+}
+.retail-issue675 .picker-category-field select {
+  width: 100%;
+  min-height: 38px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #344054;
+  font-size: 13px;
+  font-weight: 700;
+}
 .retail-issue675 .multi-select-toggle {
   display: flex;
   align-items: center;
@@ -305,13 +322,12 @@
 }
 .retail-issue675 .multi-select-toggle input:checked + i { background: #12b76a; }
 .retail-issue675 .multi-select-toggle input:checked + i::after { transform: translateX(18px); }
-.retail-issue675 .pos-product-row {
+.retail-issue675 .product-sheet .lot7-product-row.pos-product-row {
   cursor: pointer;
-  grid-template-columns: 62px minmax(0,1fr) auto;
+  grid-template-columns: 56px minmax(0,1fr) 28px;
   min-height: 86px;
 }
-.retail-issue675 .pos-product-row.disabled { cursor: not-allowed; opacity: .58; }
-.retail-issue675 .pos-product-row .picker-selected-controls { display: grid; justify-items: end; gap: 8px; }
+.retail-issue675 .product-sheet .lot7-product-row.pos-product-row.disabled { cursor: not-allowed; opacity: .58; }
 .retail-issue675 .selection-mark {
   width: 24px;
   height: 24px;
@@ -335,9 +351,11 @@
   .retail-issue675 .order-timeline { display: none; }
   .retail-issue675 .retail-order-card { padding-top: 8px; }
   .retail-issue675 .pos-checkout-bar {
-    grid-template-columns: auto minmax(0,1fr);
+    display: flex;
   }
-  .retail-issue675 .pos-checkout-bar .secondary-action:first-child:nth-last-child(3) { display: none; }
+  .retail-issue675 .product-sheet .lot7-product-row.pos-product-row {
+    grid-template-columns: 48px minmax(0,1fr) 26px;
+  }
   .retail-issue675 .pos-sheet-actions { grid-template-columns: 1fr 1.2fr; }
   .retail-issue675 .picker-mode-row { grid-template-columns: minmax(0,1fr) auto; }
 }

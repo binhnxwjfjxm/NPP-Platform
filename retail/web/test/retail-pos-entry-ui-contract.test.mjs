@@ -9,12 +9,14 @@ test('Retail Lên đơn dùng POS popup, chọn một/chọn nhiều và không 
   const [workspace, css] = await Promise.all([read('app/retail-workspace.tsx'), read('app/retail-pos-entry.css')]);
   assert.match(workspace, /Tìm và thêm sản phẩm vào đơn/);
   assert.match(workspace, /Chọn nhiều/);
+  assert.match(workspace, /Tất cả loại sản phẩm/);
   assert.match(workspace, /if \(!multiSelect\) return new Map/);
   assert.match(workspace, /current\.has\(product\.id\)/);
   assert.match(workspace, /Xong\{selected\.size/);
   assert.match(workspace, /role="dialog"/);
   assert.match(css, /\.pos-product-search-trigger/);
   assert.match(css, /\.multi-select-toggle/);
+  assert.match(css, /\.pos-checkout-bar \.pos-checkout-action[\s\S]*?flex: 1\.8 1 0/);
 });
 
 test('Khách lẻ là mặc định; khách Công Ty chỉ hiện theo quyền, dùng gần đây và tìm kiếm theo nhu cầu', async () => {
@@ -39,6 +41,7 @@ test('Retail dùng pricing engine, popup nguồn giá/khuyến mãi, chiết kh�
   assert.match(workspace, /note: note\.trim\(\) \|\| null/);
   assert.match(workspace, /Giá & khuyến mãi/);
   assert.match(workspace, /Khuyến mãi phù hợp được áp dụng tự động/);
+  assert.match(workspace, /preview\.inputKey !== priceInputKey\(line\.id, line\.quantity\)/);
   assert.match(catalog, /appliedRules/);
   assert.match(catalog, /step\?\.kind === 'RULE'/);
 });
