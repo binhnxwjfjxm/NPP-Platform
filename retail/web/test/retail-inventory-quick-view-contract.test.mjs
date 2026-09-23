@@ -42,7 +42,11 @@ test('Tồn và Đang giữ được cộng chính xác theo SKU từ canonical 
   assert.match(route, /base_variant_id/);
   assert.match(route, /on_hand_quantity/);
   assert.match(route, /reserved_quantity/);
+  assert.match(route, /business_held_quantity/);
   assert.match(route, /BigInt\(10\) \*\* BigInt\(SCALE\)/);
   assert.match(route, /current\.onHandScaled \+= decimalToScaled/);
   assert.match(route, /current\.reservedScaled \+= decimalToScaled/);
+  assert.match(route, /current\.businessHeldScaled = decimalToScaled\(row\.business_held_quantity\)/);
+  assert.match(route, /reservedQuantity: scaledToDecimal\(row\.businessHeldScaled \?\? row\.reservedScaled\)/);
+  assert.doesNotMatch(route, /businessHeldScaled \+=/);
 });
