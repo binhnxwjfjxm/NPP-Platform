@@ -738,7 +738,6 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
         return () => { cancelled = true; };
     }, [order?.id]);
     useEffect(() => {
-        if (!scannerOpen)    useEffect(() => {
         if (!scannerOpen)
             return;
         let stream: MediaStream | null = null;
