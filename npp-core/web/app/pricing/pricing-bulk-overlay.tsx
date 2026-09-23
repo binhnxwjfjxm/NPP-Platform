@@ -208,7 +208,7 @@ export default function PricingBulkOverlay({ priceLists, defaultPriceListId = ''
 
   return <>
     <button type="button" className={styles.launchButton} onClick={openDialog} data-testid="open-bulk-pricing">Điều chỉnh trực tiếp</button>
-    <Modal open={open} title="Điều chỉnh giá trực tiếp" description="Chỉ SKU được chọn mới thay đổi. Giá cũ được giữ trong lịch sử và tự kết thúc tại thời điểm áp dụng giá mới." onClose={close} testId="bulk-pricing-modal" size="large"
+    <Modal open={open} title="Điều chỉnh giá trực tiếp" description="Chỉ SKU được chọn mới thay đổi. Giá cũ được giữ trong lịch sử và tự kết thúc tại thời điểm áp dụng giá mới." onClose={close} testId="bulk-pricing-modal" size="workspace"
       footer={<><button type="button" className={styles.secondaryButton} onClick={close} disabled={busy}>Đóng</button><button type="button" className={styles.primaryButton} onClick={() => void applyBulk()} disabled={busy || loading || !selectedSkus.size} data-testid="apply-bulk-pricing">{busy ? 'Đang áp dụng…' : `Xác nhận ${selectedSkus.size || ''} SKU`}</button></>}>
       {error ? <div className={styles.errorNotice} role="alert">{error}</div> : null}
       {message ? <div className={styles.notice} role="status">{message}</div> : null}
