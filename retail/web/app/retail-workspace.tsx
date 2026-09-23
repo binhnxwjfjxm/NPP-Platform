@@ -841,16 +841,21 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
     }
     function toggleProduct(product: Product) {
         setSelected((current) => {
-            if (current.has(product.id)) {
+            const row = current.get(product.id);
+            if (multiSelectRef.current) {
+                const next = new Map(current);
+                const nextQuantity = row
+                    ? normalizedQuantity(String(Number(row.quantity) + 1), product.allowsFractional)
+                    : '1';
+                next.set(product.id, { product, quantity: nextQuantity });
+                return next;
+            }
+            if (row) {
                 const next = new Map(current);
                 next.delete(product.id);
                 return next;
             }
-            if (!multiSelectRef.current)
-                return new Map([[product.id, { product, quantity: '1' }]]);
-            const next = new Map(current);
-            next.set(product.id, { product, quantity: '1' });
-            return next;
+            return new Map([[product.id, { product, quantity: '1' }]]);
         });
     }
     function adjustSelected(product: Product, direction: -1 | 1) { setSelected((current) => { const next = new Map(current); const row = next.get(product.id); if (!row && direction > 0)
@@ -1454,7 +1459,7 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
         <label className="picker-category-field"><span className="sr-only">Loại sản phẩm</span><select value={categoryId} onChange={(event) => setCategoryId(event.target.value)}><option value="">Tất cả loại sản phẩm</option>{(boot?.categories ?? []).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
         <label className="multi-select-toggle"><span>Chọn nhiều</span><input type="checkbox" checked={multiSelect} onChange={(event) => setMultiSelectMode(event.target.checked)}/><i aria-hidden="true"/></label>
       </div>
-      <div className="product-list pos-product-list">{products.map((product) => { const row = selected.get(product.id); const preview = prices[product.id]; const expectedKey = priceInputKey(product.id, row?.quantity ?? '1'); const price = preview?.inputKey === expectedKey ? preview : null; const priceFailure = priceFailures[product.id]?.inputKey === expectedKey ? priceFailures[product.id] : null; const availability = productAvailability.find((item) => item.variantId === product.id); const blocked = Boolean(priceFailure) && !canPriceOverride; return <article className={`product-row lot7-product-row pos-product-row ${row ? 'selected' : ''} ${blocked ? 'disabled' : ''}`} key={product.id} role="option" aria-selected={Boolean(row)} aria-disabled={blocked} tabIndex={blocked ? -1 : 0} onClick={() => { if (!blocked) toggleProduct(product); }} onKeyDown={(event) => { if (!blocked && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); toggleProduct(product); } }}>{productPicture(product.imageKey ?? product.productCode, product.productName)}<div className="product-copy"><strong>{product.productName}</strong><small>SKU: {product.sku}</small><em>{displayUnit(product.unitName, product.unitCode)} · Khả dụng: {!warehouseId ? '—' : productAvailabilityLoading ? 'Đang tải' : availability ? availabilityLabel(availability) : '—'}</em><b>{price ? money.format(Number(price.finalUnitPriceMinor)) : priceFailure ? 'Chưa có giá' : 'Đang tính giá'}</b></div>{row ? <span className="selection-mark" aria-hidden="true">✓</span> : <span className="selection-mark empty" aria-hidden="true"/>}</article>; })}{productsLoading && products.length === 0 ? <p className="empty-cart">Đang tải sản phẩm…</p> : null}{!productsLoading && products.length === 0 ? <p className="empty-cart">Không có sản phẩm phù hợp.</p> : null}{productsHasMore ? <button className="secondary-action" type="button" disabled={productsLoading} onClick={() => void loadMoreProducts()}>{productsLoading ? 'Đang tải thêm…' : 'Tải thêm sản phẩm'}</button> : null}</div>
+      <div className="product-list pos-product-list">{products.map((product) => { const row = selected.get(product.id); const preview = prices[product.id]; const expectedKey = priceInputKey(product.id, row?.quantity ?? '1'); const price = preview?.inputKey === expectedKey ? preview : null; const priceFailure = priceFailures[product.id]?.inputKey === expectedKey ? priceFailures[product.id] : null; const availability = productAvailability.find((item) => item.variantId === product.id); const blocked = Boolean(priceFailure) && !canPriceOverride; return <article className={`product-row lot7-product-row pos-product-row ${row ? 'selected' : ''} ${blocked ? 'disabled' : ''}`} key={product.id} role="option" aria-selected={Boolean(row)} aria-disabled={blocked} tabIndex={blocked ? -1 : 0} onClick={() => { if (!blocked) toggleProduct(product); }} onKeyDown={(event) => { if (!blocked && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); toggleProduct(product); } }}>{productPicture(product.imageKey ?? product.productCode, product.productName)}<div className="product-copy"><strong>{product.productName}</strong><small>SKU: {product.sku}</small><em>{displayUnit(product.unitName, product.unitCode)} · Khả dụng: {!warehouseId ? '—' : productAvailabilityLoading ? 'Đang tải' : availability ? availabilityLabel(availability) : '—'}</em><b>{price ? money.format(Number(price.finalUnitPriceMinor)) : priceFailure ? 'Chưa có giá' : 'Đang tính giá'}</b></div>{row ? multiSelect ? <span className="multi-selection-count" onClick={(event) => event.stopPropagation()}><button type="button" aria-label={`Giảm ${product.productName}`} onClick={() => adjustSelected(product, -1)}>−</button><output aria-label={`Đã chọn ${row.quantity}`}>×{row.quantity}</output></span> : <span className="selection-mark" aria-hidden="true">✓</span> : <span className="selection-mark empty" aria-hidden="true"/>}</article>; })}{productsLoading && products.length === 0 ? <p className="empty-cart">Đang tải sản phẩm…</p> : null}{!productsLoading && products.length === 0 ? <p className="empty-cart">Không có sản phẩm phù hợp.</p> : null}{productsHasMore ? <button className="secondary-action" type="button" disabled={productsLoading} onClick={() => void loadMoreProducts()}>{productsLoading ? 'Đang tải thêm…' : 'Tải thêm sản phẩm'}</button> : null}</div>
       <button className="sheet-submit primary-action pos-picker-done" type="button" disabled={!selected.size} onClick={addSelected}>Xong{selected.size ? ` · ${selected.size} sản phẩm` : ''}</button>
     </section> : null}
     {scannerOpen ? <section className="dialog-backdrop" role="dialog" aria-modal="true"><div className="scanner-dialog sheet-enter"><header><div><p className="section-kicker">QUÉT MÃ</p><h2>Đưa mã vào khung hình</h2></div><button className="text-action" type="button" onClick={() => setScannerOpen(false)}>Đóng</button></header>{scannerMessage ? <p className="notice error">{scannerMessage}</p> : <video className="scanner-video" ref={videoRef} autoPlay muted playsInline/>}</div></section> : null}

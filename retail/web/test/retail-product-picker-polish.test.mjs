@@ -28,10 +28,12 @@ test('Retail product card keeps current height, enlarges text and moves price pl
   assert.match(css, /\.product-copy em \{[\s\S]*grid-column: 2;[\s\S]*grid-row: 2;/);
 });
 
-test('Retail search result dùng cả dòng để chọn/bỏ, có dấu chọn và keyboard focus rõ', async () => {
+test('Retail search result: chế độ đơn chọn/bỏ; Chọn nhiều chạm lặp để tăng số lượng', async () => {
   const [page, css] = await Promise.all([read('app/retail-workspace.tsx'), read('app/retail-product-picker-polish.css')]);
   assert.match(page, /role="option"/);
-  assert.match(page, /current\.has\(product\.id\)/);
+  assert.match(page, /if \(multiSelectRef\.current\)/);
+  assert.match(page, /Number\(row\.quantity\) \+ 1/);
+  assert.match(page, /className="multi-selection-count"/);
   assert.match(page, /className="selection-mark"/);
   assert.match(page, /className="selection-mark empty"/);
   assert.match(css, /\.lot7-product-row \{[\s\S]*cursor: pointer;/);

@@ -12,9 +12,11 @@ test('Retail Lên đơn dùng POS popup, chọn một/chọn nhiều và không 
   assert.match(workspace, /Tất cả loại sản phẩm/);
   assert.match(workspace, /multiSelectRef = useRef\(false\)/);
   assert.match(workspace, /multiSelectRef\.current = enabled/);
-  assert.match(workspace, /if \(!multiSelectRef\.current\)/);
+  assert.match(workspace, /if \(multiSelectRef\.current\)/);
+  assert.match(workspace, /Number\(row\.quantity\) \+ 1/);
   assert.match(workspace, /setMultiSelectMode\(event\.target\.checked\)/);
-  assert.match(workspace, /current\.has\(product\.id\)/);
+  assert.match(workspace, /multi-selection-count/);
+  assert.match(workspace, /adjustSelected\(product, -1\)/);
   assert.match(workspace, /Xong\{selected\.size/);
   assert.match(workspace, /role="dialog"/);
   assert.match(css, /\.pos-product-search-trigger/);
