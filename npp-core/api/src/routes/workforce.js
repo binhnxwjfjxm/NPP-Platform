@@ -506,7 +506,7 @@ async function handlePolicies(req, res, context, method) {
         data: result.policy,
         audit: {
           requestContext: context.requestContext,
-          action: result.action === 'version' ? 'version' : 'create',
+          action: result.action,
           resourceType: 'work-policy',
           resourceId: result.policy.id,
           beforeData: result.beforePolicy ?? null,
@@ -556,7 +556,7 @@ async function handleAssignments(req, res, context, method) {
         data: result.assignment,
         audit: {
           requestContext: context.requestContext,
-          action: 'assign',
+          action: result.action,
           resourceType: 'employee-work-policy',
           resourceId: result.assignment.id,
           beforeData: result.beforeAssignment ?? null,

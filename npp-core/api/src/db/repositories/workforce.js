@@ -154,6 +154,25 @@ export async function closeEmployeePolicyAssignment(client, { installationId, id
   );
 }
 
+export async function updateEmployeePolicyAssignmentSameDay(client, values) {
+  const result = await client.query(
+    `UPDATE shared.employee_work_policy_assignments
+        SET work_policy_id = $3,
+            reason = $4
+      WHERE installation_id = $1
+        AND id = $2
+        AND effective_from = $5
+      RETURNING id`,
+    [values.installationId, values.id, values.workPolicyId, values.reason, values.effectiveFrom],
+  );
+  if (!result.rows?.[0]) return null;
+  const rows = await listEmployeePolicyAssignments(client, {
+    installationId: values.installationId,
+    employeeId: values.employeeId,
+  });
+  return rows.find((row) => row.id === values.id) ?? null;
+}
+
 export async function insertEmployeePolicyAssignment(client, values) {
   const id = randomUUID();
   await client.query(

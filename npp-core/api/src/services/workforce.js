@@ -173,15 +173,20 @@ export async function createWorkPolicyVersion(client, { installationId, payload,
   const version = latest ? Number(latest.version) + 1 : 1;
   const latestEffectiveFrom = latest ? effectiveDateOnly(latest.effective_from) : null;
   const latestEffectiveTo = latest?.effective_to ? effectiveDateOnly(latest.effective_to) : null;
-  if (latest && (!latestEffectiveFrom || validation.normalized.effectiveFrom <= latestEffectiveFrom)) {
-    return fail('POLICY_EFFECTIVE_DATE_CONFLICT', 'Phiên bản mới phải có ngày hiệu lực sau phiên bản hiện tại');
+  if (latest && !latestEffectiveFrom) {
+    return fail('POLICY_EFFECTIVE_DATE_CONFLICT', 'Ngày hiệu lực của phiên bản hiện tại không hợp lệ');
+  }
+  if (latest && validation.normalized.effectiveFrom < latestEffectiveFrom) {
+    return fail('POLICY_EFFECTIVE_DATE_CONFLICT', 'Ngày áp dụng không được trước phiên bản mới nhất');
   }
 
   if (latest && (!latest.effective_to || !latestEffectiveTo || latestEffectiveTo >= validation.normalized.effectiveFrom)) {
     await workforceRepo.closeWorkPolicyVersion(client, {
       installationId,
       id: latest.id,
-      effectiveTo: previousDate(validation.normalized.effectiveFrom),
+      effectiveTo: validation.normalized.effectiveFrom === latestEffectiveFrom
+        ? validation.normalized.effectiveFrom
+        : previousDate(validation.normalized.effectiveFrom),
     });
   }
 
@@ -259,10 +264,18 @@ async function preparePolicyAssignment(client, {
     return fail('BOOTSTRAP_ASSIGNMENT_EXISTS', `${employee.code} đã có lịch sử chính sách; không được dùng khởi tạo lùi ngày`);
   }
   const latestAssignmentFrom = latest ? effectiveDateOnly(latest.effective_from) : null;
-  if (latest && (!latestAssignmentFrom || effectiveFrom <= latestAssignmentFrom)) {
-    return fail('ASSIGNMENT_EFFECTIVE_DATE_CONFLICT', `Ngày áp dụng của ${employee.code} phải sau lần gán chính sách gần nhất`);
+  if (latest && !latestAssignmentFrom) {
+    return fail('ASSIGNMENT_EFFECTIVE_DATE_CONFLICT', `Ngày áp dụng hiện tại của ${employee.code} không hợp lệ`);
   }
-  return { ok: true, policy, latest };
+  if (latest && effectiveFrom < latestAssignmentFrom) {
+    return fail('ASSIGNMENT_EFFECTIVE_DATE_CONFLICT', `Ngày áp dụng của ${employee.code} không được trước lần gán chính sách gần nhất`);
+  }
+  return {
+    ok: true,
+    policy,
+    latest,
+    replaceSameDay: Boolean(latest && effectiveFrom === latestAssignmentFrom),
+  };
 }
 
 async function applyPreparedPolicyAssignment(client, {
@@ -274,6 +287,23 @@ async function applyPreparedPolicyAssignment(client, {
   actorId,
   prepared,
 }) {
+  if (prepared.replaceSameDay) {
+    const assignment = await workforceRepo.updateEmployeePolicyAssignmentSameDay(client, {
+      installationId,
+      id: prepared.latest.id,
+      employeeId: employee.id,
+      workPolicyId,
+      effectiveFrom,
+      reason,
+    });
+    if (!assignment) return null;
+    return {
+      assignment: withEffectiveDates(assignment),
+      beforeAssignment: withEffectiveDates(prepared.latest),
+      action: 'update',
+    };
+  }
+
   const latestEffectiveTo = prepared.latest?.effective_to
     ? effectiveDateOnly(prepared.latest.effective_to)
     : null;
@@ -295,6 +325,7 @@ async function applyPreparedPolicyAssignment(client, {
   return {
     assignment: withEffectiveDates(assignment),
     beforeAssignment: withEffectiveDates(prepared.latest ?? null),
+    action: 'assign',
   };
 }
 
@@ -362,6 +393,7 @@ export async function assignWorkPolicy(client, { installationId, payload, actorI
   const applied = await applyPreparedPolicyAssignment(client, {
     installationId, employee, workPolicyId, effectiveFrom, reason, actorId, prepared,
   });
+  if (!applied) return fail('ASSIGNMENT_EFFECTIVE_DATE_CONFLICT', 'Chính sách của nhân sự đã thay đổi ở nơi khác; hãy cập nhật dữ liệu và thử lại');
   return { ok: true, ...applied, employee, bootstrap };
 }
 
@@ -432,6 +464,9 @@ export async function assignWorkPolicyBulk(client, {
       actorId,
       prepared: plan.prepared,
     });
+    if (!applied) {
+      return fail('ASSIGNMENT_EFFECTIVE_DATE_CONFLICT', `Chính sách của ${plan.employee.code} đã thay đổi ở nơi khác; hãy cập nhật dữ liệu và thử lại`);
+    }
     assignments.push(applied.assignment);
   }
   return {
