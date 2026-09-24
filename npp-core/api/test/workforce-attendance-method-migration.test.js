@@ -28,6 +28,7 @@ test('migration 158 production operation is VPS-only, exact-main, backed up and 
   assert.match(script, /PRODUCTION_VERIFY=PASS/);
 
   assert.match(workflow, /workflow_dispatch:/);
+  assert.match(workflow, /group: vps-production-db-migration-158/);
   assert.match(workflow, /\/migrate-vps-production-158/);
   assert.match(workflow, /Verify exact origin\/main SHA/);
   assert.match(workflow, /Fresh backup, restore rehearsal, migrate production and verify/);

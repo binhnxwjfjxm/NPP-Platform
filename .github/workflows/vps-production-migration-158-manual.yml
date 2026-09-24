@@ -10,7 +10,7 @@ permissions:
   issues: write
 
 concurrency:
-  group: vps-production-db-migration
+  group: vps-production-db-migration-158
   cancel-in-progress: false
 
 jobs:
