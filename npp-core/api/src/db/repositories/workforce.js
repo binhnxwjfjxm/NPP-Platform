@@ -73,6 +73,43 @@ export async function closeWorkPolicyVersion(client, { installationId, id, effec
   );
 }
 
+export async function updateWorkPolicyVersionSameDay(client, values) {
+  const result = await client.query(
+    `UPDATE shared.work_policies
+        SET name = $3,
+            work_nature = $4,
+            time_mode = $5,
+            fixed_start_time = $6,
+            fixed_end_time = $7,
+            working_days = $8::smallint[],
+            break_minutes = $9,
+            late_grace_minutes = $10,
+            early_leave_grace_minutes = $11,
+            overtime_enabled = $12,
+            overtime_requires_approval = $13,
+            attendance_method = $14,
+            attendance_basis = $15,
+            timezone = $16,
+            rounding_minutes = $17,
+            minimum_full_day_minutes = $18,
+            minimum_half_day_minutes = $19,
+            effective_to = $20
+      WHERE installation_id = $1
+        AND id = $2
+        AND effective_from = $21
+      RETURNING ${POLICY_COLUMNS}`,
+    [
+      values.installationId, values.id, values.name, values.workNature, values.timeMode,
+      values.fixedStartTime, values.fixedEndTime, values.workingDays, values.breakMinutes,
+      values.lateGraceMinutes, values.earlyLeaveGraceMinutes, values.overtimeEnabled,
+      values.overtimeRequiresApproval, values.attendanceMethod, values.attendanceBasis,
+      values.timezone, values.roundingMinutes, values.minimumFullDayMinutes,
+      values.minimumHalfDayMinutes, values.effectiveTo, values.effectiveFrom,
+    ],
+  );
+  return result.rows?.[0] ?? null;
+}
+
 export async function insertWorkPolicy(client, values) {
   const id = randomUUID();
   const result = await client.query(
@@ -152,6 +189,25 @@ export async function closeEmployeePolicyAssignment(client, { installationId, id
       WHERE installation_id = $1 AND id = $2`,
     [installationId, id, effectiveTo],
   );
+}
+
+export async function updateEmployeePolicyAssignmentSameDay(client, values) {
+  const result = await client.query(
+    `UPDATE shared.employee_work_policy_assignments
+        SET work_policy_id = $3,
+            reason = $4
+      WHERE installation_id = $1
+        AND id = $2
+        AND effective_from = $5
+      RETURNING id`,
+    [values.installationId, values.id, values.workPolicyId, values.reason, values.effectiveFrom],
+  );
+  if (!result.rows?.[0]) return null;
+  const rows = await listEmployeePolicyAssignments(client, {
+    installationId: values.installationId,
+    employeeId: values.employeeId,
+  });
+  return rows.find((row) => row.id === values.id) ?? null;
 }
 
 export async function insertEmployeePolicyAssignment(client, values) {
