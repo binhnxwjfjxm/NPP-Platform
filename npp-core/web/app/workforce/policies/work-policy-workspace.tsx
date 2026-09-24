@@ -29,6 +29,7 @@ type PolicyDraft = {
   roundingMinutes: string;
   minimumFullDayMinutes: string;
   minimumHalfDayMinutes: string;
+  effectiveMode: 'NOW' | 'DATE';
   effectiveFrom: string;
 };
 
@@ -81,7 +82,7 @@ function emptyDraft(): PolicyDraft {
     breakMinutes: '60', lateGraceMinutes: '0', earlyLeaveGraceMinutes: '0',
     overtimeEnabled: false, overtimeRequiresApproval: true, attendanceMethod: 'QR', attendanceBasis: 'TIME',
     timezone: 'Asia/Ho_Chi_Minh', roundingMinutes: '0',
-    minimumFullDayMinutes: '', minimumHalfDayMinutes: '', effectiveFrom: todayPlus(1),
+    minimumFullDayMinutes: '', minimumHalfDayMinutes: '', effectiveMode: 'NOW', effectiveFrom: todayPlus(0),
   };
 }
 function fromPolicy(policy: WorkPolicy): PolicyDraft {
@@ -96,7 +97,7 @@ function fromPolicy(policy: WorkPolicy): PolicyDraft {
     roundingMinutes: String(policy.rounding_minutes),
     minimumFullDayMinutes: policy.minimum_full_day_minutes == null ? '' : String(policy.minimum_full_day_minutes),
     minimumHalfDayMinutes: policy.minimum_half_day_minutes == null ? '' : String(policy.minimum_half_day_minutes),
-    effectiveFrom: todayPlus(1),
+    effectiveMode: 'NOW', effectiveFrom: todayPlus(0),
   };
 }
 function dateLabel(value: string | null | undefined) {
@@ -151,6 +152,7 @@ export default function WorkPolicyWorkspace({ initialPolicies, initialError }: {
   }
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const effectiveFrom = draft.effectiveMode === 'NOW' ? todayPlus(0) : draft.effectiveFrom;
     const payload = {
       ...(basePolicyId ? { basePolicyId } : { code: draft.code.trim().toUpperCase() }),
       name: draft.name.trim(),
@@ -170,7 +172,7 @@ export default function WorkPolicyWorkspace({ initialPolicies, initialError }: {
       roundingMinutes: Number(draft.roundingMinutes || 0),
       minimumFullDayMinutes: draft.minimumFullDayMinutes ? Number(draft.minimumFullDayMinutes) : null,
       minimumHalfDayMinutes: draft.minimumHalfDayMinutes ? Number(draft.minimumHalfDayMinutes) : null,
-      effectiveFrom: draft.effectiveFrom,
+      effectiveFrom,
     };
     const key = stableKey(attempt, payload);
     setBusy(true); setError(null); setNotice(null);
@@ -295,8 +297,35 @@ export default function WorkPolicyWorkspace({ initialPolicies, initialError }: {
                   ) : null}
                 </> : null}
                 <label>Múi giờ<input value={draft.timezone} onChange={(e) => setDraft((c) => ({ ...c, timezone: e.target.value }))} maxLength={64} /></label>
-                <label>Ngày bắt đầu hiệu lực<input type="date" min={basePolicyId ? todayPlus(1) : undefined} value={draft.effectiveFrom} onChange={(e) => setDraft((c) => ({ ...c, effectiveFrom: e.target.value }))} required /></label>
-                {!basePolicyId && draft.effectiveFrom < todayPlus(0) ? (
+                <fieldset className={localStyles.workingDaysFieldset} data-testid="work-policy-effective-mode">
+                  <legend>Thời điểm áp dụng</legend>
+                  <div className={localStyles.workingDaysGrid}>
+                    <label className={localStyles.workingDayOption}>
+                      <input
+                        type="radio"
+                        name="work-policy-effective-mode"
+                        checked={draft.effectiveMode === 'NOW'}
+                        onChange={() => setDraft((current) => ({ ...current, effectiveMode: 'NOW', effectiveFrom: todayPlus(0) }))}
+                      />
+                      <span>Áp dụng ngay</span>
+                    </label>
+                    <label className={localStyles.workingDayOption}>
+                      <input
+                        type="radio"
+                        name="work-policy-effective-mode"
+                        checked={draft.effectiveMode === 'DATE'}
+                        onChange={() => setDraft((current) => ({ ...current, effectiveMode: 'DATE', effectiveFrom: current.effectiveFrom || todayPlus(0) }))}
+                      />
+                      <span>Chọn ngày áp dụng</span>
+                    </label>
+                  </div>
+                </fieldset>
+                {draft.effectiveMode === 'DATE' ? (
+                  <label>Ngày áp dụng<input type="date" min={basePolicyId ? todayPlus(0) : undefined} value={draft.effectiveFrom} onChange={(e) => setDraft((c) => ({ ...c, effectiveFrom: e.target.value }))} required /></label>
+                ) : (
+                  <div className={localStyles.bootstrapNote}>Chính sách có hiệu lực từ hôm nay.</div>
+                )}
+                {draft.effectiveMode === 'DATE' && !basePolicyId && draft.effectiveFrom < todayPlus(0) ? (
                   <div className={localStyles.bootstrapNote}>Ngày hiệu lực trong quá khứ chỉ nên dùng khi khởi tạo hệ thống lần đầu. Việc áp dụng cho nhân sự vẫn phải đi qua thao tác “Áp dụng chính sách ban đầu” có lý do và được lưu trong lịch sử hệ thống.</div>
                 ) : null}
                 <label className={localStyles.inlineCheckbox}><input type="checkbox" checked={draft.overtimeEnabled} onChange={(e) => setDraft((c) => ({ ...c, overtimeEnabled: e.target.checked }))} /><span>Có áp dụng tăng ca</span></label>

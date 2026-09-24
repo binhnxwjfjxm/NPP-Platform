@@ -52,6 +52,13 @@ test('Issue #1110 Lô 2 exposes employee policy history and future-only schedule
   assert.match(employees, /employee-policy-history/);
   assert.match(employees, /assignmentMinimumDate/);
   assert.match(employees, /min=\{policyAssignmentMinDate\}/);
+  assert.match(employees, /employee-policy-effective-mode/);
+  assert.match(employees, /Áp dụng ngay/);
+  assert.match(employees, /Chọn ngày áp dụng/);
+  assert.match(policies, /work-policy-effective-mode/);
+  assert.match(policies, /effectiveMode: 'NOW'/);
+  assert.match(policies, /Áp dụng ngay/);
+  assert.match(policies, /Chọn ngày áp dụng/);
   assert.match(policies, /Lịch sử thay đổi/);
   assert.match(policies, /Cập nhật chính sách/);
   assert.match(schedules, /Lịch trong hôm nay và quá khứ chỉ dùng để đối chiếu/);
@@ -68,7 +75,8 @@ test('Issue #1110 keeps effective-date UI comparisons on canonical calendar date
   ]);
 
   assert.match(employees, /function effectiveDate/);
-  assert.match(employees, /bulkDraft\.effectiveFrom < policyEffectiveFrom/);
+  assert.match(employees, /const effectiveFrom = bulkDraft\.effectiveMode === 'NOW' \? todayDate\(\) : bulkDraft\.effectiveFrom/);
+  assert.match(employees, /effectiveFrom < policyEffectiveFrom/);
   assert.match(employees, /dateLabel\(assignment\.effective_from\)/);
   assert.match(policies, /dateLabel\(policy\.effective_from\)/);
 });

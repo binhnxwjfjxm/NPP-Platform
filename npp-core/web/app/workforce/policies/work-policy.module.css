@@ -34,6 +34,7 @@
 }
 
 .workingDayOption input[type='checkbox'],
+.workingDayOption input[type='radio'],
 .inlineCheckbox input[type='checkbox'] {
   width: 18px !important;
   min-width: 18px;
