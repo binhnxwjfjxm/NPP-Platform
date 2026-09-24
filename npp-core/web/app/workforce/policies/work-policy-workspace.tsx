@@ -41,7 +41,7 @@ const TIME_MODE_LABEL: Record<WorkPolicy['time_mode'], string> = {
   FIXED: 'Giờ cố định', SHIFT: 'Theo ca', FLEXIBLE: 'Linh hoạt', NO_ATTENDANCE: 'Không bắt buộc chấm công',
 };
 const ATTENDANCE_LABEL: Record<WorkPolicy['attendance_method'], string> = {
-  QR: 'Mã QR', FACE: 'Quét khuôn mặt', QR_FACE: 'Mã QR và quét khuôn mặt', MANUAL: 'Chấm công trực tiếp', BOTH: 'Mã QR và chấm công trực tiếp', NONE: 'Không chấm công',
+  QR: 'Mã QR', FACE: 'Quét khuôn mặt', QR_FACE: 'Mã QR và quét khuôn mặt', MANUAL: 'Chấm công trực tiếp', BOTH: 'Mã QR và chấm công trực tiếp', FACE_MANUAL: 'Quét khuôn mặt và chấm công trực tiếp', ALL: 'Mã QR, quét khuôn mặt và chấm công trực tiếp', NONE: 'Không chấm công',
 };
 const ATTENDANCE_BASIS_LABEL: Record<WorkPolicy['attendance_basis'], string> = {
   TIME: 'Theo giờ vào và giờ ra',
@@ -49,6 +49,26 @@ const ATTENDANCE_BASIS_LABEL: Record<WorkPolicy['attendance_basis'], string> = {
   NONE: 'Không chấm công',
 };
 
+type AttendanceChoice = 'QR' | 'FACE' | 'MANUAL';
+function attendanceChoices(method: WorkPolicy['attendance_method']): AttendanceChoice[] {
+  if (method === 'ALL') return ['QR', 'FACE', 'MANUAL'];
+  if (method === 'QR_FACE') return ['QR', 'FACE'];
+  if (method === 'BOTH') return ['QR', 'MANUAL'];
+  if (method === 'FACE_MANUAL') return ['FACE', 'MANUAL'];
+  if (method === 'QR' || method === 'FACE' || method === 'MANUAL') return [method];
+  return [];
+}
+function attendanceMethodFromChoices(choices: AttendanceChoice[]): WorkPolicy['attendance_method'] {
+  const selected = new Set(choices);
+  if (selected.size === 3) return 'ALL';
+  if (selected.has('QR') && selected.has('FACE')) return 'QR_FACE';
+  if (selected.has('QR') && selected.has('MANUAL')) return 'BOTH';
+  if (selected.has('FACE') && selected.has('MANUAL')) return 'FACE_MANUAL';
+  if (selected.has('QR')) return 'QR';
+  if (selected.has('FACE')) return 'FACE';
+  if (selected.has('MANUAL')) return 'MANUAL';
+  return 'NONE';
+}
 function todayPlus(days: number) {
   const date = new Date();
   date.setDate(date.getDate() + days);
@@ -247,16 +267,22 @@ export default function WorkPolicyWorkspace({ initialPolicies, initialError }: {
                 <label>Ngưỡng ghi nhận về sớm (phút)<input type="number" min={0} max={240} value={draft.earlyLeaveGraceMinutes} onChange={(e) => setDraft((c) => ({ ...c, earlyLeaveGraceMinutes: e.target.value }))} /></label>
                 <div className={styles.banner} role="note">Các ngưỡng này dùng để ghi nhận sai lệch công. Bảng công không tự điều chỉnh thu nhập; xử lý vi phạm là quy trình riêng.</div>
                 {draft.timeMode !== 'NO_ATTENDANCE' ? <>
-                  <label>
-                    Phương thức chấm công
-                    <select value={draft.attendanceMethod} onChange={(e) => setDraft((c) => ({ ...c, attendanceMethod: e.target.value as WorkPolicy['attendance_method'] }))}>
-                      <option value="QR">Mã QR</option>
-                      <option value="FACE">Quét khuôn mặt</option>
-                      <option value="QR_FACE">Mã QR và quét khuôn mặt</option>
-                      <option value="MANUAL">Chấm công trực tiếp</option>
-                      <option value="BOTH">Mã QR và chấm công trực tiếp</option>
-                    </select>
-                  </label>
+                  <fieldset className={localStyles.workingDaysFieldset}>
+                    <legend>Phương thức chấm công</legend>
+                    <div className={localStyles.workingDaysGrid}>
+                      {([['QR', 'Mã QR'], ['FACE', 'Quét khuôn mặt'], ['MANUAL', 'Chấm công trực tiếp']] as Array<[AttendanceChoice, string]>).map(([method, label]) => {
+                        const selected = attendanceChoices(draft.attendanceMethod);
+                        return <label className={localStyles.workingDayOption} key={method}>
+                          <input type="checkbox" checked={selected.includes(method)} onChange={() => {
+                            const next = selected.includes(method) ? selected.filter((item) => item !== method) : [...selected, method];
+                            setDraft((current) => ({ ...current, attendanceMethod: attendanceMethodFromChoices(next) }));
+                          }} />
+                          <span>{label}</span>
+                        </label>;
+                      })}
+                    </div>
+                    {draft.attendanceMethod === 'NONE' ? <small>Chọn ít nhất một hình thức chấm công.</small> : null}
+                  </fieldset>
                   <label>
                     Cách ghi nhận công
                     <select value={draft.attendanceBasis} onChange={(e) => setDraft((c) => ({ ...c, attendanceBasis: e.target.value as WorkPolicy['attendance_basis'] }))}>

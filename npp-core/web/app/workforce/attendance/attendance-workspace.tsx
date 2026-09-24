@@ -49,6 +49,8 @@ const ATTENDANCE_METHOD_LABEL: Record<AttendanceToday['policy']['attendanceMetho
   QR: 'Quét mã QR tại nơi làm việc',
   FACE: 'Quét khuôn mặt tại máy chấm công',
   QR_FACE: 'Quét mã QR hoặc quét khuôn mặt',
+  FACE_MANUAL: 'Quét khuôn mặt hoặc chấm công trực tiếp',
+  ALL: 'Mã QR, quét khuôn mặt hoặc chấm công trực tiếp',
   MANUAL: 'Chấm công trực tiếp',
   BOTH: 'Quét mã QR hoặc chấm công trực tiếp',
   NONE: 'Không yêu cầu chấm công',
@@ -163,9 +165,9 @@ export default function AttendanceWorkspace({
         : 'Đã hoàn tất chấm công';
   const exitSelectionReady = today?.nextAction !== 'EXIT'
     || (Boolean(exitReason) && (exitReason !== 'OTHER' || Boolean(exitNote.trim())));
-  const qrAllowed = today?.policy.attendanceMethod === 'QR' || today?.policy.attendanceMethod === 'BOTH' || today?.policy.attendanceMethod === 'QR_FACE';
-  const faceAllowed = today?.policy.attendanceMethod === 'FACE' || today?.policy.attendanceMethod === 'QR_FACE';
-  const manualAllowed = today?.policy.attendanceMethod === 'MANUAL' || today?.policy.attendanceMethod === 'BOTH';
+  const qrAllowed = today?.policy.attendanceMethod === 'QR' || today?.policy.attendanceMethod === 'BOTH' || today?.policy.attendanceMethod === 'QR_FACE' || today?.policy.attendanceMethod === 'ALL';
+  const faceAllowed = today?.policy.attendanceMethod === 'FACE' || today?.policy.attendanceMethod === 'QR_FACE' || today?.policy.attendanceMethod === 'FACE_MANUAL' || today?.policy.attendanceMethod === 'ALL';
+  const manualAllowed = today?.policy.attendanceMethod === 'MANUAL' || today?.policy.attendanceMethod === 'BOTH' || today?.policy.attendanceMethod === 'FACE_MANUAL' || today?.policy.attendanceMethod === 'ALL';
   const remainingSeconds = qrToken
     ? Math.max(0, Math.ceil((new Date(qrToken.expiresAt).getTime() - clock) / 1000))
     : 0;

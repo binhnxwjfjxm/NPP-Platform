@@ -14,7 +14,7 @@ export type WorkPolicy = {
   early_leave_grace_minutes: number;
   overtime_enabled: boolean;
   overtime_requires_approval: boolean;
-  attendance_method: 'QR' | 'MANUAL' | 'BOTH' | 'FACE' | 'QR_FACE' | 'NONE';
+  attendance_method: 'QR' | 'MANUAL' | 'BOTH' | 'FACE' | 'QR_FACE' | 'FACE_MANUAL' | 'ALL' | 'NONE';
   attendance_basis: 'TIME' | 'PRESENCE' | 'NONE';
   timezone: string;
   rounding_minutes: number;
