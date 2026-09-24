@@ -58,10 +58,18 @@ type Props = {
 };
 type PolicyFilter = 'all' | 'assigned' | 'missing';
 type BulkTargetMode = 'ALL_ACTIVE' | 'BRANCH' | 'FILTERED' | 'MISSING';
+type ApplyTiming = 'NOW' | 'DATE';
+type PolicyAssignmentDraft = {
+  workPolicyId: string;
+  effectiveMode: ApplyTiming;
+  effectiveFrom: string;
+  reason: string;
+};
 type BulkAssignmentDraft = {
   targetMode: BulkTargetMode;
   branchId: string;
   workPolicyId: string;
+  effectiveMode: ApplyTiming;
   effectiveFrom: string;
   reason: string;
   bootstrap: boolean;
@@ -128,8 +136,8 @@ function assignmentMinimumDate(history: EmployeeWorkPolicyAssignment[]) {
     .filter((item) => effectiveDate(item.effective_from) > today || !item.effective_to || effectiveDate(item.effective_to) >= today)
     .sort((left, right) => effectiveDate(right.effective_from).localeCompare(effectiveDate(left.effective_from)));
   if (!futureOrCurrent.length) return today;
-  const afterLatest = nextDate(effectiveDate(futureOrCurrent[0].effective_from));
-  return afterLatest > tomorrowDate() ? afterLatest : tomorrowDate();
+  const latestFrom = effectiveDate(futureOrCurrent[0].effective_from);
+  return latestFrom < today ? today : nextDate(latestFrom);
 }
 
 const EMPLOYEE_DIRECTORY_DIRTY_KEY = 'npp-core-employee-directory-dirty';
@@ -211,15 +219,17 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
   const [draft, setDraft] = useState<EmployeeDraft>(emptyDraft());
   const [policyEmployeeId, setPolicyEmployeeId] = useState<string | null>(null);
   const [assignmentHistory, setAssignmentHistory] = useState<EmployeeWorkPolicyAssignment[]>([]);
-  const [assignmentDraft, setAssignmentDraft] = useState({ workPolicyId: '', effectiveFrom: todayDate(), reason: '' });
+  const [assignmentDraft, setAssignmentDraft] = useState<PolicyAssignmentDraft>({ workPolicyId: '', effectiveMode: 'NOW', effectiveFrom: todayDate(), reason: '' });
   const [assignmentBusy, setAssignmentBusy] = useState(false);
   const [createPolicyId, setCreatePolicyId] = useState('');
+  const [createPolicyMode, setCreatePolicyMode] = useState<ApplyTiming>('NOW');
   const [createPolicyEffectiveFrom, setCreatePolicyEffectiveFrom] = useState(todayDate());
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkDraft, setBulkDraft] = useState<BulkAssignmentDraft>({
     targetMode: 'MISSING',
     branchId: '',
     workPolicyId: '',
+    effectiveMode: 'NOW',
     effectiveFrom: todayDate(),
     reason: '',
     bootstrap: false,
@@ -354,6 +364,7 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
     setEditorDetail(null);
     setDraft(emptyDraft(activeBranches[0]?.id ?? ''));
     setCreatePolicyId(activePolicies[0]?.id ?? '');
+    setCreatePolicyMode('NOW');
     setCreatePolicyEffectiveFrom(todayDate());
     setEditor({ mode: 'create', employeeId: null });
   }
@@ -445,7 +456,7 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
             assignmentEffectiveFrom: draft.assignmentEffectiveFrom,
             assignmentReason: draft.assignmentReason.trim(),
             workPolicyId: createPolicyId,
-            policyEffectiveFrom: createPolicyEffectiveFrom,
+            policyEffectiveFrom: createPolicyMode === 'NOW' ? todayDate() : createPolicyEffectiveFrom,
           }),
     };
 
@@ -523,6 +534,7 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
     setAssignmentHistory([]);
     setAssignmentDraft({
       workPolicyId: activePolicies[0]?.id ?? '',
+      effectiveMode: 'NOW',
       effectiveFrom: todayDate(),
       reason: '',
     });
@@ -533,9 +545,11 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
         `/api/workforce/assignments?employeeId=${encodeURIComponent(employeeId)}`,
       );
       setAssignmentHistory(history);
+      const minimumDate = assignmentMinimumDate(history);
       setAssignmentDraft((current) => ({
         ...current,
-        effectiveFrom: assignmentMinimumDate(history),
+        effectiveMode: minimumDate === todayDate() ? 'NOW' : 'DATE',
+        effectiveFrom: minimumDate,
       }));
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Không tải được lịch sử chính sách làm việc');
@@ -547,10 +561,11 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
   async function submitPolicyAssignment(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!policyEmployee || !assignmentDraft.workPolicyId) return;
+    const effectiveFrom = assignmentDraft.effectiveMode === 'NOW' ? todayDate() : assignmentDraft.effectiveFrom;
     const payload = {
       employeeId: policyEmployee.id,
       workPolicyId: assignmentDraft.workPolicyId,
-      effectiveFrom: assignmentDraft.effectiveFrom,
+      effectiveFrom,
       reason: assignmentDraft.reason.trim(),
     };
     const key = mutationKeyForPayload(assignmentAttempt, 'web-employee-policy-assign', payload);
@@ -568,7 +583,7 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
         `/api/workforce/assignments?employeeId=${encodeURIComponent(policyEmployee.id)}`,
       );
       setAssignmentHistory(history);
-      setAssignmentDraft((current) => ({ ...current, effectiveFrom: tomorrowDate(), reason: '' }));
+      setAssignmentDraft((current) => ({ ...current, effectiveMode: 'NOW', effectiveFrom: todayDate(), reason: '' }));
       await refreshCoverage();
       setNotice('Chính sách làm việc của nhân sự đã được cập nhật.');
     } catch (saveError) {
@@ -669,6 +684,7 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
       targetMode: coverage?.missingCount ? 'MISSING' : 'FILTERED',
       branchId: branchFilter !== 'all' && branchFilter !== 'unassigned' ? branchFilter : '',
       workPolicyId: activePolicies[0]?.id ?? '',
+      effectiveMode: 'NOW',
       effectiveFrom: todayDate(),
       reason: '',
       bootstrap: false,
@@ -686,12 +702,13 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
       setError('Vui lòng chọn chính sách làm việc.');
       return;
     }
+    const effectiveFrom = bulkDraft.effectiveMode === 'NOW' ? todayDate() : bulkDraft.effectiveFrom;
     const policyEffectiveFrom = effectiveDate(selectedPolicy.effective_from);
-    if (!policyEffectiveFrom || bulkDraft.effectiveFrom < policyEffectiveFrom) {
+    if (!policyEffectiveFrom || effectiveFrom < policyEffectiveFrom) {
       setError(`Chính sách này chỉ có hiệu lực từ ${dateLabel(selectedPolicy.effective_from)}; không thể áp dụng từ ngày sớm hơn.`);
       return;
     }
-    const isPast = bulkDraft.effectiveFrom < todayDate();
+    const isPast = effectiveFrom < todayDate();
     if (isPast && !bulkDraft.bootstrap) {
       setError('Ngày đã qua chỉ được dùng khi xác nhận đây là khởi tạo chính sách ban đầu.');
       return;
@@ -726,7 +743,7 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
       branchId: targetMode === 'BRANCH' ? bulkDraft.branchId : null,
       employeeIds: targetMode === 'EMPLOYEES' ? employeeIds : null,
       workPolicyId: bulkDraft.workPolicyId,
-      effectiveFrom: bulkDraft.effectiveFrom,
+      effectiveFrom,
       reason: bulkDraft.reason.trim(),
       bootstrap: isPast && bulkDraft.bootstrap,
     };
@@ -1083,20 +1100,33 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
                     ))}
                   </select>
                 </label>
-                <label>
-                  Áp dụng từ ngày
-                  <input
-                    type="date"
-                    value={bulkDraft.effectiveFrom}
-                    onChange={(event) => setBulkDraft((current) => ({
-                      ...current,
-                      effectiveFrom: event.target.value,
-                      bootstrap: event.target.value < todayDate() ? current.bootstrap : false,
-                    }))}
-                    required
-                  />
-                </label>
-                {bulkDraft.effectiveFrom < todayDate() ? (
+                <fieldset className={localStyles.timingFieldset} data-testid="bulk-policy-effective-mode">
+                  <legend>Thời điểm áp dụng</legend>
+                  <label className={localStyles.checkOption}>
+                    <input type="radio" name="bulk-policy-effective-mode" checked={bulkDraft.effectiveMode === 'NOW'} onChange={() => setBulkDraft((current) => ({ ...current, effectiveMode: 'NOW', effectiveFrom: todayDate(), bootstrap: false }))} />
+                    <span><strong>Áp dụng ngay</strong><small>Có hiệu lực từ hôm nay.</small></span>
+                  </label>
+                  <label className={localStyles.checkOption}>
+                    <input type="radio" name="bulk-policy-effective-mode" checked={bulkDraft.effectiveMode === 'DATE'} onChange={() => setBulkDraft((current) => ({ ...current, effectiveMode: 'DATE', effectiveFrom: current.effectiveFrom || todayDate() }))} />
+                    <span><strong>Chọn ngày áp dụng</strong><small>Dùng khi cần lên lịch trước hoặc khởi tạo có kiểm soát.</small></span>
+                  </label>
+                </fieldset>
+                {bulkDraft.effectiveMode === 'DATE' ? (
+                  <label>
+                    Ngày áp dụng
+                    <input
+                      type="date"
+                      value={bulkDraft.effectiveFrom}
+                      onChange={(event) => setBulkDraft((current) => ({
+                        ...current,
+                        effectiveFrom: event.target.value,
+                        bootstrap: event.target.value < todayDate() ? current.bootstrap : false,
+                      }))}
+                      required
+                    />
+                  </label>
+                ) : null}
+                {bulkDraft.effectiveMode === 'DATE' && bulkDraft.effectiveFrom < todayDate() ? (
                   <label className={localStyles.checkOption}>
                     <input
                       type="checkbox"
@@ -1115,8 +1145,8 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
                     value={bulkDraft.reason}
                     onChange={(event) => setBulkDraft((current) => ({ ...current, reason: event.target.value }))}
                     maxLength={512}
-                    required={bulkDraft.effectiveFrom < todayDate()}
-                    placeholder={bulkDraft.effectiveFrom < todayDate() ? 'Bắt buộc khi khởi tạo giai đoạn trước' : 'Ví dụ: áp dụng chính sách văn phòng mới'}
+                    required={bulkDraft.effectiveMode === 'DATE' && bulkDraft.effectiveFrom < todayDate()}
+                    placeholder={bulkDraft.effectiveMode === 'DATE' && bulkDraft.effectiveFrom < todayDate() ? 'Bắt buộc khi khởi tạo giai đoạn trước' : 'Ví dụ: áp dụng chính sách văn phòng mới'}
                   />
                 </label>
                 <div className={localStyles.bulkInfo}>
@@ -1182,16 +1212,43 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
                     ))}
                   </select>
                 </label>
-                <label>
-                  Áp dụng từ ngày
-                  <input
-                    type="date"
-                    min={policyAssignmentMinDate}
-                    value={assignmentDraft.effectiveFrom}
-                    onChange={(event) => setAssignmentDraft((current) => ({ ...current, effectiveFrom: event.target.value }))}
-                    required
-                  />
-                </label>
+                <fieldset className={localStyles.timingFieldset} data-testid="employee-policy-effective-mode">
+                  <legend>Thời điểm áp dụng</legend>
+                  <label className={localStyles.checkOption}>
+                    <input
+                      type="radio"
+                      name="employee-policy-effective-mode"
+                      checked={assignmentDraft.effectiveMode === 'NOW'}
+                      disabled={policyAssignmentMinDate > todayDate()}
+                      onChange={() => setAssignmentDraft((current) => ({ ...current, effectiveMode: 'NOW', effectiveFrom: todayDate() }))}
+                    />
+                    <span>
+                      <strong>Áp dụng ngay</strong>
+                      <small>{policyAssignmentMinDate > todayDate() ? `Đã có mốc chính sách từ ${dateLabel(policyAssignmentMinDate)}; hãy chọn ngày sau mốc đó.` : 'Có hiệu lực từ hôm nay.'}</small>
+                    </span>
+                  </label>
+                  <label className={localStyles.checkOption}>
+                    <input
+                      type="radio"
+                      name="employee-policy-effective-mode"
+                      checked={assignmentDraft.effectiveMode === 'DATE'}
+                      onChange={() => setAssignmentDraft((current) => ({ ...current, effectiveMode: 'DATE', effectiveFrom: current.effectiveFrom < policyAssignmentMinDate ? policyAssignmentMinDate : current.effectiveFrom }))}
+                    />
+                    <span><strong>Chọn ngày áp dụng</strong><small>Dùng khi cần lên lịch thay đổi chính sách.</small></span>
+                  </label>
+                </fieldset>
+                {assignmentDraft.effectiveMode === 'DATE' ? (
+                  <label>
+                    Ngày áp dụng
+                    <input
+                      type="date"
+                      min={policyAssignmentMinDate}
+                      value={assignmentDraft.effectiveFrom}
+                      onChange={(event) => setAssignmentDraft((current) => ({ ...current, effectiveFrom: event.target.value }))}
+                      required
+                    />
+                  </label>
+                ) : null}
                 <label>
                   Lý do / ghi chú
                   <input
@@ -1464,16 +1521,29 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
                         ))}
                       </select>
                     </label>
-                    <label>
-                      Áp dụng chính sách từ ngày
-                      <input
-                        type="date"
-                        min={todayDate()}
-                        value={createPolicyEffectiveFrom}
-                        onChange={(event) => setCreatePolicyEffectiveFrom(event.target.value)}
-                        required
-                      />
-                    </label>
+                    <fieldset className={localStyles.timingFieldset} data-testid="employee-create-policy-effective-mode">
+                      <legend>Thời điểm áp dụng chính sách</legend>
+                      <label className={localStyles.checkOption}>
+                        <input type="radio" name="employee-create-policy-effective-mode" checked={createPolicyMode === 'NOW'} onChange={() => { setCreatePolicyMode('NOW'); setCreatePolicyEffectiveFrom(todayDate()); }} />
+                        <span><strong>Áp dụng ngay</strong><small>Có hiệu lực từ ngày tạo hồ sơ.</small></span>
+                      </label>
+                      <label className={localStyles.checkOption}>
+                        <input type="radio" name="employee-create-policy-effective-mode" checked={createPolicyMode === 'DATE'} onChange={() => setCreatePolicyMode('DATE')} />
+                        <span><strong>Chọn ngày áp dụng</strong><small>Dùng khi chính sách bắt đầu vào ngày khác.</small></span>
+                      </label>
+                    </fieldset>
+                    {createPolicyMode === 'DATE' ? (
+                      <label>
+                        Ngày áp dụng chính sách
+                        <input
+                          type="date"
+                          min={todayDate()}
+                          value={createPolicyEffectiveFrom}
+                          onChange={(event) => setCreatePolicyEffectiveFrom(event.target.value)}
+                          required
+                        />
+                      </label>
+                    ) : null}
                     {!activePolicies.length ? <div className={styles.banner}>Chưa có chính sách làm việc đang hoạt động. Hãy tạo chính sách trước khi thêm nhân sự.</div> : null}
                   </>
                 ) : null}

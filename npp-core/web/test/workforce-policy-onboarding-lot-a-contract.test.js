@@ -15,6 +15,7 @@ test('Issue #1110 Lô A shows policy coverage and bulk assignment in the employe
   assert.match(page, /getWorkPolicyCoverage/);
   assert.match(workspace, /Chưa có chính sách/);
   assert.match(workspace, /Áp dụng chính sách hàng loạt/);
+  assert.match(workspace, /bulk-policy-effective-mode/);
   assert.match(workspace, /Nhân sự chưa có chính sách/);
   assert.match(workspace, /Toàn bộ nhân sự đang làm việc/);
   assert.match(workspace, /Theo chi nhánh/);
@@ -26,7 +27,8 @@ test('Issue #1110 Lô A requires policy assignment when creating staff in the wo
 
   assert.match(workspace, /employee-create-policy-select/);
   assert.match(workspace, /workPolicyId: createPolicyId/);
-  assert.match(workspace, /policyEffectiveFrom: createPolicyEffectiveFrom/);
+  assert.match(workspace, /createPolicyMode === 'NOW' \? todayDate\(\) : createPolicyEffectiveFrom/);
+  assert.match(workspace, /employee-create-policy-effective-mode/);
   assert.match(workspace, /Chưa có chính sách làm việc đang hoạt động/);
 });
 
