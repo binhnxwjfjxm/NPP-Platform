@@ -93,7 +93,7 @@ function companyToday() {
   return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
-test('Issue #1110 same-day work-policy edits update the effective row instead of creating an impossible second slice', async () => {
+test('Issue #1110 same-day work-policy edits create a new version while keeping the old policy row for existing assignments', async () => {
   const today = companyToday();
   const policyId = '11111111-1111-4111-8111-111111111111';
   const existing = {
@@ -128,15 +128,26 @@ test('Issue #1110 same-day work-policy edits update the effective row instead of
   const statements = [];
   const client = {
     async query(sql, params) {
-      statements.push(sql);
+      statements.push({ sql, params });
       if (sql.includes('FROM shared.work_policies') && sql.includes('id = $2') && sql.includes('FOR UPDATE')) {
         return { rows: [existing] };
       }
       if (sql.includes('FROM shared.work_policies') && sql.includes('ORDER BY version DESC') && sql.includes('FOR UPDATE')) {
         return { rows: [existing] };
       }
-      if (sql.includes('UPDATE shared.work_policies') && sql.includes('effective_from = $21')) {
-        return { rows: [{ ...existing, name: params[2], attendance_method: params[13] }] };
+      if (sql.includes('UPDATE shared.work_policies') && sql.includes('SET effective_to = $3')) {
+        assert.equal(params[2], today);
+        return { rows: [] };
+      }
+      if (sql.includes('INSERT INTO shared.work_policies')) {
+        return { rows: [{
+          ...existing,
+          id: '66666666-6666-4666-8666-666666666666',
+          version: 2,
+          name: 'Văn phòng mới',
+          attendance_method: 'ALL',
+          supersedes_policy_id: policyId,
+        }] };
       }
       throw new Error(`unexpected SQL: ${sql}`);
     },
@@ -169,15 +180,13 @@ test('Issue #1110 same-day work-policy edits update the effective row instead of
   });
 
   assert.equal(result.ok, true);
-  assert.equal(result.action, 'update');
-  assert.equal(result.policy.id, policyId);
-  assert.equal(result.policy.version, 1);
-  assert.equal(result.policy.name, 'Văn phòng mới');
-  assert.ok(statements.some((sql) => sql.includes('UPDATE shared.work_policies') && sql.includes('effective_from = $21')));
-  assert.ok(!statements.some((sql) => sql.includes('INSERT INTO shared.work_policies')));
-  assert.ok(!statements.some((sql) => sql.includes('SET effective_to = $3')));
+  assert.equal(result.action, 'version');
+  assert.equal(result.policy.version, 2);
+  assert.equal(result.policy.supersedes_policy_id, policyId);
+  assert.ok(statements.some(({ sql }) => sql.includes('INSERT INTO shared.work_policies')));
+  assert.ok(statements.some(({ sql, params }) => sql.includes('SET effective_to = $3') && params[2] === today));
+  assert.ok(!statements.some(({ sql }) => sql.includes('SET name = $3')));
 });
-
 test('Issue #1110 same-day employee policy changes replace that date assignment without closing it to yesterday', async () => {
   const today = companyToday();
   const employeeId = '22222222-2222-4222-8222-222222222222';

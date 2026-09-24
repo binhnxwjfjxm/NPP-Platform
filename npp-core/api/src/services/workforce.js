@@ -176,31 +176,17 @@ export async function createWorkPolicyVersion(client, { installationId, payload,
   if (latest && !latestEffectiveFrom) {
     return fail('POLICY_EFFECTIVE_DATE_CONFLICT', 'Ngày hiệu lực của phiên bản hiện tại không hợp lệ');
   }
-
-  if (latest && validation.normalized.effectiveFrom === latestEffectiveFrom) {
-    const policy = await workforceRepo.updateWorkPolicyVersionSameDay(client, {
-      installationId,
-      id: latest.id,
-      ...validation.normalized,
-    });
-    if (!policy) return fail('POLICY_VERSION_CONFLICT', 'Chính sách đã thay đổi ở nơi khác; hãy cập nhật dữ liệu và thử lại');
-    return {
-      ok: true,
-      policy: withEffectiveDates(policy),
-      beforePolicy: withEffectiveDates(latest),
-      action: 'update',
-    };
-  }
-
   if (latest && validation.normalized.effectiveFrom < latestEffectiveFrom) {
-    return fail('POLICY_EFFECTIVE_DATE_CONFLICT', 'Ngày áp dụng phải từ ngày của phiên bản mới nhất trở đi');
+    return fail('POLICY_EFFECTIVE_DATE_CONFLICT', 'Ngày áp dụng không được trước phiên bản mới nhất');
   }
 
   if (latest && (!latest.effective_to || !latestEffectiveTo || latestEffectiveTo >= validation.normalized.effectiveFrom)) {
     await workforceRepo.closeWorkPolicyVersion(client, {
       installationId,
       id: latest.id,
-      effectiveTo: previousDate(validation.normalized.effectiveFrom),
+      effectiveTo: validation.normalized.effectiveFrom === latestEffectiveFrom
+        ? validation.normalized.effectiveFrom
+        : previousDate(validation.normalized.effectiveFrom),
     });
   }
 
