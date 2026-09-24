@@ -61,8 +61,8 @@ test('Issue #1110 Lô 5 keeps period and employee scope bounded on the server pa
 });
 
 
-test('attendance management lets managers choose an employee for direct attendance correction', () => {
-  const workspace = source('app/workforce/adjustments/attendance-adjustment-workspace.tsx');
+test('attendance management lets managers choose an employee for direct attendance correction', async () => {
+  const workspace = await source('app/workforce/adjustments/attendance-adjustment-workspace.tsx');
   assert.match(workspace, /requestJson<Employee\[]>\('\/api\/access\/employees\?limit=1000'\)/);
   assert.match(workspace, /value=\{directEmployeeId\}/);
   assert.match(workspace, /employeeId: directEmployeeId/);
