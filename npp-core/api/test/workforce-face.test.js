@@ -188,8 +188,8 @@ test('FACE attendance reuses the workforce state machine and canonical event typ
   for (const eventType of ['CHECK_IN', 'TEMP_EXIT', 'RETURN', 'CHECK_OUT']) {
     assert.match(workforce, new RegExp(eventType));
   }
-  assert.match(workforce, /\['FACE', 'QR_FACE'\]/);
-  assert.match(workforce, /\['QR', 'BOTH', 'QR_FACE'\]/);
+  assert.match(workforce, /\['FACE', 'QR_FACE', 'FACE_MANUAL', 'ALL'\]/);
+  assert.match(workforce, /\['QR', 'BOTH', 'QR_FACE', 'ALL'\]/);
 });
 
 test('FACE routes keep admin authorization, device authentication and idempotent mutations', () => {
