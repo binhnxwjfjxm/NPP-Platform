@@ -6,7 +6,7 @@ const CODE_PATTERN = /^[A-Z0-9_-]{1,64}$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/;
 const POLICY_TIME_MODES = new Set(['FIXED', 'SHIFT', 'FLEXIBLE', 'NO_ATTENDANCE']);
-const ATTENDANCE_METHODS = new Set(['QR', 'MANUAL', 'BOTH', 'FACE', 'QR_FACE', 'NONE']);
+const ATTENDANCE_METHODS = new Set(['QR', 'MANUAL', 'BOTH', 'FACE', 'QR_FACE', 'FACE_MANUAL', 'ALL', 'NONE']);
 const ATTENDANCE_BASES = new Set(['TIME', 'PRESENCE', 'NONE']);
 const TEMP_EXIT_REASONS = new Set(['WORK_BUSINESS', 'PERSONAL', 'BREAK', 'OTHER']);
 const SCHEDULE_KINDS = new Set(['WORK', 'OFF']);
@@ -935,7 +935,7 @@ export async function recordQrAttendance(client, {
   const resolved = await resolveAttendanceContext(client, { installationId, employeeId, now });
   if (!resolved.ok) return resolved;
   const attendance = resolved.context;
-  if (!['QR', 'BOTH', 'QR_FACE'].includes(attendance.policy.attendance_method)) {
+  if (!['QR', 'BOTH', 'QR_FACE', 'ALL'].includes(attendance.policy.attendance_method)) {
     return fail('QR_ATTENDANCE_NOT_ALLOWED', 'Chính sách làm việc hiện tại không cho phép chấm công bằng QR');
   }
   if (!attendance.nextAction) return fail('ATTENDANCE_ALREADY_COMPLETE', 'Ngày làm việc này đã kết thúc');
@@ -1002,7 +1002,7 @@ export async function recordManualAttendance(client, {
   const resolved = await resolveAttendanceContext(client, { installationId, employeeId, now });
   if (!resolved.ok) return resolved;
   const attendance = resolved.context;
-  if (!['MANUAL', 'BOTH'].includes(attendance.policy.attendance_method)) {
+  if (!['MANUAL', 'BOTH', 'FACE_MANUAL', 'ALL'].includes(attendance.policy.attendance_method)) {
     return fail('MANUAL_ATTENDANCE_NOT_ALLOWED', 'Chính sách làm việc hiện tại không cho phép chấm công trực tiếp');
   }
   if (!attendance.nextAction) return fail('ATTENDANCE_ALREADY_COMPLETE', 'Ngày làm việc này đã kết thúc');
@@ -1056,7 +1056,7 @@ export async function recordFaceAttendance(client, {
   const resolved = await resolveAttendanceContext(client, { installationId, employeeId, now });
   if (!resolved.ok) return resolved;
   const attendance = resolved.context;
-  if (!['FACE', 'QR_FACE'].includes(attendance.policy.attendance_method)) {
+  if (!['FACE', 'QR_FACE', 'FACE_MANUAL', 'ALL'].includes(attendance.policy.attendance_method)) {
     return fail('FACE_ATTENDANCE_NOT_ALLOWED', 'Chính sách làm việc hiện tại không cho phép chấm công bằng khuôn mặt');
   }
   if (!attendance.nextAction) return fail('ATTENDANCE_ALREADY_COMPLETE', 'Ngày làm việc này đã kết thúc');
