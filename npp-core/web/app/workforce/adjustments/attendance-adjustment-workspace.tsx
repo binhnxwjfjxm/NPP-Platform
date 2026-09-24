@@ -2,7 +2,7 @@
 
 import { createIdempotencyKey } from '@npp/contracts';
 import Link from 'next/link';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
 import shellStyles from '../../components/app-shell.module.css';
 import sharedStyles from '../../organization/organization.module.css';
@@ -15,6 +15,7 @@ import type {
   AttendancePeriodLock,
   AttendancePeriodLockListResponse,
 } from '../../../lib/workforce-types';
+import type { Employee } from '../../../lib/employee-types';
 
 type ApiEnvelope<T> = { data?: T; error?: { message?: string } };
 type Attempt = { payload: string; key: string } | null;
@@ -117,13 +118,14 @@ export default function AttendanceAdjustmentWorkspace({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(initialError);
   const [notice, setNotice] = useState<string | null>(null);
+  const [directEmployees, setDirectEmployees] = useState<Employee[]>([]);
+  const [directEmployeeId, setDirectEmployeeId] = useState(initialEmployeeId || initialData?.selectedEmployee?.id || '');
 
   const [requestDate, setRequestDate] = useState(initialWorkDate || initialToday);
   const [requestIn, setRequestIn] = useState('');
   const [requestOut, setRequestOut] = useState('');
   const [requestReason, setRequestReason] = useState('');
 
-  const targetEmployeeId = initialEmployeeId || data?.selectedEmployee?.id || '';
   const [directDate, setDirectDate] = useState(initialWorkDate || initialToday);
   const [directIn, setDirectIn] = useState('');
   const [directOut, setDirectOut] = useState('');
@@ -140,6 +142,18 @@ export default function AttendanceAdjustmentWorkspace({
   const reviewAttempt = useRef<Attempt>(null);
   const directAttempt = useRef<Attempt>(null);
   const lockAttempt = useRef<Attempt>(null);
+
+  useEffect(() => {
+    if (!initialData?.capabilities.canManage) return;
+    void requestJson<Employee[]>('/api/access/employees?limit=1000')
+      .then((employees) => setDirectEmployees(employees.filter((employee) => employee.is_active)))
+      .catch((loadError) => setError(loadError instanceof Error ? loadError.message : 'Không tải được danh sách nhân sự'));
+  }, [initialData?.capabilities.canManage]);
+
+  const selectedDirectEmployee = useMemo(
+    () => directEmployees.find((employee) => employee.id === directEmployeeId) ?? null,
+    [directEmployees, directEmployeeId],
+  );
 
   const selectedReview = useMemo(
     () => data?.requests.find((item) => item.id === reviewId) ?? null,
@@ -237,9 +251,9 @@ export default function AttendanceAdjustmentWorkspace({
 
   async function submitDirect(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!targetEmployeeId) return;
+    if (!directEmployeeId) return;
     const payload = {
-      employeeId: targetEmployeeId,
+      employeeId: directEmployeeId,
       workDate: directDate,
       requestedCheckInAt: hcmIso(directIn),
       requestedCheckOutAt: hcmIso(directOut),
@@ -394,18 +408,18 @@ export default function AttendanceAdjustmentWorkspace({
 
             {data?.capabilities.canManage ? <section className={styles.panel}>
               <h3>Điều chỉnh trực tiếp</h3>
-              {targetEmployeeId ? <>
-                <p className={styles.note}>Nhân sự: <strong>{data?.selectedEmployee ? data.selectedEmployee.code + ' · ' + data.selectedEmployee.name : 'Đã chọn từ bảng công'}</strong></p>
-                <form onSubmit={(event) => void submitDirect(event)}>
+              <p className={styles.note}>Quản lý chọn đúng nhân sự rồi ghi nhận giờ công. Không dùng tài khoản của quản lý để chấm thay cho nhân sự.</p>
+              <form onSubmit={(event) => void submitDirect(event)}>
                   <div className={styles.formGrid}>
+                    <label className={styles.full}>Nhân sự<select value={directEmployeeId} onChange={(event) => setDirectEmployeeId(event.target.value)} required><option value="">Chọn nhân sự</option>{directEmployees.map((employee) => <option key={employee.id} value={employee.id}>{employee.code} · {employee.full_name}</option>)}</select></label>
                     <label>Ngày công<input type="date" max={initialToday} value={directDate} onChange={(event) => setDirectDate(event.target.value)} required /></label><span />
                     <label>Giờ vào đúng<input type="datetime-local" value={directIn} onChange={(event) => setDirectIn(event.target.value)} /></label>
                     <label>Giờ ra đúng<input type="datetime-local" value={directOut} onChange={(event) => setDirectOut(event.target.value)} /></label>
                     <label className={styles.full}>Lý do xác nhận<textarea value={directReason} onChange={(event) => setDirectReason(event.target.value)} maxLength={1000} required /></label>
                   </div>
-                  <div className={styles.actions}><button type="submit" className={styles.primary} disabled={busy || (!directIn && !directOut)}>Ghi nhận điều chỉnh</button></div>
+                  <div className={styles.actions}><button type="submit" className={styles.primary} disabled={busy || !directEmployeeId || (!directIn && !directOut)}>Ghi nhận điều chỉnh</button></div>
                 </form>
-              </> : <p className={styles.note}>Chọn một ngày công tại <Link className={styles.inlineLink} href="/workforce/timesheet">bảng công</Link> rồi chọn “Điều chỉnh” để tránh chọn nhầm nhân sự.</p>}
+              {selectedDirectEmployee ? <p className={styles.note}>Đang chọn: <strong>{selectedDirectEmployee.code} · {selectedDirectEmployee.full_name}</strong></p> : null}
             </section> : null}
 
             {data?.capabilities.canLock ? <section className={styles.panel}>
