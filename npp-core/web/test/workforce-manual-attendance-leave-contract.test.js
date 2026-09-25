@@ -16,7 +16,7 @@ test('manager attendance screen is search-first, state-aware, and keeps QR in th
   assert.match(attendance, /Chấm công nhân sự/);
   assert.match(attendance, /Tìm nhân sự/);
   assert.match(attendance, /managed-employee-search-results/);
-  assert.match(attendance, />Chọn nhiều\s*</);
+  assert.match(attendance, /Chọn nhiều\s*\{bulkSelectedEmployees\.length/);
   assert.doesNotMatch(attendance, /<span>Chấm công nhiều người<\/span>/);
   assert.match(attendance, /managed-attendance-bulk-picker/);
   assert.match(attendance, /managed-attendance-bulk-workspace/);
