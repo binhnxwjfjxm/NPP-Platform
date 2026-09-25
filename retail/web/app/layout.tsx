@@ -12,6 +12,7 @@ import './retail-print-template-editor.css';
 import './retail-printer.css';
 import './retail-pos-entry.css';
 import { PwaRegistration } from './pwa-registration';
+import { RetailNotificationRuntime } from './retail-notification-runtime';
 import { RetailProductPickerRuntime } from './retail-product-picker-runtime';
 import { RetailSystemPrintPageSizer } from './retail-system-print-page-sizer';
 
@@ -36,5 +37,5 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
-  return <html lang="vi"><body><PwaRegistration /><RetailProductPickerRuntime /><RetailSystemPrintPageSizer />{children}</body></html>;
+  return <html lang="vi"><body><PwaRegistration /><RetailProductPickerRuntime /><RetailSystemPrintPageSizer /><RetailNotificationRuntime />{children}</body></html>;
 }

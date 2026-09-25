@@ -40,6 +40,7 @@ import { handleCustomerOnboardingRoutes } from './routes/customer-onboarding.js'
 import { handleSupplierRoutes } from './routes/suppliers.js';
 import { handleProductRoutes } from './routes/products.js';
 import { handleRetailCatalogRoutes } from './routes/retail-catalog.js';
+import { handleRetailOwnerNotificationRoutes } from './routes/retail-owner-notifications.js';
 import { handleProductUnitRoutes } from './routes/product-units.js';
 import { handleDocumentNumberingRoutes } from './routes/document-numbering.js';
 import { handleDocumentPrintTemplateRoutes } from './routes/document-print-templates.js';
@@ -503,6 +504,7 @@ export function createCoreApiServer(options = {}) {
     if (await handleDocumentPrintTemplateRoutes(req, res, routeContext)) return;
     if (await handleInventoryRoutes(req, res, routeContext)) return;
     if (await handleProductUnitRoutes(req, res, routeContext)) return;
+    if (await handleRetailOwnerNotificationRoutes(req, res, routeContext)) return;
     if (await handleRetailCatalogRoutes(req, res, routeContext)) return;
     if (await handleProductRoutes(req, res, routeContext)) return;
 

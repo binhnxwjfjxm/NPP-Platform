@@ -12,6 +12,7 @@ import {
 } from '../audit-outbox.js';
 import { auditOutboxEffect, transactionExpectations } from '../audit-outbox-effects.js';
 import * as warehouseRepository from '../db/repositories/warehouse.js';
+import { sendRetailOwnerPush } from '../services/retail-owner-notification.js';
 import { getSalesOrder } from '../services/sales-order.js';
 import {
   completeManualSalesOrder,
@@ -208,6 +209,43 @@ function sanitizedUnexpectedError(error, requestId, action, salesOrderId, contra
   };
 }
 
+function shouldSendRetailOwnerCompletionPush({ routeBase, action, requestContext, execution }) {
+  return routeBase === 'pickup-sales-orders'
+    && action === 'complete'
+    && requestContext?.sourceApp === 'retail-web'
+    && execution?.replayed === false
+    && Number(execution?.response?.statusCode) >= 200
+    && Number(execution?.response?.statusCode) < 300
+    && Boolean(execution?.response?.body?.data);
+}
+
+async function notifyRetailOwnerCompletion(options, args) {
+  if (!shouldSendRetailOwnerCompletionPush(args)) return;
+  const sender = options.retailOwnerPushSender ?? sendRetailOwnerPush;
+  try {
+    const result = await sender({
+      db: options.getPool(),
+      installationId: args.requestContext.installationId,
+      order: args.execution.response.body.data,
+      env: options.env ?? process.env,
+      fetchImpl: options.fetchImpl ?? globalThis.fetch,
+    });
+    if (!result?.ok && String(result?.code ?? '') !== 'RETAIL_PUSH_NOT_CONFIGURED') {
+      console.error(JSON.stringify({
+        event: 'retail_owner_push_failed',
+        requestId: options.requestId,
+        code: String(result?.code ?? 'RETAIL_PUSH_FAILED').slice(0, 80),
+      }));
+    }
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: 'retail_owner_push_failed',
+      requestId: options.requestId,
+      code: typeof error?.code === 'string' ? error.code.slice(0, 80) : 'RETAIL_PUSH_FAILED',
+    }));
+  }
+}
+
 async function executeMutation(req, res, options, {
   requestContext,
   id,
@@ -297,6 +335,7 @@ async function executeMutation(req, res, options, {
       execution.response.requestId ?? options.requestId,
       execution.response.contentType,
     );
+    void notifyRetailOwnerCompletion(options, { routeBase, action, requestContext, execution });
   } catch (error) {
     console.error(JSON.stringify(sanitizedUnexpectedError(
       error,
@@ -367,4 +406,5 @@ export const manualSalesOrderRouteInternals = Object.freeze({
   statusFor,
   sanitizedUnexpectedError,
   DIRECT_SALES_ORDER_ROUTES,
+  shouldSendRetailOwnerCompletionPush,
 });
