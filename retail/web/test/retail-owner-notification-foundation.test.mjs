@@ -30,6 +30,9 @@ test('Retail chỉ đánh dấu Owner từ role canonical và có proxy test ide
     read('app/api/notifications/test/route.ts'),
   ]);
   assert.match(me, /system:security-owner/);
+  assert.match(me, /system:implementation-owner/);
+  assert.match(me, /ownerKind === 'PERMANENT'/);
+  assert.match(me, /ownerKind === 'TEMPORARY'/);
   assert.match(me, /actorId\.startsWith\('user:'\)/);
   assert.match(testRoute, /idempotency-key/);
   assert.match(testRoute, /\/api\/retail\/owner-notifications\/test/);

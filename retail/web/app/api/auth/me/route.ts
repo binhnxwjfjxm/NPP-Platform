@@ -8,7 +8,19 @@ import {
 type InternalMe = {
   actorId?: string;
   roles?: string[];
+  session?: {
+    ownerKind?: 'PERMANENT' | 'TEMPORARY' | null;
+  };
 };
+
+const OWNER_ROLES = new Set(['system:security-owner', 'system:implementation-owner']);
+
+function isRetailOwner(data: InternalMe) {
+  const ownerKind = data.session?.ownerKind ?? null;
+  if (ownerKind === 'PERMANENT' || ownerKind === 'TEMPORARY') return true;
+  const roles = Array.isArray(data.roles) ? data.roles : [];
+  return roles.some((role) => OWNER_ROLES.has(role));
+}
 
 export const dynamic = 'force-dynamic';
 
@@ -26,9 +38,8 @@ export async function GET() {
   }
   const actorId = String(result.data.actorId ?? '');
   const userId = actorId.startsWith('user:') ? actorId.slice('user:'.length) : '';
-  const roles = Array.isArray(result.data.roles) ? result.data.roles : [];
   return NextResponse.json(
-    { data: { userId, isOwner: roles.includes('system:security-owner') } },
+    { data: { userId, isOwner: isRetailOwner(result.data) } },
     { status: 200, headers: { 'Cache-Control': 'no-store' } },
   );
 }

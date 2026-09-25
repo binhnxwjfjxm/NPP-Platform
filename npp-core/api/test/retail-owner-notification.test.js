@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  isPermanentRetailOwner,
-  listPermanentRetailOwnerExternalIds,
+  isRetailOwner,
+  listRetailOwnerExternalIds,
   retailOwnerExternalId,
   retailOwnerPushInternals,
   sendRetailOwnerPush,
@@ -21,15 +21,16 @@ function env() {
   };
 }
 
-test('Retail push chỉ công nhận permanent Owner và lấy external id từ user canonical', () => {
+test('Retail push công nhận cả Security Owner và Implementation Owner canonical', () => {
   const owner = { actorId: `user:${OWNER_ID}`, roles: ['system:security-owner'], sourceApp: 'retail-web' };
-  assert.equal(isPermanentRetailOwner(owner), true);
+  assert.equal(isRetailOwner(owner), true);
   assert.equal(retailOwnerExternalId(owner), OWNER_ID);
-  assert.equal(isPermanentRetailOwner({ ...owner, roles: ['system:implementation-owner'] }), false);
-  assert.equal(isPermanentRetailOwner({ ...owner, actorId: 'bootstrap:core-api' }), false);
+  assert.equal(isRetailOwner({ ...owner, roles: ['system:implementation-owner'] }), true);
+  assert.equal(isRetailOwner({ ...owner, roles: ['sales-manager'] }), false);
+  assert.equal(isRetailOwner({ ...owner, actorId: 'bootstrap:core-api' }), false);
 });
 
-test('danh sách nhận push chỉ lấy permanent Owner đang hoạt động', async () => {
+test('danh sách nhận push lấy cả permanent và temporary Owner đang hoạt động', async () => {
   let capturedSql = '';
   const db = {
     async query(sql, values) {
@@ -38,9 +39,9 @@ test('danh sách nhận push chỉ lấy permanent Owner đang hoạt động', 
       return { rows: [{ user_id: OWNER_ID }, { user_id: OWNER_ID }] };
     },
   };
-  const ids = await listPermanentRetailOwnerExternalIds(db, { installationId: 'installation-a' });
+  const ids = await listRetailOwnerExternalIds(db, { installationId: 'installation-a' });
   assert.deepEqual(ids, [OWNER_ID]);
-  assert.match(capturedSql, /owner_kind = 'PERMANENT'/);
+  assert.match(capturedSql, /owner_kind IN \('PERMANENT', 'TEMPORARY'\)/);
   assert.match(capturedSql, /u\.is_active = true/);
   assert.match(capturedSql, /e\.is_active = true/);
 });
