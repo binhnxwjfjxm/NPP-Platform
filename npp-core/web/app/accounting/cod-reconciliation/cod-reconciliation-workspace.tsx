@@ -3,6 +3,7 @@
 import { createIdempotencyKey } from '@npp/contracts';
 import { useEffect, useRef, useState } from 'react';
 import type { CodHandover } from '../../../lib/cod-reconciliation-types';
+import CodReconciliationPrintDock from './CodReconciliationPrintDock';
 import styles from '../supplier-payments/supplier-payments.module.css';
 
 type Props = Readonly<{ initialHandovers: CodHandover[]; initialError: string | null }>;
@@ -186,6 +187,7 @@ export default function CodReconciliationWorkspace({ initialHandovers, initialEr
                 <span>Chênh lệch lúc lập bàn giao: {money(selected.differenceAmount)}</span>
                 <span>Trạng thái: {statusLabel(selected.status)}</span>
               </div>
+              <CodReconciliationPrintDock handover={selected} />
               <div className={styles.tableWrap}>
                 <table className={styles.table}>
                   <thead><tr><th>Phiếu giao</th><th>Khách hàng</th><th className={styles.amount}>Đang giữ</th><th className={styles.amount}>Bàn giao</th><th /></tr></thead>

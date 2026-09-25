@@ -48,6 +48,28 @@ const CATALOG = Object.freeze([
   template('TRIP_RECONCILIATION', 'standard', 'Biên bản đối soát chuyến', 'A4', [
     ['status', 'Tình trạng đối soát'], ['warehouse', 'Kho'], ['vehicle', 'Xe'], ['driver', 'Tài xế'], ['receipt_count', 'Số lần nhập hàng về'], ['closed_at', 'Thời điểm đóng'], ['can_close', 'Điều kiện đóng'], ['line_stop', 'Điểm giao'], ['line_delivery_order', 'Phiếu giao'], ['line_customer', 'Khách hàng'], ['line_item', 'SKU / hàng hóa'], ['line_result', 'Kết quả'], ['line_issued', 'Xuất'], ['line_delivered', 'Đã giao'], ['line_returned', 'Đã về'], ['line_outstanding', 'Còn trên xe'], ['note', 'Ghi chú'], ['signatures', 'Ký xác nhận'],
   ]),
+
+  template('MANUAL_INBOUND', 'standard', 'Phiếu nhập kho', 'A4', [
+    ['status', 'Tình trạng phiếu'], ['inbound_type', 'Loại nhập'], ['warehouse', 'Kho nhập'], ['document_date', 'Ngày chứng từ'], ['line_no', 'STT'], ['line_item', 'Sản phẩm / SKU'], ['line_quantity', 'Số lượng nhập'], ['line_unit', 'ĐVT'], ['note', 'Ghi chú'], ['signatures', 'Chữ ký'],
+  ]),
+  template('SUPPLIER_RETURN', 'standard', 'Phiếu trả hàng Nhà cung cấp', 'A4', [
+    ['status', 'Tình trạng phiếu'], ['supplier', 'Nhà cung cấp'], ['warehouse', 'Kho xuất trả'], ['return_date', 'Ngày trả'], ['source_receipt', 'Phiếu nhận nguồn'], ['line_no', 'STT'], ['line_item', 'Sản phẩm / SKU'], ['line_reason', 'Lý do'], ['line_quantity', 'Số lượng trả'], ['line_unit', 'ĐVT'], ['line_lot', 'Lô'], ['total_quantity', 'Tổng số lượng'], ['note', 'Ghi chú'], ['signatures', 'Chữ ký'],
+  ]),
+  template('CUSTOMER_RETURN', 'standard', 'Phiếu nhận hàng khách trả', 'A4', [
+    ['status', 'Tình trạng phiếu'], ['customer', 'Khách hàng'], ['warehouse', 'Kho nhận'], ['source_document', 'Chứng từ nguồn'], ['line_no', 'STT'], ['line_item', 'Sản phẩm / SKU'], ['line_reason', 'Lý do trả'], ['line_requested', 'Khách đề nghị trả'], ['line_accepted', 'Thực nhận'], ['line_unit', 'ĐVT'], ['line_lot', 'Lô'], ['total_requested', 'Tổng đề nghị trả'], ['total_accepted', 'Tổng thực nhận'], ['note', 'Ghi chú'], ['signatures', 'Chữ ký'],
+  ]),
+  template('FULFILLMENT_PICKING', 'standard', 'Phiếu soạn hàng / cấp hàng', 'A4', [
+    ['status', 'Tình trạng xử lý'], ['customer', 'Khách hàng'], ['warehouse', 'Kho xử lý'], ['sales_channel', 'Kênh bán'], ['delivery_date', 'Ngày giao dự kiến'], ['line_no', 'STT'], ['line_item', 'Sản phẩm / SKU'], ['line_ordered', 'Cần cấp'], ['line_allocated', 'Đã phân bổ'], ['line_picked', 'Đã soạn'], ['line_packed', 'Đã đóng gói'], ['line_unit', 'ĐVT'], ['note', 'Ghi chú'], ['signatures', 'Chữ ký'],
+  ]),
+  template('SUPPLIER_PAYMENT', 'standard', 'Phiếu chi Nhà cung cấp', 'A5', [
+    ['status', 'Tình trạng phiếu'], ['supplier', 'Nhà cung cấp'], ['paying_unit', 'Đơn vị chi'], ['payment_date', 'Ngày chi'], ['payment_method', 'Hình thức thanh toán'], ['bank_reference', 'Mã giao dịch'], ['recorded_by', 'Người ghi nhận'], ['total_paid', 'Số tiền đã chi'], ['total_allocated', 'Đã phân bổ'], ['total_unallocated', 'Chưa phân bổ'], ['note', 'Ghi chú'], ['signatures', 'Chữ ký'],
+  ]),
+  template('CUSTOMER_REFUND', 'standard', 'Phiếu hoàn tiền khách hàng', 'A5', [
+    ['status', 'Tình trạng phiếu'], ['customer', 'Khách hàng'], ['warehouse', 'Đơn vị hoàn'], ['source_credit', 'Khoản giảm công nợ nguồn'], ['refund_date', 'Ngày hoàn'], ['refund_method', 'Phương thức hoàn'], ['destination', 'Nơi nhận / tài khoản nhận'], ['transaction_reference', 'Tham chiếu giao dịch'], ['total_refund', 'Số tiền hoàn'], ['note', 'Lý do / ghi chú'], ['signatures', 'Chữ ký'],
+  ]),
+  template('COD_RECONCILIATION', 'standard', 'Biên bản đối soát COD', 'A4', [
+    ['status', 'Tình trạng đối soát'], ['trip', 'Chuyến giao'], ['warehouse', 'Kho'], ['driver', 'Tài xế'], ['handover_at', 'Thời điểm bàn giao'], ['line_delivery_order', 'Phiếu giao'], ['line_customer', 'Khách hàng'], ['line_expected', 'Đang giữ'], ['line_handed_over', 'Bàn giao'], ['expected_total', 'Tổng phải bàn giao'], ['handed_over_total', 'Tổng đã bàn giao'], ['accepted_total', 'Công Ty thực nhận'], ['difference_total', 'Chênh lệch'], ['note', 'Ghi chú'], ['signatures', 'Chữ ký'],
+  ]),
 ]);
 
 const CATALOG_BY_KEY = new Map(CATALOG.map((item) => [`${item.documentType}:${item.templateCode}`, item]));

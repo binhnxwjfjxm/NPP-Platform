@@ -4,6 +4,7 @@ import { createIdempotencyKey } from '@npp/contracts';
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
+import CustomerReturnPrintDock from './CustomerReturnPrintDock';
 import { StatusBadge } from '../../components/status-badge';
 import { WorkspaceTabPanel, WorkspaceTabs, type WorkspaceTabOption } from '../../components/workspace-tabs';
 import styles from '../delivery-orders/delivery-order-workspace.module.css';
@@ -389,6 +390,7 @@ export default function CustomerReturnWorkspace() {
                     <article key={line.id}><div><strong>{line.sku} — {line.itemName}</strong><span>{line.deliveryOrderNumber} · {line.locationCode || 'Không vị trí'} · Lô {line.lotCode || 'Không lô'}</span><small>{line.reasonCode}: {line.reasonNote}</small></div>{selectedReturn.status === 'draft' ? <label>Thực nhận<input inputMode="decimal" value={accepted[line.id] ?? ''} onChange={(event) => setAccepted((current) => ({ ...current, [line.id]: event.target.value }))} aria-label={`Thực nhận ${line.sku}`} /><small>Tối đa {formatQuantity(line.requestedBaseQuantity)} {line.unitCode}</small></label> : <strong>Nhận {formatQuantity(line.acceptedBaseQuantity)} {line.unitCode}</strong>}</article>
                   ))}
                 </div>
+                {selectedReturn.status === 'received' ? <CustomerReturnPrintDock customerReturn={selectedReturn} /> : null}
                 {selectedReturn.status === 'draft' ? (
                   <div className={styles.actions}>
                     <button type="button" className={styles.primaryButton} onClick={() => void transition('receive')} disabled={busy !== null} data-testid="customer-return-receive">{busy === 'receive' ? 'Đang nhận kho...' : 'Xác nhận thực nhận và nhập kho'}</button>
