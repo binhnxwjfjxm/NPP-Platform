@@ -372,19 +372,27 @@ export async function listChargeableLeaveDays(client, { installationId, employee
         AND calendar_day.calendar_date = day_value.work_date::date
         AND calendar_day.is_active = true
        LEFT JOIN LATERAL (
-         SELECT assignment.work_policy_id
+         SELECT effective_policy.id AS work_policy_id
            FROM shared.employee_work_policy_assignments assignment
            JOIN shared.work_policies assigned_policy
              ON assigned_policy.installation_id = assignment.installation_id
             AND assigned_policy.id = assignment.work_policy_id
+           JOIN LATERAL (
+             SELECT candidate.*
+               FROM shared.work_policies candidate
+              WHERE candidate.installation_id = assignment.installation_id
+                AND candidate.code = assigned_policy.code
+                AND candidate.effective_from <= day_value.work_date::date
+                AND (candidate.effective_to IS NULL OR candidate.effective_to >= day_value.work_date::date)
+                AND candidate.is_active = true
+              ORDER BY candidate.version DESC
+              LIMIT 1
+           ) effective_policy ON true
           WHERE assignment.installation_id = $1
             AND assignment.employee_id = $2
             AND assignment.effective_from <= day_value.work_date::date
             AND (assignment.effective_to IS NULL OR assignment.effective_to >= day_value.work_date::date)
-            AND assigned_policy.effective_from <= day_value.work_date::date
-            AND (assigned_policy.effective_to IS NULL OR assigned_policy.effective_to >= day_value.work_date::date)
-            AND assigned_policy.is_active = true
-          ORDER BY assignment.effective_from DESC, assigned_policy.version DESC
+          ORDER BY assignment.effective_from DESC, effective_policy.version DESC
           LIMIT 1
        ) assigned ON true
        LEFT JOIN shared.work_policies policy

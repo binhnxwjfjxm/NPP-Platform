@@ -13,7 +13,10 @@ test('Issue #1110 Lô A reads effective policy coverage for active employees in 
   assert.match(repository, /e\.is_active = true/);
   assert.match(repository, /LEFT JOIN LATERAL/);
   assert.match(repository, /a\.effective_from <= \$2::date/);
-  assert.match(repository, /p\.effective_from <= \$2::date/);
+  assert.match(repository, /effective_policy\.code = assigned_policy\.code/);
+  assert.match(repository, /effective_policy\.effective_from <= \$2::date/);
+  assert.match(repository, /effective_policy\.effective_to IS NULL OR effective_policy\.effective_to >= \$2::date/);
+  assert.match(repository, /p\.id AS work_policy_id/);
   assert.match(repository, /e\.branch_id = \$\$\{params\.length\}/);
   assert.match(repository, /e\.id = ANY\(\$\$\{params\.length\}::uuid\[\]\)/);
 });

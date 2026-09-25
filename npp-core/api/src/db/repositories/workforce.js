@@ -6,7 +6,7 @@ const POLICY_COLUMNS = `id, installation_id, code, version, name, work_nature, t
   attendance_basis, timezone, rounding_minutes, minimum_full_day_minutes, minimum_half_day_minutes,
   effective_from, effective_to, supersedes_policy_id, is_active, created_at, created_by`;
 
-const ASSIGNMENT_COLUMNS = `a.id, a.installation_id, a.employee_id, a.work_policy_id,
+const ASSIGNMENT_COLUMNS = `a.id, a.installation_id, a.employee_id, p.id AS work_policy_id,
   a.effective_from, a.effective_to, a.reason, a.created_at, a.created_by,
   p.code AS policy_code, p.version AS policy_version, p.name AS policy_name,
   p.time_mode AS policy_time_mode, p.attendance_method AS policy_attendance_method,
@@ -193,15 +193,24 @@ export async function getEffectiveEmployeePolicyAssignment(client, { installatio
   const result = await client.query(
     `SELECT ${ASSIGNMENT_COLUMNS}
        FROM shared.employee_work_policy_assignments a
-       JOIN shared.work_policies p
-         ON p.installation_id = a.installation_id AND p.id = a.work_policy_id
+       JOIN shared.work_policies assigned_policy
+         ON assigned_policy.installation_id = a.installation_id
+        AND assigned_policy.id = a.work_policy_id
+       JOIN LATERAL (
+         SELECT effective_policy.*
+           FROM shared.work_policies effective_policy
+          WHERE effective_policy.installation_id = a.installation_id
+            AND effective_policy.code = assigned_policy.code
+            AND effective_policy.effective_from <= $3::date
+            AND (effective_policy.effective_to IS NULL OR effective_policy.effective_to >= $3::date)
+            AND effective_policy.is_active = true
+          ORDER BY effective_policy.version DESC
+          LIMIT 1
+       ) p ON true
       WHERE a.installation_id = $1
         AND a.employee_id = $2
-        AND a.effective_from <= $3
-        AND (a.effective_to IS NULL OR a.effective_to >= $3)
-        AND p.effective_from <= $3
-        AND (p.effective_to IS NULL OR p.effective_to >= $3)
-        AND p.is_active = true
+        AND a.effective_from <= $3::date
+        AND (a.effective_to IS NULL OR a.effective_to >= $3::date)
       ORDER BY a.effective_from DESC, p.version DESC
       LIMIT 1`,
     [installationId, employeeId, workDate],
@@ -228,20 +237,29 @@ export async function listEmployeePolicyCoverage(client, {
       LEFT JOIN shared.branches b
         ON b.installation_id = e.installation_id AND b.id = e.branch_id
       LEFT JOIN LATERAL (
-        SELECT a.id AS assignment_id, a.work_policy_id,
+        SELECT a.id AS assignment_id, p.id AS work_policy_id,
                to_char(a.effective_from, 'YYYY-MM-DD') AS effective_from,
                CASE WHEN a.effective_to IS NULL THEN NULL ELSE to_char(a.effective_to, 'YYYY-MM-DD') END AS effective_to,
                p.code AS policy_code, p.version AS policy_version, p.name AS policy_name
           FROM shared.employee_work_policy_assignments a
-          JOIN shared.work_policies p
-            ON p.installation_id = a.installation_id AND p.id = a.work_policy_id
+          JOIN shared.work_policies assigned_policy
+            ON assigned_policy.installation_id = a.installation_id
+           AND assigned_policy.id = a.work_policy_id
+          JOIN LATERAL (
+            SELECT effective_policy.*
+              FROM shared.work_policies effective_policy
+             WHERE effective_policy.installation_id = a.installation_id
+               AND effective_policy.code = assigned_policy.code
+               AND effective_policy.effective_from <= $2::date
+               AND (effective_policy.effective_to IS NULL OR effective_policy.effective_to >= $2::date)
+               AND effective_policy.is_active = true
+             ORDER BY effective_policy.version DESC
+             LIMIT 1
+          ) p ON true
          WHERE a.installation_id = e.installation_id
            AND a.employee_id = e.id
            AND a.effective_from <= $2::date
            AND (a.effective_to IS NULL OR a.effective_to >= $2::date)
-           AND p.effective_from <= $2::date
-           AND (p.effective_to IS NULL OR p.effective_to >= $2::date)
-           AND p.is_active = true
          ORDER BY a.effective_from DESC, p.version DESC
          LIMIT 1
       ) current_assignment ON true

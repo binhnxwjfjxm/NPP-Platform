@@ -27,18 +27,27 @@ const DAY_JOINS = `
    AND cal.calendar_date = c.work_date_date
    AND cal.is_active = true
   LEFT JOIN LATERAL (
-    SELECT a.work_policy_id
+    SELECT effective_policy.id AS work_policy_id
       FROM shared.employee_work_policy_assignments a
-      JOIN shared.work_policies ap
-        ON ap.installation_id = a.installation_id AND ap.id = a.work_policy_id
+      JOIN shared.work_policies assigned_policy
+        ON assigned_policy.installation_id = a.installation_id
+       AND assigned_policy.id = a.work_policy_id
+      JOIN LATERAL (
+        SELECT candidate.*
+          FROM shared.work_policies candidate
+         WHERE candidate.installation_id = a.installation_id
+           AND candidate.code = assigned_policy.code
+           AND candidate.effective_from <= c.work_date_date
+           AND (candidate.effective_to IS NULL OR candidate.effective_to >= c.work_date_date)
+           AND candidate.is_active = true
+         ORDER BY candidate.version DESC
+         LIMIT 1
+      ) effective_policy ON true
      WHERE a.installation_id = c.installation_id
        AND a.employee_id = c.employee_id
        AND a.effective_from <= c.work_date_date
        AND (a.effective_to IS NULL OR a.effective_to >= c.work_date_date)
-       AND ap.effective_from <= c.work_date_date
-       AND (ap.effective_to IS NULL OR ap.effective_to >= c.work_date_date)
-       AND ap.is_active = true
-     ORDER BY a.effective_from DESC, ap.version DESC
+     ORDER BY a.effective_from DESC, effective_policy.version DESC
      LIMIT 1
   ) assigned ON true
   LEFT JOIN shared.work_policies p

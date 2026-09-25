@@ -69,6 +69,23 @@ test('Issue #1110 Lô 2 preserves policy history and blocks retroactive schedule
   assert.match(service, /SCHEDULE_CONFLICT/);
 });
 
+test('Issue #1110 resolves the policy version effective on each work date without losing the assignment family', async () => {
+  const [workforceRepo, timesheetRepo, planningRepo, leaveRepo] = await Promise.all([
+    source('src/db/repositories/workforce.js'),
+    source('src/db/repositories/attendance-timesheet.js'),
+    source('src/db/repositories/workforce-planning.js'),
+    source('src/db/repositories/leave-management.js'),
+  ]);
+
+  assert.match(workforceRepo, /JOIN shared\.work_policies assigned_policy/);
+  assert.match(workforceRepo, /effective_policy\.code = assigned_policy\.code/);
+  assert.match(workforceRepo, /p\.id AS work_policy_id/);
+  assert.match(timesheetRepo, /candidate\.code = assigned_policy\.code/);
+  assert.match(planningRepo, /p\.code = assigned_policy\.code/);
+  assert.match(planningRepo, /p\.id AS work_policy_id/);
+  assert.match(leaveRepo, /candidate\.code = assigned_policy\.code/);
+});
+
 
 test('Issue #1110 normalizes PostgreSQL effective dates before workforce comparisons', async () => {
   assert.equal(effectiveDateOnly('2026-09-20'), '2026-09-20');

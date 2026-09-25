@@ -71,6 +71,23 @@ const EXIT_REASON_LABEL: Record<Exclude<ExitReason, ''>, string> = {
   OTHER: 'Lý do khác',
 };
 
+function managedIssuePresentation(issue: ManagedSelection['issue']) {
+  if (!issue) return null;
+  if (issue.code === 'WORK_POLICY_REQUIRED') {
+    return { label: 'Thiếu chính sách tính công', title: 'Chưa có chính sách tính công', tone: 'warning' as const };
+  }
+  if (issue.code === 'WORK_SCHEDULE_REQUIRED') {
+    return { label: 'Thiếu lịch làm việc', title: 'Chưa có lịch làm việc', tone: 'warning' as const };
+  }
+  if (issue.code === 'WORK_DAY_OFF') {
+    return { label: 'Ngoài lịch làm việc', title: 'Hôm nay là ngày nghỉ theo lịch', tone: 'info' as const };
+  }
+  if (issue.code === 'ATTENDANCE_NOT_REQUIRED') {
+    return { label: 'Không yêu cầu chấm công', title: 'Chính sách hiện tại không yêu cầu chấm công', tone: 'info' as const };
+  }
+  return { label: 'Cần kiểm tra thiết lập', title: 'Thiết lập chấm công cần kiểm tra', tone: 'warning' as const };
+}
+
 const ATTENDANCE_METHOD_LABEL: Record<AttendanceToday['policy']['attendanceMethod'], string> = {
   QR: 'Quét mã QR tại nơi làm việc',
   FACE: 'Quét khuôn mặt tại máy chấm công',
@@ -128,6 +145,11 @@ function formatDateTime(value: string | null | undefined, timeZone = 'Asia/Ho_Ch
   } catch {
     return value;
   }
+}
+
+function formatWorkDate(value: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : value;
 }
 
 function QrCode({ payload }: { payload: string }) {
@@ -231,6 +253,7 @@ export default function AttendanceWorkspace({
     return [selected, ...filteredManagedEmployees];
   }, [managedEmployees, managedEmployeeId, filteredManagedEmployees]);
   const managedAttendance = managedSelected?.attendance ?? null;
+  const managedIssue = managedIssuePresentation(managedSelected?.issue ?? null);
   const managedTimeZone = managedAttendance?.policy?.timezone || 'Asia/Ho_Chi_Minh';
 
   function stopScanner() {
@@ -660,7 +683,22 @@ export default function AttendanceWorkspace({
 
             <div className={localStyles.employeeControlGrid}>
               <label className={localStyles.controlField}>
-                <span>Nhân sự</span>
+                <span>Tìm nhân sự</span>
+                <div className={localStyles.quickSearch}>
+                  <span aria-hidden="true">⌕</span>
+                  <input
+                    type="search"
+                    value={managedEmployeeQuery}
+                    placeholder="Nhập mã, tên hoặc chi nhánh"
+                    autoComplete="off"
+                    onChange={(event) => setManagedEmployeeQuery(event.target.value)}
+                  />
+                </div>
+                <small>{filteredManagedEmployees.length} nhân sự phù hợp</small>
+              </label>
+
+              <label className={localStyles.controlField}>
+                <span>Chọn trong kết quả</span>
                 <select
                   value={managedEmployeeId}
                   onChange={(event) => {
@@ -679,21 +717,7 @@ export default function AttendanceWorkspace({
                     </option>
                   ))}
                 </select>
-              </label>
-
-              <label className={localStyles.controlField}>
-                <span>Tìm nhanh</span>
-                <div className={localStyles.quickSearch}>
-                  <span aria-hidden="true">⌕</span>
-                  <input
-                    type="search"
-                    value={managedEmployeeQuery}
-                    placeholder="Nhập mã, tên hoặc chi nhánh"
-                    autoComplete="off"
-                    onChange={(event) => setManagedEmployeeQuery(event.target.value)}
-                  />
-                </div>
-                <small>{filteredManagedEmployees.length} nhân sự phù hợp</small>
+                <small>Tìm trước để thu gọn danh sách, sau đó chọn đúng nhân sự.</small>
               </label>
             </div>
 
@@ -713,26 +737,25 @@ export default function AttendanceWorkspace({
                       <p>{managedSelected.employee.code} · {managedSelected.employee.branchName || 'Chưa có chi nhánh'}</p>
                     </div>
                   </div>
-                  {managedSelected.issue ? (
-                    <span className={localStyles.statusPillWarning}>
-                      {managedSelected.issue.code === 'WORK_POLICY_REQUIRED' ? 'Chưa gắn chính sách' : 'Cần bổ sung cấu hình'}
-                    </span>
-                  ) : managedAttendance ? (
-                    <span className={localStyles.statusPill}>{STATUS_LABEL[managedAttendance.status]}</span>
-                  ) : (
-                    <span className={localStyles.statusPillMuted}>Chưa có trạng thái</span>
-                  )}
+                  <div className={localStyles.statusGroup}>
+                    {managedAttendance ? (
+                      <span className={localStyles.statusPill}>{STATUS_LABEL[managedAttendance.status]}</span>
+                    ) : (
+                      <span className={localStyles.statusPillMuted}>Chưa có trạng thái</span>
+                    )}
+                    {managedIssue ? (
+                      <span className={managedIssue.tone === 'warning' ? localStyles.statusPillWarning : localStyles.statusPillInfo}>
+                        {managedIssue.label}
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
 
-                {managedSelected.issue ? (
-                  <div className={localStyles.configurationNotice}>
-                    <strong>
-                      {managedSelected.issue.code === 'WORK_POLICY_REQUIRED'
-                        ? 'Chưa có chính sách tính công'
-                        : 'Cấu hình chấm công chưa đầy đủ'}
-                    </strong>
+                {managedSelected.issue && managedIssue ? (
+                  <div className={managedIssue.tone === 'warning' ? localStyles.configurationNotice : localStyles.configurationNoticeInfo}>
+                    <strong>{managedIssue.title}</strong>
                     <span>
-                      {managedSelected.issue.message}. Quản lý vẫn có thể chấm công trực tiếp; Bảng công sẽ chờ cấu hình để tính công chính xác.
+                      {managedSelected.issue.message}. Trạng thái chấm công vẫn được ghi nhận theo thao tác thực tế.
                     </span>
                   </div>
                 ) : null}
@@ -761,7 +784,9 @@ export default function AttendanceWorkspace({
                         </button>
                       ) : null}
                       {!managedAttendance.nextAction ? <span className={localStyles.completedText}>Ngày làm việc đã kết thúc.</span> : null}
-                      <a className={localStyles.actionButtonLink} href="/workforce/policies">Gắn chính sách</a>
+                      {managedSelected.issue?.code === 'WORK_POLICY_REQUIRED' ? (
+                        <a className={localStyles.actionButtonLink} href="/workforce/employees">Mở hồ sơ nhân sự</a>
+                      ) : null}
                     </div>
 
                     {managedExitOpen && managedAttendance.nextAction === 'EXIT' ? (
@@ -798,7 +823,7 @@ export default function AttendanceWorkspace({
                       <section className={localStyles.infoCard}>
                         <div className={localStyles.infoCardHeader}><h3>Thông tin hôm nay</h3></div>
                         <div className={localStyles.infoRows}>
-                          <div className={localStyles.infoRow}><span>Ngày làm việc</span><strong>{managedAttendance.workDate}</strong></div>
+                          <div className={localStyles.infoRow}><span>Ngày làm việc</span><strong>{formatWorkDate(managedAttendance.workDate)}</strong></div>
                           <div className={localStyles.infoRow}><span>Trạng thái</span><strong>{STATUS_LABEL[managedAttendance.status]}</strong></div>
                           <div className={localStyles.infoRow}><span>Chính sách</span><strong>{managedAttendance.policy?.name || 'Chờ gắn chính sách'}</strong></div>
                           <div className={localStyles.infoRow}><span>Dự kiến vào/ra</span><strong>{formatDateTime(managedAttendance.expectedStartAt, managedTimeZone)} — {formatDateTime(managedAttendance.expectedEndAt, managedTimeZone)}</strong></div>
