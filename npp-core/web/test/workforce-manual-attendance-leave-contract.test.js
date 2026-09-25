@@ -21,6 +21,7 @@ test('manager records manual attendance only on the Attendance screen without re
   assert.doesNotMatch(adjustment, /Chấm công tay và điều chỉnh công/);
   assert.doesNotMatch(adjustment, /recordNowAction/);
   assert.match(adjustment, /Điều chỉnh giờ đã ghi nhận/);
+  assert.match(adjustment, /value=\{directEmployeeId\}/);
   assert.match(gateway, /attendance-managed-manual/);
   assert.match(route, /params\.action === 'manual'/);
 });

@@ -411,6 +411,7 @@ export default function AttendanceAdjustmentWorkspace({
               <p className={styles.note}>Chỉ dùng phần này khi cần sửa lại giờ công theo chứng từ hoặc xác nhận của quản lý.</p>
               <form onSubmit={(event) => void submitDirect(event)}>
                 <div className={styles.formGrid}>
+                  <label className={styles.full}>Nhân sự<select value={directEmployeeId} onChange={(event) => setDirectEmployeeId(event.target.value)} required><option value="">Chọn nhân sự</option>{directEmployees.map((employee) => <option key={employee.id} value={employee.id}>{employee.code} · {employee.full_name}</option>)}</select></label>
                   <label>Ngày công<input type="date" max={initialToday} value={directDate} onChange={(event) => setDirectDate(event.target.value)} required /></label><span />
                   <label>Giờ vào đúng<input type="datetime-local" value={directIn} onChange={(event) => setDirectIn(event.target.value)} /></label>
                   <label>Giờ ra đúng<input type="datetime-local" value={directOut} onChange={(event) => setDirectOut(event.target.value)} /></label>
