@@ -6,6 +6,7 @@ import type { CodHandover } from '../../lib/cod-reconciliation-types';
 import type { CodReportingDashboard } from '../../lib/cod-reporting-types';
 import CodReconciliationWorkspace from '../accounting/cod-reconciliation/cod-reconciliation-workspace';
 import { AppShell } from './app-shell';
+import { CodReportingExportActions } from './reporting-lot3-export-actions';
 import metricStyles from './cod-reporting-workspace.module.css';
 import {
   WorkspaceTabPanel,
@@ -163,6 +164,7 @@ export default function CodReportingWorkspace({ initialHandovers, initialCodErro
     >
       <div className={styles.workspace} data-testid="cod-reporting-workspace">
         <div className={styles.headerActions}>
+          {report ? <CodReportingExportActions report={report} disabled={busy} /> : null}
           <Link className={styles.linkButton} href="/accounting/reconciliation">Đối soát tổng hợp</Link>
         </div>
 
@@ -358,7 +360,7 @@ export default function CodReportingWorkspace({ initialHandovers, initialCodErro
                 <tbody>
                   {report?.currentSnapshot.overduePromises.map((row) => (
                     <tr key={row.collectionId}>
-                      <td>{row.deliveryOrderNumber ?? row.deliveryOrderId}</td>
+                      <td>{row.deliveryOrderNumber ?? 'Chưa có số phiếu'}</td>
                       <td>{row.tripNumber} · {row.driverCode}</td>
                       <td className={styles.numeric}>{money(row.expectedAmount, row.currencyCode)}</td>
                       <td>{row.promisedBy}</td>
@@ -393,7 +395,7 @@ export default function CodReportingWorkspace({ initialHandovers, initialCodErro
                     <tr key={`lifecycle-${row.anomalyType}-${row.sourceId}`}>
                       <td>{officeLabel(row.anomalyType, RECONCILIATION_STATUS_LABELS)}</td>
                       <td><Link href="/accounting/reconciliation">{row.sourceNumber}</Link></td>
-                      <td>{row.warehouseId}</td>
+                      <td>{report?.warehouses.find((warehouse) => warehouse.warehouseId === row.warehouseId)?.warehouseCode ?? 'Kho được cấp quyền'}</td>
                       <td>{officeLabel(row.reconciliationStatus, RECONCILIATION_STATUS_LABELS)}</td>
                     </tr>
                   ))}
