@@ -47,8 +47,14 @@ test('Issue #1110 Lô 4 renders daily and monthly timesheets with office languag
   assert.match(workspace, /Thiếu chấm công/);
   assert.match(workspace, /Nguồn dữ liệu/);
   assert.match(workspace, /Chi tiết sự kiện/);
+  assert.match(workspace, /Thao tác nhanh/);
+  assert.match(workspace, /Kết thúc công việc bên ngoài/);
+  assert.match(workspace, /Sửa giờ vào \/ ra/);
+  assert.match(workspace, /\/api\/workforce\/attendance\/manual/);
+  assert.match(workspace, /\/api\/workforce\/adjustments\/direct/);
+  assert.match(workspace, /createIdempotencyKey/);
+  assert.match(workspace, /target="_blank"/);
   assert.doesNotMatch(workspace, /Bảng công tổng hợp từ lịch làm việc|chưa phải dữ liệu tính lương|Mỗi nhân sự một hàng|<h2>Công theo ngày<\/h2>|<h2>Bảng công 31 ngày<\/h2>/);
-  assert.doesNotMatch(workspace, /Idempotency-Key|createIdempotencyKey|method:\s*'POST'/);
 });
 
 test('Issue #1110 Lô 4 uses bounded pagination instead of loading the full Công Ty history', async () => {
