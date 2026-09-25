@@ -132,10 +132,10 @@ jobs:
           {
             echo "## VPS production migration 159"
             echo
-            echo "- Run ID: `$GITHUB_RUN_ID`"
-            echo "- Exact main SHA: `$SOURCE_SHA`"
+            echo "- Run ID: $GITHUB_RUN_ID"
+            echo "- Exact main SHA: $SOURCE_SHA"
             echo '- Command: `/migrate-vps-production-159`'
-            echo "- Operation status: `${{ job.status }}`"
+            echo "- Operation status: ${{ job.status }}"
             echo "- Secret values and database URLs are not included."
             echo
             echo '~~~text'

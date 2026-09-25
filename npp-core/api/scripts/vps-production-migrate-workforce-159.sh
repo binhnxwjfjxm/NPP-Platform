@@ -36,7 +36,7 @@ protected_row_count() {
   scalar "$1" "SELECT 'attendance_events='||count(*) FROM shared.attendance_events
     UNION ALL SELECT 'employees='||count(*) FROM shared.employees
     UNION ALL SELECT 'leave_requests='||count(*) FROM shared.leave_requests
-    UNION ALL SELECT 'leave_balance_entries='||count(*) FROM shared.leave_balance_entries
+    UNION ALL SELECT 'leave_balance_ledger='||count(*) FROM shared.leave_balance_ledger
     ORDER BY 1"
 }
 
