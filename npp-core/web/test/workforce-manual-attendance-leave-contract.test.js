@@ -14,7 +14,8 @@ test('manager attendance screen is search-first, state-aware, and keeps QR in th
     source('app/api/workforce/attendance/[action]/route.ts'),
   ]);
   assert.match(attendance, /Chấm công nhân sự/);
-  assert.match(attendance, /Tìm nhanh/);
+  assert.match(attendance, /Tìm nhân sự/);
+  assert.match(attendance, /Chọn trong kết quả/);
   assert.match(attendance, /Nhập mã, tên hoặc chi nhánh/);
   assert.match(attendance, /attendance-qr-toggle/);
   assert.match(attendance, /attendance-qr-popover/);
