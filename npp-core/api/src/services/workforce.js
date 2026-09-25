@@ -1152,7 +1152,7 @@ export async function recordManualAttendance(client, {
         ok: true,
         eventType: 'CHECK_OUT',
         movementReason: null,
-        note: text(payload?.note) || 'Kết thúc công việc bên ngoài',
+        note: 'Kết thúc công việc bên ngoài',
       }
     : attendanceEventChoice(attendance, choicePayload);
   if (!choice.ok) return choice;
