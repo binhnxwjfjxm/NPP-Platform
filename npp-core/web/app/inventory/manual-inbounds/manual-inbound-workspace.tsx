@@ -10,6 +10,7 @@ import {
 import { MIN_PRODUCT_SEARCH_LENGTH } from '../../../lib/product-search-contract';
 import { readSpreadsheetRows } from '../../../lib/spreadsheet-reader';
 import ManualInboundExportDialog from './manual-inbound-export-dialog';
+import ManualInboundPrintDock from './ManualInboundPrintDock';
 import styles from './manual-inbound-workspace.module.css';
 
 type LocationManagementMode = 'MANAGED' | 'UNMANAGED';
@@ -275,6 +276,7 @@ export default function ManualInboundWorkspace() {
   const [historyBusy, setHistoryBusy] = useState(false);
   const [historyMessage, setHistoryMessage] = useState('');
   const [historyDetail, setHistoryDetail] = useState<HistoryMovementDetail | null>(null);
+  const [historyDetailDocument, setHistoryDetailDocument] = useState<HistoryDocument | null>(null);
   const [historyDetailBusy, setHistoryDetailBusy] = useState(false);
   const [historyDetailError, setHistoryDetailError] = useState('');
   const [reverseDraft, setReverseDraft] = useState<{ documentId: string; label: string; documentDate: string; reasonNote: string } | null>(null);
@@ -440,6 +442,7 @@ export default function ManualInboundWorkspace() {
   }
 
   async function openHistoryDetail(document: HistoryDocument) {
+    setHistoryDetailDocument(document);
     setHistoryDetail(null);
     setHistoryDetailError('');
     setHistoryDetailBusy(true);
@@ -947,7 +950,7 @@ export default function ManualInboundWorkspace() {
 
     {(historyDetailBusy || historyDetail || historyDetailError) ? <div role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) { setHistoryDetail(null); setHistoryDetailError(''); } }} className={styles.dialogBackdrop}>
       <section role="dialog" aria-modal="true" aria-labelledby="manual-inbound-movement-title" className={styles.dialogCard}>
-        <div className={styles.sectionHeading}><div><h2 id="manual-inbound-movement-title">Biến động tồn theo chứng từ</h2><p>{historyDetail ? `${historyDetail.warehouseCode} — ${historyDetail.warehouseName} · ${displayDate(historyDetail.documentDate)}${historyDetail.referenceNumber ? ` · ${historyDetail.referenceNumber}` : ''}` : 'Chỉ hiển thị các mã hàng có trên chứng từ này.'}</p></div><button type="button" className={styles.secondary} onClick={() => { setHistoryDetail(null); setHistoryDetailError(''); }}>Đóng</button></div>
+        <div className={styles.sectionHeading}><div><h2 id="manual-inbound-movement-title">Biến động tồn theo chứng từ</h2><p>{historyDetail ? `${historyDetail.warehouseCode} — ${historyDetail.warehouseName} · ${displayDate(historyDetail.documentDate)}${historyDetail.referenceNumber ? ` · ${historyDetail.referenceNumber}` : ''}` : 'Chỉ hiển thị các mã hàng có trên chứng từ này.'}</p></div><ManualInboundPrintDock document={historyDetailDocument} detail={historyDetail} /><button type="button" className={styles.secondary} onClick={() => { setHistoryDetail(null); setHistoryDetailDocument(null); setHistoryDetailError(''); }}>Đóng</button></div>
         {historyDetailBusy ? <p className={styles.historyMessage}>Đang tải biến động tồn…</p> : null}
         {historyDetailError ? <p className={styles.historyMessage}>{historyDetailError}</p> : null}
         {historyDetail ? <div className={styles.historyTableWrap}><table className={styles.historyTable}><thead><tr><BusinessTableSequenceHeader /><th>Sản phẩm / SKU</th><th>ĐVT</th><th>Tồn trước</th><th>Biến động</th><th>Tồn sau</th></tr></thead><tbody>{historyDetail.lines.map((line, rowIndex) => <tr key={line.baseVariantId}><BusinessTableSequenceCell rowIndex={rowIndex} /><td><strong>{line.productName || line.sku}</strong><small>{line.sku}</small></td><td>{line.baseUnitCode || '—'}</td><td>{formatQuantity(line.quantityBefore)}</td><td><strong>+{formatQuantity(line.quantityDelta)}</strong></td><td><strong>{formatQuantity(line.quantityAfter)}</strong></td></tr>)}</tbody></table></div> : null}

@@ -6,6 +6,7 @@ import {
   BusinessTableSequenceCell,
   BusinessTableSequenceHeader,
 } from '../../components/business-table-sequence';
+import CustomerRefundPrintDock from './CustomerRefundPrintDock';
 import type { ReceivableAllocationTarget } from '../../../lib/customer-payment-types';
 import type {
   CustomerRefund,
@@ -414,7 +415,7 @@ export default function CustomerReturnCreditWorkspace({
                         <td>{refundMethodLabel(refund.refundMethod)}<br /><span>{refund.destinationReference}</span></td>
                         <td className={styles.amount}>{money(refund.amount, refund.currencyCode)}</td>
                         <td>{refund.reversalId ? 'Đã đảo' : 'Đã hoàn'}</td>
-                        <td>{!refund.reversalId ? <button type="button" disabled={busy || !reversalReason.trim()} onClick={() => reverseRefund(refund)}>Đảo hoàn tiền</button> : null}</td>
+                        <td><CustomerRefundPrintDock refund={refund} />{!refund.reversalId ? <button type="button" disabled={busy || !reversalReason.trim()} onClick={() => reverseRefund(refund)}>Đảo hoàn tiền</button> : null}</td>
                       </tr>
                     ))}
                     {!selected.refunds?.length ? <tr><td colSpan={5}>Chưa có hoàn tiền từ khoản giảm công nợ này.</td></tr> : null}

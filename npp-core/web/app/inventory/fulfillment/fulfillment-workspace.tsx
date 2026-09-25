@@ -3,6 +3,7 @@
 import { createIdempotencyKey } from '@npp/contracts';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
+import FulfillmentPickingPrintDock from './FulfillmentPickingPrintDock';
 import { BusinessSequenceNumber } from '../../components/business-table-sequence';
 import { StockHoldBreakdown } from '../../components/stock-hold-breakdown';
 import styles from './fulfillment-workspace.module.css';
@@ -710,6 +711,7 @@ export default function FulfillmentWorkspace() {
                       </span>
                     ) : null}
                   </div>
+                  <FulfillmentPickingPrintDock order={selectedOrder} />
                   <button
                     type="button"
                     className={styles.primaryButton}

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
+import SupplierReturnPrintDock from './SupplierReturnPrintDock';
 import {
   BusinessTableSequenceCell,
   BusinessTableSequenceHeader,
@@ -724,6 +725,7 @@ export default function SupplierReturnWorkspace({
             </div>
 
             <div className={localStyles.modalActions}>
+              <SupplierReturnPrintDock supplierReturn={selectedSupplierReturn} />
               {selectedSupplierReturn.inventoryMovementId ? (
                 <Link href="/inventory/balances" className={styles.secondaryButton}>Mở sổ kho</Link>
               ) : null}

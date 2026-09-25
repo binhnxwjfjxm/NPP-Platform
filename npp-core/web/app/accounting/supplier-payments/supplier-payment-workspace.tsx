@@ -5,6 +5,7 @@ import {
   BusinessTableSequenceCell,
   BusinessTableSequenceHeader,
 } from '../../components/business-table-sequence';
+import SupplierPaymentPrintDock from './SupplierPaymentPrintDock';
 import type { Supplier } from '../../../lib/supplier-types';
 import type { Warehouse } from '../../../lib/organization-types';
 import type {
@@ -298,6 +299,7 @@ export default function SupplierPaymentWorkspace({
           <h2>Chi tiết và phân bổ</h2>
           {!selected ? <p>Chọn một phiếu thanh toán để xem chi tiết.</p> : <>
             <div className={styles.summary}><strong>{selected.documentNumber}</strong><span>{selected.supplierCode} · {selected.supplierName}</span><span>{money(selected.remainingAmount, selected.currencyCode)} chưa phân bổ</span></div>
+            <SupplierPaymentPrintDock payment={selected} />
             {selected.status !== 'reversed' && (selectedRemaining ?? 0n) > 0n ? <form className={styles.allocationForm} onSubmit={allocatePayment} data-testid="supplier-payment-allocation-form">
               <label>Chứng từ phải trả<select value={targetId} required onChange={(event) => { setTargetId(event.target.value); setAllocationAmount(''); }}><option value="">Chọn chứng từ</option>{matchingTargets.map((target) => <option key={target.id} value={target.id}>{target.documentNumber} · còn {money(target.remainingAmount, target.currencyCode)}</option>)}</select></label>
               <label>Ngày phân bổ<input type="date" required value={allocationDate} onChange={(event) => setAllocationDate(event.target.value)} /></label>
