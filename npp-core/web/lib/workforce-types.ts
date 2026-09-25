@@ -636,9 +636,12 @@ export type LeaveRequest = {
   day_part: LeaveDayPart;
   reason: string;
   attachment_reference: string | null;
+  attachment_url?: string | null;
+  request_source: 'SELF_SERVICE' | 'MANUAL_PAPER';
+  manual_approver_name: string | null;
   status: LeaveRequestStatus;
   requested_by_actor_id: string;
-  requested_by_employee_id: string;
+  requested_by_employee_id: string | null;
   reviewed_by_actor_id: string | null;
   review_reason: string | null;
   reviewed_at: string | null;
@@ -669,6 +672,13 @@ export type LeaveRequestListResponse = {
     branchId: string | null;
   } | null;
   branches: AttendanceBranch[];
+  employees: Array<{
+    id: string;
+    code: string;
+    name: string;
+    branchId: string | null;
+    branchName: string | null;
+  }>;
   pagination: {
     limit: number;
     offset: number;
@@ -681,6 +691,7 @@ export type LeaveRequestListResponse = {
     selfOnly: boolean;
     canSubmitOwn: boolean;
     canApprove: boolean;
+    canSubmitManual: boolean;
     canManageTypes: boolean;
   };
 };

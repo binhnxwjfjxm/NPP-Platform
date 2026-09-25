@@ -10,6 +10,7 @@ const LEAVE_REQUEST_COLUMNS = `r.id, r.installation_id, r.employee_id, r.leave_t
   r.leave_counts_as_workday_snapshot, r.leave_requires_approval_snapshot,
   r.leave_tracks_balance_snapshot, r.leave_allow_negative_balance_snapshot,
   r.date_from, r.date_to, r.day_part, r.reason, r.attachment_reference,
+  r.request_source, r.manual_approver_name,
   r.status, r.requested_by_actor_id, r.requested_by_employee_id,
   r.reviewed_by_actor_id, r.review_reason, r.reviewed_at,
   r.cancelled_by_actor_id, r.cancel_reason, r.cancelled_at,
@@ -241,18 +242,20 @@ export async function insertLeaveRequest(client, values) {
        leave_type_code_snapshot, leave_type_name_snapshot, leave_is_paid_snapshot,
        leave_counts_as_workday_snapshot, leave_requires_approval_snapshot,
        leave_tracks_balance_snapshot, leave_allow_negative_balance_snapshot,
-       date_from, date_to, day_part, reason, attachment_reference, status,
+       date_from, date_to, day_part, reason, attachment_reference,
+       request_source, manual_approver_name, status,
        requested_by_actor_id, requested_by_employee_id,
        reviewed_by_actor_id, review_reason, reviewed_at,
        version, request_id, created_at, updated_at
      ) VALUES (
-       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,1,$23,now(),now()
+       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,1,$25,now(),now()
      )
      RETURNING id, installation_id, employee_id, leave_type_id,
        leave_type_code_snapshot, leave_type_name_snapshot, leave_is_paid_snapshot,
        leave_counts_as_workday_snapshot, leave_requires_approval_snapshot,
        leave_tracks_balance_snapshot, leave_allow_negative_balance_snapshot,
-       date_from, date_to, day_part, reason, attachment_reference, status,
+       date_from, date_to, day_part, reason, attachment_reference,
+       request_source, manual_approver_name, status,
        requested_by_actor_id, requested_by_employee_id, reviewed_by_actor_id,
        review_reason, reviewed_at, cancelled_by_actor_id, cancel_reason, cancelled_at,
        version, request_id, created_at, updated_at`,
@@ -261,7 +264,8 @@ export async function insertLeaveRequest(client, values) {
       values.leaveCountsAsWorkdaySnapshot, values.leaveRequiresApprovalSnapshot,
       values.leaveTracksBalanceSnapshot, values.leaveAllowNegativeBalanceSnapshot,
       values.dateFrom, values.dateTo, values.dayPart, values.reason, values.attachmentReference,
-      values.status, values.requestedByActorId, values.requestedByEmployeeId,
+      values.requestSource, values.manualApproverName, values.status,
+      values.requestedByActorId, values.requestedByEmployeeId,
       values.reviewedByActorId, values.reviewReason, values.reviewedAt, values.requestId],
   );
   return result.rows?.[0] ?? null;
@@ -290,7 +294,8 @@ export async function reviewLeaveRequest(client, {
       RETURNING id, installation_id, employee_id, leave_type_id,
         leave_type_code_snapshot, leave_type_name_snapshot, leave_is_paid_snapshot,
         leave_counts_as_workday_snapshot, leave_requires_approval_snapshot,
-        date_from, date_to, day_part, reason, attachment_reference, status,
+        date_from, date_to, day_part, reason, attachment_reference,
+        request_source, manual_approver_name, status,
         requested_by_actor_id, requested_by_employee_id, reviewed_by_actor_id,
         review_reason, reviewed_at, cancelled_by_actor_id, cancel_reason, cancelled_at,
         version, request_id, created_at, updated_at`,
@@ -310,7 +315,8 @@ export async function cancelLeaveRequest(client, {
       RETURNING id, installation_id, employee_id, leave_type_id,
         leave_type_code_snapshot, leave_type_name_snapshot, leave_is_paid_snapshot,
         leave_counts_as_workday_snapshot, leave_requires_approval_snapshot,
-        date_from, date_to, day_part, reason, attachment_reference, status,
+        date_from, date_to, day_part, reason, attachment_reference,
+        request_source, manual_approver_name, status,
         requested_by_actor_id, requested_by_employee_id, reviewed_by_actor_id,
         review_reason, reviewed_at, cancelled_by_actor_id, cancel_reason, cancelled_at,
         version, request_id, created_at, updated_at`,
