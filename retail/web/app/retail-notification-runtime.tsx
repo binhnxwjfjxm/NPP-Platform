@@ -247,9 +247,9 @@ export async function requestRetailNotificationPermission() {
     throw new Error('Quyền thông báo đang bị chặn. Hãy bật lại trong Cài đặt của thiết bị.');
   }
   await activeSdk.Notifications.requestPermission();
-  if (activeSdk.Notifications.permissionNative !== 'granted') {
-    refreshState();
-    throw new Error(activeSdk.Notifications.permissionNative === 'denied'
+  refreshState();
+  if (state.nativePermission !== 'granted') {
+    throw new Error(state.nativePermission === 'denied'
       ? 'Quyền thông báo đang bị chặn. Hãy bật lại trong Cài đặt của thiết bị.'
       : 'Chưa cấp quyền thông báo. Có thể bật lại khi sẵn sàng.');
   }
