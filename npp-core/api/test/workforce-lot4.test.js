@@ -87,6 +87,43 @@ test('Issue #1110 Lô 4 computes actual, counted, late and early minutes from ca
   assert.deepEqual(day.attendanceSources, ['QR']);
 });
 
+
+test('flexible effectiveness-based policy keeps a completed late arrival as a full workday without late or early violations', () => {
+  const row = baseRow({
+    policy_time_mode: 'FLEXIBLE',
+    policy_name: 'Theo hiệu quả công việc',
+    policy_overtime_enabled: false,
+  });
+  const day = summarizeAttendanceDay(
+    row,
+    [
+      event('flex-in', 'CHECK_IN', '2026-09-19T03:15:00.000Z'),
+      event('flex-out', 'CHECK_OUT', '2026-09-19T10:00:00.000Z'),
+    ],
+    new Date('2026-09-20T03:00:00.000Z'),
+  );
+  const employee = {
+    id: day.employee.id,
+    code: day.employee.code,
+    full_name: day.employee.name,
+    branch_id: day.employee.branchId,
+    branch_code: day.employee.branchCode,
+    branch_name: day.employee.branchName,
+  };
+  const month = summarizeAttendanceMonth(employee, [day], {
+    from: '2026-09-01',
+    to: '2026-09-30',
+  });
+
+  assert.equal(day.lateMinutes, 0);
+  assert.equal(day.earlyLeaveMinutes, 0);
+  assert.equal(day.status, 'COMPLETE');
+  assert.equal(day.validWork, true);
+  assert.equal(month.completedDays, 1);
+  assert.equal(month.lateViolationDays, 0);
+  assert.equal(month.earlyLeaveViolationDays, 0);
+});
+
 test('Issue #1110 Lô 4 marks a past workday with no checkout as incomplete without inventing payroll data', () => {
   const day = summarizeAttendanceDay(
     baseRow(),
