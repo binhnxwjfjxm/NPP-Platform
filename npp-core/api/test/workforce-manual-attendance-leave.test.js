@@ -18,6 +18,9 @@ test('manager manual attendance is a real attendance event and direct adjustment
   assert.match(workforce, /successCount/);
   assert.match(workforce, /failureCount/);
   assert.match(workforce, /TEMP_EXIT/);
+  assert.match(workforce, /END_EXTERNAL_WORK/);
+  assert.match(workforce, /externalWorkCompletion/);
+  assert.match(workforce, /Kết thúc công việc bên ngoài/);
   assert.match(workforce, /managedAttendanceOverview/);
   assert.match(workforce, /resolveManagedAttendanceContext/);
   assert.match(workforce, /MANAGED_ATTENDANCE_CONFIGURATION_CODES/);
