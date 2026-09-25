@@ -106,7 +106,9 @@ function runCommand(command, args, env) {
     throw error;
   }
   if (result.status !== 0) {
-    const detail = redactOperationalText(result.stderr || `${command} exited with status ${result.status}`, secrets);
+    const combined = [result.stdout, result.stderr].filter(Boolean).join('\n').trim()
+      || `${command} exited with status ${result.status}`;
+    const detail = redactOperationalText(combined, secrets);
     const error = new Error(`${command} failed: ${detail}`);
     error.code = `${command}_failed`;
     throw error;
