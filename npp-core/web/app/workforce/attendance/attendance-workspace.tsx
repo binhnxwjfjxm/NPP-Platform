@@ -475,7 +475,7 @@ export default function AttendanceWorkspace({
     }
   }
 
-  async function showWorkplaceQr(event: React.FormEvent<HTMLFormElement>) {  async function showWorkplaceQr(event: React.FormEvent<HTMLFormElement>) {
+  async function showWorkplaceQr(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!management || !selectedWorkplaceId) return;
 
