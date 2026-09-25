@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
+import OperationalExportActions from '../../components/operational-export-actions';
 import {
   BusinessTableSequenceCell,
   BusinessTableSequenceHeader,
@@ -791,6 +792,29 @@ export default function GoodsReceiptWorkspace({
               ))}
             </select>
           </div>
+          <OperationalExportActions
+            filename="phieu-nhan-hang-theo-bo-loc.xlsx"
+            allowCsv
+            disabled={loadingList}
+            sheets={[{
+              sheetName: 'Phiếu nhận hàng',
+              headers: ['Số phiếu', 'Đơn mua hàng', 'Mã Nhà cung cấp', 'Nhà cung cấp', 'Kho nhận', 'Ngày nhận', 'Trạng thái', 'Số dòng', 'Tổng thực nhận', 'Tổng chấp nhận', 'Tổng loại', 'Tham chiếu giao'],
+              rows: visibleItems.map((item) => [
+                item.documentNumber ?? '',
+                item.purchaseOrderNumber ?? '',
+                item.supplierCode ?? '',
+                item.supplierName,
+                [item.warehouseCode, item.warehouseName].filter(Boolean).join(' — '),
+                formatGoodsReceiptDate(item.receiptDate),
+                GOODS_RECEIPT_STATUS_LABELS[item.status],
+                item.lineCount,
+                item.receivedQuantityTotal,
+                item.acceptedQuantityTotal,
+                item.rejectedQuantityTotal,
+                item.supplierDeliveryReference ?? '',
+              ]),
+            }]}
+          />
         </section>
 
         <section className={styles.tableSection}>

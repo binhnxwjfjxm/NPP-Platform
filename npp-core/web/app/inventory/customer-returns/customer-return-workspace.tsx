@@ -4,6 +4,7 @@ import { createIdempotencyKey } from '@npp/contracts';
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
+import OperationalExportActions from '../../components/operational-export-actions';
 import CustomerReturnPrintDock from './CustomerReturnPrintDock';
 import { StatusBadge } from '../../components/status-badge';
 import { WorkspaceTabPanel, WorkspaceTabs, type WorkspaceTabOption } from '../../components/workspace-tabs';
@@ -371,7 +372,29 @@ export default function CustomerReturnWorkspace() {
 
         <WorkspaceTabPanel tabId="process" activeTab={activeTab} idPrefix="customer-return-workflow">
           <section className={styles.panel}>
-            <div className={styles.panelHeader}><div><h3>Phiếu hàng khách trả</h3><p>Phiếu nháp chưa làm tăng tồn kho.</p></div></div>
+            <div className={styles.panelHeader}>
+              <div><h3>Phiếu hàng khách trả</h3><p>Phiếu nháp chưa làm tăng tồn kho.</p></div>
+              <OperationalExportActions
+                filename="hang-khach-tra.xlsx"
+                allowCsv
+                disabled={loading}
+                sheets={[{
+                  sheetName: 'Hàng khách trả',
+                  headers: ['Số phiếu', 'Mã khách hàng', 'Khách hàng', 'Kho nhận', 'Trạng thái', 'Số dòng', 'Số lượng đề nghị', 'Số lượng thực nhận', 'Ghi chú'],
+                  rows: returns.map((item) => [
+                    item.number ?? 'Phiếu nháp',
+                    item.customerCode,
+                    item.customerName,
+                    [item.warehouseCode, item.warehouseName].filter(Boolean).join(' — '),
+                    statusLabel(item.status),
+                    item.lineCount ?? 0,
+                    item.requestedBaseQuantity ?? '0',
+                    item.acceptedBaseQuantity ?? '0',
+                    item.note ?? '',
+                  ]),
+                }]}
+              />
+            </div>
             <div className={styles.queue}>
               {returns.length === 0 ? <p className={styles.empty}>Chưa có phiếu hàng khách trả.</p> : null}
               {returns.map((item) => (

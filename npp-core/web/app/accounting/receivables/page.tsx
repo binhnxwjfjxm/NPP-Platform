@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { AppShell } from '../../components/app-shell';
+import OperationalExportActions from '../../components/operational-export-actions';
 import {
   BusinessTableSequenceCell,
   BusinessTableSequenceHeader,
@@ -100,6 +101,37 @@ export default async function ReceivablesPage({ searchParams }: PageProps) {
       title="Công nợ khách hàng"
       subtitle="Xem số tiền khách còn nợ và lần giao hàng hoặc nhận tại quầy đã phát sinh khoản nợ."
       kicker="Kế toán bán hàng"
+      actions={(
+        <OperationalExportActions
+          filename="cong-no-phai-thu.xlsx"
+          sheets={[
+            {
+              sheetName: 'Số dư phải thu',
+              headers: ['Mã khách hàng', 'Khách hàng', 'Tiền tệ', 'Số dư', 'Còn mở', 'Số chứng từ', 'Cập nhật'],
+              rows: balances.map((item) => [item.customerCode, item.customerName, item.currencyCode, item.balance, item.openAmount, item.openDocumentCount, item.updatedAt]),
+            },
+            {
+              sheetName: 'Chứng từ phải thu',
+              headers: ['Chứng từ nguồn', 'Ngày', 'Mã khách hàng', 'Khách hàng', 'Đơn bán', 'Phiếu giao', 'Kho', 'Chính sách thu', 'Tiền tệ', 'Giá trị', 'Đã thu', 'Còn phải thu', 'Trạng thái'],
+              rows: documents.map((item) => [
+                item.sourceDocumentNumber,
+                item.sourceDocumentDate,
+                item.customerCode ?? '',
+                item.customerName ?? '',
+                item.salesOrderNumber ?? '',
+                item.deliveryOrderNumber ?? '',
+                [item.warehouseCode, item.warehouseName].filter(Boolean).join(' — '),
+                collectionPolicyLabel(item.collectionPolicy),
+                item.currencyCode,
+                item.originalAmount,
+                item.allocatedAmount,
+                item.remainingAmount,
+                statusLabel(item.status),
+              ]),
+            },
+          ]}
+        />
+      )}
     >
       <div className={styles.grid} data-testid="receivables-page">
         {error ? <div className={styles.alert} role="alert">{error}</div> : null}

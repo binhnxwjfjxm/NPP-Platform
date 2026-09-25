@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
+import OperationalExportActions from '../../components/operational-export-actions';
 import {
   BusinessTableSequenceCell,
   BusinessTableSequenceHeader,
@@ -384,6 +385,28 @@ export default function PurchasePriceWorkspace() {
         <section className={styles.listSection}>
           <div className={styles.listHeader}>
             <div><p className={styles.meta}>Danh mục mua hàng</p><h2>Giá theo nhà cung cấp và SKU</h2></div>
+            <OperationalExportActions
+              filename="gia-mua-nha-cung-cap-theo-bo-loc.xlsx"
+              sheets={[{
+                sheetName: 'Giá mua Nhà cung cấp',
+                headers: ['Mã Nhà cung cấp', 'Nhà cung cấp', 'SKU', 'Sản phẩm', 'Đơn vị', 'Giá mua', 'Tiền tệ', 'Từ số lượng', 'Hiệu lực từ', 'Hiệu lực đến', 'Mã hàng NCC', 'Tham chiếu nguồn', 'Trạng thái'],
+                rows: visiblePrices.map((price) => [
+                  price.supplierCode,
+                  price.supplierName,
+                  price.sku,
+                  price.productName,
+                  price.unitCode,
+                  price.unitPrice,
+                  price.currencyCode,
+                  price.minQuantity,
+                  price.effectiveFrom,
+                  price.effectiveTo ?? '',
+                  price.supplierSku ?? '',
+                  price.sourceReference ?? '',
+                  price.isActive ? 'Đang dùng' : 'Ngừng dùng',
+                ]),
+              }]}
+            />
             <span className={styles.meta}>{visiblePrices.length} dòng</span>
           </div>
           {visiblePrices.length === 0 ? <div className={styles.empty}>{loading ? 'Đang tải bảng giá mua…' : 'Chưa có giá mua phù hợp bộ lọc.'}</div> : (

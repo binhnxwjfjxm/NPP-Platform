@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell-core';
+import OperationalExportActions from '../../components/operational-export-actions';
 import { clonePrintSurfaceForOutput } from '../../components/print-document';
 import type { Customer } from '../../../lib/customer-types';
 import type { SalesOrder, SalesOrderVersion } from '../../../lib/sales-order-types';
@@ -824,6 +825,28 @@ export default function OrderManagementWorkspace({ permissionKeys }: { permissio
             <label><span>Luồng giao</span><select value={filters.lane} onChange={(event) => updateFilter('lane', event.target.value as DeliveryLane)}>{LANE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
             <label><span>Nguồn đơn</span><select value={filters.source} onChange={(event) => updateFilter('source', event.target.value as SourceFilter)}>{SOURCE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
             <div className={styles.filterActions}>
+              <OperationalExportActions
+                filename="don-ban-hang-theo-bo-loc.xlsx"
+                allowCsv
+                disabled={loading || Boolean(rangeError)}
+                sheets={[{
+                  sheetName: 'Đơn bán hàng',
+                  headers: ['Số đơn', 'Ngày tạo', 'Mã khách hàng', 'Khách hàng', 'Trạng thái đơn', 'Thanh toán', 'Giá trị đơn', 'Chuẩn bị hàng', 'Luồng giao', 'Trạng thái giao', 'Nguồn đơn'],
+                  rows: filteredOrders.map((order) => [
+                    order.number ?? '',
+                    formatVietnamDateTime(order.createdAt),
+                    order.customerCode ?? '',
+                    order.customerName ?? '',
+                    orderStatusLabel(order),
+                    paymentLabel(order),
+                    orderTotal(order),
+                    fulfillmentLabel(order),
+                    laneLabel(order),
+                    deliveryLabels[order.deliveryStatus] ?? order.deliveryStatus,
+                    SOURCE_OPTIONS.find((option) => option.value === sourceBucket(order))?.label ?? 'Nội bộ',
+                  ]),
+                }]}
+              />
               <button type="button" className={styles.printButton} disabled={printing || printableSelectedCount === 0 || Boolean(rangeError) || anyMutationBusy} onClick={() => void printSelected()}>{printing ? 'Đang chuẩn bị in…' : `In đơn${selectedIds.size ? ` (${printableSelectedCount})` : ''}`}</button>
               <button type="button" className={styles.secondaryButton} onClick={resetFilters}>Xóa bộ lọc</button>
             </div>

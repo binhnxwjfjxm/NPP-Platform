@@ -5,6 +5,7 @@ import {
   BusinessTableSequenceCell,
   BusinessTableSequenceHeader,
 } from '../../components/business-table-sequence';
+import OperationalExportActions from '../../components/operational-export-actions';
 import type { Customer } from '../../../lib/customer-types';
 import type { Warehouse } from '../../../lib/organization-types';
 import type {
@@ -64,6 +65,14 @@ function statusLabel(status: CustomerPayment['status']) {
     settled: 'Đã ghi nhận',
     reversed: 'Đã hủy',
   }[status];
+}
+
+function paymentMethodLabel(method: string) {
+  return {
+    CASH: 'Tiền mặt',
+    BANK_TRANSFER: 'Chuyển khoản',
+    OTHER: 'Khác',
+  }[method] ?? 'Khác';
 }
 
 function searchText(value: unknown) {
@@ -594,6 +603,28 @@ export default function CustomerPaymentWorkspace({
       <div className={`${styles.columns} ${styles.customerColumns}`}>
         <section className={styles.card}>
           <h2>Lịch sử thu tiền</h2>
+          <OperationalExportActions
+            filename="lich-su-thu-tien-khach-hang.xlsx"
+            sheets={[{
+              sheetName: 'Thu tiền khách hàng',
+              headers: ['Số phiếu', 'Ngày thu', 'Mã khách hàng', 'Khách hàng', 'Nhân viên nộp', 'Đơn hàng liên quan', 'Số tiền thu', 'Đã ghi vào đơn', 'Tiền chưa gắn với đơn', 'Còn phải thu liên quan', 'Trạng thái', 'Phương thức', 'Tham chiếu'],
+              rows: payments.map((payment) => [
+                payment.documentNumber,
+                payment.paymentDate,
+                payment.customerCode ?? '',
+                payment.customerName ?? '',
+                [payment.remittingEmployeeCode, payment.remittingEmployeeName].filter(Boolean).join(' — '),
+                payment.relatedSalesOrderNumbers.join(', '),
+                payment.originalAmount,
+                payment.allocatedAmount,
+                payment.remainingAmount,
+                payment.relatedRemainingAmount,
+                statusLabel(payment.status),
+                paymentMethodLabel(payment.paymentMethod),
+                payment.externalReference ?? '',
+              ]),
+            }]}
+          />
           <div className={styles.tableWrap}>
             <table className={styles.table} data-testid="customer-payments-table">
               <thead>

@@ -1,0 +1,25 @@
+.wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.button {
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid var(--border, #d7dbe0);
+  border-radius: 8px;
+  background: var(--surface, #fff);
+  color: inherit;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+.button:hover:not(:disabled) { border-color: var(--accent, #667085); }
+.button:disabled { cursor: not-allowed; opacity: .55; }
+.message {
+  max-width: 240px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--muted, #667085);
+}
