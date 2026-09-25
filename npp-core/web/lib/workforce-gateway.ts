@@ -346,6 +346,15 @@ export function recordAttendance<T>(requestId: string, body: unknown, idempotenc
 export function getAttendancePointManagement<T>(requestId: string): Promise<T> {
   return requestCore<T>({ path: '/attendance/points', method: 'GET', requestId });
 }
+export function getManagedManualAttendanceEmployees<T>(requestId: string): Promise<T> {
+  return requestCore<T>({ path: '/attendance/manual', method: 'GET', requestId });
+}
+export function recordManagedManualAttendance<T>(requestId: string, body: unknown, idempotencyKey?: string): Promise<T> {
+  return requestCore<T>({
+    path: '/attendance/manual', method: 'POST', requestId, body,
+    idempotencyKey: mutationKey(idempotencyKey, 'attendance-managed-manual'),
+  });
+}
 export function createAttendancePoint<T>(requestId: string, body: unknown, idempotencyKey?: string): Promise<T> {
   return requestCore<T>({
     path: '/attendance/points', method: 'POST', requestId, body,

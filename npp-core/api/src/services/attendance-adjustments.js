@@ -447,21 +447,11 @@ export async function directAdjustment(client, {
   allowLockedOverride,
 }) {
   const employeeId = text(payload?.employeeId);
-  const recordNowAction = text(payload?.recordNowAction).toUpperCase() || null;
-  if (recordNowAction && !['CHECK_IN', 'CHECK_OUT'].includes(recordNowAction)) {
-    return fail('INVALID_MANUAL_ATTENDANCE_ACTION', 'Thao tác chấm công tay không hợp lệ');
-  }
-  const serverNow = recordNowAction ? new Date() : null;
-  const workDate = recordNowAction ? localDate(serverNow) : text(payload?.workDate);
+  const workDate = text(payload?.workDate);
   if (!validDate(workDate) || workDate > localDate()) {
     return fail('INVALID_ADJUSTMENT_WORK_DATE', 'Ngày công cần điều chỉnh không hợp lệ');
   }
-  const timePayload = recordNowAction === 'CHECK_IN'
-    ? { ...payload, requestedCheckInAt: serverNow.toISOString(), requestedCheckOutAt: null }
-    : recordNowAction === 'CHECK_OUT'
-      ? { ...payload, requestedCheckInAt: null, requestedCheckOutAt: serverNow.toISOString() }
-      : payload;
-  const times = normalizeRequestedTimes(timePayload, workDate);
+  const times = normalizeRequestedTimes(payload, workDate);
   if (!times.ok) return times;
   const reason = reasonValue(payload?.reason);
   if (!reason.ok) return reason;

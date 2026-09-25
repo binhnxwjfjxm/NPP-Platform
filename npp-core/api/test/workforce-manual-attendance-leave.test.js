@@ -6,16 +6,21 @@ async function source(path) {
   return readFile(new URL('../' + path, import.meta.url), 'utf8');
 }
 
-test('workforce manual attendance records server time through canonical direct adjustment', async () => {
-  const service = await source('src/services/attendance-adjustments.js');
-  assert.match(service, /recordNowAction/);
-  assert.match(service, /serverNow = recordNowAction \? new Date\(\)/);
-  assert.match(service, /requestedCheckInAt: serverNow\.toISOString\(\)/);
-  assert.match(service, /requestedCheckOutAt: serverNow\.toISOString\(\)/);
-  assert.match(service, /requestSource: 'DIRECT'/);
-  assert.match(service, /applyRequestEvents/);
+test('manager manual attendance is a real attendance event and direct adjustment remains correction-only', async () => {
+  const [workforce, adjustment, route] = await Promise.all([
+    source('src/services/workforce.js'),
+    source('src/services/attendance-adjustments.js'),
+    source('src/routes/workforce.js'),
+  ]);
+  assert.match(workforce, /recordManagedManualAttendance/);
+  assert.match(workforce, /recordAction: normalizedAction/);
+  assert.match(workforce, /source: 'MANUAL'/);
+  assert.match(workforce, /Quản lý chấm công tay theo giờ hệ thống/);
+  assert.match(route, /\/attendance\/manual/);
+  assert.match(route, /managedByOperator: true/);
+  assert.doesNotMatch(adjustment, /recordNowAction/);
+  assert.match(adjustment, /const reason = reasonValue\(payload\?\.reason\)/);
 });
-
 test('manual paper leave remains one canonical leave request and feeds leave ledger', async () => {
   const [migration, service, repository] = await Promise.all([
     source('../../database/migrations/shared/159_workforce_manual_attendance_leave.sql'),
