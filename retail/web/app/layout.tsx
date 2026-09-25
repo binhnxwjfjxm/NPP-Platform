@@ -37,5 +37,5 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
-  return <html lang="vi"><body><PwaRegistration /><RetailNotificationRuntime /><RetailProductPickerRuntime /><RetailSystemPrintPageSizer />{children}</body></html>;
+  return <html lang="vi"><body><PwaRegistration /><RetailProductPickerRuntime /><RetailSystemPrintPageSizer /><RetailNotificationRuntime />{children}</body></html>;
 }
