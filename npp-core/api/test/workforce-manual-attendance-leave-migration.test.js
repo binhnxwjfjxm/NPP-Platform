@@ -34,7 +34,7 @@ test('migration 159 production operation is VPS-only, exact-main, backed up and 
   assert.match(workflow, /\/migrate-vps-production-159/);
   assert.match(workflow, /Verify exact origin\/main SHA/);
   assert.match(workflow, /Fresh backup, restore rehearsal, migrate production and verify/);
-  assert.match(workflow, /Run ID: \\$GITHUB_RUN_ID/);
-  assert.match(workflow, /Exact main SHA: \\$SOURCE_SHA/);
+  assert.match(workflow, /Run ID: \$GITHUB_RUN_ID/);
+  assert.match(workflow, /Exact main SHA: \$SOURCE_SHA/);
   assert.doesNotMatch(workflow, /HEROKU/i);
 });
