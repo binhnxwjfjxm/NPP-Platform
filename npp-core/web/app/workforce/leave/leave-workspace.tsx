@@ -18,6 +18,13 @@ import type {
 
 type ApiEnvelope<T> = { data?: T; error?: { message?: string } };
 type Attempt = { payload: string; key: string } | null;
+type UploadedLeaveDocument = {
+  objectKey: string;
+  publicUrl: string;
+  fileName: string;
+  mimeType: string;
+  byteSize: number;
+};
 type LeaveTypeBalanceFields = { tracks_balance?: boolean; allow_negative_balance?: boolean };
 type LeaveBalanceRow = {
   employee_id: string;
@@ -166,6 +173,18 @@ export default function LeaveWorkspace({
   const [reason, setReason] = useState('');
   const [attachmentReference, setAttachmentReference] = useState('');
 
+  const [manualEmployeeId, setManualEmployeeId] = useState('');
+  const [manualLeaveTypeId, setManualLeaveTypeId] = useState(activeTypes[0]?.id ?? '');
+  const [manualDateFrom, setManualDateFrom] = useState(initialToday);
+  const [manualDateTo, setManualDateTo] = useState(initialToday);
+  const [manualDayPart, setManualDayPart] = useState<LeaveDayPart>('FULL_DAY');
+  const [manualReason, setManualReason] = useState('');
+  const [paperApproved, setPaperApproved] = useState(false);
+  const [manualApproverName, setManualApproverName] = useState('');
+  const [manualApprovedDate, setManualApprovedDate] = useState(initialToday);
+  const [manualFile, setManualFile] = useState<File | null>(null);
+  const [manualAttachment, setManualAttachment] = useState<UploadedLeaveDocument | null>(null);
+
   const [reviewId, setReviewId] = useState<string | null>(null);
   const [reviewReason, setReviewReason] = useState('');
   const [cancelId, setCancelId] = useState<string | null>(null);
@@ -180,6 +199,8 @@ export default function LeaveWorkspace({
   const [balanceReason, setBalanceReason] = useState('');
 
   const submitAttempt = useRef<Attempt>(null);
+  const manualSubmitAttempt = useRef<Attempt>(null);
+  const manualUploadAttempt = useRef<Attempt>(null);
   const reviewAttempt = useRef<Attempt>(null);
   const cancelAttempt = useRef<Attempt>(null);
   const typeAttempt = useRef<Attempt>(null);
@@ -202,6 +223,10 @@ export default function LeaveWorkspace({
   const selectedType = useMemo(
     () => activeTypes.find((item) => item.id === leaveTypeId) ?? null,
     [activeTypes, leaveTypeId],
+  );
+  const selectedManualType = useMemo(
+    () => activeTypes.find((item) => item.id === manualLeaveTypeId) ?? null,
+    [activeTypes, manualLeaveTypeId],
   );
   const selectedReview = useMemo(
     () => data?.requests.find((item) => item.id === reviewId) ?? null,
@@ -252,6 +277,84 @@ export default function LeaveWorkspace({
     if (!reason.trim()) return 'Vui lòng nhập lý do nghỉ.';
     if (selectedType.requires_attachment && !attachmentReference.trim()) return 'Chế độ nghỉ này yêu cầu thông tin chứng từ.';
     return null;
+  }
+
+  async function uploadManualDocument(file: File) {
+    const fingerprint = {
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      lastModified: file.lastModified,
+    };
+    const key = stableKey(manualUploadAttempt, 'web-leave-document-upload', fingerprint);
+    const response = await fetch('/api/workforce/leave/attachments', {
+      method: 'PUT',
+      cache: 'no-store',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': file.type,
+        'x-file-name': encodeURIComponent(file.name),
+        'Idempotency-Key': key,
+      },
+      body: file,
+    });
+    const payload = await response.json().catch(() => ({})) as ApiEnvelope<UploadedLeaveDocument>;
+    if (!response.ok || payload.data === undefined) {
+      throw new Error(payload.error?.message || 'Không tải được chứng từ phiếu nghỉ');
+    }
+    manualUploadAttempt.current = null;
+    setManualAttachment(payload.data);
+    return payload.data;
+  }
+
+  async function submitManualRequest(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!manualEmployeeId) { setError('Vui lòng chọn nhân sự.'); return; }
+    if (!selectedManualType) { setError('Vui lòng chọn chế độ nghỉ.'); return; }
+    if (!manualDateFrom || !manualDateTo || manualDateTo < manualDateFrom) { setError('Khoảng ngày nghỉ không hợp lệ.'); return; }
+    if (manualDayPart !== 'FULL_DAY' && manualDateFrom !== manualDateTo) { setError('Nghỉ nửa ngày chỉ áp dụng cho một ngày.'); return; }
+    if (manualDayPart === 'FULL_DAY' && !selectedManualType.allows_full_day) { setError('Chế độ nghỉ này không cho phép nghỉ cả ngày.'); return; }
+    if (manualDayPart !== 'FULL_DAY' && !selectedManualType.allows_half_day) { setError('Chế độ nghỉ này không cho phép nghỉ nửa ngày.'); return; }
+    if (!manualReason.trim()) { setError('Vui lòng nhập lý do nghỉ.'); return; }
+    if (selectedManualType.requires_attachment && !manualFile && !manualAttachment) { setError('Chế độ nghỉ này yêu cầu chứng từ.'); return; }
+    if (paperApproved && (!manualApproverName.trim() || !manualApprovedDate)) { setError('Vui lòng nhập người duyệt và ngày duyệt trên phiếu giấy.'); return; }
+
+    setBusy(true); setError(null); setNotice(null);
+    try {
+      const attachment = manualFile && !manualAttachment
+        ? await uploadManualDocument(manualFile)
+        : manualAttachment;
+      const payload = {
+        employeeId: manualEmployeeId,
+        leaveTypeId: manualLeaveTypeId,
+        dateFrom: manualDateFrom,
+        dateTo: manualDateTo,
+        dayPart: manualDayPart,
+        reason: manualReason.trim(),
+        attachmentReference: attachment?.objectKey ?? null,
+        paperApproved,
+        manualApproverName: paperApproved ? manualApproverName.trim() : null,
+        manualApprovedDate: paperApproved ? manualApprovedDate : null,
+      };
+      const key = stableKey(manualSubmitAttempt, 'web-leave-request-manual', payload);
+      const result = await requestJson<LeaveRequest>('/api/workforce/leave/requests/manual', {
+        method: 'POST',
+        headers: { 'Idempotency-Key': key },
+        body: JSON.stringify(payload),
+      });
+      manualSubmitAttempt.current = null;
+      setManualReason('');
+      setPaperApproved(false);
+      setManualApproverName('');
+      setManualFile(null);
+      setManualAttachment(null);
+      await load(0);
+      setNotice(result.status === 'APPROVED'
+        ? 'Phiếu nghỉ giấy đã được ghi nhận và đưa vào dữ liệu công.'
+        : 'Phiếu nghỉ giấy đã được ghi nhận để duyệt.');
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Không ghi nhận được phiếu nghỉ giấy');
+    } finally { setBusy(false); }
   }
 
   async function submitRequest(event: React.FormEvent<HTMLFormElement>) {
@@ -501,7 +604,7 @@ export default function LeaveWorkspace({
                         <td><div className={styles.meta}><strong>{row.employee_code ? row.employee_code + ' · ' + row.employee_name : data.selectedEmployee?.name || 'Bản thân'}</strong><small>{row.branch_name || 'Chưa gán chi nhánh'}</small></div></td>
                         <td><div className={styles.meta}><strong>{row.leave_type_name_snapshot}</strong><small>{row.leave_is_paid_snapshot ? 'Hưởng lương' : 'Không hưởng lương'} · {row.leave_counts_as_workday_snapshot ? 'Tính ngày công' : 'Không tính ngày công'}</small></div></td>
                         <td><span className={styles.status}>{STATUS_LABEL[row.status]}</span></td>
-                        <td>{row.reason}</td>
+                        <td><div className={styles.meta}><span>{row.reason}</span><small>{row.request_source === 'MANUAL_PAPER' ? 'Phiếu giấy / nhập thủ công' : 'Phiếu điện tử'}</small>{row.attachment_url ? <a href={row.attachment_url} target="_blank" rel="noreferrer">Xem chứng từ</a> : null}</div></td>
                         <td><div className={styles.actions}>
                           {data.capabilities.canApprove && row.status === 'SUBMITTED' ? <button type="button" className={styles.secondary} onClick={() => { setReviewId(row.id); setReviewReason(''); }}>Duyệt hoặc từ chối</button> : null}
                           {canCancel ? <button type="button" className={styles.secondary} onClick={() => { setCancelId(row.id); setCancelReason(''); }}>Hủy đơn</button> : null}
@@ -620,6 +723,30 @@ export default function LeaveWorkspace({
           </div>
 
           <div className={styles.stack}>
+            {data?.capabilities.canSubmitManual ? <section className={styles.panel} data-testid="manual-leave-entry">
+              <h3>Ghi nhận phiếu nghỉ giấy</h3>
+              <p className={styles.note}>Dùng khi nhân sự nộp phiếu giấy hoặc báo nghỉ qua quản lý. Phiếu được ghi vào cùng dữ liệu nghỉ, bảng công, số dư phép và tính lương.</p>
+              <form onSubmit={(event) => void submitManualRequest(event)}>
+                <div className={styles.formGrid}>
+                  <label className={styles.full}>Nhân sự<select value={manualEmployeeId} onChange={(event) => setManualEmployeeId(event.target.value)} required><option value="">Chọn nhân sự</option>{(data?.employees ?? []).map((employee) => <option value={employee.id} key={employee.id}>{employee.code} · {employee.name}{employee.branchName ? ' · ' + employee.branchName : ''}</option>)}</select></label>
+                  <label className={styles.full}>Chế độ nghỉ<select value={manualLeaveTypeId} onChange={(event) => setManualLeaveTypeId(event.target.value)} required><option value="">Chọn chế độ nghỉ</option>{activeTypes.map((type) => <option value={type.id} key={type.id}>{type.name}</option>)}</select></label>
+                  <label>Từ ngày<input type="date" value={manualDateFrom} onChange={(event) => { setManualDateFrom(event.target.value); if (manualDayPart !== 'FULL_DAY') setManualDateTo(event.target.value); }} required /></label>
+                  <label>Đến ngày<input type="date" min={manualDateFrom} value={manualDateTo} onChange={(event) => setManualDateTo(event.target.value)} disabled={manualDayPart !== 'FULL_DAY'} required /></label>
+                  <label className={styles.full}>Phần ngày<select value={manualDayPart} onChange={(event) => { const value = event.target.value as LeaveDayPart; setManualDayPart(value); if (value !== 'FULL_DAY') setManualDateTo(manualDateFrom); }}><option value="FULL_DAY">Cả ngày</option><option value="FIRST_HALF">Nửa ca đầu</option><option value="SECOND_HALF">Nửa ca sau</option></select></label>
+                  <label className={styles.full}>Lý do<textarea value={manualReason} onChange={(event) => setManualReason(event.target.value)} maxLength={1000} required /></label>
+                  <label className={styles.full}>Ảnh/PDF phiếu giấy<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={(event) => { setManualFile(event.target.files?.[0] ?? null); setManualAttachment(null); manualUploadAttempt.current = null; }} required={Boolean(selectedManualType?.requires_attachment)} /></label>
+                </div>
+                <label><input type="checkbox" checked={paperApproved} onChange={(event) => setPaperApproved(event.target.checked)} /> Phiếu giấy đã được duyệt</label>
+                {paperApproved ? <div className={styles.formGrid}>
+                  <label>Người duyệt<input value={manualApproverName} onChange={(event) => setManualApproverName(event.target.value)} maxLength={150} required /></label>
+                  <label>Ngày duyệt<input type="date" max={initialToday} value={manualApprovedDate} onChange={(event) => setManualApprovedDate(event.target.value)} required /></label>
+                </div> : null}
+                {manualAttachment ? <p className={styles.note}>Đã tải chứng từ: <a href={manualAttachment.publicUrl} target="_blank" rel="noreferrer">{manualAttachment.fileName}</a></p> : null}
+                {selectedManualType ? <div className={styles.badges}>{typeBadges(selectedManualType).filter((badge) => badge !== 'Ngừng áp dụng').map((badge) => <span className={styles.badge} key={badge}>{badge}</span>)}</div> : null}
+                <div className={styles.actions}><button type="submit" className={styles.primary} disabled={busy || !manualEmployeeId || !manualLeaveTypeId || !manualReason.trim()}>Ghi nhận phiếu giấy</button></div>
+              </form>
+            </section> : null}
+
             {data?.capabilities.canSubmitOwn ? <section className={styles.panel}>
               <h3>Gửi đơn nghỉ của tôi</h3>
               <p className={styles.note}>Chọn chế độ nghỉ và thời gian cần nghỉ. Nghỉ nửa ngày được tính theo nửa ca đầu hoặc nửa ca sau, không theo giờ sáng/chiều cố định.</p>

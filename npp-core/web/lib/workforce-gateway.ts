@@ -222,6 +222,12 @@ export function submitLeaveRequest<T>(requestId: string, body: unknown, idempote
     idempotencyKey: mutationKey(idempotencyKey, 'leave-request-submit'),
   });
 }
+export function submitManualLeaveRequest<T>(requestId: string, body: unknown, idempotencyKey?: string): Promise<T> {
+  return requestCore<T>({
+    path: '/leave/requests/manual', method: 'POST', requestId, body,
+    idempotencyKey: mutationKey(idempotencyKey, 'leave-request-manual'),
+  });
+}
 export function reviewLeaveRequest<T>(requestId: string, body: unknown, idempotencyKey?: string): Promise<T> {
   return requestCore<T>({
     path: '/leave/requests/review', method: 'POST', requestId, body,

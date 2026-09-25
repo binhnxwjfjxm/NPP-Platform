@@ -294,7 +294,7 @@ export async function listLeaveRequests(client, {
   if (Number.isNaN(limit) || Number.isNaN(offset)) return fail('INVALID_PAGINATION', 'Thông tin phân trang không hợp lệ');
   const balanceAsOfDate = dateTo ?? dateFrom ?? businessDate();
   const balanceBranchIds = selfOnly || companyScope ? null : (branchId ? [branchId] : branchIds);
-  const [page, branches, leaveBalances, balanceEntries] = await Promise.all([
+  const [page, branches, leaveBalances, balanceEntries, employeeCoverage] = await Promise.all([
     leaveRepo.listLeaveRequests(client, {
       installationId, employeeId, employeeQuery: selfOnly ? null : employeeQuery,
       branchId: selfOnly ? null : branchId, branchIds: selfOnly || companyScope ? null : branchIds,
@@ -319,6 +319,14 @@ export async function listLeaveRequests(client, {
         limit: 100,
       })
       : Promise.resolve([]),
+    selfOnly
+      ? Promise.resolve([])
+      : workforceRepo.listEmployeePolicyCoverage(client, {
+        installationId,
+        workDate: balanceAsOfDate,
+        branchId,
+        branchIds: companyScope ? null : branchIds,
+      }),
   ]);
   if (selfOnly && employeeId) {
     selectedEmployee = employeeSummary(await employeeRepo.resolveEmployeeAtDate(client, {
@@ -330,6 +338,13 @@ export async function listLeaveRequests(client, {
     data: {
       selectedEmployee,
       branches,
+      employees: employeeCoverage.map((row) => ({
+        id: row.employee_id,
+        code: row.employee_code,
+        name: row.employee_name,
+        branchId: row.employee_branch_id ?? null,
+        branchName: row.branch_name ?? null,
+      })),
       balanceAsOfDate,
       leaveBalances: leaveBalances.map((row) => ({ ...row, balance_days: Number(row.balance_days ?? 0) })),
       balanceEntries: balanceEntries.map((row) => ({ ...row, quantity_days: Number(row.quantity_days ?? 0) })),
@@ -339,23 +354,39 @@ export async function listLeaveRequests(client, {
   };
 }
 
-export async function submitLeaveRequest(client, { requestContext, payload }) {
-  const employeeId = text(requestContext.employeeId);
-  if (!validUuid(employeeId)) return fail('EMPLOYEE_ID_REQUIRED', 'Tài khoản chưa liên kết hồ sơ nhân sự');
+async function createCanonicalLeaveRequest(client, {
+  requestContext,
+  payload,
+  employeeId,
+  requestSource,
+  requestedByEmployeeId,
+  companyScope = true,
+  branchIds = [],
+  manualApproved = false,
+  manualApproverName = null,
+  manualApprovedAt = null,
+  allowLockedOverride = false,
+}) {
   const normalized = normalizeRequestPayload(payload);
   if (!normalized.ok) return normalized;
+  if (requestSource === 'MANUAL_PAPER' && normalized.value.attachmentReference) {
+    const prefix = `${requestContext.installationId}/Tai-lieu/Nhan-su/Phieu-nghi/`;
+    if (!normalized.value.attachmentReference.startsWith(prefix) || normalized.value.attachmentReference.includes('..')) {
+      return fail('INVALID_LEAVE_ATTACHMENT', 'Chứng từ phiếu nghỉ không thuộc thư mục Nhân sự của Công Ty');
+    }
+  }
+
   await adjustmentRepo.lockAttendanceMutationScope(client, { installationId: requestContext.installationId });
   const scoped = await leavePeriodScope(client, {
     installationId: requestContext.installationId,
     employeeId,
     dateFrom: normalized.value.dateFrom,
     dateTo: normalized.value.dateTo,
+    companyScope,
+    branchIds,
   });
   if (!scoped.ok) return scoped;
-  const locked = await findLockedDay(client, {
-    installationId: requestContext.installationId, scopeRows: scoped.rows,
-  });
-  if (locked) return fail('ATTENDANCE_PERIOD_LOCKED', `Kỳ công ngày ${locked.workDate} đã khóa; không thể gửi đơn nghỉ`);
+
   const leaveType = await leaveRepo.getLeaveTypeById(client, {
     installationId: requestContext.installationId, id: normalized.value.leaveTypeId,
   });
@@ -364,11 +395,21 @@ export async function submitLeaveRequest(client, { requestContext, payload }) {
   if (normalized.value.dayPart === 'FULL_DAY' && !leaveType.allows_full_day) return fail('LEAVE_FULL_DAY_NOT_ALLOWED', 'Chế độ nghỉ này không cho phép nghỉ cả ngày');
   if (normalized.value.dayPart !== 'FULL_DAY' && !leaveType.allows_half_day) return fail('LEAVE_HALF_DAY_NOT_ALLOWED', 'Chế độ nghỉ này không cho phép nghỉ nửa ngày');
   if (leaveType.requires_attachment && !normalized.value.attachmentReference) return fail('LEAVE_ATTACHMENT_REQUIRED', 'Chế độ nghỉ này yêu cầu chứng từ');
+
+  const shouldApprove = manualApproved || !leaveType.requires_approval;
+  const locked = await findLockedDay(client, {
+    installationId: requestContext.installationId, scopeRows: scoped.rows,
+  });
+  if (locked && (!allowLockedOverride || !shouldApprove)) {
+    return fail('ATTENDANCE_PERIOD_LOCKED', `Kỳ công ngày ${locked.workDate} đã khóa; không thể ghi nhận đơn nghỉ ở trạng thái chờ duyệt`);
+  }
+
   const overlap = await leaveRepo.findOverlappingLeaveRequest(client, {
     installationId: requestContext.installationId, employeeId,
     dateFrom: normalized.value.dateFrom, dateTo: normalized.value.dateTo, dayPart: normalized.value.dayPart,
   });
   if (overlap) return fail('LEAVE_REQUEST_OVERLAP', 'Thời gian nghỉ đã có đơn khác đang chờ hoặc đã duyệt');
+
   const plan = await usagePlan(client, {
     installationId: requestContext.installationId, employeeId,
     dateFrom: normalized.value.dateFrom, dateTo: normalized.value.dateTo,
@@ -380,8 +421,16 @@ export async function submitLeaveRequest(client, { requestContext, payload }) {
     allowNegativeBalance: leaveType.allow_negative_balance, days: plan.days,
   });
   if (!balance.ok) return balance;
-  const autoApproved = !leaveType.requires_approval;
-  const now = autoApproved ? new Date().toISOString() : null;
+
+  const reviewedAt = shouldApprove
+    ? (manualApprovedAt || new Date().toISOString())
+    : null;
+  const reviewReason = shouldApprove
+    ? (manualApproved
+      ? `Ghi nhận phiếu giấy đã được ${manualApproverName} duyệt`
+      : 'Tự động duyệt theo chế độ nghỉ')
+    : null;
+
   const request = await leaveRepo.insertLeaveRequest(client, {
     installationId: requestContext.installationId,
     employeeId,
@@ -398,16 +447,82 @@ export async function submitLeaveRequest(client, { requestContext, payload }) {
     dayPart: normalized.value.dayPart,
     reason: normalized.value.reason,
     attachmentReference: normalized.value.attachmentReference,
-    status: autoApproved ? 'APPROVED' : 'SUBMITTED',
+    requestSource,
+    manualApproverName: manualApproved ? manualApproverName : null,
+    status: shouldApprove ? 'APPROVED' : 'SUBMITTED',
     requestedByActorId: requestContext.actorId,
-    requestedByEmployeeId: employeeId,
-    reviewedByActorId: autoApproved ? requestContext.actorId : null,
-    reviewReason: autoApproved ? 'Tự động duyệt theo chế độ nghỉ' : null,
-    reviewedAt: now,
+    requestedByEmployeeId,
+    reviewedByActorId: shouldApprove ? requestContext.actorId : null,
+    reviewReason,
+    reviewedAt,
     requestId: requestContext.requestId,
   });
-  if (autoApproved) await postUsage(client, { requestContext, request, days: plan.days });
-  return { ok: true, request, autoApproved };
+  if (shouldApprove) {
+    await postUsage(client, { requestContext, request, days: plan.days });
+    if (locked) {
+      await closeoutRepo.markClosedAttendancePeriodsDirtyForEmployeeRange(client, {
+        installationId: requestContext.installationId,
+        employeeId,
+        dateFrom: normalized.value.dateFrom,
+        dateTo: normalized.value.dateTo,
+        actorId: requestContext.actorId,
+        requestId: requestContext.requestId,
+      });
+    }
+  }
+  return { ok: true, request, autoApproved: shouldApprove, lockedOverride: Boolean(locked) };
+}
+
+export async function submitLeaveRequest(client, { requestContext, payload }) {
+  const employeeId = text(requestContext.employeeId);
+  if (!validUuid(employeeId)) return fail('EMPLOYEE_ID_REQUIRED', 'Tài khoản chưa liên kết hồ sơ nhân sự');
+  return createCanonicalLeaveRequest(client, {
+    requestContext,
+    payload,
+    employeeId,
+    requestSource: 'SELF_SERVICE',
+    requestedByEmployeeId: employeeId,
+  });
+}
+
+export async function submitManualLeaveRequest(client, {
+  requestContext,
+  payload,
+  companyScope,
+  branchIds,
+  allowLockedOverride,
+}) {
+  const employeeId = text(payload?.employeeId);
+  if (!validUuid(employeeId)) return fail('EMPLOYEE_NOT_FOUND', 'Vui lòng chọn nhân sự');
+  const paperApproved = booleanValue(payload?.paperApproved, false);
+  if (paperApproved === null) return fail('INVALID_MANUAL_LEAVE_APPROVAL', 'Trạng thái duyệt phiếu giấy không hợp lệ');
+
+  const manualApproverName = text(payload?.manualApproverName) || null;
+  const manualApprovedDate = text(payload?.manualApprovedDate) || null;
+  let manualApprovedAt = null;
+  if (paperApproved) {
+    if (!manualApproverName || manualApproverName.length > 150) {
+      return fail('INVALID_MANUAL_LEAVE_APPROVER', 'Vui lòng nhập người đã duyệt phiếu giấy');
+    }
+    if (!validDate(manualApprovedDate) || manualApprovedDate > businessDate()) {
+      return fail('INVALID_MANUAL_LEAVE_APPROVED_DATE', 'Ngày duyệt phiếu giấy không hợp lệ');
+    }
+    manualApprovedAt = new Date(`${manualApprovedDate}T12:00:00+07:00`).toISOString();
+  }
+
+  return createCanonicalLeaveRequest(client, {
+    requestContext,
+    payload,
+    employeeId,
+    requestSource: 'MANUAL_PAPER',
+    requestedByEmployeeId: null,
+    companyScope,
+    branchIds,
+    manualApproved: paperApproved,
+    manualApproverName,
+    manualApprovedAt,
+    allowLockedOverride,
+  });
 }
 
 export async function reviewLeaveRequest(client, { requestContext, payload, companyScope, branchIds, allowLockedOverride }) {

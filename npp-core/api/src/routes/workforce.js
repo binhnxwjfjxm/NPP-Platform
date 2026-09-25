@@ -1,4 +1,5 @@
 import { createSuccessEnvelope } from '@npp/contracts';
+import { createHash } from 'node:crypto';
 import { sendJson, sendSuccess, sendError } from '../http-utils.js';
 import { readJsonBody, normalizeIdempotencyKey } from '../idempotency.js';
 import { buildAuditRecord, insertAuditRecord, withAuditOutboxTransaction } from '../audit-outbox.js';
@@ -12,6 +13,12 @@ import * as workforceCloseoutService from '../services/workforce-closeout.js';
 import * as payrollFoundationService from '../services/payroll-foundation.js';
 import * as payrollAggregationService from '../services/payroll-aggregation.js';
 import * as payrollCloseoutService from '../services/payroll-closeout.js';
+import {
+  createWorkforceLeaveDocumentStorage,
+  isWorkforceLeaveDocumentKey,
+  WORKFORCE_LEAVE_DOCUMENT_MAX_BYTES,
+  WORKFORCE_LEAVE_DOCUMENT_MIME_TYPES,
+} from '../storage/workforce-leave-documents.js';
 
 function createError(code, message, details = {}, retryable = false, statusCode = 500) {
   return { code, message, details, retryable, statusCode };
@@ -99,6 +106,61 @@ async function parsePayload(req, res, context) {
     sendError(res, createError(error.code, error.publicMessage, {}, false, error.statusCode), context.requestId, context.receivedAt);
     return { ok: false, payload: null };
   }
+}
+
+function readBinaryBody(req, maxBytes) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    let overflow = false;
+    req.on('data', (chunk) => {
+      const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      size += bytes.length;
+      if (size > maxBytes) {
+        overflow = true;
+        chunks.length = 0;
+        return;
+      }
+      if (!overflow) chunks.push(bytes);
+    });
+    req.on('end', () => {
+      if (overflow || size < 1) {
+        reject(createError(
+          'INVALID_LEAVE_ATTACHMENT_SIZE',
+          'Dung lượng chứng từ nghỉ không hợp lệ',
+          { maxBytes },
+          false,
+          overflow ? 413 : 400,
+        ));
+        return;
+      }
+      resolve(Buffer.concat(chunks, size));
+    });
+    req.on('error', () => reject(createError(
+      'INVALID_LEAVE_ATTACHMENT',
+      'Không đọc được chứng từ nghỉ',
+      {},
+      false,
+      400,
+    )));
+  });
+}
+
+function leaveAttachmentUrl(config, installationId, objectKey) {
+  if (!isWorkforceLeaveDocumentKey({ installationId, key: objectKey })) return null;
+  const base = String(config?.r2PublicBaseUrl ?? '').trim().replace(/\/+$/, '');
+  return base ? `${base}/${objectKey}` : null;
+}
+
+function projectLeaveRequest(row, context) {
+  return {
+    ...row,
+    attachment_url: leaveAttachmentUrl(
+      context.config,
+      context.requestContext.installationId,
+      row.attachment_reference,
+    ),
+  };
 }
 
 async function runIdempotentMutation(req, res, context, { route, payload, mutate, successStatus = 200 }) {
@@ -1178,10 +1240,12 @@ async function handleLeaveRequests(req, res, context, method, { selfOnly }) {
     }
     sendSuccess(res, {
       ...result.data,
+      requests: result.data.requests.map((row) => projectLeaveRequest(row, context)),
       capabilities: {
         selfOnly,
         canSubmitOwn: context.canSubmitOwnLeave,
         canApprove: context.canApproveLeaves,
+        canSubmitManual: context.canApproveLeaves,
         canManageTypes: context.canManageLeaveTypes,
       },
     }, context.requestId, context.receivedAt);
@@ -1218,6 +1282,114 @@ async function handleLeaveRequests(req, res, context, method, { selfOnly }) {
             dayPart: result.request.day_part,
             autoApproved: result.autoApproved,
           },
+        },
+      };
+    },
+  });
+}
+
+
+async function handleManualLeaveRequest(req, res, context) {
+  const parsed = await parsePayload(req, res, context);
+  if (!parsed.ok) return;
+  const payload = parsed.payload;
+  await runIdempotentMutation(req, res, context, {
+    route: '/api/workforce/leave/requests/manual',
+    payload,
+    successStatus: 201,
+    mutate: async (client) => {
+      const result = await leaveManagementService.submitManualLeaveRequest(client, {
+        requestContext: context.requestContext,
+        payload,
+        companyScope: isCompanyScope(context.requestContext),
+        branchIds: [...(context.requestContext.scopes.branchIds ?? [])],
+        allowLockedOverride: context.canLockPeriods,
+      });
+      if (!result.ok) return result;
+      return {
+        ok: true,
+        data: projectLeaveRequest(result.request, context),
+        audit: {
+          requestContext: context.requestContext,
+          action: result.request.status === 'APPROVED' ? 'record-manual-leave-approved' : 'record-manual-leave',
+          resourceType: 'leave-request',
+          resourceId: result.request.id,
+          beforeData: null,
+          afterData: result.request,
+          metadata: {
+            employeeId: result.request.employee_id,
+            dateFrom: result.request.date_from,
+            dateTo: result.request.date_to,
+            source: 'MANUAL_PAPER',
+            lockedOverride: result.lockedOverride,
+          },
+        },
+      };
+    },
+  });
+}
+
+async function handleLeaveAttachmentUpload(req, res, context) {
+  let fileName;
+  try {
+    fileName = decodeURIComponent(String(req.headers['x-file-name'] ?? '').trim());
+  } catch {
+    fileName = '';
+  }
+  const mimeType = String(req.headers['content-type'] ?? '').split(';', 1)[0].trim().toLowerCase();
+  if (!fileName) {
+    sendError(res, createError('INVALID_LEAVE_ATTACHMENT_NAME', 'Tên chứng từ nghỉ không hợp lệ', {}, false, 400), context.requestId, context.receivedAt);
+    return;
+  }
+  if (!WORKFORCE_LEAVE_DOCUMENT_MIME_TYPES.has(mimeType)) {
+    sendError(res, createError('INVALID_LEAVE_ATTACHMENT_TYPE', 'Chứng từ chỉ nhận JPG, PNG, WebP hoặc PDF', {}, false, 400), context.requestId, context.receivedAt);
+    return;
+  }
+  const maxBytes = Math.min(
+    WORKFORCE_LEAVE_DOCUMENT_MAX_BYTES,
+    Number(context.config.r2MaxObjectBytes || WORKFORCE_LEAVE_DOCUMENT_MAX_BYTES),
+  );
+  let bytes;
+  try {
+    bytes = await readBinaryBody(req, maxBytes);
+  } catch (error) {
+    sendError(res, error, context.requestId, context.receivedAt);
+    return;
+  }
+  const payload = {
+    fileName,
+    mimeType,
+    byteSize: bytes.length,
+    checksumSha256: createHash('sha256').update(bytes).digest('hex'),
+  };
+  await runIdempotentMutation(req, res, context, {
+    route: '/api/workforce/leave/attachments',
+    payload,
+    successStatus: 201,
+    mutate: async () => {
+      const storage = createWorkforceLeaveDocumentStorage(context.config);
+      const document = await storage.putDocument({
+        installationId: context.requestContext.installationId,
+        fileName,
+        mimeType,
+        body: bytes,
+      });
+      return {
+        ok: true,
+        data: document,
+        audit: {
+          requestContext: context.requestContext,
+          action: 'upload-leave-document',
+          resourceType: 'workforce-leave-document',
+          resourceId: document.objectKey,
+          beforeData: null,
+          afterData: {
+            objectKey: document.objectKey,
+            fileName: document.fileName,
+            mimeType: document.mimeType,
+            byteSize: document.byteSize,
+          },
+          metadata: { checksumSha256: document.checksumSha256 },
         },
       };
     },
@@ -1569,7 +1741,7 @@ export async function handleWorkforceRoutes(req, res, options) {
   const pathname = new URL(`http://localhost${req.url}`).pathname;
   if (!pathname.startsWith('/api/workforce/')) return false;
   const route = pathname.slice('/api/workforce'.length);
-  if (!['/policies', '/assignments', '/assignments/coverage', '/assignments/bulk', '/schedules', '/schedule-planning', '/attendance/today', '/attendance/timesheet', '/attendance/record', '/attendance/points', '/attendance/qr-token', '/attendance/adjustments', '/attendance/adjustments/review', '/attendance/adjustments/direct', '/attendance/period-locks', '/leave-types', '/leave-types/update', '/leave/requests', '/leave/requests/review', '/leave/requests/cancel', '/leave/balances', '/leave/balances/entries', '/overtime', '/overtime/review', '/overtime/actual', '/overtime/confirm', '/attendance/periods', '/attendance/payroll-input', '/payroll', '/attendance/violations', '/attendance/violations/explain', '/attendance/violations/review'].includes(route)) return false;
+  if (!['/policies', '/assignments', '/assignments/coverage', '/assignments/bulk', '/schedules', '/schedule-planning', '/attendance/today', '/attendance/timesheet', '/attendance/record', '/attendance/points', '/attendance/qr-token', '/attendance/adjustments', '/attendance/adjustments/review', '/attendance/adjustments/direct', '/attendance/period-locks', '/leave-types', '/leave-types/update', '/leave/requests', '/leave/requests/manual', '/leave/requests/review', '/leave/requests/cancel', '/leave/attachments', '/leave/balances', '/leave/balances/entries', '/overtime', '/overtime/review', '/overtime/actual', '/overtime/confirm', '/attendance/periods', '/attendance/payroll-input', '/payroll', '/attendance/violations', '/attendance/violations/explain', '/attendance/violations/review'].includes(route)) return false;
 
   const auth = options.authenticate(req, options.config);
   if (!auth.ok) {
@@ -1605,6 +1777,8 @@ export async function handleWorkforceRoutes(req, res, options) {
     || (route === '/leave-types' && ['GET', 'POST'].includes(method))
     || (route === '/leave-types/update' && method === 'POST')
     || (route === '/leave/requests' && ['GET', 'POST'].includes(method))
+    || (route === '/leave/requests/manual' && method === 'POST')
+    || (route === '/leave/attachments' && method === 'PUT')
     || (route === '/leave/requests/review' && method === 'POST')
     || (route === '/leave/requests/cancel' && method === 'POST')
     || (route === '/leave/balances' && method === 'GET')
@@ -1712,6 +1886,10 @@ export async function handleWorkforceRoutes(req, res, options) {
       permission = { ok: canReadScopedLeaves || canSelfReadLeaves || canSubmitOwnLeave };
       leaveRequestSelfOnly = !canReadScopedLeaves;
     }
+  } else if (route === '/leave/requests/manual') {
+    permission = { ok: canApproveLeaves };
+  } else if (route === '/leave/attachments') {
+    permission = { ok: canSubmitOwnLeave || canApproveLeaves };
   } else if (route === '/leave/requests/review') {
     permission = { ok: canApproveLeaves };
   } else if (route === '/leave/requests/cancel') {
@@ -1782,6 +1960,8 @@ export async function handleWorkforceRoutes(req, res, options) {
     else if (route === '/leave-types') await handleLeaveTypes(req, res, context, method);
     else if (route === '/leave-types/update') await handleLeaveTypeUpdate(req, res, context);
     else if (route === '/leave/requests') await handleLeaveRequests(req, res, context, method, { selfOnly: leaveRequestSelfOnly });
+    else if (route === '/leave/requests/manual') await handleManualLeaveRequest(req, res, context);
+    else if (route === '/leave/attachments') await handleLeaveAttachmentUpload(req, res, context);
     else if (route === '/leave/requests/review') await handleLeaveRequestReview(req, res, context);
     else if (route === '/leave/requests/cancel') await handleLeaveRequestCancel(req, res, context, { selfOnly: leaveRequestSelfOnly });
     else if (route === '/leave/balances') await handleLeaveBalances(req, res, context, { selfOnly: leaveBalanceSelfOnly });

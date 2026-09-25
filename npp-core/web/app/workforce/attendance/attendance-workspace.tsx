@@ -1,6 +1,7 @@
 'use client';
 
 import { createIdempotencyKey } from '@npp/contracts';
+import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
 import shellStyles from '../../components/app-shell.module.css';
@@ -583,6 +584,9 @@ export default function AttendanceWorkspace({
               <div className={styles.sectionHeader}>
                 <div><p className={styles.panelKicker}>Dành cho quản lý</p><h2>Mã QR theo nơi làm việc</h2></div>
                 <span className={styles.panelChip}>{management.branches.length} nơi làm việc</span>
+              </div>
+              <div className={localStyles.methodNotice}>
+                Cần chấm công tay cho một nhân sự? <Link href="/workforce/adjustments">Mở Chấm công tay và điều chỉnh công</Link> để chọn đúng người rồi ghi nhận theo giờ hệ thống.
               </div>
 
               <form className={localStyles.pointForm} onSubmit={(event) => void showWorkplaceQr(event)}>
