@@ -46,6 +46,12 @@ function compactOrderLabel(order = {}) {
   return money ? `${number} · ${money} đ` : number;
 }
 
+function notificationUrl(baseUrl, orderId) {
+  const url = new URL(baseUrl);
+  if (orderId) url.searchParams.set('order', orderId);
+  return url.toString();
+}
+
 export function isPermanentRetailOwner(requestContext = {}) {
   const actorId = text(requestContext.actorId);
   return Array.isArray(requestContext.roles)
@@ -131,7 +137,7 @@ export async function sendRetailOwnerPush({
     include_aliases: { external_id: recipients },
     headings: { en: 'Bán tại quầy' },
     contents: { en: body },
-    url: runtime.retailUrl,
+    url: notificationUrl(runtime.retailUrl, test ? null : orderId),
     data: {
       type: test ? 'retail_notification_test' : 'retail_order_payment_check',
       ...(orderId ? { salesOrderId: orderId } : {}),
@@ -177,5 +183,6 @@ export async function sendRetailOwnerPush({
 export const retailOwnerPushInternals = Object.freeze({
   runtimeConfig,
   compactOrderLabel,
+  notificationUrl,
   ONESIGNAL_PUSH_ENDPOINT,
 });

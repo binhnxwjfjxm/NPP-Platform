@@ -61,7 +61,7 @@ test('Retail product cards are keyboard operable through the same selection cont
 });
 
 
-test('Retail có điểm cài PWA Android rõ ràng trong Cài đặt và vẫn dùng browser install prompt', async () => {
+test('Retail có điểm cài PWA cho Android/iPhone trong Cài đặt và vẫn dùng browser install prompt', async () => {
   const [pwa, workspace] = await Promise.all([
     read('app/pwa-registration.tsx'),
     read('app/retail-workspace.tsx'),
@@ -72,5 +72,6 @@ test('Retail có điểm cài PWA Android rõ ràng trong Cài đặt và vẫn 
   assert.match(pwa, /Cài ứng dụng hoặc Thêm vào màn hình chính/);
   assert.match(workspace, /import \{ requestRetailPwaInstall \} from '\.\/pwa-registration';/);
   assert.match(workspace, /onClick=\{requestRetailPwaInstall\}/);
-  assert.match(workspace, /Cài ứng dụng Android/);
+  assert.match(workspace, /<strong>Cài ứng dụng<\/strong>/);
+  assert.match(pwa, /Thêm vào Màn hình chính/);
 });

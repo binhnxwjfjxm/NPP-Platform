@@ -5,6 +5,17 @@ import { PrinterSettingsPanel } from './printer-settings-panel';
 import { RetailPrintTemplatePreview } from './retail-print-template-preview';
 import { requestRetailPwaInstall } from './pwa-registration';
 import {
+    getRetailNotificationState,
+    requestRetailNotificationPermission,
+    retailNotificationStatusLabel,
+    RETAIL_NOTIFICATION_FOREGROUND_EVENT,
+    RETAIL_NOTIFICATION_OPEN_EVENT,
+    sendRetailNotificationTest,
+    subscribeRetailNotificationState,
+    type RetailForegroundNotification,
+    type RetailNotificationState,
+} from './retail-notification-runtime';
+import {
     DEFAULT_PRINTER_SETTINGS,
     PRINTER_SETTINGS_STORAGE_KEY,
     RetailPrinterError,
@@ -160,7 +171,14 @@ type RetailWorkspaceProps = {
 type OrderFilter = 'all' | 'draft' | 'confirmed' | 'issued' | 'closed' | 'cancelled';
 type PaymentMethod = 'CASH' | 'BANK_TRANSFER';
 type PrintPaper = PrinterPaper;
-type SettingsPanel = 'account' | 'printer' | 'template' | 'logout' | null;
+type SettingsPanel = 'account' | 'notifications' | 'printer' | 'template' | 'logout' | null;
+function settingsPanelTitle(panel: Exclude<SettingsPanel, null>) {
+    if (panel === 'account') return 'Tài khoản';
+    if (panel === 'notifications') return 'Thông báo';
+    if (panel === 'printer') return 'Thiết lập in';
+    if (panel === 'template') return 'Mẫu phiếu';
+    return 'Đăng xuất';
+}
 type PrintTemplate = {
     documentType: string;
     templateCode: string;
@@ -297,6 +315,9 @@ function isToday(value?: string) {
     const now = new Date();
     return !Number.isNaN(date.getTime()) && date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate();
 }
+function isNotificationOrderId(value: string | null) {
+    return Boolean(value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value));
+}
 export default function RetailWorkspace({ initialTab = 'home', inventoryAvailable = false, onOpenInventory, onTabChange }: RetailWorkspaceProps) {
     const [boot, setBoot] = useState<Bootstrap | null>(null);
     const [orders, setOrders] = useState<Order[]>([]);
@@ -361,6 +382,9 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
     const [draftPrintPaper, setDraftPrintPaper] = useState<PrintPaper>('A4');
     const [printerSettings, setPrinterSettings] = useState<PrinterSettings>(DEFAULT_PRINTER_SETTINGS);
     const [settingsPanel, setSettingsPanel] = useState<SettingsPanel>(null);
+    const [notificationState, setNotificationState] = useState<RetailNotificationState>(() => getRetailNotificationState());
+    const [foregroundNotification, setForegroundNotification] = useState<RetailForegroundNotification | null>(null);
+    const notificationTestKey = useRef<string | null>(null);
     const [templateHeading, setTemplateHeading] = useState('');
     const [templateTitle, setTemplateTitle] = useState('');
     const [templateSubtitle, setTemplateSubtitle] = useState('');
@@ -394,6 +418,33 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
     const forgetOperationKey = useCallback((action: string, intent = 'default') => { operationKeys.current.delete(`${action}:${order?.id ?? 'new'}:${intent}`); }, [order?.id]);
     const refreshOrders = useCallback(async () => { const list = await api<Order[]>('/api/retail/orders?limit=100&offset=0'); setOrders(list.filter((item) => item.deliveryMode === 'PICKUP')); }, []);
     const loadPrintTemplates = useCallback(async () => { const templates = await api<PrintTemplate[]>('/api/retail/print-templates'); setPrintTemplates(templates); return templates; }, []);
+    useEffect(() => subscribeRetailNotificationState(setNotificationState), []);
+    useEffect(() => {
+        const handleForeground = (event: Event) => {
+            const detail = (event as CustomEvent<RetailForegroundNotification>).detail;
+            if (detail)
+                setForegroundNotification(detail);
+        };
+        const handleOpen = (event: Event) => {
+            const detail = (event as CustomEvent<RetailForegroundNotification>).detail;
+            if (detail?.orderId && isNotificationOrderId(detail.orderId))
+                void openOrder(detail.orderId);
+            setForegroundNotification(null);
+        };
+        window.addEventListener(RETAIL_NOTIFICATION_FOREGROUND_EVENT, handleForeground);
+        window.addEventListener(RETAIL_NOTIFICATION_OPEN_EVENT, handleOpen);
+        const deepLinkOrderId = new URLSearchParams(window.location.search).get('order');
+        if (isNotificationOrderId(deepLinkOrderId)) {
+            void openOrder(deepLinkOrderId!);
+            const nextUrl = new URL(window.location.href);
+            nextUrl.searchParams.delete('order');
+            window.history.replaceState({}, '', `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
+        }
+        return () => {
+            window.removeEventListener(RETAIL_NOTIFICATION_FOREGROUND_EVENT, handleForeground);
+            window.removeEventListener(RETAIL_NOTIFICATION_OPEN_EVENT, handleOpen);
+        };
+    }, []);
     const canPriceOverride = Boolean(boot?.settings.permissions?.canPriceOverride);
     const canDiscountOverride = Boolean(boot?.settings.permissions?.canDiscountOverride);
     const canNegativeStockIssue = Boolean(boot?.settings.permissions?.canNegativeStockIssue);
@@ -1251,6 +1302,41 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
             setError(errorMessage(reason, 'Chưa thể tải cấu hình Mẫu phiếu.'));
         }
     }
+    async function enableRetailNotifications() {
+        setBusy('notification-enable');
+        setError(null);
+        try {
+            const next = await requestRetailNotificationPermission();
+            setNotice(next.subscribed ? 'Đã bật thông báo đơn hàng trên thiết bị này.' : 'Đã cấp quyền thông báo. Hệ thống đang hoàn tất đăng ký thiết bị.');
+        }
+        catch (reason) {
+            setError(errorMessage(reason, 'Chưa thể bật thông báo.'));
+        }
+        finally {
+            setBusy(null);
+        }
+    }
+    async function sendNotificationTest() {
+        if (!notificationState.subscribed) {
+            setError('Hãy bật thông báo trên thiết bị này trước khi gửi thử.');
+            return;
+        }
+        const key = notificationTestKey.current ?? createIdempotencyKey('retail-notification-test');
+        notificationTestKey.current = key;
+        setBusy('notification-test');
+        setError(null);
+        try {
+            await sendRetailNotificationTest(key);
+            notificationTestKey.current = null;
+            setNotice('Đã gửi thông báo thử tới thiết bị Owner đang đăng ký.');
+        }
+        catch (reason) {
+            setError(errorMessage(reason, 'Chưa thể gửi thông báo thử.'));
+        }
+        finally {
+            setBusy(null);
+        }
+    }
     function openSettings(panel: Exclude<SettingsPanel, null>) {
         setError(null);
         if (panel === 'printer') {
@@ -1316,8 +1402,10 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
       <span className="topbar-spacer" aria-hidden="true"/>
     </header>
     {error ? <p className="notice error" role="alert">{error}</p> : null}{notice ? <p className="notice" role="status">{notice}</p> : null}
+    {foregroundNotification ? <aside className="retail-notification-banner" role="status" aria-live="polite"><span aria-hidden="true">🔔</span><span><strong>{foregroundNotification.title}</strong><small>{foregroundNotification.body}</small></span>{foregroundNotification.orderId ? <button className="notification-open" type="button" onClick={() => { const id = foregroundNotification.orderId; setForegroundNotification(null); if (id) void openOrder(id); }}>Xem đơn</button> : null}<button className="notification-close" type="button" aria-label="Đóng thông báo" onClick={() => setForegroundNotification(null)}>×</button></aside> : null}
 
     {activeTab === 'home' ? <section className="retail-home compact-home retail-page">
+      {notificationState.ready && notificationState.isOwner && notificationState.status !== 'subscribed' ? <button className="retail-notification-warning" type="button" onClick={() => { setActiveTab('settings'); setSettingsPanel('notifications'); }}><span aria-hidden="true">🔔</span><span><strong>Thông báo đơn hàng chưa hoạt động</strong><small>{retailNotificationStatusLabel(notificationState)}</small></span><b>Thiết lập ›</b></button> : null}
       <article className="home-feature">
         <img className="home-feature-art" src="/01-hero-nganh-hang.webp" alt="" onError={(event) => { event.currentTarget.hidden = true; }}/>
         <div className="home-feature-copy"><p className="section-kicker">BÁN TẠI QUẦY</p><h2>Điều hành quầy bán hôm nay</h2><p>Tạo đơn, theo dõi xử lý và kiểm tra doanh số hoàn thành trong một màn hình.</p></div>
@@ -1344,9 +1432,10 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
       <header className="settings-heading"><p className="section-kicker">CÀI ĐẶT</p><h2>Thiết lập bán tại quầy</h2><p>Chọn từng mục để thiết lập. Thay đổi chỉ được áp dụng khi xác nhận.</p></header>
       <div className="settings-list">
         <button className="settings-row" type="button" onClick={() => openSettings('account')}><span className="settings-icon" aria-hidden="true">◎</span><span><strong>Tài khoản</strong><small>Phiên đăng nhập và quyền nhân sự Công Ty</small></span><b aria-hidden="true">›</b></button>
+        {notificationState.ready && notificationState.isOwner ? <button className="settings-row" type="button" onClick={() => openSettings('notifications')}><span className="settings-icon" aria-hidden="true">🔔</span><span><strong>Thông báo</strong><small>{retailNotificationStatusLabel(notificationState)} · Chỉ Owner nhận thông báo đơn cần kiểm tra</small></span><b aria-hidden="true">›</b></button> : null}
         <button className="settings-row" type="button" onClick={() => openSettings('printer')}><span className="settings-icon" aria-hidden="true">▣</span><span><strong>Thiết lập in</strong><small>{printerSettingsSummary(printerSettings)}</small></span><b aria-hidden="true">›</b></button>
         <button className="settings-row" type="button" onClick={() => openSettings('template')}><span className="settings-icon" aria-hidden="true">≡</span><span><strong>Mẫu phiếu</strong><small>Tiêu đề, cỡ chữ và các mục hiển thị</small></span><b aria-hidden="true">›</b></button>
-        <button className="settings-row" type="button" onClick={requestRetailPwaInstall}><span className="settings-icon" aria-hidden="true">⇩</span><span><strong>Cài ứng dụng Android</strong><small>Thêm Retail ra màn hình chính để mở như ứng dụng</small></span><b aria-hidden="true">›</b></button>
+        <button className="settings-row" type="button" onClick={requestRetailPwaInstall}><span className="settings-icon" aria-hidden="true">⇩</span><span><strong>Cài ứng dụng</strong><small>Android/iPhone: thêm Bán tại quầy ra màn hình chính</small></span><b aria-hidden="true">›</b></button>
         <button className="settings-row danger-row" type="button" onClick={() => openSettings('logout')}><span className="settings-icon" aria-hidden="true">↪</span><span><strong>Đăng xuất</strong><small>Kết thúc phiên làm việc trên thiết bị này</small></span><b aria-hidden="true">›</b></button>
       </div>
     </section> : null}
@@ -1411,9 +1500,10 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
 
     <nav className="bottom-nav" aria-label="Điều hướng Retail"><button type="button" className={activeTab === 'home' ? 'active' : ''} onClick={() => { setActiveTab('home'); onTabChange?.('home'); }}><span>⌂</span>Trang chủ</button><button type="button" className={activeTab === 'entry' ? 'active' : ''} onClick={() => { setActiveTab('entry'); onTabChange?.('entry'); }}><span>＋</span>Lên đơn</button><button type="button" className={activeTab === 'orders' ? 'active' : ''} onClick={() => { setActiveTab('orders'); onTabChange?.('orders'); void refreshOrders(); }}><span>▤</span>Đơn hàng</button>{inventoryAvailable && onOpenInventory ? <button type="button" onClick={onOpenInventory}><span>▣</span>Tồn kho</button> : null}<button type="button" className={activeTab === 'settings' ? 'active' : ''} onClick={() => { setActiveTab('settings'); onTabChange?.('settings'); }}><span>⚙</span>Cài đặt</button></nav>
 
-    {settingsPanel ? <section className="dialog-backdrop settings-sheet-backdrop" role="dialog" aria-modal="true" aria-label={settingsPanel === 'account' ? 'Tài khoản' : settingsPanel === 'printer' ? 'Thiết lập in' : settingsPanel === 'template' ? 'Mẫu phiếu' : 'Đăng xuất'}><div className="settings-sheet sheet-enter">
-      <header><div><p className="section-kicker">CÀI ĐẶT</p><h2>{settingsPanel === 'account' ? 'Tài khoản' : settingsPanel === 'printer' ? 'Thiết lập in' : settingsPanel === 'template' ? 'Mẫu phiếu' : 'Đăng xuất'}</h2></div><button className="text-action" type="button" onClick={() => setSettingsPanel(null)}>Đóng</button></header>
+    {settingsPanel ? <section className="dialog-backdrop settings-sheet-backdrop" role="dialog" aria-modal="true" aria-label={settingsPanelTitle(settingsPanel)}><div className="settings-sheet sheet-enter">
+      <header><div><p className="section-kicker">CÀI ĐẶT</p><h2>{settingsPanelTitle(settingsPanel)}</h2></div><button className="text-action" type="button" onClick={() => setSettingsPanel(null)}>Đóng</button></header>
       {settingsPanel === 'account' ? <><div className="settings-sheet-copy"><span className="settings-icon" aria-hidden="true">◎</span><div><strong>Phiên nhân sự Công Ty</strong><p>Ứng dụng sử dụng quyền của tài khoản đang đăng nhập để thực hiện nghiệp vụ bán tại quầy.</p></div></div><div className="settings-sheet-actions"><button className="secondary-action" type="button" onClick={() => setSettingsPanel(null)}>Hủy</button></div></> : null}
+      {settingsPanel === 'notifications' ? <div className="notification-settings-card"><div className={`notification-state status-${notificationState.status}`}><span><strong>Thông báo đơn hàng</strong><small>Thiết bị Owner hiện tại</small></span><b>{retailNotificationStatusLabel(notificationState)}</b></div><p className="notification-help">{notificationState.status === 'subscribed' ? 'Thiết bị này đã đăng ký nhận thông báo. Khi Bán tại quầy chạy nền, đóng hoặc khóa màn hình, thông báo sẽ dùng âm thanh do thiết bị quản lý.' : notificationState.status === 'blocked' ? 'Quyền thông báo đang bị chặn. Hãy mở Cài đặt của điện thoại hoặc trình duyệt và cho phép thông báo cho Bán tại quầy.' : notificationState.status === 'needs-install' ? 'Trên iPhone/iPad, hãy thêm Bán tại quầy vào Màn hình chính, mở lại từ biểu tượng vừa tạo rồi bật thông báo.' : notificationState.status === 'unsupported' ? 'Thiết bị hoặc trình duyệt này chưa hỗ trợ Web Push cho Bán tại quầy.' : notificationState.status === 'not-configured' || notificationState.status === 'error' ? 'Kênh thông báo chưa sẵn sàng. Nghiệp vụ bán hàng vẫn hoạt động bình thường.' : 'Bấm Bật thông báo để thiết bị hỏi quyền một lần. Bán tại quầy không tự xin quyền khi vừa mở ứng dụng.'}</p><div className="notification-actions">{notificationState.status === 'needs-install' ? <button className="primary-action" type="button" onClick={requestRetailPwaInstall}>Cách cài ứng dụng</button> : null}{notificationState.status === 'not-enabled' || notificationState.status === 'not-subscribed' ? <button className="primary-action" type="button" disabled={busy === 'notification-enable'} onClick={() => void enableRetailNotifications()}>{busy === 'notification-enable' ? 'Đang bật…' : 'Bật thông báo'}</button> : null}{notificationState.status === 'subscribed' ? <button className="secondary-action" type="button" disabled={busy === 'notification-test'} onClick={() => void sendNotificationTest()}>{busy === 'notification-test' ? 'Đang gửi…' : 'Gửi thông báo thử'}</button> : null}</div></div> : null}
       {settingsPanel === 'printer' ? <PrinterSettingsPanel initialSettings={printerSettings} onSaved={(next) => { setPrinterSettings(next); setPrintPaper(next.paper); setDraftPrintPaper(next.paper); setSettingsPanel(null); setNotice('Đã lưu thiết lập in trên thiết bị này.'); }} onClose={() => setSettingsPanel(null)} onNotice={(message) => setNotice(message)} onError={(message) => setError(message || null)}/> : null}
       {settingsPanel === 'template' ? <>{printTemplate ? <div className="template-editor"><label className="settings-control">Mẫu<select value={printTemplate.templateCode} onChange={(event) => { const next = printTemplates.find((item) => item.documentType === 'SALES_ORDER' && item.templateCode === event.target.value); if (next)
             applyTemplate(next); }}>{printTemplates.filter((item) => item.documentType === 'SALES_ORDER').map((item) => <option key={`${item.documentType}-${item.templateCode}`} value={item.templateCode}>{item.name}</option>)}</select></label><label>Tiêu đề đầu phiếu<input value={templateHeading} maxLength={160} placeholder="Ví dụ: NGUYÊN LIỆU TRÀ SỮA" onChange={(event) => setTemplateHeading(event.target.value)}/></label><label>Tên chứng từ<input value={templateTitle} maxLength={160} placeholder={printTemplate.name} onChange={(event) => setTemplateTitle(event.target.value)}/></label><label>Dòng phụ<input value={templateSubtitle} maxLength={240} placeholder="Không bắt buộc" onChange={(event) => setTemplateSubtitle(event.target.value)}/></label><div className="template-font-size-control"><span>Cỡ chữ phiếu</span><div className="template-font-size-stepper"><button type="button" aria-label="Giảm cỡ chữ" disabled={templateFontSizePercent <= 80} onClick={() => setTemplateFontSizePercent((current) => normalizePrintFontSizePercent(current - 5))}>−</button><output aria-live="polite">{templateFontSizePercent}%</output><button type="button" aria-label="Tăng cỡ chữ" disabled={templateFontSizePercent >= 140} onClick={() => setTemplateFontSizePercent((current) => normalizePrintFontSizePercent(current + 5))}>+</button></div><small>Chỉnh từ 80% đến 140%. Xem trước bên dưới thay đổi ngay.</small></div><fieldset><legend>Mục hiển thị</legend><div className="field-checks">{printTemplate.fields?.map((field) => <label key={field.key}><input type="checkbox" checked={printTemplate.visibleFieldKeys.includes(field.key)} onChange={() => togglePrintField(field.key)}/>{field.label}</label>)}</div></fieldset><RetailPrintTemplatePreview paper={printerSettings.paper} visibleFieldKeys={printTemplate.visibleFieldKeys} heading={templateHeading} title={templateTitle} subtitle={templateSubtitle} fallbackTitle={printTemplate.name} fontSizePercent={templateFontSizePercent}/><div className="settings-sheet-actions"><button className="secondary-action" type="button" onClick={() => setSettingsPanel(null)}>Hủy</button><button className="primary-action" type="button" disabled={busy === 'print-template' || !printTemplate.visibleFieldKeys.length} onClick={() => void savePrintTemplate()}>{busy === 'print-template' ? 'Đang lưu…' : 'Lưu'}</button></div></div> : <p className="settings-help">Đang tải Mẫu phiếu…</p>}</> : null}
