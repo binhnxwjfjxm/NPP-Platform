@@ -77,6 +77,7 @@ type Order = {
     customerMode: 'WALK_IN' | 'EXISTING';
     customerId: string;
     customerName: string;
+    customerPhone?: string | null;
     total: string;
     revision: string;
     warehouseId: string;
@@ -230,6 +231,7 @@ class RetailApiError extends Error {
     }
 }
 const money = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 });
+const moneyNumber = new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 0 });
 const quantityNumber = new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 6 });
 const displayUnit = (unitName?: string | null, unitCode?: string | null) => unitName?.trim() || unitCode?.trim() || '—';
 const PRODUCT_IMAGE_BASE = 'https://pub-7d2987fab97d4e3ebb2021a823973862.r2.dev/app-customer/products';
@@ -283,6 +285,44 @@ function progressStage(order: Order | null) { if (!order)
     return 1; return 0; }
 function dateLabel(value?: string) { if (!value)
     return '—'; const date = new Date(value); return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' }); }
+function orderStageLabel(order: Order) {
+    if (order.status === 'closed') return 'Đã hoàn thành';
+    if (order.status === 'confirmed' && STOCK_ISSUED_FULFILLMENT_STATUSES.has(order.fulfillmentStatus)) return 'Đã xuất kho';
+    if (order.status === 'confirmed') return 'Đã chốt';
+    if (order.status === 'cancelled') return 'Đã hủy';
+    return 'Đang lập';
+}
+function orderPaymentLabel(order: Order) {
+    const settlement = String(order.settlementStatus ?? '').toLowerCase();
+    if (settlement === 'paid') return 'Đã thu đủ';
+    if (settlement === 'partially_paid' || settlement === 'partial') return 'Đã thu một phần';
+    if (order.status === 'closed') return 'Còn phải thu';
+    return null;
+}
+function orderListDateLabel(value?: string) {
+    if (!value) return '—';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '—';
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = String(date.getFullYear()).slice(-2);
+    const hour = String(date.getHours()).padStart(2, '0');
+    const minute = String(date.getMinutes()).padStart(2, '0');
+    return `${hour}:${minute} ${day}/${month}/${year}`;
+}
+function localDateKey(value?: string) {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    const year = String(date.getFullYear());
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+function displayFilterDate(value: string) {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    return match ? `${match[3]}/${match[2]}/${match[1]}` : value;
+}
 function errorMessage(reason: unknown, fallback: string) { return reason instanceof Error ? reason.message : fallback; }
 function isRevisionConflict(reason: unknown) { return reason instanceof RetailApiError && (reason.code.includes('CONFLICT') || typeof reason.details.currentRevision === 'string'); }
 function isShortage(row: Availability | undefined, requested: string) { if (!row || row.availabilityStatus === 'NOT_APPLICABLE')
@@ -369,6 +409,10 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
     const [activeTab, setActiveTab] = useState<RetailTab>(initialTab);
     const [orderFilter, setOrderFilter] = useState<OrderFilter>('all');
+    const [orderSearch, setOrderSearch] = useState('');
+    const [orderDateFrom, setOrderDateFrom] = useState('');
+    const [orderDateTo, setOrderDateTo] = useState('');
+    const [printSourceOrder, setPrintSourceOrder] = useState<Order | null>(null);
     const [editPickup, setEditPickup] = useState(false);
     const [prices, setPrices] = useState<Record<string, CachedPricePreview>>({});
     const [priceFailures, setPriceFailures] = useState<Record<string, CachedPriceFailure>>({});
@@ -854,7 +898,24 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
     }, 0);
     const stage = progressStage(order);
     const canEditPickup = order?.status === 'confirmed' && !STOCK_ISSUED_FULFILLMENT_STATUSES.has(order.fulfillmentStatus);
-    const filteredOrders = orders.filter((item) => orderFilter === 'all' ? true : orderFilter === 'issued' ? item.status === 'confirmed' && STOCK_ISSUED_FULFILLMENT_STATUSES.has(item.fulfillmentStatus) : orderFilter === 'confirmed' ? item.status === 'confirmed' && !STOCK_ISSUED_FULFILLMENT_STATUSES.has(item.fulfillmentStatus) : item.status === orderFilter);
+    const orderDateRangeInvalid = Boolean(orderDateFrom && orderDateTo && orderDateFrom > orderDateTo);
+    const normalizedOrderSearch = orderSearch.trim().toLocaleLowerCase('vi-VN');
+    const filteredOrders = [...orders].filter((item) => {
+        const statusMatches = orderFilter === 'all'
+            ? true
+            : orderFilter === 'issued'
+                ? item.status === 'confirmed' && STOCK_ISSUED_FULFILLMENT_STATUSES.has(item.fulfillmentStatus)
+                : orderFilter === 'confirmed'
+                    ? item.status === 'confirmed' && !STOCK_ISSUED_FULFILLMENT_STATUSES.has(item.fulfillmentStatus)
+                    : item.status === orderFilter;
+        if (!statusMatches || orderDateRangeInvalid) return false;
+        const itemDate = localDateKey(item.updatedAt);
+        if (orderDateFrom && itemDate < orderDateFrom) return false;
+        if (orderDateTo && itemDate > orderDateTo) return false;
+        if (!normalizedOrderSearch) return true;
+        return [item.number, item.customerName, item.customerPhone, item.warehouseName, item.note]
+            .some((value) => String(value ?? '').toLocaleLowerCase('vi-VN').includes(normalizedOrderSearch));
+    }).sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
     const todayOrders = orders.filter((item) => item.status !== 'cancelled' && isToday(item.updatedAt));
     const todayRevenue = todayOrders.filter((item) => item.status === 'closed').reduce((sum, item) => sum + Number(item.total || 0), 0);
     const pendingOrders = orders.filter((item) => item.status === 'draft' || item.status === 'confirmed');
@@ -869,6 +930,7 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
             : `Chưa đủ Khả dụng: ${shortageRows.map((line) => line.name).join(', ')}.`
         : stockGatePending ? 'Đang kiểm tra Khả dụng trước khi xử lý.' : null;
     const visiblePrintFields = new Set(printTemplate?.visibleFieldKeys ?? ['line_no', 'line_item', 'line_quantity', 'line_unit_price', 'line_total', 'total_total']);
+    const printOrder = printSourceOrder ?? order;
     function removeCartLine(id: string) {
         lastDraftFingerprint.current = '';
         setSelected((current) => { const next = new Map(current); next.delete(id); return next; });
@@ -1203,7 +1265,7 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
         });
         window.localStorage.setItem(PRINT_PAPER_STORAGE_KEY, value);
     }
-    function buildOrderPrintPayload(template: PrintTemplate | null, settings: PrinterSettings) {
+    function buildOrderPrintPayload(sourceOrder: Order, template: PrintTemplate | null, settings: PrinterSettings) {
         const visibleFields = new Set(template?.visibleFieldKeys ?? ['line_no', 'line_item', 'line_quantity', 'line_unit_price', 'line_total', 'total_total']);
         return buildSalesOrderPrintPayload({
             paper: settings.paper,
@@ -1212,12 +1274,12 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
             heading: template?.heading,
             title: template?.title ?? template?.name ?? 'Đơn bán hàng',
             subtitle: template?.subtitle,
-            documentNumber: order?.number ?? 'Đơn bán hàng',
-            customer: order?.customerName,
-            warehouse: order?.warehouseName,
-            date: dateLabel(order?.updatedAt),
+            documentNumber: sourceOrder.number ?? 'Đơn bán hàng',
+            customer: sourceOrder.customerName,
+            warehouse: sourceOrder.warehouseName,
+            date: dateLabel(sourceOrder.updatedAt),
             visibleFields,
-            lines: linesOf(order).map((line) => ({
+            lines: linesOf(sourceOrder).map((line) => ({
                 itemName: line.itemName,
                 sku: line.sku,
                 quantity: formatQuantity(line.quantity),
@@ -1226,7 +1288,7 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
                 unitPrice: money.format(Number(line.unitPrice)),
                 lineTotal: money.format(Number(line.lineTotal)),
             })),
-            total: money.format(Number(order?.total ?? 0)),
+            total: money.format(Number(sourceOrder.total ?? 0)),
         });
     }
     function printBySystem(paper: PrintPaper) {
@@ -1251,15 +1313,13 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
             window.requestAnimationFrame(() => window.print());
         });
     }
-    async function printConfiguredOrder(template: PrintTemplate | null, settings: PrinterSettings, allowSystemFallback: boolean) {
-        if (!order)
-            return false;
+    async function printConfiguredOrder(sourceOrder: Order, template: PrintTemplate | null, settings: PrinterSettings, allowSystemFallback: boolean) {
         if (settings.method === 'SYSTEM') {
             printBySystem(settings.paper);
             return true;
         }
         try {
-            await printWithConfiguredPrinter(settings, buildOrderPrintPayload(template, settings));
+            await printWithConfiguredPrinter(settings, buildOrderPrintPayload(sourceOrder, template, settings));
             setNotice(`Đã gửi ${settings.copies} bản tới ${settings.profile?.name ?? 'máy in Wi‑Fi'}.`);
             return true;
         }
@@ -1274,10 +1334,9 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
             return false;
         }
     }
-    async function openPrintPreview() {
-        if (!order)
-            return;
+    async function prepareOrderPrint(sourceOrder: Order) {
         setError(null);
+        setPrintSourceOrder(sourceOrder);
         try {
             const templates = await loadPrintTemplates();
             const savedCode = window.localStorage.getItem(PRINT_TEMPLATE_STORAGE_KEY);
@@ -1292,15 +1351,38 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
             setPrintPaper(settings.paper);
             setDraftPrintPaper(settings.paper);
             if (settings.method === 'DIRECT_WIFI' && settings.profile && !settings.previewBeforePrint) {
-                const printed = await printConfiguredOrder(template, settings, false);
+                const printed = await printConfiguredOrder(sourceOrder, template, settings, false);
                 if (!printed)
                     setPrintOpen(true);
+                else
+                    setPrintSourceOrder(null);
                 return;
             }
             setPrintOpen(true);
         }
         catch (reason) {
+            setPrintSourceOrder(null);
             setError(errorMessage(reason, 'Chưa thể tải cấu hình Mẫu phiếu.'));
+        }
+    }
+    async function openPrintPreview() {
+        if (!order)
+            return;
+        await prepareOrderPrint(order);
+    }
+    async function printOrderFromHistory(id: string) {
+        const busyKey = `list-print:${id}`;
+        setBusy(busyKey);
+        setError(null);
+        try {
+            const sourceOrder = await api<Order>(`/api/retail/orders/${id}`);
+            await prepareOrderPrint(sourceOrder);
+        }
+        catch (reason) {
+            setError(errorMessage(reason, 'Không thể tải đơn để in.'));
+        }
+        finally {
+            setBusy((current) => current === busyKey ? null : current);
         }
     }
     async function enableRetailNotifications() {
@@ -1403,9 +1485,12 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
         setPrintTemplate({ ...printTemplate, visibleFieldKeys: [...current] });
     }
     async function printNow() {
+        const sourceOrder = printSourceOrder ?? order;
+        if (!sourceOrder)
+            return;
         const settings = loadPrinterSettings();
         setPrinterSettings(settings);
-        await printConfiguredOrder(printTemplate, settings, true);
+        await printConfiguredOrder(sourceOrder, printTemplate, settings, true);
     }
     const productPicture = (imageKey: string | undefined, label: string) => <span className="product-visual"><span className="product-symbol product-symbol-large product-fallback" aria-hidden="true">{label.slice(0, 1)}</span>{imageKey ? <img className="product-photo" src={productImage(imageKey)} alt="" onError={(event) => { event.currentTarget.hidden = true; }}/> : null}</span>;
     const title = activeTab === 'home' ? 'Trang chủ' : activeTab === 'orders' ? 'Đơn hàng' : activeTab === 'settings' ? 'Cài đặt' : order ? 'Chi tiết đơn' : 'Lên đơn';
@@ -1433,13 +1518,45 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
       <section className="home-recent" aria-label="Đơn gần đây"><header><div><p className="section-kicker">GẦN ĐÂY</p><h3>Đơn cần theo dõi</h3></div><button className="text-action" type="button" onClick={() => setActiveTab('orders')}>Xem tất cả</button></header><div className="home-recent-list">{recentOrders.map((item) => <button type="button" className="home-recent-row" key={item.id} onClick={() => void openOrder(item.id)}><span><strong>{item.number ?? 'Đơn nháp'}</strong><small>{item.customerName} · {dateLabel(item.updatedAt)}</small></span><b className={`order-status status-${statusTone(item)}`}>{orderLabel(item)}</b></button>)}{recentOrders.length === 0 ? <p className="empty-cart">Chưa có đơn gần đây.</p> : null}</div></section>
     </section> : null}
 
-    {activeTab === 'orders' ? <section className="orders-workspace" aria-label="Đơn Giao tại quầy">
-      <header className="orders-heading"><div><p className="section-kicker">GIAO TẠI QUẦY</p><h2>Đơn đã lập</h2></div><button className="text-action" type="button" onClick={() => void refreshOrders()}>Tải lại</button></header>
-      <div className="status-filter" role="tablist" aria-label="Lọc trạng thái đơn">{([{ id: 'all', label: 'Tất cả' }, { id: 'draft', label: 'Đang lập' }, { id: 'confirmed', label: 'Đã chốt' }, { id: 'issued', label: 'Đã xuất kho' }, { id: 'closed', label: 'Hoàn thành' }, { id: 'cancelled', label: 'Đã hủy' }] as {
-            id: OrderFilter;
-            label: string;
-        }[]).map((item) => <button type="button" role="tab" aria-selected={orderFilter === item.id} className={orderFilter === item.id ? 'active' : ''} key={item.id} onClick={() => setOrderFilter(item.id)}>{item.label}</button>)}</div>
-      <div className="order-history">{filteredOrders.map((item) => <button className="history-row" type="button" key={item.id} onClick={() => void openOrder(item.id)}><span className="history-icon">▤</span><span><strong>{item.number ?? 'Đơn nháp'}</strong><small>{item.customerName} · {item.warehouseName}</small><em>{dateLabel(item.updatedAt)}</em></span><b className={`order-status status-${statusTone(item)}`}>{orderLabel(item)} ›</b></button>)}{filteredOrders.length === 0 ? <p className="empty-cart">Chưa có đơn phù hợp.</p> : null}</div>
+    {activeTab === 'orders' ? <section className="orders-workspace retail-page" aria-label="Đơn Giao tại quầy">
+      <label className="orders-search-field">
+        <span aria-hidden="true">⌕</span>
+        <input type="search" value={orderSearch} onChange={(event) => setOrderSearch(event.target.value)} placeholder="Nhập mã đơn, khách hàng, số điện thoại" aria-label="Tìm đơn hàng" />
+      </label>
+      <div className="order-date-range" aria-label="Lọc đơn theo ngày">
+        <label className={`order-date-field ${orderDateFrom ? 'has-value' : ''}`}>
+          <span aria-hidden="true">▣</span><strong>{orderDateFrom ? displayFilterDate(orderDateFrom) : 'Từ ngày'}</strong>
+          <input type="date" value={orderDateFrom} max={orderDateTo || undefined} onChange={(event) => setOrderDateFrom(event.target.value)} aria-label="Từ ngày" />
+        </label>
+        <label className={`order-date-field ${orderDateTo ? 'has-value' : ''}`}>
+          <span aria-hidden="true">▣</span><strong>{orderDateTo ? displayFilterDate(orderDateTo) : 'Đến ngày'}</strong>
+          <input type="date" value={orderDateTo} min={orderDateFrom || undefined} onChange={(event) => setOrderDateTo(event.target.value)} aria-label="Đến ngày" />
+        </label>
+      </div>
+      {orderDateRangeInvalid ? <p className="order-date-error" role="alert">Từ ngày không được sau Đến ngày.</p> : null}
+      <div className="status-filter order-status-filter" role="tablist" aria-label="Lọc trạng thái đơn">{([
+        { id: 'all', label: 'Tất cả' },
+        { id: 'draft', label: 'Đang lập' },
+        { id: 'confirmed', label: 'Đã chốt' },
+        { id: 'issued', label: 'Đã xuất kho' },
+      ] as { id: OrderFilter; label: string }[]).map((item) => <button type="button" role="tab" aria-selected={orderFilter === item.id} className={orderFilter === item.id ? 'active' : ''} key={item.id} onClick={() => setOrderFilter(item.id)}>{item.label}</button>)}</div>
+      <div className="order-history">{filteredOrders.map((item) => {
+        const paymentStatus = orderPaymentLabel(item);
+        return <article className="retail-order-history-card" key={item.id}>
+          <button className="order-history-main" type="button" onClick={() => void openOrder(item.id)} aria-label={`Mở ${item.number ?? 'đơn nháp'}`}>
+            <div className="order-history-top">
+              <span className="order-history-identity"><strong>{item.number ?? 'Đơn nháp'}</strong><b>{moneyNumber.format(Number(item.total || 0))}</b></span>
+              <span className="order-history-state"><span className={`order-status status-${statusTone(item)}`}>{orderStageLabel(item)}</span>{paymentStatus ? <span className={`order-payment-status ${item.settlementStatus === 'paid' ? 'paid' : 'debt'}`}>{paymentStatus}</span> : null}<time dateTime={item.updatedAt}>{orderListDateLabel(item.updatedAt)}</time></span>
+            </div>
+            <span className="order-history-facts">
+              <span><i aria-hidden="true">♙</i><small>Khách hàng</small><strong>{item.customerName}</strong></span>
+              <span><i aria-hidden="true">⌂</i><small>Kho</small><strong>{item.warehouseName}</strong></span>
+              <span><i aria-hidden="true">✎</i><small>Ghi chú</small><strong>{item.note?.trim() || '—'}</strong></span>
+            </span>
+          </button>
+          <button className="order-history-print" type="button" disabled={busy === `list-print:${item.id}`} onClick={() => void printOrderFromHistory(item.id)}><span aria-hidden="true">⎙</span>{busy === `list-print:${item.id}` ? 'Đang chuẩn bị…' : 'In đơn hàng'}</button>
+        </article>;
+      })}{filteredOrders.length === 0 ? <p className="empty-cart">{orderDateRangeInvalid ? 'Hãy chọn lại khoảng ngày.' : 'Chưa có đơn phù hợp.'}</p> : null}</div>
     </section> : null}
 
     {activeTab === 'settings' ? <section className="settings-workspace retail-page">
@@ -1568,6 +1685,6 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
     </section> : null}
     {scannerOpen ? <section className="dialog-backdrop" role="dialog" aria-modal="true"><div className="scanner-dialog sheet-enter"><header><div><p className="section-kicker">QUÉT MÃ</p><h2>Đưa mã vào khung hình</h2></div><button className="text-action" type="button" onClick={() => setScannerOpen(false)}>Đóng</button></header>{scannerMessage ? <p className="notice error">{scannerMessage}</p> : <video className="scanner-video" ref={videoRef} autoPlay muted playsInline/>}</div></section> : null}
     {payment ? <section className="dialog-backdrop payment-screen" role="dialog" aria-modal="true"><div className="payment-dialog sheet-enter lot7-payment"><header><button className="round-icon" type="button" onClick={() => setPayment(false)}>‹</button><div><p className="section-kicker">THANH TOÁN</p><h2>Thu tiền / Nợ</h2></div><span /></header><div className="payment-summary"><span>Tổng thanh toán</span><strong>{money.format(Number(order?.receivableRemainingAmount ?? total))}</strong><div className="payment-balance"><span>Đã thu</span><b>{money.format(Math.max(0, total - Number(order?.receivableRemainingAmount ?? total)))}</b><span>Còn lại</span><b>{money.format(Number(order?.receivableRemainingAmount ?? total))}</b></div></div><div className="payment-methods"><button type="button" className={paymentMethod === 'CASH' ? 'active' : ''} onClick={() => setPaymentMethod('CASH')}>Tiền mặt</button><button type="button" className={paymentMethod === 'BANK_TRANSFER' ? 'active' : ''} onClick={() => setPaymentMethod('BANK_TRANSFER')}>Chuyển khoản</button></div><label>Nhập số tiền nhận<input inputMode="numeric" value={paid} onChange={(event) => setPaid(normalizeVndInput(event.target.value))}/></label><div className="payment-footer"><button className="secondary-action" type="button" disabled={busy === 'settlement'} onClick={() => void settle('0')}>Ghi nợ</button><button className="primary-action" type="button" disabled={busy === 'settlement' || !paid.trim()} onClick={() => void settle()}>{busy === 'settlement' ? 'Đang ghi nhận…' : 'Hoàn tất thu tiền'}</button></div></div></section> : null}
-    {printOpen && order ? <section className={`print-screen paper-${printPaperClass(printPaper)}`} role="dialog" aria-modal="true"><div className="print-toolbar"><button className="round-icon" type="button" onClick={() => setPrintOpen(false)}>‹</button><div><h2>Xem trước phiếu</h2><small>{printTemplate?.name ?? 'Mẫu phiếu'}</small></div><button className="primary-action" type="button" onClick={() => void printNow()}>In</button></div><div className="print-paper-picker"><label>Khổ in<select value={printPaper} onChange={(event) => changePaper(event.target.value as PrintPaper)}><option value="A4">A4</option><option value="A5">A5</option><option value="80mm">80 mm</option><option value="58mm">58 mm</option></select></label><p>{printerSettings.method === 'DIRECT_WIFI' && printerSettings.profile ? `Máy mặc định: ${printerSettings.profile.name}.` : 'Khi bấm In, chọn máy in trong giao diện in của điện thoại.'}</p></div><article className="print-document" style={{ '--retail-print-font-scale': String(normalizePrintFontSizePercent(printTemplate?.fontSizePercent) / 100) } as CSSProperties}><header>{printTemplate?.heading ? <p>{printTemplate.heading}</p> : null}<h1>{printTemplate?.title ?? printTemplate?.name ?? 'Đơn bán hàng'}</h1>{printTemplate?.subtitle ? <p>{printTemplate.subtitle}</p> : null}<small>{order.number ?? 'Đơn bán hàng'}</small></header><div className="print-meta">{visiblePrintFields.has('customer') ? <p><span>Khách hàng</span><strong>{order.customerName}</strong></p> : null}{visiblePrintFields.has('warehouse') ? <p><span>Kho bán</span><strong>{order.warehouseName}</strong></p> : null}{visiblePrintFields.has('document_date') ? <p><span>Ngày</span><strong>{dateLabel(order.updatedAt)}</strong></p> : null}</div>{visiblePrintFields.has('line_item') ? <table><thead><tr>{visiblePrintFields.has('line_no') ? <th>STT</th> : null}<th>Sản phẩm</th>{visiblePrintFields.has('line_quantity') ? <th>SL</th> : null}<th>ĐVT</th>{visiblePrintFields.has('line_unit_price') ? <th>Đơn giá</th> : null}{visiblePrintFields.has('line_total') ? <th>Thành tiền</th> : null}</tr></thead><tbody>{lineItems.map((line, index) => <tr key={line.id}>{visiblePrintFields.has('line_no') ? <td>{index + 1}</td> : null}<td><strong>{line.itemName}</strong>{visiblePrintFields.has('line_sku') ? <small>{line.sku}</small> : null}</td>{visiblePrintFields.has('line_quantity') ? <td>{formatQuantity(line.quantity)}</td> : null}<td>{displayUnit(line.unitName, line.unitCode)}</td>{visiblePrintFields.has('line_unit_price') ? <td>{money.format(Number(line.unitPrice))}</td> : null}{visiblePrintFields.has('line_total') ? <td>{money.format(Number(line.lineTotal))}</td> : null}</tr>)}</tbody></table> : null}<footer>{visiblePrintFields.has('total_total') ? <p className="print-grand-total"><span>Tổng cộng</span><strong>{money.format(Number(order.total))}</strong></p> : null}{visiblePrintFields.has('note') ? <p className="print-note"><span>Ghi chú</span><strong>{order.note?.trim() || '—'}</strong></p> : null}{visiblePrintFields.has('signatures') ? <div className="print-signatures"><span>Người lập</span><span>Khách hàng</span></div> : null}</footer></article></section> : null}
+    {printOpen && printOrder ? <section className={`print-screen paper-${printPaperClass(printPaper)}`} role="dialog" aria-modal="true"><div className="print-toolbar"><button className="round-icon" type="button" onClick={() => { setPrintOpen(false); setPrintSourceOrder(null); }}>‹</button><div><h2>Xem trước phiếu</h2><small>{printTemplate?.name ?? 'Mẫu phiếu'}</small></div><button className="primary-action" type="button" onClick={() => void printNow()}>In</button></div><div className="print-paper-picker"><label>Khổ in<select value={printPaper} onChange={(event) => changePaper(event.target.value as PrintPaper)}><option value="A4">A4</option><option value="A5">A5</option><option value="80mm">80 mm</option><option value="58mm">58 mm</option></select></label><p>{printerSettings.method === 'DIRECT_WIFI' && printerSettings.profile ? `Máy mặc định: ${printerSettings.profile.name}.` : 'Khi bấm In, chọn máy in trong giao diện in của điện thoại.'}</p></div><article className="print-document" style={{ '--retail-print-font-scale': String(normalizePrintFontSizePercent(printTemplate?.fontSizePercent) / 100) } as CSSProperties}><header>{printTemplate?.heading ? <p>{printTemplate.heading}</p> : null}<h1>{printTemplate?.title ?? printTemplate?.name ?? 'Đơn bán hàng'}</h1>{printTemplate?.subtitle ? <p>{printTemplate.subtitle}</p> : null}<small>{printOrder.number ?? 'Đơn bán hàng'}</small></header><div className="print-meta">{visiblePrintFields.has('customer') ? <p><span>Khách hàng</span><strong>{printOrder.customerName}</strong></p> : null}{visiblePrintFields.has('warehouse') ? <p><span>Kho bán</span><strong>{printOrder.warehouseName}</strong></p> : null}{visiblePrintFields.has('document_date') ? <p><span>Ngày</span><strong>{dateLabel(printOrder.updatedAt)}</strong></p> : null}</div>{visiblePrintFields.has('line_item') ? <table><thead><tr>{visiblePrintFields.has('line_no') ? <th>STT</th> : null}<th>Sản phẩm</th>{visiblePrintFields.has('line_quantity') ? <th>SL</th> : null}<th>ĐVT</th>{visiblePrintFields.has('line_unit_price') ? <th>Đơn giá</th> : null}{visiblePrintFields.has('line_total') ? <th>Thành tiền</th> : null}</tr></thead><tbody>{linesOf(printOrder).map((line, index) => <tr key={line.id}>{visiblePrintFields.has('line_no') ? <td>{index + 1}</td> : null}<td><strong>{line.itemName}</strong>{visiblePrintFields.has('line_sku') ? <small>{line.sku}</small> : null}</td>{visiblePrintFields.has('line_quantity') ? <td>{formatQuantity(line.quantity)}</td> : null}<td>{displayUnit(line.unitName, line.unitCode)}</td>{visiblePrintFields.has('line_unit_price') ? <td>{money.format(Number(line.unitPrice))}</td> : null}{visiblePrintFields.has('line_total') ? <td>{money.format(Number(line.lineTotal))}</td> : null}</tr>)}</tbody></table> : null}<footer>{visiblePrintFields.has('total_total') ? <p className="print-grand-total"><span>Tổng cộng</span><strong>{money.format(Number(printOrder.total))}</strong></p> : null}{visiblePrintFields.has('note') ? <p className="print-note"><span>Ghi chú</span><strong>{printOrder.note?.trim() || '—'}</strong></p> : null}{visiblePrintFields.has('signatures') ? <div className="print-signatures"><span>Người lập</span><span>Khách hàng</span></div> : null}</footer></article></section> : null}
   </main>;
 }
