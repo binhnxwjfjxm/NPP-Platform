@@ -1,7 +1,8 @@
 'use client';
 
+import { createIdempotencyKey } from '@npp/contracts';
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
 import shellStyles from '../../components/app-shell.module.css';
 import styles from '../../organization/organization.module.css';
@@ -15,6 +16,48 @@ import type {
 } from '../../../lib/workforce-types';
 
 type ApiEnvelope<T> = { data?: T; error?: { message?: string } };
+type Attempt = { payload: string; key: string } | null;
+type QuickAttendanceAction = 'CHECK_IN' | 'CHECK_OUT' | 'TEMP_EXIT' | 'RETURN' | 'END_EXTERNAL_WORK';
+type QuickExitReason = 'WORK_BUSINESS' | 'PERSONAL' | 'BREAK' | 'OTHER';
+
+const QUICK_EXIT_LABEL: Record<QuickExitReason, string> = {
+  WORK_BUSINESS: 'Ra ngoài làm việc',
+  PERSONAL: 'Ra ngoài việc cá nhân',
+  BREAK: 'Nghỉ giữa ca',
+  OTHER: 'Lý do khác',
+};
+
+function stableMutationKey(ref: React.MutableRefObject<Attempt>, operation: string, payload: unknown) {
+  const serialized = JSON.stringify(payload);
+  if (ref.current?.payload === serialized) return ref.current.key;
+  const key = createIdempotencyKey(operation);
+  ref.current = { payload: serialized, key };
+  return key;
+}
+
+function externalWorkPending(day: AttendanceTimesheetDay) {
+  const latest = day.events.at(-1) ?? null;
+  return latest?.event_type === 'TEMP_EXIT' && latest.movement_reason === 'WORK_BUSINESS';
+}
+
+function currentWorkDate(timeZone = 'Asia/Ho_Chi_Minh') {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date()).map((part) => [part.type, part.value]));
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function timeInputValue(value: string | null, timeZone = 'Asia/Ho_Chi_Minh') {
+  return value ? timeLabel(value, timeZone) : '';
+}
+
+function adjustmentInstant(workDate: string, time: string) {
+  if (!time) return null;
+  return new Date(`${workDate}T${time}:00+07:00`).toISOString();
+}
 
 const STATUS_LABEL: Record<AttendanceDayStatus, string> = {
   UPCOMING: 'Sắp tới',
@@ -284,6 +327,17 @@ export default function AttendanceTimesheetWorkspace({
   const [error, setError] = useState<string | null>(initialError);
   const [selectedDay, setSelectedDay] = useState<AttendanceTimesheetDay | null>(null);
   const [selectedEmployee, setSelectedEmployee] = useState<AttendanceTimesheetMonth | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [dayActionBusy, setDayActionBusy] = useState(false);
+  const [quickExitOpen, setQuickExitOpen] = useState(false);
+  const [quickExitReason, setQuickExitReason] = useState<QuickExitReason | ''>('');
+  const [quickExitNote, setQuickExitNote] = useState('');
+  const [adjustOpen, setAdjustOpen] = useState(false);
+  const [adjustCheckIn, setAdjustCheckIn] = useState('');
+  const [adjustCheckOut, setAdjustCheckOut] = useState('');
+  const [adjustReason, setAdjustReason] = useState('');
+  const quickActionAttempt = useRef<Attempt>(null);
+  const directAdjustmentAttempt = useRef<Attempt>(null);
 
   const employeeRows = useMemo(
     () => data && (data.view === 'employee' || data.view === 'monthly')
@@ -291,6 +345,98 @@ export default function AttendanceTimesheetWorkspace({
       : [],
     [data],
   );
+
+  function openDay(day: AttendanceTimesheetDay) {
+    setSelectedDay(day);
+    setQuickExitOpen(false);
+    setQuickExitReason('');
+    setQuickExitNote('');
+    setAdjustOpen(false);
+    setAdjustCheckIn(timeInputValue(day.checkInAt, day.policy?.timezone));
+    setAdjustCheckOut(timeInputValue(day.checkOutAt, day.policy?.timezone));
+    setAdjustReason('');
+    setError(null);
+    setNotice(null);
+  }
+
+  async function postMutation<T>(path: string, payload: unknown, key: string): Promise<T> {
+    const response = await fetch(path, {
+      method: 'POST',
+      cache: 'no-store',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'Idempotency-Key': key,
+      },
+      body: JSON.stringify(payload),
+    });
+    const envelope = await response.json().catch(() => ({})) as ApiEnvelope<T>;
+    if (!response.ok || envelope.data === undefined) {
+      throw new Error(envelope.error?.message || 'Không thực hiện được thao tác');
+    }
+    return envelope.data;
+  }
+
+  async function submitQuickAttendance(
+    action: QuickAttendanceAction,
+    exitReason?: QuickExitReason,
+    note?: string,
+  ) {
+    if (!selectedDay || !data?.capabilities.canManage) return;
+    const payload = {
+      employeeId: selectedDay.employee.id,
+      action,
+      ...(exitReason ? { exitReason } : {}),
+      ...(note?.trim() ? { note: note.trim() } : {}),
+    };
+    const key = stableMutationKey(quickActionAttempt, 'timesheet-attendance-quick-action', payload);
+    setDayActionBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await postMutation('/api/workforce/attendance/manual', payload, key);
+      quickActionAttempt.current = null;
+      setNotice(action === 'END_EXTERNAL_WORK' ? 'Đã kết thúc công việc bên ngoài.' : 'Đã ghi nhận chấm công.');
+      await load(data.pagination.offset);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Không ghi nhận được chấm công');
+    } finally {
+      setDayActionBusy(false);
+    }
+  }
+
+  async function submitDirectDayAdjustment() {
+    if (!selectedDay || !data?.capabilities.canManage) return;
+    if (!adjustCheckIn && !adjustCheckOut) {
+      setError('Cần nhập ít nhất giờ vào hoặc giờ ra.');
+      return;
+    }
+    if (!adjustReason.trim()) {
+      setError('Vui lòng ghi lý do điều chỉnh.');
+      return;
+    }
+    const payload = {
+      employeeId: selectedDay.employee.id,
+      workDate: selectedDay.workDate,
+      requestedCheckInAt: adjustmentInstant(selectedDay.workDate, adjustCheckIn),
+      requestedCheckOutAt: adjustmentInstant(selectedDay.workDate, adjustCheckOut),
+      reason: adjustReason.trim(),
+    };
+    const key = stableMutationKey(directAdjustmentAttempt, 'timesheet-attendance-direct-adjustment', payload);
+    setDayActionBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await postMutation('/api/workforce/adjustments/direct', payload, key);
+      directAdjustmentAttempt.current = null;
+      setNotice('Đã cập nhật giờ công và lưu lịch sử điều chỉnh.');
+      await load(data.pagination.offset);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Không điều chỉnh được ngày công');
+    } finally {
+      setDayActionBusy(false);
+    }
+  }
 
   async function load(
     nextOffset = 0,
@@ -360,6 +506,22 @@ export default function AttendanceTimesheetWorkspace({
   const total = data?.pagination.total ?? 0;
   const rangeStart = total && data ? data.pagination.offset + 1 : 0;
   const rangeEnd = data ? Math.min(data.pagination.offset + rowCount, total) : 0;
+  const selectedTimeZone = selectedDay?.policy?.timezone || data?.period.timezone || 'Asia/Ho_Chi_Minh';
+  const selectedIsToday = Boolean(selectedDay && selectedDay.workDate === currentWorkDate(selectedTimeZone));
+  const selectedCanOperateNow = Boolean(
+    selectedDay
+      && selectedIsToday
+      && data?.capabilities.canManage
+      && (!selectedDay.periodLock || data.capabilities.canLock),
+  );
+  const selectedCanAdjust = Boolean(
+    selectedDay
+      && data?.capabilities.canManage
+      && (!selectedDay.periodLock || data.capabilities.canLock),
+  );
+  const selectedNeedsCheckIn = Boolean(selectedDay && !selectedDay.checkInAt);
+  const selectedNeedsCheckOut = Boolean(selectedDay && selectedDay.checkInAt && !selectedDay.checkOutAt);
+  const selectedExternalWorkPending = Boolean(selectedDay && externalWorkPending(selectedDay));
 
   return (
     <AppShell
@@ -369,7 +531,11 @@ export default function AttendanceTimesheetWorkspace({
       actions={actions}
     >
       <section className={`${styles.page} ${localStyles.timesheetPage}`} data-testid="attendance-timesheet-page">
-        {error ? <div className={`${styles.banner} ${styles.bannerError}`} role="status">{error}</div> : null}
+        {(error || notice) ? (
+          <div className={`${styles.banner} ${error ? styles.bannerError : styles.bannerSuccess}`} role="status">
+            {error ?? notice}
+          </div>
+        ) : null}
 
         <div className={localStyles.timesheetTopbar}>
           <section className={`${styles.summaryGrid} ${localStyles.compactSummaryGrid}`} aria-label="Tóm tắt Bảng công">
@@ -587,7 +753,7 @@ export default function AttendanceTimesheetWorkspace({
                                 <button
                                   type="button"
                                   className={`${localStyles.matrixCellButton} ${localStyles[`matrixTone_${compactDayTone(day)}`]}`}
-                                  onClick={() => setSelectedDay(day)}
+                                  onClick={() => openDay(day)}
                                   title={`${dateLabel(day.workDate)} · ${statusLabel(day)}`}
                                   aria-label={`${dateLabel(day.workDate)} · ${statusLabel(day)} · ${row.employee.name}`}
                                 >
@@ -671,7 +837,7 @@ export default function AttendanceTimesheetWorkspace({
                         <td>{minutesLabel(day.countedMinutes)}</td>
                         <td className={dayAttentionSummary(day) === '—' ? '' : localStyles.attentionCell}>{dayAttentionSummary(day)}</td>
                         <td>
-                          <button type="button" className={localStyles.employeeOpenButton} onClick={() => setSelectedDay(day)}>
+                          <button type="button" className={localStyles.employeeOpenButton} onClick={() => openDay(day)}>
                             Chi tiết
                           </button>
                         </td>
@@ -694,6 +860,81 @@ export default function AttendanceTimesheetWorkspace({
                 </div>
                 <button type="button" className={styles.modalClose} onClick={() => setSelectedDay(null)}>Đóng</button>
               </div>
+              <section className={localStyles.dayQuickPanel}>
+                <div className={localStyles.dayQuickHeader}>
+                  <div>
+                    <strong>Thao tác nhanh</strong>
+                    <span>{selectedIsToday ? 'Ghi nhận trực tiếp ngay tại Bảng công.' : 'Ngày cũ chỉ sửa bằng điều chỉnh có lưu lịch sử.'}</span>
+                  </div>
+                  {selectedCanAdjust ? (
+                    <button type="button" className={styles.secondaryButton} onClick={() => setAdjustOpen((current) => !current)} disabled={dayActionBusy}>
+                      {adjustOpen ? 'Đóng sửa giờ' : 'Sửa giờ vào / ra'}
+                    </button>
+                  ) : null}
+                </div>
+
+                {selectedCanOperateNow ? (
+                  <div className={localStyles.dayQuickActions}>
+                    {selectedNeedsCheckIn ? (
+                      <button type="button" className={styles.primaryButton} disabled={dayActionBusy} onClick={() => void submitQuickAttendance('CHECK_IN')}>Chấm vào</button>
+                    ) : null}
+                    {selectedNeedsCheckOut && !selectedExternalWorkPending ? (
+                      <>
+                        <button type="button" className={styles.secondaryButton} disabled={dayActionBusy} onClick={() => setQuickExitOpen((current) => !current)}>Ra ngoài</button>
+                        <button type="button" className={styles.primaryButton} disabled={dayActionBusy} onClick={() => void submitQuickAttendance('CHECK_OUT')}>Kết thúc làm việc</button>
+                      </>
+                    ) : null}
+                    {selectedExternalWorkPending ? (
+                      <>
+                        <button type="button" className={styles.secondaryButton} disabled={dayActionBusy} onClick={() => void submitQuickAttendance('RETURN')}>Quay lại</button>
+                        <button type="button" className={styles.primaryButton} disabled={dayActionBusy} onClick={() => void submitQuickAttendance('END_EXTERNAL_WORK')}>Kết thúc công việc bên ngoài</button>
+                      </>
+                    ) : null}
+                    {!selectedNeedsCheckIn && !selectedNeedsCheckOut ? <span className={localStyles.dayQuickDone}>Ngày làm việc đã có đủ giờ vào và giờ ra.</span> : null}
+                  </div>
+                ) : null}
+
+                {quickExitOpen && selectedCanOperateNow && selectedNeedsCheckOut && !selectedExternalWorkPending ? (
+                  <div className={localStyles.dayQuickExit}>
+                    <strong>Mục đích ra ngoài</strong>
+                    <div>
+                      {(Object.keys(QUICK_EXIT_LABEL) as QuickExitReason[]).map((reason) => (
+                        <button
+                          type="button"
+                          key={reason}
+                          className={quickExitReason === reason ? localStyles.dayReasonActive : localStyles.dayReasonButton}
+                          onClick={() => setQuickExitReason(reason)}
+                        >
+                          {QUICK_EXIT_LABEL[reason]}
+                        </button>
+                      ))}
+                    </div>
+                    {quickExitReason === 'OTHER' ? (
+                      <input value={quickExitNote} onChange={(event) => setQuickExitNote(event.target.value)} maxLength={1024} placeholder="Ghi rõ lý do" />
+                    ) : null}
+                    <button
+                      type="button"
+                      className={styles.primaryButton}
+                      disabled={dayActionBusy || !quickExitReason || (quickExitReason === 'OTHER' && !quickExitNote.trim())}
+                      onClick={() => void submitQuickAttendance('TEMP_EXIT', quickExitReason as QuickExitReason, quickExitNote)}
+                    >
+                      Ghi nhận ra ngoài
+                    </button>
+                  </div>
+                ) : null}
+
+                {adjustOpen && selectedCanAdjust ? (
+                  <div className={localStyles.dayAdjustForm}>
+                    <label>Giờ vào<input type="time" value={adjustCheckIn} onChange={(event) => setAdjustCheckIn(event.target.value)} /></label>
+                    <label>Giờ ra<input type="time" value={adjustCheckOut} onChange={(event) => setAdjustCheckOut(event.target.value)} /></label>
+                    <label className={localStyles.dayAdjustReason}>Lý do<input value={adjustReason} onChange={(event) => setAdjustReason(event.target.value)} maxLength={1000} placeholder="Ví dụ: xác nhận theo thực tế công việc" /></label>
+                    <button type="button" className={styles.primaryButton} onClick={() => void submitDirectDayAdjustment()} disabled={dayActionBusy}>
+                      {dayActionBusy ? 'Đang lưu…' : 'Lưu điều chỉnh'}
+                    </button>
+                  </div>
+                ) : null}
+              </section>
+
               <div className={localStyles.dayDetailGrid}>
                 <div><span>Ngày</span><strong>{dateLabel(selectedDay.workDate)}</strong></div>
                 <div><span>Trạng thái</span><strong>{statusLabel(selectedDay)}</strong></div>
@@ -712,9 +953,9 @@ export default function AttendanceTimesheetWorkspace({
                 <span>Phần được nghỉ: {leaveSegmentLabel(selectedDay)}</span>
                 <span>{leaveSummary(selectedDay)}</span>
                 {selectedDay.unexcusedAbsenceFraction > 0 ? <span>Vắng không phép: {dayCountLabel(selectedDay.unexcusedAbsenceFraction)} ngày</span> : null}
-                {selectedDay.configurationIssue === 'MISSING_POLICY' ? <><span>Nhân sự chưa có Chính sách làm việc hiệu lực tại ngày này.</span><Link className={localStyles.inlineLink} href="/workforce/employees">Mở danh mục nhân sự để áp dụng chính sách</Link></> : null}
+                {selectedDay.configurationIssue === 'MISSING_POLICY' ? <><span>Nhân sự chưa có Chính sách làm việc hiệu lực tại ngày này.</span><Link className={localStyles.inlineLink} href="/workforce/employees" target="_blank" rel="noreferrer">Mở danh mục nhân sự để áp dụng chính sách</Link></> : null}
                 {selectedDay.configurationIssue === 'MISSING_SCHEDULE' ? <span>Cần bổ sung lịch làm việc hoặc ca làm việc.</span> : null}
-                {selectedDay.leave.requests.length ? <Link className={localStyles.inlineLink} href="/workforce/leave">Mở đơn nghỉ</Link> : null}
+                {selectedDay.leave.requests.length ? <Link className={localStyles.inlineLink} href="/workforce/leave" target="_blank" rel="noreferrer">Mở đơn nghỉ</Link> : null}
               </div>
               <div className={localStyles.dayDetailSection}>
                 <strong>Kiểm soát · Nguồn dữ liệu</strong>
@@ -742,7 +983,7 @@ export default function AttendanceTimesheetWorkspace({
                   </span>
                 ) : null}
                 <span>Kết quả này dùng để theo dõi và xử lý theo quy trình Công Ty; Bảng công không tự điều chỉnh thu nhập.</span>
-                {selectedDay.violationEvaluation.items.length ? <Link className={localStyles.inlineLink} href="/workforce/violations">Mở xử lý vi phạm</Link> : null}
+                {selectedDay.violationEvaluation.items.length ? <Link className={localStyles.inlineLink} href="/workforce/violations" target="_blank" rel="noreferrer">Mở xử lý vi phạm</Link> : null}
               </div>
               <div className={localStyles.dayDetailEvents}>
                 <strong>Chi tiết sự kiện</strong>
@@ -760,9 +1001,9 @@ export default function AttendanceTimesheetWorkspace({
               </div>
               <div className={styles.formActions}>
                 {data?.capabilities.canManage && (!selectedDay.periodLock || data?.capabilities.canLock) ? (
-                  <Link href={'/workforce/adjustments?employeeId=' + encodeURIComponent(selectedDay.employee.id) + '&workDate=' + selectedDay.workDate}>Điều chỉnh công</Link>
+                  <Link href={'/workforce/adjustments?employeeId=' + encodeURIComponent(selectedDay.employee.id) + '&workDate=' + selectedDay.workDate} target="_blank" rel="noreferrer">Mở lịch sử điều chỉnh</Link>
                 ) : !selectedDay.periodLock && data?.capabilities.canSubmitOwn ? (
-                  <Link href={'/workforce/adjustments?workDate=' + selectedDay.workDate}>Yêu cầu điều chỉnh</Link>
+                  <Link href={'/workforce/adjustments?workDate=' + selectedDay.workDate} target="_blank" rel="noreferrer">Yêu cầu điều chỉnh</Link>
                 ) : null}
                 <button type="button" className={styles.secondaryButton} onClick={() => setSelectedDay(null)}>Đóng</button>
               </div>
