@@ -1055,7 +1055,7 @@ export async function recordManualAttendance(client, {
     return fail('ATTENDANCE_STATE_CHANGED', 'Nhân sự hiện không ở trạng thái cần chấm ra');
   }
   const choicePayload = recordAction === 'CHECK_OUT'
-    ? { ...payload, exitReason: 'END_WORK' }
+    ? { ...payload, exitReason: text(payload?.exitReason).toUpperCase() || 'END_WORK' }
     : payload;
   const choice = attendanceEventChoice(attendance, choicePayload);
   if (!choice.ok) return choice;
@@ -1091,10 +1091,41 @@ export async function recordManualAttendance(client, {
 
 
 
+function managedEmployeeRow(row) {
+  return {
+    id: row.employee_id,
+    code: row.employee_code,
+    name: row.employee_name,
+    branchId: row.employee_branch_id ?? null,
+    branchName: row.branch_name ?? null,
+    policyName: row.policy_name ?? null,
+    hasPolicy: Boolean(row.work_policy_id),
+  };
+}
+
+function managedAttendanceOverview(context) {
+  return {
+    workDate: context.workDate,
+    status: context.status,
+    nextAction: context.nextAction,
+    tooSoon: Boolean(context.tooSoon),
+    expectedStartAt: context.expectedStartAt,
+    expectedEndAt: context.expectedEndAt,
+    policy: {
+      id: context.policy.id,
+      name: context.policy.name,
+      attendanceBasis: context.policy.attendance_basis,
+      timezone: context.timeZone,
+    },
+    events: context.events,
+  };
+}
+
 export async function listManagedManualAttendanceEmployees(client, {
   installationId,
   companyScope,
   branchIds,
+  employeeId = null,
   now = new Date(),
 }) {
   const workDate = localDate(INSTALLATION_TIMEZONE, now);
@@ -1103,24 +1134,29 @@ export async function listManagedManualAttendanceEmployees(client, {
     workDate,
     branchIds: companyScope ? null : (branchIds ?? []),
   });
-  return {
-    ok: true,
-    data: {
-      employees: rows.map((row) => ({
-        id: row.employee_id,
-        code: row.employee_code,
-        name: row.employee_name,
-        branchId: row.employee_branch_id ?? null,
-        branchName: row.branch_name ?? null,
-      })),
-    },
-  };
+  const employees = rows.map(managedEmployeeRow);
+  let selected = null;
+
+  if (employeeId) {
+    if (!validUuid(employeeId)) return fail('EMPLOYEE_NOT_FOUND', 'Nhân sự được chọn không hợp lệ');
+    const selectedRow = rows.find((row) => String(row.employee_id) === String(employeeId));
+    if (!selectedRow) return fail('SCOPE_FORBIDDEN', 'Nhân sự nằm ngoài phạm vi được cấp');
+    const employee = managedEmployeeRow(selectedRow);
+    const resolved = await resolveAttendanceContext(client, { installationId, employeeId, now });
+    selected = resolved.ok
+      ? { employee, attendance: managedAttendanceOverview(resolved.context), issue: null }
+      : { employee, attendance: null, issue: { code: resolved.code, message: resolved.message } };
+  }
+
+  return { ok: true, data: { employees, selected } };
 }
 
 export async function recordManagedManualAttendance(client, {
   installationId,
   employeeId,
   action,
+  exitReason = null,
+  note = null,
   actorId,
   requestId,
   companyScope,
@@ -1129,7 +1165,7 @@ export async function recordManagedManualAttendance(client, {
 }) {
   if (!validUuid(employeeId)) return fail('EMPLOYEE_NOT_FOUND', 'Vui lòng chọn nhân sự');
   const normalizedAction = text(action).toUpperCase();
-  if (!['CHECK_IN', 'CHECK_OUT'].includes(normalizedAction)) {
+  if (!['CHECK_IN', 'CHECK_OUT', 'TEMP_EXIT', 'RETURN'].includes(normalizedAction)) {
     return fail('INVALID_MANUAL_ATTENDANCE_ACTION', 'Thao tác chấm công tay không hợp lệ');
   }
 
@@ -1148,10 +1184,34 @@ export async function recordManagedManualAttendance(client, {
     }
   }
 
+  let recordAction = normalizedAction;
+  let normalizedExitReason = null;
+  let normalizedNote = text(note) || null;
+  if (normalizedAction === 'RETURN') recordAction = 'CHECK_IN';
+  if (normalizedAction === 'CHECK_OUT') {
+    recordAction = 'CHECK_OUT';
+    normalizedExitReason = 'END_WORK';
+  }
+  if (normalizedAction === 'TEMP_EXIT') {
+    recordAction = 'CHECK_OUT';
+    normalizedExitReason = text(exitReason).toUpperCase();
+    if (!TEMP_EXIT_REASONS.has(normalizedExitReason)) {
+      return fail('EXIT_REASON_REQUIRED', 'Vui lòng chọn mục đích ra ngoài');
+    }
+    if (normalizedExitReason === 'OTHER' && !normalizedNote) {
+      return fail('EXIT_NOTE_REQUIRED', 'Lý do khác phải có ghi chú');
+    }
+  }
+
   return recordManualAttendance(client, {
     installationId,
     employeeId,
-    payload: { method: 'MANUAL', recordAction: normalizedAction },
+    payload: {
+      method: 'MANUAL',
+      recordAction,
+      ...(normalizedExitReason ? { exitReason: normalizedExitReason } : {}),
+      ...(normalizedNote ? { note: normalizedNote } : {}),
+    },
     actorId,
     requestId,
     now,

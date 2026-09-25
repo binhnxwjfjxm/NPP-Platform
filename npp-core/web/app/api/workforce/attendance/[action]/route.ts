@@ -41,7 +41,10 @@ export async function GET(request: NextRequest, { params }: { params: { action: 
       : params.action === 'points'
         ? await getAttendancePointManagement<unknown>(requestId)
         : params.action === 'manual'
-          ? await getManagedManualAttendanceEmployees<unknown>(requestId)
+          ? await getManagedManualAttendanceEmployees<unknown>(
+              requestId,
+              request.nextUrl.searchParams.get('employeeId'),
+            )
           : null;
     if (data === null) {
       return NextResponse.json(

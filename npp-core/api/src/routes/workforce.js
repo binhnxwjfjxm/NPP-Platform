@@ -1703,10 +1703,12 @@ async function handleManagedManualAttendance(req, res, context, method) {
   const branchIds = [...(context.requestContext.scopes.branchIds ?? [])];
 
   if (method === 'GET') {
+    const employeeId = new URL(`http://localhost${req.url}`).searchParams.get('employeeId');
     const result = await workforceService.listManagedManualAttendanceEmployees(context.getPool(), {
       installationId: context.requestContext.installationId,
       companyScope,
       branchIds,
+      employeeId,
     });
     if (!result.ok) {
       sendError(res, createError(result.code, result.message, {}, false, statusFor(result)), context.requestId, context.receivedAt);
@@ -1721,6 +1723,8 @@ async function handleManagedManualAttendance(req, res, context, method) {
   const payload = {
     employeeId: String(parsed.payload?.employeeId ?? '').trim(),
     action: String(parsed.payload?.action ?? '').trim().toUpperCase(),
+    exitReason: String(parsed.payload?.exitReason ?? '').trim().toUpperCase() || null,
+    note: String(parsed.payload?.note ?? '').trim() || null,
   };
   await runIdempotentMutation(req, res, context, {
     route: '/api/workforce/attendance/manual',
@@ -1731,6 +1735,8 @@ async function handleManagedManualAttendance(req, res, context, method) {
         installationId: context.requestContext.installationId,
         employeeId: payload.employeeId,
         action: payload.action,
+        exitReason: payload.exitReason,
+        note: payload.note,
         actorId: context.requestContext.actorId,
         requestId: context.requestId,
         companyScope,
@@ -1742,9 +1748,13 @@ async function handleManagedManualAttendance(req, res, context, method) {
         data: { event: result.event, workDate: result.workDate, point: result.point },
         audit: {
           requestContext: context.requestContext,
-          action: result.event.event_type === 'CHECK_IN' || result.event.event_type === 'RETURN'
+          action: result.event.event_type === 'CHECK_IN'
             ? 'manual-check-in'
-            : 'manual-check-out',
+            : result.event.event_type === 'RETURN'
+              ? 'manual-return'
+              : result.event.event_type === 'TEMP_EXIT'
+                ? 'manual-temporary-exit'
+                : 'manual-check-out',
           resourceType: 'attendance-event',
           resourceId: result.event.id,
           beforeData: null,
