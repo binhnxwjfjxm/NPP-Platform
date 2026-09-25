@@ -1,5 +1,6 @@
 import {
   createCipheriv,
+  createECDH,
   createHmac,
   createPrivateKey,
   createPublicKey,
@@ -64,9 +65,13 @@ function encodeJwtPart(value) {
 
 function vapidPrivateKey(runtime) {
   const publicRaw = decodeB64u(runtime.publicKey);
-  const publicJwk = publicJwkFromRaw(publicRaw);
   const d = decodeB64u(runtime.privateKey);
   if (d.length !== PRIVATE_KEY_BYTES) throw new Error('WEB_PUSH_VAPID_PRIVATE_KEY_INVALID');
+  const ecdh = createECDH('prime256v1');
+  ecdh.setPrivateKey(d);
+  const derivedPublic = ecdh.getPublicKey();
+  if (!derivedPublic.equals(publicRaw)) throw new Error('WEB_PUSH_VAPID_KEYPAIR_MISMATCH');
+  const publicJwk = publicJwkFromRaw(derivedPublic);
   return createPrivateKey({
     key: {
       ...publicJwk,
@@ -155,9 +160,8 @@ export function validateVapidRuntime(runtime) {
     if (privateKey.length !== PRIVATE_KEY_BYTES) return false;
     const subject = new URL(runtime.subject);
     if (!['https:', 'mailto:'].includes(subject.protocol)) return false;
-    const privateKeyObject = vapidPrivateKey(runtime);
-    const derivedPublic = rawFromPublicJwk(createPublicKey(privateKeyObject).export({ format: 'jwk' }));
-    return derivedPublic.equals(publicKey);
+    vapidPrivateKey(runtime);
+    return true;
   } catch {
     return false;
   }
