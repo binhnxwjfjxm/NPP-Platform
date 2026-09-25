@@ -16,6 +16,12 @@ test('manager manual attendance is a real attendance event and direct adjustment
   assert.match(workforce, /recordManagedManualAttendance/);
   assert.match(workforce, /TEMP_EXIT/);
   assert.match(workforce, /managedAttendanceOverview/);
+  assert.match(workforce, /resolveManagedAttendanceContext/);
+  assert.match(workforce, /MANAGED_ATTENDANCE_CONFIGURATION_CODES/);
+  assert.match(workforce, /managedByOperator\s*\?\s*await resolveManagedAttendanceContext/);
+  assert.match(workforce, /!managedByOperator && attendance\.tooSoon/);
+  assert.match(workforce, /workPolicyId: attendance\.policy\?\.id \?\? null/);
+  assert.match(workforce, /issue: resolved\.issue \?\? null/);
   assert.match(workforce, /exitReason: text\(payload\?\.exitReason\)/);
   assert.match(workforce, /source: 'MANUAL'/);
   assert.match(workforce, /Quản lý chấm công tay theo giờ hệ thống/);

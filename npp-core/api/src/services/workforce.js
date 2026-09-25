@@ -9,6 +9,15 @@ const POLICY_TIME_MODES = new Set(['FIXED', 'SHIFT', 'FLEXIBLE', 'NO_ATTENDANCE'
 const ATTENDANCE_METHODS = new Set(['QR', 'MANUAL', 'BOTH', 'FACE', 'QR_FACE', 'FACE_MANUAL', 'ALL', 'NONE']);
 const ATTENDANCE_BASES = new Set(['TIME', 'PRESENCE', 'NONE']);
 const TEMP_EXIT_REASONS = new Set(['WORK_BUSINESS', 'PERSONAL', 'BREAK', 'OTHER']);
+const MANAGED_ATTENDANCE_CONFIGURATION_CODES = new Set([
+  'WORK_POLICY_REQUIRED',
+  'ATTENDANCE_NOT_REQUIRED',
+  'WORK_DAY_OFF',
+  'WORK_SCHEDULE_REQUIRED',
+  'WORK_POLICY_INVALID',
+  'INVALID_POLICY_TIMEZONE',
+  'ATTENDANCE_WINDOW_INVALID',
+]);
 const SCHEDULE_KINDS = new Set(['WORK', 'OFF']);
 const INSTALLATION_TIMEZONE = 'Asia/Ho_Chi_Minh';
 
@@ -826,6 +835,76 @@ async function resolveAttendanceContext(client, { installationId, employeeId, no
   };
 }
 
+async function resolveManagedAttendanceContext(client, { installationId, employeeId, now = new Date() }) {
+  const resolved = await resolveAttendanceContext(client, { installationId, employeeId, now });
+  if (resolved.ok) {
+    return {
+      ok: true,
+      context: {
+        ...resolved.context,
+        ...attendanceState(resolved.context.events, now, 'TIME'),
+      },
+      issue: null,
+    };
+  }
+  if (!MANAGED_ATTENDANCE_CONFIGURATION_CODES.has(resolved.code)) return resolved;
+
+  const employee = await workforceRepo.getEmployeeScopeRecord(client, {
+    installationId, employeeId, lock: 'share',
+  });
+  if (!employee || !employee.is_active) {
+    return fail('EMPLOYEE_NOT_FOUND', 'Không tìm thấy hồ sơ nhân sự đang hoạt động');
+  }
+
+  const workDate = localDate(INSTALLATION_TIMEZONE, now);
+  const schedule = await workforceRepo.getWorkScheduleForEmployeeDate(client, {
+    installationId, employeeId, workDate,
+  });
+  let policyBundle = await policyForDate(client, { installationId, employeeId, workDate });
+  if (!policyBundle && schedule?.work_policy_id) {
+    const policy = await workforceRepo.getWorkPolicyById(client, {
+      installationId, id: schedule.work_policy_id,
+    });
+    if (policy) policyBundle = { assignment: null, policy };
+  }
+  const policy = policyBundle?.policy ?? null;
+
+  let timeZone = INSTALLATION_TIMEZONE;
+  if (policy?.timezone) {
+    try {
+      new Intl.DateTimeFormat('en-US', { timeZone: policy.timezone }).format(now);
+      timeZone = policy.timezone;
+    } catch {
+      timeZone = INSTALLATION_TIMEZONE;
+    }
+  }
+
+  let expectedStartAt = schedule?.scheduled_start_at ? new Date(schedule.scheduled_start_at).toISOString() : null;
+  let expectedEndAt = schedule?.scheduled_end_at ? new Date(schedule.scheduled_end_at).toISOString() : null;
+  if (!schedule && policy?.time_mode === 'FIXED') {
+    try {
+      expectedStartAt = zonedLocalDateTimeToIso(workDate, policy.fixed_start_time, timeZone);
+      const startMinutes = timeMinutes(policy.fixed_start_time);
+      const endMinutes = timeMinutes(policy.fixed_end_time);
+      const endDate = startMinutes !== null && endMinutes !== null && endMinutes <= startMinutes ? nextDate(workDate) : workDate;
+      expectedEndAt = zonedLocalDateTimeToIso(endDate, policy.fixed_end_time, timeZone);
+    } catch {
+      expectedStartAt = null;
+      expectedEndAt = null;
+    }
+  }
+
+  const window = attendanceEventWindow({ workDate, timeZone, expectedStartAt, expectedEndAt });
+  const events = await workforceRepo.listAttendanceEventsForRange(client, { installationId, employeeId, ...window });
+  const state = attendanceState(events, now, 'TIME');
+
+  return {
+    ok: true,
+    context: { employee, workDate, policy, schedule, expectedStartAt, expectedEndAt, timeZone, events, ...state },
+    issue: { code: resolved.code, message: resolved.message },
+  };
+}
+
 export function parseAttendanceQrPayload(value) {
   const raw = text(value);
   if (!raw.startsWith(ATTENDANCE_QR_PREFIX)) return null;
@@ -1035,14 +1114,16 @@ export async function recordManualAttendance(client, {
   managedByOperator = false,
 }) {
   if (!validUuid(employeeId)) return fail('EMPLOYEE_ID_REQUIRED', 'Tài khoản chưa liên kết hồ sơ nhân sự để chấm công');
-  const resolved = await resolveAttendanceContext(client, { installationId, employeeId, now });
+  const resolved = managedByOperator
+    ? await resolveManagedAttendanceContext(client, { installationId, employeeId, now })
+    : await resolveAttendanceContext(client, { installationId, employeeId, now });
   if (!resolved.ok) return resolved;
   const attendance = resolved.context;
-  if (!['MANUAL', 'BOTH', 'FACE_MANUAL', 'ALL'].includes(attendance.policy.attendance_method)) {
+  if (!managedByOperator && !['MANUAL', 'BOTH', 'FACE_MANUAL', 'ALL'].includes(attendance.policy.attendance_method)) {
     return fail('MANUAL_ATTENDANCE_NOT_ALLOWED', 'Chính sách làm việc hiện tại không cho phép chấm công trực tiếp');
   }
   if (!attendance.nextAction) return fail('ATTENDANCE_ALREADY_COMPLETE', 'Ngày làm việc này đã kết thúc');
-  if (attendance.tooSoon) return fail('ATTENDANCE_TOO_SOON', 'Vừa ghi nhận chấm công; vui lòng đợi một phút trước thao tác tiếp theo');
+  if (!managedByOperator && attendance.tooSoon) return fail('ATTENDANCE_TOO_SOON', 'Vừa ghi nhận chấm công; vui lòng đợi một phút trước thao tác tiếp theo');
 
   const recordAction = text(payload?.recordAction).toUpperCase() || null;
   if (recordAction && !['CHECK_IN', 'CHECK_OUT'].includes(recordAction)) {
@@ -1066,7 +1147,7 @@ export async function recordManualAttendance(client, {
     installationId,
     employeeId,
     scheduleId: attendance.schedule?.id ?? null,
-    workPolicyId: attendance.policy.id,
+    workPolicyId: attendance.policy?.id ?? null,
     attendancePointId: null,
     eventType: choice.eventType,
     movementReason: choice.movementReason,
@@ -1111,12 +1192,12 @@ function managedAttendanceOverview(context) {
     tooSoon: Boolean(context.tooSoon),
     expectedStartAt: context.expectedStartAt,
     expectedEndAt: context.expectedEndAt,
-    policy: {
+    policy: context.policy ? {
       id: context.policy.id,
       name: context.policy.name,
       attendanceBasis: context.policy.attendance_basis,
       timezone: context.timeZone,
-    },
+    } : null,
     events: context.events,
   };
 }
@@ -1142,9 +1223,9 @@ export async function listManagedManualAttendanceEmployees(client, {
     const selectedRow = rows.find((row) => String(row.employee_id) === String(employeeId));
     if (!selectedRow) return fail('SCOPE_FORBIDDEN', 'Nhân sự nằm ngoài phạm vi được cấp');
     const employee = managedEmployeeRow(selectedRow);
-    const resolved = await resolveAttendanceContext(client, { installationId, employeeId, now });
+    const resolved = await resolveManagedAttendanceContext(client, { installationId, employeeId, now });
     selected = resolved.ok
-      ? { employee, attendance: managedAttendanceOverview(resolved.context), issue: null }
+      ? { employee, attendance: managedAttendanceOverview(resolved.context), issue: resolved.issue ?? null }
       : { employee, attendance: null, issue: { code: resolved.code, message: resolved.message } };
   }
 
