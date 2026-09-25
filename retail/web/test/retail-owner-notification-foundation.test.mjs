@@ -17,7 +17,9 @@ test('Retail Lô 1 đăng ký OneSignal riêng, không xin quyền tự động 
   assert.match(runtime, /serviceWorkerParam: \{ scope: '\/onesignal\/' \}/);
   assert.match(runtime, /OneSignal\.login\(identity\.userId\)/);
   assert.match(runtime, /OneSignal\.logout\(\)/);
-  assert.doesNotMatch(runtime, /requestPermission|Audio\(|\.play\(|R2/i);
+  assert.doesNotMatch(runtime, /Audio\(|\.play\(|R2/i);
+  const initSlice = runtime.slice(runtime.indexOf('export function RetailNotificationRuntime'));
+  assert.doesNotMatch(initSlice.slice(0, initSlice.indexOf('return null;')), /requestRetailNotificationPermission\(/);
   assert.match(worker, /OneSignalSDK\.sw\.js/);
   assert.match(middleware, /onesignal\//);
 });

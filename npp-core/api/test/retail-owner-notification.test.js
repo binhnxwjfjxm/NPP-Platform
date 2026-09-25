@@ -64,7 +64,7 @@ test('OneSignal payload dùng external_id của Owner, URL Retail và không ch�
   const payload = JSON.parse(request.options.body);
   assert.deepEqual(payload.include_aliases.external_id, [OWNER_ID]);
   assert.equal(payload.target_channel, 'push');
-  assert.equal(payload.url, 'https://retail.example.test');
+  assert.equal(payload.url, `https://retail.example.test/?order=${ORDER_ID}`);
   assert.equal(payload.data.salesOrderId, ORDER_ID);
   assert.match(payload.contents.en, /SO-000839/);
   assert.doesNotMatch(request.options.body, /sound|audio|r2/i);
