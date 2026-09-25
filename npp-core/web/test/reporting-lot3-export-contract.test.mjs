@@ -30,3 +30,11 @@ test('all five Lô 3 workspaces expose the matching export action', () => {
     assert.match(source, new RegExp(symbol));
   }
 });
+
+
+test('Lô 3 report UI keeps office wording on the touched logistics screen', () => {
+  const source = read('app/components/logistics-reporting-workspace.tsx');
+  assert.doesNotMatch(source, /canonical|Coverage SLA|Partial \/ failed|Return receipt POSTED|Generated at|source ID|reason code/);
+  assert.match(source, /Giao một phần \/ thất bại \/ hẹn lại/);
+  assert.match(source, /Phiếu nhận hàng trả đã ghi sổ/);
+});
