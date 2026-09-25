@@ -12,6 +12,24 @@ type Order = {
   requestedDeliveryDate: string | null; items: Item[];
 };
 function quantity(value: string) { return String(value ?? '0').replace(/(\.\d*?[1-9])0+$|\.0+$/, '$1'); }
+function hasPositiveQuantity(value: string) {
+  const normalized = String(value ?? '').trim();
+  return /^(0|[1-9]\d*)(?:\.\d+)?$/.test(normalized) && !/^0(?:\.0+)?$/.test(normalized);
+}
+function fulfillmentStatusLabel(value: string) {
+  const labels: Record<string, string> = {
+    backordered: 'Chờ thêm hàng',
+    partially_reserved: 'Có hàng một phần',
+    reserved: 'Chờ phân bổ',
+    partially_allocated: 'Phân bổ một phần',
+    allocated: 'Đã phân bổ',
+    partially_picked: 'Đang soạn',
+    picked: 'Đã soạn',
+    partially_packed: 'Đang đóng gói',
+    packed: 'Đã đóng gói',
+  };
+  return labels[value] ?? 'Đang xử lý';
+}
 function dateText(value: string | null) {
   if (!value) return '—';
   const parsed = new Date(value);
@@ -19,7 +37,7 @@ function dateText(value: string | null) {
 }
 
 export default function FulfillmentPickingPrintDock({ order }: { order: Order | null }) {
-  if (!order?.orderNumber || !order.items.some((item) => Number(item.allocatedBaseQuantity) > 0 || Number(item.pickedBaseQuantity) > 0 || Number(item.packedBaseQuantity) > 0)) return null;
+  if (!order?.orderNumber || !order.items.some((item) => hasPositiveQuantity(item.allocatedBaseQuantity) || hasPositiveQuantity(item.pickedBaseQuantity) || hasPositiveQuantity(item.packedBaseQuantity))) return null;
   return <BusinessDocumentPrint
     id={`fulfillment-picking-print-${order.salesOrderId}`}
     documentType="FULFILLMENT_PICKING"
@@ -27,7 +45,7 @@ export default function FulfillmentPickingPrintDock({ order }: { order: Order | 
     title="PHIẾU SOẠN HÀNG / CẤP HÀNG"
     subtitle="Tình trạng phân bổ, soạn và đóng gói"
     number={order.orderNumber}
-    status={order.fulfillmentStatus}
+    status={fulfillmentStatusLabel(order.fulfillmentStatus)}
     meta={[
       { key: 'customer', label: 'Khách hàng', value: `${order.customerCode} — ${order.customerName}`, full: true },
       { key: 'warehouse', label: 'Kho xử lý', value: `${order.warehouseCode} — ${order.warehouseName}` },

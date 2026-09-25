@@ -26,6 +26,8 @@ test('Issue #1190 Lô 1 exposes In / PDF from each business document workspace',
     assert.match(file, /actionLabel="In \/ PDF"/);
     assert.doesNotMatch(file, /window\.print\(|document\.body\.innerHTML/);
   }
+  assert.doesNotMatch(files[3], /\bNumber\(/);
+  assert.doesNotMatch(files[3], /status=\{order\.fulfillmentStatus\}/);
 });
 
 test('Issue #1190 Lô 1 wires prints into real detail/action surfaces without new business mutation APIs', async () => {

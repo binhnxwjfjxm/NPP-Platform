@@ -40,7 +40,7 @@ export default function SupplierReturnPrintDock({ supplierReturn }: { supplierRe
       cells: {
         no: line.lineNumber,
         item: <><strong>{line.sourceItemName}</strong><br />{line.sourceSku}</>,
-        reason: <><strong>{line.reasonCode}</strong>{line.reasonNote ? <><br />{line.reasonNote}</> : null}</>,
+        reason: line.reasonNote || line.reasonCode || '—',
         quantity: formatDecimalString(line.returnQuantity),
         unit: line.sourceUnitCode,
         lot: line.lotCode || '—',

@@ -11,7 +11,7 @@ function money(value: string, currencyCode: string) {
   return `${match[1]}${whole}${fraction ? `,${fraction}` : ''} ${currencyCode}`;
 }
 function methodLabel(value: string) {
-  return ({ CASH: 'Tiền mặt', BANK_TRANSFER: 'Chuyển khoản', OTHER: 'Khác' } as Record<string, string>)[value] ?? value;
+  return ({ CASH: 'Tiền mặt', BANK_TRANSFER: 'Chuyển khoản', OTHER: 'Khác' } as Record<string, string>)[value] ?? 'Khác';
 }
 function statusLabel(value: SupplierPayment['status']) {
   return { open: 'Chưa phân bổ', partially_allocated: 'Đã phân bổ một phần', settled: 'Đã thanh toán', reversed: 'Đã đảo' }[value];

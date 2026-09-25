@@ -11,7 +11,7 @@ function money(value: string, currencyCode: string) {
   return `${match[1]}${whole}${fraction ? `,${fraction}` : ''} ${currencyCode}`;
 }
 function methodLabel(value: string) {
-  return value === 'BANK_TRANSFER' ? 'Chuyển khoản' : value === 'CASH' ? 'Tiền mặt' : value;
+  return value === 'BANK_TRANSFER' ? 'Chuyển khoản' : value === 'CASH' ? 'Tiền mặt' : 'Khác';
 }
 function dateTime(value: string) {
   const parsed = new Date(value);

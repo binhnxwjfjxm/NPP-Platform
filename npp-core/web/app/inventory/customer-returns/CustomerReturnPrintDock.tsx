@@ -15,6 +15,14 @@ type CustomerReturn = {
 function quantity(value: string | null | undefined) {
   return String(value ?? '0').replace(/(\.\d*?[1-9])0+$|\.0+$/, '$1');
 }
+function reasonLabel(code: string) {
+  return {
+    DAMAGED_OR_UNWANTED: 'Hư hỏng / không nhận',
+    WRONG_ITEM: 'Sai hàng',
+    QUALITY_COMPLAINT: 'Khiếu nại chất lượng',
+    OTHER: 'Khác',
+  }[code] ?? 'Lý do khác';
+}
 
 export default function CustomerReturnPrintDock({ customerReturn }: { customerReturn: CustomerReturn | null }) {
   if (!customerReturn?.number || customerReturn.status !== 'received') return null;
@@ -46,7 +54,7 @@ export default function CustomerReturnPrintDock({ customerReturn }: { customerRe
       cells: {
         no: line.lineNumber,
         item: <><strong>{line.itemName}</strong><br />{line.sku}</>,
-        reason: <><strong>{line.reasonCode}</strong>{line.reasonNote ? <><br />{line.reasonNote}</> : null}</>,
+        reason: <><strong>{reasonLabel(line.reasonCode)}</strong>{line.reasonNote ? <><br />{line.reasonNote}</> : null}</>,
         requested: quantity(line.requestedBaseQuantity),
         accepted: quantity(line.acceptedBaseQuantity),
         unit: line.unitCode,
