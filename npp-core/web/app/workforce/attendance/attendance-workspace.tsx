@@ -62,7 +62,7 @@ type ManagedBulkResponse = {
   failureCount: number;
   totalCount: number;
 };
-type ManagedBulkAction = 'CHECK_IN' | 'CHECK_OUT' | 'TEMP_EXIT' | 'RETURN';
+type ManagedBulkAction = 'CHECK_IN' | 'CHECK_OUT' | 'TEMP_EXIT' | 'RETURN' | 'END_EXTERNAL_WORK';
 type ManagedBulkConfirmation = {
   action: ManagedBulkAction;
   exitReason?: Exclude<ExitReason, '' | 'END_WORK'>;
@@ -91,6 +91,7 @@ const MANAGED_BULK_ACTION_LABEL: Record<ManagedBulkAction, string> = {
   CHECK_OUT: 'Kết thúc làm việc',
   TEMP_EXIT: 'Ra ngoài',
   RETURN: 'Quay lại',
+  END_EXTERNAL_WORK: 'Kết thúc công việc bên ngoài',
 };
 
 function managedIssuePresentation(issue: ManagedSelection['issue']) {
@@ -126,6 +127,11 @@ function eventLabel(event: AttendanceToday['events'][number]) {
   if (event.event_type === 'CHECK_OUT') return 'Kết thúc làm việc';
   if (event.event_type === 'RETURN') return 'Quay lại nơi làm việc';
   return event.movement_reason ? EXIT_REASON_LABEL[event.movement_reason] : 'Ra tạm thời';
+}
+
+function externalWorkPending(events: AttendanceToday['events']) {
+  const latest = events.at(-1) ?? null;
+  return latest?.event_type === 'TEMP_EXIT' && latest.movement_reason === 'WORK_BUSINESS';
 }
 
 function stableKey(ref: React.MutableRefObject<Attempt>, operation: string, payload: unknown) {
@@ -298,6 +304,8 @@ export default function AttendanceWorkspace({
   const managedAttendance = managedSelected?.attendance ?? null;
   const managedIssue = managedIssuePresentation(managedSelected?.issue ?? null);
   const managedTimeZone = managedAttendance?.policy?.timezone || 'Asia/Ho_Chi_Minh';
+  const managedExternalWorkPending = Boolean(managedAttendance && externalWorkPending(managedAttendance.events));
+  const selfExternalWorkPending = Boolean(today && externalWorkPending(today.events));
 
   function stopScanner() {
     if (scanTimerRef.current !== null) {
@@ -337,10 +345,16 @@ export default function AttendanceWorkspace({
     return () => window.clearTimeout(timer);
   }, [qrToken?.id]);
 
-  function attendancePayload(method: 'QR' | 'MANUAL', qrPayload?: string) {
+  function attendancePayload(
+    method: 'QR' | 'MANUAL',
+    qrPayload?: string,
+    options?: { recordAction?: 'CHECK_IN' | 'CHECK_OUT'; note?: string },
+  ) {
     const payload: Record<string, string> = { method };
     if (qrPayload) payload.qrPayload = qrPayload;
-    if (today?.nextAction === 'EXIT') {
+    if (options?.recordAction) payload.recordAction = options.recordAction;
+    if (options?.note) payload.note = options.note;
+    if (today?.nextAction === 'EXIT' && !options?.recordAction) {
       if (!exitReason) throw new Error('Vui lòng chọn lý do rời nơi làm việc');
       payload.exitReason = exitReason;
       if (exitNote.trim()) payload.note = exitNote.trim();
@@ -392,11 +406,20 @@ export default function AttendanceWorkspace({
   }
 
 
-  async function submitManualAttendance() {
-    if (!today?.nextAction || !manualAllowed) return;
+  async function submitManualAttendance(recordAction?: 'CHECK_IN' | 'CHECK_OUT') {
+    const completingExternalWork = recordAction === 'CHECK_OUT' && selfExternalWorkPending;
+    if (!today?.nextAction || (!manualAllowed && !completingExternalWork)) return;
     let payload: Record<string, string>;
     try {
-      payload = attendancePayload('MANUAL');
+      payload = attendancePayload(
+        'MANUAL',
+        undefined,
+        completingExternalWork
+          ? { recordAction: 'CHECK_OUT', note: 'Kết thúc công việc bên ngoài' }
+          : recordAction
+            ? { recordAction }
+            : undefined,
+      );
     } catch (payloadError) {
       setError(payloadError instanceof Error ? payloadError.message : 'Vui lòng chọn lý do rời nơi làm việc');
       return;
@@ -577,7 +600,7 @@ export default function AttendanceWorkspace({
   }
 
   async function submitManagedManualAttendance(
-    action: 'CHECK_IN' | 'CHECK_OUT' | 'TEMP_EXIT' | 'RETURN',
+    action: 'CHECK_IN' | 'CHECK_OUT' | 'TEMP_EXIT' | 'RETURN' | 'END_EXTERNAL_WORK',
     selectedExitReason?: Exclude<ExitReason, '' | 'END_WORK'>,
     note?: string,
   ) {
@@ -885,18 +908,17 @@ export default function AttendanceWorkspace({
               </label>
 
               <div className={localStyles.bulkPickerControl}>
-                <span>Chấm công nhiều người</span>
                 <button
                   type="button"
                   className={localStyles.bulkPickerButton}
                   onClick={openBulkPicker}
                   disabled={busy || managedLoading}
                   data-testid="managed-attendance-bulk-picker"
+                  title="Chọn nhiều nhân sự để chấm cùng một thao tác"
                 >
-                  Chọn nhiều nhân sự
+                  Chọn nhiều
                   {bulkSelectedEmployees.length ? <b>{bulkSelectedEmployees.length}</b> : null}
                 </button>
-                <small>Chọn một nhóm rồi áp dụng cùng một hành động chấm công.</small>
               </div>
             </div>
 
@@ -922,6 +944,7 @@ export default function AttendanceWorkspace({
                     <button type="button" className={localStyles.actionButtonPrimary} onClick={() => requestBulkAction('CHECK_IN')} disabled={busy}>Chấm vào</button>
                     <button type="button" className={localStyles.actionButtonSecondary} onClick={() => setBulkExitOpen((current) => !current)} disabled={busy}>Ra ngoài</button>
                     <button type="button" className={localStyles.actionButtonSecondary} onClick={() => requestBulkAction('RETURN')} disabled={busy}>Quay lại</button>
+                    <button type="button" className={localStyles.actionButtonSecondary} onClick={() => requestBulkAction('END_EXTERNAL_WORK')} disabled={busy}>Xong việc bên ngoài</button>
                     <button type="button" className={localStyles.actionButtonSecondary} onClick={() => requestBulkAction('CHECK_OUT')} disabled={busy}>Kết thúc làm việc</button>
                   </div>
                 </div>
@@ -1035,9 +1058,16 @@ export default function AttendanceWorkspace({
                         </>
                       ) : null}
                       {managedAttendance.nextAction === 'RETURN' ? (
-                        <button type="button" className={localStyles.actionButtonPrimary} disabled={busy || managedLoading} onClick={() => void submitManagedManualAttendance('RETURN')}>
-                          Quay lại
-                        </button>
+                        <>
+                          <button type="button" className={localStyles.actionButtonPrimary} disabled={busy || managedLoading} onClick={() => void submitManagedManualAttendance('RETURN')}>
+                            Quay lại
+                          </button>
+                          {managedExternalWorkPending ? (
+                            <button type="button" className={localStyles.actionButtonSecondary} disabled={busy || managedLoading} onClick={() => void submitManagedManualAttendance('END_EXTERNAL_WORK')}>
+                              Kết thúc công việc bên ngoài
+                            </button>
+                          ) : null}
+                        </>
                       ) : null}
                       {!managedAttendance.nextAction ? <span className={localStyles.completedText}>Ngày làm việc đã kết thúc.</span> : null}
                       {managedSelected.issue?.code === 'WORK_POLICY_REQUIRED' ? (
@@ -1305,19 +1335,27 @@ export default function AttendanceWorkspace({
               <div className={localStyles.methodNotice}>Chính sách này chỉ xác nhận có mặt. Sau khi ghi nhận vào làm, Bảng công không dùng số phút làm việc để tính công và không yêu cầu ghi nhận giờ ra.</div>
             ) : null}
 
-            {manualAllowed ? (
+            {(manualAllowed || selfExternalWorkPending) ? (
               <div className={localStyles.manualAttendanceCard} data-testid="attendance-manual-record">
                 <div>
-                  <strong>Chấm công trực tiếp</strong>
-                  <span>Hệ thống tự ghi nhận giờ hiện tại. Không cần nhập thời gian hoặc chọn nơi làm việc.</span>
+                  <strong>{selfExternalWorkPending ? 'Đã xong công việc bên ngoài?' : 'Chấm công trực tiếp'}</strong>
+                  <span>
+                    {selfExternalWorkPending
+                      ? 'Có thể kết thúc ngày làm ngay tại đây, không cần quay lại Công Ty chỉ để chấm ra.'
+                      : 'Hệ thống tự ghi nhận giờ hiện tại. Không cần nhập thời gian hoặc chọn nơi làm việc.'}
+                  </span>
                 </div>
                 <button
                   type="button"
                   className={styles.primaryButton}
-                  onClick={() => void submitManualAttendance()}
-                  disabled={busy || !today.nextAction || !exitSelectionReady}
+                  onClick={() => void submitManualAttendance(selfExternalWorkPending ? 'CHECK_OUT' : undefined)}
+                  disabled={busy || !today.nextAction || (!selfExternalWorkPending && !exitSelectionReady)}
                 >
-                  {today.nextAction === 'EXIT' ? 'Ghi nhận rời nơi làm việc' : nextActionLabel}
+                  {selfExternalWorkPending
+                    ? 'Kết thúc công việc bên ngoài'
+                    : today.nextAction === 'EXIT'
+                      ? 'Ghi nhận rời nơi làm việc'
+                      : nextActionLabel}
                 </button>
               </div>
             ) : null}
