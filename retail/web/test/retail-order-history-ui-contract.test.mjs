@@ -28,13 +28,14 @@ test('order history matches the approved compact list layout', () => {
   assert.match(orders, /order-history-facts/);
   assert.match(orders, /order-history-print/);
   assert.match(orders, /In đơn hàng/);
+  assert.match(orders, /Xem thêm đơn hàng/);
 });
 
 test('order search, date range and direct card print are functional contracts', () => {
   assert.match(workspace, /const \[orderSearch, setOrderSearch\] = useState\(''\)/);
   assert.match(workspace, /const \[orderDateFrom, setOrderDateFrom\] = useState\(''\)/);
   assert.match(workspace, /const \[orderDateTo, setOrderDateTo\] = useState\(''\)/);
-  assert.match(workspace, /localDateKey\(item\.updatedAt\)/);
+  assert.match(workspace, /localDateKey\(item\.createdAt\)/);
   assert.match(workspace, /itemDate < orderDateFrom/);
   assert.match(workspace, /itemDate > orderDateTo/);
   assert.match(workspace, /item\.customerPhone/);
@@ -49,6 +50,7 @@ test('approved order list styling is isolated and loaded after general retail po
   assert.match(css, /\.order-status-filter/);
   assert.match(css, /\.retail-order-history-card/);
   assert.match(css, /\.order-history-print/);
+  assert.match(css, /\.orders-load-more/);
   assert.match(css, /grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)/);
   assert.match(layout, /retail-final-polish\.css'[\s\S]*retail-print-professional\.css'[\s\S]*retail-product-picker-polish\.css'[\s\S]*retail-orders-polish\.css'/);
 });

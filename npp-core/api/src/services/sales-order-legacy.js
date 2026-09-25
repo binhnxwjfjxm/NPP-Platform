@@ -367,14 +367,16 @@ async function loadOrderDetail(client, { requestContext, id, forUpdate = false }
 }
 
 function validateList(input) {
+  const deliveryMode = input.deliveryMode ? String(input.deliveryMode).trim().toUpperCase() : null;
   if (input.status && !STATUSES.has(input.status)) return failure('INVALID_STATUS', 'Sales order status is invalid');
+  if (deliveryMode && !DELIVERY_MODES.has(deliveryMode)) return failure('INVALID_DELIVERY_MODE', 'Delivery mode is invalid');
   if (input.customerId && !isUuid(input.customerId)) return failure('INVALID_CUSTOMER_ID', 'Customer ID is invalid');
   if (input.warehouseId && (!isUuid(input.warehouseId) || !warehouseAllowed(input.requestContext, input.warehouseId))) {
     return failure('WAREHOUSE_SCOPE_DENIED', 'Warehouse is outside the authorized scope');
   }
   const search = text(input.search, 256, false);
   if (input.search && search === null) return failure('INVALID_SEARCH', 'Search must not exceed 256 characters');
-  return { ok: true, search };
+  return { ok: true, search, deliveryMode };
 }
 
 export async function listSalesOrders(client, input) {
@@ -387,6 +389,7 @@ export async function listSalesOrders(client, input) {
     status: input.status ?? null,
     customerId: input.customerId ?? null,
     warehouseId: input.warehouseId ?? null,
+    deliveryMode: validation.deliveryMode,
     search: validation.search,
     limit: Math.max(1, Math.min(1000, Number(input.limit) || 100)),
     offset: Math.max(0, Number(input.offset) || 0),
