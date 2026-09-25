@@ -4,30 +4,44 @@ import { readFile } from 'node:fs/promises';
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
-test('Retail Lô 1 đăng ký OneSignal riêng, không xin quyền tự động và không phát audio R2', async () => {
+test('Retail dùng Web Push chuẩn trình duyệt, không còn OneSignal hoặc audio R2', async () => {
   const [layout, runtime, worker, middleware] = await Promise.all([
     read('app/layout.tsx'),
     read('app/retail-notification-runtime.tsx'),
-    read('public/onesignal/OneSignalSDKWorker.js'),
+    read('public/sw.js'),
     read('middleware.ts'),
   ]);
   assert.match(layout, /RetailNotificationRuntime/);
-  assert.match(runtime, /NEXT_PUBLIC_RETAIL_ONESIGNAL_APP_ID/);
-  assert.match(runtime, /serviceWorkerPath: '\/onesignal\/OneSignalSDKWorker\.js'/);
-  assert.match(runtime, /serviceWorkerParam: \{ scope: '\/onesignal\/' \}/);
-  assert.match(runtime, /OneSignal\.login\(identity\.userId\)/);
-  assert.match(runtime, /OneSignal\.logout\(\)/);
-  assert.doesNotMatch(runtime, /Audio\(|\.play\(|R2/i);
-  const initSlice = runtime.slice(runtime.indexOf('export function RetailNotificationRuntime'));
-  assert.doesNotMatch(initSlice.slice(0, initSlice.indexOf('return null;')), /requestRetailNotificationPermission\(/);
-  assert.match(worker, /OneSignalSDK\.sw\.js/);
-  assert.match(middleware, /onesignal\//);
+  assert.match(runtime, /PushManager/);
+  assert.match(runtime, /Notification\.requestPermission\(\)/);
+  assert.match(runtime, /pushManager\.subscribe/);
+  assert.match(runtime, /applicationServerKey/);
+  assert.match(runtime, /\/api\/notifications\/config/);
+  assert.match(runtime, /\/api\/notifications\/subscriptions/);
+  assert.match(worker, /addEventListener\('push'/);
+  assert.match(worker, /showNotification/);
+  assert.match(worker, /addEventListener\('notificationclick'/);
+  assert.doesNotMatch(`${runtime}\n${worker}\n${middleware}`, /OneSignal|ONESIGNAL|onesignal\.com|Audio\(|\.play\(|R2 audio/i);
 });
 
-test('Retail chỉ đánh dấu Owner từ role canonical và có proxy test idempotent', async () => {
-  const [me, testRoute] = await Promise.all([
+test('Retail không tự xin quyền thông báo khi vừa mở ứng dụng', async () => {
+  const runtime = await read('app/retail-notification-runtime.tsx');
+  const initSlice = runtime.slice(runtime.indexOf('export function RetailNotificationRuntime'));
+  assert.doesNotMatch(initSlice, /Notification\.requestPermission\(\)/);
+  const permissionSlice = runtime.slice(
+    runtime.indexOf('export async function requestRetailNotificationPermission'),
+    runtime.indexOf('export async function unregisterRetailNotificationForLogout'),
+  );
+  assert.match(permissionSlice, /Notification\.requestPermission\(\)/);
+  assert.match(permissionSlice, /pushManager\.subscribe/);
+});
+
+test('Retail chỉ đánh dấu Owner theo contract canonical và proxy subscription giữ Idempotency-Key', async () => {
+  const [me, testRoute, subscriptionRoute, configRoute] = await Promise.all([
     read('app/api/auth/me/route.ts'),
     read('app/api/notifications/test/route.ts'),
+    read('app/api/notifications/subscriptions/route.ts'),
+    read('app/api/notifications/config/route.ts'),
   ]);
   assert.match(me, /system:security-owner/);
   assert.match(me, /system:implementation-owner/);
@@ -36,5 +50,19 @@ test('Retail chỉ đánh dấu Owner từ role canonical và có proxy test ide
   assert.match(me, /actorId\.startsWith\('user:'\)/);
   assert.match(testRoute, /idempotency-key/);
   assert.match(testRoute, /\/api\/retail\/owner-notifications\/test/);
-  assert.match(testRoute, /idempotencyKey: key/);
+  assert.match(subscriptionRoute, /\/api\/retail\/owner-notifications\/subscriptions/);
+  assert.match(subscriptionRoute, /idempotencyKey: key/);
+  assert.match(configRoute, /\/api\/retail\/owner-notifications\/config/);
+});
+
+test('đăng xuất Retail gỡ subscription thiết bị trước khi kết thúc phiên', async () => {
+  const [runtime, workspace] = await Promise.all([
+    read('app/retail-notification-runtime.tsx'),
+    read('app/retail-workspace.tsx'),
+  ]);
+  assert.match(runtime, /export async function unregisterRetailNotificationForLogout/);
+  assert.match(runtime, /\/api\/notifications\/subscriptions\/remove/);
+  assert.match(runtime, /subscription\.unsubscribe\(\)/);
+  assert.match(workspace, /await unregisterRetailNotificationForLogout\(\)/);
+  assert.match(workspace, /fetch\('\/api\/auth\/logout'/);
 });

@@ -5,7 +5,7 @@ import { readFile } from 'node:fs/promises';
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 const readRepo = (path) => readFile(new URL(`../../../${path}`, import.meta.url), 'utf8');
 
-test('Lô 2 chỉ Owner thấy thiết lập thông báo và Trang chủ cảnh báo khi chưa hoạt động', async () => {
+test('chỉ Owner thấy thiết lập thông báo và Trang chủ cảnh báo khi chưa hoạt động', async () => {
   const workspace = await read('app/retail-workspace.tsx');
   assert.match(workspace, /notificationState\.ready && notificationState\.isOwner/);
   assert.match(workspace, /openSettings\('notifications'\)/);
@@ -15,39 +15,45 @@ test('Lô 2 chỉ Owner thấy thiết lập thông báo và Trang chủ cảnh 
   assert.match(workspace, /Chỉ Owner nhận thông báo đơn cần kiểm tra/);
 });
 
-test('Lô 2 xin quyền chỉ từ thao tác Bật thông báo và theo dõi trạng thái subscription', async () => {
+test('Bật thông báo dùng Notification + PushManager và đăng ký thiết bị bằng key canonical', async () => {
   const runtime = await read('app/retail-notification-runtime.tsx');
-  assert.match(runtime, /export async function requestRetailNotificationPermission/);
-  assert.match(runtime, /await activeSdk\.Notifications\.requestPermission\(\)/);
-  assert.match(runtime, /await activeSdk\.User\.PushSubscription\.optIn\(\)/);
-  assert.match(runtime, /permissionNative/);
-  assert.match(runtime, /PushSubscription\.optedIn/);
-  assert.match(runtime, /PushSubscription\.id/);
-  assert.match(runtime, /addEventListener\('permissionChange'/);
-  assert.match(runtime, /PushSubscription\.addEventListener\('change'/);
-  const init = runtime.slice(runtime.indexOf('export function RetailNotificationRuntime'));
-  assert.doesNotMatch(init, /Notifications\.requestPermission\(\)/);
+  const permissionSlice = runtime.slice(
+    runtime.indexOf('export async function requestRetailNotificationPermission'),
+    runtime.indexOf('export async function unregisterRetailNotificationForLogout'),
+  );
+  assert.match(permissionSlice, /Notification\.requestPermission\(\)/);
+  assert.match(permissionSlice, /pushManager\.getSubscription\(\)/);
+  assert.match(permissionSlice, /pushManager\.subscribe/);
+  assert.match(permissionSlice, /applicationServerKey/);
+  assert.match(runtime, /createIdempotencyKey\('retail-web-push-subscribe'\)/);
+  assert.match(runtime, /pendingRegisterKey = key/);
+  assert.match(runtime, /pendingRegisterKey = null/);
 });
 
-test('Lô 2 có banner trong app và mở đúng đơn từ push/deep link', async () => {
-  const [runtime, workspace, backend] = await Promise.all([
+test('Service Worker hiện notification hệ thống, banner trong app và mở đúng đơn', async () => {
+  const [runtime, worker, workspace, backend] = await Promise.all([
     read('app/retail-notification-runtime.tsx'),
+    read('public/sw.js'),
     read('app/retail-workspace.tsx'),
     readRepo('npp-core/api/src/services/retail-owner-notification.js'),
   ]);
-  assert.match(runtime, /foregroundWillDisplay/);
+  assert.match(worker, /addEventListener\('push'/);
+  assert.match(worker, /showNotification\(payload\.title/);
+  assert.match(worker, /retail:notification-foreground/);
+  assert.match(worker, /notificationclick/);
+  assert.match(worker, /retail:notification-open/);
   assert.match(runtime, /RETAIL_NOTIFICATION_FOREGROUND_EVENT/);
   assert.match(runtime, /RETAIL_NOTIFICATION_OPEN_EVENT/);
   assert.match(workspace, /className="retail-notification-banner"/);
   assert.match(workspace, />Xem đơn<\/button>/);
   assert.match(workspace, /new URLSearchParams\(window\.location\.search\)\.get\('order'\)/);
-  assert.match(backend, /url\.searchParams\.set\('order', orderId\)/);
-  assert.match(backend, /notificationUrl\(runtime\.retailUrl, test \? null : orderId\)/);
+  assert.match(backend, /\?order=/);
+  assert.doesNotMatch(`${runtime}\n${worker}\n${backend}`, /OneSignal|ONESIGNAL|onesignal\.com/);
 });
 
 test('Gửi thử dùng canonical Idempotency-Key và retry giữ nguyên key đến khi thành công', async () => {
   const workspace = await read('app/retail-workspace.tsx');
-  const slice = workspace.slice(workspace.indexOf('async function sendNotificationTest'), workspace.indexOf('function openSettings'));
+  const slice = workspace.slice(workspace.indexOf('async function sendNotificationTest'), workspace.indexOf('async function logoutRetail'));
   assert.match(slice, /notificationTestKey\.current \?\? createIdempotencyKey\('retail-notification-test'\)/);
   assert.match(slice, /notificationTestKey\.current = key/);
   assert.match(slice, /await sendRetailNotificationTest\(key\)/);
@@ -56,16 +62,17 @@ test('Gửi thử dùng canonical Idempotency-Key và retry giữ nguyên key đ
   assert.doesNotMatch(catchSlice, /notificationTestKey\.current = null/);
 });
 
-test('iPhone có hướng dẫn cài Home Screen trước Web Push và không thêm âm thanh R2', async () => {
-  const [pwa, runtime, workspace] = await Promise.all([
+test('iPhone yêu cầu Home Screen trước Web Push và không phát âm riêng', async () => {
+  const [pwa, runtime, workspace, worker] = await Promise.all([
     read('app/pwa-registration.tsx'),
     read('app/retail-notification-runtime.tsx'),
     read('app/retail-workspace.tsx'),
+    read('public/sw.js'),
   ]);
   assert.match(pwa, /iPad\|iPhone\|iPod/);
   assert.match(pwa, /Safari → bấm Chia sẻ → chọn Thêm vào Màn hình chính/);
   assert.match(runtime, /status: 'needs-install'/);
   assert.match(workspace, /Cách cài ứng dụng/);
   assert.match(workspace, /âm thanh do thiết bị quản lý/);
-  assert.doesNotMatch(`${runtime}\n${workspace}`, /Audio\(|\.play\(|R2 audio|âm R2/i);
+  assert.doesNotMatch(`${runtime}\n${workspace}\n${worker}`, /Audio\(|\.play\(|sound:|silent:|R2 audio|âm R2/i);
 });

@@ -12,7 +12,7 @@ import {
 } from '../audit-outbox.js';
 import { auditOutboxEffect, transactionExpectations } from '../audit-outbox-effects.js';
 import * as warehouseRepository from '../db/repositories/warehouse.js';
-import { sendRetailOwnerPush } from '../services/retail-owner-notification.js';
+import { sendRetailOwnerWebPush } from '../services/retail-owner-notification.js';
 import { getSalesOrder } from '../services/sales-order.js';
 import {
   completeManualSalesOrder,
@@ -221,12 +221,13 @@ function shouldSendRetailOwnerCompletionPush({ routeBase, action, requestContext
 
 async function notifyRetailOwnerCompletion(options, args) {
   if (!shouldSendRetailOwnerCompletionPush(args)) return;
-  const sender = options.retailOwnerPushSender ?? sendRetailOwnerPush;
+  const sender = options.retailOwnerPushSender ?? sendRetailOwnerWebPush;
   try {
     const result = await sender({
       db: options.getPool(),
       installationId: args.requestContext.installationId,
       order: args.execution.response.body.data,
+      test: false,
       env: options.env ?? process.env,
       fetchImpl: options.fetchImpl ?? globalThis.fetch,
     });

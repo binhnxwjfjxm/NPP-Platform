@@ -12,6 +12,7 @@ import {
     RETAIL_NOTIFICATION_OPEN_EVENT,
     sendRetailNotificationTest,
     subscribeRetailNotificationState,
+    unregisterRetailNotificationForLogout,
     type RetailForegroundNotification,
     type RetailNotificationState,
 } from './retail-notification-runtime';
@@ -1337,6 +1338,19 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
             setBusy(null);
         }
     }
+    async function logoutRetail() {
+        setBusy('logout');
+        setError(null);
+        try {
+            await unregisterRetailNotificationForLogout().catch(() => undefined);
+            await fetch('/api/auth/logout', { method: 'POST', cache: 'no-store', credentials: 'same-origin' });
+            window.location.assign('/login');
+        }
+        catch (reason) {
+            setError(errorMessage(reason, 'Chưa thể đăng xuất.'));
+            setBusy(null);
+        }
+    }
     function openSettings(panel: Exclude<SettingsPanel, null>) {
         setError(null);
         if (panel === 'printer') {
@@ -1507,7 +1521,7 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
       {settingsPanel === 'printer' ? <PrinterSettingsPanel initialSettings={printerSettings} onSaved={(next) => { setPrinterSettings(next); setPrintPaper(next.paper); setDraftPrintPaper(next.paper); setSettingsPanel(null); setNotice('Đã lưu thiết lập in trên thiết bị này.'); }} onClose={() => setSettingsPanel(null)} onNotice={(message) => setNotice(message)} onError={(message) => setError(message || null)}/> : null}
       {settingsPanel === 'template' ? <>{printTemplate ? <div className="template-editor"><label className="settings-control">Mẫu<select value={printTemplate.templateCode} onChange={(event) => { const next = printTemplates.find((item) => item.documentType === 'SALES_ORDER' && item.templateCode === event.target.value); if (next)
             applyTemplate(next); }}>{printTemplates.filter((item) => item.documentType === 'SALES_ORDER').map((item) => <option key={`${item.documentType}-${item.templateCode}`} value={item.templateCode}>{item.name}</option>)}</select></label><label>Tiêu đề đầu phiếu<input value={templateHeading} maxLength={160} placeholder="Ví dụ: NGUYÊN LIỆU TRÀ SỮA" onChange={(event) => setTemplateHeading(event.target.value)}/></label><label>Tên chứng từ<input value={templateTitle} maxLength={160} placeholder={printTemplate.name} onChange={(event) => setTemplateTitle(event.target.value)}/></label><label>Dòng phụ<input value={templateSubtitle} maxLength={240} placeholder="Không bắt buộc" onChange={(event) => setTemplateSubtitle(event.target.value)}/></label><div className="template-font-size-control"><span>Cỡ chữ phiếu</span><div className="template-font-size-stepper"><button type="button" aria-label="Giảm cỡ chữ" disabled={templateFontSizePercent <= 80} onClick={() => setTemplateFontSizePercent((current) => normalizePrintFontSizePercent(current - 5))}>−</button><output aria-live="polite">{templateFontSizePercent}%</output><button type="button" aria-label="Tăng cỡ chữ" disabled={templateFontSizePercent >= 140} onClick={() => setTemplateFontSizePercent((current) => normalizePrintFontSizePercent(current + 5))}>+</button></div><small>Chỉnh từ 80% đến 140%. Xem trước bên dưới thay đổi ngay.</small></div><fieldset><legend>Mục hiển thị</legend><div className="field-checks">{printTemplate.fields?.map((field) => <label key={field.key}><input type="checkbox" checked={printTemplate.visibleFieldKeys.includes(field.key)} onChange={() => togglePrintField(field.key)}/>{field.label}</label>)}</div></fieldset><RetailPrintTemplatePreview paper={printerSettings.paper} visibleFieldKeys={printTemplate.visibleFieldKeys} heading={templateHeading} title={templateTitle} subtitle={templateSubtitle} fallbackTitle={printTemplate.name} fontSizePercent={templateFontSizePercent}/><div className="settings-sheet-actions"><button className="secondary-action" type="button" onClick={() => setSettingsPanel(null)}>Hủy</button><button className="primary-action" type="button" disabled={busy === 'print-template' || !printTemplate.visibleFieldKeys.length} onClick={() => void savePrintTemplate()}>{busy === 'print-template' ? 'Đang lưu…' : 'Lưu'}</button></div></div> : <p className="settings-help">Đang tải Mẫu phiếu…</p>}</> : null}
-      {settingsPanel === 'logout' ? <><p className="settings-help">Đăng xuất sẽ kết thúc phiên làm việc trên thiết bị này.</p><div className="settings-sheet-actions"><button className="secondary-action" type="button" onClick={() => setSettingsPanel(null)}>Hủy</button><form action="/api/auth/logout" method="post"><button className="primary-action logout-action" type="submit">Đăng xuất</button></form></div></> : null}
+      {settingsPanel === 'logout' ? <><p className="settings-help">Đăng xuất sẽ kết thúc phiên làm việc trên thiết bị này và ngừng nhận thông báo cho tài khoản hiện tại.</p><div className="settings-sheet-actions"><button className="secondary-action" type="button" disabled={busy === 'logout'} onClick={() => setSettingsPanel(null)}>Hủy</button><form action="/api/auth/logout" method="post" onSubmit={(event) => { event.preventDefault(); void logoutRetail(); }}><button className="primary-action logout-action" type="submit" disabled={busy === 'logout'}>{busy === 'logout' ? 'Đang đăng xuất…' : 'Đăng xuất'}</button></form></div></> : null}
     </div></section> : null}
 
     {customerPickerOpen && boot?.canBrowseCompanyCustomers ? <section className="dialog-backdrop pos-dialog-backdrop" role="dialog" aria-modal="true" aria-label="Chọn khách hàng"><div className="pos-sheet sheet-enter">
