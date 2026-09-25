@@ -607,7 +607,7 @@ export default function CustomerPaymentWorkspace({
             filename="lich-su-thu-tien-khach-hang.xlsx"
             sheets={[{
               sheetName: 'Thu tiền khách hàng',
-              headers: ['Số phiếu', 'Ngày thu', 'Mã khách hàng', 'Khách hàng', 'Nhân viên nộp', 'Đơn hàng liên quan', 'Số tiền thu', 'Đã phân bổ', 'Chưa phân bổ', 'Còn phải thu liên quan', 'Trạng thái', 'Phương thức', 'Tham chiếu'],
+              headers: ['Số phiếu', 'Ngày thu', 'Mã khách hàng', 'Khách hàng', 'Nhân viên nộp', 'Đơn hàng liên quan', 'Số tiền thu', 'Đã ghi vào đơn', 'Tiền chưa gắn với đơn', 'Còn phải thu liên quan', 'Trạng thái', 'Phương thức', 'Tham chiếu'],
               rows: payments.map((payment) => [
                 payment.documentNumber,
                 payment.paymentDate,
