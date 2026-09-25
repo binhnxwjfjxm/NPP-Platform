@@ -1503,13 +1503,13 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
           <div className="grand-total"><span>Tạm tính</span><strong>{totalLabel}</strong></div>
         </footer>
       </section>
-      <section className="order-action-bar pos-checkout-bar" aria-label="Thao tác đơn">
+      {editPickup || order || cart.length ? <section className="order-action-bar pos-checkout-bar" aria-label="Thao tác đơn">
         {editPickup ? <button className="primary-action" type="button" disabled={busy !== null || stockBlocked || stockGatePending || !cart.length} onClick={() => void savePickupEdit()}>{busy === 'save' ? 'Đang lưu…' : 'Lưu thay đổi'}</button> : order ? <>
           {canEditPickup ? <button className="secondary-action" type="button" disabled={busy !== null} onClick={beginPickupEdit}>Sửa đơn</button> : null}
           <button className="secondary-action" type="button" onClick={() => void openPrintPreview()}>In phiếu</button>
           <button className="primary-action pos-checkout-action" type="button" disabled={busy !== null || order.status === 'cancelled' || (order.status === 'closed' && order.settlementStatus === 'paid') || stockBlocked || stockGatePending} onClick={() => void checkout()}>{busy === 'checkout' ? 'Đang xử lý…' : order.status === 'cancelled' ? 'Đơn đã hủy' : order.status === 'closed' && order.settlementStatus === 'paid' ? 'Đã thanh toán' : 'Thanh toán'}</button>
-        </> : cart.length ? <button className="primary-action pos-checkout-action" type="button" disabled>Đang chuẩn bị đơn…</button> : <button className="primary-action pos-checkout-action" type="button" disabled>Thanh toán</button>}
-      </section>
+        </> : <button className="primary-action pos-checkout-action" type="button" disabled>Đang chuẩn bị đơn…</button>}
+      </section> : null}
     </> : null}
 
     <nav className="bottom-nav" aria-label="Điều hướng Retail"><button type="button" className={activeTab === 'home' ? 'active' : ''} onClick={() => { setActiveTab('home'); onTabChange?.('home'); }}><span>⌂</span>Trang chủ</button><button type="button" className={activeTab === 'entry' ? 'active' : ''} onClick={() => { setActiveTab('entry'); onTabChange?.('entry'); }}><span>＋</span>Lên đơn</button><button type="button" className={activeTab === 'orders' ? 'active' : ''} onClick={() => { setActiveTab('orders'); onTabChange?.('orders'); void refreshOrders(); }}><span>▤</span>Đơn hàng</button>{inventoryAvailable && onOpenInventory ? <button type="button" onClick={onOpenInventory}><span>▣</span>Tồn kho</button> : null}<button type="button" className={activeTab === 'settings' ? 'active' : ''} onClick={() => { setActiveTab('settings'); onTabChange?.('settings'); }}><span>⚙</span>Cài đặt</button></nav>

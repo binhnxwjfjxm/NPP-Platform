@@ -51,6 +51,12 @@ test('Retail dùng pricing engine, popup nguồn giá/khuyến mãi, chiết kh�
   assert.match(catalog, /step\?\.kind === 'RULE'/);
 });
 
+test('Lên đơn rỗng không ghim nút Thanh toán disabled sát bottom nav', async () => {
+  const workspace = await read('app/retail-workspace.tsx');
+  assert.match(workspace, /\{editPickup \|\| order \|\| cart\.length \? <section className="order-action-bar pos-checkout-bar"/);
+  assert.doesNotMatch(workspace, /: <button className="primary-action pos-checkout-action" type="button" disabled>Thanh toán<\/button>/);
+});
+
 test('Nút Thanh toán gom lifecycle PICKUP nhưng vẫn gọi canonical endpoints và idempotency generator', async () => {
   const workspace = await read('app/retail-workspace.tsx');
   assert.match(workspace, /async function checkout\(\)/);
