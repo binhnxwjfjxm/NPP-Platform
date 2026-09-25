@@ -2,7 +2,7 @@ import { createErrorEnvelope, createSuccessEnvelope } from '@npp/contracts';
 import { normalizeIdempotencyKey } from '../idempotency.js';
 import { sendError, sendJson } from '../http-utils.js';
 import {
-  isPermanentRetailOwner,
+  isRetailOwner,
   retailOwnerExternalId,
   sendRetailOwnerPush,
 } from '../services/retail-owner-notification.js';
@@ -24,7 +24,7 @@ function authenticateOwner(req, res, options) {
     requestId: options.requestId,
     receivedAt: options.receivedAt,
   });
-  if (!isPermanentRetailOwner(requestContext) || requestContext.sourceApp !== 'retail-web') {
+  if (!isRetailOwner(requestContext) || requestContext.sourceApp !== 'retail-web') {
     sendError(res, apiError('FORBIDDEN', 'Chỉ tài khoản Owner trên Bán tại quầy được dùng chức năng này', 403), options.requestId, options.receivedAt);
     return null;
   }

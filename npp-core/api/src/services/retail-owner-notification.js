@@ -1,5 +1,5 @@
 const ONESIGNAL_PUSH_ENDPOINT = 'https://api.onesignal.com/notifications?c=push';
-const PERMANENT_OWNER_ROLE = 'system:security-owner';
+const RETAIL_OWNER_ROLES = new Set(['system:security-owner', 'system:implementation-owner']);
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PROVIDER_TIMEOUT_MS = 4_000;
 
@@ -52,21 +52,21 @@ function notificationUrl(baseUrl, orderId) {
   return url.toString();
 }
 
-export function isPermanentRetailOwner(requestContext = {}) {
+export function isRetailOwner(requestContext = {}) {
   const actorId = text(requestContext.actorId);
   return Array.isArray(requestContext.roles)
-    && requestContext.roles.includes(PERMANENT_OWNER_ROLE)
+    && requestContext.roles.some((role) => RETAIL_OWNER_ROLES.has(role))
     && actorId.startsWith('user:')
     && UUID_PATTERN.test(actorId.slice('user:'.length));
 }
 
 export function retailOwnerExternalId(requestContext = {}) {
-  if (!isPermanentRetailOwner(requestContext)) return '';
+  if (!isRetailOwner(requestContext)) return '';
   const value = text(requestContext.actorId).slice('user:'.length);
   return UUID_PATTERN.test(value) ? value : '';
 }
 
-export async function listPermanentRetailOwnerExternalIds(db, { installationId }) {
+export async function listRetailOwnerExternalIds(db, { installationId }) {
   const result = await db.query(
     `SELECT b.user_id::text AS user_id
        FROM shared.security_owner_bindings b
@@ -79,7 +79,7 @@ export async function listPermanentRetailOwnerExternalIds(db, { installationId }
         AND e.id = u.employee_id
         AND e.is_active = true
       WHERE b.installation_id = $1
-        AND b.owner_kind = 'PERMANENT'
+        AND b.owner_kind IN ('PERMANENT', 'TEMPORARY')
       ORDER BY b.user_id`,
     [installationId],
   );
@@ -113,7 +113,7 @@ export async function sendRetailOwnerPush({
     if (!db || typeof db.query !== 'function') {
       return providerFailure('RETAIL_PUSH_STORAGE_UNAVAILABLE', 'Không đọc được danh sách Owner nhận thông báo', true);
     }
-    recipients = await listPermanentRetailOwnerExternalIds(db, { installationId });
+    recipients = await listRetailOwnerExternalIds(db, { installationId });
   }
   recipients = [...new Set(recipients)];
   if (recipients.length === 0) {
