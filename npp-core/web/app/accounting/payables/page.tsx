@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { AppShell } from '../../components/app-shell';
+import OperationalExportActions from '../../components/operational-export-actions';
 import {
   BusinessTableSequenceCell,
   BusinessTableSequenceHeader,
@@ -40,7 +41,41 @@ export default async function PayablesPage({ searchParams }: PageProps) {
   const openDocuments = documents.filter((item)=>item.status==='open'||item.status==='partially_allocated').length;
 
   return (
-    <AppShell title="Công nợ phải trả" subtitle="Đối chiếu công nợ phát sinh tự động từ phiếu nhận hàng và phiếu trả nhà cung cấp." kicker="Kế toán mua hàng">
+    <AppShell
+      title="Công nợ phải trả"
+      subtitle="Đối chiếu công nợ phát sinh tự động từ phiếu nhận hàng và phiếu trả nhà cung cấp."
+      kicker="Kế toán mua hàng"
+      actions={(
+        <OperationalExportActions
+          filename="cong-no-phai-tra.xlsx"
+          sheets={[
+            {
+              sheetName: 'Số dư phải trả',
+              headers: ['Mã Nhà cung cấp', 'Nhà cung cấp', 'Tiền tệ', 'Số dư', 'Còn mở', 'Quá hạn', 'Số chứng từ', 'Cập nhật'],
+              rows: balances.map((item) => [item.supplierCode, item.supplierName, item.currencyCode, item.balance, item.openAmount, item.overdueAmount, item.openDocumentCount, item.updatedAt]),
+            },
+            {
+              sheetName: 'Chứng từ phải trả',
+              headers: ['Chứng từ nguồn', 'Ngày', 'Mã Nhà cung cấp', 'Nhà cung cấp', 'Kho', 'Hạn thanh toán', 'Điều khoản ngày', 'Tiền tệ', 'Giá trị', 'Đã phân bổ', 'Còn phải trả', 'Trạng thái'],
+              rows: documents.map((item) => [
+                item.sourceDocumentNumber,
+                item.sourceDocumentDate,
+                item.supplierCode ?? '',
+                item.supplierName ?? '',
+                [item.warehouseCode, item.warehouseName].filter(Boolean).join(' — '),
+                item.dueDate,
+                item.paymentTermDays,
+                item.currencyCode,
+                item.signedOriginalAmount,
+                item.allocatedAmount,
+                item.remainingAmount,
+                statusLabel(item.status),
+              ]),
+            },
+          ]}
+        />
+      )}
+    >
       <div className={styles.grid} data-testid="payables-page">
         {error ? <div className={styles.alert} role="alert">{error}</div> : null}
         <section className={styles.summaryGrid} aria-label="Tổng hợp công nợ">

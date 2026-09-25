@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
+import OperationalExportActions from '../../components/operational-export-actions';
 import SupplierReturnPrintDock from './SupplierReturnPrintDock';
 import {
   BusinessTableSequenceCell,
@@ -601,6 +602,26 @@ export default function SupplierReturnWorkspace({
               ))}
             </select>
           </div>
+          <OperationalExportActions
+            filename="tra-hang-nha-cung-cap-theo-bo-loc.xlsx"
+            allowCsv
+            disabled={loadingList}
+            sheets={[{
+              sheetName: 'Trả Nhà cung cấp',
+              headers: ['Số phiếu', 'Mã Nhà cung cấp', 'Nhà cung cấp', 'Kho', 'Ngày trả', 'Trạng thái', 'Số dòng', 'Tổng số lượng', 'Ghi chú'],
+              rows: visibleItems.map((item) => [
+                item.documentNumber ?? '',
+                item.supplierCode,
+                item.supplierName,
+                [item.warehouseCode, item.warehouseName].filter(Boolean).join(' — '),
+                formatSupplierReturnDate(item.returnDate),
+                SUPPLIER_RETURN_STATUS_LABELS[item.status],
+                item.lineCount,
+                item.returnQuantityTotal,
+                item.note ?? '',
+              ]),
+            }]}
+          />
         </section>
 
         <section className={styles.tableSection}>

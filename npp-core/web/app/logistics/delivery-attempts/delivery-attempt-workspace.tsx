@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
+import OperationalExportActions from '../../components/operational-export-actions';
 import styles from './delivery-attempt-workspace.module.css';
 
 type TripListItem = Readonly<{
@@ -229,6 +230,27 @@ export default function DeliveryAttemptWorkspace() {
                 <p>Kết quả read-only</p>
                 <h2>{selectedTrip?.number || 'Chưa chọn chuyến'}</h2>
               </div>
+              {selectedTrip && summary ? (
+                <OperationalExportActions
+                  filename={['ket-qua-giao-', selectedTrip.number, '.xlsx'].join('')}
+                  sheets={[{
+                    sheetName: 'Kết quả giao',
+                    headers: ['Chuyến', 'Điểm', 'Phiếu giao', 'Mã khách hàng', 'Khách hàng', 'Kết quả', 'Thời điểm', 'Lý do', 'Hẹn giao lại', 'Ghi chú'],
+                    rows: summary.attempts.map((attempt) => [
+                      selectedTrip.number,
+                      attempt.stopSequence,
+                      attempt.deliveryOrderNumber ?? '',
+                      attempt.customerCode ?? '',
+                      attempt.customerName ?? '',
+                      RESULT_LABELS[attempt.result],
+                      formatDateTime(attempt.attemptedAt),
+                      attempt.reasonCode ?? '',
+                      attempt.rescheduledFor ? formatDateTime(attempt.rescheduledFor) : '',
+                      attempt.note ?? '',
+                    ]),
+                  }]}
+                />
+              ) : null}
               {selectedTrip ? <span className={styles.progress}>{completed}/{total} phiếu</span> : null}
             </div>
 

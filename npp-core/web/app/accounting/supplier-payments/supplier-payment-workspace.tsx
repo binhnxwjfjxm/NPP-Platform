@@ -5,6 +5,7 @@ import {
   BusinessTableSequenceCell,
   BusinessTableSequenceHeader,
 } from '../../components/business-table-sequence';
+import OperationalExportActions from '../../components/operational-export-actions';
 import SupplierPaymentPrintDock from './SupplierPaymentPrintDock';
 import type { Supplier } from '../../../lib/supplier-types';
 import type { Warehouse } from '../../../lib/organization-types';
@@ -292,6 +293,27 @@ export default function SupplierPaymentWorkspace({
       <div className={styles.columns}>
         <section className={styles.card}>
           <h2>Phiếu thanh toán</h2>
+          <OperationalExportActions
+            filename="lich-su-thanh-toan-nha-cung-cap.xlsx"
+            sheets={[{
+              sheetName: 'Thanh toán Nhà cung cấp',
+              headers: ['Số phiếu', 'Ngày thanh toán', 'Mã Nhà cung cấp', 'Nhà cung cấp', 'Kho', 'Số tiền', 'Đã phân bổ', 'Chưa phân bổ', 'Trạng thái', 'Phương thức', 'Tham chiếu', 'Ghi chú'],
+              rows: payments.map((payment) => [
+                payment.documentNumber,
+                payment.paymentDate,
+                payment.supplierCode ?? '',
+                payment.supplierName ?? '',
+                [payment.warehouseCode, payment.warehouseName].filter(Boolean).join(' — '),
+                payment.originalAmount,
+                payment.allocatedAmount,
+                payment.remainingAmount,
+                statusLabel(payment.status),
+                payment.paymentMethod,
+                payment.externalReference ?? '',
+                payment.note ?? '',
+              ]),
+            }]}
+          />
           <div className={styles.tableWrap}><table className={styles.table} data-testid="supplier-payments-table"><thead><tr><BusinessTableSequenceHeader /><th>Số phiếu</th><th>Nhà cung cấp</th><th className={styles.amount}>Số tiền</th><th>Trạng thái</th></tr></thead><tbody>{payments.map((payment, rowIndex) => <tr key={payment.id} className={payment.id === selectedId ? styles.selected : undefined}><BusinessTableSequenceCell rowIndex={rowIndex} /><td><button type="button" className={styles.linkButton} onClick={() => selectPayment(payment.id)}>{payment.documentNumber}</button><br /><span>{payment.paymentDate}</span></td><td>{payment.supplierCode}<br /><span>{payment.supplierName}</span></td><td className={styles.amount}>{money(payment.originalAmount, payment.currencyCode)}<br /><span>Còn {money(payment.remainingAmount, payment.currencyCode)}</span></td><td>{statusLabel(payment.status)}</td></tr>)}{!payments.length ? <tr><td colSpan={5}>Chưa có phiếu thanh toán.</td></tr> : null}</tbody></table></div>
         </section>
 

@@ -6,6 +6,7 @@ import {
   BusinessTableSequenceCell,
   BusinessTableSequenceHeader,
 } from '../../components/business-table-sequence';
+import OperationalExportActions from '../../components/operational-export-actions';
 import CustomerRefundPrintDock from './CustomerRefundPrintDock';
 import type { ReceivableAllocationTarget } from '../../../lib/customer-payment-types';
 import type {
@@ -315,6 +316,43 @@ export default function CustomerReturnCreditWorkspace({
       <div className={styles.columns}>
         <section className={styles.card}>
           <h2>Khoản giảm công nợ từ hàng khách trả</h2>
+          <OperationalExportActions
+            filename="giam-cong-no-va-hoan-tien-khach.xlsx"
+            sheets={[
+              {
+                sheetName: 'Giảm công nợ',
+                headers: ['Phiếu trả', 'Số chứng từ', 'Mã khách hàng', 'Khách hàng', 'Kho', 'Giá trị ban đầu', 'Đã sử dụng', 'Còn sử dụng', 'Trạng thái'],
+                rows: credits.map((credit) => [
+                  credit.returnNumber,
+                  credit.documentNumber,
+                  credit.customerCode ?? '',
+                  credit.customerName ?? '',
+                  [credit.warehouseCode, credit.warehouseName].filter(Boolean).join(' — '),
+                  credit.originalAmount,
+                  credit.allocatedAmount,
+                  credit.remainingAmount,
+                  statusLabel(credit.status),
+                ]),
+              },
+              {
+                sheetName: 'Hoàn tiền',
+                headers: ['Phiếu hoàn', 'Phiếu trả', 'Mã khách hàng', 'Khách hàng', 'Kho', 'Số tiền', 'Phương thức', 'Nơi nhận', 'Tham chiếu', 'Lý do', 'Trạng thái'],
+                rows: credits.flatMap((credit) => (credit.refunds ?? []).map((refund) => [
+                  refund.refundNumber ?? '',
+                  credit.returnNumber,
+                  refund.customerCode ?? '',
+                  refund.customerName ?? '',
+                  [refund.warehouseCode, refund.warehouseName].filter(Boolean).join(' — '),
+                  refund.amount,
+                  refundMethodLabel(refund.refundMethod),
+                  refund.destinationReference,
+                  refund.externalReference ?? '',
+                  refund.reason,
+                  refund.reversalId ? 'Đã đảo' : 'Đã hoàn',
+                ])),
+              },
+            ]}
+          />
           <div className={styles.tableWrap}>
             <table className={styles.table}>
               <thead><tr><BusinessTableSequenceHeader /><th>Phiếu trả</th><th>Khách hàng</th><th>Kho</th><th className={styles.amount}>Giá trị</th><th className={styles.amount}>Còn dùng</th><th>Trạng thái</th></tr></thead>
