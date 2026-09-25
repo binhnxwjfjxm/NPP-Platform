@@ -41,7 +41,7 @@ type ManagedAttendance = {
     name: string;
     attendanceBasis: AttendanceToday['policy']['attendanceBasis'];
     timezone: string;
-  };
+  } | null;
   events: AttendanceToday['events'];
 };
 type ManagedSelection = {
@@ -181,7 +181,6 @@ export default function AttendanceWorkspace({
   const [managedEmployees, setManagedEmployees] = useState<ManagedManualEmployee[] | null>(null);
   const [managedEmployeeId, setManagedEmployeeId] = useState('');
   const [managedEmployeeQuery, setManagedEmployeeQuery] = useState('');
-  const [managedPickerOpen, setManagedPickerOpen] = useState(false);
   const [managedSelected, setManagedSelected] = useState<ManagedSelection | null>(null);
   const [managedLoading, setManagedLoading] = useState(false);
   const [managedExitOpen, setManagedExitOpen] = useState(false);
@@ -218,15 +217,21 @@ export default function AttendanceWorkspace({
   const normalizedEmployeeQuery = managedEmployeeQuery.trim().toLowerCase();
   const filteredManagedEmployees = useMemo(() => {
     if (!managedEmployees) return [];
-    if (!normalizedEmployeeQuery) return managedEmployees.slice(0, 12);
-    return managedEmployees
-      .filter((employee) => `${employee.code} ${employee.name} ${employee.branchName ?? ''}`
-        .toLowerCase()
-        .includes(normalizedEmployeeQuery))
-      .slice(0, 12);
+    if (!normalizedEmployeeQuery) return managedEmployees;
+    return managedEmployees.filter((employee) => `${employee.code} ${employee.name} ${employee.branchName ?? ''}`
+      .toLowerCase()
+      .includes(normalizedEmployeeQuery));
   }, [managedEmployees, normalizedEmployeeQuery]);
+  const managedEmployeeOptions = useMemo(() => {
+    if (!managedEmployees) return [];
+    const selected = managedEmployees.find((employee) => employee.id === managedEmployeeId) ?? null;
+    if (!selected || filteredManagedEmployees.some((employee) => employee.id === selected.id)) {
+      return filteredManagedEmployees;
+    }
+    return [selected, ...filteredManagedEmployees];
+  }, [managedEmployees, managedEmployeeId, filteredManagedEmployees]);
   const managedAttendance = managedSelected?.attendance ?? null;
-  const managedTimeZone = managedAttendance?.policy.timezone || 'Asia/Ho_Chi_Minh';
+  const managedTimeZone = managedAttendance?.policy?.timezone || 'Asia/Ho_Chi_Minh';
 
   function stopScanner() {
     if (scanTimerRef.current !== null) {
@@ -443,8 +448,6 @@ export default function AttendanceWorkspace({
 
   function selectManagedEmployee(employee: ManagedManualEmployee) {
     setManagedEmployeeId(employee.id);
-    setManagedEmployeeQuery(`${employee.code} · ${employee.name}${employee.branchName ? ' · ' + employee.branchName : ''}`);
-    setManagedPickerOpen(false);
     setManagedExitOpen(false);
     setManagedExitReason('');
     setManagedExitNote('');
@@ -547,24 +550,13 @@ export default function AttendanceWorkspace({
 
   const actions = (
     <div className={localStyles.headerActions}>
-      {management ? (
-        <button
-          type="button"
-          className={shellStyles.actionButton}
-          onClick={() => setQrDialogOpen(true)}
-          disabled={busy}
-          data-testid="attendance-qr-header-action"
-        >
-          Mã QR
-        </button>
-      ) : null}
       <button
         type="button"
         className={`${shellStyles.actionButton} ${shellStyles.actionButtonPrimary}`}
         onClick={() => void refreshAttendanceScreen()}
         disabled={busy || managedLoading}
       >
-        Cập nhật trạng thái
+        Làm mới
       </button>
     </div>
   );
@@ -591,45 +583,118 @@ export default function AttendanceWorkspace({
                 <h2>Chấm công nhân sự</h2>
                 <p>Tìm nhân sự theo mã, tên hoặc chi nhánh rồi thao tác theo trạng thái hiện tại.</p>
               </div>
-            </div>
 
-            <div className={localStyles.employeeSearchWrap}>
-              <label className={localStyles.searchLabel} htmlFor="attendance-employee-search">Nhân sự</label>
-              <input
-                id="attendance-employee-search"
-                type="search"
-                value={managedEmployeeQuery}
-                placeholder="Tìm theo mã, tên hoặc chi nhánh"
-                autoComplete="off"
-                onFocus={() => setManagedPickerOpen(true)}
-                onChange={(event) => {
-                  setManagedEmployeeQuery(event.target.value);
-                  setManagedPickerOpen(true);
-                  if (managedEmployeeId) {
-                    setManagedEmployeeId('');
-                    setManagedSelected(null);
-                  }
-                }}
-                onBlur={() => window.setTimeout(() => setManagedPickerOpen(false), 120)}
-              />
-              {managedPickerOpen ? (
-                <div className={localStyles.employeeResults} role="listbox" aria-label="Kết quả tìm nhân sự">
-                  {filteredManagedEmployees.length ? filteredManagedEmployees.map((employee) => (
-                    <button
-                      type="button"
-                      key={employee.id}
-                      className={localStyles.employeeResult}
-                      onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => selectManagedEmployee(employee)}
-                    >
-                      <span><strong>{employee.code}</strong> · {employee.name}</span>
-                      <small>{employee.branchName || 'Chưa có chi nhánh'}{employee.hasPolicy ? '' : ' · Chưa có chính sách'}</small>
-                    </button>
-                  )) : (
-                    <div className={localStyles.noSearchResult}>Không tìm thấy nhân sự phù hợp.</div>
-                  )}
+              {management ? (
+                <div className={localStyles.qrUtility}>
+                  <button
+                    type="button"
+                    className={localStyles.qrTrigger}
+                    onClick={() => {
+                      setQrDialogOpen((current) => !current);
+                      setQrToken(null);
+                    }}
+                    disabled={busy}
+                    aria-expanded={qrDialogOpen}
+                    data-testid="attendance-qr-toggle"
+                  >
+                    <span>Mã QR chấm công</span>
+                    <small>{qrDialogOpen ? 'Ẩn' : 'Mở'}</small>
+                  </button>
+
+                  {qrDialogOpen ? (
+                    <div className={localStyles.qrPopover} data-testid="attendance-qr-popover">
+                      <div className={localStyles.qrPopoverHeader}>
+                        <div>
+                          <strong>Mã QR chấm công</strong>
+                          <span>Chỉ mở khi cần quét.</span>
+                        </div>
+                        <button
+                          type="button"
+                          className={localStyles.qrClose}
+                          onClick={() => {
+                            setQrDialogOpen(false);
+                            setQrToken(null);
+                          }}
+                        >
+                          Đóng
+                        </button>
+                      </div>
+
+                      <form className={localStyles.pointForm} onSubmit={(event) => void showWorkplaceQr(event)}>
+                        <label>
+                          Nơi làm việc
+                          <select
+                            value={selectedWorkplaceId}
+                            onChange={(event) => {
+                              setSelectedWorkplaceId(event.target.value);
+                              setQrToken(null);
+                            }}
+                            required
+                          >
+                            <option value="">Chọn nơi làm việc</option>
+                            {management.branches.map((branch) => (
+                              <option key={branch.id} value={branch.id}>{branch.name}</option>
+                            ))}
+                          </select>
+                        </label>
+                        <button type="submit" className={localStyles.actionButtonPrimary} disabled={busy || !selectedWorkplaceId}>
+                          Hiển thị mã QR
+                        </button>
+                      </form>
+
+                      {qrToken ? (
+                        <div className={localStyles.qrWrap}>
+                          <QrCode payload={qrToken.qrPayload} />
+                          <div className={localStyles.qrMeta}>
+                            <strong>{qrToken.branchName || qrToken.pointName}</strong>
+                            <span>Còn hiệu lực khoảng {remainingSeconds} giây.</span>
+                            <button type="button" className={localStyles.qrClose} onClick={() => setQrToken(null)}>Tắt mã QR</button>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
+            </div>
+
+            <div className={localStyles.employeeControlGrid}>
+              <label className={localStyles.controlField}>
+                <span>Nhân sự</span>
+                <select
+                  value={managedEmployeeId}
+                  onChange={(event) => {
+                    const employee = managedEmployees.find((item) => item.id === event.target.value);
+                    if (employee) selectManagedEmployee(employee);
+                    else {
+                      setManagedEmployeeId('');
+                      setManagedSelected(null);
+                    }
+                  }}
+                >
+                  <option value="">Chọn nhân sự</option>
+                  {managedEmployeeOptions.map((employee) => (
+                    <option key={employee.id} value={employee.id}>
+                      {employee.code} · {employee.name}{employee.branchName ? ` · ${employee.branchName}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className={localStyles.controlField}>
+                <span>Tìm nhanh</span>
+                <div className={localStyles.quickSearch}>
+                  <span aria-hidden="true">⌕</span>
+                  <input
+                    type="search"
+                    value={managedEmployeeQuery}
+                    placeholder="Nhập mã, tên hoặc chi nhánh"
+                    autoComplete="off"
+                    onChange={(event) => setManagedEmployeeQuery(event.target.value)}
+                  />
+                </div>
+                <small>{filteredManagedEmployees.length} nhân sự phù hợp</small>
+              </label>
             </div>
 
             {!managedSelected ? (
@@ -639,75 +704,64 @@ export default function AttendanceWorkspace({
             ) : (
               <div className={localStyles.employeeWorkspace}>
                 <div className={localStyles.employeeIdentity}>
-                  <div>
-                    <h3>{managedSelected.employee.name}</h3>
-                    <p>{managedSelected.employee.code} · {managedSelected.employee.branchName || 'Chưa có chi nhánh'}</p>
+                  <div className={localStyles.employeeIdentityMain}>
+                    <span className={localStyles.employeeAvatar}>
+                      {(managedSelected.employee.code || managedSelected.employee.name).slice(0, 2).toUpperCase()}
+                    </span>
+                    <div>
+                      <h3>{managedSelected.employee.name}</h3>
+                      <p>{managedSelected.employee.code} · {managedSelected.employee.branchName || 'Chưa có chi nhánh'}</p>
+                    </div>
                   </div>
-                  {managedAttendance ? (
+                  {managedSelected.issue ? (
+                    <span className={localStyles.statusPillWarning}>
+                      {managedSelected.issue.code === 'WORK_POLICY_REQUIRED' ? 'Chưa gắn chính sách' : 'Cần bổ sung cấu hình'}
+                    </span>
+                  ) : managedAttendance ? (
                     <span className={localStyles.statusPill}>{STATUS_LABEL[managedAttendance.status]}</span>
                   ) : (
-                    <span className={localStyles.statusPillMuted}>Chưa sẵn sàng</span>
+                    <span className={localStyles.statusPillMuted}>Chưa có trạng thái</span>
                   )}
                 </div>
 
                 {managedSelected.issue ? (
                   <div className={localStyles.configurationNotice}>
-                    <strong>Chưa thể chấm công</strong>
-                    <span>{managedSelected.issue.message}</span>
+                    <strong>
+                      {managedSelected.issue.code === 'WORK_POLICY_REQUIRED'
+                        ? 'Chưa có chính sách tính công'
+                        : 'Cấu hình chấm công chưa đầy đủ'}
+                    </strong>
+                    <span>
+                      {managedSelected.issue.message}. Quản lý vẫn có thể chấm công trực tiếp; Bảng công sẽ chờ cấu hình để tính công chính xác.
+                    </span>
                   </div>
-                ) : managedAttendance ? (
-                  <>
-                    <div className={localStyles.employeeMetaGrid}>
-                      <div><span>Ngày làm việc</span><strong>{managedAttendance.workDate}</strong></div>
-                      <div><span>Chính sách</span><strong>{managedAttendance.policy.name}</strong></div>
-                      <div><span>Dự kiến vào</span><strong>{formatDateTime(managedAttendance.expectedStartAt, managedTimeZone)}</strong></div>
-                      <div><span>Dự kiến ra</span><strong>{formatDateTime(managedAttendance.expectedEndAt, managedTimeZone)}</strong></div>
-                    </div>
+                ) : null}
 
+                {managedAttendance ? (
+                  <>
                     <div className={localStyles.primaryActions}>
                       {managedAttendance.nextAction === 'CHECK_IN' ? (
-                        <button
-                          type="button"
-                          className={styles.primaryButton}
-                          disabled={busy || managedLoading || managedAttendance.tooSoon}
-                          onClick={() => void submitManagedManualAttendance('CHECK_IN')}
-                        >
-                          Chấm vào
+                        <button type="button" className={localStyles.actionButtonPrimary} disabled={busy || managedLoading} onClick={() => void submitManagedManualAttendance('CHECK_IN')}>
+                          Chấm vào trực tiếp
                         </button>
                       ) : null}
                       {managedAttendance.nextAction === 'EXIT' ? (
                         <>
-                          <button
-                            type="button"
-                            className={styles.secondaryButton}
-                            disabled={busy || managedLoading || managedAttendance.tooSoon}
-                            onClick={() => setManagedExitOpen((current) => !current)}
-                          >
+                          <button type="button" className={localStyles.actionButtonSecondary} disabled={busy || managedLoading} onClick={() => setManagedExitOpen((current) => !current)}>
                             Ra ngoài
                           </button>
-                          <button
-                            type="button"
-                            className={styles.primaryButton}
-                            disabled={busy || managedLoading || managedAttendance.tooSoon}
-                            onClick={() => void submitManagedManualAttendance('CHECK_OUT')}
-                          >
+                          <button type="button" className={localStyles.actionButtonSecondary} disabled={busy || managedLoading} onClick={() => void submitManagedManualAttendance('CHECK_OUT')}>
                             Kết thúc làm việc
                           </button>
                         </>
                       ) : null}
                       {managedAttendance.nextAction === 'RETURN' ? (
-                        <button
-                          type="button"
-                          className={styles.primaryButton}
-                          disabled={busy || managedLoading || managedAttendance.tooSoon}
-                          onClick={() => void submitManagedManualAttendance('RETURN')}
-                        >
+                        <button type="button" className={localStyles.actionButtonPrimary} disabled={busy || managedLoading} onClick={() => void submitManagedManualAttendance('RETURN')}>
                           Quay lại
                         </button>
                       ) : null}
-                      {!managedAttendance.nextAction ? (
-                        <span className={localStyles.completedText}>Ngày làm việc đã kết thúc.</span>
-                      ) : null}
+                      {!managedAttendance.nextAction ? <span className={localStyles.completedText}>Ngày làm việc đã kết thúc.</span> : null}
+                      <a className={localStyles.actionButtonLink} href="/workforce/policies">Gắn chính sách</a>
                     </div>
 
                     {managedExitOpen && managedAttendance.nextAction === 'EXIT' ? (
@@ -718,35 +772,21 @@ export default function AttendanceWorkspace({
                         </div>
                         <div className={localStyles.exitReasonGrid}>
                           {(['WORK_BUSINESS', 'PERSONAL', 'BREAK', 'OTHER'] as const).map((reason) => (
-                            <button
-                              type="button"
-                              key={reason}
-                              className={managedExitReason === reason ? localStyles.exitReasonActive : localStyles.exitReasonButton}
-                              onClick={() => setManagedExitReason(reason)}
-                            >
+                            <button type="button" key={reason} className={managedExitReason === reason ? localStyles.exitReasonActive : localStyles.exitReasonButton} onClick={() => setManagedExitReason(reason)}>
                               {EXIT_REASON_LABEL[reason]}
                             </button>
                           ))}
                         </div>
                         {managedExitReason === 'OTHER' ? (
-                          <input
-                            value={managedExitNote}
-                            onChange={(event) => setManagedExitNote(event.target.value)}
-                            maxLength={1024}
-                            placeholder="Ghi rõ lý do"
-                          />
+                          <input value={managedExitNote} onChange={(event) => setManagedExitNote(event.target.value)} maxLength={1024} placeholder="Ghi rõ lý do" />
                         ) : null}
                         <div className={localStyles.exitConfirmRow}>
-                          <button type="button" className={styles.secondaryButton} onClick={() => setManagedExitOpen(false)}>Hủy</button>
+                          <button type="button" className={localStyles.actionButtonSecondary} onClick={() => setManagedExitOpen(false)}>Hủy</button>
                           <button
                             type="button"
-                            className={styles.primaryButton}
+                            className={localStyles.actionButtonPrimary}
                             disabled={!managedExitReason || (managedExitReason === 'OTHER' && !managedExitNote.trim()) || busy}
-                            onClick={() => void submitManagedManualAttendance(
-                              'TEMP_EXIT',
-                              managedExitReason as Exclude<ExitReason, '' | 'END_WORK'>,
-                              managedExitNote,
-                            )}
+                            onClick={() => void submitManagedManualAttendance('TEMP_EXIT', managedExitReason as Exclude<ExitReason, '' | 'END_WORK'>, managedExitNote)}
                           >
                             Ghi nhận ra ngoài
                           </button>
@@ -754,25 +794,40 @@ export default function AttendanceWorkspace({
                       </div>
                     ) : null}
 
-                    <div className={localStyles.historySection}>
-                      <div className={localStyles.historyHeader}>
-                        <h3>Lịch sử hôm nay</h3>
-                        <span>{managedAttendance.events.length} lần ghi nhận</span>
-                      </div>
-                      <div className={localStyles.eventList}>
-                        {managedAttendance.events.map((attendanceEvent) => (
-                          <div className={localStyles.eventItem} key={attendanceEvent.id}>
-                            <span>
-                              <strong>{eventLabel(attendanceEvent)}</strong>
-                              <small>{attendanceEvent.note || attendanceEvent.point_name || (attendanceEvent.source === 'FACE' ? 'Máy chấm công khuôn mặt' : attendanceEvent.source === 'QR' ? 'Mã QR' : 'Chấm công tay')}</small>
-                            </span>
-                            <time>{formatDateTime(attendanceEvent.occurred_at, managedTimeZone)}</time>
-                          </div>
-                        ))}
-                        {!managedAttendance.events.length ? (
-                          <div className={localStyles.selectionEmpty}>Chưa có lần chấm công nào trong ngày làm việc này.</div>
-                        ) : null}
-                      </div>
+                    <div className={localStyles.detailGrid}>
+                      <section className={localStyles.infoCard}>
+                        <div className={localStyles.infoCardHeader}><h3>Thông tin hôm nay</h3></div>
+                        <div className={localStyles.infoRows}>
+                          <div className={localStyles.infoRow}><span>Ngày làm việc</span><strong>{managedAttendance.workDate}</strong></div>
+                          <div className={localStyles.infoRow}><span>Trạng thái</span><strong>{STATUS_LABEL[managedAttendance.status]}</strong></div>
+                          <div className={localStyles.infoRow}><span>Chính sách</span><strong>{managedAttendance.policy?.name || 'Chờ gắn chính sách'}</strong></div>
+                          <div className={localStyles.infoRow}><span>Dự kiến vào/ra</span><strong>{formatDateTime(managedAttendance.expectedStartAt, managedTimeZone)} — {formatDateTime(managedAttendance.expectedEndAt, managedTimeZone)}</strong></div>
+                        </div>
+                      </section>
+
+                      <section className={localStyles.infoCard}>
+                        <div className={localStyles.infoCardHeader}>
+                          <h3>Lịch sử hôm nay</h3>
+                          <span>{managedAttendance.events.length} lần ghi nhận</span>
+                        </div>
+                        <div className={localStyles.eventList}>
+                          {managedAttendance.events.map((attendanceEvent) => (
+                            <div className={localStyles.eventItem} key={attendanceEvent.id}>
+                              <span>
+                                <strong>{eventLabel(attendanceEvent)}</strong>
+                                <small>{attendanceEvent.note || attendanceEvent.point_name || (attendanceEvent.source === 'FACE' ? 'Máy chấm công khuôn mặt' : attendanceEvent.source === 'QR' ? 'Mã QR' : 'Chấm công trực tiếp')}</small>
+                              </span>
+                              <time>{formatDateTime(attendanceEvent.occurred_at, managedTimeZone)}</time>
+                            </div>
+                          ))}
+                          {!managedAttendance.events.length ? (
+                            <div className={localStyles.historyEmpty}>
+                              <strong>Chưa có lần chấm công nào trong ngày làm việc này.</strong>
+                              <span>Thao tác chấm công sẽ xuất hiện tại đây ngay sau khi ghi nhận.</span>
+                            </div>
+                          ) : null}
+                        </div>
+                      </section>
                     </div>
                   </>
                 ) : null}
@@ -781,7 +836,7 @@ export default function AttendanceWorkspace({
           </section>
         ) : null}
 
-        {today ? (
+        {!managedEmployees && today ? (
           <section className={localStyles.selfPanel} data-testid="attendance-self-service">
             <div className={localStyles.panelHeader}>
               <div>
@@ -917,74 +972,6 @@ export default function AttendanceWorkspace({
           <div className={localStyles.selectionEmpty}>Không có chức năng chấm công phù hợp với tài khoản hiện tại.</div>
         ) : null}
 
-        {qrDialogOpen && management ? (
-          <div
-            className={localStyles.modalBackdrop}
-            role="presentation"
-            onMouseDown={() => {
-              setQrDialogOpen(false);
-              setQrToken(null);
-            }}
-          >
-            <section
-              className={localStyles.qrDialog}
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="attendance-qr-dialog-title"
-              onMouseDown={(event) => event.stopPropagation()}
-            >
-              <div className={localStyles.dialogHeader}>
-                <div>
-                  <p className={styles.panelKicker}>Dành cho quản lý</p>
-                  <h2 id="attendance-qr-dialog-title">Mã QR chấm công</h2>
-                </div>
-                <button
-                  type="button"
-                  className={styles.secondaryButton}
-                  onClick={() => {
-                    setQrDialogOpen(false);
-                    setQrToken(null);
-                  }}
-                >
-                  Đóng
-                </button>
-              </div>
-
-              <form className={localStyles.pointForm} onSubmit={(event) => void showWorkplaceQr(event)}>
-                <label>
-                  Nơi làm việc
-                  <select
-                    value={selectedWorkplaceId}
-                    onChange={(event) => {
-                      setSelectedWorkplaceId(event.target.value);
-                      setQrToken(null);
-                    }}
-                    required
-                  >
-                    <option value="">Chọn nơi làm việc</option>
-                    {management.branches.map((branch) => (
-                      <option key={branch.id} value={branch.id}>{branch.name}</option>
-                    ))}
-                  </select>
-                </label>
-                <button type="submit" className={styles.primaryButton} disabled={busy || !selectedWorkplaceId}>Hiển thị mã QR</button>
-              </form>
-
-              {qrToken ? (
-                <div className={localStyles.qrWrap}>
-                  <QrCode payload={qrToken.qrPayload} />
-                  <div className={localStyles.qrMeta}>
-                    <strong>{qrToken.branchName || qrToken.pointName}</strong>
-                    <span>Còn hiệu lực khoảng {remainingSeconds} giây.</span>
-                    <button type="button" className={styles.secondaryButton} onClick={() => setQrToken(null)}>Tắt mã QR</button>
-                  </div>
-                </div>
-              ) : (
-                <div className={localStyles.selectionEmpty}>Chọn nơi làm việc rồi hiển thị mã QR.</div>
-              )}
-            </section>
-          </div>
-        ) : null}
       </section>
     </AppShell>
   );

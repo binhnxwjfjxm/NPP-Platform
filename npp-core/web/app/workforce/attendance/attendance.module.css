@@ -1,8 +1,9 @@
 .attendancePage {
   display: grid;
   gap: 16px;
-  width: min(100%, 1180px);
-  margin: 0 auto;
+  width: 100%;
+  max-width: none;
+  margin: 0;
 }
 
 .headerActions {
@@ -524,3 +525,60 @@
     border-radius: 12px;
   }
 }
+
+
+/* Manager attendance workspace */
+.managerPanel { position: relative; padding: 20px 22px; box-shadow: 0 1px 0 rgba(255,255,255,.9) inset, 0 10px 26px rgba(15,23,42,.055); }
+.employeeControlGrid { display: grid; grid-template-columns: minmax(320px,1.1fr) minmax(280px,.9fr); gap: 14px; align-items: end; }
+.controlField { display: grid; gap: 6px; min-width: 0; font-weight: 700; }
+.controlField > span { color: #27372f; font-size: .82rem; }
+.controlField > small { min-height: 16px; color: #78847e; font-size: .7rem; font-weight: 500; }
+.controlField select, .quickSearch { width: 100%; min-height: 42px; border: 1px solid #cfd8d3; border-radius: 10px; background: #fff; box-shadow: 0 1px 0 rgba(255,255,255,.95) inset, 0 2px 7px rgba(28,57,43,.045); }
+.controlField select { padding: 0 12px; color: #263a30; font: inherit; font-weight: 600; }
+.controlField select:focus, .quickSearch:focus-within { outline: 2px solid rgba(35,111,75,.14); border-color: #3d805f; }
+.quickSearch { display: flex; align-items: center; gap: 8px; padding: 0 11px; }
+.quickSearch > span { color: #698177; font-size: 1rem; font-weight: 500; }
+.quickSearch input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: #263a30; font: inherit; }
+.qrUtility { position: relative; flex: 0 0 auto; }
+.qrTrigger { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 11px; border: 1px solid #cbd8d1; border-radius: 9px; background: linear-gradient(#fff,#f8fbf9); color: #27463a; font: inherit; font-size: .76rem; font-weight: 750; cursor: pointer; box-shadow: 0 1px 0 #fff inset, 0 2px 6px rgba(32,68,50,.08); }
+.qrTrigger small { color: #6f8078; font-size: .66rem; font-weight: 650; }
+.qrTrigger:hover:not(:disabled) { border-color: #9fb9aa; transform: translateY(-1px); }
+.qrTrigger:active:not(:disabled) { transform: translateY(0); box-shadow: 0 1px 3px rgba(32,68,50,.09); }
+.qrPopover { position: absolute; z-index: 50; top: calc(100% + 8px); right: 0; width: min(310px,calc(100vw - 48px)); padding: 13px; border: 1px solid #d5dfd9; border-radius: 12px; background: #fff; box-shadow: 0 1px 0 rgba(255,255,255,.95) inset, 0 16px 38px rgba(15,23,42,.16); }
+.qrPopoverHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.qrPopoverHeader > div { display: grid; gap: 2px; }
+.qrPopoverHeader span { color: #718078; font-size: .72rem; }
+.qrClose { min-height: 30px; padding: 0 9px; border: 1px solid #d6dfda; border-radius: 8px; background: #fff; color: #52625a; font: inherit; font-size: .7rem; font-weight: 700; cursor: pointer; }
+.employeeIdentityMain { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.employeeAvatar { display: inline-grid; place-items: center; width: 44px; height: 44px; flex: 0 0 44px; border: 1px solid #d6e7de; border-radius: 50%; background: #eaf5ef; color: #1e6b47; font-size: .88rem; font-weight: 800; }
+.employeeIdentity { padding: 12px 14px; border: 1px solid #e6ece8; border-radius: 11px; background: #fafcfb; }
+.statusPillWarning { display: inline-flex; align-items: center; min-height: 30px; padding: 0 10px; border: 1px solid #f0d29d; border-radius: 999px; background: #fff8e8; color: #a55a08; font-size: .75rem; font-weight: 750; white-space: nowrap; }
+.configurationNotice { margin-top: 12px; padding: 12px 14px; border-color: #efd19a; border-radius: 10px; background: #fffaf0; }
+.primaryActions { align-items: center; margin-top: 12px; }
+.actionButtonPrimary, .actionButtonSecondary, .actionButtonLink { display: inline-flex; align-items: center; justify-content: center; min-height: 36px; padding: 0 14px; border-radius: 9px; font: inherit; font-size: .77rem; font-weight: 760; line-height: 1; text-decoration: none; cursor: pointer; transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease, background .12s ease; }
+.actionButtonPrimary { border: 1px solid #1f6d49; background: linear-gradient(#2f865f,#236f4d); color: #fff; box-shadow: 0 1px 0 rgba(255,255,255,.2) inset, 0 2px 0 #195b3c, 0 5px 10px rgba(31,109,73,.13); }
+.actionButtonSecondary { border: 1px solid #ced8d2; background: linear-gradient(#fff,#f7faf8); color: #30483c; box-shadow: 0 1px 0 #fff inset, 0 2px 0 #dde5e0, 0 4px 9px rgba(30,55,42,.055); }
+.actionButtonLink { border: 1px solid transparent; background: transparent; color: #24704d; box-shadow: none; }
+.actionButtonPrimary:hover:not(:disabled), .actionButtonSecondary:hover:not(:disabled), .actionButtonLink:hover { transform: translateY(-1px); }
+.actionButtonPrimary:active:not(:disabled), .actionButtonSecondary:active:not(:disabled), .actionButtonLink:active { transform: translateY(1px); box-shadow: none; }
+.actionButtonPrimary:disabled, .actionButtonSecondary:disabled { opacity: .55; cursor: wait; }
+.detailGrid { display: grid; grid-template-columns: minmax(0,.92fr) minmax(0,1.08fr); gap: 14px; margin-top: 16px; }
+.infoCard { min-width: 0; padding: 14px; border: 1px solid #dfe6e2; border-radius: 11px; background: #fff; box-shadow: 0 1px 0 rgba(255,255,255,.95) inset, 0 4px 12px rgba(25,50,38,.035); }
+.infoCardHeader { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 9px; }
+.infoCardHeader h3 { margin: 0; color: #20342a; font-size: .9rem; }
+.infoCardHeader span { color: #75827c; font-size: .7rem; }
+.infoRows { display: grid; }
+.infoRow { display: grid; grid-template-columns: minmax(120px,.55fr) minmax(0,1fr); gap: 12px; padding: 9px 0; border-top: 1px solid #edf1ef; }
+.infoRow:first-child { border-top: 0; }
+.infoRow span { color: #66766e; font-size: .77rem; }
+.infoRow strong { min-width: 0; overflow: hidden; color: #34473d; font-size: .78rem; font-weight: 700; text-overflow: ellipsis; }
+.historyEmpty { display: grid; place-items: center; gap: 5px; min-height: 150px; padding: 18px; color: #75827c; text-align: center; }
+.historyEmpty strong { color: #596961; font-size: .8rem; }
+.historyEmpty span { font-size: .72rem; }
+.qrPopover .pointForm { margin-top: 11px; }
+.qrPopover .pointForm label { font-size: .75rem; }
+.qrPopover .pointForm select { min-height: 36px; }
+.qrPopover .qrWrap { margin-top: 11px; padding: 10px; }
+.qrPopover .qrSvg { width: min(100%,220px); }
+@media (max-width: 900px) { .employeeControlGrid, .detailGrid { grid-template-columns: 1fr; } .panelHeader { align-items: flex-start; } }
+@media (max-width: 640px) { .managerPanel { padding: 14px; } .qrPopover { position: fixed; top: 76px; right: 12px; left: 12px; width: auto; } .primaryActions { align-items: stretch; } .actionButtonPrimary, .actionButtonSecondary, .actionButtonLink { flex: 1 1 auto; } }
