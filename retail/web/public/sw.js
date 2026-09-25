@@ -1,4 +1,4 @@
-const STATIC_CACHE = 'hung-phat-retail-static-v3';
+const STATIC_CACHE = 'hung-phat-retail-static-v2';
 
 self.addEventListener('install', () => self.skipWaiting());
 
