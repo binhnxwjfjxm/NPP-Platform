@@ -107,6 +107,42 @@ test('Issue #1140 Lô 7 calculates money exactly from closed attendance inputs w
   assert.equal(result.issueSummary.warnings.confirmedOvertimeEmployees, 1);
 });
 
+
+test('completed workdays stay fully payable even when attendance carries informational violation counts', () => {
+  const result = calculatePayrollSnapshot({
+    period,
+    attendanceSnapshot: {
+      employees: [{
+        employeeId: '20000000-0000-4000-8000-000000000009',
+        employeeCode: 'NV009',
+        employeeName: 'Nhân sự linh hoạt',
+        workDays: 1,
+        completedDays: 1,
+        paidLeaveDays: 0,
+        unpaidLeaveDays: 0,
+        confirmedOvertimeMinutes: 0,
+        incompleteDays: 0,
+        unexcusedAbsenceDays: 0,
+        violationDays: 1,
+      }],
+    },
+    salaryProfiles: [{
+      id: '30000000-0000-4000-8000-000000000009',
+      employee_id: '20000000-0000-4000-8000-000000000009',
+      monthly_salary: '1000000.00',
+      currency_code: 'VND',
+      effective_from: '2026-01-01',
+      effective_to: null,
+    }],
+    fixedComponents: [],
+    periodComponents: [],
+  });
+  const row = result.snapshot.rows[0];
+  assert.equal(row.standardWorkDays, 1);
+  assert.equal(row.payableWorkDays, 1);
+  assert.equal(row.salaryAmount, '1000000.00');
+});
+
 test('Issue #1140 Lô 7 blocks reconciliation inputs when salary or fixed effective-date coverage is ambiguous', () => {
   const result = calculatePayrollSnapshot({
     period,
