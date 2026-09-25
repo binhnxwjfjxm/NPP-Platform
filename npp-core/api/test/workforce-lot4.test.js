@@ -44,7 +44,7 @@ function baseRow(overrides = {}) {
   };
 }
 
-function event(id, type, occurredAt) {
+function event(id, type, occurredAt, overrides = {}) {
   return {
     id,
     installation_id: 'default',
@@ -63,6 +63,8 @@ function event(id, type, occurredAt) {
     created_at: occurredAt,
     point_code: 'VP',
     point_name: 'Văn phòng',
+    movement_reason: null,
+    ...overrides,
   };
 }
 
@@ -87,6 +89,27 @@ test('Issue #1110 Lô 4 computes actual, counted, late and early minutes from ca
   assert.deepEqual(day.attendanceSources, ['QR']);
 });
 
+
+
+test('external work can finish away from Công Ty and still count a full workday without an early-leave violation', () => {
+  const day = summarizeAttendanceDay(
+    baseRow(),
+    [
+      event('field-in', 'CHECK_IN', '2026-09-19T01:00:00.000Z'),
+      event('field-exit', 'TEMP_EXIT', '2026-09-19T06:00:00.000Z', { movement_reason: 'WORK_BUSINESS' }),
+      event('field-done', 'CHECK_OUT', '2026-09-19T07:00:00.000Z', {
+        source: 'MANUAL',
+        note: 'Kết thúc công việc bên ngoài',
+      }),
+    ],
+    new Date('2026-09-20T03:00:00.000Z'),
+  );
+
+  assert.equal(day.countedMinutes, 480);
+  assert.equal(day.earlyLeaveMinutes, 0);
+  assert.equal(day.status, 'COMPLETE');
+  assert.equal(day.validWork, true);
+});
 
 test('flexible effectiveness-based policy keeps a completed late arrival as a full workday without late or early violations', () => {
   const row = baseRow({
