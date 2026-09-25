@@ -31,6 +31,8 @@ test('migration 159 production operation is VPS-only, exact-main, backed up and 
 
   assert.match(workflow, /workflow_dispatch:/);
   assert.match(workflow, /group: vps-production-db-migration/);
+  assert.match(workflow, /migrate-159:[\s\S]*concurrency:[\s\S]*group: vps-production-db-migration/);
+  assert.doesNotMatch(workflow, /permissions:[\s\S]*concurrency:[\s\S]*jobs:/);
   assert.match(workflow, /\/migrate-vps-production-159/);
   assert.match(workflow, /Verify exact origin\/main SHA/);
   assert.match(workflow, /Fresh backup, restore rehearsal, migrate production and verify/);
