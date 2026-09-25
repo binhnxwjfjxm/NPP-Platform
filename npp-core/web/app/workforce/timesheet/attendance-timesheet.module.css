@@ -234,23 +234,127 @@ td.matrixSticky {
 }
 
 .dayModal {
-  width: min(100%, 680px);
+  width: min(980px, calc(100vw - 32px));
+  max-height: min(88vh, 860px);
+  overflow: auto;
+}
+
+.dayQuickPanel {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px solid #d9e4de;
+  border-radius: 10px;
+  background: #f8fbf9;
+}
+
+.dayQuickHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dayQuickHeader > div {
+  display: grid;
+  gap: 3px;
+}
+
+.dayQuickHeader span,
+.dayQuickDone {
+  color: #667085;
+  font-size: .74rem;
+}
+
+.dayQuickActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dayQuickExit {
+  display: grid;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid #e0e8e3;
+}
+
+.dayQuickExit > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.dayQuickExit input,
+.dayAdjustForm input {
+  min-height: 36px;
+  padding: 0 9px;
+  border: 1px solid #cfd8d3;
+  border-radius: 8px;
+  background: #fff;
+  font: inherit;
+}
+
+.dayReasonButton,
+.dayReasonActive {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid #d4ddd8;
+  border-radius: 8px;
+  background: #fff;
+  color: #405249;
+  font: inherit;
+  font-size: .74rem;
+  font-weight: 700;
+}
+
+.dayReasonActive {
+  border-color: #6ca98b;
+  background: #edf7f2;
+  color: #1f6a49;
+}
+
+.dayAdjustForm {
+  display: grid;
+  grid-template-columns: 130px 130px minmax(240px, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+  padding-top: 10px;
+  border-top: 1px solid #e0e8e3;
+}
+
+.dayAdjustForm label {
+  display: grid;
+  gap: 4px;
+  color: #667085;
+  font-size: .72rem;
+  font-weight: 700;
 }
 
 .dayDetailGrid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 8px;
 }
 
-.dayDetailGrid > div,
+.dayDetailGrid > div {
+  display: grid;
+  gap: 4px;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: #f7f8f7;
+}
+
 .dayDetailSection {
   display: grid;
   gap: 4px;
-  padding: 10px;
-  border: 1px solid var(--line, #dfe3e8);
-  border-radius: 9px;
-  background: #fff;
+  padding: 12px 0;
+  border: 0;
+  border-top: 1px solid var(--line, #dfe3e8);
+  border-radius: 0;
+  background: transparent;
 }
 
 .dayDetailGrid span,
@@ -272,6 +376,15 @@ td.matrixSticky {
 
   .dayDetailGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dayQuickHeader {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .dayAdjustForm {
+    grid-template-columns: 1fr;
   }
 }
 
