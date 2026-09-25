@@ -23,7 +23,8 @@ test('manager attendance screen is search-first, state-aware, and keeps QR in th
   assert.match(attendance, /\/api\/workforce\/attendance\/manual-bulk/);
   assert.match(attendance, /web-attendance-managed-manual-bulk/);
   assert.match(attendance, /Mục đích ra ngoài chung/);
-  assert.match(attendance, /Người không phù hợp trạng thái sẽ không bị chuyển sang hành động khác/);
+  assert.match(attendance, /Nhân sự không phù hợp trạng thái sẽ không bị chuyển sang hành động khác/);
+  assert.match(attendance, /onBlur=\{\(\) => window\.setTimeout\(\(\) => setManagedSearchOpen\(false\), 0\)\}/);
   assert.match(attendance, /attendance-qr-toggle/);
   assert.match(attendance, /attendance-qr-popover/);
   assert.match(attendance, /!managedEmployees && today/);

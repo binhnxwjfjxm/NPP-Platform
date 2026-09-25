@@ -844,6 +844,7 @@ export default function AttendanceWorkspace({
                       aria-autocomplete="list"
                       aria-expanded={managedSearchOpen && Boolean(managedEmployeeQuery.trim())}
                       onFocus={() => setManagedSearchOpen(Boolean(managedEmployeeQuery.trim()))}
+                      onBlur={() => window.setTimeout(() => setManagedSearchOpen(false), 0)}
                       onChange={(event) => {
                         setManagedEmployeeQuery(event.target.value);
                         setManagedSearchOpen(Boolean(event.target.value.trim()));
