@@ -41,7 +41,7 @@ test('Issue #1110 Lô 3 reuses canonical idempotency keys and does not send empl
   assert.match(workspace, /createIdempotencyKey\(operation\)/);
   assert.match(workspace, /attendancePayload\('QR', normalized\)/);
   assert.match(workspace, /attendancePayload\(\s*'MANUAL'/);
-  assert.match(workspace, /if \(today\?\.nextAction === 'EXIT'\)/);
+  assert.match(workspace, /today\?\.nextAction === 'EXIT'.*!options\?\.recordAction/);
   assert.match(workspace, /payload\.exitReason = exitReason/);
   assert.doesNotMatch(workspace, /employeeId:\s*today|occurredAt:/);
   assert.match(gateway, /mutationKey\(idempotencyKey, 'attendance-record'\)/);
