@@ -172,15 +172,15 @@ test('viewport Retail khóa zoom và giữ safe-area cho PWA', async () => {
   assert.match(css, /env\(safe-area-inset-bottom\)/);
 });
 
-test('bottom nav bám đáy viewport, safe-area chỉ nằm trong padding của thanh', async () => {
+test('bottom nav giữ kiểu nổi cũ: fixed và chừa safe-area bên ngoài thanh', async () => {
   const css = await read('app/retail-issue675.css');
   const start = css.indexOf('/* Bottom navigation */');
   const end = css.indexOf('/* Interaction */', start);
   const nav = css.slice(start, end);
   assert.match(nav, /\.retail-issue675 \.bottom-nav \{\s*position: fixed;/);
-  assert.match(nav, /bottom: 0;/);
-  assert.match(nav, /padding: 6px 6px calc\(6px \+ env\(safe-area-inset-bottom\)\);/);
-  assert.doesNotMatch(nav, /bottom: max\([^;]*safe-area-inset-bottom/);
+  assert.match(nav, /bottom: max\(9px, env\(safe-area-inset-bottom\)\);/);
+  assert.match(nav, /padding: 6px;/);
+  assert.doesNotMatch(nav, /padding:[^;]*safe-area-inset-bottom/);
 });
 
 test('trạng thái đơn có tone riêng và interaction có focus pressed disabled', async () => {

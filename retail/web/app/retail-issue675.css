@@ -214,14 +214,14 @@
   position: fixed;
   left: max(10px, env(safe-area-inset-left));
   right: max(10px, env(safe-area-inset-right));
-  bottom: 0;
+  bottom: max(9px, env(safe-area-inset-bottom));
   width: auto;
   max-width: 620px;
   min-height: 66px;
   margin-inline: auto;
   border: 1px solid rgba(89, 137, 111, .22);
   border-radius: 22px;
-  padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
+  padding: 6px;
   background: rgba(232, 246, 238, .86);
   box-shadow: 0 10px 30px rgba(19, 61, 38, .12);
   backdrop-filter: blur(18px) saturate(130%);
