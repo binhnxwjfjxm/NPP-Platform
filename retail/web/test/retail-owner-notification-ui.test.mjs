@@ -42,6 +42,10 @@ test('Service Worker hiện notification hệ thống, banner trong app và mở
   assert.match(worker, /retail:notification-foreground/);
   assert.match(worker, /notificationclick/);
   assert.match(worker, /retail:notification-open/);
+  assert.match(worker, /existing\.postMessage\(\{ type: 'retail:notification-open'/);
+  assert.match(worker, /await existing\.focus\(\)/);
+  assert.doesNotMatch(worker, /existing\.navigate\(target\)/);
+  assert.match(worker, /await self\.clients\.openWindow\(target\)/);
   assert.match(runtime, /RETAIL_NOTIFICATION_FOREGROUND_EVENT/);
   assert.match(runtime, /RETAIL_NOTIFICATION_OPEN_EVENT/);
   assert.match(workspace, /className="retail-notification-banner"/);

@@ -78,7 +78,6 @@ self.addEventListener('notificationclick', (event) => {
     const existing = windows.find((client) => new URL(client.url).origin === self.location.origin);
     if (existing) {
       existing.postMessage({ type: 'retail:notification-open', notification: payload });
-      if (existing.url !== target && 'navigate' in existing) await existing.navigate(target);
       await existing.focus();
       return;
     }
