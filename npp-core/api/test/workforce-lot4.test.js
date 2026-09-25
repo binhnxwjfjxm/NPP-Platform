@@ -44,7 +44,7 @@ function baseRow(overrides = {}) {
   };
 }
 
-function event(id, type, occurredAt) {
+function event(id, type, occurredAt, overrides = {}) {
   return {
     id,
     installation_id: 'default',
@@ -63,6 +63,8 @@ function event(id, type, occurredAt) {
     created_at: occurredAt,
     point_code: 'VP',
     point_name: 'Văn phòng',
+    movement_reason: null,
+    ...overrides,
   };
 }
 
@@ -85,6 +87,64 @@ test('Issue #1110 Lô 4 computes actual, counted, late and early minutes from ca
   assert.equal(day.status, 'LATE_AND_EARLY');
   assert.equal(day.validWork, true);
   assert.deepEqual(day.attendanceSources, ['QR']);
+});
+
+
+
+test('external work can finish away from Công Ty and still count a full workday without an early-leave violation', () => {
+  const day = summarizeAttendanceDay(
+    baseRow(),
+    [
+      event('field-in', 'CHECK_IN', '2026-09-19T01:00:00.000Z'),
+      event('field-exit', 'TEMP_EXIT', '2026-09-19T06:00:00.000Z', { movement_reason: 'WORK_BUSINESS' }),
+      event('field-done', 'CHECK_OUT', '2026-09-19T07:00:00.000Z', {
+        source: 'MANUAL',
+        note: 'Kết thúc công việc bên ngoài',
+      }),
+    ],
+    new Date('2026-09-20T03:00:00.000Z'),
+  );
+
+  assert.equal(day.countedMinutes, 480);
+  assert.equal(day.earlyLeaveMinutes, 0);
+  assert.equal(day.status, 'COMPLETE');
+  assert.equal(day.validWork, true);
+});
+
+test('flexible effectiveness-based policy keeps a completed late arrival as a full workday without late or early violations', () => {
+  const row = baseRow({
+    policy_time_mode: 'FLEXIBLE',
+    policy_name: 'Theo hiệu quả công việc',
+    policy_overtime_enabled: false,
+  });
+  const day = summarizeAttendanceDay(
+    row,
+    [
+      event('flex-in', 'CHECK_IN', '2026-09-19T03:15:00.000Z'),
+      event('flex-out', 'CHECK_OUT', '2026-09-19T10:00:00.000Z'),
+    ],
+    new Date('2026-09-20T03:00:00.000Z'),
+  );
+  const employee = {
+    id: day.employee.id,
+    code: day.employee.code,
+    full_name: day.employee.name,
+    branch_id: day.employee.branchId,
+    branch_code: day.employee.branchCode,
+    branch_name: day.employee.branchName,
+  };
+  const month = summarizeAttendanceMonth(employee, [day], {
+    from: '2026-09-01',
+    to: '2026-09-30',
+  });
+
+  assert.equal(day.lateMinutes, 0);
+  assert.equal(day.earlyLeaveMinutes, 0);
+  assert.equal(day.status, 'COMPLETE');
+  assert.equal(day.validWork, true);
+  assert.equal(month.completedDays, 1);
+  assert.equal(month.lateViolationDays, 0);
+  assert.equal(month.earlyLeaveViolationDays, 0);
 });
 
 test('Issue #1110 Lô 4 marks a past workday with no checkout as incomplete without inventing payroll data', () => {

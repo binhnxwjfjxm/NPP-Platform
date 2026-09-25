@@ -16,7 +16,8 @@ test('manager attendance screen is search-first, state-aware, and keeps QR in th
   assert.match(attendance, /Chấm công nhân sự/);
   assert.match(attendance, /Tìm nhân sự/);
   assert.match(attendance, /managed-employee-search-results/);
-  assert.match(attendance, /Chọn nhiều nhân sự/);
+  assert.match(attendance, /Chọn nhiều\s*\{bulkSelectedEmployees\.length/);
+  assert.doesNotMatch(attendance, /<span>Chấm công nhiều người<\/span>/);
   assert.match(attendance, /managed-attendance-bulk-picker/);
   assert.match(attendance, /managed-attendance-bulk-workspace/);
   assert.match(attendance, /Nhập mã, tên hoặc chi nhánh/);
@@ -34,6 +35,8 @@ test('manager attendance screen is search-first, state-aware, and keeps QR in th
   assert.match(attendance, /Kết thúc làm việc/);
   assert.match(attendance, /Ghi nhận ra ngoài/);
   assert.match(attendance, /Quay lại/);
+  assert.match(attendance, /Kết thúc công việc bên ngoài/);
+  assert.match(attendance, /END_EXTERNAL_WORK/);
   assert.match(attendance, /Lịch sử hôm nay/);
   assert.match(attendance, /statusGroup/);
   assert.match(attendance, /Thiếu chính sách tính công/);

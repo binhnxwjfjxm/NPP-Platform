@@ -446,10 +446,16 @@ export function summarizeAttendanceDay(row, employeeEvents, now = new Date(), co
   const pairing = pairValidEvents(events);
   const firstCheckIn = pairing.valid.find((event) => event.event_type === 'CHECK_IN') ?? null;
   const lastCheckOut = [...pairing.valid].reverse().find((event) => event.event_type === 'CHECK_OUT') ?? null;
+  const completedExternalWork = Boolean(
+    lastCheckOut?.source === 'MANUAL'
+      && lastCheckOut?.note === 'Kết thúc công việc bên ngoài'
+      && pairing.valid.some((event) => event.event_type === 'TEMP_EXIT' && event.movement_reason === 'WORK_BUSINESS'),
+  );
   const { expectedStartAt, expectedEndAt } = expectedTimes(row);
   const leave = buildLeaveProjection(control.leaveRequests ?? []);
   const requiredWindow = attendanceWindowForLeave(expectedStartAt, expectedEndAt, leave.approvedSegments);
   const presenceOnly = row.policy_attendance_basis === 'PRESENCE';
+  const flexibleTime = row.policy_time_mode === 'FLEXIBLE';
   const actualMinutes = presenceOnly ? 0 : Math.round(
     pairing.pairs.reduce((sum, pair) => sum + Math.max(0, pair.end - pair.start), 0) / 60_000,
   );
@@ -467,18 +473,20 @@ export function summarizeAttendanceDay(row, employeeEvents, now = new Date(), co
   const breakDeduction = hasRecordedBreak ? 0 : Number(row.policy_break_minutes || 0);
   const attendanceCountedMinutes = presenceOnly
     ? 0
-    : leave.approvedFraction > 0
-      ? Math.min(requiredTarget, attendanceOverlap)
-      : Math.max(0, countedBeforeBreak - breakDeduction);
+    : completedExternalWork && leave.approvedFraction <= 0 && fullTarget > 0
+      ? fullTarget
+      : leave.approvedFraction > 0
+        ? Math.min(requiredTarget, attendanceOverlap)
+        : Math.max(0, countedBeforeBreak - breakDeduction);
   const countedMinutes = fullTarget > 0
     ? Math.min(fullTarget, attendanceCountedMinutes + leaveCreditedMinutes)
     : Math.max(0, attendanceCountedMinutes + leaveCreditedMinutes);
-  const lateMinutes = presenceOnly || leave.approvedFraction >= 1 ? 0 : minutesAfter(
+  const lateMinutes = presenceOnly || flexibleTime || leave.approvedFraction >= 1 ? 0 : minutesAfter(
     firstCheckIn?.occurred_at,
     requiredWindow.startAt,
     row.policy_late_grace_minutes,
   );
-  const earlyLeaveMinutes = presenceOnly || leave.approvedFraction >= 1 ? 0 : minutesBefore(
+  const earlyLeaveMinutes = presenceOnly || flexibleTime || completedExternalWork || leave.approvedFraction >= 1 ? 0 : minutesBefore(
     lastCheckOut?.occurred_at,
     requiredWindow.endAt,
     row.policy_early_leave_grace_minutes,

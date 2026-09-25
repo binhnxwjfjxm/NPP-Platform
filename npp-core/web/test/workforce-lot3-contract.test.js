@@ -19,7 +19,7 @@ test('Issue #1110 Lô 3 uses camera QR scan and policy-controlled manual attenda
   assert.match(workspace, /formats: \['qr_code'\]/);
   assert.match(workspace, /Mở camera quét QR/);
   assert.match(workspace, /Chấm công trực tiếp/);
-  assert.match(workspace, /attendancePayload\('MANUAL'\)/);
+  assert.match(workspace, /attendancePayload\(\s*'MANUAL'/);
   assert.match(workspace, /Không cần nhập thời gian hoặc chọn nơi làm việc/);
   assert.doesNotMatch(workspace, /Dán mã QR/);
   assert.match(workspace, /Ghi nhận vào làm/);
@@ -40,8 +40,8 @@ test('Issue #1110 Lô 3 reuses canonical idempotency keys and does not send empl
   ]);
   assert.match(workspace, /createIdempotencyKey\(operation\)/);
   assert.match(workspace, /attendancePayload\('QR', normalized\)/);
-  assert.match(workspace, /attendancePayload\('MANUAL'\)/);
-  assert.match(workspace, /if \(today\?\.nextAction === 'EXIT'\)/);
+  assert.match(workspace, /attendancePayload\(\s*'MANUAL'/);
+  assert.match(workspace, /today\?\.nextAction === 'EXIT'.*!options\?\.recordAction/);
   assert.match(workspace, /payload\.exitReason = exitReason/);
   assert.doesNotMatch(workspace, /employeeId:\s*today|occurredAt:/);
   assert.match(gateway, /mutationKey\(idempotencyKey, 'attendance-record'\)/);
