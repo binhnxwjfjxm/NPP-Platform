@@ -1,81 +1,148 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { generateKeyPairSync, randomBytes } from 'node:crypto';
 import {
   isRetailOwner,
-  listRetailOwnerExternalIds,
-  retailOwnerExternalId,
-  retailOwnerPushInternals,
-  sendRetailOwnerPush,
+  normalizeRetailPushSubscription,
+  retailOwnerNotificationInternals,
+  retailOwnerUserId,
+  retailWebPushPublicConfig,
+  sendRetailOwnerWebPush,
 } from '../src/services/retail-owner-notification.js';
+import { buildWebPushRequest } from '../src/services/retail-web-push-crypto.js';
 import { manualSalesOrderRouteInternals } from '../src/routes/manual-sales-orders.js';
 
 const OWNER_ID = '11111111-1111-4111-8111-111111111111';
 const ORDER_ID = '22222222-2222-4222-8222-222222222222';
 
-function env() {
+function rawPublicKey(publicKey) {
+  const jwk = publicKey.export({ format: 'jwk' });
+  return Buffer.concat([
+    Buffer.from([0x04]),
+    Buffer.from(jwk.x, 'base64url'),
+    Buffer.from(jwk.y, 'base64url'),
+  ]).toString('base64url');
+}
+
+function vapidEnv() {
+  const pair = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+  const privateJwk = pair.privateKey.export({ format: 'jwk' });
   return {
-    NODE_ENV: 'test',
-    RETAIL_ONESIGNAL_APP_ID: '33333333-3333-4333-8333-333333333333',
-    RETAIL_ONESIGNAL_API_KEY: 'test-api-key-012345678901234567890',
-    RETAIL_PUBLIC_URL: 'https://retail.example.test',
+    RETAIL_WEB_PUSH_VAPID_PUBLIC_KEY: rawPublicKey(pair.publicKey),
+    RETAIL_WEB_PUSH_VAPID_PRIVATE_KEY: privateJwk.d,
+    RETAIL_WEB_PUSH_VAPID_SUBJECT: 'https://retail.example.test',
+  };
+}
+
+function browserSubscription() {
+  const pair = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+  return {
+    endpoint: 'https://push.example.test/send/device-1',
+    expirationTime: null,
+    keys: {
+      p256dh: rawPublicKey(pair.publicKey),
+      auth: randomBytes(16).toString('base64url'),
+    },
   };
 }
 
 test('Retail push công nhận cả Security Owner và Implementation Owner canonical', () => {
   const owner = { actorId: `user:${OWNER_ID}`, roles: ['system:security-owner'], sourceApp: 'retail-web' };
   assert.equal(isRetailOwner(owner), true);
-  assert.equal(retailOwnerExternalId(owner), OWNER_ID);
+  assert.equal(retailOwnerUserId(owner), OWNER_ID);
   assert.equal(isRetailOwner({ ...owner, roles: ['system:implementation-owner'] }), true);
   assert.equal(isRetailOwner({ ...owner, roles: ['sales-manager'] }), false);
   assert.equal(isRetailOwner({ ...owner, actorId: 'bootstrap:core-api' }), false);
 });
 
-test('danh sách nhận push lấy cả permanent và temporary Owner đang hoạt động', async () => {
-  let capturedSql = '';
-  const db = {
-    async query(sql, values) {
-      capturedSql = String(sql);
-      assert.deepEqual(values, ['installation-a']);
-      return { rows: [{ user_id: OWNER_ID }, { user_id: OWNER_ID }] };
-    },
-  };
-  const ids = await listRetailOwnerExternalIds(db, { installationId: 'installation-a' });
-  assert.deepEqual(ids, [OWNER_ID]);
-  assert.match(capturedSql, /owner_kind IN \('PERMANENT', 'TEMPORARY'\)/);
-  assert.match(capturedSql, /u\.is_active = true/);
-  assert.match(capturedSql, /e\.is_active = true/);
+test('subscription Web Push chỉ nhận endpoint https và khóa Push API hợp lệ', () => {
+  const input = browserSubscription();
+  const normalized = normalizeRetailPushSubscription(input);
+  assert.equal(normalized.endpoint, input.endpoint);
+  assert.equal(normalized.endpointHash.length, 64);
+  assert.equal(normalized.keys.p256dh, input.keys.p256dh);
+  assert.throws(
+    () => normalizeRetailPushSubscription({ ...input, endpoint: 'http://push.example.test/device' }),
+    /invalid_subscription/,
+  );
 });
 
-test('OneSignal payload dùng external_id của Owner, URL Retail và không chứa âm tùy chỉnh', async () => {
+test('VAPID config chỉ trả public key, không bao giờ trả private key', () => {
+  const env = vapidEnv();
+  const config = retailWebPushPublicConfig(env);
+  assert.equal(config.configured, true);
+  assert.equal(config.publicKey, env.RETAIL_WEB_PUSH_VAPID_PUBLIC_KEY);
+  assert.equal(Object.prototype.hasOwnProperty.call(config, 'privateKey'), false);
+});
+
+test('Web Push request dùng VAPID + aes128gcm và gửi trực tiếp tới browser push endpoint', () => {
+  const env = vapidEnv();
+  const runtime = retailOwnerNotificationInternals.runtimeConfig(env);
+  const subscription = browserSubscription();
+  const request = buildWebPushRequest(subscription, {
+    type: 'retail_notification_test',
+    title: 'Bán tại quầy',
+    body: 'Thông báo thử',
+    url: '/',
+  }, runtime, { nowMs: 1_800_000_000_000 });
+
+  assert.equal(request.endpoint, subscription.endpoint);
+  assert.match(request.headers.Authorization, /^vapid t=/);
+  assert.equal(request.headers['Content-Encoding'], 'aes128gcm');
+  assert.equal(request.headers.Urgency, 'high');
+  assert.ok(Buffer.isBuffer(request.body));
+  assert.ok(request.body.length > 100);
+  assert.doesNotMatch(JSON.stringify(request.headers), /onesignal|r2|audio/i);
+});
+
+test('gửi đơn tới subscription Owner và đánh dấu gửi thành công', async () => {
+  const env = vapidEnv();
+  const subscription = browserSubscription();
+  const sqlCalls = [];
   let request = null;
-  const result = await sendRetailOwnerPush({
+  const db = {
+    async query(sql, values) {
+      const statement = String(sql);
+      sqlCalls.push(statement);
+      if (statement.includes('FROM shared.retail_web_push_subscriptions s')) {
+        assert.deepEqual(values, ['installation-a']);
+        return {
+          rows: [{
+            endpoint_hash: 'a'.repeat(64),
+            user_id: OWNER_ID,
+            endpoint: subscription.endpoint,
+            p256dh: subscription.keys.p256dh,
+            auth_secret: subscription.keys.auth,
+            expiration_time: null,
+          }],
+        };
+      }
+      return { rows: [], rowCount: 1 };
+    },
+  };
+  const result = await sendRetailOwnerWebPush({
+    db,
     installationId: 'installation-a',
-    recipientExternalIds: [OWNER_ID],
     order: { id: ORDER_ID, number: 'SO-000839', total: '486000' },
-    env: env(),
+    env,
     fetchImpl: async (url, options) => {
       request = { url, options };
-      return { ok: true, status: 200, json: async () => ({ id: 'notification-1' }) };
+      return { ok: true, status: 201 };
     },
   });
   assert.equal(result.ok, true);
-  assert.equal(result.recipientCount, 1);
-  assert.equal(request.url, retailOwnerPushInternals.ONESIGNAL_PUSH_ENDPOINT);
-  assert.match(request.options.headers.Authorization, /^Key /);
-  const payload = JSON.parse(request.options.body);
-  assert.deepEqual(payload.include_aliases.external_id, [OWNER_ID]);
-  assert.equal(payload.target_channel, 'push');
-  assert.equal(payload.url, `https://retail.example.test/?order=${ORDER_ID}`);
-  assert.equal(payload.data.salesOrderId, ORDER_ID);
-  assert.match(payload.contents.en, /SO-000839/);
-  assert.doesNotMatch(request.options.body, /sound|audio|r2/i);
+  assert.equal(result.sentCount, 1);
+  assert.equal(request.url, subscription.endpoint);
+  assert.match(request.options.headers.Authorization, /^vapid t=/);
+  assert.ok(sqlCalls.some((sql) => sql.includes('owner_kind IN')));
+  assert.ok(sqlCalls.some((sql) => sql.includes('last_success_at = now()')));
 });
 
-test('thiếu cấu hình OneSignal không gọi provider', async () => {
+test('thiếu VAPID không gọi push endpoint', async () => {
   let calls = 0;
-  const result = await sendRetailOwnerPush({
+  const result = await sendRetailOwnerWebPush({
+    db: { query: async () => ({ rows: [] }) },
     installationId: 'installation-a',
-    recipientExternalIds: [OWNER_ID],
     env: {},
     fetchImpl: async () => { calls += 1; },
   });

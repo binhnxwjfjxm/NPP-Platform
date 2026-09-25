@@ -240,6 +240,32 @@ jobs:
 
           ensure_node20
 
+          ensure_retail_web_push_runtime() {
+            public_count="$(sudo -n grep -c '^RETAIL_WEB_PUSH_VAPID_PUBLIC_KEY=' "$env_file" || true)"
+            private_count="$(sudo -n grep -c '^RETAIL_WEB_PUSH_VAPID_PRIVATE_KEY=' "$env_file" || true)"
+            subject_count="$(sudo -n grep -c '^RETAIL_WEB_PUSH_VAPID_SUBJECT=' "$env_file" || true)"
+            if [ "$public_count" = 0 ] && [ "$private_count" = 0 ]; then
+              tmp="$(mktemp)"
+              node -e 'const {generateKeyPairSync}=require("node:crypto");const pair=generateKeyPairSync("ec",{namedCurve:"prime256v1"});const pub=pair.publicKey.export({format:"jwk"});const priv=pair.privateKey.export({format:"jwk"});const raw=Buffer.concat([Buffer.from([4]),Buffer.from(pub.x,"base64url"),Buffer.from(pub.y,"base64url")]).toString("base64url");process.stdout.write("RETAIL_WEB_PUSH_VAPID_PUBLIC_KEY="+raw+"\\nRETAIL_WEB_PUSH_VAPID_PRIVATE_KEY="+priv.d+"\\n");' >"$tmp"
+              sudo -n tee -a "$env_file" <"$tmp" >/dev/null
+              rm -f "$tmp"
+              public_count=1
+              private_count=1
+            fi
+            test "$public_count" = 1
+            test "$private_count" = 1
+            if [ "$subject_count" = 0 ]; then
+              printf 'RETAIL_WEB_PUSH_VAPID_SUBJECT=https://retail.nguyenlieuhungphat.com\n' | sudo -n tee -a "$env_file" >/dev/null
+            fi
+            public_key="$(sudo -n awk -F= '/^RETAIL_WEB_PUSH_VAPID_PUBLIC_KEY=/{sub(/^RETAIL_WEB_PUSH_VAPID_PUBLIC_KEY=/,""); gsub(/^["'"'"']|["'"'"']$/ ,""); print; exit}' "$env_file")"
+            private_key="$(sudo -n awk -F= '/^RETAIL_WEB_PUSH_VAPID_PRIVATE_KEY=/{sub(/^RETAIL_WEB_PUSH_VAPID_PRIVATE_KEY=/,""); gsub(/^["'"'"']|["'"'"']$/ ,""); print; exit}' "$env_file")"
+            subject="$(sudo -n awk -F= '/^RETAIL_WEB_PUSH_VAPID_SUBJECT=/{sub(/^RETAIL_WEB_PUSH_VAPID_SUBJECT=/,""); gsub(/^["'"'"']|["'"'"']$/ ,""); print; exit}' "$env_file")"
+            [[ "$public_key" =~ ^B[A-Za-z0-9_-]{86}$ ]]
+            [[ "$private_key" =~ ^[A-Za-z0-9_-]{43}$ ]]
+            [[ "$subject" =~ ^https:// ]]
+            unset public_key private_key subject
+          }
+
           ensure_face_runtime() {
             if ! sudo -n grep -q '^FACE_TEMPLATE_ENCRYPTION_KEY=' "$env_file"; then
               face_key="$(node -e "process.stdout.write(require('node:crypto').randomBytes(32).toString('hex'))")"
@@ -264,6 +290,7 @@ jobs:
 
           if [ "$action" = deploy ]; then
             ensure_face_runtime
+            ensure_retail_web_push_runtime
           fi
 
           sudo -n install -d -m 0755 "$releases"
