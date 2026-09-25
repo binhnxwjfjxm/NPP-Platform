@@ -121,7 +121,7 @@ export default async function ReceivablesPage({ searchParams }: PageProps) {
                 item.salesOrderNumber ?? '',
                 item.deliveryOrderNumber ?? '',
                 [item.warehouseCode, item.warehouseName].filter(Boolean).join(' — '),
-                item.collectionPolicy,
+                collectionPolicyLabel(item.collectionPolicy),
                 item.currencyCode,
                 item.originalAmount,
                 item.allocatedAmount,

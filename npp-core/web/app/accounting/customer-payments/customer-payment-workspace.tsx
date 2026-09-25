@@ -67,6 +67,14 @@ function statusLabel(status: CustomerPayment['status']) {
   }[status];
 }
 
+function paymentMethodLabel(method: string) {
+  return {
+    CASH: 'Tiền mặt',
+    BANK_TRANSFER: 'Chuyển khoản',
+    OTHER: 'Khác',
+  }[method] ?? 'Khác';
+}
+
 function searchText(value: unknown) {
   return String(value ?? '')
     .normalize('NFD')
@@ -612,7 +620,7 @@ export default function CustomerPaymentWorkspace({
                 payment.remainingAmount,
                 payment.relatedRemainingAmount,
                 statusLabel(payment.status),
-                payment.paymentMethod,
+                paymentMethodLabel(payment.paymentMethod),
                 payment.externalReference ?? '',
               ]),
             }]}

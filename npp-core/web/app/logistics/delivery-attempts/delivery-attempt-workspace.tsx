@@ -71,6 +71,17 @@ const RESULT_LABELS: Record<Attempt['result'], string> = {
   rescheduled: 'Hẹn giao lại',
 };
 
+const REASON_LABELS: Readonly<Record<string, string>> = {
+  CUSTOMER_CLOSED: 'Khách đóng cửa',
+  CUSTOMER_REFUSED: 'Khách từ chối nhận',
+  ADDRESS_ISSUE: 'Không xác định được địa chỉ',
+};
+
+function reasonLabel(reasonCode: string | null) {
+  if (!reasonCode) return '';
+  return REASON_LABELS[reasonCode] ?? 'Lý do khác';
+}
+
 const POD_LABELS: Record<Proof['podType'], string> = {
   photo: 'Ảnh giao hàng',
   signature: 'Tham chiếu chữ ký',
@@ -244,7 +255,7 @@ export default function DeliveryAttemptWorkspace() {
                       attempt.customerName ?? '',
                       RESULT_LABELS[attempt.result],
                       formatDateTime(attempt.attemptedAt),
-                      attempt.reasonCode ?? '',
+                      reasonLabel(attempt.reasonCode),
                       attempt.rescheduledFor ? formatDateTime(attempt.rescheduledFor) : '',
                       attempt.note ?? '',
                     ]),

@@ -62,6 +62,14 @@ function statusLabel(status: SupplierPayment['status']) {
   }[status];
 }
 
+function paymentMethodLabel(method: string) {
+  return {
+    CASH: 'Tiền mặt',
+    BANK_TRANSFER: 'Chuyển khoản',
+    OTHER: 'Khác',
+  }[method] ?? 'Khác';
+}
+
 async function readResponse<T>(response: Response): Promise<T> {
   const payload = await response.json() as ApiEnvelope<T>;
   if (!response.ok || !Object.prototype.hasOwnProperty.call(payload, 'data')) {
@@ -308,7 +316,7 @@ export default function SupplierPaymentWorkspace({
                 payment.allocatedAmount,
                 payment.remainingAmount,
                 statusLabel(payment.status),
-                payment.paymentMethod,
+                paymentMethodLabel(payment.paymentMethod),
                 payment.externalReference ?? '',
                 payment.note ?? '',
               ]),

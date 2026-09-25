@@ -37,6 +37,13 @@ test('filtered exports use the same in-screen filtered collections', () => {
   assert.match(read('app/purchasing/purchase-prices/PurchasePriceWorkspace.tsx'), /rows: visiblePrices\.map/);
 });
 
+test('export rows use office labels instead of raw payment, collection and delivery codes', () => {
+  assert.match(read('app/accounting/customer-payments/customer-payment-workspace.tsx'), /paymentMethodLabel\(payment\.paymentMethod\)/);
+  assert.match(read('app/accounting/supplier-payments/supplier-payment-workspace.tsx'), /paymentMethodLabel\(payment\.paymentMethod\)/);
+  assert.match(read('app/accounting/receivables/page.tsx'), /collectionPolicyLabel\(item\.collectionPolicy\)/);
+  assert.match(read('app/logistics/delivery-attempts/delivery-attempt-workspace.tsx'), /reasonLabel\(attempt\.reasonCode\)/);
+});
+
 test('financial multi-table screens stay in one workbook', () => {
   const receivables = read('app/accounting/receivables/page.tsx');
   const payables = read('app/accounting/payables/page.tsx');
