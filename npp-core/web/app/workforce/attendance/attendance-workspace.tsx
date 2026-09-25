@@ -71,6 +71,17 @@ const EXIT_REASON_LABEL: Record<Exclude<ExitReason, ''>, string> = {
   OTHER: 'Lý do khác',
 };
 
+const ATTENDANCE_METHOD_LABEL: Record<AttendanceToday['policy']['attendanceMethod'], string> = {
+  QR: 'Quét mã QR tại nơi làm việc',
+  FACE: 'Quét khuôn mặt tại máy chấm công',
+  QR_FACE: 'Quét mã QR hoặc quét khuôn mặt',
+  FACE_MANUAL: 'Quét khuôn mặt hoặc chấm công trực tiếp',
+  ALL: 'Mã QR, quét khuôn mặt hoặc chấm công trực tiếp',
+  MANUAL: 'Chấm công trực tiếp',
+  BOTH: 'Quét mã QR hoặc chấm công trực tiếp',
+  NONE: 'Không yêu cầu chấm công',
+};
+
 function eventLabel(event: AttendanceToday['events'][number]) {
   if (event.event_type === 'CHECK_IN') return 'Vào làm';
   if (event.event_type === 'CHECK_OUT') return 'Kết thúc làm việc';
@@ -829,7 +840,7 @@ export default function AttendanceWorkspace({
 
             {faceAllowed ? (
               <div className={localStyles.methodNotice} data-testid="attendance-face-method">
-                Quét khuôn mặt được thực hiện tại máy chấm công của nơi làm việc.
+                Quét khuôn mặt được thực hiện tại máy chấm công của nơi làm việc. Nhân sự không cần chọn tên hoặc nhập giờ trên trình duyệt.
               </div>
             ) : null}
 
@@ -874,7 +885,7 @@ export default function AttendanceWorkspace({
               <div className={localStyles.manualAttendanceCard} data-testid="attendance-manual-record">
                 <div>
                   <strong>Chấm công trực tiếp</strong>
-                  <span>Hệ thống tự ghi nhận giờ hiện tại.</span>
+                  <span>Hệ thống tự ghi nhận giờ hiện tại. Không cần nhập thời gian hoặc chọn nơi làm việc.</span>
                 </div>
                 <button
                   type="button"
