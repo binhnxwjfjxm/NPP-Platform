@@ -107,7 +107,10 @@ test('Web Push request dùng VAPID + aes128gcm và gửi trực tiếp tới bro
   assert.equal(request.headers.Urgency, 'high');
   assert.ok(Buffer.isBuffer(request.body));
   assert.ok(request.body.length > 100);
-  assert.doesNotMatch(JSON.stringify(request.headers), /onesignal|r2|audio/i);
+  assert.deepEqual(
+    Object.keys(request.headers).sort(),
+    ['Authorization', 'Content-Encoding', 'Content-Type', 'TTL', 'Urgency'].sort(),
+  );
 });
 
 test('gửi đơn tới subscription Owner và đánh dấu gửi thành công', async () => {
