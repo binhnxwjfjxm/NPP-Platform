@@ -126,8 +126,6 @@ export default function AttendanceAdjustmentWorkspace({
   const [requestOut, setRequestOut] = useState('');
   const [requestReason, setRequestReason] = useState('');
 
-  const [quickAction, setQuickAction] = useState<'CHECK_IN' | 'CHECK_OUT'>('CHECK_IN');
-  const [quickReason, setQuickReason] = useState('');
   const [directDate, setDirectDate] = useState(initialWorkDate || initialToday);
   const [directIn, setDirectIn] = useState('');
   const [directOut, setDirectOut] = useState('');
@@ -142,7 +140,6 @@ export default function AttendanceAdjustmentWorkspace({
 
   const selfAttempt = useRef<Attempt>(null);
   const reviewAttempt = useRef<Attempt>(null);
-  const quickAttempt = useRef<Attempt>(null);
   const directAttempt = useRef<Attempt>(null);
   const lockAttempt = useRef<Attempt>(null);
 
@@ -249,33 +246,6 @@ export default function AttendanceAdjustmentWorkspace({
         : 'Yêu cầu đã được từ chối.');
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Không xử lý được yêu cầu điều chỉnh');
-    } finally { setBusy(false); }
-  }
-
-  async function submitQuickAttendance(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!directEmployeeId || !quickReason.trim()) return;
-    const payload = {
-      employeeId: directEmployeeId,
-      recordNowAction: quickAction,
-      reason: quickReason.trim(),
-    };
-    const key = stableKey(quickAttempt, 'web-attendance-manual-now', payload);
-    setBusy(true); setError(null); setNotice(null);
-    try {
-      await requestJson<AttendanceAdjustmentMutationResult>('/api/workforce/adjustments/direct', {
-        method: 'POST',
-        headers: { 'Idempotency-Key': key },
-        body: JSON.stringify(payload),
-      });
-      quickAttempt.current = null;
-      setQuickReason('');
-      await load(0);
-      setNotice(quickAction === 'CHECK_IN'
-        ? 'Đã chấm vào cho nhân sự theo giờ hệ thống.'
-        : 'Đã chấm ra cho nhân sự theo giờ hệ thống.');
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : 'Không ghi nhận được chấm công tay');
     } finally { setBusy(false); }
   }
 
@@ -437,21 +407,11 @@ export default function AttendanceAdjustmentWorkspace({
             </section> : null}
 
             {data?.capabilities.canManage ? <section className={styles.panel}>
-              <h3>Chấm công tay và điều chỉnh công</h3>
-              <p className={styles.note}>Quản lý chọn đúng nhân sự. Chấm công tay luôn lấy giờ hiện tại từ máy chủ; không nhập giờ thay cho nhân sự.</p>
-              <form onSubmit={(event) => void submitQuickAttendance(event)}>
-                <div className={styles.formGrid}>
-                  <label className={styles.full}>Nhân sự<select value={directEmployeeId} onChange={(event) => setDirectEmployeeId(event.target.value)} required><option value="">Chọn nhân sự</option>{directEmployees.map((employee) => <option key={employee.id} value={employee.id}>{employee.code} · {employee.full_name}</option>)}</select></label>
-                  <label>Thao tác<select value={quickAction} onChange={(event) => setQuickAction(event.target.value as 'CHECK_IN' | 'CHECK_OUT')}><option value="CHECK_IN">Chấm vào ngay</option><option value="CHECK_OUT">Chấm ra ngay</option></select></label><span />
-                  <label className={styles.full}>Lý do chấm tay<textarea value={quickReason} onChange={(event) => setQuickReason(event.target.value)} maxLength={1000} placeholder="Ví dụ: nhân sự không sử dụng thiết bị chấm công" required /></label>
-                </div>
-                <div className={styles.actions}><button type="submit" className={styles.primary} disabled={busy || !directEmployeeId || !quickReason.trim()}>{quickAction === 'CHECK_IN' ? 'Chấm vào ngay' : 'Chấm ra ngay'}</button></div>
-              </form>
-
-              <h4>Điều chỉnh giờ đã ghi nhận</h4>
+              <h3>Điều chỉnh giờ đã ghi nhận</h3>
               <p className={styles.note}>Chỉ dùng phần này khi cần sửa lại giờ công theo chứng từ hoặc xác nhận của quản lý.</p>
               <form onSubmit={(event) => void submitDirect(event)}>
                 <div className={styles.formGrid}>
+                  <label className={styles.full}>Nhân sự<select value={directEmployeeId} onChange={(event) => setDirectEmployeeId(event.target.value)} required><option value="">Chọn nhân sự</option>{directEmployees.map((employee) => <option key={employee.id} value={employee.id}>{employee.code} · {employee.full_name}</option>)}</select></label>
                   <label>Ngày công<input type="date" max={initialToday} value={directDate} onChange={(event) => setDirectDate(event.target.value)} required /></label><span />
                   <label>Giờ vào đúng<input type="datetime-local" value={directIn} onChange={(event) => setDirectIn(event.target.value)} /></label>
                   <label>Giờ ra đúng<input type="datetime-local" value={directOut} onChange={(event) => setDirectOut(event.target.value)} /></label>

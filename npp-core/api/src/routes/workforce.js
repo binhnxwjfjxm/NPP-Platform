@@ -1697,6 +1697,70 @@ async function handleAttendanceQrToken(req, res, context) {
   });
 }
 
+
+async function handleManagedManualAttendance(req, res, context, method) {
+  const companyScope = isCompanyScope(context.requestContext);
+  const branchIds = [...(context.requestContext.scopes.branchIds ?? [])];
+
+  if (method === 'GET') {
+    const result = await workforceService.listManagedManualAttendanceEmployees(context.getPool(), {
+      installationId: context.requestContext.installationId,
+      companyScope,
+      branchIds,
+    });
+    if (!result.ok) {
+      sendError(res, createError(result.code, result.message, {}, false, statusFor(result)), context.requestId, context.receivedAt);
+      return;
+    }
+    sendSuccess(res, result.data, context.requestId, context.receivedAt);
+    return;
+  }
+
+  const parsed = await parsePayload(req, res, context);
+  if (!parsed.ok) return;
+  const payload = {
+    employeeId: String(parsed.payload?.employeeId ?? '').trim(),
+    action: String(parsed.payload?.action ?? '').trim().toUpperCase(),
+  };
+  await runIdempotentMutation(req, res, context, {
+    route: '/api/workforce/attendance/manual',
+    payload,
+    successStatus: 201,
+    mutate: async (client) => {
+      const result = await workforceService.recordManagedManualAttendance(client, {
+        installationId: context.requestContext.installationId,
+        employeeId: payload.employeeId,
+        action: payload.action,
+        actorId: context.requestContext.actorId,
+        requestId: context.requestId,
+        companyScope,
+        branchIds,
+      });
+      if (!result.ok) return result;
+      return {
+        ok: true,
+        data: { event: result.event, workDate: result.workDate, point: result.point },
+        audit: {
+          requestContext: context.requestContext,
+          action: result.event.event_type === 'CHECK_IN' || result.event.event_type === 'RETURN'
+            ? 'manual-check-in'
+            : 'manual-check-out',
+          resourceType: 'attendance-event',
+          resourceId: result.event.id,
+          beforeData: null,
+          afterData: result.event,
+          metadata: {
+            employeeId: payload.employeeId,
+            workDate: result.workDate,
+            eventType: result.event.event_type,
+            managedByOperator: true,
+          },
+        },
+      };
+    },
+  });
+}
+
 async function handleAttendanceRecord(req, res, context) {
   const parsed = await parsePayload(req, res, context);
   if (!parsed.ok) return;
@@ -1741,7 +1805,7 @@ export async function handleWorkforceRoutes(req, res, options) {
   const pathname = new URL(`http://localhost${req.url}`).pathname;
   if (!pathname.startsWith('/api/workforce/')) return false;
   const route = pathname.slice('/api/workforce'.length);
-  if (!['/policies', '/assignments', '/assignments/coverage', '/assignments/bulk', '/schedules', '/schedule-planning', '/attendance/today', '/attendance/timesheet', '/attendance/record', '/attendance/points', '/attendance/qr-token', '/attendance/adjustments', '/attendance/adjustments/review', '/attendance/adjustments/direct', '/attendance/period-locks', '/leave-types', '/leave-types/update', '/leave/requests', '/leave/requests/manual', '/leave/requests/review', '/leave/requests/cancel', '/leave/attachments', '/leave/balances', '/leave/balances/entries', '/overtime', '/overtime/review', '/overtime/actual', '/overtime/confirm', '/attendance/periods', '/attendance/payroll-input', '/payroll', '/attendance/violations', '/attendance/violations/explain', '/attendance/violations/review'].includes(route)) return false;
+  if (!['/policies', '/assignments', '/assignments/coverage', '/assignments/bulk', '/schedules', '/schedule-planning', '/attendance/today', '/attendance/timesheet', '/attendance/record', '/attendance/manual', '/attendance/points', '/attendance/qr-token', '/attendance/adjustments', '/attendance/adjustments/review', '/attendance/adjustments/direct', '/attendance/period-locks', '/leave-types', '/leave-types/update', '/leave/requests', '/leave/requests/manual', '/leave/requests/review', '/leave/requests/cancel', '/leave/attachments', '/leave/balances', '/leave/balances/entries', '/overtime', '/overtime/review', '/overtime/actual', '/overtime/confirm', '/attendance/periods', '/attendance/payroll-input', '/payroll', '/attendance/violations', '/attendance/violations/explain', '/attendance/violations/review'].includes(route)) return false;
 
   const auth = options.authenticate(req, options.config);
   if (!auth.ok) {
@@ -1760,6 +1824,7 @@ export async function handleWorkforceRoutes(req, res, options) {
     (route === '/attendance/today' && method === 'GET')
     || (route === '/attendance/timesheet' && method === 'GET')
     || (route === '/attendance/record' && method === 'POST')
+    || (route === '/attendance/manual' && ['GET', 'POST'].includes(method))
     || (route === '/overtime' && ['GET', 'POST'].includes(method))
     || (['/overtime/review', '/overtime/actual', '/overtime/confirm'].includes(route) && method === 'POST')
     || (route === '/attendance/periods' && ['GET', 'POST'].includes(method))
@@ -1849,6 +1914,8 @@ export async function handleWorkforceRoutes(req, res, options) {
         ? (canManagePayroll || canClosePayroll || canAdjustPayroll)
         : (canReadPayroll || canManagePayroll || canClosePayroll || canAdjustPayroll || canExportPayroll),
     };
+  } else if (route === '/attendance/manual') {
+    permission = { ok: canManageAdjustments };
   } else if (route === '/attendance/adjustments') {
     if (method === 'GET') {
       permission = canManageAdjustments ? { ok: true } : { ok: canSubmitOwnAdjustment };
@@ -1942,6 +2009,7 @@ export async function handleWorkforceRoutes(req, res, options) {
       },
     });
     else if (route === '/attendance/record') await handleAttendanceRecord(req, res, context);
+    else if (route === '/attendance/manual') await handleManagedManualAttendance(req, res, context, method);
     else if (route === '/overtime') await handleOvertimeRequests(req, res, context, method, { selfOnly: overtimeSelfOnly });
     else if (route === '/overtime/review') await handleOvertimeReview(req, res, context);
     else if (route === '/overtime/actual') await handleOvertimeActual(req, res, context);

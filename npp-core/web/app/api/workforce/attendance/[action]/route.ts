@@ -4,8 +4,10 @@ import {
   createAttendanceQrToken,
   getAttendancePointManagement,
   getAttendanceToday,
+  getManagedManualAttendanceEmployees,
   normalizeWorkforceGatewayError,
   recordAttendance,
+  recordManagedManualAttendance,
   resolveWorkforceRequestId,
 } from '../../../../../lib/workforce-gateway';
 
@@ -38,7 +40,9 @@ export async function GET(request: NextRequest, { params }: { params: { action: 
       ? await getAttendanceToday<unknown>(requestId)
       : params.action === 'points'
         ? await getAttendancePointManagement<unknown>(requestId)
-        : null;
+        : params.action === 'manual'
+          ? await getManagedManualAttendanceEmployees<unknown>(requestId)
+          : null;
     if (data === null) {
       return NextResponse.json(
         { error: { code: 'NOT_FOUND', message: 'Không tìm thấy chức năng chấm công', retryable: false }, requestId },
@@ -70,7 +74,9 @@ export async function POST(request: NextRequest, { params }: { params: { action:
         ? await createAttendancePoint<unknown>(requestId, body, idempotencyKey)
         : params.action === 'qr-token'
           ? await createAttendanceQrToken<unknown>(requestId, body, idempotencyKey)
-          : null;
+          : params.action === 'manual'
+            ? await recordManagedManualAttendance<unknown>(requestId, body, idempotencyKey)
+            : null;
     if (data === null) {
       return NextResponse.json(
         { error: { code: 'NOT_FOUND', message: 'Không tìm thấy chức năng chấm công', retryable: false }, requestId },

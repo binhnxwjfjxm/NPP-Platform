@@ -1,7 +1,6 @@
 'use client';
 
 import { createIdempotencyKey } from '@npp/contracts';
-import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
 import shellStyles from '../../components/app-shell.module.css';
@@ -21,6 +20,8 @@ type Attempt = { payload: string; key: string } | null;
 type BarcodeResult = { rawValue: string };
 type BarcodeDetectorLike = { detect(source: HTMLVideoElement): Promise<BarcodeResult[]> };
 type BarcodeDetectorConstructor = new (options: { formats: string[] }) => BarcodeDetectorLike;
+type ManagedManualEmployee = { id: string; code: string; name: string; branchId: string | null; branchName: string | null };
+type ManagedManualResponse = { employees: ManagedManualEmployee[] };
 
 const STATUS_LABEL: Record<AttendanceToday['status'], string> = {
   NOT_STARTED: 'Chưa vào làm',
@@ -146,11 +147,15 @@ export default function AttendanceWorkspace({
   const [clock, setClock] = useState(Date.now());
   const [exitReason, setExitReason] = useState<ExitReason>('');
   const [exitNote, setExitNote] = useState('');
+  const [managedEmployees, setManagedEmployees] = useState<ManagedManualEmployee[] | null>(null);
+  const [managedEmployeeId, setManagedEmployeeId] = useState('');
+  const [managedAction, setManagedAction] = useState<'CHECK_IN' | 'CHECK_OUT'>('CHECK_IN');
 
   const recordAttempt = useRef<Attempt>(null);
   const manualRecordAttempt = useRef<Attempt>(null);
   const pointAttempt = useRef<Attempt>(null);
   const tokenAttempt = useRef<Attempt>(null);
+  const managedManualAttempt = useRef<Attempt>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const scanTimerRef = useRef<number | null>(null);
@@ -186,6 +191,15 @@ export default function AttendanceWorkspace({
   }
 
   useEffect(() => () => stopScanner(), []);
+
+  useEffect(() => {
+    void requestJson<ManagedManualResponse>('/api/workforce/attendance/manual')
+      .then((value) => {
+        setManagedEmployees(value.employees);
+        setManagedEmployeeId((current) => current || value.employees[0]?.id || '');
+      })
+      .catch(() => setManagedEmployees(null));
+  }, []);
 
   useEffect(() => {
     if (!qrToken) return undefined;
@@ -352,6 +366,30 @@ export default function AttendanceWorkspace({
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Không tải được danh sách nơi làm việc');
       return null;
+    }
+  }
+
+  async function submitManagedManualAttendance(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!managedEmployeeId) return;
+    const payload = { employeeId: managedEmployeeId, action: managedAction };
+    const key = stableKey(managedManualAttempt, 'web-attendance-managed-manual', payload);
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await requestJson<AttendanceRecordResult>('/api/workforce/attendance/manual', {
+        method: 'POST',
+        headers: { 'Idempotency-Key': key },
+        body: JSON.stringify(payload),
+      });
+      managedManualAttempt.current = null;
+      const employee = managedEmployees?.find((item) => item.id === managedEmployeeId);
+      setNotice(`${employee?.name || 'Nhân sự'} đã được ${managedAction === 'CHECK_IN' ? 'chấm vào' : 'chấm ra'} lúc ${formatDateTime(result.event.occurred_at, timeZone)}.`);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Không ghi nhận được chấm công tay');
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -579,16 +617,38 @@ export default function AttendanceWorkspace({
             </div>
           </section>
 
+          {managedEmployees ? (
+            <section className={localStyles.qrPanel} data-testid="managed-manual-attendance">
+              <div className={styles.sectionHeader}>
+                <div><p className={styles.panelKicker}>Dành cho quản lý</p><h2>Chấm công tay</h2></div>
+              </div>
+              <form className={localStyles.pointForm} onSubmit={(event) => void submitManagedManualAttendance(event)}>
+                <label>
+                  Nhân sự
+                  <select value={managedEmployeeId} onChange={(event) => setManagedEmployeeId(event.target.value)} required>
+                    <option value="">Chọn nhân sự</option>
+                    {managedEmployees.map((employee) => (
+                      <option key={employee.id} value={employee.id}>
+                        {employee.code} · {employee.name}{employee.branchName ? ' · ' + employee.branchName : ''}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className={localStyles.scanActions}>
+                  <button type="submit" className={styles.primaryButton} disabled={busy || !managedEmployeeId} onClick={() => setManagedAction('CHECK_IN')}>Chấm vào</button>
+                  <button type="submit" className={styles.secondaryButton} disabled={busy || !managedEmployeeId} onClick={() => setManagedAction('CHECK_OUT')}>Chấm ra</button>
+                </div>
+                <small className={localStyles.pointHelp}>Hệ thống tự lấy giờ hiện tại. Không cần nhập thời gian hoặc lý do.</small>
+              </form>
+            </section>
+          ) : null}
+
           {management ? (
             <section className={localStyles.qrPanel} data-testid="attendance-point-management">
               <div className={styles.sectionHeader}>
                 <div><p className={styles.panelKicker}>Dành cho quản lý</p><h2>Mã QR theo nơi làm việc</h2></div>
                 <span className={styles.panelChip}>{management.branches.length} nơi làm việc</span>
               </div>
-              <div className={localStyles.methodNotice}>
-                Cần chấm công tay cho một nhân sự? <Link href="/workforce/adjustments">Mở Chấm công tay và điều chỉnh công</Link> để chọn đúng người rồi ghi nhận theo giờ hệ thống.
-              </div>
-
               <form className={localStyles.pointForm} onSubmit={(event) => void showWorkplaceQr(event)}>
                 <label>
                   Nơi làm việc

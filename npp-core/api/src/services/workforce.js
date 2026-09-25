@@ -1032,6 +1032,7 @@ export async function recordManualAttendance(client, {
   actorId,
   requestId,
   now = new Date(),
+  managedByOperator = false,
 }) {
   if (!validUuid(employeeId)) return fail('EMPLOYEE_ID_REQUIRED', 'Tài khoản chưa liên kết hồ sơ nhân sự để chấm công');
   const resolved = await resolveAttendanceContext(client, { installationId, employeeId, now });
@@ -1043,7 +1044,20 @@ export async function recordManualAttendance(client, {
   if (!attendance.nextAction) return fail('ATTENDANCE_ALREADY_COMPLETE', 'Ngày làm việc này đã kết thúc');
   if (attendance.tooSoon) return fail('ATTENDANCE_TOO_SOON', 'Vừa ghi nhận chấm công; vui lòng đợi một phút trước thao tác tiếp theo');
 
-  const choice = attendanceEventChoice(attendance, payload);
+  const recordAction = text(payload?.recordAction).toUpperCase() || null;
+  if (recordAction && !['CHECK_IN', 'CHECK_OUT'].includes(recordAction)) {
+    return fail('INVALID_MANUAL_ATTENDANCE_ACTION', 'Thao tác chấm công tay không hợp lệ');
+  }
+  if (recordAction === 'CHECK_IN' && !['CHECK_IN', 'RETURN'].includes(attendance.nextAction)) {
+    return fail('ATTENDANCE_STATE_CHANGED', 'Nhân sự hiện không ở trạng thái cần chấm vào');
+  }
+  if (recordAction === 'CHECK_OUT' && attendance.nextAction !== 'EXIT') {
+    return fail('ATTENDANCE_STATE_CHANGED', 'Nhân sự hiện không ở trạng thái cần chấm ra');
+  }
+  const choicePayload = recordAction === 'CHECK_OUT'
+    ? { ...payload, exitReason: 'END_WORK' }
+    : payload;
+  const choice = attendanceEventChoice(attendance, choicePayload);
   if (!choice.ok) return choice;
   const sourceReference = createHash('sha256')
     .update(`attendance-manual|${employeeId}|${attendance.workDate}|${attendance.latestEvent?.id ?? 'START'}|${choice.eventType}|${choice.movementReason ?? 'NONE'}`)
@@ -1059,7 +1073,9 @@ export async function recordManualAttendance(client, {
     occurredAt: now.toISOString(),
     source: 'MANUAL',
     sourceReference,
-    note: choice.note || 'Nhân viên chấm công trực tiếp theo chính sách làm việc',
+    note: choice.note || (managedByOperator
+      ? 'Quản lý chấm công tay theo giờ hệ thống'
+      : 'Nhân viên chấm công trực tiếp theo chính sách làm việc'),
     actorId,
     requestId,
   });
@@ -1073,6 +1089,75 @@ export async function recordManualAttendance(client, {
   };
 }
 
+
+
+export async function listManagedManualAttendanceEmployees(client, {
+  installationId,
+  companyScope,
+  branchIds,
+  now = new Date(),
+}) {
+  const workDate = localDate(INSTALLATION_TIMEZONE, now);
+  const rows = await workforceRepo.listEmployeePolicyCoverage(client, {
+    installationId,
+    workDate,
+    branchIds: companyScope ? null : (branchIds ?? []),
+  });
+  return {
+    ok: true,
+    data: {
+      employees: rows.map((row) => ({
+        id: row.employee_id,
+        code: row.employee_code,
+        name: row.employee_name,
+        branchId: row.employee_branch_id ?? null,
+        branchName: row.branch_name ?? null,
+      })),
+    },
+  };
+}
+
+export async function recordManagedManualAttendance(client, {
+  installationId,
+  employeeId,
+  action,
+  actorId,
+  requestId,
+  companyScope,
+  branchIds,
+  now = new Date(),
+}) {
+  if (!validUuid(employeeId)) return fail('EMPLOYEE_NOT_FOUND', 'Vui lòng chọn nhân sự');
+  const normalizedAction = text(action).toUpperCase();
+  if (!['CHECK_IN', 'CHECK_OUT'].includes(normalizedAction)) {
+    return fail('INVALID_MANUAL_ATTENDANCE_ACTION', 'Thao tác chấm công tay không hợp lệ');
+  }
+
+  const employee = await workforceRepo.getEmployeeScopeRecord(client, {
+    installationId,
+    employeeId,
+    lock: 'share',
+  });
+  if (!employee || !employee.is_active) {
+    return fail('EMPLOYEE_NOT_FOUND', 'Không tìm thấy hồ sơ nhân sự đang hoạt động');
+  }
+  if (!companyScope) {
+    const allowed = new Set((branchIds ?? []).map(String));
+    if (!employee.branch_id || !allowed.has(String(employee.branch_id))) {
+      return fail('SCOPE_FORBIDDEN', 'Nhân sự nằm ngoài phạm vi được cấp');
+    }
+  }
+
+  return recordManualAttendance(client, {
+    installationId,
+    employeeId,
+    payload: { method: 'MANUAL', recordAction: normalizedAction },
+    actorId,
+    requestId,
+    now,
+    managedByOperator: true,
+  });
+}
 
 export async function recordFaceAttendance(client, {
   installationId,
