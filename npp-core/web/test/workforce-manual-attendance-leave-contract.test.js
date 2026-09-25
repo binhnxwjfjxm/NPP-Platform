@@ -15,8 +15,15 @@ test('manager attendance screen is search-first, state-aware, and keeps QR in th
   ]);
   assert.match(attendance, /Chấm công nhân sự/);
   assert.match(attendance, /Tìm nhân sự/);
-  assert.match(attendance, /Chọn trong kết quả/);
+  assert.match(attendance, /managed-employee-search-results/);
+  assert.match(attendance, /Chọn nhiều nhân sự/);
+  assert.match(attendance, /managed-attendance-bulk-picker/);
+  assert.match(attendance, /managed-attendance-bulk-workspace/);
   assert.match(attendance, /Nhập mã, tên hoặc chi nhánh/);
+  assert.match(attendance, /\/api\/workforce\/attendance\/manual-bulk/);
+  assert.match(attendance, /web-attendance-managed-manual-bulk/);
+  assert.match(attendance, /Mục đích ra ngoài chung/);
+  assert.match(attendance, /Người không phù hợp trạng thái sẽ không bị chuyển sang hành động khác/);
   assert.match(attendance, /attendance-qr-toggle/);
   assert.match(attendance, /attendance-qr-popover/);
   assert.match(attendance, /!managedEmployees && today/);
@@ -40,7 +47,10 @@ test('manager attendance screen is search-first, state-aware, and keeps QR in th
   assert.doesNotMatch(adjustment, /recordNowAction/);
   assert.match(adjustment, /Điều chỉnh giờ đã ghi nhận/);
   assert.match(gateway, /attendance-managed-manual/);
+  assert.match(gateway, /attendance-managed-manual-bulk/);
+  assert.match(gateway, /\/attendance\/manual\/bulk/);
   assert.match(route, /params\.action === 'manual'/);
+  assert.match(route, /params\.action === 'manual-bulk'/);
 });
 test('HR can record a paper leave form with employee selection and R2 document upload', async () => {
   const [workspace, gateway, manualRoute, attachmentRoute] = await Promise.all([

@@ -1300,6 +1300,76 @@ export async function recordManagedManualAttendance(client, {
   });
 }
 
+const MAX_MANAGED_BULK_ATTENDANCE_EMPLOYEES = 200;
+
+export async function recordManagedManualAttendanceBulk(client, {
+  installationId,
+  employeeIds,
+  action,
+  exitReason = null,
+  note = null,
+  actorId,
+  requestId,
+  companyScope,
+  branchIds,
+  now = new Date(),
+}) {
+  const normalizedIds = [...new Set(
+    (Array.isArray(employeeIds) ? employeeIds : [])
+      .map((value) => text(value))
+      .filter(Boolean),
+  )];
+
+  if (normalizedIds.length === 0) {
+    return fail('EMPLOYEE_SELECTION_REQUIRED', 'Vui lòng chọn ít nhất một nhân sự');
+  }
+  if (normalizedIds.length > MAX_MANAGED_BULK_ATTENDANCE_EMPLOYEES) {
+    return fail(
+      'EMPLOYEE_SELECTION_TOO_LARGE',
+      `Mỗi lần chấm công hàng loạt tối đa ${MAX_MANAGED_BULK_ATTENDANCE_EMPLOYEES} nhân sự`,
+    );
+  }
+
+  const results = [];
+  for (const employeeId of normalizedIds) {
+    const result = await recordManagedManualAttendance(client, {
+      installationId,
+      employeeId,
+      action,
+      exitReason,
+      note,
+      actorId,
+      requestId,
+      companyScope,
+      branchIds,
+      now,
+    });
+    results.push(result.ok
+      ? {
+          ok: true,
+          employeeId,
+          event: result.event,
+          workDate: result.workDate,
+          point: result.point,
+        }
+      : {
+          ok: false,
+          employeeId,
+          code: result.code,
+          message: result.message,
+        });
+  }
+
+  const successCount = results.filter((item) => item.ok).length;
+  return {
+    ok: true,
+    results,
+    successCount,
+    failureCount: results.length - successCount,
+    totalCount: results.length,
+  };
+}
+
 export async function recordFaceAttendance(client, {
   installationId,
   employeeId,
