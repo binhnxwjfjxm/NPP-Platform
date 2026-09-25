@@ -245,10 +245,7 @@ jobs:
             private_count="$(sudo -n grep -c '^RETAIL_WEB_PUSH_VAPID_PRIVATE_KEY=' "$env_file" || true)"
             subject_count="$(sudo -n grep -c '^RETAIL_WEB_PUSH_VAPID_SUBJECT=' "$env_file" || true)"
             if [ "$public_count" = 0 ] && [ "$private_count" = 0 ]; then
-              tmp="$(mktemp)"
-              node -e 'const {generateKeyPairSync}=require("node:crypto");const pair=generateKeyPairSync("ec",{namedCurve:"prime256v1"});const pub=pair.publicKey.export({format:"jwk"});const priv=pair.privateKey.export({format:"jwk"});const raw=Buffer.concat([Buffer.from([4]),Buffer.from(pub.x,"base64url"),Buffer.from(pub.y,"base64url")]).toString("base64url");process.stdout.write("RETAIL_WEB_PUSH_VAPID_PUBLIC_KEY="+raw+"\\nRETAIL_WEB_PUSH_VAPID_PRIVATE_KEY="+priv.d+"\\n");' >"$tmp"
-              sudo -n tee -a "$env_file" <"$tmp" >/dev/null
-              rm -f "$tmp"
+              node -e 'const {generateKeyPairSync}=require("node:crypto");const pair=generateKeyPairSync("ec",{namedCurve:"prime256v1"});const pub=pair.publicKey.export({format:"jwk"});const priv=pair.privateKey.export({format:"jwk"});const raw=Buffer.concat([Buffer.from([4]),Buffer.from(pub.x,"base64url"),Buffer.from(pub.y,"base64url")]).toString("base64url");process.stdout.write("RETAIL_WEB_PUSH_VAPID_PUBLIC_KEY="+raw+"\nRETAIL_WEB_PUSH_VAPID_PRIVATE_KEY="+priv.d+"\n");' | sudo -n tee -a "$env_file" >/dev/null
               public_count=1
               private_count=1
             fi

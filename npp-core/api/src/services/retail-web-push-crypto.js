@@ -155,8 +155,9 @@ export function validateVapidRuntime(runtime) {
     if (privateKey.length !== PRIVATE_KEY_BYTES) return false;
     const subject = new URL(runtime.subject);
     if (!['https:', 'mailto:'].includes(subject.protocol)) return false;
-    vapidPrivateKey(runtime);
-    return true;
+    const privateKeyObject = vapidPrivateKey(runtime);
+    const derivedPublic = rawFromPublicJwk(createPublicKey(privateKeyObject).export({ format: 'jwk' }));
+    return derivedPublic.equals(publicKey);
   } catch {
     return false;
   }

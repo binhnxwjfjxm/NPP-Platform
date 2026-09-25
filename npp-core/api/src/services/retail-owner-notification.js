@@ -64,6 +64,15 @@ export function normalizeRetailPushSubscription(input) {
   }
   const p256dh = text(input?.keys?.p256dh);
   const auth = text(input?.keys?.auth);
+  let p256dhBytes = null;
+  let authBytes = null;
+  try {
+    p256dhBytes = Buffer.from(p256dh, 'base64url');
+    authBytes = Buffer.from(auth, 'base64url');
+  } catch {
+    p256dhBytes = null;
+    authBytes = null;
+  }
   if (
     !endpointUrl
     || endpointUrl.protocol !== 'https:'
@@ -72,6 +81,10 @@ export function normalizeRetailPushSubscription(input) {
     || endpoint.length > ENDPOINT_MAX
     || !/^[A-Za-z0-9_-]{40,512}$/.test(p256dh)
     || !/^[A-Za-z0-9_-]{8,256}$/.test(auth)
+    || p256dhBytes?.length !== 65
+    || p256dhBytes?.[0] !== 0x04
+    || !authBytes
+    || authBytes.length < 16
   ) {
     throw Object.assign(new Error('invalid_subscription'), {
       code: 'RETAIL_PUSH_SUBSCRIPTION_INVALID',
@@ -228,17 +241,25 @@ export async function sendRetailOwnerWebPush({
     const result = await sendOne(subscription, payload, runtime, fetchImpl);
     if (result.ok) {
       sentCount += 1;
-      await markRetailWebPushSuccess(db, {
-        installationId,
-        endpointHash: subscription.endpoint_hash,
-      });
+      try {
+        await markRetailWebPushSuccess(db, {
+          installationId,
+          endpointHash: subscription.endpoint_hash,
+        });
+      } catch {
+        // Delivery already succeeded; status bookkeeping must not turn a successful push into a retry duplicate.
+      }
     } else {
       failedCount += 1;
-      await markRetailWebPushFailure(db, {
-        installationId,
-        endpointHash: subscription.endpoint_hash,
-        terminal: result.terminal,
-      });
+      try {
+        await markRetailWebPushFailure(db, {
+          installationId,
+          endpointHash: subscription.endpoint_hash,
+          terminal: result.terminal,
+        });
+      } catch {
+        // Delivery failure remains authoritative even if cleanup bookkeeping is temporarily unavailable.
+      }
     }
   }
 

@@ -65,6 +65,10 @@ test('subscription Web Push chỉ nhận endpoint https và khóa Push API hợp
     () => normalizeRetailPushSubscription({ ...input, endpoint: 'http://push.example.test/device' }),
     /invalid_subscription/,
   );
+  assert.throws(
+    () => normalizeRetailPushSubscription({ ...input, keys: { ...input.keys, auth: 'AAAAAAAA' } }),
+    /invalid_subscription/,
+  );
 });
 
 test('VAPID config chỉ trả public key, không bao giờ trả private key', () => {
@@ -73,6 +77,17 @@ test('VAPID config chỉ trả public key, không bao giờ trả private key', 
   assert.equal(config.configured, true);
   assert.equal(config.publicKey, env.RETAIL_WEB_PUSH_VAPID_PUBLIC_KEY);
   assert.equal(Object.prototype.hasOwnProperty.call(config, 'privateKey'), false);
+});
+
+test('VAPID public/private phải cùng một cặp khóa', () => {
+  const first = vapidEnv();
+  const second = vapidEnv();
+  const config = retailWebPushPublicConfig({
+    ...first,
+    RETAIL_WEB_PUSH_VAPID_PRIVATE_KEY: second.RETAIL_WEB_PUSH_VAPID_PRIVATE_KEY,
+  });
+  assert.equal(config.configured, false);
+  assert.equal(config.publicKey, null);
 });
 
 test('Web Push request dùng VAPID + aes128gcm và gửi trực tiếp tới browser push endpoint', () => {
