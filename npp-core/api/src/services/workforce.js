@@ -1119,26 +1119,42 @@ export async function recordManualAttendance(client, {
     : await resolveAttendanceContext(client, { installationId, employeeId, now });
   if (!resolved.ok) return resolved;
   const attendance = resolved.context;
-  if (!managedByOperator && !['MANUAL', 'BOTH', 'FACE_MANUAL', 'ALL'].includes(attendance.policy.attendance_method)) {
-    return fail('MANUAL_ATTENDANCE_NOT_ALLOWED', 'Chính sách làm việc hiện tại không cho phép chấm công trực tiếp');
-  }
-  if (!attendance.nextAction) return fail('ATTENDANCE_ALREADY_COMPLETE', 'Ngày làm việc này đã kết thúc');
-  if (!managedByOperator && attendance.tooSoon) return fail('ATTENDANCE_TOO_SOON', 'Vừa ghi nhận chấm công; vui lòng đợi một phút trước thao tác tiếp theo');
-
   const recordAction = text(payload?.recordAction).toUpperCase() || null;
   if (recordAction && !['CHECK_IN', 'CHECK_OUT'].includes(recordAction)) {
     return fail('INVALID_MANUAL_ATTENDANCE_ACTION', 'Thao tác chấm công tay không hợp lệ');
   }
+  const externalWorkCompletion = recordAction === 'CHECK_OUT'
+    && attendance.nextAction === 'RETURN'
+    && attendance.latestEvent?.event_type === 'TEMP_EXIT'
+    && attendance.latestEvent?.movement_reason === 'WORK_BUSINESS';
+
+  if (!managedByOperator
+    && !externalWorkCompletion
+    && !['MANUAL', 'BOTH', 'FACE_MANUAL', 'ALL'].includes(attendance.policy.attendance_method)) {
+    return fail('MANUAL_ATTENDANCE_NOT_ALLOWED', 'Chính sách làm việc hiện tại không cho phép chấm công trực tiếp');
+  }
+  if (!attendance.nextAction) return fail('ATTENDANCE_ALREADY_COMPLETE', 'Ngày làm việc này đã kết thúc');
+  if (!managedByOperator && attendance.tooSoon && !externalWorkCompletion) {
+    return fail('ATTENDANCE_TOO_SOON', 'Vừa ghi nhận chấm công; vui lòng đợi một phút trước thao tác tiếp theo');
+  }
+
   if (recordAction === 'CHECK_IN' && !['CHECK_IN', 'RETURN'].includes(attendance.nextAction)) {
     return fail('ATTENDANCE_STATE_CHANGED', 'Nhân sự hiện không ở trạng thái cần chấm vào');
   }
-  if (recordAction === 'CHECK_OUT' && attendance.nextAction !== 'EXIT') {
+  if (recordAction === 'CHECK_OUT' && attendance.nextAction !== 'EXIT' && !externalWorkCompletion) {
     return fail('ATTENDANCE_STATE_CHANGED', 'Nhân sự hiện không ở trạng thái cần chấm ra');
   }
   const choicePayload = recordAction === 'CHECK_OUT'
     ? { ...payload, exitReason: text(payload?.exitReason).toUpperCase() || 'END_WORK' }
     : payload;
-  const choice = attendanceEventChoice(attendance, choicePayload);
+  const choice = externalWorkCompletion
+    ? {
+        ok: true,
+        eventType: 'CHECK_OUT',
+        movementReason: null,
+        note: text(payload?.note) || 'Kết thúc công việc bên ngoài',
+      }
+    : attendanceEventChoice(attendance, choicePayload);
   if (!choice.ok) return choice;
   const sourceReference = createHash('sha256')
     .update(`attendance-manual|${employeeId}|${attendance.workDate}|${attendance.latestEvent?.id ?? 'START'}|${choice.eventType}|${choice.movementReason ?? 'NONE'}`)
@@ -1246,7 +1262,7 @@ export async function recordManagedManualAttendance(client, {
 }) {
   if (!validUuid(employeeId)) return fail('EMPLOYEE_NOT_FOUND', 'Vui lòng chọn nhân sự');
   const normalizedAction = text(action).toUpperCase();
-  if (!['CHECK_IN', 'CHECK_OUT', 'TEMP_EXIT', 'RETURN'].includes(normalizedAction)) {
+  if (!['CHECK_IN', 'CHECK_OUT', 'TEMP_EXIT', 'RETURN', 'END_EXTERNAL_WORK'].includes(normalizedAction)) {
     return fail('INVALID_MANUAL_ATTENDANCE_ACTION', 'Thao tác chấm công tay không hợp lệ');
   }
 
@@ -1272,6 +1288,10 @@ export async function recordManagedManualAttendance(client, {
   if (normalizedAction === 'CHECK_OUT') {
     recordAction = 'CHECK_OUT';
     normalizedExitReason = 'END_WORK';
+  }
+  if (normalizedAction === 'END_EXTERNAL_WORK') {
+    recordAction = 'CHECK_OUT';
+    normalizedNote = normalizedNote || 'Kết thúc công việc bên ngoài';
   }
   if (normalizedAction === 'TEMP_EXIT') {
     recordAction = 'CHECK_OUT';
