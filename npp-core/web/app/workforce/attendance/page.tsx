@@ -22,7 +22,12 @@ export default async function AttendancePage() {
   const today = todayResult.status === 'fulfilled' ? todayResult.value : null;
   const management = managementResult.status === 'fulfilled' ? managementResult.value : null;
   const errors: string[] = [];
-  if (todayResult.status === 'rejected') errors.push(message(todayResult.reason, 'Không tải được trạng thái chấm công'));
+  const selfAttendanceUnavailable = todayResult.status === 'rejected'
+    && todayResult.reason instanceof WorkforceGatewayError
+    && ['EMPLOYEE_ID_REQUIRED', 'EMPLOYEE_NOT_FOUND', 'WORK_POLICY_REQUIRED', 'WORK_SCHEDULE_REQUIRED', 'WORK_DAY_OFF', 'ATTENDANCE_NOT_REQUIRED'].includes(todayResult.reason.code);
+  if (todayResult.status === 'rejected' && !(management && selfAttendanceUnavailable)) {
+    errors.push(message(todayResult.reason, 'Không tải được trạng thái chấm công'));
+  }
   if (
     managementResult.status === 'rejected'
     && (!(managementResult.reason instanceof WorkforceGatewayError) || managementResult.reason.statusCode !== 403)

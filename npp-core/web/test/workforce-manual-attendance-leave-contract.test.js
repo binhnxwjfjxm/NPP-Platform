@@ -6,22 +6,27 @@ async function source(path) {
   return readFile(new URL('../' + path, import.meta.url), 'utf8');
 }
 
-test('manager records manual attendance only on the Attendance screen without reason', async () => {
+test('manager attendance screen is search-first, state-aware, and keeps QR in the header', async () => {
   const [attendance, adjustment, gateway, route] = await Promise.all([
     source('app/workforce/attendance/attendance-workspace.tsx'),
     source('app/workforce/adjustments/attendance-adjustment-workspace.tsx'),
     source('lib/workforce-gateway.ts'),
     source('app/api/workforce/attendance/[action]/route.ts'),
   ]);
-  assert.match(attendance, /data-testid="managed-manual-attendance"/);
-  assert.match(attendance, />Chấm vào</);
-  assert.match(attendance, />Chấm ra</);
-  assert.match(attendance, /Không cần nhập thời gian hoặc lý do/);
-  assert.match(attendance, /web-attendance-managed-manual/);
+  assert.match(attendance, /Chấm công nhân sự/);
+  assert.match(attendance, /Tìm theo mã, tên hoặc chi nhánh/);
+  assert.match(attendance, /attendance-qr-header-action/);
+  assert.match(attendance, /Kết thúc làm việc/);
+  assert.match(attendance, /Ghi nhận ra ngoài/);
+  assert.match(attendance, /Quay lại/);
+  assert.match(attendance, /Lịch sử hôm nay/);
+  assert.match(attendance, /Chấm công của tôi/);
+  assert.match(attendance, /employeeId=\$\{encodeURIComponent\(employeeId\)\}/);
+  assert.doesNotMatch(attendance, /<h2>Chấm công hôm nay<\/h2>/);
+  assert.doesNotMatch(attendance, /<h2>Mã QR theo nơi làm việc<\/h2>/);
   assert.doesNotMatch(adjustment, /Chấm công tay và điều chỉnh công/);
   assert.doesNotMatch(adjustment, /recordNowAction/);
   assert.match(adjustment, /Điều chỉnh giờ đã ghi nhận/);
-  assert.match(adjustment, /value=\{directEmployeeId\}/);
   assert.match(gateway, /attendance-managed-manual/);
   assert.match(route, /params\.action === 'manual'/);
 });
