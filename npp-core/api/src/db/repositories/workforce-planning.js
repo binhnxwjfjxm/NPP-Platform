@@ -228,23 +228,27 @@ export async function listPolicyAssignmentsForEmployees(client, {
 }) {
   if (!Array.isArray(employeeIds) || employeeIds.length === 0) return [];
   const result = await client.query(
-    `SELECT a.employee_id, a.work_policy_id,
+    `SELECT a.employee_id, p.id AS work_policy_id,
             to_char(a.effective_from, 'YYYY-MM-DD') AS effective_from,
             CASE WHEN a.effective_to IS NULL THEN NULL ELSE to_char(a.effective_to, 'YYYY-MM-DD') END AS effective_to,
             p.code AS policy_code, p.name AS policy_name, p.timezone AS policy_timezone,
             to_char(p.effective_from, 'YYYY-MM-DD') AS policy_effective_from,
             CASE WHEN p.effective_to IS NULL THEN NULL ELSE to_char(p.effective_to, 'YYYY-MM-DD') END AS policy_effective_to
        FROM shared.employee_work_policy_assignments a
+       JOIN shared.work_policies assigned_policy
+         ON assigned_policy.installation_id = a.installation_id
+        AND assigned_policy.id = a.work_policy_id
        JOIN shared.work_policies p
-         ON p.installation_id = a.installation_id AND p.id = a.work_policy_id
+         ON p.installation_id = a.installation_id
+        AND p.code = assigned_policy.code
+        AND p.effective_from <= $4::date
+        AND (p.effective_to IS NULL OR p.effective_to >= $3::date)
+        AND p.is_active = true
       WHERE a.installation_id = $1
         AND a.employee_id = ANY($2::uuid[])
         AND a.effective_from <= $4::date
         AND (a.effective_to IS NULL OR a.effective_to >= $3::date)
-        AND p.effective_from <= $4::date
-        AND (p.effective_to IS NULL OR p.effective_to >= $3::date)
-        AND p.is_active = true
-      ORDER BY a.employee_id, a.effective_from DESC`,
+      ORDER BY a.employee_id, a.effective_from DESC, p.effective_from DESC`,
     [installationId, employeeIds, dateFrom, dateTo],
   );
   return result.rows ?? [];

@@ -137,7 +137,7 @@ function assignmentMinimumDate(history: EmployeeWorkPolicyAssignment[]) {
     .sort((left, right) => effectiveDate(right.effective_from).localeCompare(effectiveDate(left.effective_from)));
   if (!futureOrCurrent.length) return today;
   const latestFrom = effectiveDate(futureOrCurrent[0].effective_from);
-  return latestFrom < today ? today : nextDate(latestFrom);
+  return latestFrom < today ? today : latestFrom;
 }
 
 const EMPLOYEE_DIRECTORY_DIRTY_KEY = 'npp-core-employee-directory-dirty';
@@ -583,7 +583,13 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
         `/api/workforce/assignments?employeeId=${encodeURIComponent(policyEmployee.id)}`,
       );
       setAssignmentHistory(history);
-      setAssignmentDraft((current) => ({ ...current, effectiveMode: 'NOW', effectiveFrom: todayDate(), reason: '' }));
+      const minimumDate = assignmentMinimumDate(history);
+      setAssignmentDraft((current) => ({
+        ...current,
+        effectiveMode: minimumDate === todayDate() ? 'NOW' : 'DATE',
+        effectiveFrom: minimumDate,
+        reason: '',
+      }));
       await refreshCoverage();
       setNotice('Chính sách làm việc của nhân sự đã được cập nhật.');
     } catch (saveError) {

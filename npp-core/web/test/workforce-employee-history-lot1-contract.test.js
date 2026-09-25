@@ -34,3 +34,9 @@ test('Issue #1140 Lô 1 requires an effective date and reason for employment sta
   assert.match(workspace, /Ngày hiệu lực/);
   assert.match(workspace, /Lý do/);
 });
+
+test('Nhân sự allows replacing a policy assignment on the same effective date', async () => {
+  const workspace = await source('app/workforce/employees/employee-workspace.tsx');
+  assert.match(workspace, /return latestFrom < today \? today : latestFrom/);
+  assert.doesNotMatch(workspace, /return latestFrom < today \? today : nextDate\(latestFrom\)/);
+});

@@ -26,6 +26,11 @@ test('manager attendance screen is search-first, state-aware, and keeps QR in th
   assert.match(attendance, /Ghi nhận ra ngoài/);
   assert.match(attendance, /Quay lại/);
   assert.match(attendance, /Lịch sử hôm nay/);
+  assert.match(attendance, /statusGroup/);
+  assert.match(attendance, /Thiếu chính sách tính công/);
+  assert.match(attendance, /Trạng thái chấm công vẫn được ghi nhận theo thao tác thực tế/);
+  assert.match(attendance, /href="\/workforce\/employees"/);
+  assert.doesNotMatch(attendance, /href="\/workforce\/policies">Gắn chính sách/);
   assert.match(attendance, /Chấm công của tôi/);
   assert.match(attendance, /employeeId=\$\{encodeURIComponent\(employeeId\)\}/);
   assert.doesNotMatch(attendance, /<h2>Chấm công hôm nay<\/h2>/);
