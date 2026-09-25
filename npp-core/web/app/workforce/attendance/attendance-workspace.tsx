@@ -638,7 +638,7 @@ export default function AttendanceWorkspace({
                           </select>
                         </label>
                         <button type="submit" className={localStyles.actionButtonPrimary} disabled={busy || !selectedWorkplaceId}>
-                          Hiển thị mã
+                          Hiển thị mã QR
                         </button>
                       </form>
 
@@ -648,6 +648,7 @@ export default function AttendanceWorkspace({
                           <div className={localStyles.qrMeta}>
                             <strong>{qrToken.branchName || qrToken.pointName}</strong>
                             <span>Còn hiệu lực khoảng {remainingSeconds} giây.</span>
+                            <button type="button" className={localStyles.qrClose} onClick={() => setQrToken(null)}>Tắt mã QR</button>
                           </div>
                         </div>
                       ) : null}
