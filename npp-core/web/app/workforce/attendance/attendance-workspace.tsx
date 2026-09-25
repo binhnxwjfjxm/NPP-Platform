@@ -231,7 +231,7 @@ export default function AttendanceWorkspace({
     return [selected, ...filteredManagedEmployees];
   }, [managedEmployees, managedEmployeeId, filteredManagedEmployees]);
   const managedAttendance = managedSelected?.attendance ?? null;
-  const managedTimeZone = managedAttendance?.policy.timezone || 'Asia/Ho_Chi_Minh';
+  const managedTimeZone = managedAttendance?.policy?.timezone || 'Asia/Ho_Chi_Minh';
 
   function stopScanner() {
     if (scanTimerRef.current !== null) {
