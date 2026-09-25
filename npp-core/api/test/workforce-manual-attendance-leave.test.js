@@ -13,7 +13,10 @@ test('manager manual attendance is a real attendance event and direct adjustment
     source('src/routes/workforce.js'),
   ]);
   assert.match(workforce, /recordManagedManualAttendance/);
-  assert.match(workforce, /recordManagedManualAttendance/);
+  assert.match(workforce, /recordManagedManualAttendanceBulk/);
+  assert.match(workforce, /MAX_MANAGED_BULK_ATTENDANCE_EMPLOYEES = 200/);
+  assert.match(workforce, /successCount/);
+  assert.match(workforce, /failureCount/);
   assert.match(workforce, /TEMP_EXIT/);
   assert.match(workforce, /managedAttendanceOverview/);
   assert.match(workforce, /resolveManagedAttendanceContext/);
@@ -26,6 +29,10 @@ test('manager manual attendance is a real attendance event and direct adjustment
   assert.match(workforce, /source: 'MANUAL'/);
   assert.match(workforce, /Quản lý chấm công tay theo giờ hệ thống/);
   assert.match(route, /\/attendance\/manual/);
+  assert.match(route, /\/attendance\/manual\/bulk/);
+  assert.match(route, /handleManagedManualAttendanceBulk/);
+  assert.match(route, /manual-attendance-bulk/);
+  assert.match(route, /Array\.isArray\(mutation\.audits\)/);
   assert.match(route, /employeeId = new URL/);
   assert.match(route, /manual-temporary-exit/);
   assert.doesNotMatch(adjustment, /recordNowAction/);

@@ -184,7 +184,14 @@ async function runIdempotentMutation(req, res, context, { route, payload, mutate
           mutate: async (client) => {
             const mutation = await mutate(client);
             if (!mutation.ok) return { mutation, skipAudit: true };
-            await insertAuditRecord(client, buildAuditRecord(mutation.audit));
+            const audits = Array.isArray(mutation.audits)
+              ? mutation.audits
+              : mutation.audit
+                ? [mutation.audit]
+                : [];
+            for (const audit of audits) {
+              await insertAuditRecord(client, buildAuditRecord(audit));
+            }
             return mutation;
           },
         });
@@ -1771,6 +1778,100 @@ async function handleManagedManualAttendance(req, res, context, method) {
   });
 }
 
+async function handleManagedManualAttendanceBulk(req, res, context) {
+  const companyScope = isCompanyScope(context.requestContext);
+  const branchIds = [...(context.requestContext.scopes.branchIds ?? [])];
+  const parsed = await parsePayload(req, res, context);
+  if (!parsed.ok) return;
+
+  const payload = {
+    employeeIds: Array.isArray(parsed.payload?.employeeIds)
+      ? parsed.payload.employeeIds.map((value) => String(value ?? '').trim()).filter(Boolean)
+      : [],
+    action: String(parsed.payload?.action ?? '').trim().toUpperCase(),
+    exitReason: String(parsed.payload?.exitReason ?? '').trim().toUpperCase() || null,
+    note: String(parsed.payload?.note ?? '').trim() || null,
+  };
+
+  await runIdempotentMutation(req, res, context, {
+    route: '/api/workforce/attendance/manual/bulk',
+    payload,
+    successStatus: 200,
+    mutate: async (client) => {
+      const result = await workforceService.recordManagedManualAttendanceBulk(client, {
+        installationId: context.requestContext.installationId,
+        employeeIds: payload.employeeIds,
+        action: payload.action,
+        exitReason: payload.exitReason,
+        note: payload.note,
+        actorId: context.requestContext.actorId,
+        requestId: context.requestId,
+        companyScope,
+        branchIds,
+      });
+      if (!result.ok) return result;
+
+      const successful = result.results.filter((item) => item.ok);
+      const failures = result.results.filter((item) => !item.ok);
+      const eventAudits = successful.map((item) => ({
+        requestContext: context.requestContext,
+        action: item.event.event_type === 'CHECK_IN'
+          ? 'manual-bulk-check-in'
+          : item.event.event_type === 'RETURN'
+            ? 'manual-bulk-return'
+            : item.event.event_type === 'TEMP_EXIT'
+              ? 'manual-bulk-temporary-exit'
+              : 'manual-bulk-check-out',
+        resourceType: 'attendance-event',
+        resourceId: item.event.id,
+        beforeData: null,
+        afterData: item.event,
+        metadata: {
+          employeeId: item.employeeId,
+          workDate: item.workDate,
+          eventType: item.event.event_type,
+          managedByOperator: true,
+          bulk: true,
+        },
+      }));
+
+      return {
+        ok: true,
+        data: {
+          results: result.results,
+          successCount: result.successCount,
+          failureCount: result.failureCount,
+          totalCount: result.totalCount,
+        },
+        audits: [
+          {
+            requestContext: context.requestContext,
+            action: 'manual-attendance-bulk',
+            resourceType: 'attendance-bulk-operation',
+            resourceId: context.requestId,
+            beforeData: null,
+            afterData: {
+              action: payload.action,
+              successCount: result.successCount,
+              failureCount: result.failureCount,
+              totalCount: result.totalCount,
+            },
+            metadata: {
+              employeeIds: payload.employeeIds,
+              exitReason: payload.exitReason,
+              failures: failures.map((item) => ({
+                employeeId: item.employeeId,
+                code: item.code,
+              })),
+            },
+          },
+          ...eventAudits,
+        ],
+      };
+    },
+  });
+}
+
 async function handleAttendanceRecord(req, res, context) {
   const parsed = await parsePayload(req, res, context);
   if (!parsed.ok) return;
@@ -1815,7 +1916,7 @@ export async function handleWorkforceRoutes(req, res, options) {
   const pathname = new URL(`http://localhost${req.url}`).pathname;
   if (!pathname.startsWith('/api/workforce/')) return false;
   const route = pathname.slice('/api/workforce'.length);
-  if (!['/policies', '/assignments', '/assignments/coverage', '/assignments/bulk', '/schedules', '/schedule-planning', '/attendance/today', '/attendance/timesheet', '/attendance/record', '/attendance/manual', '/attendance/points', '/attendance/qr-token', '/attendance/adjustments', '/attendance/adjustments/review', '/attendance/adjustments/direct', '/attendance/period-locks', '/leave-types', '/leave-types/update', '/leave/requests', '/leave/requests/manual', '/leave/requests/review', '/leave/requests/cancel', '/leave/attachments', '/leave/balances', '/leave/balances/entries', '/overtime', '/overtime/review', '/overtime/actual', '/overtime/confirm', '/attendance/periods', '/attendance/payroll-input', '/payroll', '/attendance/violations', '/attendance/violations/explain', '/attendance/violations/review'].includes(route)) return false;
+  if (!['/policies', '/assignments', '/assignments/coverage', '/assignments/bulk', '/schedules', '/schedule-planning', '/attendance/today', '/attendance/timesheet', '/attendance/record', '/attendance/manual', '/attendance/manual/bulk', '/attendance/points', '/attendance/qr-token', '/attendance/adjustments', '/attendance/adjustments/review', '/attendance/adjustments/direct', '/attendance/period-locks', '/leave-types', '/leave-types/update', '/leave/requests', '/leave/requests/manual', '/leave/requests/review', '/leave/requests/cancel', '/leave/attachments', '/leave/balances', '/leave/balances/entries', '/overtime', '/overtime/review', '/overtime/actual', '/overtime/confirm', '/attendance/periods', '/attendance/payroll-input', '/payroll', '/attendance/violations', '/attendance/violations/explain', '/attendance/violations/review'].includes(route)) return false;
 
   const auth = options.authenticate(req, options.config);
   if (!auth.ok) {
@@ -1835,6 +1936,7 @@ export async function handleWorkforceRoutes(req, res, options) {
     || (route === '/attendance/timesheet' && method === 'GET')
     || (route === '/attendance/record' && method === 'POST')
     || (route === '/attendance/manual' && ['GET', 'POST'].includes(method))
+    || (route === '/attendance/manual/bulk' && method === 'POST')
     || (route === '/overtime' && ['GET', 'POST'].includes(method))
     || (['/overtime/review', '/overtime/actual', '/overtime/confirm'].includes(route) && method === 'POST')
     || (route === '/attendance/periods' && ['GET', 'POST'].includes(method))
@@ -1924,7 +2026,7 @@ export async function handleWorkforceRoutes(req, res, options) {
         ? (canManagePayroll || canClosePayroll || canAdjustPayroll)
         : (canReadPayroll || canManagePayroll || canClosePayroll || canAdjustPayroll || canExportPayroll),
     };
-  } else if (route === '/attendance/manual') {
+  } else if (route === '/attendance/manual' || route === '/attendance/manual/bulk') {
     permission = { ok: canManageAdjustments };
   } else if (route === '/attendance/adjustments') {
     if (method === 'GET') {
@@ -2020,6 +2122,7 @@ export async function handleWorkforceRoutes(req, res, options) {
     });
     else if (route === '/attendance/record') await handleAttendanceRecord(req, res, context);
     else if (route === '/attendance/manual') await handleManagedManualAttendance(req, res, context, method);
+    else if (route === '/attendance/manual/bulk') await handleManagedManualAttendanceBulk(req, res, context);
     else if (route === '/overtime') await handleOvertimeRequests(req, res, context, method, { selfOnly: overtimeSelfOnly });
     else if (route === '/overtime/review') await handleOvertimeReview(req, res, context);
     else if (route === '/overtime/actual') await handleOvertimeActual(req, res, context);

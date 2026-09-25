@@ -8,6 +8,7 @@ import {
   normalizeWorkforceGatewayError,
   recordAttendance,
   recordManagedManualAttendance,
+  recordManagedManualAttendanceBulk,
   resolveWorkforceRequestId,
 } from '../../../../../lib/workforce-gateway';
 
@@ -79,7 +80,9 @@ export async function POST(request: NextRequest, { params }: { params: { action:
           ? await createAttendanceQrToken<unknown>(requestId, body, idempotencyKey)
           : params.action === 'manual'
             ? await recordManagedManualAttendance<unknown>(requestId, body, idempotencyKey)
-            : null;
+            : params.action === 'manual-bulk'
+              ? await recordManagedManualAttendanceBulk<unknown>(requestId, body, idempotencyKey)
+              : null;
     if (data === null) {
       return NextResponse.json(
         { error: { code: 'NOT_FOUND', message: 'Không tìm thấy chức năng chấm công', retryable: false }, requestId },

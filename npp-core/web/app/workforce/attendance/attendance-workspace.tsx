@@ -53,6 +53,21 @@ type ManagedManualResponse = {
   employees: ManagedManualEmployee[];
   selected: ManagedSelection | null;
 };
+type ManagedBulkResultItem =
+  | { ok: true; employeeId: string; event: AttendanceRecordResult['event']; workDate: string; point: AttendanceRecordResult['point'] }
+  | { ok: false; employeeId: string; code: string; message: string };
+type ManagedBulkResponse = {
+  results: ManagedBulkResultItem[];
+  successCount: number;
+  failureCount: number;
+  totalCount: number;
+};
+type ManagedBulkAction = 'CHECK_IN' | 'CHECK_OUT' | 'TEMP_EXIT' | 'RETURN';
+type ManagedBulkConfirmation = {
+  action: ManagedBulkAction;
+  exitReason?: Exclude<ExitReason, '' | 'END_WORK'>;
+  note?: string;
+};
 
 const STATUS_LABEL: Record<AttendanceToday['status'], string> = {
   NOT_STARTED: 'Chưa vào làm',
@@ -69,6 +84,13 @@ const EXIT_REASON_LABEL: Record<Exclude<ExitReason, ''>, string> = {
   PERSONAL: 'Ra ngoài vì việc cá nhân',
   BREAK: 'Nghỉ giữa ca',
   OTHER: 'Lý do khác',
+};
+
+const MANAGED_BULK_ACTION_LABEL: Record<ManagedBulkAction, string> = {
+  CHECK_IN: 'Chấm vào',
+  CHECK_OUT: 'Kết thúc làm việc',
+  TEMP_EXIT: 'Ra ngoài',
+  RETURN: 'Quay lại',
 };
 
 function managedIssuePresentation(issue: ManagedSelection['issue']) {
@@ -203,8 +225,18 @@ export default function AttendanceWorkspace({
   const [managedEmployees, setManagedEmployees] = useState<ManagedManualEmployee[] | null>(null);
   const [managedEmployeeId, setManagedEmployeeId] = useState('');
   const [managedEmployeeQuery, setManagedEmployeeQuery] = useState('');
+  const [managedSearchOpen, setManagedSearchOpen] = useState(false);
   const [managedSelected, setManagedSelected] = useState<ManagedSelection | null>(null);
   const [managedLoading, setManagedLoading] = useState(false);
+  const [bulkPickerOpen, setBulkPickerOpen] = useState(false);
+  const [bulkEmployeeQuery, setBulkEmployeeQuery] = useState('');
+  const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDraftIds, setBulkDraftIds] = useState<Set<string>>(new Set());
+  const [bulkExitOpen, setBulkExitOpen] = useState(false);
+  const [bulkExitReason, setBulkExitReason] = useState<ExitReason>('');
+  const [bulkExitNote, setBulkExitNote] = useState('');
+  const [bulkConfirm, setBulkConfirm] = useState<ManagedBulkConfirmation | null>(null);
+  const [bulkResult, setBulkResult] = useState<ManagedBulkResponse | null>(null);
   const [managedExitOpen, setManagedExitOpen] = useState(false);
   const [managedExitReason, setManagedExitReason] = useState<ExitReason>('');
   const [managedExitNote, setManagedExitNote] = useState('');
@@ -215,6 +247,7 @@ export default function AttendanceWorkspace({
   const pointAttempt = useRef<Attempt>(null);
   const tokenAttempt = useRef<Attempt>(null);
   const managedManualAttempt = useRef<Attempt>(null);
+  const managedBulkAttempt = useRef<Attempt>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const scanTimerRef = useRef<number | null>(null);
@@ -244,14 +277,24 @@ export default function AttendanceWorkspace({
       .toLowerCase()
       .includes(normalizedEmployeeQuery));
   }, [managedEmployees, normalizedEmployeeQuery]);
-  const managedEmployeeOptions = useMemo(() => {
+  const managedSearchResults = useMemo(
+    () => filteredManagedEmployees.slice(0, 12),
+    [filteredManagedEmployees],
+  );
+  const normalizedBulkEmployeeQuery = bulkEmployeeQuery.trim().toLowerCase();
+  const bulkPickerEmployees = useMemo(() => {
     if (!managedEmployees) return [];
-    const selected = managedEmployees.find((employee) => employee.id === managedEmployeeId) ?? null;
-    if (!selected || filteredManagedEmployees.some((employee) => employee.id === selected.id)) {
-      return filteredManagedEmployees;
-    }
-    return [selected, ...filteredManagedEmployees];
-  }, [managedEmployees, managedEmployeeId, filteredManagedEmployees]);
+    if (!normalizedBulkEmployeeQuery) return managedEmployees;
+    return managedEmployees.filter((employee) => `${employee.code} ${employee.name} ${employee.branchName ?? ''}`
+      .toLowerCase()
+      .includes(normalizedBulkEmployeeQuery));
+  }, [managedEmployees, normalizedBulkEmployeeQuery]);
+  const bulkSelectedEmployees = useMemo(
+    () => (managedEmployees ?? []).filter((employee) => bulkSelectedIds.has(employee.id)),
+    [managedEmployees, bulkSelectedIds],
+  );
+  const allVisibleBulkSelected = bulkPickerEmployees.length > 0
+    && bulkPickerEmployees.every((employee) => bulkDraftIds.has(employee.id));
   const managedAttendance = managedSelected?.attendance ?? null;
   const managedIssue = managedIssuePresentation(managedSelected?.issue ?? null);
   const managedTimeZone = managedAttendance?.policy?.timezone || 'Asia/Ho_Chi_Minh';
@@ -471,10 +514,66 @@ export default function AttendanceWorkspace({
 
   function selectManagedEmployee(employee: ManagedManualEmployee) {
     setManagedEmployeeId(employee.id);
+    setManagedEmployeeQuery('');
+    setManagedSearchOpen(false);
+    setBulkSelectedIds(new Set());
+    setBulkDraftIds(new Set());
+    setBulkResult(null);
+    setBulkExitOpen(false);
     setManagedExitOpen(false);
     setManagedExitReason('');
     setManagedExitNote('');
     void loadManagedEmployee(employee.id);
+  }
+
+  function openBulkPicker() {
+    setBulkDraftIds(new Set(bulkSelectedIds));
+    setBulkEmployeeQuery('');
+    setBulkPickerOpen(true);
+    setManagedSearchOpen(false);
+  }
+
+  function toggleBulkEmployee(employeeId: string, checked: boolean) {
+    setBulkDraftIds((current) => {
+      const next = new Set(current);
+      if (checked) next.add(employeeId);
+      else next.delete(employeeId);
+      return next;
+    });
+  }
+
+  function toggleAllVisibleBulkEmployees(checked: boolean) {
+    setBulkDraftIds((current) => {
+      const next = new Set(current);
+      for (const employee of bulkPickerEmployees) {
+        if (checked) next.add(employee.id);
+        else next.delete(employee.id);
+      }
+      return next;
+    });
+  }
+
+  function applyBulkSelection() {
+    setBulkSelectedIds(new Set(bulkDraftIds));
+    setBulkPickerOpen(false);
+    setManagedEmployeeId('');
+    setManagedSelected(null);
+    setManagedEmployeeQuery('');
+    setManagedExitOpen(false);
+    setBulkExitOpen(false);
+    setBulkExitReason('');
+    setBulkExitNote('');
+    setBulkResult(null);
+  }
+
+  function clearBulkSelection() {
+    setBulkSelectedIds(new Set());
+    setBulkDraftIds(new Set());
+    setBulkResult(null);
+    setBulkExitOpen(false);
+    setBulkExitReason('');
+    setBulkExitNote('');
+    setBulkConfirm(null);
   }
 
   async function submitManagedManualAttendance(
@@ -510,6 +609,56 @@ export default function AttendanceWorkspace({
     } finally {
       setBusy(false);
     }
+  }
+
+  async function submitManagedBulkAttendance(confirmation: ManagedBulkConfirmation) {
+    if (!bulkSelectedIds.size) return;
+    const payload = {
+      employeeIds: [...bulkSelectedIds].sort(),
+      action: confirmation.action,
+      ...(confirmation.exitReason ? { exitReason: confirmation.exitReason } : {}),
+      ...(confirmation.note?.trim() ? { note: confirmation.note.trim() } : {}),
+    };
+    const key = stableKey(managedBulkAttempt, 'web-attendance-managed-manual-bulk', payload);
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await requestJson<ManagedBulkResponse>('/api/workforce/attendance/manual-bulk', {
+        method: 'POST',
+        headers: { 'Idempotency-Key': key },
+        body: JSON.stringify(payload),
+      });
+      managedBulkAttempt.current = null;
+      setBulkResult(result);
+      setBulkConfirm(null);
+      setBulkExitOpen(false);
+      setBulkExitReason('');
+      setBulkExitNote('');
+      const actionLabel = MANAGED_BULK_ACTION_LABEL[confirmation.action].toLocaleLowerCase('vi');
+      setNotice(
+        result.failureCount > 0
+          ? `Đã ${actionLabel} cho ${result.successCount}/${result.totalCount} nhân sự. ${result.failureCount} nhân sự không áp dụng được thao tác này.`
+          : `Đã ${actionLabel} cho ${result.successCount} nhân sự.`,
+      );
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Không ghi nhận được chấm công hàng loạt');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function requestBulkAction(
+    action: ManagedBulkAction,
+    selectedExitReason?: Exclude<ExitReason, '' | 'END_WORK'>,
+    note?: string,
+  ) {
+    if (!bulkSelectedIds.size) return;
+    setBulkConfirm({
+      action,
+      ...(selectedExitReason ? { exitReason: selectedExitReason } : {}),
+      ...(note?.trim() ? { note: note.trim() } : {}),
+    });
   }
 
   async function showWorkplaceQr(event: React.FormEvent<HTMLFormElement>) {
@@ -684,46 +833,153 @@ export default function AttendanceWorkspace({
             <div className={localStyles.employeeControlGrid}>
               <label className={localStyles.controlField}>
                 <span>Tìm nhân sự</span>
-                <div className={localStyles.quickSearch}>
-                  <span aria-hidden="true">⌕</span>
-                  <input
-                    type="search"
-                    value={managedEmployeeQuery}
-                    placeholder="Nhập mã, tên hoặc chi nhánh"
-                    autoComplete="off"
-                    onChange={(event) => setManagedEmployeeQuery(event.target.value)}
-                  />
+                <div className={localStyles.employeeSearchBox}>
+                  <div className={localStyles.quickSearch}>
+                    <span aria-hidden="true">⌕</span>
+                    <input
+                      type="search"
+                      value={managedEmployeeQuery}
+                      placeholder="Nhập mã, tên hoặc chi nhánh"
+                      autoComplete="off"
+                      aria-autocomplete="list"
+                      aria-expanded={managedSearchOpen && Boolean(managedEmployeeQuery.trim())}
+                      onFocus={() => setManagedSearchOpen(Boolean(managedEmployeeQuery.trim()))}
+                      onBlur={() => window.setTimeout(() => setManagedSearchOpen(false), 0)}
+                      onChange={(event) => {
+                        setManagedEmployeeQuery(event.target.value);
+                        setManagedSearchOpen(Boolean(event.target.value.trim()));
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Escape') setManagedSearchOpen(false);
+                        if (event.key === 'Enter' && managedSearchResults[0]) {
+                          event.preventDefault();
+                          selectManagedEmployee(managedSearchResults[0]);
+                        }
+                      }}
+                    />
+                  </div>
+                  {managedSearchOpen && managedEmployeeQuery.trim() ? (
+                    <div className={localStyles.employeeSearchResults} role="listbox" data-testid="managed-employee-search-results">
+                      {managedSearchResults.map((employee) => (
+                        <button
+                          key={employee.id}
+                          type="button"
+                          className={localStyles.employeeSearchResult}
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => selectManagedEmployee(employee)}
+                        >
+                          <span>
+                            <strong>{employee.name}</strong>
+                            <small>{employee.code}{employee.branchName ? ` · ${employee.branchName}` : ''}</small>
+                          </span>
+                          <em>{employee.policyName || 'Chưa gắn chính sách'}</em>
+                        </button>
+                      ))}
+                      {!managedSearchResults.length ? (
+                        <div className={localStyles.employeeSearchEmpty}>Không tìm thấy nhân sự phù hợp.</div>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
                 <small>{filteredManagedEmployees.length} nhân sự phù hợp</small>
               </label>
 
-              <label className={localStyles.controlField}>
-                <span>Chọn trong kết quả</span>
-                <select
-                  value={managedEmployeeId}
-                  onChange={(event) => {
-                    const employee = managedEmployees.find((item) => item.id === event.target.value);
-                    if (employee) selectManagedEmployee(employee);
-                    else {
-                      setManagedEmployeeId('');
-                      setManagedSelected(null);
-                    }
-                  }}
+              <div className={localStyles.bulkPickerControl}>
+                <span>Chấm công nhiều người</span>
+                <button
+                  type="button"
+                  className={localStyles.bulkPickerButton}
+                  onClick={openBulkPicker}
+                  disabled={busy || managedLoading}
+                  data-testid="managed-attendance-bulk-picker"
                 >
-                  <option value="">Chọn nhân sự</option>
-                  {managedEmployeeOptions.map((employee) => (
-                    <option key={employee.id} value={employee.id}>
-                      {employee.code} · {employee.name}{employee.branchName ? ` · ${employee.branchName}` : ''}
-                    </option>
-                  ))}
-                </select>
-                <small>Tìm trước để thu gọn danh sách, sau đó chọn đúng nhân sự.</small>
-              </label>
+                  Chọn nhiều nhân sự
+                  {bulkSelectedEmployees.length ? <b>{bulkSelectedEmployees.length}</b> : null}
+                </button>
+                <small>Chọn một nhóm rồi áp dụng cùng một hành động chấm công.</small>
+              </div>
             </div>
+
+            {bulkSelectedEmployees.length ? (
+              <div className={localStyles.bulkWorkspace} data-testid="managed-attendance-bulk-workspace">
+                <div className={localStyles.bulkSelectionBar}>
+                  <div>
+                    <strong>Đã chọn {bulkSelectedEmployees.length} nhân sự</strong>
+                    <span>{bulkSelectedEmployees.slice(0, 3).map((employee) => employee.name).join(', ')}{bulkSelectedEmployees.length > 3 ? ` và ${bulkSelectedEmployees.length - 3} người khác` : ''}</span>
+                  </div>
+                  <div>
+                    <button type="button" className={localStyles.actionButtonSecondary} onClick={openBulkPicker} disabled={busy}>Chỉnh danh sách</button>
+                    <button type="button" className={localStyles.bulkClearButton} onClick={clearBulkSelection} disabled={busy}>Bỏ chọn</button>
+                  </div>
+                </div>
+
+                <div className={localStyles.bulkActionPanel}>
+                  <div>
+                    <strong>Thao tác chung</strong>
+                    <span>Cùng một hành động sẽ được gửi cho toàn bộ nhân sự đã chọn. Người không phù hợp trạng thái sẽ được báo riêng.</span>
+                  </div>
+                  <div className={localStyles.bulkActionButtons}>
+                    <button type="button" className={localStyles.actionButtonPrimary} onClick={() => requestBulkAction('CHECK_IN')} disabled={busy}>Chấm vào</button>
+                    <button type="button" className={localStyles.actionButtonSecondary} onClick={() => setBulkExitOpen((current) => !current)} disabled={busy}>Ra ngoài</button>
+                    <button type="button" className={localStyles.actionButtonSecondary} onClick={() => requestBulkAction('RETURN')} disabled={busy}>Quay lại</button>
+                    <button type="button" className={localStyles.actionButtonSecondary} onClick={() => requestBulkAction('CHECK_OUT')} disabled={busy}>Kết thúc làm việc</button>
+                  </div>
+                </div>
+
+                {bulkExitOpen ? (
+                  <div className={localStyles.managedExitPanel}>
+                    <div>
+                      <strong>Mục đích ra ngoài chung</strong>
+                      <span>Mục đích này áp dụng cho toàn bộ nhân sự được chọn.</span>
+                    </div>
+                    <div className={localStyles.exitReasonGrid}>
+                      {(['WORK_BUSINESS', 'PERSONAL', 'BREAK', 'OTHER'] as const).map((reason) => (
+                        <button type="button" key={reason} className={bulkExitReason === reason ? localStyles.exitReasonActive : localStyles.exitReasonButton} onClick={() => setBulkExitReason(reason)}>
+                          {EXIT_REASON_LABEL[reason]}
+                        </button>
+                      ))}
+                    </div>
+                    {bulkExitReason === 'OTHER' ? (
+                      <input value={bulkExitNote} onChange={(event) => setBulkExitNote(event.target.value)} maxLength={1024} placeholder="Ghi rõ lý do chung" />
+                    ) : null}
+                    <div className={localStyles.exitConfirmRow}>
+                      <button type="button" className={localStyles.actionButtonSecondary} onClick={() => setBulkExitOpen(false)}>Hủy</button>
+                      <button
+                        type="button"
+                        className={localStyles.actionButtonPrimary}
+                        disabled={!bulkExitReason || (bulkExitReason === 'OTHER' && !bulkExitNote.trim()) || busy}
+                        onClick={() => requestBulkAction('TEMP_EXIT', bulkExitReason as Exclude<ExitReason, '' | 'END_WORK'>, bulkExitNote)}
+                      >
+                        Tiếp tục
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
+                {bulkResult?.failureCount ? (
+                  <div className={localStyles.bulkResultPanel}>
+                    <strong>{bulkResult.failureCount} nhân sự chưa được ghi nhận</strong>
+                    {bulkResult.results.filter((item): item is Extract<ManagedBulkResultItem, { ok: false }> => !item.ok).map((item) => {
+                      const employee = managedEmployees.find((candidate) => candidate.id === item.employeeId);
+                      return (
+                        <div key={item.employeeId}>
+                          <span>{employee?.name || employee?.code || item.employeeId}</span>
+                          <small>{item.message}</small>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
 
             {!managedSelected ? (
               <div className={localStyles.selectionEmpty}>
-                {managedLoading ? 'Đang tải trạng thái nhân sự…' : 'Chọn một nhân sự để xem trạng thái và chấm công.'}
+                {managedLoading
+                  ? 'Đang tải trạng thái nhân sự…'
+                  : bulkSelectedEmployees.length
+                    ? `Đang chọn ${bulkSelectedEmployees.length} nhân sự để chấm công hàng loạt.`
+                    : 'Tìm một nhân sự hoặc chọn nhiều nhân sự để chấm công.'}
               </div>
             ) : (
               <div className={localStyles.employeeWorkspace}>
@@ -858,6 +1114,94 @@ export default function AttendanceWorkspace({
                 ) : null}
               </div>
             )}
+            {bulkPickerOpen ? (
+              <div className={localStyles.bulkModalBackdrop} role="presentation">
+                <section className={localStyles.bulkPickerModal} role="dialog" aria-modal="true" aria-label="Chọn nhiều nhân sự">
+                  <header className={localStyles.bulkModalHeader}>
+                    <div>
+                      <p className={styles.panelKicker}>Chấm công hàng loạt</p>
+                      <h2>Chọn nhiều nhân sự</h2>
+                      <span>Đã chọn {bulkDraftIds.size} người</span>
+                    </div>
+                    <button type="button" className={localStyles.qrClose} onClick={() => setBulkPickerOpen(false)}>Đóng</button>
+                  </header>
+
+                  <div className={localStyles.bulkPickerToolbar}>
+                    <div className={localStyles.quickSearch}>
+                      <span aria-hidden="true">⌕</span>
+                      <input
+                        autoFocus
+                        type="search"
+                        value={bulkEmployeeQuery}
+                        placeholder="Tìm mã, tên hoặc chi nhánh"
+                        autoComplete="off"
+                        onChange={(event) => setBulkEmployeeQuery(event.target.value)}
+                      />
+                    </div>
+                    <label className={localStyles.bulkSelectAll}>
+                      <input
+                        type="checkbox"
+                        checked={allVisibleBulkSelected}
+                        onChange={(event) => toggleAllVisibleBulkEmployees(event.target.checked)}
+                      />
+                      <span>Chọn tất cả kết quả ({bulkPickerEmployees.length})</span>
+                    </label>
+                  </div>
+
+                  <div className={localStyles.bulkEmployeeList}>
+                    {bulkPickerEmployees.map((employee) => (
+                      <label key={employee.id} className={bulkDraftIds.has(employee.id) ? localStyles.bulkEmployeeSelected : localStyles.bulkEmployeeRow}>
+                        <input
+                          type="checkbox"
+                          checked={bulkDraftIds.has(employee.id)}
+                          onChange={(event) => toggleBulkEmployee(employee.id, event.target.checked)}
+                        />
+                        <span className={localStyles.employeeAvatar}>{(employee.code || employee.name).slice(0, 2).toUpperCase()}</span>
+                        <span>
+                          <strong>{employee.name}</strong>
+                          <small>{employee.code}{employee.branchName ? ` · ${employee.branchName}` : ''}</small>
+                        </span>
+                        <em>{employee.policyName || 'Chưa gắn chính sách'}</em>
+                      </label>
+                    ))}
+                    {!bulkPickerEmployees.length ? <div className={localStyles.employeeSearchEmpty}>Không tìm thấy nhân sự phù hợp.</div> : null}
+                  </div>
+
+                  <footer className={localStyles.bulkModalFooter}>
+                    <span>{bulkDraftIds.size} nhân sự sẽ được thêm vào nhóm thao tác.</span>
+                    <div>
+                      <button type="button" className={localStyles.actionButtonSecondary} onClick={() => setBulkPickerOpen(false)}>Hủy</button>
+                      <button type="button" className={localStyles.actionButtonPrimary} onClick={applyBulkSelection} disabled={!bulkDraftIds.size}>
+                        Dùng {bulkDraftIds.size} nhân sự
+                      </button>
+                    </div>
+                  </footer>
+                </section>
+              </div>
+            ) : null}
+
+            {bulkConfirm ? (
+              <div className={localStyles.bulkModalBackdrop} role="presentation">
+                <section className={localStyles.bulkConfirmModal} role="dialog" aria-modal="true" aria-label="Xác nhận chấm công hàng loạt">
+                  <div>
+                    <p className={styles.panelKicker}>Xác nhận thao tác</p>
+                    <h2>{MANAGED_BULK_ACTION_LABEL[bulkConfirm.action]} cho {bulkSelectedEmployees.length} nhân sự?</h2>
+                    <p>
+                      Hệ thống chỉ thực hiện đúng thao tác này cho từng người. Nhân sự không phù hợp trạng thái sẽ không bị chuyển sang hành động khác.
+                    </p>
+                    {bulkConfirm.exitReason ? (
+                      <span className={localStyles.bulkConfirmReason}>Mục đích: {EXIT_REASON_LABEL[bulkConfirm.exitReason]}</span>
+                    ) : null}
+                  </div>
+                  <div className={localStyles.bulkConfirmActions}>
+                    <button type="button" className={localStyles.actionButtonSecondary} onClick={() => setBulkConfirm(null)} disabled={busy}>Quay lại</button>
+                    <button type="button" className={localStyles.actionButtonPrimary} onClick={() => void submitManagedBulkAttendance(bulkConfirm)} disabled={busy}>
+                      {busy ? 'Đang ghi nhận…' : `Xác nhận ${MANAGED_BULK_ACTION_LABEL[bulkConfirm.action].toLocaleLowerCase('vi')}`}
+                    </button>
+                  </div>
+                </section>
+              </div>
+            ) : null}
           </section>
         ) : null}
 
