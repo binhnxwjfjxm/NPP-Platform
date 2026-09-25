@@ -579,6 +579,7 @@ export async function handleSalesOrderRoutes(req, res, options) {
         status: !status || status === 'all' ? null : status,
         customerId: url.searchParams.get('customerId'),
         warehouseId: url.searchParams.get('warehouseId'),
+        deliveryMode: url.searchParams.get('deliveryMode'),
         search: url.searchParams.get('search'),
         limit: parseInteger(url.searchParams.get('limit'), 100, 1000),
         offset: parseInteger(url.searchParams.get('offset'), 0, 100000),

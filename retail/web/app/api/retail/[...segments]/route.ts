@@ -86,7 +86,7 @@ async function bootstrap(id: string): Promise<GatewayResponse> {
     companyRequest<unknown>({ path: '/api/sales-orders/entry-settings', requestId: id }),
     companyRequest<unknown>({ path: '/api/warehouses?active=true&limit=200', requestId: id }),
     canBrowseCompanyCustomers(id),
-    companyRequest<unknown>({ path: '/api/sales-orders?limit=100', requestId: id }).catch(() => ({ data: [] })),
+    companyRequest<unknown>({ path: '/api/sales-orders?deliveryMode=PICKUP&limit=101&offset=0', requestId: id }).catch(() => ({ data: [] })),
     companyRequest<unknown>({ path: '/api/product-categories?active=true&limit=200', requestId: id }).catch(() => ({ data: [] })),
   ]);
   return {
@@ -177,7 +177,7 @@ export async function GET(request: NextRequest, { params }: { params: { segments
     if (path.length === 1 && path[0] === 'customers') { const result = await companyRequest<unknown>({ path: `/api/customers${query(request, ['search', 'active', 'limit', 'offset'])}`, requestId: id }); return json(result.data, result.requestId); }
     if (path.length === 1 && path[0] === 'products') { const result = await companyRequest<unknown>({ path: `/api/retail/products${query(request, ['search', 'categoryId', 'limit', 'offset'])}`, requestId: id }); return json(result.data, result.requestId); }
     if (path.length === 1 && path[0] === 'print-templates') { const result = await companyRequest<unknown>({ path: '/api/document-print-templates', requestId: id }); return json(result.data, result.requestId); }
-    if (path.length === 1 && path[0] === 'orders') { const result = await companyRequest<unknown>({ path: `/api/sales-orders${query(request, ['limit', 'offset', 'status', 'search'])}`, requestId: id }); return json(result.data, result.requestId); }
+    if (path.length === 1 && path[0] === 'orders') { const suffix = query(request, ['limit', 'offset', 'status', 'search']); const scoped = suffix ? `${suffix}&deliveryMode=PICKUP` : '?deliveryMode=PICKUP'; const result = await companyRequest<unknown>({ path: `/api/sales-orders${scoped}`, requestId: id }); return json(result.data, result.requestId); }
     if (path.length === 2 && path[0] === 'orders') { const result = await companyRequest<unknown>({ path: `/api/sales-orders/${salesOrderId(path[1])}`, requestId: id }); return json(await enrichRetailProductNames(result.data, result.requestId), result.requestId); }
     if (path.length === 3 && path[0] === 'orders' && path[2] === 'availability') { const result = await companyRequest<unknown>({ path: `/api/retail/sales-orders/${salesOrderId(path[1])}/availability`, requestId: id }); return json(result.data, result.requestId); }
     throw new CompanyGatewayError('NOT_FOUND', 'Không tìm thấy chức năng yêu cầu', 404, false);

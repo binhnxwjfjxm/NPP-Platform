@@ -148,7 +148,7 @@ function nowIso() {
 
 export async function listSalesOrders(client, {
   installationId, warehouseIds, employeeId = null, actorId = null, allowAllEmployees = false,
-  status, customerId, warehouseId, search, limit = 100, offset = 0,
+  status, customerId, warehouseId, deliveryMode, search, limit = 100, offset = 0,
 }) {
   const params = [installationId];
   let query = `SELECT ${ORDER_COLUMNS}
@@ -170,6 +170,10 @@ export async function listSalesOrders(client, {
     params.push(warehouseId);
     query += ` AND so.warehouse_id = $${params.length}`;
   }
+  if (deliveryMode) {
+    params.push(deliveryMode);
+    query += ` AND so.delivery_mode = $${params.length}`;
+  }
   if (search) {
     params.push(`%${search}%`);
     query += ` AND (COALESCE(so.order_number, '') ILIKE $${params.length}
@@ -179,7 +183,7 @@ export async function listSalesOrders(client, {
       OR COALESCE(so.source_id, '') ILIKE $${params.length})`;
   }
   params.push(limit, offset);
-  query += ` ORDER BY so.created_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`;
+  query += ` ORDER BY so.created_at DESC, so.id DESC LIMIT $${params.length - 1} OFFSET $${params.length}`;
   return (await client.query(query, params)).rows;
 }
 

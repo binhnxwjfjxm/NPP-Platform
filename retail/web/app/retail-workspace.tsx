@@ -84,6 +84,7 @@ type Order = {
     warehouseName: string;
     salesChannelCode?: string | null;
     salesChannelName?: string | null;
+    createdAt: string;
     updatedAt: string;
     receivableRemainingAmount?: string;
     subtotal?: string;
@@ -236,6 +237,9 @@ const quantityNumber = new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 6
 const displayUnit = (unitName?: string | null, unitCode?: string | null) => unitName?.trim() || unitCode?.trim() || '—';
 const PRODUCT_IMAGE_BASE = 'https://pub-7d2987fab97d4e3ebb2021a823973862.r2.dev/app-customer/products';
 const PRODUCT_PAGE_SIZE = 30;
+const ORDER_VISIBLE_STEP = 30;
+const ORDER_BATCH_SIZE = 100;
+const ORDER_BATCH_FETCH_SIZE = ORDER_BATCH_SIZE + 1;
 const PRINT_PAPER_STORAGE_KEY = 'retail.print.paper';
 const PRINT_TEMPLATE_STORAGE_KEY = 'retail.print.template';
 const STOCK_ISSUED_FULFILLMENT_STATUSES = new Set(['partially_issued', 'issued', 'partially_fulfilled', 'fulfilled']);
@@ -362,6 +366,9 @@ function isNotificationOrderId(value: string | null) {
 export default function RetailWorkspace({ initialTab = 'home', inventoryAvailable = false, onOpenInventory, onTabChange }: RetailWorkspaceProps) {
     const [boot, setBoot] = useState<Bootstrap | null>(null);
     const [orders, setOrders] = useState<Order[]>([]);
+    const [ordersHasMore, setOrdersHasMore] = useState(false);
+    const [ordersLoadingMore, setOrdersLoadingMore] = useState(false);
+    const [orderVisibleCount, setOrderVisibleCount] = useState(ORDER_VISIBLE_STEP);
     const [order, setOrder] = useState<Order | null>(null);
     const [cart, setCart] = useState<CartLine[]>([]);
     const [available, setAvailable] = useState<Availability[]>([]);
@@ -461,7 +468,38 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
         return next;
     }, [order?.id]);
     const forgetOperationKey = useCallback((action: string, intent = 'default') => { operationKeys.current.delete(`${action}:${order?.id ?? 'new'}:${intent}`); }, [order?.id]);
-    const refreshOrders = useCallback(async () => { const list = await api<Order[]>('/api/retail/orders?limit=100&offset=0'); setOrders(list.filter((item) => item.deliveryMode === 'PICKUP')); }, []);
+    const refreshOrders = useCallback(async () => {
+        const list = await api<Order[]>(`/api/retail/orders?limit=${ORDER_BATCH_FETCH_SIZE}&offset=0`);
+        setOrders(list.slice(0, ORDER_BATCH_SIZE));
+        setOrdersHasMore(list.length > ORDER_BATCH_SIZE);
+        setOrderVisibleCount(ORDER_VISIBLE_STEP);
+    }, []);
+    async function loadMoreOrders() {
+        if (ordersLoadingMore) return;
+        if (filteredOrders.length > orderVisibleCount) {
+            setOrderVisibleCount((current) => current + ORDER_VISIBLE_STEP);
+            return;
+        }
+        if (!ordersHasMore) return;
+        setOrdersLoadingMore(true);
+        setError(null);
+        try {
+            const page = await api<Order[]>(`/api/retail/orders?limit=${ORDER_BATCH_FETCH_SIZE}&offset=${orders.length}`);
+            const nextRows = page.slice(0, ORDER_BATCH_SIZE);
+            setOrders((current) => {
+                const seen = new Set(current.map((item) => item.id));
+                return [...current, ...nextRows.filter((item) => !seen.has(item.id))];
+            });
+            setOrdersHasMore(page.length > ORDER_BATCH_SIZE);
+            setOrderVisibleCount((current) => current + ORDER_VISIBLE_STEP);
+        }
+        catch (reason) {
+            setError(errorMessage(reason, 'Chưa thể tải thêm đơn hàng.'));
+        }
+        finally {
+            setOrdersLoadingMore(false);
+        }
+    }
     const loadPrintTemplates = useCallback(async () => { const templates = await api<PrintTemplate[]>('/api/retail/print-templates'); setPrintTemplates(templates); return templates; }, []);
     useEffect(() => subscribeRetailNotificationState(setNotificationState), []);
     useEffect(() => {
@@ -490,6 +528,7 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
             window.removeEventListener(RETAIL_NOTIFICATION_OPEN_EVENT, handleOpen);
         };
     }, []);
+    useEffect(() => { setOrderVisibleCount(ORDER_VISIBLE_STEP); }, [orderFilter, orderSearch, orderDateFrom, orderDateTo]);
     const canPriceOverride = Boolean(boot?.settings.permissions?.canPriceOverride);
     const canDiscountOverride = Boolean(boot?.settings.permissions?.canDiscountOverride);
     const canNegativeStockIssue = Boolean(boot?.settings.permissions?.canNegativeStockIssue);
@@ -566,7 +605,9 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
         setDraftPrintPaper(persistedPrinterSettings.paper);
         void api<Bootstrap>('/api/retail/bootstrap').then((data) => {
             setBoot(data);
-            setOrders(data.orders.filter((item) => item.deliveryMode === 'PICKUP'));
+            setOrders(data.orders.slice(0, ORDER_BATCH_SIZE));
+            setOrdersHasMore(data.orders.length > ORDER_BATCH_SIZE);
+            setOrderVisibleCount(ORDER_VISIBLE_STEP);
             const preferredWarehouse = data.settings.defaultWarehouseId
                 && data.warehouses.some((warehouse) => warehouse.id === data.settings.defaultWarehouseId)
                 ? data.settings.defaultWarehouseId
@@ -909,17 +950,19 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
                     ? item.status === 'confirmed' && !STOCK_ISSUED_FULFILLMENT_STATUSES.has(item.fulfillmentStatus)
                     : item.status === orderFilter;
         if (!statusMatches || orderDateRangeInvalid) return false;
-        const itemDate = localDateKey(item.updatedAt);
+        const itemDate = localDateKey(item.createdAt);
         if (orderDateFrom && itemDate < orderDateFrom) return false;
         if (orderDateTo && itemDate > orderDateTo) return false;
         if (!normalizedOrderSearch) return true;
         return [item.number, item.customerName, item.customerPhone, item.warehouseName, item.note]
             .some((value) => String(value ?? '').toLocaleLowerCase('vi-VN').includes(normalizedOrderSearch));
-    }).sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
-    const todayOrders = orders.filter((item) => item.status !== 'cancelled' && isToday(item.updatedAt));
+    }).sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt));
+    const visibleOrders = filteredOrders.slice(0, orderVisibleCount);
+    const canShowMoreOrders = filteredOrders.length > orderVisibleCount || ordersHasMore;
+    const todayOrders = orders.filter((item) => item.status !== 'cancelled' && isToday(item.createdAt));
     const todayRevenue = todayOrders.filter((item) => item.status === 'closed').reduce((sum, item) => sum + Number(item.total || 0), 0);
     const pendingOrders = orders.filter((item) => item.status === 'draft' || item.status === 'confirmed');
-    const recentOrders = [...orders].sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt)).slice(0, 4);
+    const recentOrders = [...orders].sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt)).slice(0, 4);
     const stockRows = editingDraft ? cart.map((line) => ({ variantId: line.id, quantity: line.quantity, name: line.productName })) : lineItems.map((line) => ({ variantId: line.variantId, quantity: line.quantity, name: line.itemName }));
     const shortageRows = stockRows.filter((line) => isShortage(byVariant.get(line.variantId), line.quantity));
     const stockGatePending = Boolean(order && !['closed', 'cancelled'].includes(order.status) && (availabilityLoading || stockRows.some((line) => !byVariant.has(line.variantId))));
@@ -1540,13 +1583,13 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
         { id: 'confirmed', label: 'Đã chốt' },
         { id: 'issued', label: 'Đã xuất kho' },
       ] as { id: OrderFilter; label: string }[]).map((item) => <button type="button" role="tab" aria-selected={orderFilter === item.id} className={orderFilter === item.id ? 'active' : ''} key={item.id} onClick={() => setOrderFilter(item.id)}>{item.label}</button>)}</div>
-      <div className="order-history">{filteredOrders.map((item) => {
+      <div className="order-history">{visibleOrders.map((item) => {
         const paymentStatus = orderPaymentLabel(item);
         return <article className="retail-order-history-card" key={item.id}>
           <button className="order-history-main" type="button" onClick={() => void openOrder(item.id)} aria-label={`Mở ${item.number ?? 'đơn nháp'}`}>
             <div className="order-history-top">
               <span className="order-history-identity"><strong>{item.number ?? 'Đơn nháp'}</strong><b>{moneyNumber.format(Number(item.total || 0))}</b></span>
-              <span className="order-history-state"><span className={`order-status status-${statusTone(item)}`}>{orderStageLabel(item)}</span>{paymentStatus ? <span className={`order-payment-status ${item.settlementStatus === 'paid' ? 'paid' : 'debt'}`}>{paymentStatus}</span> : null}<time dateTime={item.updatedAt}>{orderListDateLabel(item.updatedAt)}</time></span>
+              <span className="order-history-state"><span className={`order-status status-${statusTone(item)}`}>{orderStageLabel(item)}</span>{paymentStatus ? <span className={`order-payment-status ${item.settlementStatus === 'paid' ? 'paid' : 'debt'}`}>{paymentStatus}</span> : null}<time dateTime={item.createdAt}>{orderListDateLabel(item.createdAt)}</time></span>
             </div>
             <span className="order-history-facts">
               <span><i aria-hidden="true">♙</i><small>Khách hàng</small><strong>{item.customerName}</strong></span>
@@ -1556,7 +1599,7 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
           </button>
           <button className="order-history-print" type="button" disabled={busy === `list-print:${item.id}`} onClick={() => void printOrderFromHistory(item.id)}><span aria-hidden="true">⎙</span>{busy === `list-print:${item.id}` ? 'Đang chuẩn bị…' : 'In đơn hàng'}</button>
         </article>;
-      })}{filteredOrders.length === 0 ? <p className="empty-cart">{orderDateRangeInvalid ? 'Hãy chọn lại khoảng ngày.' : 'Chưa có đơn phù hợp.'}</p> : null}</div>
+      })}{filteredOrders.length === 0 ? <p className="empty-cart">{orderDateRangeInvalid ? 'Hãy chọn lại khoảng ngày.' : 'Chưa có đơn phù hợp.'}</p> : null}{canShowMoreOrders ? <button className="orders-load-more" type="button" disabled={ordersLoadingMore} onClick={() => void loadMoreOrders()}>{ordersLoadingMore ? 'Đang tải thêm…' : 'Xem thêm đơn hàng'}</button> : null}</div>
     </section> : null}
 
     {activeTab === 'settings' ? <section className="settings-workspace retail-page">
