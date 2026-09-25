@@ -52,3 +52,11 @@ test('approved order list styling is isolated and loaded after general retail po
   assert.match(css, /grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)/);
   assert.match(layout, /retail-final-polish\.css'[\s\S]*retail-orders-polish\.css'[\s\S]*retail-print-professional\.css'/);
 });
+
+test('order history refactor keeps render and print boundaries single', () => {
+  assert.equal((workspace.match(/function printBySystem\(paper: PrintPaper\)/g) ?? []).length, 1);
+  assert.equal((workspace.match(/async function enableRetailNotifications\(\)/g) ?? []).length, 1);
+  assert.equal((workspace.match(/\{activeTab === 'settings' \? <section className="settings-workspace retail-page">/g) ?? []).length, 1);
+  assert.match(workspace, /return `\$\{hour\}:\$\{minute\} \$\{day\}\/\$\{month\}\/\$\{year\}`/);
+  assert.match(workspace, /moneyNumber\.format\(Number\(item\.total \|\| 0\)\)/);
+});

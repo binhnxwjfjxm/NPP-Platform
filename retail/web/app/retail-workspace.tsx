@@ -231,6 +231,7 @@ class RetailApiError extends Error {
     }
 }
 const money = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 });
+const moneyNumber = new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 0 });
 const quantityNumber = new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 6 });
 const displayUnit = (unitName?: string | null, unitCode?: string | null) => unitName?.trim() || unitCode?.trim() || '—';
 const PRODUCT_IMAGE_BASE = 'https://pub-7d2987fab97d4e3ebb2021a823973862.r2.dev/app-customer/products';
@@ -307,7 +308,7 @@ function orderListDateLabel(value?: string) {
     const year = String(date.getFullYear()).slice(-2);
     const hour = String(date.getHours()).padStart(2, '0');
     const minute = String(date.getMinutes()).padStart(2, '0');
-    return `${hour} ${day}/${month}/${year}`;
+    return `${hour}:${minute} ${day}/${month}/${year}`;
 }
 function localDateKey(value?: string) {
     if (!value) return '';
@@ -1290,7 +1291,7 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
             total: money.format(Number(sourceOrder.total ?? 0)),
         });
     }
-    function printBySystem(paper: PrintPaper) {    function printBySystem(paper: PrintPaper) {
+    function printBySystem(paper: PrintPaper) {
         const style = document.createElement('style');
         style.dataset.retailPrintPage = 'true';
         style.textContent = printPageCss(paper);
@@ -1384,7 +1385,7 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
             setBusy((current) => current === busyKey ? null : current);
         }
     }
-    async function enableRetailNotifications() {    async function enableRetailNotifications() {
+    async function enableRetailNotifications() {
         setBusy('notification-enable');
         setError(null);
         try {
@@ -1544,7 +1545,7 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
         return <article className="retail-order-history-card" key={item.id}>
           <button className="order-history-main" type="button" onClick={() => void openOrder(item.id)} aria-label={`Mở ${item.number ?? 'đơn nháp'}`}>
             <div className="order-history-top">
-              <span className="order-history-identity"><strong>{item.number ?? 'Đơn nháp'}</strong><b>{new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 0 }).format(Number(item.total || 0))}</b></span>
+              <span className="order-history-identity"><strong>{item.number ?? 'Đơn nháp'}</strong><b>{moneyNumber.format(Number(item.total || 0))}</b></span>
               <span className="order-history-state"><span className={`order-status status-${statusTone(item)}`}>{orderStageLabel(item)}</span>{paymentStatus ? <span className={`order-payment-status ${item.settlementStatus === 'paid' ? 'paid' : 'debt'}`}>{paymentStatus}</span> : null}<time dateTime={item.updatedAt}>{orderListDateLabel(item.updatedAt)}</time></span>
             </div>
             <span className="order-history-facts">
@@ -1558,7 +1559,7 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
       })}{filteredOrders.length === 0 ? <p className="empty-cart">{orderDateRangeInvalid ? 'Hãy chọn lại khoảng ngày.' : 'Chưa có đơn phù hợp.'}</p> : null}</div>
     </section> : null}
 
-    {activeTab === 'settings' ? <section className="settings-workspace retail-page">    {activeTab === 'settings' ? <section className="settings-workspace retail-page">
+    {activeTab === 'settings' ? <section className="settings-workspace retail-page">
       <header className="settings-heading"><p className="section-kicker">CÀI ĐẶT</p><h2>Thiết lập bán tại quầy</h2><p>Chọn từng mục để thiết lập. Thay đổi chỉ được áp dụng khi xác nhận.</p></header>
       <div className="settings-list">
         <button className="settings-row" type="button" onClick={() => openSettings('account')}><span className="settings-icon" aria-hidden="true">◎</span><span><strong>Tài khoản</strong><small>Phiên đăng nhập và quyền nhân sự Công Ty</small></span><b aria-hidden="true">›</b></button>
