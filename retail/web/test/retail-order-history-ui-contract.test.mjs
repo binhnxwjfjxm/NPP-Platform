@@ -50,7 +50,7 @@ test('approved order list styling is isolated and loaded after general retail po
   assert.match(css, /\.retail-order-history-card/);
   assert.match(css, /\.order-history-print/);
   assert.match(css, /grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)/);
-  assert.match(layout, /retail-final-polish\.css'[\s\S]*retail-print-professional\.css'[\s\S]*retail-orders-polish\.css'/);
+  assert.match(layout, /retail-final-polish\.css'[\s\S]*retail-print-professional\.css'[\s\S]*retail-product-picker-polish\.css'[\s\S]*retail-orders-polish\.css'/);
 });
 
 test('order history refactor keeps render and print boundaries single', () => {
