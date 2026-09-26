@@ -582,7 +582,7 @@ export default function SalesOrderCommercialForm(props: Props) {
     appliedPriceMode: SalesOrderPriceSelectionMode;
     effectiveAt: string;
   }): Promise<SalesPriceResolution> => {
-    if (!channelId) throw new Error('Hãy chọn giá áp dụng trước khi tính giá');
+    if (!channelId) throw new Error('Hãy chọn kênh bán trước khi tính giá');
     return apiRequest<SalesPriceResolution>('/api/sales-orders/price-preview', {
       method: 'POST',
       body: JSON.stringify({
@@ -941,7 +941,7 @@ export default function SalesOrderCommercialForm(props: Props) {
 
   async function addSku(option: SalesOrderSkuSearchOption) {
     if (!option.eligibility.selectable) return onError(option.eligibility.message);
-    if (!salesChannelId) return onError('Hãy chọn giá áp dụng trước khi thêm hàng');
+    if (!salesChannelId) return onError('Hãy chọn kênh bán trước khi thêm hàng');
     if (linesRef.current.some((line) => line.variantId === option.id)) {
       return onError('Hàng này đã có trong đơn. Dùng Tách dòng nếu cần thêm dòng riêng.');
     }
@@ -1226,7 +1226,7 @@ export default function SalesOrderCommercialForm(props: Props) {
 
   function validate(): string | null {
     if (!entrySettings) return 'Chưa tải được cấu hình lập đơn';
-    if (!salesChannelId) return 'Hãy chọn giá áp dụng';
+    if (!salesChannelId) return 'Hãy chọn kênh bán';
     if (!entrySettings.salesChannels.some((channel) => channel.id === salesChannelId)) return 'Lựa chọn giá không còn hoạt động';
     if (customerMode === 'EXISTING' && !customerId) return 'Hãy chọn khách hàng';
     if (priceSelectionMode === 'LAST_PURCHASE' && (customerMode !== 'EXISTING' || !customerId)) return 'Giá lần mua trước chỉ dùng khi đã chọn khách hàng';
@@ -1552,7 +1552,7 @@ export default function SalesOrderCommercialForm(props: Props) {
           <section className={styles.productEntry} aria-label="Nhập hàng hóa">
             <div className={styles.productSearchBox}>
               <div className={styles.productSearchControls}>
-                <label className={styles.salesChannelField}><span>Giá áp dụng *</span><select data-testid="sales-channel-select" value={priceSelectionValue} onChange={(event) => {
+                <label className={styles.salesChannelField}><span>Kênh bán *</span><select data-testid="sales-channel-select" value={priceSelectionValue} onChange={(event) => {
                   const value = event.target.value;
                   if (value === 'LAST_PURCHASE') {
                     if (!lastPurchaseChannelId) {
@@ -1566,7 +1566,7 @@ export default function SalesOrderCommercialForm(props: Props) {
                     setSalesChannelId(value);
                   }
                   markDirty();
-                }}><option value="">Chọn giá áp dụng</option><option value="LAST_PURCHASE" disabled={customerMode !== 'EXISTING' || !customerId || !lastPurchaseChannelId}>Giá lần mua trước</option>{entrySettings?.salesChannels.map((channel) => <option key={channel.id} value={channel.id}>{channel.code} — {channel.name}</option>)}</select></label>
+                }}><option value="">Chọn kênh bán</option><option value="LAST_PURCHASE" disabled={customerMode !== 'EXISTING' || !customerId || !lastPurchaseChannelId}>Giá lần mua trước</option>{entrySettings?.salesChannels.map((channel) => <option key={channel.id} value={channel.id}>{channel.code} — {channel.name}</option>)}</select></label>
                 <label><span>Tìm hàng nhanh</span><input ref={searchRef} value={skuTerm} onChange={(event) => setSkuTerm(event.target.value)} onKeyDown={handleSkuKeyDown} placeholder="Tên sản phẩm, mã hàng, SKU hoặc barcode" autoComplete="off" /></label>
               </div>
               {skuLoading && <span className={styles.searchStatus}>Đang tìm…</span>}

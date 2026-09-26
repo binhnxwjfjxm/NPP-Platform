@@ -58,7 +58,7 @@ test('canonical form activates product-first commercial entry with walk-in and q
   assert.match(formSource, /event\.key === 'Enter'/);
   assert.match(formSource, /\/api\/sales-orders\/sku-search/);
   assert.match(formSource, /\/api\/sales-orders\/price-preview/);
-  assert.match(formSource, /Giá áp dụng \*/);
+  assert.match(formSource, /Kênh bán \*/);
   assert.match(formSource, /Giá lần mua trước/);
   assert.match(formSource, /LAST_PURCHASE/);
   assert.match(formSource, /priceSelectionMode/);

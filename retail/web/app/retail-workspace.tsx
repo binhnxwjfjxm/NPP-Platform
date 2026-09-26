@@ -171,7 +171,6 @@ type RetailWorkspaceProps = {
     onOpenInventory?: () => void;
     onTabChange?: (tab: RetailTab) => void;
 };
-type OrderFilter = 'all' | 'draft' | 'confirmed' | 'issued' | 'closed' | 'cancelled';
 type PaymentMethod = 'CASH' | 'BANK_TRANSFER';
 type PrintPaper = PrinterPaper;
 type SettingsPanel = 'account' | 'notifications' | 'printer' | 'template' | 'logout' | null;
@@ -415,7 +414,6 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
     const [paid, setPaid] = useState('');
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
     const [activeTab, setActiveTab] = useState<RetailTab>(initialTab);
-    const [orderFilter, setOrderFilter] = useState<OrderFilter>('all');
     const [orderSearch, setOrderSearch] = useState('');
     const [orderDateFrom, setOrderDateFrom] = useState('');
     const [orderDateTo, setOrderDateTo] = useState('');
@@ -528,7 +526,7 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
             window.removeEventListener(RETAIL_NOTIFICATION_OPEN_EVENT, handleOpen);
         };
     }, []);
-    useEffect(() => { setOrderVisibleCount(ORDER_VISIBLE_STEP); }, [orderFilter, orderSearch, orderDateFrom, orderDateTo]);
+    useEffect(() => { setOrderVisibleCount(ORDER_VISIBLE_STEP); }, [orderSearch, orderDateFrom, orderDateTo]);
     const canPriceOverride = Boolean(boot?.settings.permissions?.canPriceOverride);
     const canDiscountOverride = Boolean(boot?.settings.permissions?.canDiscountOverride);
     const canNegativeStockIssue = Boolean(boot?.settings.permissions?.canNegativeStockIssue);
@@ -942,14 +940,7 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
     const orderDateRangeInvalid = Boolean(orderDateFrom && orderDateTo && orderDateFrom > orderDateTo);
     const normalizedOrderSearch = orderSearch.trim().toLocaleLowerCase('vi-VN');
     const filteredOrders = [...orders].filter((item) => {
-        const statusMatches = orderFilter === 'all'
-            ? true
-            : orderFilter === 'issued'
-                ? item.status === 'confirmed' && STOCK_ISSUED_FULFILLMENT_STATUSES.has(item.fulfillmentStatus)
-                : orderFilter === 'confirmed'
-                    ? item.status === 'confirmed' && !STOCK_ISSUED_FULFILLMENT_STATUSES.has(item.fulfillmentStatus)
-                    : item.status === orderFilter;
-        if (!statusMatches || orderDateRangeInvalid) return false;
+        if (orderDateRangeInvalid) return false;
         const itemDate = localDateKey(item.createdAt);
         if (orderDateFrom && itemDate < orderDateFrom) return false;
         if (orderDateTo && itemDate > orderDateTo) return false;
@@ -957,6 +948,9 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
         return [item.number, item.customerName, item.customerPhone, item.warehouseName, item.note]
             .some((value) => String(value ?? '').toLocaleLowerCase('vi-VN').includes(normalizedOrderSearch));
     }).sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt));
+    const filteredOrderRevenue = filteredOrders
+        .filter((item) => item.status === 'closed')
+        .reduce((sum, item) => sum + Number(item.total || 0), 0);
     const visibleOrders = filteredOrders.slice(0, orderVisibleCount);
     const canShowMoreOrders = filteredOrders.length > orderVisibleCount || ordersHasMore;
     const todayOrders = orders.filter((item) => item.status !== 'cancelled' && isToday(item.createdAt));
@@ -1577,12 +1571,10 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
         </label>
       </div>
       {orderDateRangeInvalid ? <p className="order-date-error" role="alert">Từ ngày không được sau Đến ngày.</p> : null}
-      <div className="status-filter order-status-filter" role="tablist" aria-label="Lọc trạng thái đơn">{([
-        { id: 'all', label: 'Tất cả' },
-        { id: 'draft', label: 'Đang lập' },
-        { id: 'confirmed', label: 'Đã chốt' },
-        { id: 'issued', label: 'Đã xuất kho' },
-      ] as { id: OrderFilter; label: string }[]).map((item) => <button type="button" role="tab" aria-selected={orderFilter === item.id} className={orderFilter === item.id ? 'active' : ''} key={item.id} onClick={() => setOrderFilter(item.id)}>{item.label}</button>)}</div>
+      <div className="order-summary" aria-label="Tổng hợp đơn theo bộ lọc">
+        <article className="order-summary-card orders"><span>Đơn</span><strong>{filteredOrders.length}</strong></article>
+        <article className="order-summary-card revenue"><span>Doanh thu</span><strong>{moneyNumber.format(filteredOrderRevenue)}</strong></article>
+      </div>
       <div className="order-history">{visibleOrders.map((item) => {
         const paymentStatus = orderPaymentLabel(item);
         return <article className="retail-order-history-card" key={item.id}>

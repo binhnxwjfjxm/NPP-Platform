@@ -54,11 +54,11 @@
   grid-template-columns: 23px minmax(0, 1fr);
   align-items: center;
   gap: 8px;
-  min-height: 48px;
+  min-height: 38px;
   overflow: hidden;
   border: 1px solid #d8e3dc;
-  border-radius: 15px;
-  padding: 0 13px;
+  border-radius: 12px;
+  padding: 0 10px;
   background: #fff;
   color: #748078;
   cursor: pointer;
@@ -80,12 +80,12 @@
   display: grid;
   place-items: center;
   color: #718079;
-  font-size: 17px;
+  font-size: 14px;
 }
 
 .retail-issue675 .order-date-field strong {
   overflow: hidden;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -107,34 +107,43 @@
   font-weight: 700;
 }
 
-.retail-issue675 .order-status-filter {
+.retail-issue675 .order-summary {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 7px;
-  overflow: visible;
-  padding: 1px 0 2px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
 }
 
-.retail-issue675 .order-status-filter button {
+.retail-issue675 .order-summary-card {
+  display: flex;
   min-width: 0;
-  min-height: 42px;
+  min-height: 48px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   border: 1px solid #dbe4df;
-  border-radius: 999px;
-  padding: 0 7px;
+  border-radius: 14px;
+  padding: 7px 12px;
   background: #fff;
-  color: #6c7771;
-  font-size: 12px;
-  font-weight: 650;
-  white-space: nowrap;
-  box-shadow: none;
+  box-shadow: 0 2px 10px rgba(18, 59, 35, .025);
 }
 
-.retail-issue675 .order-status-filter button.active {
-  border-color: #62bf87;
-  background: #f3fbf6;
-  color: #087241;
-  font-weight: 800;
+.retail-issue675 .order-summary-card span {
+  color: inherit;
+  font-size: 12px;
+  font-weight: 700;
 }
+
+.retail-issue675 .order-summary-card strong {
+  overflow: hidden;
+  font-size: 18px;
+  font-weight: 850;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.retail-issue675 .order-summary-card.orders { color: #315f8c; }
+.retail-issue675 .order-summary-card.revenue { color: #087a43; }
 
 .retail-issue675 .order-history {
   display: grid;
@@ -294,8 +303,8 @@
 .retail-issue675 .order-history-print:disabled { color: #8ca095; cursor: wait; }
 
 @media (max-width: 420px) {
-  .retail-issue675 .order-status-filter { gap: 5px; }
-  .retail-issue675 .order-status-filter button { min-height: 40px; padding: 0 4px; font-size: 11px; }
+  .retail-issue675 .order-summary-card { min-height: 44px; padding: 6px 10px; }
+  .retail-issue675 .order-summary-card strong { font-size: 17px; }
   .retail-issue675 .order-history-main { padding: 14px 13px 11px; }
   .retail-issue675 .order-history-identity > strong { font-size: 16px; }
   .retail-issue675 .order-history-identity > b { font-size: 22px; }
@@ -305,7 +314,6 @@
 
 @media (max-width: 340px) {
   .retail-issue675 .order-date-range { grid-template-columns: 1fr; }
-  .retail-issue675 .order-status-filter { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 .retail-issue675 .orders-load-more {
