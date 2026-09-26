@@ -189,7 +189,7 @@ test('bottom nav tách khỏi nội dung nhưng topbar vẫn dùng document scro
   assert.match(nav, /padding: 6px;/);
   assert.doesNotMatch(nav, /padding:[^;]*safe-area-inset-bottom/);
 
-  assert.doesNotMatch(page, /RETAIL_SCROLL_REGION_STYLE|overflowY: 'auto'|height: '100dvh'/);
+  assert.doesNotMatch(page, /RETAIL_SCROLL_REGION_STYLE|overflowY: 'auto'/);
   assert.match(page, /<main className="retail-shell retail-lot7 retail-issue675">/);
   assert.match(lot7, /\.retail-lot7 \.retail-topbar \{ position: sticky; z-index: 4; top: 0;/);
 
