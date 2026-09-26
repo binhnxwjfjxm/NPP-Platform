@@ -1,6 +1,7 @@
 'use client';
 
 import { AppShell } from '../../components/app-shell-core';
+import OfficeFormsLibrary from './office-forms-library';
 import styles from './data-exchange.module.css';
 import {
   type Tab, type Category, type Channel, type CustomerGroup, type Customer, type Balance, type QuotationRow, type MovementView, type PriceList,
@@ -43,10 +44,13 @@ export function DataExchangeView({ ctx }: { ctx: DataExchangeViewContext }) {
     loadMovements, loadMoreMovements, movementHasMore, exportMovements, selectedBalanceKey, selectMovementBalance, balances, selectedBalance, movementRows,
     refreshReferenceData, begin, fail,
   } = ctx;
-  const actions = <div className={styles.headerActions}><a className={styles.secondaryButton} href="/operations/import-export-history">Lịch sử nhập/xuất</a><button className={styles.secondaryButton} type="button" onClick={() => { begin(); refreshReferenceData().then(() => setMessage('Đã cập nhật dữ liệu nền.')).catch(fail).finally(() => setBusy(false)); }} disabled={busy}>Làm mới</button></div>;
-  return <AppShell kicker="Dữ liệu vận hành" title="Nhập/xuất dữ liệu và báo giá" subtitle="Nhập, kiểm tra và xuất dữ liệu theo từng nghiệp vụ." actions={actions}>
+  const actions = <div className={styles.headerActions}>
+    <a className={styles.secondaryButton} href="/operations/import-export-history">Lịch sử nhập/xuất</a>
+    {tab !== 'office-forms' ? <button className={styles.secondaryButton} type="button" onClick={() => { begin(); refreshReferenceData().then(() => setMessage('Đã cập nhật dữ liệu nền.')).catch(fail).finally(() => setBusy(false)); }} disabled={busy}>Làm mới</button> : null}
+  </div>;
+  return <AppShell kicker="Dữ liệu vận hành" title="Nhập/xuất dữ liệu và biểu mẫu" subtitle="Nhập, xuất dữ liệu nghiệp vụ và tải biểu mẫu trống phục vụ công việc văn phòng." actions={actions}>
     <div className={styles.page} data-testid="phase-10-4-data-exchange">
-      <nav className={styles.tabs} aria-label="Nhóm dữ liệu">{([['products', 'Sản phẩm và SKU'], ['pricing', 'Giá bán'], ['stocktake', 'Kiểm kê'], ['quotation', 'Báo giá'], ['movements', 'Biến động kho']] as Array<[Tab, string]>).map(([key, label]) => <button key={key} type="button" className={tab === key ? styles.activeTab : ''} onClick={() => { setTab(key); setError(''); setMessage(''); setPendingImport(null); }}>{label}</button>)}</nav>
+      <nav className={styles.tabs} aria-label="Nhóm dữ liệu">{([['products', 'Sản phẩm và SKU'], ['pricing', 'Giá bán'], ['stocktake', 'Kiểm kê'], ['quotation', 'Báo giá'], ['movements', 'Biến động kho'], ['office-forms', 'Biểu mẫu văn phòng']] as Array<[Tab, string]>).map(([key, label]) => <button key={key} type="button" className={tab === key ? styles.activeTab : ''} onClick={() => { setTab(key); setError(''); setMessage(''); setPendingImport(null); }}>{label}</button>)}</nav>
       {error ? <div className={styles.error} role="alert"><strong>Chưa thể thực hiện.</strong><span>{error}</span></div> : null}{message ? <div className={styles.success} role="status">{message}</div> : null}
 
       {tab === 'products' ? <section className={styles.panel}><div className={styles.panelTitle}><div><h2>Sản phẩm và SKU</h2><p>Nhập hoặc xuất nhiều sản phẩm và SKU cùng lúc. Sau khi chọn tệp, xem trước và chọn đơn vị, lô, hạn sử dụng và vị trí kho trước khi ghi dữ liệu.</p></div><div className={styles.buttonRow}>
@@ -72,6 +76,8 @@ export function DataExchangeView({ ctx }: { ctx: DataExchangeViewContext }) {
       {tab === 'movements' ? <section className={styles.panel}><div className={styles.panelTitle}><div><h2>Biến động tồn kho theo SKU</h2><p>Chọn một dòng tồn để xem từng lần nhập, xuất hoặc điều chỉnh và số tồn sau mỗi lần. Danh sách có thể tải tiếp; file xuất lấy đầy đủ từ máy chủ trong phạm vi đã chọn.</p></div><div className={styles.buttonRow}><button type="button" className={styles.primaryButton} onClick={() => void loadMovements()} disabled={busy}>Xem biến động</button><button type="button" className={styles.secondaryButton} onClick={() => void exportMovements('xlsx')} disabled={busy || !selectedBalance}>Xuất Excel</button><button type="button" className={styles.secondaryButton} onClick={() => void exportMovements('csv')} disabled={busy || !selectedBalance}>Xuất CSV</button></div></div><label className={styles.field}>Dòng tồn<select value={selectedBalanceKey} onChange={(event) => selectMovementBalance(event.target.value)}><option value="">Chọn kho, vị trí, SKU hoặc lô</option>{balances.map((item) => { const key = scopeKey(item.warehouse_code, item.location_code, item.base_sku, item.lot_code); return <option key={key} value={key}>{item.warehouse_code} · {item.location_code || 'Không vị trí'} · {item.base_sku}{item.lot_code ? ` · ${item.lot_code}` : ''} · tồn {trimDecimal(item.on_hand_quantity)}</option>; })}</select></label>
         {selectedBalance ? <div className={styles.balanceSummary}><span>Tồn hiện tại <strong>{trimDecimal(selectedBalance.on_hand_quantity)}</strong></span><span>Đang giữ <strong>{trimDecimal(selectedBalance.reserved_quantity)}</strong></span><span>Khả dụng <strong>{trimDecimal(selectedBalance.available_quantity)}</strong></span></div> : null}
         {movementRows.length ? <><div className={styles.tableWrap}><table><thead><tr><th>Thời gian</th><th>Chứng từ</th><th>Loại nghiệp vụ</th><th>Biến động</th><th>Tồn sau</th></tr></thead><tbody>{movementRows.map((row) => <tr key={`${row.movement_id}:${row.source_line_reference ?? row.base_quantity_delta}`}><td>{new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date(row.posted_at))}</td><td>{row.source_document_number || row.document_number || row.source_document_type || '—'}</td><td>{movementTypeLabel(row.movement_type)}</td><td className={scaled12(row.base_quantity_delta) >= 0n ? styles.positive : styles.negative}>{scaled12(row.base_quantity_delta) >= 0n ? '+' : ''}{trimDecimal(row.base_quantity_delta)}</td><td>{trimDecimal(row.stockAfter)}</td></tr>)}</tbody></table></div>{movementHasMore ? <div className={styles.buttonRow}><button type="button" className={styles.secondaryButton} onClick={() => void loadMoreMovements()} disabled={busy}>Xem thêm</button></div> : null}</> : null}</section> : null}
+
+      {tab === 'office-forms' ? <OfficeFormsLibrary /> : null}
     </div>
   </AppShell>;
 }
