@@ -172,8 +172,12 @@ test('viewport Retail khóa zoom và giữ safe-area cho PWA', async () => {
   assert.match(css, /env\(safe-area-inset-bottom\)/);
 });
 
-test('bottom nav giữ nguyên hình dáng nhưng nằm ngoài vùng cuộn sau notification focus', async () => {
-  const [page, css] = await Promise.all([readWorkspace(), read('app/retail-issue675.css')]);
+test('bottom nav tách khỏi nội dung nhưng topbar vẫn dùng document scroll owner', async () => {
+  const [page, css, lot7] = await Promise.all([
+    readWorkspace(),
+    read('app/retail-issue675.css'),
+    read('app/retail-lot7.css'),
+  ]);
   const start = css.indexOf('/* Bottom navigation */');
   const end = css.indexOf('/* Interaction */', start);
   const nav = css.slice(start, end);
@@ -185,7 +189,10 @@ test('bottom nav giữ nguyên hình dáng nhưng nằm ngoài vùng cuộn sau 
   assert.match(nav, /padding: 6px;/);
   assert.doesNotMatch(nav, /padding:[^;]*safe-area-inset-bottom/);
 
-  assert.match(page, /const RETAIL_SCROLL_REGION_STYLE: CSSProperties = \{[\s\S]*?overflowY: 'auto'[\s\S]*?overscrollBehaviorY: 'contain'/);
+  assert.doesNotMatch(page, /RETAIL_SCROLL_REGION_STYLE|overflowY: 'auto'|height: '100dvh'/);
+  assert.match(page, /<main className="retail-shell retail-lot7 retail-issue675">/);
+  assert.match(lot7, /\.retail-lot7 \.retail-topbar \{ position: sticky; z-index: 4; top: 0;/);
+
   assert.match(page, /const RETAIL_BOTTOM_NAV_SCOPE_STYLE: CSSProperties = \{[\s\S]*?position: 'fixed'[\s\S]*?maxWidth: 'none'[\s\S]*?padding: 0[\s\S]*?background: 'transparent'[\s\S]*?pointerEvents: 'none'/);
   assert.match(page, /const RETAIL_BOTTOM_NAV_STYLE: CSSProperties = \{[\s\S]*?position: 'absolute'[\s\S]*?pointerEvents: 'auto'/);
   assert.match(page, /<\/main>\s*<div className="retail-bottom-nav-scope retail-lot7 retail-issue675" style=\{RETAIL_BOTTOM_NAV_SCOPE_STYLE\}>\s*<nav className="bottom-nav" style=\{RETAIL_BOTTOM_NAV_STYLE\}/);
