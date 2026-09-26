@@ -6,7 +6,6 @@ import type { Supplier } from '../../lib/supplier-types';
 import type {
   AttendanceDayStatus,
   AttendanceEvent,
-  AttendanceTimesheetDay,
   AttendanceTimesheetMonth,
   AttendanceTimesheetResponse,
   AttendanceToday,
@@ -189,6 +188,8 @@ const DAY_STATUS_LABELS: Readonly<Partial<Record<AttendanceDayStatus, string>>> 
   NOT_STARTED: 'Chưa bắt đầu',
   MISSING_POLICY: 'Thiếu chính sách làm việc',
   MISSING_SCHEDULE: 'Thiếu lịch làm việc',
+  MISSING_CHECK_IN: 'Thiếu giờ vào',
+  MISSING_CHECK_OUT: 'Thiếu giờ ra',
   INCOMPLETE: 'Chưa đủ công',
 });
 
