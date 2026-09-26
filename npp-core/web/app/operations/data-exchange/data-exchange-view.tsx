@@ -48,7 +48,7 @@ export function DataExchangeView({ ctx }: { ctx: DataExchangeViewContext }) {
     <a className={styles.secondaryButton} href="/operations/import-export-history">Lịch sử nhập/xuất</a>
     {tab !== 'office-forms' ? <button className={styles.secondaryButton} type="button" onClick={() => { begin(); refreshReferenceData().then(() => setMessage('Đã cập nhật dữ liệu nền.')).catch(fail).finally(() => setBusy(false)); }} disabled={busy}>Làm mới</button> : null}
   </div>;
-  return <AppShell kicker="Dữ liệu vận hành" title="Nhập/xuất dữ liệu và biểu mẫu" subtitle="Nhập, xuất dữ liệu nghiệp vụ và tải biểu mẫu trống phục vụ công việc văn phòng." actions={actions}>
+  return <AppShell kicker="Dữ liệu vận hành" title="Nhập/xuất dữ liệu và báo giá" subtitle="Nhập, xuất dữ liệu nghiệp vụ và tải biểu mẫu trống phục vụ công việc văn phòng." actions={actions}>
     <div className={styles.page} data-testid="phase-10-4-data-exchange">
       <nav className={styles.tabs} aria-label="Nhóm dữ liệu">{([['products', 'Sản phẩm và SKU'], ['pricing', 'Giá bán'], ['stocktake', 'Kiểm kê'], ['quotation', 'Báo giá'], ['movements', 'Biến động kho'], ['office-forms', 'Biểu mẫu văn phòng']] as Array<[Tab, string]>).map(([key, label]) => <button key={key} type="button" className={tab === key ? styles.activeTab : ''} onClick={() => { setTab(key); setError(''); setMessage(''); setPendingImport(null); }}>{label}</button>)}</nav>
       {error ? <div className={styles.error} role="alert"><strong>Chưa thể thực hiện.</strong><span>{error}</span></div> : null}{message ? <div className={styles.success} role="status">{message}</div> : null}
