@@ -36,6 +36,7 @@ export default function DataExchangeWorkspace() {
   const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const importOperationKeyRef = useRef<string | null>(null);
+  const referenceLoadedRef = useRef(false);
 
   useEffect(() => { if (TABS.includes(requestedTab as Tab)) setTab(requestedTab as Tab); }, [requestedTab]);
 
@@ -68,7 +69,14 @@ export default function DataExchangeWorkspace() {
     if (!pricingPriceListId) setPricingPriceListId(nextLists.find((item) => item.is_active && item.list_type === 'BASE')?.id ?? '');
     if (!stocktakeWarehouse && nextBalances.length) setStocktakeWarehouse(nextBalances[0].warehouse_id);
   }
-  useEffect(() => { refreshReferenceData().catch((cause) => setError(cause instanceof Error ? cause.message : 'Không tải được dữ liệu nền.')); }, []);
+  useEffect(() => {
+    if (tab === 'office-forms' || referenceLoadedRef.current) return;
+    referenceLoadedRef.current = true;
+    refreshReferenceData().catch((cause) => {
+      referenceLoadedRef.current = false;
+      setError(cause instanceof Error ? cause.message : 'Không tải được dữ liệu nền.');
+    });
+  }, [tab]);
   function begin() { setBusy(true); setError(''); setMessage(''); }
   function fail(cause: unknown) { setError(cause instanceof Error ? humanizeMessage(cause.message) : 'Thao tác không thành công.'); }
   function toggleColumn(setter: (value: Set<string>) => void, current: Set<string>, column: string) { const next = new Set(current); if (next.has(column)) next.delete(column); else next.add(column); setter(next); }

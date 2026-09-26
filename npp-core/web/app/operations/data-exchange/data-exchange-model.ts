@@ -1,4 +1,4 @@
-export type Tab = 'products' | 'pricing' | 'stocktake' | 'quotation' | 'movements';
+export type Tab = 'products' | 'pricing' | 'stocktake' | 'quotation' | 'movements' | 'office-forms';
 export type ImportKind = 'products' | 'pricing' | 'stocktake';
 export type Product = {
   id: string; code: string; name: string; catalog_name: string | null; category_id: string | null; brand_id: string | null;
@@ -69,7 +69,7 @@ export const COLUMN_LABELS: Record<string, string> = {
   actualCount: 'Số đếm thực tế', quantity: 'Số lượng', unitPriceMinor: 'Đơn giá', lineTotalMinor: 'Thành tiền',
 };
 export const LABEL_TO_COLUMN = new Map(Object.entries(COLUMN_LABELS).map(([key, label]) => [label.trim().toLocaleLowerCase('vi-VN'), key]));
-export const TABS: Tab[] = ['products', 'pricing', 'stocktake', 'quotation', 'movements'];
+export const TABS: Tab[] = ['products', 'pricing', 'stocktake', 'quotation', 'movements', 'office-forms'];
 export const BOOLEAN_FIELDS = new Set(['productIsCatalogVisible', 'productIsOrderable', 'productIsActive', 'isInventoryBase', 'isSellable', 'isCatalogVisible', 'isActive']);
 export const LIST_TYPE_LABELS: Record<string, string> = { BASE: 'Giá nền', CHANNEL: 'Theo kênh', CUSTOMER_GROUP: 'Theo nhóm khách', CUSTOMER: 'Theo khách hàng', PROMOTION: 'Khuyến mãi', CUSTOM: 'Quy tắc khác' };
 export const ADJUSTMENT_LABELS: Record<string, string> = { FIXED_PRICE: 'Giá cố định', PERCENT_DISCOUNT: 'Giảm phần trăm', AMOUNT_DISCOUNT: 'Giảm số tiền', PERCENT_MARKUP: 'Tăng phần trăm', AMOUNT_MARKUP: 'Tăng số tiền' };
