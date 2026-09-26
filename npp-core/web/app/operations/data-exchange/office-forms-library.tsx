@@ -49,6 +49,9 @@ function reconcilePdf(meta: readonly string[] = ['Đơn vị đối chiếu', 'T
 function peoplePdf(meta: readonly string[], note?: string): PdfSpec {
   return { meta, signatures: ['Người lập / Nhân sự', 'Quản lý trực tiếp', 'Bộ phận Nhân sự'], note };
 }
+function cashPdf(meta: readonly string[], receiverLabel: string): PdfSpec {
+  return { meta, signatures: ['Người lập', receiverLabel, 'Kế toán / Quản lý'], note: 'Ghi rõ chứng từ liên quan và phương thức thanh toán khi có.' };
+}
 
 export const OFFICE_FORM_CATALOG: readonly OfficeForm[] = [
   {
@@ -92,7 +95,7 @@ export const OFFICE_FORM_CATALOG: readonly OfficeForm[] = [
     group: 'sales',
     name: 'Mẫu phiếu thu',
     purpose: 'Phiếu trống ghi nhận khoản tiền khách hàng nộp bằng chứng từ giấy.',
-    pdf: peoplePdf(['Ngày thu', 'Khách hàng / người nộp', 'Số tiền', 'Bằng chữ', 'Nội dung thu'], 'Kèm chứng từ liên quan khi có.'),
+    pdf: cashPdf(['Ngày thu', 'Khách hàng / người nộp', 'Số tiền', 'Bằng chữ', 'Nội dung thu'], 'Người nộp tiền'),
   },
   {
     id: 'customer-return-receipt-blank',
@@ -106,7 +109,7 @@ export const OFFICE_FORM_CATALOG: readonly OfficeForm[] = [
     group: 'sales',
     name: 'Mẫu phiếu hoàn tiền khách hàng',
     purpose: 'Phiếu trống xác nhận khoản hoàn tiền cho khách hàng.',
-    pdf: peoplePdf(['Ngày hoàn', 'Khách hàng / người nhận', 'Số tiền', 'Bằng chữ', 'Lý do hoàn'], 'Ghi rõ chứng từ liên quan và phương thức hoàn tiền.'),
+    pdf: cashPdf(['Ngày hoàn', 'Khách hàng / người nhận', 'Số tiền', 'Bằng chữ', 'Lý do hoàn'], 'Người nhận tiền'),
   },
   {
     id: 'customer-debt-reconciliation-blank',
@@ -151,7 +154,7 @@ export const OFFICE_FORM_CATALOG: readonly OfficeForm[] = [
     group: 'purchasing',
     name: 'Mẫu phiếu chi / thanh toán Nhà cung cấp',
     purpose: 'Phiếu trống ghi nhận khoản chi hoặc thanh toán cho Nhà cung cấp.',
-    pdf: peoplePdf(['Ngày chi', 'Nhà cung cấp / người nhận', 'Số tiền', 'Bằng chữ', 'Nội dung chi'], 'Ghi rõ phương thức thanh toán và chứng từ liên quan.'),
+    pdf: cashPdf(['Ngày chi', 'Nhà cung cấp / người nhận', 'Số tiền', 'Bằng chữ', 'Nội dung chi'], 'Người nhận tiền'),
   },
   {
     id: 'supplier-debt-reconciliation-blank',
@@ -321,6 +324,11 @@ function pdfId(formId: string) {
   return `office-form-${formId}`;
 }
 
+function officeFilename(name: string, extension: 'xlsx' | 'pdf') {
+  const safe = name.replace(/[\\/:*?"<>|]+/g, ' - ').replace(/\s+/g, ' ').trim();
+  return `${safe}.${extension}`;
+}
+
 function pdfColumns(spec: PdfSpec): BusinessDocumentColumn[] {
   return (spec.columns ?? []).map((label, index) => ({
     key: `c${index}`,
@@ -360,7 +368,7 @@ export default function OfficeFormsLibrary() {
     try {
       const rows = blankRows(form.xlsx.blankRows ?? 12, form.xlsx.headers.length);
       await exportTable(
-        `${form.id}.xlsx`,
+        officeFilename(form.name, 'xlsx'),
         form.name.slice(0, 31),
         [...form.xlsx.headers],
         rows,
@@ -428,7 +436,7 @@ export default function OfficeFormsLibrary() {
                     <p>{form.purpose}</p>
                     <div className={styles.actions}>
                       {form.xlsx ? <button type="button" className={styles.downloadButton} disabled={busy !== null} onClick={() => void downloadXlsx(form)}>{busy === form.id ? 'Đang tạo…' : 'Tải Excel'}</button> : null}
-                      {form.pdf ? <PrintAction targetId={pdfId(form.id)} label="In / lưu PDF" variant="text" /> : null}
+                      {form.pdf ? <PrintAction targetId={pdfId(form.id)} label="In / lưu PDF" variant="text" documentTitle={officeFilename(form.name, 'pdf').replace(/\.pdf$/i, '')} /> : null}
                     </div>
                   </article>
                 ))}
