@@ -54,7 +54,7 @@ export default async function ImportExportHistoryPage({ searchParams }: { search
       kicker="Lịch sử vận hành"
       title="Lịch sử nhập/xuất dữ liệu"
       subtitle="Theo dõi các lần nhập và xuất dữ liệu, người thực hiện, trạng thái và số dòng đã xử lý."
-      actions={<div className={styles.actions}><Link className={styles.secondary} href="/operations/data-exchange">Nhập/xuất dữ liệu và báo giá</Link><Link className={styles.secondary} href="/operations/audit-history">Lịch sử thay đổi</Link></div>}
+      actions={<div className={styles.actions}><Link className={styles.secondary} href="/operations/data-exchange">Nhập/xuất dữ liệu</Link><Link className={styles.secondary} href="/operations/audit-history">Lịch sử thay đổi</Link></div>}
     >
       <form className={styles.toolbar} method="get">
         <label className={styles.field}>Từ ngày<input name="from" type="date" defaultValue={params.from ?? ''} /></label>

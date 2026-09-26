@@ -12,6 +12,7 @@ const fileUtils = read('app/operations/data-exchange/data-exchange-file-utils.ts
 const actions = read('app/operations/data-exchange/data-exchange-import-actions.ts');
 const preview = read('app/operations/data-exchange/data-exchange-preview.tsx');
 const view = read('app/operations/data-exchange/data-exchange-view.tsx');
+const quotation = read('app/sales/quotations/quotation-workspace.tsx');
 const dataExchange = [workspace, model, fileUtils, actions, preview, view].join('\n');
 
 test('Phase 10.4 generic XLSX round-trips a tabular workbook', () => {
@@ -21,7 +22,8 @@ test('Phase 10.4 generic XLSX round-trips a tabular workbook', () => {
 });
 
 test('Phase 10.4 workspace uses official file operations and canonical SKU pricing mutation', () => {
-  for (const endpoint of ['products/export', 'products/import', 'pricing/export', 'stocktake/export', 'stocktake/import', 'quotation']) assert.match(dataExchange, new RegExp(`/api/file-operations/${endpoint}`));
+  for (const endpoint of ['products/export', 'products/import', 'pricing/export', 'stocktake/export', 'stocktake/import']) assert.match(dataExchange, new RegExp(`/api/file-operations/${endpoint}`));
+  assert.match(quotation, /\/api\/file-operations\/quotation/);
   assert.match(actions, /\/api\/pricing\/import/);
   assert.match(actions, /matchBySku:\s*true/);
   assert.match(workspace, /\/api\/inventory\/balances\/drill-down/);
@@ -66,9 +68,10 @@ test('SKU-keyed price updates preserve quotation lineage', () => {
   assert.match(actions, /'Idempotency-Key': operationKey/);
   assert.match(actions, /JSON\.stringify\(\{ matchBySku: true, sourceBatchId, items \}\)/);
   assert.doesNotMatch(actions, /price-file-\$\{crypto\.randomUUID\(\)\}/);
-  assert.match(workspace, /lineTotal: String\(row\.lineTotalMinor/);
-  assert.match(workspace, /priceListCode: String\(row\.priceListCode/);
-  assert.match(workspace, /row\.lineTotal, row\.priceListCode/);
+  assert.match(quotation, /lineTotal: String\(row\.lineTotalMinor/);
+  assert.match(quotation, /priceListCode: String\(row\.priceListCode/);
+  assert.match(quotation, /row\.lineTotal/);
+  assert.match(quotation, /row\.priceListCode/);
 });
 
 test('product import is operator-facing: Vietnamese headers, preview and explicit choices', () => {
@@ -111,12 +114,28 @@ test('central data exchange is persistent navigation and preserves direct tab de
   assert.doesNotMatch(wrapper, /usePathname/);
   assert.match(workspace, /useSearchParams/);
   assert.match(workspace, /searchParams\.get\('tab'\)/);
-  assert.match(view, /title="Nhập\/xuất dữ liệu và báo giá"/);
+  assert.match(view, /title="Nhập\/xuất dữ liệu"/);
+  assert.doesNotMatch(view, /Báo giá/);
 });
 
 test('Phase 10.4 page is reachable from Vietnamese import/export history', () => {
   const history = read('app/operations/import-export-history/page.tsx');
   assert.match(history, /href="\/operations\/data-exchange"/);
-  assert.match(history, /Nhập\/xuất dữ liệu và báo giá/);
+  assert.match(history, />Nhập\/xuất dữ liệu<\/Link>/);
+  assert.doesNotMatch(history, /Nhập\/xuất dữ liệu và báo giá/);
   assert.match(history, /Lịch sử nhập\/xuất dữ liệu/);
+});
+
+
+test('quotation is owned by Bán hàng and reads variants in bounded batches', () => {
+  const shell = read('app/components/app-shell-core.tsx');
+  assert.match(shell, /href: '\/sales\/quotations'/);
+  assert.match(shell, /label: 'Báo giá'/);
+  assert.match(quotation, /\/api\/products\/variants\/query/);
+  assert.match(quotation, /VARIANT_BATCH_SIZE = 500/);
+  assert.match(quotation, /operationKeyRef\.current \?\? idempotency\('sales-quotation'\)/);
+  assert.match(quotation, /operationKeyRef\.current = operationKey/);
+  assert.match(quotation, /Mỗi báo giá tối đa 1\.000 mã hàng/);
+  assert.match(quotation, /Tìm khách hàng/);
+  assert.match(quotation, /Bảng giá áp dụng/);
 });

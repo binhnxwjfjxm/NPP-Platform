@@ -24,3 +24,12 @@ Status: implementation contract for Phase 10.4.
 7. Compact file controls and selectable export columns.
 8. Canonical import/export history recording for completed/failed official file operations.
 9. Regression/API/browser coverage; exact-head CI must be green before merge.
+
+
+## UI ownership correction — 2026-09-26
+
+- Báo giá là nghiệp vụ Bán hàng và được đặt tại `/sales/quotations`, không còn là tab trong `/operations/data-exchange`.
+- `Nhập/xuất dữ liệu` chỉ giữ nhập/xuất, kiểm kê, biến động kho và thư viện biểu mẫu văn phòng.
+- Màn Báo giá tiếp tục dùng `/api/file-operations/quotation` và pricing resolver chuẩn; không tạo engine giá thứ hai.
+- SKU của báo giá được đọc theo lô qua `/api/products/variants/query`, bỏ cách gọi một request cho từng sản phẩm.
+- Excel/CSV dùng helper tải file chung; object URL chỉ được thu hồi sau khi trình duyệt có thời gian nhận thao tác tải.
