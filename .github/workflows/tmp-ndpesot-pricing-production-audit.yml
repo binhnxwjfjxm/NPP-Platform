@@ -1,0 +1,187 @@
+name: TEMP NDPESOT production pricing audit
+
+on:
+  push:
+    branches:
+      - agent/audit-ndpesot-pricing-production
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VPS_DB_HOST: ${{ vars.VPS_DB_HOST }}
+      VPS_SSH_USER: ${{ vars.VPS_SSH_USER }}
+
+    steps:
+      - name: Checkout audit branch
+        uses: actions/checkout@v4
+
+      - name: Prepare DB SSH credential
+        id: ssh
+        shell: bash
+        env:
+          VPS_DB_SSH_KEY: ${{ secrets.VPS_DB_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$VPS_DB_HOST"
+          test -n "$VPS_SSH_USER"
+          test -n "$VPS_DB_SSH_KEY"
+          umask 077
+          key="$RUNNER_TEMP/vps-db.key"
+          printf '%s\n' "$VPS_DB_SSH_KEY" > "$key"
+          chmod 600 "$key"
+          ssh-keygen -y -f "$key" >/dev/null
+          known_hosts="$RUNNER_TEMP/vps-db-known-hosts"
+          ssh-keyscan -T 10 -H "$VPS_DB_HOST" > "$known_hosts" 2>/dev/null
+          test -s "$known_hosts"
+          chmod 600 "$known_hosts"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+          echo "known_hosts=$known_hosts" >> "$GITHUB_OUTPUT"
+
+      - name: Query production pricing read-only
+        shell: bash
+        env:
+          SSH_KEY: ${{ steps.ssh.outputs.key }}
+          KNOWN_HOSTS: ${{ steps.ssh.outputs.known_hosts }}
+        run: |
+          set -euo pipefail
+          ssh -i "$SSH_KEY" \
+            -o BatchMode=yes \
+            -o ConnectTimeout=10 \
+            -o ConnectionAttempts=1 \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$KNOWN_HOSTS" \
+            "$VPS_SSH_USER@$VPS_DB_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+
+          sudo -n -u postgres psql -X -v ON_ERROR_STOP=1 -d npp_production <<'SQL'
+          \pset pager off
+          \pset tuples_only on
+          \pset format unaligned
+
+          SELECT 'AUDIT_TIME|' || now();
+
+          SELECT concat_ws('|',
+            'CHANNEL',
+            installation_id,
+            id,
+            code,
+            name,
+            is_active
+          )
+          FROM shared.sales_channels
+          ORDER BY installation_id, code;
+
+          SELECT concat_ws('|',
+            'VARIANT',
+            pv.installation_id,
+            pv.id,
+            pv.sku,
+            pv.name,
+            p.code,
+            p.name,
+            pv.is_active,
+            pv.is_sellable
+          )
+          FROM shared.product_variants pv
+          JOIN shared.products p
+            ON p.installation_id = pv.installation_id
+           AND p.id = pv.product_id
+          WHERE upper(pv.sku) IN ('NDPESOT','NDPESO')
+          ORDER BY pv.installation_id, pv.sku;
+
+          SELECT concat_ws('|',
+            'PRICE',
+            pv.sku,
+            pl.installation_id,
+            pl.id,
+            pl.code,
+            pl.name,
+            pl.list_type,
+            pl.priority,
+            pl.stacking_mode,
+            pl.stop_processing,
+            coalesce(ch.code,''),
+            coalesce(ch.name,''),
+            coalesce(pl.customer_group_id::text,''),
+            coalesce(pl.customer_id::text,''),
+            pl.is_active,
+            coalesce(pl.effective_from::text,''),
+            coalesce(pl.effective_to::text,''),
+            pli.id,
+            pli.adjustment_type,
+            coalesce(pli.amount_minor::text,''),
+            coalesce(pli.rate_bps::text,''),
+            coalesce(pli.min_quantity::text,''),
+            coalesce(pli.max_quantity::text,''),
+            pli.source_kind,
+            coalesce(pli.external_rule_code,''),
+            pli.is_active,
+            coalesce(pli.effective_from::text,''),
+            coalesce(pli.effective_to::text,''),
+            pli.created_at,
+            pli.updated_at,
+            CASE
+              WHEN pl.is_active
+               AND pli.is_active
+               AND (pl.effective_from IS NULL OR pl.effective_from <= now())
+               AND (pl.effective_to IS NULL OR pl.effective_to > now())
+               AND (pli.effective_from IS NULL OR pli.effective_from <= now())
+               AND (pli.effective_to IS NULL OR pli.effective_to > now())
+              THEN 'ACTIVE_NOW'
+              ELSE 'NOT_ACTIVE_NOW'
+            END
+          )
+          FROM shared.product_variants pv
+          JOIN shared.price_list_items pli
+            ON pli.installation_id = pv.installation_id
+           AND pli.variant_id = pv.id
+          JOIN shared.price_lists pl
+            ON pl.installation_id = pli.installation_id
+           AND pl.id = pli.price_list_id
+          LEFT JOIN shared.sales_channels ch
+            ON ch.installation_id = pl.installation_id
+           AND ch.id = pl.channel_id
+          WHERE upper(pv.sku) = 'NDPESOT'
+          ORDER BY
+            pl.installation_id,
+            CASE pl.list_type
+              WHEN 'CUSTOM' THEN 6
+              WHEN 'CUSTOMER' THEN 5
+              WHEN 'PROMOTION' THEN 4
+              WHEN 'CUSTOMER_GROUP' THEN 3
+              WHEN 'CHANNEL' THEN 2
+              WHEN 'BASE' THEN 1
+              ELSE 0
+            END DESC,
+            pl.priority DESC,
+            pli.effective_from DESC NULLS LAST,
+            pli.created_at DESC;
+
+          SELECT concat_ws('|',
+            'BASE_ACTIVE_NOW_COUNT',
+            pv.installation_id,
+            count(*)
+          )
+          FROM shared.product_variants pv
+          JOIN shared.price_list_items pli
+            ON pli.installation_id = pv.installation_id
+           AND pli.variant_id = pv.id
+          JOIN shared.price_lists pl
+            ON pl.installation_id = pli.installation_id
+           AND pl.id = pli.price_list_id
+          WHERE upper(pv.sku) = 'NDPESOT'
+            AND pl.list_type = 'BASE'
+            AND pl.is_active
+            AND pli.is_active
+            AND (pl.effective_from IS NULL OR pl.effective_from <= now())
+            AND (pl.effective_to IS NULL OR pl.effective_to > now())
+            AND (pli.effective_from IS NULL OR pli.effective_from <= now())
+            AND (pli.effective_to IS NULL OR pli.effective_to > now())
+          GROUP BY pv.installation_id;
+          SQL
+          REMOTE
