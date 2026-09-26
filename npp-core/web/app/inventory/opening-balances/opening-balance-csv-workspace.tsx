@@ -10,6 +10,7 @@ import {
 } from '../../components/business-table-sequence';
 import { formatDateTime, type OpeningBalanceImport } from '../../../lib/inventory-types';
 import { readSpreadsheetRows } from '../../../lib/spreadsheet-reader';
+import { exportTable } from '../../operations/data-exchange/data-exchange-file-utils';
 import styles from './opening-balance-csv-workspace.module.css';
 
 type WarehouseOption = { id: string; code: string; name: string };
@@ -129,15 +130,14 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   return payload.data;
 }
 
-function downloadTemplate() {
-  const content = TEMPLATE_COLUMNS.map((column) => column.label).join(',');
-  const blob = new Blob([`\uFEFF${content}`], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = 'mau-ton-dau-ky.csv';
-  anchor.click();
-  URL.revokeObjectURL(url);
+async function downloadTemplate(format: 'xlsx' | 'csv') {
+  await exportTable(
+    `mau-ton-dau-ky.${format}`,
+    'Tồn đầu kỳ',
+    TEMPLATE_COLUMNS.map((column) => column.label),
+    [],
+    format,
+  );
 }
 
 function displayQuantity(value: string | undefined) {
@@ -396,7 +396,7 @@ export default function OpeningBalanceCsvWorkspace({ initialImports, initialErro
       {message ? <div className={message.kind === 'success' ? styles.success : styles.error} role={message.kind === 'error' ? 'alert' : undefined}>{message.text}</div> : null}
 
       <section className={styles.steps} aria-label="Các bước nhập tồn đầu kỳ">
-        <article><strong>1</strong><span>Tải tệp mẫu</span><button type="button" onClick={downloadTemplate}>Tải mẫu CSV</button></article>
+        <article><strong>1</strong><span>Tải tệp mẫu</span><button type="button" onClick={() => void downloadTemplate('xlsx')}>Tải mẫu Excel</button><button type="button" onClick={() => void downloadTemplate('csv')}>Tải mẫu CSV</button></article>
         <article><strong>2</strong><span>Chọn tệp đã điền</span><label>Chọn tệp<input type="file" accept=".xlsx,.csv" data-testid="inventory-opening-file-input" onChange={(event) => { const file = event.target.files?.[0]; if (file) void chooseFile(file); }} /></label></article>
         <article><strong>3</strong><span>Kiểm tra dữ liệu</span><button type="button" onClick={() => void validate()} disabled={busy !== null}>{busy === 'validate' ? 'Đang kiểm tra…' : 'Kiểm tra tệp'}</button></article>
         <article><strong>4</strong><span>Xác nhận ghi nhận</span><button type="button" onClick={() => void post()} disabled={busy !== null || !validation || !validationChecksum || validation.rowErrors.length > 0}>{busy === 'post' ? 'Đang ghi nhận…' : 'Xác nhận nhập tồn'}</button></article>
