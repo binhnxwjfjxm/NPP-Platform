@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState } from 'react';
 import { AppShell } from '../components/app-shell';
+import { SupplierListExportActions } from '../components/lot4-export-actions';
 import {
   BusinessTableSequenceCell,
   BusinessTableSequenceHeader,
@@ -254,6 +255,7 @@ export default function SupplierWorkspace({ initialSuppliers, initialError = nul
     <AppShell
       title="Nhà cung cấp"
       subtitle="Quản lý hồ sơ, địa chỉ, thông tin thuế, ngân hàng và thời gian giao hàng của nhà cung cấp."
+      actions={<SupplierListExportActions suppliers={visibleSuppliers} disabled={busy !== null} />}
     >
       <div className={styles.page} data-testid="suppliers-page">
         <section className={styles.summary}>
