@@ -7,19 +7,24 @@ const css = readFileSync(new URL('../app/retail-orders-polish.css', import.meta.
 const layout = readFileSync(new URL('../app/layout.tsx', import.meta.url), 'utf8');
 
 test('order history matches the approved compact list layout', () => {
-  const start = workspace.indexOf('{activeTab === \'orders\'');
-  const end = workspace.indexOf('{activeTab === \'settings\'', start);
+  const start = workspace.indexOf("{activeTab === 'orders'");
+  const end = workspace.indexOf("{activeTab === 'settings'", start);
   assert.ok(start >= 0 && end > start);
   const orders = workspace.slice(start, end);
 
   assert.match(orders, /placeholder="Nhập mã đơn, khách hàng, số điện thoại"/);
   assert.match(orders, /aria-label="Từ ngày"/);
   assert.match(orders, /aria-label="Đến ngày"/);
-  assert.match(orders, /order-status-filter/);
-  assert.match(orders, /\{ id: 'all', label: 'Tất cả' \}/);
-  assert.match(orders, /\{ id: 'draft', label: 'Đang lập' \}/);
-  assert.match(orders, /\{ id: 'confirmed', label: 'Đã chốt' \}/);
-  assert.match(orders, /\{ id: 'issued', label: 'Đã xuất kho' \}/);
+  assert.match(orders, /order-summary/);
+  assert.match(orders, /<span>Đơn<\/span>/);
+  assert.match(orders, /<span>Doanh thu<\/span>/);
+  assert.match(orders, /filteredOrders\.length/);
+  assert.match(orders, /moneyNumber\.format\(filteredOrderRevenue\)/);
+  assert.doesNotMatch(orders, /order-status-filter/);
+  assert.doesNotMatch(orders, /label: 'Tất cả'/);
+  assert.doesNotMatch(orders, /label: 'Đang lập'/);
+  assert.doesNotMatch(orders, /label: 'Đã chốt'/);
+  assert.doesNotMatch(orders, /label: 'Đã xuất kho'/);
   assert.doesNotMatch(orders, /orders-heading|history-icon/);
 
   assert.match(orders, /retail-order-history-card/);
@@ -39,6 +44,8 @@ test('order search, date range and direct card print are functional contracts', 
   assert.match(workspace, /itemDate < orderDateFrom/);
   assert.match(workspace, /itemDate > orderDateTo/);
   assert.match(workspace, /item\.customerPhone/);
+  assert.match(workspace, /const filteredOrderRevenue = filteredOrders/);
+  assert.match(workspace, /item\.status === 'closed'/);
   assert.match(workspace, /async function printOrderFromHistory\(id: string\)/);
   assert.match(workspace, /setPrintSourceOrder\(sourceOrder\)/);
   assert.match(workspace, /printConfiguredOrder\(sourceOrder, template, settings/);
@@ -47,11 +54,15 @@ test('order search, date range and direct card print are functional contracts', 
 test('approved order list styling is isolated and loaded after general retail polish', () => {
   assert.match(css, /\.orders-search-field/);
   assert.match(css, /\.order-date-range/);
-  assert.match(css, /\.order-status-filter/);
+  assert.match(css, /\.order-date-field/);
+  assert.match(css, /min-height:\s*38px/);
+  assert.match(css, /\.order-summary/);
+  assert.match(css, /\.order-summary-card/);
   assert.match(css, /\.retail-order-history-card/);
   assert.match(css, /\.order-history-print/);
   assert.match(css, /\.orders-load-more/);
-  assert.match(css, /grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)/);
+  assert.match(css, /grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.doesNotMatch(css, /\.order-status-filter/);
   assert.match(layout, /retail-final-polish\.css'[\s\S]*retail-print-professional\.css'[\s\S]*retail-product-picker-polish\.css'[\s\S]*retail-orders-polish\.css'/);
 });
 
