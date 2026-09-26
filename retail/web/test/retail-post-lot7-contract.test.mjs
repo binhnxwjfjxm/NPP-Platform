@@ -172,15 +172,23 @@ test('viewport Retail khóa zoom và giữ safe-area cho PWA', async () => {
   assert.match(css, /env\(safe-area-inset-bottom\)/);
 });
 
-test('bottom nav giữ kiểu nổi cũ: fixed và chừa safe-area bên ngoài thanh', async () => {
-  const css = await read('app/retail-issue675.css');
+test('bottom nav giữ nguyên hình dáng nhưng nằm ngoài vùng cuộn sau notification focus', async () => {
+  const [page, css] = await Promise.all([readWorkspace(), read('app/retail-issue675.css')]);
   const start = css.indexOf('/* Bottom navigation */');
   const end = css.indexOf('/* Interaction */', start);
   const nav = css.slice(start, end);
-  assert.match(nav, /\.retail-issue675 \.bottom-nav \{\s*position: fixed;/);
+
   assert.match(nav, /bottom: max\(9px, env\(safe-area-inset-bottom\)\);/);
+  assert.match(nav, /max-width: 620px;/);
+  assert.match(nav, /min-height: 66px;/);
+  assert.match(nav, /border-radius: 22px;/);
   assert.match(nav, /padding: 6px;/);
   assert.doesNotMatch(nav, /padding:[^;]*safe-area-inset-bottom/);
+
+  assert.match(page, /const RETAIL_SCROLL_REGION_STYLE: CSSProperties = \{[\s\S]*?overflowY: 'auto'[\s\S]*?overscrollBehaviorY: 'contain'/);
+  assert.match(page, /const RETAIL_BOTTOM_NAV_SCOPE_STYLE: CSSProperties = \{[\s\S]*?position: 'fixed'[\s\S]*?maxWidth: 'none'[\s\S]*?padding: 0[\s\S]*?background: 'transparent'[\s\S]*?pointerEvents: 'none'/);
+  assert.match(page, /const RETAIL_BOTTOM_NAV_STYLE: CSSProperties = \{[\s\S]*?position: 'absolute'[\s\S]*?pointerEvents: 'auto'/);
+  assert.match(page, /<\/main>\s*<div className="retail-bottom-nav-scope retail-lot7 retail-issue675" style=\{RETAIL_BOTTOM_NAV_SCOPE_STYLE\}>\s*<nav className="bottom-nav" style=\{RETAIL_BOTTOM_NAV_STYLE\}/);
 });
 
 test('trạng thái đơn có tone riêng và interaction có focus pressed disabled', async () => {
