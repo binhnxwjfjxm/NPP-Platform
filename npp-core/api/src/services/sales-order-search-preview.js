@@ -68,8 +68,6 @@ function inventoryPreview(row) {
       unitName: null,
       packageUnitName: null,
       packageConversionToBase: null,
-      packageUnitName: null,
-      packageConversionToBase: null,
     });
   }
   if (row.is_inventory_managed === false) {
@@ -80,6 +78,8 @@ function inventoryPreview(row) {
       heldQuantity: null,
       unitCode: null,
       unitName: null,
+      packageUnitName: null,
+      packageConversionToBase: null,
     });
   }
   if (row.is_inventory_managed !== true || Number(row.base_variant_count) !== 1 || !row.base_variant_id) {

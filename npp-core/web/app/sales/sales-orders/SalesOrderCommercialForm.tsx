@@ -338,8 +338,19 @@ function searchPriceText(option: SalesOrderSkuSearchOption): string {
   return option.pricePreview.status === 'MISSING' ? 'Chưa có giá' : 'Chưa tính được giá';
 }
 
+function compactInventoryQuantity(value: string | null | undefined): string {
+  const normalized = String(value ?? '').trim();
+  if (!/^-?(?:0|[1-9]\d*)(?:\.\d+)?$/.test(normalized)) return normalized;
+  const negative = normalized.startsWith('-');
+  const unsigned = negative ? normalized.slice(1) : normalized;
+  const [whole, fraction = ''] = unsigned.split('.');
+  const compactFraction = fraction.replace(/0+$/, '');
+  const compact = compactFraction ? `${whole}.${compactFraction}` : whole;
+  return negative && compact !== '0' ? `-${compact}` : compact;
+}
+
 function wholeInventoryQuantity(value: string | null | undefined): bigint | null {
-  const compact = compactQuantity(value);
+  const compact = compactInventoryQuantity(value);
   return /^\d+$/.test(compact) ? BigInt(compact) : null;
 }
 
@@ -347,7 +358,7 @@ export function formatInventoryQuantity(
   preview: SalesOrderSkuSearchOption['inventoryPreview'],
   quantity: string | null | undefined,
 ): string {
-  const compact = compactQuantity(quantity);
+  const compact = compactInventoryQuantity(quantity);
   const baseUnitName = preview.unitName?.trim() ?? '';
   const packageUnitName = preview.packageUnitName?.trim() ?? '';
   const baseQuantity = wholeInventoryQuantity(quantity);
