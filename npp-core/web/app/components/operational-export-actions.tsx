@@ -50,34 +50,39 @@ async function exportWorkbook(filename: string, sheets: readonly OperationalExpo
 
 export default function OperationalExportActions({
   filename,
-  sheets,
+  sheets = [],
+  loadSheets,
   allowCsv = false,
   disabled = false,
 }: {
   filename: string;
-  sheets: readonly OperationalExportSheet[];
+  sheets?: readonly OperationalExportSheet[];
+  loadSheets?: () => Promise<readonly OperationalExportSheet[]>;
   allowCsv?: boolean;
   disabled?: boolean;
 }) {
   const [busy, setBusy] = useState<'xlsx' | 'csv' | null>(null);
   const [message, setMessage] = useState('');
-  const rowCount = sheets.reduce((total, sheet) => total + sheet.rows.length, 0);
-  const blocked = disabled || busy !== null || rowCount === 0;
+  const staticRowCount = sheets.reduce((total, sheet) => total + sheet.rows.length, 0);
+  const blocked = disabled || busy !== null || (!loadSheets && staticRowCount === 0);
 
   async function run(format: 'xlsx' | 'csv') {
     if (blocked) return;
     setBusy(format);
     setMessage('');
     try {
+      const exportSheets = loadSheets ? await loadSheets() : sheets;
+      const rowCount = exportSheets.reduce((total, sheet) => total + sheet.rows.length, 0);
+      if (!rowCount) throw new Error('Không có dữ liệu phù hợp với bộ lọc hiện tại.');
       if (format === 'csv') {
-        if (sheets.length !== 1) throw new Error('CSV chỉ dùng cho danh sách một bảng.');
-        const sheet = sheets[0];
+        if (exportSheets.length !== 1) throw new Error('CSV chỉ dùng cho danh sách một bảng.');
+        const sheet = exportSheets[0];
         await exportTable(filenameForFormat(filename, 'csv'), sheet.sheetName, [...sheet.headers], normalizedRows(sheet.rows), 'csv');
-      } else if (sheets.length === 1) {
-        const sheet = sheets[0];
+      } else if (exportSheets.length === 1) {
+        const sheet = exportSheets[0];
         await exportTable(filenameForFormat(filename, 'xlsx'), sheet.sheetName, [...sheet.headers], normalizedRows(sheet.rows), 'xlsx');
       } else {
-        await exportWorkbook(filename, sheets);
+        await exportWorkbook(filename, exportSheets);
       }
       setMessage(`Đã xuất ${rowCount.toLocaleString('vi-VN')} dòng.`);
     } catch (error) {
@@ -92,7 +97,7 @@ export default function OperationalExportActions({
       <button type="button" className={styles.button} onClick={() => void run('xlsx')} disabled={blocked}>
         {busy === 'xlsx' ? 'Đang xuất…' : 'Xuất Excel'}
       </button>
-      {allowCsv && sheets.length === 1 ? (
+      {allowCsv && !loadSheets && sheets.length === 1 ? (
         <button type="button" className={styles.button} onClick={() => void run('csv')} disabled={blocked}>
           {busy === 'csv' ? 'Đang xuất…' : 'Xuất CSV'}
         </button>
