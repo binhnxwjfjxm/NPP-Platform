@@ -46,7 +46,8 @@ export async function requestJson<T>(url: string, init?: RequestInit): Promise<T
 export function idempotency(prefix: string) { return createIdempotencyKey(prefix); }
 export function downloadBlob(blob: Blob, filename: string) {
   const href = URL.createObjectURL(blob); const link = document.createElement('a');
-  link.href = href; link.download = filename; document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(href);
+  link.href = href; link.download = filename; document.body.appendChild(link); link.click(); link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(href), 1000);
 }
 export async function exportTable(filename: string, sheetName: string, headers: string[], rows: string[][], format: 'xlsx' | 'csv') {
   if (format === 'csv') { downloadBlob(new Blob([toCsv(headers, rows)], { type: 'text/csv;charset=utf-8' }), filename.replace(/\.xlsx$/i, '.csv')); return; }

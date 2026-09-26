@@ -52,6 +52,7 @@ test('P2 Core UI keeps office wording and object-specific statuses consistent', 
   const suppliers = read('app/suppliers/supplier-workspace.tsx');
   const products = read('app/products/product-workspace.tsx');
   const dataExchange = read('app/operations/data-exchange/data-exchange-view.tsx');
+  const quotation = read('app/sales/quotations/quotation-workspace.tsx');
 
   assert.doesNotMatch(shell, /Giá bán & khuyến mãi|Vai trò & phân quyền|Điều chỉnh & xử lý tồn|Lập & xếp chuyến|Bàn giao & xuất phát|COD & đối soát|Nhập \/ xuất dữ liệu|Lịch sử nhập \/ xuất/);
   assert.match(shell, /Giá bán và khuyến mãi/);
@@ -79,8 +80,11 @@ test('P2 Core UI keeps office wording and object-specific statuses consistent', 
   assert.match(products, /Đang sử dụng/);
 
   assert.doesNotMatch(dataExchange, /Nhập \/ xuất|FIXED_PRICE|backend đối chiếu|định dạng kỹ thuật ở phía sau|Theo ngành \/ nhóm|Chọn kho \/ vị trí \/ SKU \/ lô/);
-  assert.match(dataExchange, /Nhập\/xuất dữ liệu và báo giá/);
+  assert.match(dataExchange, /title="Nhập\/xuất dữ liệu"/);
+  assert.doesNotMatch(dataExchange, /Báo giá/);
   assert.match(dataExchange, /Tệp chỉ cần Mã hàng \(SKU\) và Giá bán/);
+  assert.match(shell, /href: '\/sales\/quotations'/);
+  assert.match(quotation, /title="Báo giá"/);
 });
 
 test('touched mutation paths use the shared canonical idempotency generator and preserve retry keys', () => {

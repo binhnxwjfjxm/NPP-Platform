@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { exportTable } from '../operations/data-exchange/data-exchange-file-utils';
+import { downloadBlob, exportTable } from '../operations/data-exchange/data-exchange-file-utils';
 import styles from './operational-export-actions.module.css';
 
 type Cell = string | number | boolean | null | undefined;
@@ -37,15 +37,7 @@ async function exportWorkbook(filename: string, sheets: readonly OperationalExpo
     const payload = await response.json().catch(() => null) as { error?: { message?: string } } | null;
     throw new Error(payload?.error?.message || 'Không tạo được tệp Excel.');
   }
-  const blob = await response.blob();
-  const href = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = href;
-  anchor.download = filenameForFormat(filename, 'xlsx');
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(href);
+  downloadBlob(await response.blob(), filenameForFormat(filename, 'xlsx'));
 }
 
 export default function OperationalExportActions({
