@@ -4,6 +4,7 @@ import { createIdempotencyKey } from '@npp/contracts';
 import Link from 'next/link';
 import { useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
+import { LeaveExportActions } from '../../components/lot4-export-actions';
 import shellStyles from '../../components/app-shell.module.css';
 import sharedStyles from '../../organization/organization.module.css';
 import styles from './leave.module.css';
@@ -568,7 +569,10 @@ export default function LeaveWorkspace({
       title="Nghỉ và đơn nghỉ"
       subtitle="Gửi, duyệt và theo dõi nghỉ phép theo đúng chế độ nghỉ và phạm vi được cấp."
       kicker="Nhân sự"
-      actions={<Link className={shellStyles.actionButton + ' ' + shellStyles.actionButtonPrimary} href="/workforce/timesheet">Mở Bảng công</Link>}
+      actions={<>
+        <LeaveExportActions from={from} to={to} status={status} employeeQuery={employeeQuery} branchId={branchId} disabled={busy} />
+        <Link className={shellStyles.actionButton + ' ' + shellStyles.actionButtonPrimary} href="/workforce/timesheet">Mở Bảng công</Link>
+      </>}
     >
       <section className={sharedStyles.page} data-testid="workforce-leave-page">
         {(error || notice) ? <div className={sharedStyles.banner + ' ' + (error ? sharedStyles.bannerError : sharedStyles.bannerSuccess)} role="status">{error ?? notice}</div> : null}

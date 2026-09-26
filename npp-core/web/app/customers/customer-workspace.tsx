@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../components/app-shell';
+import { CustomerListExportActions } from '../components/lot4-export-actions';
 import {
   BusinessTableSequenceCell,
   BusinessTableSequenceHeader,
@@ -591,6 +592,7 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
 
   const shellActions = (
     <>
+      {section === 'customers' ? <CustomerListExportActions customers={visibleCustomers} disabled={busy !== null} /> : null}
       <button
         type="button"
         className={joinClasses(shellStyles.actionButton, customerStyles.disabled, busy === 'load' && customerStyles.loading)}

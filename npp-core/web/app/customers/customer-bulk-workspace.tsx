@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState } from 'react';
 import { readSpreadsheetMatrix } from '../../lib/spreadsheet-matrix';
+import { exportTable } from '../operations/data-exchange/data-exchange-file-utils';
 import styles from '../products/products.module.css';
 
 type Mode = 'import' | 'update';
@@ -46,6 +47,23 @@ type IdentifyResult = { identified: number; skipped: number; rows: ResultRow[] }
 type ApiEnvelope<T> = { data?: T; error?: { message?: string; code?: string } };
 
 type Props = { mode: Mode };
+
+const CUSTOMER_TEMPLATE_HEADERS = [
+  'Mã khách hàng',
+  'Tên khách hàng',
+  'Nhóm khách hàng',
+  'Nhân viên phụ trách',
+  'Điện thoại',
+  'Email',
+  'Mã số thuế',
+  'Thời hạn thanh toán',
+  'Hạn mức tín dụng',
+  'Ghi chú',
+] as const;
+
+async function downloadCustomerTemplate(format: 'xlsx' | 'csv') {
+  await exportTable(`mau-nhap-khach-hang.${format}`, 'Khách hàng', [...CUSTOMER_TEMPLATE_HEADERS], [], format);
+}
 
 const OPTIONS: Array<{ value: Mapping; label: string }> = [
   { value: 'IGNORE', label: 'Bỏ qua' },
@@ -307,6 +325,12 @@ export default function CustomerBulkWorkspace({ mode }: Props) {
       <div className={styles.sectionHeader}><div><h2>{title}</h2><p>{description}</p></div></div>
       {error ? <div className={styles.errorBanner} role="alert">{error}</div> : null}
       {notice ? <div className={styles.noticeBanner}>{notice}</div> : null}
+
+      {mode === 'import' ? <div className={styles.updateActionBar}>
+        <span className={styles.updateActionHint}>Tải file mẫu trống đúng cấu trúc rồi điền dữ liệu khách hàng.</span>
+        <button type="button" className={styles.secondaryButton} disabled={readingFile || busy} onClick={() => void downloadCustomerTemplate('xlsx')}>Tải mẫu Excel</button>
+        <button type="button" className={styles.secondaryButton} disabled={readingFile || busy} onClick={() => void downloadCustomerTemplate('csv')}>Tải mẫu CSV</button>
+      </div> : null}
 
       <div className={styles.updateUploadPanel}>
         <label className={styles.updateFileField}>

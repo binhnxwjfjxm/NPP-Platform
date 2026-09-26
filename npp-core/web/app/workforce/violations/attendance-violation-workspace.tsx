@@ -3,6 +3,7 @@
 import { createIdempotencyKey } from '@npp/contracts';
 import { useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
+import { ViolationExportActions } from '../../components/lot4-export-actions';
 import shellStyles from '../../components/app-shell.module.css';
 import styles from '../../organization/organization.module.css';
 import localStyles from './attendance-violation.module.css';
@@ -205,14 +206,17 @@ export default function AttendanceViolationWorkspace({
   }
 
   const actions = (
-    <button
-      type="button"
-      className={`${shellStyles.actionButton} ${shellStyles.actionButtonPrimary}`}
-      onClick={() => void load(data?.pagination.offset ?? 0)}
-      disabled={busy}
-    >
-      {busy ? 'Đang cập nhật…' : 'Cập nhật hồ sơ'}
-    </button>
+    <>
+      <ViolationExportActions from={from} to={to} employeeQuery={employeeQuery} branchId={branchId} disabled={busy} />
+      <button
+        type="button"
+        className={`${shellStyles.actionButton} ${shellStyles.actionButtonPrimary}`}
+        onClick={() => void load(data?.pagination.offset ?? 0)}
+        disabled={busy}
+      >
+        {busy ? 'Đang cập nhật…' : 'Cập nhật hồ sơ'}
+      </button>
+    </>
   );
 
   return (

@@ -9,6 +9,7 @@ import {
 } from '../../components/business-table-sequence';
 import { MIN_PRODUCT_SEARCH_LENGTH } from '../../../lib/product-search-contract';
 import { readSpreadsheetRows } from '../../../lib/spreadsheet-reader';
+import { exportTable } from '../../operations/data-exchange/data-exchange-file-utils';
 import ManualInboundExportDialog from './manual-inbound-export-dialog';
 import ManualInboundPrintDock from './ManualInboundPrintDock';
 import styles from './manual-inbound-workspace.module.css';
@@ -207,14 +208,14 @@ function rowsFromSheet(sheet: string[][]): DraftRow[] {
   return rows;
 }
 
-function downloadTemplate() {
-  const blob = new Blob(['\uFEFFSKU,Số lượng,Giá vốn\n'], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = 'mau-nhap-kho-thu-cong.csv';
-  anchor.click();
-  URL.revokeObjectURL(url);
+async function downloadTemplate(format: 'xlsx' | 'csv') {
+  await exportTable(
+    `mau-nhap-kho-thu-cong.${format}`,
+    'Nhập kho thủ công',
+    ['SKU', 'Số lượng', 'Giá vốn'],
+    [],
+    format,
+  );
 }
 
 function previewStatusLabel(row: PreviewRow, errors: Array<{ code: string }>) {
@@ -842,7 +843,7 @@ export default function ManualInboundWorkspace() {
             <div className={styles.fileToolbar}>
               <div><strong>Excel / CSV</strong><span>Tệp cần có SKU và Số lượng. Giá vốn có thể để trống.</span></div>
               <div className={styles.actions}>
-                <button type="button" className={styles.secondary} onClick={downloadTemplate}>Tải mẫu CSV</button>
+                <button type="button" className={styles.secondary} onClick={() => void downloadTemplate('xlsx')}>Tải mẫu Excel</button><button type="button" className={styles.secondary} onClick={() => void downloadTemplate('csv')}>Tải mẫu CSV</button>
                 <input ref={fileInput} className={styles.hiddenInput} type="file" accept=".xlsx,.csv" onChange={(event) => { const file = event.target.files?.[0]; if (file) void chooseFile(file); }} />
                 <button type="button" className={styles.primary} onClick={() => fileInput.current?.click()} disabled={busy === 'file'}>{busy === 'file' ? 'Đang đọc tệp…' : 'Chọn tệp Excel/CSV'}</button>
               </div>

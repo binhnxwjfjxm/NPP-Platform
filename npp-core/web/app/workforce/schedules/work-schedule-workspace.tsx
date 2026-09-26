@@ -3,6 +3,7 @@
 import { createIdempotencyKey } from '@npp/contracts';
 import { useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
+import { ScheduleExportActions } from '../../components/lot4-export-actions';
 import shellStyles from '../../components/app-shell.module.css';
 import styles from '../../organization/organization.module.css';
 import type { Employee } from '../../../lib/employee-types';
@@ -198,7 +199,10 @@ export default function WorkScheduleWorkspace({
     } finally { setBusy(false); }
   }
 
-  const actions = <button type="button" className={`${shellStyles.actionButton} ${shellStyles.actionButtonPrimary}`} onClick={openCreate}>Xếp lịch</button>;
+  const actions = <>
+    <ScheduleExportActions from={from} to={to} employeeId={employeeFilter} disabled={busy} />
+    <button type="button" className={`${shellStyles.actionButton} ${shellStyles.actionButtonPrimary}`} onClick={openCreate}>Xếp lịch</button>
+  </>;
 
   return (
     <AppShell title="Ca và lịch làm việc" subtitle="Xem và điều chỉnh lịch làm việc tương lai theo chính sách đã áp dụng." kicker="Nhân sự" actions={actions}>

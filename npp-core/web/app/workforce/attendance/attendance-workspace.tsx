@@ -3,6 +3,7 @@
 import { createIdempotencyKey } from '@npp/contracts';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
+import { AttendanceTodayExportActions } from '../../components/lot4-export-actions';
 import shellStyles from '../../components/app-shell.module.css';
 import styles from '../../organization/organization.module.css';
 import localStyles from './attendance.module.css';
@@ -745,6 +746,7 @@ export default function AttendanceWorkspace({
 
   const actions = (
     <div className={localStyles.headerActions}>
+      <AttendanceTodayExportActions today={today} disabled={busy || managedLoading} />
       <button
         type="button"
         className={`${shellStyles.actionButton} ${shellStyles.actionButtonPrimary}`}
