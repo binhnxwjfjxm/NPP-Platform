@@ -253,8 +253,11 @@ const RETAIL_BOTTOM_NAV_SCOPE_STYLE: CSSProperties = {
     zIndex: 9,
     inset: 0,
     width: '100%',
+    maxWidth: 'none',
     height: '100dvh',
+    padding: 0,
     overflow: 'hidden',
+    background: 'transparent',
     pointerEvents: 'none',
 };
 const RETAIL_BOTTOM_NAV_STYLE: CSSProperties = {
