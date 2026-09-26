@@ -241,6 +241,26 @@ const ORDER_BATCH_SIZE = 100;
 const ORDER_BATCH_FETCH_SIZE = ORDER_BATCH_SIZE + 1;
 const PRINT_PAPER_STORAGE_KEY = 'retail.print.paper';
 const PRINT_TEMPLATE_STORAGE_KEY = 'retail.print.template';
+const RETAIL_SCROLL_REGION_STYLE: CSSProperties = {
+    height: '100dvh',
+    minHeight: '100dvh',
+    overflowY: 'auto',
+    overscrollBehaviorY: 'contain',
+    WebkitOverflowScrolling: 'touch',
+};
+const RETAIL_BOTTOM_NAV_SCOPE_STYLE: CSSProperties = {
+    position: 'fixed',
+    zIndex: 9,
+    inset: 0,
+    width: '100%',
+    height: '100dvh',
+    overflow: 'hidden',
+    pointerEvents: 'none',
+};
+const RETAIL_BOTTOM_NAV_STYLE: CSSProperties = {
+    position: 'absolute',
+    pointerEvents: 'auto',
+};
 const STOCK_ISSUED_FULFILLMENT_STATUSES = new Set(['partially_issued', 'issued', 'partially_fulfilled', 'fulfilled']);
 const linesOf = (order: Order | null) => order?.versions?.find((item) => item.versionNumber === order.currentVersionNumber)?.lines ?? order?.versions?.find((item) => item.status === 'draft')?.lines ?? order?.versions?.[0]?.lines ?? [];
 function normalizeQuantityInput(value: string | number | null | undefined) {
@@ -1531,7 +1551,8 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
     }
     const productPicture = (imageKey: string | undefined, label: string) => <span className="product-visual"><span className="product-symbol product-symbol-large product-fallback" aria-hidden="true">{label.slice(0, 1)}</span>{imageKey ? <img className="product-photo" src={productImage(imageKey)} alt="" onError={(event) => { event.currentTarget.hidden = true; }}/> : null}</span>;
     const title = activeTab === 'home' ? 'Trang chủ' : activeTab === 'orders' ? 'Đơn hàng' : activeTab === 'settings' ? 'Cài đặt' : order ? 'Chi tiết đơn' : 'Lên đơn';
-    return <main className="retail-shell retail-lot7 retail-issue675">
+    return <>
+  <main className="retail-shell retail-lot7 retail-issue675" style={RETAIL_SCROLL_REGION_STYLE}>
     <header className="retail-header retail-topbar">
       {activeTab === 'home' ? <span className="topbar-spacer" aria-hidden="true"/> : <button className="round-icon" type="button" aria-label="Quay lại" onClick={() => setActiveTab(activeTab === 'entry' && order ? 'orders' : 'home')}>‹</button>}
       <div className="retail-title"><h1>{title}</h1></div>
@@ -1664,7 +1685,7 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
       </section>
     </> : null}
 
-    <nav className="bottom-nav" aria-label="Điều hướng Retail"><button type="button" className={activeTab === 'home' ? 'active' : ''} onClick={() => { setActiveTab('home'); onTabChange?.('home'); }}><span>⌂</span>Trang chủ</button><button type="button" className={activeTab === 'entry' ? 'active' : ''} onClick={() => { setActiveTab('entry'); onTabChange?.('entry'); }}><span>＋</span>Lên đơn</button><button type="button" className={activeTab === 'orders' ? 'active' : ''} onClick={() => { setActiveTab('orders'); onTabChange?.('orders'); void refreshOrders(); }}><span>▤</span>Đơn hàng</button>{inventoryAvailable && onOpenInventory ? <button type="button" onClick={onOpenInventory}><span>▣</span>Tồn kho</button> : null}<button type="button" className={activeTab === 'settings' ? 'active' : ''} onClick={() => { setActiveTab('settings'); onTabChange?.('settings'); }}><span>⚙</span>Cài đặt</button></nav>
+    
 
     {settingsPanel ? <section className="dialog-backdrop settings-sheet-backdrop" role="dialog" aria-modal="true" aria-label={settingsPanelTitle(settingsPanel)}><div className="settings-sheet sheet-enter">
       <header><div><p className="section-kicker">CÀI ĐẶT</p><h2>{settingsPanelTitle(settingsPanel)}</h2></div><button className="text-action" type="button" onClick={() => setSettingsPanel(null)}>Đóng</button></header>
@@ -1721,5 +1742,9 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
     {scannerOpen ? <section className="dialog-backdrop" role="dialog" aria-modal="true"><div className="scanner-dialog sheet-enter"><header><div><p className="section-kicker">QUÉT MÃ</p><h2>Đưa mã vào khung hình</h2></div><button className="text-action" type="button" onClick={() => setScannerOpen(false)}>Đóng</button></header>{scannerMessage ? <p className="notice error">{scannerMessage}</p> : <video className="scanner-video" ref={videoRef} autoPlay muted playsInline/>}</div></section> : null}
     {payment ? <section className="dialog-backdrop payment-screen" role="dialog" aria-modal="true"><div className="payment-dialog sheet-enter lot7-payment"><header><button className="round-icon" type="button" onClick={() => setPayment(false)}>‹</button><div><p className="section-kicker">THANH TOÁN</p><h2>Thu tiền / Nợ</h2></div><span /></header><div className="payment-summary"><span>Tổng thanh toán</span><strong>{money.format(Number(order?.receivableRemainingAmount ?? total))}</strong><div className="payment-balance"><span>Đã thu</span><b>{money.format(Math.max(0, total - Number(order?.receivableRemainingAmount ?? total)))}</b><span>Còn lại</span><b>{money.format(Number(order?.receivableRemainingAmount ?? total))}</b></div></div><div className="payment-methods"><button type="button" className={paymentMethod === 'CASH' ? 'active' : ''} onClick={() => setPaymentMethod('CASH')}>Tiền mặt</button><button type="button" className={paymentMethod === 'BANK_TRANSFER' ? 'active' : ''} onClick={() => setPaymentMethod('BANK_TRANSFER')}>Chuyển khoản</button></div><label>Nhập số tiền nhận<input inputMode="numeric" value={paid} onChange={(event) => setPaid(normalizeVndInput(event.target.value))}/></label><div className="payment-footer"><button className="secondary-action" type="button" disabled={busy === 'settlement'} onClick={() => void settle('0')}>Ghi nợ</button><button className="primary-action" type="button" disabled={busy === 'settlement' || !paid.trim()} onClick={() => void settle()}>{busy === 'settlement' ? 'Đang ghi nhận…' : 'Hoàn tất thu tiền'}</button></div></div></section> : null}
     {printOpen && printOrder ? <section className={`print-screen paper-${printPaperClass(printPaper)}`} role="dialog" aria-modal="true"><div className="print-toolbar"><button className="round-icon" type="button" onClick={() => { setPrintOpen(false); setPrintSourceOrder(null); }}>‹</button><div><h2>Xem trước phiếu</h2><small>{printTemplate?.name ?? 'Mẫu phiếu'}</small></div><button className="primary-action" type="button" onClick={() => void printNow()}>In</button></div><div className="print-paper-picker"><label>Khổ in<select value={printPaper} onChange={(event) => changePaper(event.target.value as PrintPaper)}><option value="A4">A4</option><option value="A5">A5</option><option value="80mm">80 mm</option><option value="58mm">58 mm</option></select></label><p>{printerSettings.method === 'DIRECT_WIFI' && printerSettings.profile ? `Máy mặc định: ${printerSettings.profile.name}.` : 'Khi bấm In, chọn máy in trong giao diện in của điện thoại.'}</p></div><article className="print-document" style={{ '--retail-print-font-scale': String(normalizePrintFontSizePercent(printTemplate?.fontSizePercent) / 100) } as CSSProperties}><header>{printTemplate?.heading ? <p>{printTemplate.heading}</p> : null}<h1>{printTemplate?.title ?? printTemplate?.name ?? 'Đơn bán hàng'}</h1>{printTemplate?.subtitle ? <p>{printTemplate.subtitle}</p> : null}<small>{printOrder.number ?? 'Đơn bán hàng'}</small></header><div className="print-meta">{visiblePrintFields.has('customer') ? <p><span>Khách hàng</span><strong>{printOrder.customerName}</strong></p> : null}{visiblePrintFields.has('warehouse') ? <p><span>Kho bán</span><strong>{printOrder.warehouseName}</strong></p> : null}{visiblePrintFields.has('document_date') ? <p><span>Ngày</span><strong>{dateLabel(printOrder.updatedAt)}</strong></p> : null}</div>{visiblePrintFields.has('line_item') ? <table><thead><tr>{visiblePrintFields.has('line_no') ? <th>STT</th> : null}<th>Sản phẩm</th>{visiblePrintFields.has('line_quantity') ? <th>SL</th> : null}<th>ĐVT</th>{visiblePrintFields.has('line_unit_price') ? <th>Đơn giá</th> : null}{visiblePrintFields.has('line_total') ? <th>Thành tiền</th> : null}</tr></thead><tbody>{linesOf(printOrder).map((line, index) => <tr key={line.id}>{visiblePrintFields.has('line_no') ? <td>{index + 1}</td> : null}<td><strong>{line.itemName}</strong>{visiblePrintFields.has('line_sku') ? <small>{line.sku}</small> : null}</td>{visiblePrintFields.has('line_quantity') ? <td>{formatQuantity(line.quantity)}</td> : null}<td>{displayUnit(line.unitName, line.unitCode)}</td>{visiblePrintFields.has('line_unit_price') ? <td>{money.format(Number(line.unitPrice))}</td> : null}{visiblePrintFields.has('line_total') ? <td>{money.format(Number(line.lineTotal))}</td> : null}</tr>)}</tbody></table> : null}<footer>{visiblePrintFields.has('total_total') ? <p className="print-grand-total"><span>Tổng cộng</span><strong>{money.format(Number(printOrder.total))}</strong></p> : null}{visiblePrintFields.has('note') ? <p className="print-note"><span>Ghi chú</span><strong>{printOrder.note?.trim() || '—'}</strong></p> : null}{visiblePrintFields.has('signatures') ? <div className="print-signatures"><span>Người lập</span><span>Khách hàng</span></div> : null}</footer></article></section> : null}
-  </main>;
+  </main>
+  <div className="retail-bottom-nav-scope retail-lot7 retail-issue675" style={RETAIL_BOTTOM_NAV_SCOPE_STYLE}>
+    <nav className="bottom-nav" style={RETAIL_BOTTOM_NAV_STYLE} aria-label="Điều hướng Retail"><button type="button" className={activeTab === 'home' ? 'active' : ''} onClick={() => { setActiveTab('home'); onTabChange?.('home'); }}><span>⌂</span>Trang chủ</button><button type="button" className={activeTab === 'entry' ? 'active' : ''} onClick={() => { setActiveTab('entry'); onTabChange?.('entry'); }}><span>＋</span>Lên đơn</button><button type="button" className={activeTab === 'orders' ? 'active' : ''} onClick={() => { setActiveTab('orders'); onTabChange?.('orders'); void refreshOrders(); }}><span>▤</span>Đơn hàng</button>{inventoryAvailable && onOpenInventory ? <button type="button" onClick={onOpenInventory}><span>▣</span>Tồn kho</button> : null}<button type="button" className={activeTab === 'settings' ? 'active' : ''} onClick={() => { setActiveTab('settings'); onTabChange?.('settings'); }}><span>⚙</span>Cài đặt</button></nav>
+  </div>
+  </>;
 }
