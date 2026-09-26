@@ -338,18 +338,57 @@ function searchPriceText(option: SalesOrderSkuSearchOption): string {
   return option.pricePreview.status === 'MISSING' ? 'Chưa có giá' : 'Chưa tính được giá';
 }
 
+function compactInventoryQuantity(value: string | null | undefined): string {
+  const normalized = String(value ?? '').trim();
+  if (!/^-?(?:0|[1-9]\d*)(?:\.\d+)?$/.test(normalized)) return normalized;
+  const negative = normalized.startsWith('-');
+  const unsigned = negative ? normalized.slice(1) : normalized;
+  const [whole, fraction = ''] = unsigned.split('.');
+  const compactFraction = fraction.replace(/0+$/, '');
+  const compact = compactFraction ? `${whole}.${compactFraction}` : whole;
+  return negative && compact !== '0' ? `-${compact}` : compact;
+}
+
+function wholeInventoryQuantity(value: string | null | undefined): bigint | null {
+  const compact = compactInventoryQuantity(value);
+  return /^\d+$/.test(compact) ? BigInt(compact) : null;
+}
+
+export function formatInventoryQuantity(
+  preview: SalesOrderSkuSearchOption['inventoryPreview'],
+  quantity: string | null | undefined,
+): string {
+  const compact = compactInventoryQuantity(quantity);
+  const baseUnitName = preview.unitName?.trim() ?? '';
+  const packageUnitName = preview.packageUnitName?.trim() ?? '';
+  const baseQuantity = wholeInventoryQuantity(quantity);
+  const packageConversion = wholeInventoryQuantity(preview.packageConversionToBase);
+  const distinctUnitNames = packageUnitName
+    && baseUnitName
+    && packageUnitName.toLocaleLowerCase('vi-VN') !== baseUnitName.toLocaleLowerCase('vi-VN');
+
+  if (baseQuantity !== null && packageConversion !== null && packageConversion > 1n && distinctUnitNames) {
+    const packageQuantity = baseQuantity / packageConversion;
+    const remainder = baseQuantity % packageConversion;
+    if (packageQuantity > 0n && remainder > 0n) {
+      return `${packageQuantity} ${packageUnitName} + ${remainder} ${baseUnitName}`;
+    }
+    if (packageQuantity > 0n) return `${packageQuantity} ${packageUnitName}`;
+  }
+
+  return baseUnitName ? `${compact} ${baseUnitName}` : compact;
+}
+
 function searchInventoryPrimary(option: SalesOrderSkuSearchOption): string {
   if (option.inventoryPreview.status === 'PENDING') return 'Đang lấy tồn…';
   if (option.inventoryPreview.status === 'NOT_MANAGED') return 'Không quản lý tồn';
   if (option.inventoryPreview.status !== 'TRACKED') return 'Chưa có số liệu tồn';
-  const unit = option.inventoryPreview.unitCode ? ` ${option.inventoryPreview.unitCode}` : '';
-  return `Tồn ${compactQuantity(option.inventoryPreview.onHandQuantity)}${unit}`;
+  return `Tồn ${formatInventoryQuantity(option.inventoryPreview, option.inventoryPreview.onHandQuantity)}`;
 }
 
 function searchInventorySecondary(option: SalesOrderSkuSearchOption): string | null {
   if (option.inventoryPreview.status !== 'TRACKED') return null;
-  const unit = option.inventoryPreview.unitCode ? ` ${option.inventoryPreview.unitCode}` : '';
-  return `Khả dụng ${compactQuantity(option.inventoryPreview.availableQuantity)}${unit}`;
+  return `Khả dụng ${formatInventoryQuantity(option.inventoryPreview, option.inventoryPreview.availableQuantity)}`;
 }
 
 function withPendingSearchPreview(option: Omit<SalesOrderSkuSearchOption, 'pricePreview' | 'inventoryPreview'>): SalesOrderSkuSearchOption {
@@ -360,7 +399,11 @@ function withPendingSearchPreview(option: Omit<SalesOrderSkuSearchOption, 'price
       status: 'PENDING',
       onHandQuantity: null,
       availableQuantity: null,
+      heldQuantity: null,
       unitCode: null,
+      unitName: null,
+      packageUnitName: null,
+      packageConversionToBase: null,
     },
   };
 }
@@ -1576,13 +1619,13 @@ export default function SalesOrderCommercialForm(props: Props) {
                   {skuResults.map((option, index) => (
                     <button type="button" key={option.id} className={index === activeSkuIndex ? styles.skuResultActive : styles.skuResult} disabled={!option.eligibility.selectable} onMouseDown={(event) => event.preventDefault()} onClick={() => void addSku(option)}>
                       <div><span>{option.productName}</span><strong>SKU {option.sku}</strong><small>{option.productCode}{option.variantName ? ` · ${option.variantName}` : ''}</small></div>
-                      <div><b>{searchPriceText(option)}</b><small>{searchInventoryPrimary(option)}</small>{searchInventorySecondary(option) && <small>{searchInventorySecondary(option)}</small>}{option.barcode && <small>Barcode {option.barcode}</small>}<small className={option.eligibility.selectable ? styles.eligible : styles.ineligible}>{option.eligibility.message}</small></div>
+                      <div><b>{searchPriceText(option)}</b><small>{searchInventoryPrimary(option)}</small>{searchInventorySecondary(option) && <small>{searchInventorySecondary(option)}</small>}{option.barcode && <small>Barcode {option.barcode}</small>}{option.eligibility.message ? <small className={option.eligibility.selectable ? styles.eligible : styles.ineligible}>{option.eligibility.message}</small> : null}</div>
                     </button>
                   ))}
                 </div>
               )}
             </div>
-            <p className={styles.keyboardHint}>Gõ để tìm, ↑↓ để chọn, Enter để thêm. Giá được tính theo lựa chọn áp dụng, khách hàng, SKU, số lượng và thời điểm.</p>
+            <p className={styles.keyboardHint}>Gõ để tìm, ↑↓ để chọn, Enter để thêm. Giá được tính theo kênh bán, khách hàng, SKU, số lượng và thời điểm.</p>
           </section>
 
           <section className={styles.orderLines} aria-label="Hàng hóa trong đơn">

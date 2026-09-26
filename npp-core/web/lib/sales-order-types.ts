@@ -249,8 +249,11 @@ export type SalesOrderSkuInventoryPreview = {
   status: 'PENDING' | 'TRACKED' | 'NOT_MANAGED' | 'UNAVAILABLE';
   onHandQuantity: string | null;
   availableQuantity: string | null;
+  heldQuantity?: string | null;
   unitCode: string | null;
   unitName?: string | null;
+  packageUnitName?: string | null;
+  packageConversionToBase?: string | null;
 };
 
 export type SalesOrderSkuSearchOption = {

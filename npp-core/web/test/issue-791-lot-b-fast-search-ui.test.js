@@ -30,6 +30,12 @@ test('Lô B frontend hiện SKU trước rồi gửi đúng context để cập 
   assert.match(form, /option\.pricePreview/);
   assert.match(form, /option\.inventoryPreview/);
   assert.match(form, /Không quản lý tồn/);
+  assert.match(form, /formatInventoryQuantity/);
+  assert.match(form, /packageUnitName/);
+  assert.match(form, /packageConversionToBase/);
+  assert.match(form, /option\.eligibility\.message \? <small/);
+  assert.match(types, /packageUnitName\?: string \| null/);
+  assert.match(types, /packageConversionToBase\?: string \| null/);
   assert.match(types, /defaultWarehouseId: string \| null/);
   assert.match(types, /pricePreview: SalesOrderSkuPricePreview/);
   assert.match(types, /inventoryPreview: SalesOrderSkuInventoryPreview/);

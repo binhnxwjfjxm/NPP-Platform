@@ -32,14 +32,6 @@ function normalizePricingAt(value, fallback) {
   return raw && !Number.isNaN(parsed.getTime()) ? parsed.toISOString() : null;
 }
 
-function compactDecimal(value) {
-  const normalized = String(value ?? '0').trim();
-  if (!/^-?\d+(?:\.\d+)?$/.test(normalized)) return normalized;
-  if (!normalized.includes('.')) return normalized;
-  const compact = normalized.replace(/0+$/, '').replace(/\.$/, '');
-  return compact || '0';
-}
-
 function pricePreview(result) {
   if (!result?.ok) {
     return Object.freeze({
@@ -74,6 +66,8 @@ function inventoryPreview(row) {
       heldQuantity: null,
       unitCode: null,
       unitName: null,
+      packageUnitName: null,
+      packageConversionToBase: null,
     });
   }
   if (row.is_inventory_managed === false) {
@@ -84,6 +78,8 @@ function inventoryPreview(row) {
       heldQuantity: null,
       unitCode: null,
       unitName: null,
+      packageUnitName: null,
+      packageConversionToBase: null,
     });
   }
   if (row.is_inventory_managed !== true || Number(row.base_variant_count) !== 1 || !row.base_variant_id) {
@@ -94,6 +90,8 @@ function inventoryPreview(row) {
       heldQuantity: null,
       unitCode: row.base_unit_code ?? null,
       unitName: row.base_unit_name ?? null,
+      packageUnitName: row.package_unit_name ?? null,
+      packageConversionToBase: row.package_conversion_to_base ?? null,
     });
   }
   return Object.freeze({
@@ -103,14 +101,9 @@ function inventoryPreview(row) {
     heldQuantity: String(row.held_quantity ?? '0'),
     unitCode: row.base_unit_code ?? null,
     unitName: row.base_unit_name ?? null,
+    packageUnitName: row.package_unit_name ?? null,
+    packageConversionToBase: row.package_conversion_to_base ?? null,
   });
-}
-
-function inventoryHeldMessage(preview) {
-  if (preview?.status !== 'TRACKED') return '';
-  const unitLabel = preview.unitName || preview.unitCode;
-  const unit = unitLabel ? ` ${unitLabel}` : '';
-  return `Đang giữ ${compactDecimal(preview.heldQuantity)}${unit}`;
 }
 
 function pickDefaultWarehouseId(warehouses, requestContext) {
@@ -249,7 +242,7 @@ async function previewByVariantId(client, { requestContext, previewContext, vari
       id,
       pricePreview: pricePreview(pricingByVariantId.get(id)),
       inventoryPreview: inventory,
-      eligibilityMessage: inventoryHeldMessage(inventory),
+      eligibilityMessage: '',
     })];
   }));
 }
@@ -358,8 +351,6 @@ export async function getSalesOrderSkuPreviews(client, {
 }
 
 export const salesOrderSearchPreviewInternals = Object.freeze({
-  compactDecimal,
-  inventoryHeldMessage,
   inventoryPreview,
   normalizePricingAt,
   normalizeVariantIds,

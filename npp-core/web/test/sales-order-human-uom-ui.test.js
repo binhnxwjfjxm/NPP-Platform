@@ -6,6 +6,7 @@ const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf
 
 const workspace = read('app/sales/sales-orders/SalesOrderWorkspace.tsx');
 const detail = read('app/sales/sales-orders/SalesOrderDetail.tsx');
+const commercialForm = read('app/sales/sales-orders/SalesOrderCommercialForm.tsx');
 const printSheet = read('app/sales/sales-orders/SalesOrderPrintSheet.tsx');
 const printDocument = read('app/components/print-document.tsx');
 const holdBreakdown = read('app/components/stock-hold-breakdown.tsx');
@@ -53,9 +54,23 @@ test('contract fulfillment và giữ hàng mang tên ĐVT từ nguồn shared.un
   assert.match(holdBreakdown, /order\.baseUnitName \|\| order\.baseUnitCode/);
 });
 
-test('preview tồn mang tên ĐVT mà không hard-code mã kỹ thuật sang tiếng Việt', () => {
+test('preview tồn dùng tên ĐVT và quy đổi thành kiện + lẻ mà không hiện mã kỹ thuật', () => {
   assert.match(previewRepository, /array_agg\(base_unit\.name/);
+  assert.match(previewRepository, /package_unit\.name AS package_unit_name/);
+  assert.match(previewRepository, /package_variant\.conversion_to_base/);
   assert.match(previewService, /unitName: row\.base_unit_name \?\? null/);
-  assert.match(previewService, /preview\.unitName \|\| preview\.unitCode/);
-  assert.doesNotMatch(previewService, /THUNG\s*[:=].*Thùng|HOP\s*[:=].*Hộp|GOI\s*[:=].*Gói|BICH\s*[:=].*Bịch/);
+  assert.match(previewService, /packageUnitName: row\.package_unit_name \?\? null/);
+  assert.match(previewService, /packageConversionToBase: row\.package_conversion_to_base \?\? null/);
+  assert.doesNotMatch(previewService, /inventoryHeldMessage|Đang giữ/);
+
+  const inventoryDisplay = commercialForm.slice(
+    commercialForm.indexOf('function wholeInventoryQuantity'),
+    commercialForm.indexOf('function withPendingSearchPreview'),
+  );
+  assert.match(inventoryDisplay, /packageUnitName/);
+  assert.match(inventoryDisplay, /packageConversionToBase/);
+  assert.match(inventoryDisplay, /packageQuantity.*remainder/s);
+  assert.match(inventoryDisplay, /baseUnitName/);
+  assert.doesNotMatch(inventoryDisplay, /unitCode/);
+  assert.doesNotMatch(inventoryDisplay, /THUNG\s*[:=].*Thùng|HOP\s*[:=].*Hộp|GOI\s*[:=].*Gói|BICH\s*[:=].*Bịch/);
 });

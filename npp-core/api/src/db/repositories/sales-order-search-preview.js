@@ -12,7 +12,9 @@ export async function listSalesOrderSkuInventoryPreviews(client, {
               base_scope.base_variant_count,
               base_scope.base_variant_id,
               base_scope.base_unit_code,
-              base_scope.base_unit_name
+              base_scope.base_unit_name,
+              package_scope.package_unit_name,
+              package_scope.package_conversion_to_base
          FROM shared.product_variants pv
          JOIN shared.products product
            ON product.installation_id = pv.installation_id
@@ -31,6 +33,25 @@ export async function listSalesOrderSkuInventoryPreviews(client, {
               AND base_variant.is_inventory_base = true
               AND base_variant.is_active = true
          ) base_scope ON true
+         LEFT JOIN LATERAL (
+           SELECT package_unit.name AS package_unit_name,
+                  package_variant.conversion_to_base::numeric(30,12)::text AS package_conversion_to_base
+             FROM shared.product_variants package_variant
+             JOIN shared.units_of_measure package_unit
+               ON package_unit.installation_id = package_variant.installation_id
+              AND package_unit.id = package_variant.unit_id
+              AND package_unit.is_active = true
+            WHERE package_variant.installation_id = pv.installation_id
+              AND package_variant.product_id = pv.product_id
+              AND package_variant.is_active = true
+              AND package_variant.is_sellable = true
+              AND package_variant.is_inventory_base = false
+              AND package_variant.conversion_to_base > 1
+            ORDER BY package_variant.conversion_to_base DESC,
+                     CASE WHEN package_variant.variant_kind = 'CARTON' THEN 0 ELSE 1 END,
+                     package_variant.id
+            LIMIT 1
+         ) package_scope ON true
         WHERE pv.installation_id = $1
           AND pv.id = ANY($3::uuid[])
      ), balance AS (
@@ -65,6 +86,8 @@ export async function listSalesOrderSkuInventoryPreviews(client, {
             selected.base_variant_id,
             selected.base_unit_code,
             selected.base_unit_name,
+            selected.package_unit_name,
+            selected.package_conversion_to_base,
             COALESCE(balance.on_hand_quantity, 0)::numeric(30,12)::text AS on_hand_quantity,
             (
               COALESCE(balance.exact_reserved_quantity, 0)

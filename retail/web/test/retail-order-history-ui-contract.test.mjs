@@ -58,6 +58,11 @@ test('approved order list styling is isolated and loaded after general retail po
   assert.match(css, /min-height:\s*38px/);
   assert.match(css, /\.order-summary/);
   assert.match(css, /\.order-summary-card/);
+  const summaryCard = css.slice(css.indexOf('.retail-issue675 .order-summary-card {'), css.indexOf('.retail-issue675 .order-summary-card span'));
+  assert.match(summaryCard, /display:\s*grid/);
+  assert.match(summaryCard, /min-height:\s*48px/);
+  assert.match(summaryCard, /align-content:\s*center/);
+  assert.doesNotMatch(summaryCard, /display:\s*flex/);
   assert.match(css, /\.retail-order-history-card/);
   assert.match(css, /\.order-history-print/);
   assert.match(css, /\.orders-load-more/);

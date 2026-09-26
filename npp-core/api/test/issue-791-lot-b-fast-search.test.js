@@ -41,6 +41,8 @@ test('Lô B search backend nhận đủ context, batch giá và không đẩy ph
   assert.match(repository, /on_hand_quantity/);
   assert.match(repository, /held_quantity/);
   assert.match(repository, /available_quantity/);
+  assert.match(repository, /package_unit\.name AS package_unit_name/);
+  assert.match(repository, /package_variant\.conversion_to_base/);
   assert.match(entry, /defaultWarehouseId/);
 });
 
@@ -51,7 +53,7 @@ test('Lô B caller không gửi preview context vẫn dùng tìm SKU Công Ty t�
   assert.doesNotMatch(service, /legacy\.searchSalesOrderSkuOptions/);
 });
 
-test('Lô B phân biệt không quản lý tồn với hết hàng và trả đúng số đang giữ', () => {
+test('Lô B phân biệt không quản lý tồn với hết hàng và trả dữ liệu quy đổi ĐVT', () => {
   assert.deepEqual(
     salesOrderSearchPreviewInternals.inventoryPreview({ is_inventory_managed: false }),
     {
@@ -61,6 +63,8 @@ test('Lô B phân biệt không quản lý tồn với hết hàng và trả đ�
       heldQuantity: null,
       unitCode: null,
       unitName: null,
+      packageUnitName: null,
+      packageConversionToBase: null,
     },
   );
   const tracked = salesOrderSearchPreviewInternals.inventoryPreview({
@@ -68,17 +72,20 @@ test('Lô B phân biệt không quản lý tồn với hết hàng và trả đ�
     base_variant_count: 1,
     base_variant_id: 'base-1',
     base_unit_code: 'THUNG',
-    base_unit_name: 'Thùng',
-    on_hand_quantity: '12.000000000000',
-    available_quantity: '10.000000000000',
-    held_quantity: '2.000000000000',
+    base_unit_name: 'Chai',
+    package_unit_name: 'Thùng',
+    package_conversion_to_base: '24.000000000000',
+    on_hand_quantity: '77.000000000000',
+    available_quantity: '53.000000000000',
+    held_quantity: '24.000000000000',
   });
   assert.equal(tracked.status, 'TRACKED');
-  assert.equal(tracked.onHandQuantity, '12.000000000000');
-  assert.equal(tracked.availableQuantity, '10.000000000000');
-  assert.equal(tracked.heldQuantity, '2.000000000000');
-  assert.equal(tracked.unitName, 'Thùng');
-  assert.equal(salesOrderSearchPreviewInternals.inventoryHeldMessage(tracked), 'Đang giữ 2 Thùng');
+  assert.equal(tracked.onHandQuantity, '77.000000000000');
+  assert.equal(tracked.availableQuantity, '53.000000000000');
+  assert.equal(tracked.heldQuantity, '24.000000000000');
+  assert.equal(tracked.unitName, 'Chai');
+  assert.equal(tracked.packageUnitName, 'Thùng');
+  assert.equal(tracked.packageConversionToBase, '24.000000000000');
 });
 
 test('Lô B không còn trả thông báo chọn được dư thừa', async () => {
