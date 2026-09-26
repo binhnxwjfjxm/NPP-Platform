@@ -183,5 +183,91 @@ jobs:
             AND (pli.effective_from IS NULL OR pli.effective_from <= now())
             AND (pli.effective_to IS NULL OR pli.effective_to > now())
           GROUP BY pv.installation_id;
+
+          SELECT concat_ws('|',
+            'CUSTOMER_GROUP',
+            installation_id,
+            id,
+            code,
+            name,
+            is_active
+          )
+          FROM shared.customer_groups
+          ORDER BY installation_id, code;
+
+          SELECT concat_ws('|',
+            'GROUP_LIST',
+            pl.installation_id,
+            pl.id,
+            pl.code,
+            pl.name,
+            pl.list_type,
+            coalesce(cg.code,''),
+            coalesce(cg.name,''),
+            coalesce(ch.code,''),
+            coalesce(ch.name,''),
+            pl.priority,
+            pl.stacking_mode,
+            pl.stop_processing,
+            pl.is_active,
+            coalesce(pl.effective_from::text,''),
+            coalesce(pl.effective_to::text,'')
+          )
+          FROM shared.price_lists pl
+          LEFT JOIN shared.customer_groups cg
+            ON cg.installation_id = pl.installation_id
+           AND cg.id = pl.customer_group_id
+          LEFT JOIN shared.sales_channels ch
+            ON ch.installation_id = pl.installation_id
+           AND ch.id = pl.channel_id
+          WHERE pl.list_type = 'CUSTOMER_GROUP'
+          ORDER BY pl.installation_id, cg.code, ch.code, pl.priority DESC, pl.code;
+
+          SELECT concat_ws('|',
+            'KHTV_NDPESOT',
+            pv.sku,
+            pl.code,
+            pl.name,
+            coalesce(cg.code,''),
+            coalesce(cg.name,''),
+            coalesce(ch.code,''),
+            coalesce(ch.name,''),
+            pl.priority,
+            pl.stacking_mode,
+            pl.stop_processing,
+            pl.is_active,
+            pli.adjustment_type,
+            coalesce(pli.amount_minor::text,''),
+            coalesce(pli.rate_bps::text,''),
+            pli.is_active,
+            coalesce(pli.effective_from::text,''),
+            coalesce(pli.effective_to::text,''),
+            CASE
+              WHEN pl.is_active
+               AND pli.is_active
+               AND (pl.effective_from IS NULL OR pl.effective_from <= now())
+               AND (pl.effective_to IS NULL OR pl.effective_to > now())
+               AND (pli.effective_from IS NULL OR pli.effective_from <= now())
+               AND (pli.effective_to IS NULL OR pli.effective_to > now())
+              THEN 'ACTIVE_NOW'
+              ELSE 'NOT_ACTIVE_NOW'
+            END
+          )
+          FROM shared.product_variants pv
+          JOIN shared.price_list_items pli
+            ON pli.installation_id = pv.installation_id
+           AND pli.variant_id = pv.id
+          JOIN shared.price_lists pl
+            ON pl.installation_id = pli.installation_id
+           AND pl.id = pli.price_list_id
+          LEFT JOIN shared.customer_groups cg
+            ON cg.installation_id = pl.installation_id
+           AND cg.id = pl.customer_group_id
+          LEFT JOIN shared.sales_channels ch
+            ON ch.installation_id = pl.installation_id
+           AND ch.id = pl.channel_id
+          WHERE upper(pv.sku) = 'NDPESOT'
+            AND pl.list_type = 'CUSTOMER_GROUP'
+          ORDER BY pl.priority DESC, pl.code, pli.created_at DESC;
           SQL
           REMOTE
