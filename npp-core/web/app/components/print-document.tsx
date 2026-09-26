@@ -97,11 +97,13 @@ export function PrintAction({
   targetId,
   onPrint,
   variant = 'button',
+  documentTitle,
 }: {
   label?: string;
   targetId?: string;
   onPrint?: () => void;
   variant?: PrintActionVariant;
+  documentTitle?: string;
 }) {
   function print() {
     clearPrintState();
@@ -110,6 +112,9 @@ export function PrintAction({
       ? surfaces.find((surface) => surface.dataset.printId === targetId)
       : surfaces.length === 1 ? surfaces[0] : null;
     if (!target) return;
+
+    const previousTitle = document.title;
+    if (documentTitle?.trim()) document.title = documentTitle.trim();
 
     const printRoot = document.createElement('div');
     printRoot.setAttribute('data-print-root', 'true');
@@ -122,6 +127,7 @@ export function PrintAction({
     const cleanup = () => {
       window.removeEventListener('afterprint', cleanup);
       clearPrintState();
+      if (documentTitle?.trim()) document.title = previousTitle;
     };
     window.addEventListener('afterprint', cleanup, { once: true });
 
