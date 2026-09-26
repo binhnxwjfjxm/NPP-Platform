@@ -4,6 +4,7 @@ import { createIdempotencyKey } from '@npp/contracts';
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
+import { OvertimeExportActions } from '../../components/lot4-export-actions';
 import shellStyles from '../../components/app-shell.module.css';
 import sharedStyles from '../../organization/organization.module.css';
 import styles from './overtime.module.css';
@@ -242,7 +243,10 @@ export default function OvertimeCloseoutWorkspace({
       title="Tăng ca và chốt công"
       subtitle="Quản lý tăng ca theo phê duyệt và chốt kỳ công làm căn cứ tính lương."
       kicker="Nhân sự"
-      actions={<Link className={shellStyles.actionButton + ' ' + shellStyles.actionButtonPrimary} href="/workforce/timesheet">Mở Bảng công</Link>}
+      actions={<>
+        <OvertimeExportActions from={from} to={to} status={status} branchId={branchId} disabled={busy} />
+        <Link className={shellStyles.actionButton + ' ' + shellStyles.actionButtonPrimary} href="/workforce/timesheet">Mở Bảng công</Link>
+      </>}
     >
       <section className={sharedStyles.page} data-testid="workforce-overtime-closeout-page">
         {(error || notice) ? <div className={sharedStyles.banner + ' ' + (error ? sharedStyles.bannerError : sharedStyles.bannerSuccess)} role="status">{error ?? notice}</div> : null}
