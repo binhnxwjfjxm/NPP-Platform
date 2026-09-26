@@ -241,13 +241,6 @@ const ORDER_BATCH_SIZE = 100;
 const ORDER_BATCH_FETCH_SIZE = ORDER_BATCH_SIZE + 1;
 const PRINT_PAPER_STORAGE_KEY = 'retail.print.paper';
 const PRINT_TEMPLATE_STORAGE_KEY = 'retail.print.template';
-const RETAIL_SCROLL_REGION_STYLE: CSSProperties = {
-    height: '100dvh',
-    minHeight: '100dvh',
-    overflowY: 'auto',
-    overscrollBehaviorY: 'contain',
-    WebkitOverflowScrolling: 'touch',
-};
 const RETAIL_BOTTOM_NAV_SCOPE_STYLE: CSSProperties = {
     position: 'fixed',
     zIndex: 9,
@@ -1555,7 +1548,7 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
     const productPicture = (imageKey: string | undefined, label: string) => <span className="product-visual"><span className="product-symbol product-symbol-large product-fallback" aria-hidden="true">{label.slice(0, 1)}</span>{imageKey ? <img className="product-photo" src={productImage(imageKey)} alt="" onError={(event) => { event.currentTarget.hidden = true; }}/> : null}</span>;
     const title = activeTab === 'home' ? 'Trang chủ' : activeTab === 'orders' ? 'Đơn hàng' : activeTab === 'settings' ? 'Cài đặt' : order ? 'Chi tiết đơn' : 'Lên đơn';
     return <>
-  <main className="retail-shell retail-lot7 retail-issue675" style={RETAIL_SCROLL_REGION_STYLE}>
+  <main className="retail-shell retail-lot7 retail-issue675">
     <header className="retail-header retail-topbar">
       {activeTab === 'home' ? <span className="topbar-spacer" aria-hidden="true"/> : <button className="round-icon" type="button" aria-label="Quay lại" onClick={() => setActiveTab(activeTab === 'entry' && order ? 'orders' : 'home')}>‹</button>}
       <div className="retail-title"><h1>{title}</h1></div>
