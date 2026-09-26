@@ -186,7 +186,7 @@ test('bottom nav giữ nguyên hình dáng nhưng nằm ngoài vùng cuộn sau 
   assert.doesNotMatch(nav, /padding:[^;]*safe-area-inset-bottom/);
 
   assert.match(page, /const RETAIL_SCROLL_REGION_STYLE: CSSProperties = \{[\s\S]*?overflowY: 'auto'[\s\S]*?overscrollBehaviorY: 'contain'/);
-  assert.match(page, /const RETAIL_BOTTOM_NAV_SCOPE_STYLE: CSSProperties = \{[\s\S]*?position: 'fixed'[\s\S]*?pointerEvents: 'none'/);
+  assert.match(page, /const RETAIL_BOTTOM_NAV_SCOPE_STYLE: CSSProperties = \{[\s\S]*?position: 'fixed'[\s\S]*?maxWidth: 'none'[\s\S]*?padding: 0[\s\S]*?background: 'transparent'[\s\S]*?pointerEvents: 'none'/);
   assert.match(page, /const RETAIL_BOTTOM_NAV_STYLE: CSSProperties = \{[\s\S]*?position: 'absolute'[\s\S]*?pointerEvents: 'auto'/);
   assert.match(page, /<\/main>\s*<div className="retail-bottom-nav-scope retail-lot7 retail-issue675" style=\{RETAIL_BOTTOM_NAV_SCOPE_STYLE\}>\s*<nav className="bottom-nav" style=\{RETAIL_BOTTOM_NAV_STYLE\}/);
 });
