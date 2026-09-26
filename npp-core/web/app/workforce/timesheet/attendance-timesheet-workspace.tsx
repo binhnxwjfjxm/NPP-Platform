@@ -4,6 +4,7 @@ import { createIdempotencyKey } from '@npp/contracts';
 import Link from 'next/link';
 import { useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
+import { TimesheetExportActions } from '../../components/lot4-export-actions';
 import shellStyles from '../../components/app-shell.module.css';
 import styles from '../../organization/organization.module.css';
 import localStyles from './attendance-timesheet.module.css';
@@ -491,15 +492,26 @@ export default function AttendanceTimesheetWorkspace({
     void load(0, nextView, { from, to });
   }
 
+  const exportPeriod = view === 'monthly' ? monthBounds(month) : { from, to };
   const actions = (
-    <button
-      type="button"
-      className={`${shellStyles.actionButton} ${shellStyles.actionButtonPrimary}`}
-      onClick={() => void load(data?.pagination.offset ?? 0)}
-      disabled={busy}
-    >
-      {busy ? 'Đang cập nhật…' : 'Cập nhật bảng công'}
-    </button>
+    <>
+      <TimesheetExportActions
+        from={exportPeriod.from}
+        to={exportPeriod.to}
+        view={view}
+        employeeQuery={employeeQuery}
+        branchId={branchId}
+        disabled={busy}
+      />
+      <button
+        type="button"
+        className={`${shellStyles.actionButton} ${shellStyles.actionButtonPrimary}`}
+        onClick={() => void load(data?.pagination.offset ?? 0)}
+        disabled={busy}
+      >
+        {busy ? 'Đang cập nhật…' : 'Cập nhật bảng công'}
+      </button>
+    </>
   );
 
   const rowCount = employeeRows.length;
