@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell-core';
 import type { Category, Channel, Customer, CustomerGroup, OfficialRows, Product, Variant } from '../../operations/data-exchange/data-exchange-model';
+import type { SalesOrderSkuSearchOption } from '../../../lib/sales-order-types';
+import { MIN_PRODUCT_SEARCH_LENGTH } from '../../../lib/product-search-contract';
 import { exactQuantity, exportTable, idempotency, requestJson } from '../../operations/data-exchange/data-exchange-file-utils';
 import styles from './quotation-workspace.module.css';
 
@@ -11,13 +13,15 @@ type Scope = 'all' | 'category' | 'sku';
 type BusyAction = 'build' | 'xlsx' | 'csv' | null;
 type QuotationRow = {
   sku: string; name: string; product: string; quantity: string;
-  finalPrice: string; lineTotal: string; priceListCode: string; currency: string;
+  systemPrice: string; manualPrice: string; lineTotal: string; priceListCode: string; currency: string;
 };
+type SkuSearchOption = Omit<SalesOrderSkuSearchOption, 'pricePreview' | 'inventoryPreview'>;
 
 const PRODUCT_PAGE_SIZE = 1000;
 const MAX_PRODUCT_OFFSET = 10000;
 const VARIANT_BATCH_SIZE = 500;
 const MAX_QUOTATION_SKUS = 1000;
+const SEARCH_PAGE_SIZE = 30;
 const EXPORT_HEADERS = ['Mã hàng', 'Sản phẩm', 'Quy cách', 'Số lượng', 'Tiền tệ', 'Đơn giá', 'Thành tiền', 'Nguồn giá'];
 
 async function loadAllProducts() {
@@ -44,10 +48,6 @@ async function loadVariantsForProducts(productIds: string[]) {
   return rows;
 }
 
-function splitSkuInput(value: string) {
-  return [...new Set(value.split(/[\s,;]+/).map((item) => item.trim().toUpperCase()).filter(Boolean))];
-}
-
 function formatMoney(value: string, currency = 'VND') {
   if (!value) return '—';
   const numeric = Number(value);
@@ -63,19 +63,46 @@ function safeFilePart(value: string) {
   return value.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
 }
 
+function formatVndInput(value: string) {
+  const digits = value.replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+  return digits ? digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.') : '';
+}
+
+function lineTotalForPrice(priceMinor: string, quantity: string) {
+  if (!/^\d+$/.test(priceMinor)) return '';
+  const match = /^(0|[1-9]\d*)(?:\.(\d{1,6}))?$/.exec(quantity.trim());
+  if (!match) return '';
+  const scale = 1_000_000n;
+  const scaledQuantity = BigInt(match[1]) * scale + BigInt((match[2] ?? '').padEnd(6, '0'));
+  return ((BigInt(priceMinor) * scaledQuantity + scale / 2n) / scale).toString();
+}
+
+function effectiveUnitPrice(row: QuotationRow) {
+  return row.manualPrice || row.systemPrice;
+}
+
+function effectiveLineTotal(row: QuotationRow) {
+  return row.manualPrice ? lineTotalForPrice(row.manualPrice, row.quantity) : row.lineTotal;
+}
+
 export default function QuotationWorkspace() {
-  const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [groups, setGroups] = useState<CustomerGroup[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [scope, setScope] = useState<Scope>('all');
   const [categoryId, setCategoryId] = useState('');
-  const [skuInput, setSkuInput] = useState('');
   const [channelId, setChannelId] = useState('');
   const [customerGroupId, setCustomerGroupId] = useState('');
   const [customerId, setCustomerId] = useState('');
   const [customerQuery, setCustomerQuery] = useState('');
+  const [customerSearchOpen, setCustomerSearchOpen] = useState(false);
+  const [skuTerm, setSkuTerm] = useState('');
+  const [skuResults, setSkuResults] = useState<SkuSearchOption[]>([]);
+  const [selectedSkus, setSelectedSkus] = useState<SkuSearchOption[]>([]);
+  const [skuLoading, setSkuLoading] = useState(false);
+  const [skuSearchOpen, setSkuSearchOpen] = useState(false);
+  const [activeSkuIndex, setActiveSkuIndex] = useState(0);
   const [quantity, setQuantity] = useState('1');
   const [rows, setRows] = useState<QuotationRow[]>([]);
   const [busy, setBusy] = useState<BusyAction>(null);
@@ -83,19 +110,19 @@ export default function QuotationWorkspace() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const operationKeyRef = useRef<string | null>(null);
+  const skuSearchRunRef = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
     setLoadingReferences(true);
     Promise.all([
-      loadAllProducts(),
       requestJson<Category[]>('/api/product-categories?limit=1000'),
       requestJson<Channel[]>('/api/sales-channels?limit=1000'),
       requestJson<CustomerGroup[]>('/api/customer-groups?limit=1000'),
       requestJson<Customer[]>('/api/customers?limit=1000'),
-    ]).then(([nextProducts, nextCategories, nextChannels, nextGroups, nextCustomers]) => {
+    ]).then(([nextCategories, nextChannels, nextGroups, nextCustomers]) => {
       if (cancelled) return;
-      setProducts(nextProducts); setCategories(nextCategories); setChannels(nextChannels); setGroups(nextGroups); setCustomers(nextCustomers); setError('');
+      setCategories(nextCategories); setChannels(nextChannels); setGroups(nextGroups); setCustomers(nextCustomers); setError('');
     }).catch((cause) => {
       if (!cancelled) setError(cause instanceof Error ? cause.message : 'Không tải được dữ liệu để lập báo giá.');
     }).finally(() => {
@@ -104,24 +131,51 @@ export default function QuotationWorkspace() {
     return () => { cancelled = true; };
   }, []);
 
+  useEffect(() => {
+    const term = skuTerm.trim();
+    const run = ++skuSearchRunRef.current;
+    setActiveSkuIndex(0);
+    if (scope !== 'sku' || term.length < MIN_PRODUCT_SEARCH_LENGTH) {
+      setSkuResults([]);
+      setSkuLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setSkuLoading(true);
+      try {
+        const query = new URLSearchParams({ search: term, limit: String(SEARCH_PAGE_SIZE), offset: '0' });
+        const found = await requestJson<SkuSearchOption[]>(`/api/sales-orders/sku-search?${query.toString()}`, { signal: controller.signal });
+        if (controller.signal.aborted || run !== skuSearchRunRef.current) return;
+        setSkuResults(found);
+      } catch (cause) {
+        if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'Không tìm được hàng hóa.');
+      } finally {
+        if (!controller.signal.aborted && run === skuSearchRunRef.current) setSkuLoading(false);
+      }
+    }, 0);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [scope, skuTerm]);
+
   const selectedCustomer = useMemo(() => customers.find((item) => item.id === customerId) ?? null, [customers, customerId]);
   const selectedCategory = useMemo(() => categories.find((item) => item.id === categoryId) ?? null, [categories, categoryId]);
   const filteredCustomers = useMemo(() => {
     const term = customerQuery.trim().toLocaleLowerCase('vi-VN');
-    const matches = customers
+    return customers
       .filter((item) => item.is_active)
       .filter((item) => !term || item.code.toLocaleLowerCase('vi-VN').includes(term) || item.name.toLocaleLowerCase('vi-VN').includes(term))
-      .slice(0, 80);
-    if (selectedCustomer && !matches.some((item) => item.id === selectedCustomer.id)) return [selectedCustomer, ...matches].slice(0, 80);
-    return matches;
-  }, [customers, customerQuery, selectedCustomer]);
+      .slice(0, SEARCH_PAGE_SIZE);
+  }, [customers, customerQuery]);
 
-  const pricedCount = rows.filter((row) => row.finalPrice !== '').length;
+  const pricedCount = rows.filter((row) => effectiveUnitPrice(row) !== '').length;
   const totalValue = rows.reduce((sum, row) => {
-    const value = Number(row.lineTotal);
+    const value = Number(effectiveLineTotal(row));
     return Number.isFinite(value) ? sum + value : sum;
   }, 0);
-  const manualSkuCount = splitSkuInput(skuInput).length;
+  const manualSkuCount = selectedSkus.length;
 
   function invalidateResult() {
     operationKeyRef.current = null;
@@ -131,6 +185,9 @@ export default function QuotationWorkspace() {
   function changeScope(next: Scope) {
     invalidateResult();
     setScope(next);
+    setSkuTerm('');
+    setSkuResults([]);
+    setSkuSearchOpen(false);
   }
 
   function changeCustomer(nextId: string) {
@@ -140,33 +197,94 @@ export default function QuotationWorkspace() {
     setCustomerGroupId(customer?.group_id ?? '');
   }
 
+  function selectCustomer(customer: Customer) {
+    changeCustomer(customer.id);
+    setCustomerQuery('');
+    setCustomerSearchOpen(false);
+  }
+
+  function clearCustomer() {
+    changeCustomer('');
+    setCustomerQuery('');
+    setCustomerSearchOpen(false);
+  }
+
+  function addSelectedSku(option: SkuSearchOption) {
+    if (!option.eligibility.selectable) {
+      setError(option.eligibility.message || 'Mã hàng này chưa đủ điều kiện bán.');
+      return;
+    }
+    if (selectedSkus.some((item) => item.id === option.id || item.sku === option.sku)) {
+      setSkuTerm('');
+      setSkuResults([]);
+      setSkuSearchOpen(false);
+      return;
+    }
+    if (selectedSkus.length >= MAX_QUOTATION_SKUS) {
+      setError('Mỗi báo giá tối đa 1.000 mã hàng.');
+      return;
+    }
+    invalidateResult();
+    setSelectedSkus((current) => [...current, option]);
+    setSkuTerm('');
+    setSkuResults([]);
+    setSkuSearchOpen(false);
+  }
+
+  function removeSelectedSku(id: string) {
+    invalidateResult();
+    setSelectedSkus((current) => current.filter((item) => item.id !== id));
+  }
+
+  function handleSkuKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setActiveSkuIndex((current) => Math.min(current + 1, Math.max(0, skuResults.length - 1)));
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setActiveSkuIndex((current) => Math.max(0, current - 1));
+    } else if (event.key === 'Enter' && skuResults[activeSkuIndex]) {
+      event.preventDefault();
+      addSelectedSku(skuResults[activeSkuIndex]);
+    }
+  }
+
+  function updateManualPrice(sku: string, value: string) {
+    const digits = value.replace(/\D/g, '');
+    setRows((current) => current.map((row) => row.sku === sku ? { ...row, manualPrice: digits } : row));
+    setError('');
+    setMessage('');
+  }
+
+  function useSystemPrice(sku: string) {
+    setRows((current) => current.map((row) => row.sku === sku ? { ...row, manualPrice: '' } : row));
+    setError('');
+    setMessage('');
+  }
+
   async function buildQuotation() {
     if (loadingReferences || busy) return;
     setBusy('build'); setError(''); setMessage('');
     try {
       const normalizedQuantity = exactQuantity(quantity, 'quantity', 6);
       if (/^0(?:\.0+)?$/.test(normalizedQuantity)) throw new Error('Số lượng phải lớn hơn 0.');
-      const activeProducts = products.filter((product) => product.is_active && product.is_orderable);
-      let selectedProducts = activeProducts;
-      if (scope === 'category') {
-        if (!categoryId) throw new Error('Chọn ngành hoặc nhóm sản phẩm cần báo giá.');
-        selectedProducts = activeProducts.filter((product) => product.category_id === categoryId);
-      }
-      const requestedSkus = new Set(splitSkuInput(skuInput));
-      if (scope === 'sku' && requestedSkus.size === 0) throw new Error('Nhập ít nhất một mã hàng cần báo giá.');
-      if (!selectedProducts.length) throw new Error('Không có sản phẩm đang bán phù hợp với phạm vi đã chọn.');
-
-      const variants = await loadVariantsForProducts(selectedProducts.map((product) => product.id));
-      const skus = [...new Set(
-        variants.filter((variant) => variant.is_active && variant.is_sellable)
-          .filter((variant) => scope !== 'sku' || requestedSkus.has(variant.sku.toUpperCase()))
-          .map((variant) => variant.sku),
-      )].sort();
-
+      let skus: string[] = [];
       if (scope === 'sku') {
-        const found = new Set(skus.map((sku) => sku.toUpperCase()));
-        const missing = [...requestedSkus].filter((sku) => !found.has(sku));
-        if (missing.length) throw new Error('Không tìm thấy mã hàng đang bán: ' + missing.join(', ') + '.');
+        if (!selectedSkus.length) throw new Error('Chọn ít nhất một mã hàng cần báo giá.');
+        skus = selectedSkus.map((item) => item.sku);
+      } else {
+        const products = await loadAllProducts();
+        const activeProducts = products.filter((product) => product.is_active && product.is_orderable);
+        let selectedProducts = activeProducts;
+        if (scope === 'category') {
+          if (!categoryId) throw new Error('Chọn ngành hoặc nhóm sản phẩm cần báo giá.');
+          selectedProducts = activeProducts.filter((product) => product.category_id === categoryId);
+        }
+        if (!selectedProducts.length) throw new Error('Không có sản phẩm đang bán phù hợp với phạm vi đã chọn.');
+        const variants = await loadVariantsForProducts(selectedProducts.map((product) => product.id));
+        skus = [...new Set(
+          variants.filter((variant) => variant.is_active && variant.is_sellable).map((variant) => variant.sku),
+        )].sort();
       }
       if (!skus.length) throw new Error('Không có mã hàng phù hợp để lập báo giá.');
       if (skus.length > MAX_QUOTATION_SKUS) {
@@ -193,7 +311,8 @@ export default function QuotationWorkspace() {
         name: String(row.skuName ?? ''),
         product: String(row.productName ?? ''),
         quantity: String(row.quantity ?? normalizedQuantity),
-        finalPrice: String(row.unitPriceMinor ?? ''),
+        systemPrice: String(row.unitPriceMinor ?? ''),
+        manualPrice: '',
         lineTotal: String(row.lineTotalMinor ?? ''),
         priceListCode: String(row.priceListCode ?? ''),
         currency: String(row.currencyCode ?? 'VND'),
@@ -215,7 +334,14 @@ export default function QuotationWorkspace() {
       const customerPart = selectedCustomer ? safeFilePart(selectedCustomer.code) : '';
       const filename = 'bao-gia' + (customerPart ? '-' + customerPart : '') + '.xlsx';
       await exportTable(filename, 'Báo giá', EXPORT_HEADERS, rows.map((row) => [
-        row.sku, row.product, row.name, row.quantity, row.currency, row.finalPrice, row.lineTotal, row.priceListCode,
+        row.sku,
+        row.product,
+        row.name,
+        row.quantity,
+        row.currency,
+        effectiveUnitPrice(row),
+        effectiveLineTotal(row),
+        row.manualPrice ? 'Giá chỉnh trên báo giá' : row.priceListCode,
       ]), format);
       setMessage('Đã xuất ' + rows.length.toLocaleString('vi-VN') + ' dòng báo giá ra ' + (format === 'xlsx' ? 'Excel' : 'CSV') + '.');
     } catch (cause) {
@@ -239,15 +365,41 @@ export default function QuotationWorkspace() {
           <section className={styles.card}>
             <div className={styles.cardHeader}><span className={styles.step}>1</span><div><h2>Khách hàng và điều kiện bán</h2><p>Có thể để trống khách hàng để xem mức giá chung đang áp dụng.</p></div></div>
             <div className={styles.formGrid}>
-              <label className={styles.span2 + ' ' + styles.field}><span>Tìm khách hàng</span><input type="search" value={customerQuery} onChange={(event) => setCustomerQuery(event.target.value)} placeholder="Nhập mã hoặc tên khách hàng" autoComplete="off" /></label>
-              <label className={styles.span2 + ' ' + styles.field}>
-                <span>Khách hàng</span>
-                <select value={customerId} onChange={(event) => changeCustomer(event.target.value)}>
-                  <option value="">Khách chung / chưa chọn khách cụ thể</option>
-                  {filteredCustomers.map((customer) => <option key={customer.id} value={customer.id}>{customer.code} · {customer.name}</option>)}
-                </select>
-                {customerQuery.trim() && filteredCustomers.length === 80 ? <small>Đang hiển thị 80 kết quả. Gõ thêm để thu hẹp.</small> : null}
-              </label>
+              <div className={styles.span2 + ' ' + styles.field}>
+                <span>Tìm khách hàng</span>
+                <div className={styles.searchBox}>
+                  <input
+                    type="search"
+                    role="combobox"
+                    aria-autocomplete="list"
+                    aria-expanded={customerSearchOpen && Boolean(customerQuery.trim())}
+                    aria-controls="quotation-customer-results"
+                    value={customerQuery}
+                    onFocus={() => setCustomerSearchOpen(Boolean(customerQuery.trim()))}
+                    onBlur={() => window.setTimeout(() => setCustomerSearchOpen(false), 0)}
+                    onChange={(event) => { setCustomerQuery(event.target.value); setCustomerSearchOpen(Boolean(event.target.value.trim())); }}
+                    placeholder="Nhập mã hoặc tên khách hàng"
+                    autoComplete="off"
+                    data-testid="quotation-customer-search"
+                  />
+                  {customerSearchOpen && customerQuery.trim() ? (
+                    <div id="quotation-customer-results" className={styles.searchResults} role="listbox" aria-label="Kết quả tìm khách hàng" data-testid="quotation-customer-results">
+                      {filteredCustomers.length ? filteredCustomers.map((customer) => (
+                        <button type="button" key={customer.id} className={styles.searchOption} onMouseDown={(event) => event.preventDefault()} onClick={() => selectCustomer(customer)}>
+                          <span><strong>{customer.name}</strong><small>{customer.code}</small></span>
+                          <b>Chọn</b>
+                        </button>
+                      )) : <div className={styles.searchEmpty}>Không tìm thấy khách hàng phù hợp.</div>}
+                    </div>
+                  ) : null}
+                </div>
+                {selectedCustomer ? (
+                  <div className={styles.selectedCustomer} data-testid="quotation-selected-customer">
+                    <span><strong>{selectedCustomer.name}</strong><small>{selectedCustomer.code}</small></span>
+                    <button type="button" onClick={clearCustomer}>Bỏ chọn</button>
+                  </div>
+                ) : <small>Để trống nếu báo giá theo mức giá chung.</small>}
+              </div>
               <label className={styles.field}><span>Kênh bán</span><select value={channelId} onChange={(event) => { invalidateResult(); setChannelId(event.target.value); }}><option value="">Không chọn kênh</option>{channels.filter((item) => item.is_active).map((item) => <option key={item.id} value={item.id}>{item.code} · {item.name}</option>)}</select></label>
               <label className={styles.field}>
                 <span>Nhóm khách</span>
@@ -269,13 +421,57 @@ export default function QuotationWorkspace() {
               <button type="button" className={scope === 'sku' ? styles.scopeActive : ''} aria-pressed={scope === 'sku'} onClick={() => changeScope('sku')}>Theo mã hàng</button>
             </div>
             {scope === 'category' ? <label className={styles.field}><span>Ngành hoặc nhóm sản phẩm</span><select value={categoryId} onChange={(event) => { invalidateResult(); setCategoryId(event.target.value); }}><option value="">Chọn nhóm sản phẩm</option>{categories.filter((item) => item.is_active).map((item) => <option key={item.id} value={item.id}>{item.code} · {item.name}</option>)}</select></label> : null}
-            {scope === 'sku' ? <label className={styles.field}><span>Mã hàng cần báo giá</span><textarea rows={6} value={skuInput} onChange={(event) => { invalidateResult(); setSkuInput(event.target.value); }} placeholder={'Mỗi mã một dòng hoặc ngăn cách bằng dấu phẩy\nVí dụ: SP001-LE, SP002-THUNG'} /><small>{manualSkuCount ? manualSkuCount.toLocaleString('vi-VN') + ' mã hàng' : 'Chưa có mã hàng'}</small></label> : null}
+            {scope === 'sku' ? <div className={styles.productPicker}>
+              <div className={styles.field}>
+                <span>Tìm sản phẩm / mã hàng</span>
+                <div className={styles.searchBox}>
+                  <input
+                    type="search"
+                    role="combobox"
+                    aria-autocomplete="list"
+                    aria-expanded={skuSearchOpen && Boolean(skuTerm.trim())}
+                    aria-controls="quotation-sku-results"
+                    value={skuTerm}
+                    onFocus={() => setSkuSearchOpen(Boolean(skuTerm.trim()))}
+                    onBlur={() => window.setTimeout(() => setSkuSearchOpen(false), 0)}
+                    onChange={(event) => { setSkuTerm(event.target.value); setSkuSearchOpen(Boolean(event.target.value.trim())); }}
+                    onKeyDown={handleSkuKeyDown}
+                    placeholder="Tên sản phẩm, mã hàng, SKU hoặc barcode"
+                    autoComplete="off"
+                    data-testid="quotation-sku-search"
+                  />
+                  {skuSearchOpen && skuTerm.trim() ? (
+                    <div id="quotation-sku-results" className={styles.searchResults} role="listbox" aria-label="Kết quả tìm hàng hóa" data-testid="quotation-sku-results">
+                      {skuLoading ? <div className={styles.searchEmpty}>Đang tìm hàng hóa…</div> : null}
+                      {!skuLoading && skuResults.length === 0 ? <div className={styles.searchEmpty}>Không tìm thấy hàng hóa phù hợp.</div> : null}
+                      {skuResults.map((option, index) => (
+                        <button
+                          type="button"
+                          key={option.id}
+                          className={index === activeSkuIndex ? styles.searchOptionActive : styles.searchOption}
+                          disabled={!option.eligibility.selectable}
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => addSelectedSku(option)}
+                        >
+                          <span><strong>{option.productName}</strong><small>SKU {option.sku} · {option.productCode}{option.variantName ? ' · ' + option.variantName : ''}</small>{option.barcode ? <small>Barcode {option.barcode}</small> : null}</span>
+                          <b>{option.eligibility.selectable ? 'Thêm' : option.eligibility.message}</b>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+                <small>Gõ để tìm, ↑↓ để chọn, Enter để thêm. Dùng đúng danh mục tìm hàng của màn Ra đơn.</small>
+              </div>
+              {selectedSkus.length ? <div className={styles.selectedSkuList} data-testid="quotation-selected-skus">
+                {selectedSkus.map((item) => <div className={styles.selectedSkuItem} key={item.id}><span><strong>{item.productName}</strong><small>SKU {item.sku}{item.variantName ? ' · ' + item.variantName : ''}{item.unitCode ? ' · ' + item.unitCode : ''}</small></span><button type="button" onClick={() => removeSelectedSku(item.id)}>Bỏ</button></div>)}
+              </div> : <div className={styles.searchEmpty}>Chưa chọn mã hàng.</div>}
+            </div> : null}
             <div className={styles.scopeSummary}><span>Phạm vi hiện tại</span><strong>{scopeDescription}</strong></div>
           </section>
         </div>
 
         <section className={styles.actionBar}>
-          <div><strong>{loadingReferences ? 'Đang chuẩn bị dữ liệu…' : 'Sẵn sàng tính báo giá'}</strong><span>Giá được lấy từ chính sách bán hàng đang có hiệu lực; thao tác này không tạo đơn bán hàng.</span></div>
+          <div><strong>{loadingReferences ? 'Đang chuẩn bị dữ liệu…' : 'Sẵn sàng tính báo giá'}</strong><span>Giá hệ thống là giá đề xuất ban đầu. Có thể chỉnh trực tiếp từng dòng trên báo giá mà không thay đổi bảng giá Công Ty.</span></div>
           <div className={styles.actions}>
             <button type="button" className={styles.primaryButton} onClick={() => void buildQuotation()} disabled={loadingReferences || busy !== null}>{busy === 'build' ? 'Đang tính…' : 'Tính báo giá'}</button>
             <button type="button" className={styles.secondaryButton} onClick={() => void exportQuotation('xlsx')} disabled={busy !== null || !rows.length}>{busy === 'xlsx' ? 'Đang xuất…' : 'Xuất Excel'}</button>
@@ -287,7 +483,7 @@ export default function QuotationWorkspace() {
           <div className={styles.resultsHeader}><div><span className={styles.eyebrow}>Kết quả</span><h2>Bảng giá áp dụng</h2></div>{rows.length ? <span className={styles.resultContext}>{selectedCustomer ? selectedCustomer.code + ' · ' + selectedCustomer.name : 'Khách chung'}</span> : null}</div>
           {rows.length ? <>
             <div className={styles.summaryGrid}><div><span>Mã hàng</span><strong>{rows.length.toLocaleString('vi-VN')}</strong></div><div><span>Đã có giá</span><strong>{pricedCount.toLocaleString('vi-VN')}</strong></div><div><span>Tổng giá trị</span><strong>{formatMoney(String(totalValue), 'VND')}</strong></div></div>
-            <div className={styles.tableWrap}><table><thead><tr><th>Mã hàng</th><th>Sản phẩm / quy cách</th><th>Số lượng</th><th>Đơn giá</th><th>Thành tiền</th><th>Nguồn giá</th></tr></thead><tbody>{rows.map((row) => <tr key={row.sku}><td><strong>{row.sku}</strong></td><td><strong>{row.product}</strong><small>{row.name || '—'}</small></td><td>{row.quantity}</td><td className={styles.money}>{formatMoney(row.finalPrice, row.currency)}</td><td className={styles.money}>{formatMoney(row.lineTotal, row.currency)}</td><td>{row.priceListCode || 'Giá áp dụng tự động'}</td></tr>)}</tbody></table></div>
+            <div className={styles.tableWrap}><table><thead><tr><th>Mã hàng</th><th>Sản phẩm / quy cách</th><th>Số lượng</th><th>Đơn giá</th><th>Thành tiền</th><th>Nguồn giá</th></tr></thead><tbody>{rows.map((row) => <tr key={row.sku}><td><strong>{row.sku}</strong></td><td><strong>{row.product}</strong><small>{row.name || '—'}</small></td><td>{row.quantity}</td><td className={styles.money}><div className={styles.priceEditor}><input aria-label={`Đơn giá ${row.sku}`} inputMode="numeric" value={formatVndInput(effectiveUnitPrice(row))} onFocus={(event) => event.currentTarget.select()} onClick={(event) => event.currentTarget.select()} onChange={(event) => updateManualPrice(row.sku, event.target.value)} />{row.manualPrice ? <div className={styles.priceMeta}><span>Giá chỉnh trên báo giá</span><button type="button" onClick={() => useSystemPrice(row.sku)}>Giá hệ thống</button></div> : null}</div></td><td className={styles.money}>{formatMoney(effectiveLineTotal(row), row.currency)}</td><td>{row.manualPrice ? <><strong>Giá chỉnh trên báo giá</strong><small>{row.priceListCode ? 'Giá hệ thống: ' + row.priceListCode : 'Giá hệ thống tự động'}</small></> : (row.priceListCode || 'Giá áp dụng tự động')}</td></tr>)}</tbody></table></div>
           </> : <div className={styles.empty}><span className={styles.emptyIcon}>₫</span><strong>Chưa có kết quả báo giá</strong><p>Chọn điều kiện bán và phạm vi hàng hóa, sau đó bấm “Tính báo giá”.</p></div>}
         </section>
       </div>
