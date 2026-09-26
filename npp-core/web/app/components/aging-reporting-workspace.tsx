@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import type { AgingDashboard } from '../../lib/finance-reporting-types';
 import { AppShell } from './app-shell';
+import { AgingReportingExportActions } from './reporting-lot3-export-actions';
 import {
   WorkspaceTabPanel,
   WorkspaceTabs,
@@ -125,6 +126,7 @@ export function AgingReportingWorkspace() {
 
   const actions = (
     <div className={styles.headerActions}>
+      {report ? <AgingReportingExportActions report={report} disabled={busy} /> : null}
       <Link className={styles.linkButton} href="/accounting/receivables">Công nợ phải thu</Link>
       <Link className={styles.linkButton} href="/accounting/payables">Công nợ phải trả</Link>
     </div>
@@ -133,7 +135,7 @@ export function AgingReportingWorkspace() {
   return (
     <AppShell
       title="Tuổi nợ phải thu / phải trả"
-      subtitle="Theo dõi số dư công nợ hiện tại trong phạm vi kho được cấp. Phải thu phân tuổi theo ngày chứng từ; phải trả dùng đúng hạn thanh toán canonical."
+      subtitle="Theo dõi số dư công nợ hiện tại trong phạm vi kho được cấp. Phải thu phân tuổi theo ngày chứng từ; phải trả dùng đúng hạn thanh toán đã ghi trên chứng từ."
       kicker="Kế toán & công nợ"
       actions={actions}
     >
@@ -155,7 +157,7 @@ export function AgingReportingWorkspace() {
 
         {report ? <>
           <div className={styles.notice}>
-            <strong>Ngày chốt hiện tại:</strong> {report.currentDate}. AR chưa có due date canonical nên không gắn nhãn “quá hạn”; AP dùng due date thật. Tiền luôn tách theo currency.
+            <strong>Ngày chốt hiện tại:</strong> {report.currentDate}. Phải thu chưa có ngày đến hạn chuẩn nên không gắn nhãn “quá hạn”; phải trả dùng ngày đến hạn đã ghi nhận. Số tiền luôn tách riêng theo từng loại tiền.
           </div>
 
           <WorkspaceTabs
@@ -186,7 +188,7 @@ export function AgingReportingWorkspace() {
 
           <WorkspaceTabPanel tabId="payable" activeTab={activeTab} idPrefix={AGING_TAB_PREFIX}>
             <section className={styles.section} data-testid="aging-payable-summary">
-              <div className={styles.sectionHeader}><div><h2>Phải trả nhà cung cấp</h2><p>Quá hạn tính đúng từ due date đã khóa trên chứng từ phải trả.</p></div><Link className={styles.linkButton} href="/accounting/payables">Mở công nợ phải trả</Link></div>
+              <div className={styles.sectionHeader}><div><h2>Phải trả nhà cung cấp</h2><p>Quá hạn tính từ ngày đến hạn đã ghi trên chứng từ phải trả.</p></div><Link className={styles.linkButton} href="/accounting/payables">Mở công nợ phải trả</Link></div>
               <div className={styles.tableWrap}><table className={styles.table}>
                 <thead><tr><th>Tiền tệ</th><th>Trạng thái hạn</th><th className={styles.numeric}>Chứng từ</th><th className={styles.numeric}>Còn phải trả</th></tr></thead>
                 <tbody>{report.payable.summary.map((row) => <tr key={`${row.currencyCode}:${row.ageBucket}`}><td>{row.currencyCode}</td><td>{apBucket(row.ageBucket)}</td><td className={styles.numeric}>{formatDecimal(row.documentCount)}</td><td className={styles.numeric}>{money(row.remainingAmount, row.currencyCode)}</td></tr>)}{!report.payable.summary.length ? <tr><td className={styles.empty} colSpan={4}>Không có khoản phải trả đang mở.</td></tr> : null}</tbody>

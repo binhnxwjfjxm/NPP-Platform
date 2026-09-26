@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { AppShell } from './app-shell';
+import { PurchasingReportingExportActions } from './reporting-lot3-export-actions';
 import {
   BusinessTableSequenceCell,
   BusinessTableSequenceHeader,
@@ -181,6 +182,7 @@ export function ReportingDashboardWorkspace({ family }: { family: ReportingFamil
     <Link className={styles.headerLink} href="/sales/sales-orders">Mở đơn bán hàng</Link>
   ) : (
     <div className={styles.headerActions}>
+      {report ? <PurchasingReportingExportActions report={report} disabled={busy} /> : null}
       <Link className={styles.headerLink} href="/purchasing/purchase-orders">Mở đơn đặt hàng</Link>
       <Link className={styles.headerLink} href="/purchasing/goods-receipts">Mở phiếu nhận hàng</Link>
     </div>
@@ -188,7 +190,7 @@ export function ReportingDashboardWorkspace({ family }: { family: ReportingFamil
 
   return (
     <AppShell
-      kicker={isSales ? 'Bán hàng · Reporting' : 'Mua hàng · Reporting'}
+      kicker={isSales ? 'Bán hàng · Báo cáo' : 'Mua hàng · Báo cáo'}
       title={pageTitle}
       subtitle={pageSubtitle}
       actions={actions}
@@ -251,7 +253,7 @@ export function ReportingDashboardWorkspace({ family }: { family: ReportingFamil
           <article>
             <span>{isSales ? 'Đơn bán có hiệu lực' : 'Đơn mua có hiệu lực'}</span>
             <strong>{report?.summary.effectiveOrderCount ?? '0'}</strong>
-            <small>{report?.basis.effectiveStates.map(label).join(' · ') || 'Theo source contract'}</small>
+            <small>{report?.basis.effectiveStates.map(label).join(' · ') || 'Theo quy tắc báo cáo'}</small>
           </article>
           <article>
             <span>{isSales ? 'Đã hủy sau xác nhận' : 'Đã hủy'}</span>
@@ -287,7 +289,7 @@ export function ReportingDashboardWorkspace({ family }: { family: ReportingFamil
           <div className={styles.sectionHeading}>
             <div>
               <p className={styles.eyebrow}>Giá trị theo tiền tệ</p>
-              <h2>Không trộn currency</h2>
+              <h2>Tách riêng từng loại tiền</h2>
             </div>
             <span>{report?.currencyTotals.length ?? 0} tiền tệ</span>
           </div>

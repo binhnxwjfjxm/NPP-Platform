@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import type { EmployeeMcpDashboard } from '../../lib/employee-mcp-reporting-types';
 import { AppShell } from './app-shell';
+import { EmployeeMcpReportingExportActions } from './reporting-lot3-export-actions';
 import styles from './inventory-reporting-workspace.module.css';
 
 type ApiEnvelope<T> = Readonly<{ data?: T; error?: { message?: string } }>;
@@ -102,6 +103,7 @@ export function EmployeeMcpReportingWorkspace() {
   const summary = report?.summary ?? {};
   const actions = (
     <div className={styles.headerActions}>
+      {report ? <EmployeeMcpReportingExportActions report={report} disabled={busy} /> : null}
       <Link className={styles.linkButton} href="/workforce/employees">Danh mục nhân sự</Link>
       <Link className={styles.linkButton} href="/management/customer-onboarding">Đề nghị mở mã khách</Link>
     </div>
@@ -214,7 +216,7 @@ export function EmployeeMcpReportingWorkspace() {
           </> : null}
 
           <details className={styles.sourceNote}>
-            <summary>Thông tin kỹ thuật</summary>
+            <summary>Thông tin báo cáo</summary>
             <span>Phạm vi: {report.scope.basis === 'EMPLOYEE_CODE' ? `nhân viên ${report.scope.employeeCode}` : 'toàn đơn vị theo quyền hiện hành'}.</span>
             <span>Thời điểm tạo: {report.generatedAt} · Múi giờ: {report.timezone}.</span>
           </details>
