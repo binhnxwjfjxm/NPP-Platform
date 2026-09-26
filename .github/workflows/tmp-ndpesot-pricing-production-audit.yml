@@ -269,5 +269,75 @@ jobs:
           WHERE upper(pv.sku) = 'NDPESOT'
             AND pl.list_type = 'CUSTOMER_GROUP'
           ORDER BY pl.priority DESC, pl.code, pli.created_at DESC;
+          SELECT concat_ws('|',
+            'KHTV_LIST_MAP',
+            pl.id,
+            pl.code,
+            pl.name,
+            pl.list_type,
+            pl.priority,
+            pl.stacking_mode,
+            pl.stop_processing,
+            pl.is_active,
+            coalesce(ch.code,''),
+            coalesce(ch.name,''),
+            cg.code,
+            cg.name,
+            coalesce(pl.effective_from::text,''),
+            coalesce(pl.effective_to::text,'')
+          )
+          FROM shared.price_lists pl
+          JOIN shared.customer_groups cg
+            ON cg.installation_id = pl.installation_id
+           AND cg.id = pl.customer_group_id
+          LEFT JOIN shared.sales_channels ch
+            ON ch.installation_id = pl.installation_id
+           AND ch.id = pl.channel_id
+          WHERE cg.code = 'KHTV'
+          ORDER BY pl.priority DESC, pl.code;
+
+          SELECT concat_ws('|',
+            'KHTV_CUSTOMER_LIST_MAP',
+            c.code,
+            c.name,
+            pl.id,
+            pl.code,
+            pl.name,
+            pl.list_type,
+            pl.priority,
+            pl.is_active,
+            coalesce(ch.code,''),
+            coalesce(ch.name,'')
+          )
+          FROM shared.customers c
+          JOIN shared.customer_groups cg
+            ON cg.installation_id = c.installation_id
+           AND cg.id = c.group_id
+          JOIN shared.price_lists pl
+            ON pl.installation_id = c.installation_id
+           AND pl.customer_id = c.id
+          LEFT JOIN shared.sales_channels ch
+            ON ch.installation_id = pl.installation_id
+           AND ch.id = pl.channel_id
+          WHERE cg.code = 'KHTV'
+          ORDER BY c.code, pl.priority DESC, pl.code;
+
+          SELECT concat_ws('|',
+            'KHTV_PRICE_ITEM_COUNT',
+            pl.code,
+            count(*)
+          )
+          FROM shared.price_lists pl
+          JOIN shared.customer_groups cg
+            ON cg.installation_id = pl.installation_id
+           AND cg.id = pl.customer_group_id
+          JOIN shared.price_list_items pli
+            ON pli.installation_id = pl.installation_id
+           AND pli.price_list_id = pl.id
+          WHERE cg.code = 'KHTV'
+            AND pl.is_active
+            AND pli.is_active
+          GROUP BY pl.code
+          ORDER BY pl.code;
           SQL
           REMOTE
