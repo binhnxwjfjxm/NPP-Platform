@@ -109,7 +109,7 @@ test("Phase 9.4 media audit contract stays exact-main and mutation-free", () => 
   assert.match(workflow, /VPS_MCP_HOST:/);
   assert.match(workflow, /\/etc\/npp\/mcp\.env/);
   assert.match(workflow, /persist-credentials: false/);
-  assert.match(workflow, /cd "\\$current"/);
+  assert.match(workflow, /cd "\$current"/);
   assert.match(workflow, /node scripts\/production-media-audit\.js/);
   assert.match(workflow, /issues\/391\/comments/);
   assert.doesNotMatch(workflow, /container:(?:push|release)/);
