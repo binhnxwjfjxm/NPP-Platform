@@ -114,6 +114,27 @@ async function prepare(client, config, args) {
     ) {
       fail("outlet_media_upload_conflict", 409);
     }
+    if (["failed", "deleted"].includes(row.status)) {
+      const reopened = await client.query(
+        `UPDATE mcp.mcp_outlet_media
+         SET status = 'pending',
+             actual_byte_size = NULL,
+             width = NULL,
+             height = NULL,
+             etag = NULL,
+             captured_at = NULL,
+             delete_requested_at = NULL,
+             deleted_at = NULL,
+             last_delete_error = NULL,
+             raw_payload = COALESCE(raw_payload, '{}'::jsonb) ||
+               jsonb_build_object('upload_retry_context', $3::jsonb),
+             updated_at = now()
+         WHERE installation_id = $1 AND id = $2
+         RETURNING *`,
+        [installationId, row.id, json(args.p_context || {})]
+      );
+      return reopened.rows[0];
+    }
     return row;
   }
 

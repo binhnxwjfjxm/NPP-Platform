@@ -44,7 +44,8 @@ const EXPECTED_MIGRATIONS = [
   "mcp_012_report_settings_installation_repair",
   "mcp_013_customer_verification_review_reason",
   "mcp_014_customer_read_boundary",
-  "mcp_015_customer_media_boundary"
+  "mcp_015_customer_media_boundary",
+  "mcp_016_media_pending_expiry"
 ];
 
 test("MCP migrations use a unique registry namespace and apply once in one locked transaction", async () => {
@@ -79,6 +80,8 @@ test("MCP migrations use a unique registry namespace and apply once in one locke
   assert.equal(adapter.calls.some((call) => call.text.includes("CREATE OR REPLACE VIEW mcp.customer_addresses")), true);
   assert.equal(adapter.calls.some((call) => call.text.includes("CREATE OR REPLACE VIEW mcp.customer_media")), true);
   assert.equal(adapter.calls.some((call) => call.text.includes("location_url")), true);
+  assert.equal(adapter.calls.some((call) => call.text.includes("upload_reservation_expired_at")), true);
+  assert.equal(adapter.calls.some((call) => call.text.includes("interval '10 minutes'")), true);
   assert.equal(adapter.calls.some((call) => call.text.includes("Exact source counts: 7 groups, 53 items")), true);
   assert.equal(adapter.calls.some((call) => call.text.includes("mcp_report_settings_installation_repair_source_mismatch")), true);
   assert.equal(adapter.calls.some((call) => call.text.includes("ON DELETE CASCADE")), true);
