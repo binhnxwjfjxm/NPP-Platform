@@ -9,6 +9,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/recover-so000062-an-phat.yml'
+      - 'npp-core/api/scripts/recover-so000062-an-phat.mjs'
   issue_comment:
     types: [created]
 
