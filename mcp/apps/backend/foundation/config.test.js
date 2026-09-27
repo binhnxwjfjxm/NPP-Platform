@@ -142,6 +142,21 @@ test("Core auth boundary is optional and production requires HTTPS when configur
   assert.equal(enabled.coreAuth.baseUrl, "https://company.example.com");
   assert.equal(enabled.coreAuth.timeoutMs, 9000);
 
+  const onboardingFallback = loadFoundationConfig(validEnv({
+    CORE_ONBOARDING_API_BASE_URL: "https://company-onboarding.example.com",
+    CORE_ONBOARDING_API_TOKEN: "onboarding-token-abcdefghijklmnopqrstuvwxyz"
+  }));
+  assert.equal(onboardingFallback.coreAuth.configured, true);
+  assert.equal(onboardingFallback.coreAuth.baseUrl, "https://company-onboarding.example.com");
+
+  const salesFallback = loadFoundationConfig(validEnv({
+    CORE_SALES_API_BASE_URL: "https://company-sales.example.com",
+    CORE_SALES_API_TOKEN: "sales-token-abcdefghijklmnopqrstuvwxyz",
+    CORE_SALES_DEFAULT_WAREHOUSE_ID: "11111111-1111-4111-8111-111111111111"
+  }));
+  assert.equal(salesFallback.coreAuth.configured, true);
+  assert.equal(salesFallback.coreAuth.baseUrl, "https://company-sales.example.com");
+
   assert.throws(
     () => loadFoundationConfig(validEnv({
       CORE_AUTH_API_BASE_URL: "http://company.example.com"
