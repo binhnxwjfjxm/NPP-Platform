@@ -36,7 +36,15 @@ export function parseCorsOrigins(value, { nodeEnv = "development" } = {}) {
 function validateBackendToken(token, nodeEnv) { const minimumLength = nodeEnv === "production" ? 32 : 16; if (token.length < minimumLength) fail("backend_api_token_too_short", `BACKEND_API_TOKEN must contain at least ${minimumLength} characters`); if (nodeEnv === "production" && /replace|change[-_ ]?me|example|dev[-_ ]?only/i.test(token)) fail("backend_api_token_placeholder", "BACKEND_API_TOKEN still contains a placeholder value"); }
 
 function loadCoreAuthConfig(env, nodeEnv) {
-  const baseUrlRaw = text(env.CORE_AUTH_API_BASE_URL);
+  const explicitBaseUrl = text(env.CORE_AUTH_API_BASE_URL);
+  const onboardingBaseUrl = text(env.CORE_ONBOARDING_API_BASE_URL);
+  const salesBaseUrl = text(env.CORE_SALES_API_BASE_URL);
+  const baseUrlRaw = explicitBaseUrl || onboardingBaseUrl || salesBaseUrl;
+  const baseUrlName = explicitBaseUrl
+    ? "CORE_AUTH_API_BASE_URL"
+    : onboardingBaseUrl
+      ? "CORE_ONBOARDING_API_BASE_URL"
+      : "CORE_SALES_API_BASE_URL";
   if (!baseUrlRaw) {
     return Object.freeze({
       configured: false,
@@ -46,7 +54,7 @@ function loadCoreAuthConfig(env, nodeEnv) {
   }
   return Object.freeze({
     configured: true,
-    baseUrl: httpUrlValue(baseUrlRaw, "CORE_AUTH_API_BASE_URL", { httpsInProduction: true, nodeEnv }),
+    baseUrl: httpUrlValue(baseUrlRaw, baseUrlName, { httpsInProduction: true, nodeEnv }),
     timeoutMs: positiveInteger(env.CORE_AUTH_TIMEOUT_MS, 8000, "CORE_AUTH_TIMEOUT_MS")
   });
 }
