@@ -9,11 +9,11 @@ SELECT
   address.customer_id,
   address.label,
   address.address_line1,
-  address.location_url,
   address.is_default,
   address.is_active,
   address.created_at,
-  address.updated_at
+  address.updated_at,
+  address.location_url
 FROM shared.customer_addresses AS address;
 
 CREATE OR REPLACE VIEW mcp.customer_media AS
