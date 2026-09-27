@@ -78,7 +78,6 @@ function boundedInteger(value, fallback, maximum) {
 }
 
 function readSource(table) {
-  if (table === "customer_media") return `"shared"."customer_media"`;
   if (table !== "mcp_route_customers") return `"mcp".${quoteIdentifier(table)}`;
   return `(
     SELECT route_customer.*,
@@ -93,7 +92,7 @@ function readSource(table) {
              ELSE route_customer.google_maps_url
            END AS "${CANONICAL_LOCATION_COLUMN}"
     FROM "mcp"."mcp_route_customers" AS route_customer
-    LEFT JOIN "shared"."customer_addresses" AS customer_address
+    LEFT JOIN "mcp"."customer_addresses" AS customer_address
       ON customer_address.installation_id = route_customer.installation_id
      AND customer_address.customer_id::text = route_customer.core_customer_id
      AND customer_address.id::text = route_customer.core_customer_address_id

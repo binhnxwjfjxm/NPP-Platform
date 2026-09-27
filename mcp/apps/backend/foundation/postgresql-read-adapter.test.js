@@ -38,12 +38,13 @@ test("PostgreSQL reads use an explicit schema and force configured installation"
   assert.equal(calls[0].params.includes("installation-other"), false);
 });
 
-test("linked route-customer read prefers canonical shared.customer_addresses location_url", async () => {
+test("linked route-customer read prefers canonical MCP customer-address read model", async () => {
   const calls = bindCapture([{ id: "route-customer-1", google_maps_url: "https://legacy.example", __canonical_google_maps_url: "https://maps.example/canonical" }]);
   const rows = await postgresqlRead(config, "mcp_route_customers?select=id,google_maps_url&limit=1");
   assert.equal(rows[0].google_maps_url, "https://maps.example/canonical");
   assert.equal(Object.prototype.hasOwnProperty.call(rows[0], "__canonical_google_maps_url"), false);
-  assert.match(calls[0].sql, /LEFT JOIN "shared"\."customer_addresses" AS customer_address/);
+  assert.match(calls[0].sql, /LEFT JOIN "mcp"\."customer_addresses" AS customer_address/);
+  assert.doesNotMatch(calls[0].sql, /LEFT JOIN "shared"\."customer_addresses"/);
   assert.match(calls[0].sql, /core_onboarding_status IN \('approved', 'linked_existing'\)/);
   assert.match(calls[0].sql, /WHEN customer_address\.is_active IS TRUE THEN customer_address\.location_url/);
   assert.match(calls[0].sql, /ELSE NULL/);

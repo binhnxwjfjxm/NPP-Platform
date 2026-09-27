@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { bindProviderPersistence } from "./provider-runtime.js";
 import { postgresqlRead } from "./postgresql-read-adapter.js";
 import { postgresqlMediaUploadRpc } from "./postgresql-media-upload-adapter.js";
@@ -26,34 +27,31 @@ function bindQueries(handler) {
 
 const pgConfig = Object.freeze({ installationId: "installation-current" });
 
-test("Issue 623: route-customer enrichment casts shared UUIDs to text and shared gallery uses shared schema", async () => {
+test("customer media reads stay inside MCP-owned read models", async () => {
   let calls = bindQueries(() => ({ rows: [] }));
   await postgresqlRead(pgConfig, "mcp_route_customers?select=id,google_maps_url&limit=1");
-  assert.match(calls[0].sql, /customer_address\.customer_id::text = route_customer\.core_customer_id/);
-  assert.match(calls[0].sql, /customer_address\.id::text = route_customer\.core_customer_address_id/);
+  assert.match(calls[0].sql, /LEFT JOIN "mcp"\."customer_addresses"/);
+  assert.doesNotMatch(calls[0].sql, /"shared"\."customer_addresses"/);
 
   calls = bindQueries(() => ({ rows: [] }));
   await postgresqlRead(
     pgConfig,
     "customer_media?select=id,source_app,source_media_id&customer_id=eq.11111111-1111-4111-8111-111111111111&status=eq.ready"
   );
-  assert.match(calls[0].sql, /FROM "shared"\."customer_media"/);
-  assert.match(calls[0].sql, /WHERE "installation_id" = \$1/);
+  assert.match(calls[0].sql, /FROM "mcp"\."customer_media"/);
+  assert.doesNotMatch(calls[0].sql, /FROM "shared"\."customer_media"/);
   assert.deepEqual(
     calls[0].params.slice(0, 3),
     ["installation-current", "11111111-1111-4111-8111-111111111111", "ready"]
   );
 });
 
-test("Issue 623: linked MCP upload reserves the one shared three-photo gallery", async () => {
-  const sharedCustomerId = "11111111-1111-4111-8111-111111111111";
+test("linked MCP prepare writes only MCP-owned media; shared reservation is trigger-owned", async () => {
   const calls = bindQueries((sql, params) => {
     if (sql.includes("FROM mcp.mcp_route_customers")) {
-      return { rows: [{ id: "route-customer-1", route_id: "route-1", core_customer_id: sharedCustomerId }] };
+      return { rows: [{ id: "route-customer-1", route_id: "route-1", core_customer_id: "11111111-1111-4111-8111-111111111111" }] };
     }
     if (sql.includes("FROM mcp.mcp_outlet_media") && sql.includes("client_upload_id")) return { rows: [] };
-    if (sql.includes("FROM shared.customers")) return { rows: [{ id: sharedCustomerId, is_active: true }] };
-    if (sql.includes("FROM shared.customer_media") && sql.includes("count(*)")) return { rows: [{ count: 2 }] };
     if (sql.includes("INSERT INTO mcp.mcp_outlet_media")) {
       return {
         rows: [{
@@ -69,71 +67,26 @@ test("Issue 623: linked MCP upload reserves the one shared three-photo gallery",
         }]
       };
     }
-    if (sql.includes("INSERT INTO shared.customer_media")) return { rows: [{ id: params[0] }] };
     throw new Error(`unexpected_sql:${sql}`);
   });
 
   const media = await postgresqlMediaUploadRpc(pgConfig, "mcp_prepare_outlet_media_upload", {
     p_route_customer_id: "route-customer-1",
     p_session_id: null,
-    p_client_upload_id: "upload-623-a",
+    p_client_upload_id: "upload-boundary-a",
     p_mime_type: "image/jpeg",
     p_expected_byte_size: 1234,
     p_context: { actorId: "service:mcp:test" }
   });
 
   assert.match(media.id, /^mom_[a-f0-9]{32}$/);
-  assert.equal(calls.some((call) => call.sql.includes("FROM mcp.mcp_outlet_media") && call.sql.includes("count(*)")), false);
-  const sharedInsert = calls.find((call) => call.sql.includes("INSERT INTO shared.customer_media"));
-  assert.ok(sharedInsert);
-  assert.match(sharedInsert.sql, /source_app, source_media_id/);
-  assert.equal(sharedInsert.params[1], "installation-current");
-  assert.equal(sharedInsert.params[2], sharedCustomerId);
-  assert.equal(sharedInsert.params[3], media.id);
-  assert.equal(sharedInsert.params[4], "route-customer-1");
-  assert.equal(sharedInsert.params[6], "upload-623-a");
+  assert.equal(calls.some((call) => /shared\.(customers|customer_media)/.test(call.sql)), false);
 });
 
-test("Issue 623: fourth linked upload is a business conflict before any insert", async () => {
-  const sharedCustomerId = "11111111-1111-4111-8111-111111111111";
-  const calls = bindQueries((sql) => {
-    if (sql.includes("FROM mcp.mcp_route_customers")) {
-      return { rows: [{ id: "route-customer-1", route_id: "route-1", core_customer_id: sharedCustomerId }] };
-    }
-    if (sql.includes("FROM mcp.mcp_outlet_media") && sql.includes("client_upload_id")) return { rows: [] };
-    if (sql.includes("FROM shared.customers")) return { rows: [{ id: sharedCustomerId, is_active: true }] };
-    if (sql.includes("FROM shared.customer_media") && sql.includes("count(*)")) return { rows: [{ count: 3 }] };
-    throw new Error(`unexpected_sql:${sql}`);
-  });
-
-  await assert.rejects(
-    () => postgresqlMediaUploadRpc(pgConfig, "mcp_prepare_outlet_media_upload", {
-      p_route_customer_id: "route-customer-1",
-      p_session_id: null,
-      p_client_upload_id: "upload-623-limit",
-      p_mime_type: "image/jpeg",
-      p_expected_byte_size: 1234,
-      p_context: { actorId: "service:mcp:test" }
-    }),
-    (error) => error.code === "outlet_media_limit_reached" && error.statusCode === 409
-  );
-  assert.equal(calls.some((call) => call.sql.includes("INSERT INTO")), false);
-});
-
-test("Issue 623: MCP finalize promotes its shared reservation to ready", async () => {
+test("MCP finalize relies on the security-definer registry trigger instead of direct shared writes", async () => {
   const calls = bindQueries((sql, params) => {
     if (sql.startsWith("SELECT * FROM mcp.mcp_outlet_media")) {
-      return {
-        rows: [{
-          id: "mom_123",
-          status: "pending",
-          mime_type: "image/jpeg",
-          actual_byte_size: null,
-          width: null,
-          height: null,
-          etag: null
-        }]
-      };
+      return { rows: [{ id: "mom_123", status: "pending", mime_type: "image/jpeg" }] };
     }
     if (sql.startsWith("UPDATE mcp.mcp_outlet_media")) {
       return {
@@ -148,7 +101,6 @@ test("Issue 623: MCP finalize promotes its shared reservation to ready", async (
         }]
       };
     }
-    if (sql.startsWith("UPDATE shared.customer_media")) return { rows: [] };
     throw new Error(`unexpected_sql:${sql}`);
   });
 
@@ -163,19 +115,14 @@ test("Issue 623: MCP finalize promotes its shared reservation to ready", async (
   });
 
   assert.equal(media.status, "ready");
-  const sharedUpdate = calls.find((call) => call.sql.startsWith("UPDATE shared.customer_media"));
-  assert.ok(sharedUpdate);
-  assert.match(sharedUpdate.sql, /source_app = 'MCP'/);
-  assert.match(sharedUpdate.sql, /source_media_id = \$2/);
-  assert.deepEqual(sharedUpdate.params.slice(0, 3), ["installation-current", "mom_123", 1234]);
+  assert.equal(calls.some((call) => call.sql.includes("shared.customer_media")), false);
 });
 
-test("Issue 623: successful MCP delete removes the shared gallery entry", async () => {
+test("MCP delete relies on the security-definer registry trigger instead of direct shared writes", async () => {
   const calls = bindQueries((sql) => {
     if (sql.startsWith("UPDATE mcp.mcp_outlet_media")) {
       return { rows: [{ id: "mom_delete_1", status: "deleted" }] };
     }
-    if (sql.startsWith("UPDATE shared.customer_media")) return { rows: [] };
     throw new Error(`unexpected_sql:${sql}`);
   });
 
@@ -186,11 +133,19 @@ test("Issue 623: successful MCP delete removes the shared gallery entry", async 
   });
 
   assert.equal(media.status, "deleted");
-  const sharedUpdate = calls.find((call) => call.sql.startsWith("UPDATE shared.customer_media"));
-  assert.ok(sharedUpdate);
-  assert.match(sharedUpdate.sql, /status = 'deleted'/);
-  assert.match(sharedUpdate.sql, /source_app = 'MCP'/);
-  assert.match(sharedUpdate.sql, /source_media_id = \$2/);
+  assert.equal(calls.some((call) => call.sql.includes("shared.customer_media")), false);
+});
+
+test("migration 015 keeps the shared gallery behind MCP views and a security-definer trigger", () => {
+  const sql = readFileSync(new URL("./migrations/sql/015_mcp_customer_media_boundary.sql", import.meta.url), "utf8");
+  assert.match(sql, /CREATE OR REPLACE VIEW mcp\.customer_media/);
+  assert.match(sql, /CREATE OR REPLACE VIEW mcp\.customer_addresses[\s\S]+location_url/);
+  assert.match(sql, /CREATE OR REPLACE FUNCTION mcp\.sync_outlet_media_shared_registry\(\)[\s\S]+SECURITY DEFINER/);
+  assert.match(sql, /INSERT INTO shared\.customer_media/);
+  assert.match(sql, /UPDATE shared\.customer_media/);
+  assert.match(sql, /status IN \('pending', 'ready'\)/);
+  assert.match(sql, /GRANT SELECT ON TABLE[\s\S]+mcp\.customer_media/);
+  assert.doesNotMatch(sql, /GRANT[^;]+ON TABLE shared\.(customers|customer_media)/);
 });
 
 const readConfig = {
