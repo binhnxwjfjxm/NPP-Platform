@@ -57,6 +57,10 @@ const MCP_CUSTOMER_READ_BOUNDARY_SQL = readFileSync(
   new URL("./sql/014_mcp_customer_read_boundary.sql", import.meta.url),
   "utf8"
 );
+const MCP_CUSTOMER_MEDIA_BOUNDARY_SQL = readFileSync(
+  new URL("./sql/015_mcp_customer_media_boundary.sql", import.meta.url),
+  "utf8"
+);
 
 export const MCP_MIGRATIONS = Object.freeze([
   Object.freeze({ id: "mcp_001_write_foundation", sql: MCP_WRITE_FOUNDATION_SQL }),
@@ -72,12 +76,14 @@ export const MCP_MIGRATIONS = Object.freeze([
   Object.freeze({ id: "mcp_011_legacy_customer_linkage_repair", sql: MCP_LEGACY_CUSTOMER_LINKAGE_REPAIR_SQL }),
   Object.freeze({ id: "mcp_012_report_settings_installation_repair", sql: MCP_REPORT_SETTINGS_INSTALLATION_REPAIR_SQL }),
   Object.freeze({ id: "mcp_013_customer_verification_review_reason", sql: MCP_CUSTOMER_VERIFICATION_REVIEW_REASON_SQL }),
-  Object.freeze({ id: "mcp_014_customer_read_boundary", sql: MCP_CUSTOMER_READ_BOUNDARY_SQL })
+  Object.freeze({ id: "mcp_014_customer_read_boundary", sql: MCP_CUSTOMER_READ_BOUNDARY_SQL }),
+  Object.freeze({ id: "mcp_015_customer_media_boundary", sql: MCP_CUSTOMER_MEDIA_BOUNDARY_SQL })
 ]);
 
 const MCP_READ_MODELS = Object.freeze([
   "accounts",
   "customer_addresses",
+  "customer_media",
   "market_reports",
   "mcp_archive_intents",
   "mcp_followups",

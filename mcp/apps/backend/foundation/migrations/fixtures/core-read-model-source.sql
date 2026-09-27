@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS shared.customer_addresses (
   customer_id uuid NOT NULL REFERENCES shared.customers(id) ON DELETE CASCADE,
   label text,
   address_line1 text NOT NULL DEFAULT '',
+  location_url text,
   is_default boolean NOT NULL DEFAULT false,
   is_active boolean NOT NULL DEFAULT true,
   created_at timestamptz NOT NULL DEFAULT now(),
