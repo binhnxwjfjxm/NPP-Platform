@@ -11,4 +11,4 @@
 
 MCP Field production has two server-side bindings: `CORE_API_INTERNAL_URL` to Công Ty VPS for workforce authentication and `BACKEND_API_BASE_URL` to MCP VPS for MCP business APIs.
 
-A merge to `main` does not deploy any target automatically. Heroku is not a production deploy target after Issue #958 cutover.
+A merge to `main` does not deploy any target automatically. retired provider is not a production deploy target after Issue #958 cutover.

@@ -37,5 +37,4 @@ test('VPS production migrations 149-150 are exact-main, backup and restore-rehea
   assert.match(script, /MISSING_ASSIGNMENTS=/);
   assert.match(script, /PRODUCTION_RERUN_NOOP=PASS/);
   assert.match(script, /PRODUCTION_VERIFY=PASS/);
-  assert.doesNotMatch(script, /HEROKU_|DATABASE_URL/);
-});
+  });

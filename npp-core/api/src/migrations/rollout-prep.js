@@ -61,7 +61,7 @@ export function buildMigrationRegistryAudit({
 }
 
 export function buildBackupContract({
-  provider = 'Heroku PostgreSQL',
+  provider = 'VPS PostgreSQL',
   appName = null,
   backupId = null,
   capturedAt = null,
@@ -70,8 +70,7 @@ export function buildBackupContract({
   sourceLabel = null,
   captureCommand = null,
 } = {}) {
-  const command = captureCommand
-    || (appName ? `heroku pg:backups:capture --app ${appName}` : null);
+  const command = captureCommand || null;
 
   return Object.freeze({
     provider,

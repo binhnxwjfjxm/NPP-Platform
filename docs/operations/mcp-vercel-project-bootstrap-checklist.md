@@ -30,7 +30,7 @@ Do not add:
 
 - `DATABASE_URL`;
 - PostgreSQL credentials;
-- Heroku API credentials;
+- retired provider API credentials;
 - Supabase service-role credentials;
 - backend-only R2 credentials.
 

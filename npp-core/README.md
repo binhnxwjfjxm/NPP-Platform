@@ -44,4 +44,4 @@ The Core API is authenticated only through a server-controlled bearer token usin
 - Every workspace must build and test independently.
 - Database changes require reviewed migrations and a clean-database rehearsal.
 - Core and MCP share one PostgreSQL installation but retain schema and service ownership boundaries.
-- Do not deploy a feature branch or enable automatic Heroku/Vercel deployment.
+- Do not deploy a feature branch or enable automatic production deployment.

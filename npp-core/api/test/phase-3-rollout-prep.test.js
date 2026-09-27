@@ -34,15 +34,15 @@ test('registry audit flags missing and unexpected migrations without drifting se
 
 test('backup contract requires explicit confirmation and preserves available metadata only', () => {
   const contract = buildBackupContract({
-    appName: 'hung-phat',
+    appName: null,
     backupId: 'b123',
     capturedAt: '2026-07-27T02:30:00.000Z',
     sourceFingerprint: 'pg:server-17',
     checksum: 'sha256:abc123',
   });
 
-  assert.equal(contract.provider, 'Heroku PostgreSQL');
-  assert.equal(contract.captureCommand, 'heroku pg:backups:capture --app hung-phat');
+  assert.equal(contract.provider, 'VPS PostgreSQL');
+  assert.equal(contract.captureCommand, null);
   assert.equal(contract.requiresExplicitConfirmation, true);
   assert.equal(contract.confirmationToken, PHASE_3_BACKUP_CONFIRM_VALUE);
   assert.equal(contract.backupId, 'b123');

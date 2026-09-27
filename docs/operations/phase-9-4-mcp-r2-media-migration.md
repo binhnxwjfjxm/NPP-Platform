@@ -15,7 +15,7 @@ The historical Supabase media contract generated the same key namespace. Therefo
 
 This slice adds a read-only production audit that:
 
-1. reads MCP Heroku config names/values inside the protected Action job without publishing them;
+1. reads MCP retired provider config names/values inside the protected Action job without publishing them;
 2. requires the current PostgreSQL + R2 runtime contract;
 3. reads `mcp.mcp_outlet_media` inside `BEGIN READ ONLY`;
 4. lists only the current installation canonical R2 prefix;
@@ -32,7 +32,7 @@ The only production command introduced by this source slice is:
 
 `/audit-mcp-r2-media`
 
-It is read-only. It has no path to PUT, DELETE, COPY, deploy, migration, Heroku config mutation or database write.
+It is read-only. It has no path to PUT, DELETE, COPY, deploy, migration, retired provider config mutation or database write.
 
 No production copy/switch command is created before provider evidence exists. After the audit:
 

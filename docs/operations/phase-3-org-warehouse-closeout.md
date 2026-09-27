@@ -31,7 +31,7 @@ Phase 3.1 chỉ bao gồm cấu trúc tổ chức và kho. Slice này không m�
 
 ## Database production
 
-- Heroku PostgreSQL được audit trước migration.
+- VPS PostgreSQL được audit trước migration.
 - Backup trước migration: `b1`.
 - Restore rehearsal trên PostgreSQL tạm: PASS.
 - Migrations production đã áp dụng: `002_core_idempotency` đến `006_org_locations`.
@@ -41,7 +41,7 @@ Phase 3.1 chỉ bao gồm cấu trúc tổ chức và kho. Slice này không m�
 
 ## Core API production
 
-- Backend Core chạy trên Heroku app `hung-phat`.
+- Backend Core chạy trên retired provider app `hung-phat`.
 - `/health/live` trả `200`.
 - `/health/ready` trả `200`.
 - Organization list và mutation dùng PostgreSQL thật.

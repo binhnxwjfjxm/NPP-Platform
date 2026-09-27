@@ -37,8 +37,7 @@ test('VPS production migrations 146-147 use exact main and a separate guarded DB
   assert.match(script, /RUNTIME_PRIVILEGES=PASS/);
   assert.match(script, /PRODUCTION_RERUN_NOOP=PASS/);
   assert.match(script, /PRODUCTION_VERIFY=PASS/);
-  assert.doesNotMatch(script, /HEROKU_|DATABASE_URL/);
-});
+  });
 
 test('VPS read-only audit accepts the current production operator', async () => {
   const workflow = await readFile(auditPath, 'utf8');

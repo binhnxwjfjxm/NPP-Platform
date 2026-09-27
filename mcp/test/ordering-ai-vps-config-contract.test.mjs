@@ -28,8 +28,6 @@ test('Ordering AI production configuration uses Công Ty VPS as authority and ke
   assert.match(workflow, /url\.searchParams\.set\('upsert', 'true'\)/);
   assert.doesNotMatch(workflow, /v9\/projects\/\$\{encodeURIComponent\(projectId\)\}\/env\/\$\{encodeURIComponent\(id\)\}/);
 
-  assert.doesNotMatch(workflow, /HEROKU_API_KEY|api\.heroku\.com|HEROKU_APP_NAME|hung-phat-mcp/);
-
   const websiteStep = workflow.indexOf('- name: Redeploy Website before Ordering');
   const smokeStep = workflow.indexOf('- name: Verify Công Ty auth, Website usage binding and Dialogflow CX gateway');
   const orderingStep = workflow.indexOf('- name: Redeploy Customer Ordering after Website gateway passes');

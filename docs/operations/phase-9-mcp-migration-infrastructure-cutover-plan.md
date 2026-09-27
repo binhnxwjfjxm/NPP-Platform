@@ -10,14 +10,14 @@ Tài liệu này bổ sung chi tiết cho mục Phase 9 trong `NPP_PLATFORM_MAST
 
 Phase 9 hoàn tất kiến trúc đích của installation:
 
-- MCP backend chạy trên Heroku runtime riêng nhưng dùng chung PostgreSQL installation với Core;
+- MCP backend chạy trên retired provider runtime riêng nhưng dùng chung PostgreSQL installation với Core;
 - Supabase/VPS không còn là dependency production bắt buộc;
 - MCP media dùng R2 đích và media legacy được di chuyển/đối soát;
 - Access/RBAC bao phủ đầy đủ chức năng hiện có;
 - Customer Ordering đi vào canonical Core Sales Order;
 - Core, MCP và Customer Portal không tạo ba order lifecycle độc lập;
 - route/navigation của toàn bộ frontend không để nghiệp vụ bị mồ côi;
-- Vercel/Heroku/DNS/env được khóa theo runtime thật;
+- Vercel/retired provider/DNS/env được khóa theo runtime thật;
 - cutover có backup, restore rehearsal, reconciliation và rollback/forward-fix.
 
 ## 2. Runtime topology đã audit khi lập plan
@@ -35,8 +35,8 @@ Website và Customer Ordering cùng repo `binhnxwjfjxm/nguyenlieuhungphat` nhưn
 
 Backend:
 
-- Core backend: Heroku runtime Core;
-- MCP backend: Heroku runtime MCP;
+- Core backend: retired provider runtime Core;
+- MCP backend: retired provider runtime MCP;
 - một PostgreSQL installation dùng chung, tách schema theo domain.
 
 Phase 9 không tạo lại Vercel project đã có. Công việc Vercel là audit/lock repo, root directory, branch, domain, env và manual deploy boundary.
@@ -177,7 +177,7 @@ Phạm vi:
 - Master Plan + frontend runtime addendum;
 - MCP portability/cutover docs/source;
 - 6 Vercel project configuration;
-- Core/MCP Heroku boundaries;
+- Core/MCP retired provider boundaries;
 - shared PostgreSQL topology;
 - Supabase/VPS/R2 dependencies;
 - permission catalog + route/action permission map;
@@ -233,11 +233,11 @@ Gate:
 
 - Customer Ordering tạo và đọc lại đúng canonical Core Sales Order, retry không duplicate, source lineage rõ.
 
-### 9.3 — MCP Heroku + PostgreSQL runtime/DB-role closure
+### 9.3 — MCP retired provider + PostgreSQL runtime/DB-role closure
 
 Phạm vi:
 
-- audit MCP Heroku app thực tế;
+- audit MCP retired provider app thực tế;
 - current release/source/config-name presence;
 - shared PostgreSQL attachment;
 - runtime DB credential/role behavior;
@@ -384,7 +384,7 @@ Audit/read-only work có thể chuẩn bị song song khi độc lập, nhưng m
 - schema change chỉ qua repo migration;
 - PostgreSQL backup là installation-wide;
 - Core và MCP backend deploy/release/smoke/rollback riêng;
-- Vercel/Heroku Auto Deploy luôn OFF;
+- Vercel/retired provider Auto Deploy luôn OFF;
 - không suy đoán provider/release/backup/migration từ handoff cũ.
 
 ## 8. Definition of Done Phase 9

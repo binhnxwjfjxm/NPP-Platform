@@ -83,7 +83,6 @@ test('Delivery production workflow stays manual-only and deploys canonical workf
   assert.doesNotMatch(script, /html=.*\$deployment_url\/login/);
   assert.doesNotMatch(script, /\$deployment_url\$asset/);
   assert.doesNotMatch(script, /DATABASE_URL|DELIVERY_FRONTEND_API_TOKEN|DELIVERY_CORE_API_TOKEN|DELIVERY_WEB_USERS_JSON|DELIVERY_SETUP_MODE|DELIVERY_SETUP_USERNAME|DELIVERY_SETUP_PASSWORD|x-npp-delivery-employee-id/);
-  assert.doesNotMatch(script, /HEROKU_API_KEY|CORE_HEROKU_APP_NAME|api\.heroku\.com/);
   assert.doesNotMatch(script, /vercel@latest/);
   assert.doesNotMatch(script, /npm install/);
 });

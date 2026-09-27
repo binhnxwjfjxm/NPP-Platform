@@ -63,6 +63,6 @@ The current DNS state is already correct, so there is no reason to mutate DNS du
 
 ## 5. Boundary
 
-This source/audit update does not itself deploy Vercel, change DNS, deploy either Heroku backend, run a database migration or perform the Phase 9.8 final closeout. Source merge and production rollout remain separate explicit operations.
+This source/audit update does not itself deploy Vercel, change DNS, deploy either retired provider backend, run a database migration or perform the Phase 9.8 final closeout. Source merge and production rollout remain separate explicit operations.
 
 Phase 9.4 (#391) and Phase 9.5 (#392) evidence gates remain independent and unchanged.

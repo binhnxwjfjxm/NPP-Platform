@@ -6,18 +6,17 @@
 > Cập nhật: `2026-07-30`  
 > Nguyên tắc: **Không chắp vá khi lỗi; phải tái hiện, tìm nguyên nhân gốc, sửa đúng tầng và thêm test hồi quy.**
 
-## Production runtime override — 2026-09-19
-
-Phần này **ưu tiên hơn mọi mô tả Heroku cũ trong tài liệu này**.
+## Production runtime — 2026-09-27
 
 - Backend Công Ty production chạy trên VPS và deploy bằng lệnh Issue #5: `/deploy-vps-company-production`.
 - Backend MCP production chạy trên VPS và deploy bằng lệnh Issue #5: `/deploy-vps-mcp-production`.
-- PostgreSQL production dùng hạ tầng VPS dùng chung của installation hiện tại.
-- Heroku là runtime cũ đã nghỉ; **không deploy, migrate hoặc rollback production qua Heroku**.
-- Hai workflow Heroku cũ chỉ được giữ làm lịch sử và phải fail-closed.
-- Trước mọi production mutation vẫn phải audit provider truth, exact `main`, backup/migration gate và smoke tương ứng.
+- PostgreSQL production chạy trên VPS DB dùng chung của installation hiện tại.
+- Frontend production chạy trên các project Vercel tương ứng.
+- Auto Deploy production luôn tắt; deploy, migration và rollback là operation riêng.
+- Trước mọi production mutation phải audit exact `main`, provider state, backup/migration gate và smoke tương ứng.
 
 ---
+
 
 ## 0. Quyền ưu tiên và tài liệu liên quan
 
@@ -151,17 +150,24 @@ reporting
 - Quyền DB phải giới hạn theo service role/schema.
 - Một khách hàng triển khai là một installation độc lập với runtime, secret, database và storage riêng.
 
-### 2.5 Hạ tầng mục tiêu
+### 2.5 Hạ tầng production
 
 ```text
 Vercel
-├── MCP frontend
-└── NPP Core frontend
+├── MCP Field frontend
+├── Công Ty frontend
+├── Admin
+├── Delivery
+└── Website + Customer Ordering
 
-Heroku
-├── MCP backend
-├── NPP Core backend
-└── PostgreSQL
+VPS Công Ty
+└── Công Ty backend
+
+VPS MCP
+└── MCP backend
+
+VPS DB
+└── PostgreSQL dùng chung theo installation/schema
 
 Cloudflare R2
 ├── field media
@@ -171,7 +177,7 @@ Cloudflare R2
 └── backup ngoài DB
 ```
 
-Supabase/VPS là hạ tầng nguồn MCP cũ, không phải kiến trúc đích.
+Supabase chỉ còn là nguồn legacy của MCP khi cần đối chiếu dữ liệu; không phải production runtime.
 
 ### 2.6 Production separation
 
@@ -716,7 +722,7 @@ M2 backend-owned MCP writes and session snapshots
 M3 customer onboarding bridge
 M4 idempotent Sales Order adapter
 M5 read-only Core order/fulfillment/delivery status
-M6 Supabase/VPS adapter replacement and cutover
+M6 legacy adapter retirement and VPS runtime closure
 ```
 
 MCP frontend keeps working flows unless user testing proves a defect.
@@ -766,7 +772,7 @@ Reports must be reproducible from source documents/ledgers/read models.
 ## 16. Phase 9 — MCP migration and infrastructure cutover
 
 ```text
-[ ] Heroku apps and DB roles
+[ ] VPS backend services and PostgreSQL roles
 [ ] Vercel projects/root directories
 [ ] R2 buckets/lifecycle
 [ ] MCP legacy data audit/export
@@ -779,7 +785,7 @@ Reports must be reproducible from source documents/ledgers/read models.
 [ ] rollback/forward-fix runbook
 ```
 
-Gate: MCP và Core chạy trên hạ tầng đích; Supabase/VPS không còn dependency production bắt buộc.
+Gate: MCP và Công Ty chạy trên VPS production; hạ tầng nguồn cũ không còn dependency production bắt buộc.
 
 ---
 

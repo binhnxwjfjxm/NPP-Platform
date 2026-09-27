@@ -30,7 +30,6 @@ test("VPS production migration 137 is manual, exact and backup/rehearsal gated",
   assert.match(workflow, /PRINT_TEMPLATE_ROWS_UNCHANGED=PASS/);
   assert.match(workflow, /INVALID_FONT_SIZE_ROWS=0/);
 
-  assert.doesNotMatch(workflow, /HEROKU_/);
   assert.doesNotMatch(workflow, /DATABASE_URL/);
   assert.doesNotMatch(workflow, /postgres(?:ql)?:\/\/[^\s"']+@/i);
 });

@@ -217,7 +217,7 @@ Before the combined Phase 3 backend/database rollout, Codex must follow the prod
 - apply all pending Phase 3 migrations in order;
 - run migration verification and reconciliation;
 - test real Core APIs against the rehearsal database;
-- deploy Heroku manually from `main`;
+- deploy retired provider manually from `main`;
 - verify `/health/live` and `/health/ready`;
 - run Phase 3 API smoke tests;
 - create a post-migration backup;

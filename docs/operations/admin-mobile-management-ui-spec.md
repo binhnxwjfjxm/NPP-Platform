@@ -307,6 +307,6 @@ Lô 1 chỉ đạt khi:
 - Không force-push.
 - Một exact SHA phải chạy xong toàn bộ CI; gom lỗi rồi mới sửa một batch tiếp theo nếu cần.
 - Ngay trước merge phải kiểm `main` lần nữa và sync nếu có merge song song.
-- Chỉ thay `admin/web/**` thì không tự deploy Heroku backend.
+- Chỉ thay `admin/web/**` thì không tự deploy retired provider backend.
 - Auto Deploy vẫn OFF.
 - Merge, deploy và migration production đều cần lệnh riêng của Owner.

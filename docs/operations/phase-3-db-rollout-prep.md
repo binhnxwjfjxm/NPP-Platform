@@ -59,7 +59,7 @@ PHASE_3_BACKUP_CONFIRM=I_UNDERSTAND_THIS_IS_A_FRESH_PRODUCTION_BACKUP
 The contract captures:
 
 - provider label;
-- Heroku app name when supplied;
+- retired provider app name when supplied;
 - optional backup ID;
 - optional capture timestamp;
 - optional source fingerprint;
@@ -85,7 +85,7 @@ The rehearsal uses disposable PostgreSQL only. It:
 
 ## CI
 
-The rehearsal workflow uses disposable PostgreSQL 17 and does not touch Heroku or Vercel deployments.
+The rehearsal workflow uses disposable PostgreSQL 17 and does not touch retired provider or Vercel deployments.
 
 ## Operator handoff
 

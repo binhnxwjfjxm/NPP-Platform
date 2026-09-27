@@ -9,12 +9,12 @@
 
 ## Production runtime override — 2026-09-19
 
-This override takes precedence over older Heroku references below.
+This addendum is the production runtime source of truth.
 
 - Công Ty backend production: **VPS**, exact Issue #5 command `/deploy-vps-company-production`.
 - MCP backend production: **VPS**, exact Issue #5 command `/deploy-vps-mcp-production`.
 - PostgreSQL production: shared VPS database installation.
-- Heroku backend deployment is retired and fail-closed; it is not a production rollout target.
+- Công Ty and MCP backends deploy only to their dedicated VPS targets.
 - Frontend Vercel deployments remain independent and Auto Deploy remains OFF.
 
 This addendum is the active frontend/runtime topology. Where the older Master Plan or the original version of this addendum conflicts with the verified topology below, this file and the later owner-locked decision sources take precedence.
@@ -79,7 +79,7 @@ Retail may additionally be distributed inside a thin **device shell** under `ret
 - may discover/connect/send jobs to printers on the same LAN;
 - stores printer profile/preferences on the device only;
 - does **not** create a new business frontend, backend, database, order authority, inventory authority or payment authority;
-- does not proxy LAN printer traffic through Vercel or Heroku.
+- does not proxy LAN printer traffic through Vercel or VPS.
 
 The native shell is a separate **mobile distribution artifact**, not an eighth Vercel project. App Store/TestFlight signing/release is an explicit production operation and is not implied by merging source.
 
@@ -119,7 +119,7 @@ Each of the seven frontend projects is an independent deployment unit with its o
 Provider rules remain:
 
 - Vercel Auto Deploy must remain OFF;
-- Công Ty and MCP backend production deploy only through their exact VPS manual commands; Heroku deploy paths are retired;
+- Công Ty and MCP backend production deploy only through their exact VPS manual commands; VPS deploy paths are retired;
 - frontend-only changes do not authorize backend deployment;
 - production mutation requires an explicit owner command;
 - Retail production deploy uses its own exact manual command and never piggybacks another frontend deployment;

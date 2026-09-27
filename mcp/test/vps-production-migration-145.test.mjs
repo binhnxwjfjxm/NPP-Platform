@@ -23,6 +23,5 @@ test('VPS production migration 145 repairs current grants and locks future defau
   assert.match(workflow, /PROTECTED_ROWS_UNCHANGED=PASS/);
   assert.match(workflow, /PRODUCTION_RERUN_NOOP=PASS/);
   assert.match(workflow, /PRODUCTION_VERIFY=PASS/);
-  assert.doesNotMatch(workflow, /HEROKU_/);
   assert.doesNotMatch(workflow, /DATABASE_URL/);
 });

@@ -375,7 +375,7 @@ independent status display
 server-resolved pricing/tax explanation
 ```
 
-Use the existing same-origin gateway pattern. Browser code never calls Heroku directly and never accesses PostgreSQL.
+Use the existing same-origin gateway pattern. Browser code never calls retired provider directly and never accesses PostgreSQL.
 
 The UI must be responsive, but it remains the full NPP operations surface. Admin control-tower views are a separate frontend project and are not implemented here.
 

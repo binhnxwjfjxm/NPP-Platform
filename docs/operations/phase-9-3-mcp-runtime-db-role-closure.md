@@ -1,4 +1,4 @@
-# Phase 9.3 — MCP Heroku + PostgreSQL runtime/DB-role closure
+# Phase 9.3 — MCP retired provider + PostgreSQL runtime/DB-role closure
 
 Issue: #390  
 Parent: #386
@@ -22,12 +22,12 @@ The source already enforces these contracts and they are intentionally retained:
 
 ## Gap closed by 9.3
 
-Before this slice, provider inspection was embedded in the mutation-oriented MCP deploy/migrate workflow. Getting current Heroku evidence therefore required entering a workflow that also owns backup, maintenance, migration and release operations.
+Before this slice, provider inspection was embedded in the mutation-oriented MCP deploy/migrate workflow. Getting current retired provider evidence therefore required entering a workflow that also owns backup, maintenance, migration and release operations.
 
 Phase 9.3 adds a separate read-only workflow and script:
 
-- exact command: `/audit-heroku-mcp-production` on Issue #390;
-- reads Heroku app, release, config-name presence, add-on plan and attachment metadata;
+- exact command: `/audit-retired provider-mcp-production` on Issue #390;
+- reads retired provider app, release, config-name presence, add-on plan and attachment metadata;
 - never writes config vars;
 - never creates a backup;
 - never enables maintenance mode;
@@ -40,11 +40,11 @@ Phase 9.3 adds a separate read-only workflow and script:
 
 ## DB credential decision
 
-Heroku currently documents additional Postgres credentials as unavailable on Essential plans and available on Advanced, Standard, Premium, Private and Shield production plans.
+retired provider currently documents additional Postgres credentials as unavailable on Essential plans and available on Advanced, Standard, Premium, Private and Shield production plans.
 
 The audit therefore fails closed when source credential mode and provider capability disagree:
 
-- `heroku-postgresql:essential-*` -> `essential_owner`, same provider credential identity, `leastPrivilege=false`;
+- `retired provider-postgresql:essential-*` -> `essential_owner`, same provider credential identity, `leastPrivilege=false`;
 - Advanced/Standard/Premium/Private/Shield -> separated runtime/migration credential identities, `leastPrivilege=true`.
 
 This records provider reality instead of claiming least privilege where the plan cannot provide it.
@@ -53,11 +53,11 @@ This records provider reality instead of claiming least privilege where the plan
 
 The audit requires all of the following:
 
-1. Core owner app and MCP app are distinct and resolve to the expected Heroku apps.
+1. Core owner app and MCP app are distinct and resolve to the expected retired provider apps.
 2. MCP stack is `container`.
 3. Required MCP config names are present without printing values.
 4. MCP and Core `DATABASE_URL` values resolve to the same host/port/database target without exposing those components.
-5. The Core app has exactly one Heroku Postgres add-on providing `DATABASE_URL`.
+5. The Core app has exactly one VPS PostgreSQL add-on providing `DATABASE_URL`.
 6. MCP either has a formal attachment to that same add-on or is classified as `shared_target_config` when the same database target is supplied through config.
 7. Runtime PostgreSQL readiness succeeds with the configured MCP schema and expected role.
 8. Production persistence is PostgreSQL, legacy runtime is disabled and a migration credential is not stored in runtime config.
@@ -65,7 +65,7 @@ The audit requires all of the following:
 
 ## Release/source evidence boundary
 
-Heroku container release metadata exposes the current release/version but does not expose a Git commit SHA for the image. The audit records both the exact audited `main` SHA and current Heroku release metadata, and explicitly reports `container_release_does_not_expose_git_sha` rather than inventing an exact source correlation.
+retired provider container release metadata exposes the current release/version but does not expose a Git commit SHA for the image. The audit records both the exact audited `main` SHA and current retired provider release metadata, and explicitly reports `container_release_does_not_expose_git_sha` rather than inventing an exact source correlation.
 
 The last known deploy source remains historical deployment evidence; a future production deploy must continue to record its exact source SHA separately.
 

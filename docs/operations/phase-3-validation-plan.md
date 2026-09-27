@@ -176,7 +176,7 @@ The repository gate runs migrations `002` through `016` on ephemeral PostgreSQL 
 
 This source-level Pack 8 does **not** authorize production. After Packs 1–7 pass, production readiness additionally requires:
 
-1. Audit the actual Heroku PostgreSQL provider state.
+1. Audit the actual VPS PostgreSQL provider state.
 2. Create and verify a fresh production backup.
 3. Restore that backup to a temporary rehearsal target.
 4. Reconcile the restored baseline.

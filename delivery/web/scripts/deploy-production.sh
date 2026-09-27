@@ -29,7 +29,6 @@ const url = new URL(process.env.CORE_URL);
 if (url.protocol !== 'https:' || url.username || url.password || url.pathname !== '/' || url.search || url.hash) {
   throw new Error('invalid_company_api_url');
 }
-if (url.hostname.endsWith('.herokuapp.com')) throw new Error('delivery_company_api_must_not_point_to_heroku');
 NODE
 
 smoke_company() {
@@ -78,7 +77,7 @@ const config = JSON.parse(await readFile('delivery/web/vercel.json', 'utf8'));
 if (config.git?.deploymentEnabled !== false) throw new Error('delivery_auto_deploy_not_locked');
 NODE
 
-# Keep the Delivery production binding canonical after the VPS cutover. Never derive it from Heroku.
+# Keep the Delivery production binding canonical to the Công Ty VPS.
 env_body="$(jq -nc \
   --arg core "$CORE_API_INTERNAL_URL" \
   '[

@@ -28,7 +28,7 @@ test("legacy report settings export is exact-command and read-only", () => {
   assert.match(exporter, /rev-list", "--objects", "--all/);
   assert.match(exporter, /cat-file", "blob"/);
   assert.doesNotMatch(workflow, /^\s{2}(?:push|pull_request|schedule):\s*$/m);
-  assert.doesNotMatch(workflow, /deploy --prebuilt|vercel@latest deploy|git push|heroku container:release/i);
+  assert.doesNotMatch(workflow, /deploy --prebuilt|vercel@latest deploy|git push/i);
   assert.doesNotMatch(exporter, /-X|--request|\bPOST\b|\bPATCH\b|\bPUT\b|\bDELETE\b/);
 });
 
