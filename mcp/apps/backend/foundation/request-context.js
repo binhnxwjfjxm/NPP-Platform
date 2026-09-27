@@ -235,6 +235,30 @@ export function buildRequestContext(req, config, { principal } = {}) {
   });
 }
 
+export function buildAuthenticatedUserRequestContext(req, config, principal) {
+  const resolvedPrincipal = normalizePrincipal(principal, config);
+  if (resolvedPrincipal.type !== "user") actorContextError("invalid_principal_identity", 401);
+  return Object.freeze({
+    requestId: normalizeRequestId(headerValue(req, "x-request-id")),
+    installation: Object.freeze({
+      id: config.installationId,
+      nppCode: config.nppCode
+    }),
+    actor: Object.freeze({
+      id: resolvedPrincipal.id,
+      type: "user",
+      authentication: resolvedPrincipal.authentication
+    }),
+    principal: resolvedPrincipal,
+    auth: Object.freeze({
+      mode: "core-workforce-session",
+      authenticated: true
+    }),
+    idempotencyKey: normalizeIdempotencyKey(headerValue(req, "idempotency-key")),
+    receivedAt: new Date().toISOString()
+  });
+}
+
 export function authenticateRequestContext(req, config, options = {}) {
   authenticateProxy(req, config);
   const principal = options.principal || internalWorkforcePrincipal(req, config) || undefined;

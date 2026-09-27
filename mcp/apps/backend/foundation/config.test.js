@@ -126,3 +126,26 @@ test("Core onboarding boundary is optional but fail-closed and uses a distinct s
     (error) => error.code === "core_onboarding_token_reuse_forbidden"
   );
 });
+
+
+test("Core auth boundary is optional and production requires HTTPS when configured", () => {
+  const disabled = loadFoundationConfig(validEnv());
+  assert.equal(disabled.coreAuth.configured, false);
+  assert.equal(disabled.coreAuth.baseUrl, null);
+  assert.equal(disabled.coreAuth.timeoutMs, 8000);
+
+  const enabled = loadFoundationConfig(validEnv({
+    CORE_AUTH_API_BASE_URL: "https://company.example.com",
+    CORE_AUTH_TIMEOUT_MS: "9000"
+  }));
+  assert.equal(enabled.coreAuth.configured, true);
+  assert.equal(enabled.coreAuth.baseUrl, "https://company.example.com");
+  assert.equal(enabled.coreAuth.timeoutMs, 9000);
+
+  assert.throws(
+    () => loadFoundationConfig(validEnv({
+      CORE_AUTH_API_BASE_URL: "http://company.example.com"
+    })),
+    (error) => error.code === "core_auth_api_base_url_https_required"
+  );
+});
