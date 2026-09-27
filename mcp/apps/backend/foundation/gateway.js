@@ -1,7 +1,8 @@
 import http from "node:http";
 import { corsHeaders, resolveCorsOrigin } from "./cors.js";
 import { canonicalErrorPayload, canonicalSuccessPayload, normalizeApiPayload, parseJsonPayload } from "./api-contract.js";
-import { authenticateRequestContext, forwardedContextHeaders, normalizeRequestId } from "./request-context.js";
+import { buildAuthenticatedUserRequestContext, authenticateRequestContext, forwardedContextHeaders, normalizeRequestId } from "./request-context.js";
+import { handleMobileAuthApi, isMobileSessionRequest, resolveMobileSessionPrincipal } from "./mobile-auth.js";
 import { withFoundationRequestContext } from "./request-context-store.js";
 import { handleReadApi } from "./read-api.js";
 import { handleLocalReadApi } from "./local-read-api.js";
@@ -42,6 +43,7 @@ function upstreamHeaders(req, context, config) {
   const headers = {};
   for (const [name, value] of Object.entries(req.headers)) {
     if (value === undefined || REQUEST_HEADER_BLOCKLIST.has(name.toLowerCase())) continue;
+    if (name.toLowerCase() === "authorization" && /^Bearer\\s+nppusr\\./i.test(String(value))) continue;
     headers[name] = value;
   }
   Object.assign(headers, forwardedContextHeaders(context));
@@ -95,7 +97,7 @@ function proxyToLegacy(req, res, url, context, origin, config) {
   });
 }
 
-export function createFoundationGateway(config, { persistence, legacyHandlers = null } = {}) {
+export function createFoundationGateway(config, { persistence, legacyHandlers = null, fetchImpl = globalThis.fetch } = {}) {
   if (!persistence || typeof persistence.readiness !== "function") throw new TypeError("persistence adapter is required");
   return http.createServer(async (req, res) => {
     const requestId = normalizeRequestId(req.headers["x-request-id"]);
@@ -109,7 +111,28 @@ export function createFoundationGateway(config, { persistence, legacyHandlers = 
       if (LIVE_PATHS.has(url.pathname)) { json(res, 200, canonicalSuccessPayload(liveData(config), { requestId, receivedAt }), requestId, origin); return; }
       if (READY_PATHS.has(url.pathname)) { json(res, 200, canonicalSuccessPayload(await readyData(config, persistence), { requestId, receivedAt }), requestId, origin); return; }
 
-      const context = authenticateRequestContext(req, config);
+      const mobileAuth = await handleMobileAuthApi(req, url, config, { requestId, fetchImpl });
+      if (mobileAuth) {
+        writeNormalized(
+          res,
+          normalizeApiPayload(mobileAuth.payload, {
+            status: mobileAuth.statusCode,
+            requestId,
+            receivedAt
+          }),
+          requestId,
+          origin
+        );
+        return;
+      }
+
+      const context = isMobileSessionRequest(req)
+        ? buildAuthenticatedUserRequestContext(
+            req,
+            config,
+            (await resolveMobileSessionPrincipal(req, config, { requestId, fetchImpl })).principal
+          )
+        : authenticateRequestContext(req, config);
       req.foundationContext = context;
 
       await withFoundationRequestContext(context, async () => {

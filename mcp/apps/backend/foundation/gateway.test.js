@@ -41,7 +41,7 @@ const legacyHandlers = Object.freeze({
   proxyToLegacy: true
 });
 
-async function setup(legacyHandler, configOverrides = {}) {
+async function setup(legacyHandler, configOverrides = {}, gatewayOverrides = {}) {
   const legacy = http.createServer(legacyHandler || ((req, res) => {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({
@@ -51,7 +51,8 @@ async function setup(legacyHandler, configOverrides = {}) {
       nppCode: req.headers["x-npp-code"],
       actorId: req.headers["x-actor-id"],
       idempotencyKey: req.headers["idempotency-key"] || null,
-      leakedToken: Boolean(req.headers["x-backend-token"])
+      leakedToken: Boolean(req.headers["x-backend-token"]),
+      authorization: req.headers.authorization || null
     }));
   }));
   const internalPort = await listen(legacy);
@@ -75,7 +76,7 @@ async function setup(legacyHandler, configOverrides = {}) {
     ...configOverrides
   };
 
-  const gateway = createFoundationGateway(config, { persistence, legacyHandlers });
+  const gateway = createFoundationGateway(config, { persistence, legacyHandlers, ...gatewayOverrides });
   const publicPort = await listen(gateway);
   return { legacy, gateway, config, publicPort, persistence };
 }
@@ -316,4 +317,71 @@ test("non-JSON upstream responses fail closed", async (t) => {
   assert.equal(result.status, 502);
   assert.equal(result.body.error.code, "UPSTREAM_RESPONSE_INVALID");
   assert.equal(JSON.stringify(result.body).includes("stack trace"), false);
+});
+
+
+test("mobile auth gateway accepts login without backend token and resolves bearer identity", async (t) => {
+  const employeeId = "11111111-1111-4111-8111-111111111111";
+  const token = `nppusr.aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.${"x".repeat(43)}`;
+  const fetchImpl = async (url, options = {}) => {
+    const target = String(url);
+    if (target.endsWith("/api/internal-auth/login")) {
+      const body = JSON.parse(options.body);
+      assert.equal(body.sourceApp, "mcp-field-mobile");
+      return new Response(JSON.stringify({
+        data: {
+          token,
+          session: { sourceApp: "mcp-field-mobile" },
+          user: { employeeId }
+        }
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (target.endsWith("/api/internal-auth/me")) {
+      return new Response(JSON.stringify({
+        data: {
+          employeeId,
+          roles: [],
+          permissions: ["mcp.session.write"],
+          scopes: { branchIds: [], warehouseIds: [], territoryIds: [] },
+          sourceApp: "mcp-field-mobile",
+          session: {
+            sourceApp: "mcp-field-mobile",
+            loginName: "staff.test",
+            employeeFullName: "Nhân viên A",
+            expiresAt: "2026-09-28T00:00:00.000Z"
+          }
+        }
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    throw new Error(`unexpected fetch ${target}`);
+  };
+
+  const state = await setup(
+    undefined,
+    {
+      coreAuth: {
+        configured: true,
+        baseUrl: "https://company.example.com",
+        timeoutMs: 1000
+      }
+    },
+    { fetchImpl }
+  );
+  t.after(async () => { await close(state.gateway); await close(state.legacy); });
+
+  const login = await request(state.publicPort, "/api/mobile-auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ loginName: "staff.test", password: "secret-value" })
+  });
+  assert.equal(login.status, 200);
+  assert.equal(login.body.data.token, token);
+
+  const probe = await request(state.publicPort, "/api/mobile-probe", {
+    headers: { authorization: `Bearer ${token}` }
+  });
+  assert.equal(probe.status, 200);
+  assert.equal(probe.body.data.actorId, `user:${employeeId}`);
+  assert.equal(probe.body.data.authorization, null);
+  assert.equal(probe.body.data.leakedToken, false);
 });

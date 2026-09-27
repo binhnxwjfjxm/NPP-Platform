@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   authenticateProxy,
   authenticateRequestContext,
+  buildAuthenticatedUserRequestContext,
   buildRequestContext,
   normalizeIdempotencyKey,
   normalizePrincipal,
@@ -202,4 +203,37 @@ test("request and idempotency IDs use the shared canonical contract", () => {
   for (const invalid of ["bad key", "bad:key", "bad+key", "bad~key", "x".repeat(129)]) {
     assert.throws(() => normalizeIdempotencyKey(invalid), /invalid_idempotency_key/);
   }
+});
+
+
+test("validated mobile workforce principal builds authenticated user context without backend token", () => {
+  const employeeId = "11111111-1111-4111-8111-111111111111";
+  const context = buildAuthenticatedUserRequestContext(
+    request({
+      "x-request-id": "mobile_request_12345678",
+      "x-installation-id": "attacker-installation",
+      "x-actor-id": "service:attacker:override",
+      "idempotency-key": "mobile-order-12345678"
+    }),
+    config,
+    {
+      id: `user:${employeeId}`,
+      type: "user",
+      authentication: "core-workforce-session",
+      employeeId,
+      roles: ["mcp.field-employee"],
+      permissions: ["mcp.session.write"],
+      scopes: ["mcp:branch:11111111-1111-4111-8111-111111111111"]
+    }
+  );
+
+  assert.equal(context.installation.id, "installation-a");
+  assert.equal(context.actor.id, `user:${employeeId}`);
+  assert.equal(context.actor.type, "user");
+  assert.equal(context.actor.authentication, "core-workforce-session");
+  assert.equal(context.principal.employeeId, employeeId);
+  assert.deepEqual(context.principal.permissions, ["mcp.session.write"]);
+  assert.equal(context.auth.authenticated, true);
+  assert.equal(context.auth.mode, "core-workforce-session");
+  assert.equal(context.idempotencyKey, "mobile-order-12345678");
 });

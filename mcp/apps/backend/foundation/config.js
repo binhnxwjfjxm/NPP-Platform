@@ -35,6 +35,22 @@ export function parseCorsOrigins(value, { nodeEnv = "development" } = {}) {
 
 function validateBackendToken(token, nodeEnv) { const minimumLength = nodeEnv === "production" ? 32 : 16; if (token.length < minimumLength) fail("backend_api_token_too_short", `BACKEND_API_TOKEN must contain at least ${minimumLength} characters`); if (nodeEnv === "production" && /replace|change[-_ ]?me|example|dev[-_ ]?only/i.test(token)) fail("backend_api_token_placeholder", "BACKEND_API_TOKEN still contains a placeholder value"); }
 
+function loadCoreAuthConfig(env, nodeEnv) {
+  const baseUrlRaw = text(env.CORE_AUTH_API_BASE_URL);
+  if (!baseUrlRaw) {
+    return Object.freeze({
+      configured: false,
+      baseUrl: null,
+      timeoutMs: positiveInteger(env.CORE_AUTH_TIMEOUT_MS, 8000, "CORE_AUTH_TIMEOUT_MS")
+    });
+  }
+  return Object.freeze({
+    configured: true,
+    baseUrl: httpUrlValue(baseUrlRaw, "CORE_AUTH_API_BASE_URL", { httpsInProduction: true, nodeEnv }),
+    timeoutMs: positiveInteger(env.CORE_AUTH_TIMEOUT_MS, 8000, "CORE_AUTH_TIMEOUT_MS")
+  });
+}
+
 function loadCoreOnboardingConfig(env, nodeEnv, backendApiToken) {
   const baseUrlRaw = text(env.CORE_ONBOARDING_API_BASE_URL);
   const apiToken = optionalSecret(env.CORE_ONBOARDING_API_TOKEN, "CORE_ONBOARDING_API_TOKEN", nodeEnv);
@@ -124,6 +140,7 @@ export function loadFoundationConfig(env = process.env) {
     supabaseUrl = httpUrlValue(required(env, "SUPABASE_URL"), "SUPABASE_URL", { httpsInProduction: true, nodeEnv });
     supabaseServiceRoleKey = required(env, "SUPABASE_SERVICE_ROLE_KEY");
   }
+  const coreAuth = loadCoreAuthConfig(env, nodeEnv);
   const coreOnboarding = loadCoreOnboardingConfig(env, nodeEnv, backendApiToken);
   const coreSales = loadCoreSalesConfig(env, nodeEnv, backendApiToken, coreOnboarding.apiToken);
   const servicePrincipal = Object.freeze({
@@ -142,6 +159,7 @@ export function loadFoundationConfig(env = process.env) {
     legacyRuntime: Object.freeze({ enabled: legacyRuntimeEnabled }),
     supabaseUrl, supabaseServiceRoleKey,
     corsOrigins: parseCorsOrigins(env.CORS_ORIGINS, { nodeEnv }),
+    coreAuth,
     coreOnboarding,
     coreSales,
     upstreamTimeoutMs: positiveInteger(env.UPSTREAM_TIMEOUT_MS, 65000, "UPSTREAM_TIMEOUT_MS"),
@@ -150,5 +168,5 @@ export function loadFoundationConfig(env = process.env) {
 }
 
 export function publicFoundationConfig(config) {
-  return Object.freeze({ service: config.service, nodeEnv: config.nodeEnv, installationId: config.installationId, nppCode: config.nppCode, authMode: config.authMode, publicHost: config.publicHost, publicPort: config.publicPort, persistenceProvider: config.persistence.provider, persistenceConfigured: config.persistence.configured, persistenceSchema: config.persistence.schema, legacyRuntimeEnabled: config.legacyRuntime.enabled, serviceRoleCount: config.servicePrincipal?.roles?.length || 0, servicePermissionCount: config.servicePrincipal?.permissions?.length || 0, serviceScopeCount: config.servicePrincipal?.scopes?.length || 0, r2Configured: config.r2?.configured === true, coreOnboardingConfigured: config.coreOnboarding?.configured === true, coreSalesConfigured: config.coreSales?.configured === true, corsOrigins: [...config.corsOrigins] });
+  return Object.freeze({ service: config.service, nodeEnv: config.nodeEnv, installationId: config.installationId, nppCode: config.nppCode, authMode: config.authMode, publicHost: config.publicHost, publicPort: config.publicPort, persistenceProvider: config.persistence.provider, persistenceConfigured: config.persistence.configured, persistenceSchema: config.persistence.schema, legacyRuntimeEnabled: config.legacyRuntime.enabled, serviceRoleCount: config.servicePrincipal?.roles?.length || 0, servicePermissionCount: config.servicePrincipal?.permissions?.length || 0, serviceScopeCount: config.servicePrincipal?.scopes?.length || 0, r2Configured: config.r2?.configured === true, coreAuthConfigured: config.coreAuth?.configured === true, coreOnboardingConfigured: config.coreOnboarding?.configured === true, coreSalesConfigured: config.coreSales?.configured === true, corsOrigins: [...config.corsOrigins] });
 }
