@@ -7,6 +7,12 @@ const workflowPaths = [
   ".github/workflows/vps-production-migration-136-manual.yml",
   ".github/workflows/vps-production-migration-137-manual.yml",
   ".github/workflows/vps-production-migration-138-139-manual.yml",
+  ".github/workflows/vps-production-migration-148-manual.yml",
+  ".github/workflows/vps-production-migration-151-manual.yml",
+  ".github/workflows/vps-production-migration-157-manual.yml",
+  ".github/workflows/vps-mcp-migration-014-manual.yml",
+  ".github/workflows/vps-mcp-migration-015-manual.yml",
+  ".github/workflows/vps-mcp-migration-016-manual.yml",
 ];
 
 test("VPS production migration concurrency is owned only by the matching job", async () => {
