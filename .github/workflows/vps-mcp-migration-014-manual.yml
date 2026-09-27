@@ -14,10 +14,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: vps-production-db-migration
-  cancel-in-progress: false
-
 jobs:
   contract:
     if: github.event_name == 'pull_request'
@@ -35,6 +31,9 @@ jobs:
         run: node --test mcp/test/vps-mcp-migration-014-contract.test.mjs
 
   migrate-production:
+    concurrency:
+      group: vps-production-db-migration
+      cancel-in-progress: false
     if: >-
       github.event_name == 'issue_comment' &&
       github.event.issue.number == 5 &&
