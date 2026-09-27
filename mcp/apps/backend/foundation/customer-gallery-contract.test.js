@@ -83,6 +83,58 @@ test("linked MCP prepare writes only MCP-owned media; shared reservation is trig
   assert.equal(calls.some((call) => /shared\.(customers|customer_media)/.test(call.sql)), false);
 });
 
+test("failed or deleted upload reservations reopen with the same client upload identity", async () => {
+  const calls = bindQueries((sql, params) => {
+    if (sql.includes("FROM mcp.mcp_route_customers")) {
+      return { rows: [{ id: "route-customer-1", route_id: "route-1" }] };
+    }
+    if (sql.includes("FROM mcp.mcp_outlet_media") && sql.includes("client_upload_id")) {
+      return {
+        rows: [{
+          id: "mom_retry_1",
+          installation_id: "installation-current",
+          route_customer_id: "route-customer-1",
+          session_id: null,
+          object_key: "mcp-plan/outlets/installation-current/route-customer-1/mom_retry_1.jpg",
+          mime_type: "image/jpeg",
+          expected_byte_size: 1234,
+          client_upload_id: "upload-retry-1",
+          status: "deleted"
+        }]
+      };
+    }
+    if (sql.startsWith("UPDATE mcp.mcp_outlet_media")) {
+      return {
+        rows: [{
+          id: "mom_retry_1",
+          installation_id: "installation-current",
+          route_customer_id: "route-customer-1",
+          session_id: null,
+          object_key: "mcp-plan/outlets/installation-current/route-customer-1/mom_retry_1.jpg",
+          mime_type: "image/jpeg",
+          expected_byte_size: 1234,
+          client_upload_id: "upload-retry-1",
+          status: "pending"
+        }]
+      };
+    }
+    throw new Error(`unexpected_sql:${sql}`);
+  });
+
+  const media = await postgresqlMediaUploadRpc(pgConfig, "mcp_prepare_outlet_media_upload", {
+    p_route_customer_id: "route-customer-1",
+    p_session_id: null,
+    p_client_upload_id: "upload-retry-1",
+    p_mime_type: "image/jpeg",
+    p_expected_byte_size: 1234,
+    p_context: { actorId: "service:mcp:test" }
+  });
+
+  assert.equal(media.id, "mom_retry_1");
+  assert.equal(media.status, "pending");
+  assert.equal(calls.some((call) => call.sql.includes("upload_retry_context")), true);
+});
+
 test("MCP finalize relies on the security-definer registry trigger instead of direct shared writes", async () => {
   const calls = bindQueries((sql, params) => {
     if (sql.startsWith("SELECT * FROM mcp.mcp_outlet_media")) {
@@ -134,6 +186,15 @@ test("MCP delete relies on the security-definer registry trigger instead of dire
 
   assert.equal(media.status, "deleted");
   assert.equal(calls.some((call) => call.sql.includes("shared.customer_media")), false);
+});
+
+test("migration 016 expires abandoned upload reservations without counting them forever", () => {
+  const sql = readFileSync(new URL("./migrations/sql/016_mcp_media_pending_expiry.sql", import.meta.url), "utf8");
+  assert.match(sql, /interval '10 minutes'/);
+  assert.match(sql, /NEW\.status IN \('failed', 'deleted'\)/);
+  assert.match(sql, /upload_reservation_expired_at/);
+  assert.match(sql, /ON CONFLICT \(installation_id, source_app, source_media_id\)/);
+  assert.match(sql, /status = 'pending'[\s\S]+updated_at < now\(\) - interval '10 minutes'/);
 });
 
 test("migration 015 keeps the shared gallery behind MCP views and a security-definer trigger", () => {
