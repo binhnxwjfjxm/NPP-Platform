@@ -88,12 +88,12 @@ test('production R2 gate tái sử dụng đúng kho ảnh đang chạy và khô
 
   assert.match(workflow, /github\.event\.issue\.number == 5/);
   assert.match(workflow, /github\.event\.comment\.body == '\/configure-company-product-images-r2'/);
-  assert.match(workflow, /R2_SOURCE_APP: hung-phat-mcp/);
-  assert.match(workflow, /R2_TARGET_APP: hung-phat/);
-  assert.match(configScript, /R2_BUCKET_NAME/);
-  assert.match(configScript, /CLOUDFLARE_R2_PUBLIC_URL/);
-  assert.match(configScript, /R2_BUCKET: r2\.bucket/);
-  assert.match(configScript, /R2_PUBLIC_BASE_URL: r2\.publicBaseUrl/);
-  assert.match(configScript, /COMPANY_PRODUCT_IMAGE_INDEX_COUNT/);
+  assert.match(workflow, /VPS_MCP_HOST:/);
+  assert.match(workflow, /VPS_COMPANY_HOST:/);
+  assert.match(workflow, /\/etc\/npp\/mcp\.env/);
+  assert.match(workflow, /\/etc\/npp\/company\.env/);
+  assert.match(configScript, /buildCompanyR2Config/);
+  assert.match(configScript, /R2_BUCKET: bucket/);
+  assert.match(configScript, /R2_PUBLIC_BASE_URL:/);
   assert.doesNotMatch(configScript, /PutBucketCorsCommand|GetBucketCorsCommand|CLOUDFLARE_ACCOUNT_API_TOKEN|DATABASE_URL/);
 });

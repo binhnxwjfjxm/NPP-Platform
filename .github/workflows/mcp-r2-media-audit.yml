@@ -1,0 +1,142 @@
+name: MCP R2 media audit
+
+on:
+  workflow_dispatch:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: mcp-r2-media-audit
+  cancel-in-progress: false
+
+jobs:
+  audit-media:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.number == 391 &&
+        github.event.comment.body == '/audit-mcp-r2-media' &&
+        (
+          github.actor == 'binhnxwjfjxm' ||
+          github.actor == 'khuongbinhinfo-a11y'
+        )
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      AUDIT_REF: main
+      VPS_MCP_HOST: ${{ vars.VPS_MCP_HOST }}
+      VPS_SSH_USER: ${{ vars.VPS_SSH_USER }}
+      MCP_MEDIA_AUDIT_EVIDENCE_FILE: ${{ github.workspace }}/.mcp-r2-media-audit-evidence.md
+
+    steps:
+      - name: Validate exact audit command
+        if: github.event_name == 'issue_comment'
+        shell: bash
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          test "$COMMENT_BODY" = '/audit-mcp-r2-media'
+
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.AUDIT_REF }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact origin/main SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare MCP VPS SSH credential
+        id: ssh
+        shell: bash
+        env:
+          VPS_MCP_SSH_KEY: ${{ secrets.VPS_MCP_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$VPS_MCP_HOST"
+          test -n "$VPS_SSH_USER"
+          test -n "$VPS_MCP_SSH_KEY"
+          umask 077
+          key="$RUNNER_TEMP/vps-mcp.key"
+          printf '%s\n' "$VPS_MCP_SSH_KEY" > "$key"
+          chmod 600 "$key"
+          known_hosts="$RUNNER_TEMP/vps-mcp-known-hosts"
+          ssh-keyscan -T 10 -H "$VPS_MCP_HOST" > "$known_hosts" 2>/dev/null
+          test -s "$known_hosts"
+          chmod 600 "$known_hosts"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+          echo "known_hosts=$known_hosts" >> "$GITHUB_OUTPUT"
+
+      - name: Audit MCP R2 media read-only on VPS
+        shell: bash
+        env:
+          SSH_KEY: ${{ steps.ssh.outputs.key }}
+          KNOWN_HOSTS: ${{ steps.ssh.outputs.known_hosts }}
+          AUDITED_MAIN_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          ssh \
+            -i "$SSH_KEY" \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$KNOWN_HOSTS" \
+            "$VPS_SSH_USER@$VPS_MCP_HOST" \
+            "bash -s -- '$AUDITED_MAIN_SHA'" > "$MCP_MEDIA_AUDIT_EVIDENCE_FILE" <<'REMOTE'
+          set -euo pipefail
+          audited_sha="$1"
+          current=/srv/npp/mcp/current
+          env_file=/etc/npp/mcp.env
+          test -d "$current"
+          test -f "$env_file"
+          active="$(readlink -f "$current")"
+          case "$active" in
+            */releases/"$audited_sha"/*) ;;
+            *) echo "MCP_RELEASE_SHA_MISMATCH=true"; exit 3 ;;
+          esac
+          cd "$current"
+          set -a
+          . "$env_file"
+          set +a
+          evidence="$(mktemp)"
+          trap 'rm -f "$evidence"' EXIT
+          AUDITED_MAIN_SHA="$audited_sha" MCP_MEDIA_AUDIT_EVIDENCE_FILE="$evidence" node scripts/production-media-audit.js >/dev/null
+          cat "$evidence"
+          REMOTE
+
+      - name: Publish sanitized Phase 9.4 evidence
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPERATION_STATUS: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          evidence_file="$(mktemp)"
+          {
+            echo "## Phase 9.4 MCP R2 media audit — ${OPERATION_STATUS}"
+            echo
+            if [ -s "$MCP_MEDIA_AUDIT_EVIDENCE_FILE" ]; then
+              cat "$MCP_MEDIA_AUDIT_EVIDENCE_FILE"
+            else
+              echo "AUDIT_EVIDENCE=unavailable"
+            fi
+            echo "GITHUB_RUN_ID=$GITHUB_RUN_ID"
+          } > "$evidence_file"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/391/comments" -f body="$(cat "$evidence_file")" >/dev/null
+          rm -f "$evidence_file"

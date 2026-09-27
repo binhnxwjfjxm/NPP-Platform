@@ -1,0 +1,213 @@
+name: Công Ty product image R2 config
+
+on:
+  workflow_dispatch:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: company-product-image-r2-config
+  cancel-in-progress: false
+
+jobs:
+  configure:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.number == 5 &&
+        github.event.comment.body == '/configure-company-product-images-r2' &&
+        (
+          github.actor == 'binhnxwjfjxm' ||
+          github.actor == 'khuongbinhinfo-a11y'
+        )
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VPS_MCP_HOST: ${{ vars.VPS_MCP_HOST }}
+      VPS_COMPANY_HOST: ${{ vars.VPS_COMPANY_HOST }}
+      VPS_SSH_USER: ${{ vars.VPS_SSH_USER }}
+
+    steps:
+      - name: Validate exact issue command
+        if: github.event_name == 'issue_comment'
+        shell: bash
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          test "$COMMENT_BODY" = '/configure-company-product-images-r2'
+
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact origin/main SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Prepare VPS SSH credentials
+        id: ssh
+        shell: bash
+        env:
+          VPS_MCP_SSH_KEY: ${{ secrets.VPS_MCP_SSH_KEY }}
+          VPS_COMPANY_SSH_KEY: ${{ secrets.VPS_COMPANY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$VPS_MCP_HOST"
+          test -n "$VPS_COMPANY_HOST"
+          test -n "$VPS_SSH_USER"
+          test -n "$VPS_MCP_SSH_KEY"
+          test -n "$VPS_COMPANY_SSH_KEY"
+          umask 077
+          mcp_key="$RUNNER_TEMP/vps-mcp.key"
+          company_key="$RUNNER_TEMP/vps-company.key"
+          printf '%s\n' "$VPS_MCP_SSH_KEY" > "$mcp_key"
+          printf '%s\n' "$VPS_COMPANY_SSH_KEY" > "$company_key"
+          chmod 600 "$mcp_key" "$company_key"
+          mcp_known="$RUNNER_TEMP/vps-mcp-known-hosts"
+          company_known="$RUNNER_TEMP/vps-company-known-hosts"
+          ssh-keyscan -T 10 -H "$VPS_MCP_HOST" > "$mcp_known" 2>/dev/null
+          ssh-keyscan -T 10 -H "$VPS_COMPANY_HOST" > "$company_known" 2>/dev/null
+          test -s "$mcp_known"
+          test -s "$company_known"
+          chmod 600 "$mcp_known" "$company_known"
+          echo "mcp_key=$mcp_key" >> "$GITHUB_OUTPUT"
+          echo "company_key=$company_key" >> "$GITHUB_OUTPUT"
+          echo "mcp_known=$mcp_known" >> "$GITHUB_OUTPUT"
+          echo "company_known=$company_known" >> "$GITHUB_OUTPUT"
+
+      - name: Read canonical R2 contract from MCP VPS
+        id: r2
+        shell: bash
+        env:
+          MCP_KEY: ${{ steps.ssh.outputs.mcp_key }}
+          MCP_KNOWN: ${{ steps.ssh.outputs.mcp_known }}
+        run: |
+          set -euo pipefail
+          source_file="$RUNNER_TEMP/mcp-r2-source.json"
+          target_file="$RUNNER_TEMP/company-r2-target.json"
+          ssh \
+            -i "$MCP_KEY" \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$MCP_KNOWN" \
+            "$VPS_SSH_USER@$VPS_MCP_HOST" 'bash -s' > "$source_file" <<'REMOTE'
+          set -euo pipefail
+          env_file=/etc/npp/mcp.env
+          test -f "$env_file"
+          set -a
+          . "$env_file"
+          set +a
+          node <<'NODE'
+          const names = [
+            'R2_BUCKET_NAME',
+            'R2_BUCKET',
+            'R2_ENDPOINT',
+            'R2_REGION',
+            'R2_ACCESS_KEY_ID',
+            'R2_SECRET_ACCESS_KEY',
+            'CLOUDFLARE_R2_PUBLIC_URL',
+            'R2_PUBLIC_BASE_URL'
+          ];
+          process.stdout.write(JSON.stringify(Object.fromEntries(names.map((name) => [name, process.env[name] || '']))));
+          NODE
+          REMOTE
+          test -s "$source_file"
+          R2_SOURCE_CONFIG_FILE="$source_file" R2_TARGET_CONFIG_FILE="$target_file" \
+            node npp-core/api/scripts/production-product-image-r2-config.js
+          test -s "$target_file"
+          while IFS= read -r secret; do
+            [ -z "$secret" ] || echo "::add-mask::$secret"
+          done < <(node -e 'const p=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); for(const k of ["R2_ACCESS_KEY_ID","R2_SECRET_ACCESS_KEY"]) if(p[k]) console.log(p[k])' "$target_file")
+          echo "target_file=$target_file" >> "$GITHUB_OUTPUT"
+
+      - name: Apply R2 contract to Công Ty VPS
+        shell: bash
+        env:
+          COMPANY_KEY: ${{ steps.ssh.outputs.company_key }}
+          COMPANY_KNOWN: ${{ steps.ssh.outputs.company_known }}
+          TARGET_FILE: ${{ steps.r2.outputs.target_file }}
+        run: |
+          set -euo pipefail
+          scp \
+            -i "$COMPANY_KEY" \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$COMPANY_KNOWN" \
+            "$TARGET_FILE" "$VPS_SSH_USER@$VPS_COMPANY_HOST:/tmp/npp-company-r2.json"
+          ssh \
+            -i "$COMPANY_KEY" \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$COMPANY_KNOWN" \
+            "$VPS_SSH_USER@$VPS_COMPANY_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          env_file=/etc/npp/company.env
+          payload=/tmp/npp-company-r2.json
+          edit="$(mktemp)"
+          sudo -n cat "$env_file" > "$edit"
+          node - "$payload" "$edit" <<'NODE'
+          const fs = require('node:fs');
+          const [payloadPath, envPath] = process.argv.slice(2);
+          const config = JSON.parse(fs.readFileSync(payloadPath, 'utf8'));
+          let lines = fs.readFileSync(envPath, 'utf8').split(/\r?\n/).filter(Boolean);
+          for (const [key, value] of Object.entries(config)) {
+            const encoded = JSON.stringify(String(value));
+            const index = lines.findIndex((line) => line.startsWith(key + '='));
+            if (index >= 0) lines[index] = key + '=' + encoded;
+            else lines.push(key + '=' + encoded);
+          }
+          fs.writeFileSync(envPath, lines.join('\n') + '\n');
+          NODE
+          sudo -n install -o root -g npp-company -m 0640 "$edit" "$env_file"
+          rm -f "$edit" "$payload"
+          sudo -n systemctl restart npp-company-api.service
+          for path in /health/live /health/ready; do
+            ok=false
+            for _ in $(seq 1 40); do
+              curl -fsS "http://127.0.0.1:3104$path" >/dev/null && { ok=true; break; }
+              sleep 3
+            done
+            test "$ok" = true
+          done
+          REMOTE
+
+      - name: Publish sanitized configuration evidence
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          body="$(cat <<EOF
+          ## Công Ty product image R2 config — success
+
+          SOURCE_SHA=$SOURCE_SHA
+          R2_SOURCE=MCP_VPS
+          R2_TARGET=COMPANY_VPS
+          COMPANY_HEALTH=success
+          GITHUB_RUN_ID=$GITHUB_RUN_ID
+          EOF
+          )"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/5/comments" -f body="$body" >/dev/null
