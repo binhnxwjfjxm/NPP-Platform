@@ -26,6 +26,5 @@ test("VPS production migration 143 is gated, rehearsed and verified before produ
   assert.match(workflow, /ADJUSTMENT_ROWS_UNCHANGED=PASS/);
   assert.match(workflow, /PRODUCTION_RERUN_NOOP=PASS/);
   assert.match(workflow, /PRODUCTION_VERIFY=PASS/);
-  assert.doesNotMatch(workflow, /HEROKU_/);
   assert.doesNotMatch(workflow, /DATABASE_URL/);
 });

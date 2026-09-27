@@ -142,17 +142,17 @@ Automated coverage includes:
 
 ## Deployment boundary
 
-Migrations `010` and `011` and their Core API code are not productionized yet. Do not apply production migrations or deploy Heroku from this slice alone.
+Migrations `010` and `011` and their Core API code are not productionized yet. Do not apply production migrations or deploy retired provider from this slice alone.
 
 After the agreed Phase 3 master-data group is complete on `main`, Codex must run one controlled backend/database rollout:
 
-1. audit actual Heroku/PostgreSQL state;
+1. audit actual retired provider/PostgreSQL state;
 2. create a new backup;
 3. restore rehearsal to temporary PostgreSQL 17;
 4. apply pending migrations in order;
 5. verify and reconcile before/after;
 6. exercise real APIs against rehearsal data;
-7. deploy Heroku manually from `main`;
+7. deploy retired provider manually from `main`;
 8. verify live/ready and all Phase 3 API smoke tests;
 9. create a post-migration backup;
 10. keep automatic deploy disabled.

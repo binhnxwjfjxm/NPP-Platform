@@ -28,10 +28,10 @@ Provider target sau cutover:
 
 - `CORE_API_INTERNAL_URL` lấy từ `VPS_COMPANY_HOST` và phải là HTTPS Công Ty production.
 - `BACKEND_API_BASE_URL` lấy từ `VPS_MCP_HOST` và phải là HTTPS MCP production.
-- `BACKEND_API_TOKEN` là server secret đã lưu trong Vercel production; deploy path chỉ kiểm metadata tồn tại, không đọc/in giá trị và không lấy lại từ Heroku.
+- `BACKEND_API_TOKEN` là server secret đã lưu trong Vercel production; deploy path chỉ kiểm metadata tồn tại, không đọc/in giá trị và không lấy lại từ retired provider.
 - `MCP_LEGACY_ACTOR_ID` vẫn là service actor non-secret hiện hữu cho các route tương thích.
 
-Không dùng Heroku API, Supabase service role, `DATABASE_URL` hoặc secret database trong frontend deploy.
+Không dùng retired provider API, Supabase service role, `DATABASE_URL` hoặc secret database trong frontend deploy.
 
 ## Manual rollout
 

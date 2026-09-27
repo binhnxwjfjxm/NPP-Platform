@@ -42,6 +42,7 @@ jobs:
       - name: Build application
         env:
           BACKEND_API_BASE_URL: http://127.0.0.1:3112
+          CORE_API_INTERNAL_URL: http://127.0.0.1:3112
           BACKEND_API_TOKEN: 0123456789abcdef0123456789abcdef
           MCP_LEGACY_ACTOR_ID: service:ci:export-reader
         run: npm run build
@@ -49,6 +50,7 @@ jobs:
       - name: Exercise report and CSV exports
         env:
           BACKEND_API_BASE_URL: http://127.0.0.1:3112
+          CORE_API_INTERNAL_URL: http://127.0.0.1:3112
           BACKEND_API_TOKEN: 0123456789abcdef0123456789abcdef
           MCP_LEGACY_ACTOR_ID: service:ci:export-reader
           EXPORT_MOCK_PORT: 3112

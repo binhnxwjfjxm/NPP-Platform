@@ -154,7 +154,7 @@ jobs:
             echo
             echo "- Exact main SHA: \`${SOURCE_SHA:-unknown}\`"
             echo "- Run ID: \`$GITHUB_RUN_ID\`"
-            echo '- Scope: read-only service/journal/certificate diagnostics plus external probes; no deploy, restart, migration, Vercel or Heroku mutation.'
+            echo '- Scope: read-only service/journal/certificate diagnostics plus external probes; no deploy, restart, migration or production mutation.'
             echo '- Secret values are not included.'
             echo
             echo '```text'

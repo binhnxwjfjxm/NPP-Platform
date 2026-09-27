@@ -121,7 +121,7 @@ The suite uses Chromium and verifies:
 
 `.github/workflows/core-ui-e2e.yml` uses Ubuntu 24.04, Node 20, an isolated PostgreSQL 16 service, temporary runner-only credentials, Core API verification, Core web unit/typecheck/build verification and Chromium Playwright E2E. Reports, traces, screenshots and videos are retained only on failure.
 
-The workflow does not call Vercel, Heroku, Supabase, Cloudflare R2 or any other production service. It does not contain production provider credentials.
+The workflow does not call Vercel, retired provider, Supabase, Cloudflare R2 or any other production service. It does not contain production provider credentials.
 
 ## Security and operational boundaries
 

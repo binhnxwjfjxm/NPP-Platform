@@ -29,7 +29,6 @@
     "test:core-ui-e2e": "npm --workspace npp-core-web run test:e2e",
     "verify": "npm run verify:mcp && npm run verify:packages && npm run verify:core-api && npm run verify:core-web",
     "start:core-api": "npm --workspace npp-core-api run start",
-    "start": "npm run start:core-api",
-    "heroku-postbuild": "npm run build:core-api"
+    "start": "npm run start:core-api"
   }
 }

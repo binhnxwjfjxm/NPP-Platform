@@ -4,7 +4,7 @@
 
 - Base commit: `4708ca861433e283660f338f33fe34885cde8561`
 - Issue: #135
-- Runtime in scope: `mcp/apps/backend/**` and the isolated MCP Heroku workflows
+- Runtime in scope: `mcp/apps/backend/**` and the isolated MCP retired provider workflows
 - Production mutations in this phase: none
 - Database attachment, schema migration, data migration, deploy and cutover: not performed
 
@@ -67,7 +67,7 @@ This is deliberate: silently falling back to Supabase or translating arbitrary t
 | --- | --- | --- |
 | Active production runtime | `bootstrap.js`, `gateway.js`, `persistence.js`, `postgresql-adapter.js` | PostgreSQL only; no Supabase REST/RPC/service-role handling |
 | Transitional compatibility | `legacy-runtime.js`, `supabase-adapter.js`, `legacy-supabase-adapter.js`, existing handler modules, `server.js` | Explicit non-production selection only; no production fallback |
-| Test fixture | Foundation tests and Heroku runtime/contract fixtures | Updated for PostgreSQL readiness and no Supabase env in Docker |
+| Test fixture | Foundation tests and retired provider runtime/contract fixtures | Updated for PostgreSQL readiness and no Supabase env in Docker |
 | Migration/audit history | `mcp/supabase/**`, historical runbooks, retirement evidence | Preserved for reconciliation; not treated as active runtime |
 | Frontend/server legacy | `mcp/src/server/**` references and prior frontend integration evidence | Audited but not removed in this backend-only phase |
 | Obsolete transitional deploy contract | Supabase requirements in the PR #133 workflow | Replaced by DATABASE_URL/schema/role preflight |

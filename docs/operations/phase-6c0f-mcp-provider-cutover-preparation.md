@@ -14,19 +14,19 @@ No production mutation is authorized by this source phase.
 
 This phase does not:
 
-- inspect or claim current Heroku configuration without operator evidence;
+- inspect or claim current retired provider configuration without operator evidence;
 - request or download a production backup;
 - create a PostgreSQL role or grant;
 - attach a database to `hung-phat-mcp`;
 - run a production migration;
-- deploy either Heroku backend or any Vercel frontend;
+- deploy either retired provider backend or any Vercel frontend;
 - switch field traffic or retire the legacy source.
 
 ## 2. Locked runtime topology
 
 ```text
 5 Vercel frontends
-2 Heroku backends
+2 retired provider backends
 1 shared PostgreSQL installation
 ```
 
@@ -134,7 +134,7 @@ DRAFT_NOT_AUTHORIZED
 A real plan cannot be considered ready until an accountable operator supplies:
 
 - exact current `main` commit;
-- current MCP Heroku release evidence;
+- current MCP retired provider release evidence;
 - current MCP Vercel deployment evidence;
 - proof both auto-deploy settings remain off;
 - a current verified production backup reference;
@@ -175,7 +175,7 @@ After a separately authorized MCP backend deployment, the operator must verify:
 /health/ready
 ```
 
-`/health/ready` must prove the expected role, `mcp`-first search path and schema readiness. A Heroku release status alone is not sufficient. No Core backend deployment is implied by MCP-only source changes.
+`/health/ready` must prove the expected role, `mcp`-first search path and schema readiness. A retired provider release status alone is not sufficient. No Core backend deployment is implied by MCP-only source changes.
 
 ## 9. Abort and rollback model
 

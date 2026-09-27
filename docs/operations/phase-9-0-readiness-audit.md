@@ -54,7 +54,7 @@ Locked architecture:
 - Core and MCP are separate deploy/release/smoke/rollback units.
 - One PostgreSQL installation is shared across domain schemas.
 
-Live Heroku release/config/attachment/DB-role state is **UNVERIFIED / PRE-MUTATION GATE** in this connector session. Phase 9.3 must read provider truth before changing runtime or credentials; this audit does not substitute documentation for that provider check.
+Live retired provider release/config/attachment/DB-role state is **UNVERIFIED / PRE-MUTATION GATE** in this connector session. Phase 9.3 must read provider truth before changing runtime or credentials; this audit does not substitute documentation for that provider check.
 
 ## 3. Identity decision lock
 
@@ -180,7 +180,7 @@ Production mutation sequence remains:
 
 - **9.1:** permission registry/route/action/UI reconciliation; configurable role preset behavior; Employee/MCP performance tab structure.
 - **9.2:** Customer Ordering server boundary, Clerk-to-Core membership and canonical Sales Order intake; source filter in NPP Sales Order UI.
-- **9.3:** live MCP Heroku source/release/config-name, PostgreSQL attachment and actual DB credential/role capability.
+- **9.3:** live MCP retired provider source/release/config-name, PostgreSQL attachment and actual DB credential/role capability.
 - **9.4:** live R2 + legacy media inventory, manifest/checksum/count, adapter switch and rollback pointer.
 - **9.5:** immutable export + canonical ID mapping and ambiguity report.
 - **9.6:** idempotent import, remaining legacy adapter replacement and dual verification without dual authority.
@@ -189,7 +189,7 @@ Production mutation sequence remains:
 
 ## 11. Phase 9.0 acceptance mapping
 
-- architecture/runtime topology: **LOCKED at source/ownership level; live Heroku details explicitly gated**
+- architecture/runtime topology: **LOCKED at source/ownership level; live retired provider details explicitly gated**
 - role/permission gaps: **LOCKED**
 - identity boundary: **LOCKED**
 - three-source order boundary: **LOCKED**

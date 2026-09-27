@@ -38,12 +38,12 @@ The exact final head must pass:
 
 Source closeout does not claim production readiness. The following remain required and separate:
 
-- actual Heroku/PostgreSQL provider audit;
+- actual retired provider/PostgreSQL provider audit;
 - fresh verified production backup;
 - restore from that backup to a rehearsal target;
 - before/after reconciliation;
 - owner decision for blocked pricing rows and the isolated pricing report;
 - owner decision on administrator test allocations consuming real immutable document numbers;
 - explicit production rollout authorization;
-- manual Heroku and guarded Vercel deployment plus smoke verification;
+- manual retired provider and guarded Vercel deployment plus smoke verification;
 - post-migration backup and confirmation that automatic deployments remain disabled.

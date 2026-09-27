@@ -27,7 +27,7 @@ Mở `NPPRetail.xcodeproj` bằng Xcode 16 trở lên, chọn Signing Team phù 
 
 ## Ranh giới
 
-- Không đưa traffic `192.168.x.x` qua Vercel/Heroku.
+- Không đưa traffic `192.168.x.x` qua Vercel/backend cloud.
 - Không lưu credential máy in lên server.
 - Không retry vô hạn sau khi job đã được gửi; lỗi sau thời điểm gửi được coi là trạng thái chưa chắc chắn để tránh in trùng.
 - A4/A5 tiếp tục phù hợp nhất với In bằng hệ thống/AirPrint. Direct ESC/POS chỉ dùng K80/K58.

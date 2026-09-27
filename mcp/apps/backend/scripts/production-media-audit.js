@@ -8,7 +8,6 @@ import {
 import { buildPostgresqlSslConfig, resolvePostgresqlSslMode } from "../foundation/postgresql-ssl.js";
 
 const { Pool } = pg;
-const HEROKU_ACCEPT = "application/vnd.heroku+json; version=3";
 const REQUIRED_CONFIG_NAMES = Object.freeze([
   "DATABASE_URL",
   "INSTALLATION_ID",
@@ -121,16 +120,7 @@ function isStable(value, cutoffMs) {
   return Number.isFinite(parsed) && parsed <= cutoffMs;
 }
 
-async function herokuConfig(appName, apiKey) {
-  const response = await fetch(`https://api.heroku.com/apps/${encodeURIComponent(appName)}/config-vars`, {
-    method: "GET",
-    headers: {
-      Accept: HEROKU_ACCEPT,
-      Authorization: `Bearer ${apiKey}`
-    }
-  });
-  if (!response.ok) fail("heroku_config_read_failed");
-  const config = await response.json();
+function runtimeConfig(config = process.env) {
   for (const name of REQUIRED_CONFIG_NAMES) {
     if (!text(config?.[name])) fail(`missing_runtime_${name.toLowerCase()}`);
   }
@@ -222,14 +212,11 @@ async function readMediaRows(databaseUrl, schema, installationId) {
 }
 
 async function main() {
-  const appName = text(process.env.HEROKU_APP_NAME);
-  const apiKey = text(process.env.HEROKU_API_KEY);
   const auditedMainSha = text(process.env.AUDITED_MAIN_SHA);
   const evidenceFile = text(process.env.MCP_MEDIA_AUDIT_EVIDENCE_FILE);
-  if (!appName || !apiKey || !auditedMainSha || !evidenceFile) fail("media_audit_environment_incomplete");
-  if (appName !== "hung-phat-mcp") fail("unexpected_mcp_app");
+  if (!auditedMainSha || !evidenceFile) fail("media_audit_environment_incomplete");
 
-  const runtime = await herokuConfig(appName, apiKey);
+  const runtime = runtimeConfig(process.env);
   if (runtime.PERSISTENCE_PROVIDER !== "postgresql") fail("production_persistence_not_postgresql");
   if (!new Set(["false", "0", "no", "off"]).has(String(runtime.MCP_LEGACY_RUNTIME_ENABLED).trim().toLowerCase())) {
     fail("legacy_runtime_enabled");
@@ -330,7 +317,7 @@ async function main() {
   const targetFingerprint = sha256(`${new URL(r2.endpoint).hostname.toLowerCase()}\n${r2.bucket}`);
   const evidence = [
     `AUDITED_MAIN_SHA=${auditedMainSha}`,
-    `HEROKU_APP_NAME=${appName}`,
+    "MCP_RUNTIME=VPS",
     "MCP_MEDIA_RUNTIME_R2_CONFIGURED=true",
     `R2_TARGET_FINGERPRINT_SHA256=${targetFingerprint}`,
     `MCP_MEDIA_STABILITY_WINDOW_SECONDS=${Math.trunc(STABILITY_WINDOW_MS / 1000)}`,

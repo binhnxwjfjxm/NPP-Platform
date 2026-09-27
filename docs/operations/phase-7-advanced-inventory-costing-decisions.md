@@ -204,7 +204,7 @@ Mỗi slice dùng branch riêng, migration/backend/NPP UI/tests/CI/PR riêng. Kh
 - Phase 7.0 không tạo migration.
 - Migration ID tiếp theo phải lấy từ registry/migration runner thật tại exact `main` của slice, không đoán từ issue bàn giao.
 - Clean apply, rerun no-op, rehearsal và grouped rehearsal là gate bắt buộc khi có migration.
-- Không chạy production migration, không deploy Vercel/Heroku và không thay provider trong Phase 7.0.
+- Không chạy production migration, không deploy Vercel/retired provider và không thay provider trong Phase 7.0.
 - Production rollout sau này phải audit exact SHA, pending migrations, backup, restore rehearsal, pre/post reconciliation, runtime diff và smoke thực tế.
 
 ## 13. Acceptance gate Phase 7.0

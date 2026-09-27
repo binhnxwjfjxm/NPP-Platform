@@ -56,7 +56,7 @@ test("MCP production deploy is pinned to the dedicated project and exact main CI
   assert.match(mcpWorkflow, /unexpected_mcp_root_directory/);
 });
 
-test("MCP Field locks both production dependencies to VPS and never resolves them from Heroku", () => {
+test("MCP Field locks both production dependencies to VPS", () => {
   assert.match(mcpWorkflow, /VPS_COMPANY_HOST: \$\{\{ vars\.VPS_COMPANY_HOST \}\}/);
   assert.match(mcpWorkflow, /VPS_MCP_HOST: \$\{\{ vars\.VPS_MCP_HOST \}\}/);
   assert.match(mcpWorkflow, /CORE_API_INTERNAL_URL=\$company_url/);
@@ -65,7 +65,6 @@ test("MCP Field locks both production dependencies to VPS and never resolves the
   assert.match(mcpWorkflow, /"BACKEND_API_BASE_URL"/);
   assert.match(mcpWorkflow, /"BACKEND_API_TOKEN"/);
   assert.match(mcpWorkflow, /mcp_backend_token_production_binding_missing_or_ambiguous/);
-  assert.doesNotMatch(mcpWorkflow, /HEROKU_API_KEY|api\.heroku\.com|hung-phat-mcp|hung-phat\.herokuapp\.com/i);
   assert.doesNotMatch(mcpWorkflow, /SUPABASE_SERVICE_ROLE_KEY|DATABASE_URL|postgres(?:ql)?:\/\//i);
 });
 

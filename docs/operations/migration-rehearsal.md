@@ -94,7 +94,7 @@ A passing report requires:
 
 The `verify-migration-rehearsal` job in `.github/workflows/core-foundation.yml` starts a disposable PostgreSQL 16 service, installs PostgreSQL client tools, runs the full rehearsal, and uploads the JSON report with `if: always()`.
 
-The workflow has no deployment permission and does not call Heroku, Supabase, Vercel, or any production database.
+The workflow has no deployment permission and does not call retired provider, Supabase, Vercel, or any production database.
 
 ## Production gate before a real migration
 

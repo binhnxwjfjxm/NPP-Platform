@@ -131,11 +131,11 @@ export function validateCutoverPlan(plan, { expectedSourceCommit = null } = {}) 
 
   const providerAudit = plan.providerAudit ?? {};
   if (!validEvidence(providerAudit.evidenceRef)) issue(issues, "invalid_provider_audit_evidence");
-  if (providerAudit.heroku?.coreApp !== "hung-phat") issue(issues, "core_app_mismatch");
-  if (providerAudit.heroku?.mcpApp !== "hung-phat-mcp") issue(issues, "mcp_app_mismatch");
-  if (providerAudit.heroku?.autoDeployOff !== true) issue(issues, "heroku_auto_deploy_must_be_off");
+  if (providerAudit.vps?.companyBackend !== "company") issue(issues, "core_app_mismatch");
+  if (providerAudit.vps?.mcpBackend !== "mcp") issue(issues, "mcp_app_mismatch");
+  if (providerAudit.vps?.autoDeployOff !== true) issue(issues, "vps_auto_deploy_must_be_off");
   if (providerAudit.vercel?.autoDeployOff !== true) issue(issues, "vercel_auto_deploy_must_be_off");
-  if (!validEvidence(providerAudit.heroku?.currentMcpReleaseRef)) issue(issues, "invalid_mcp_release_evidence");
+  if (!validEvidence(providerAudit.vps?.currentMcpReleaseRef)) issue(issues, "invalid_mcp_release_evidence");
   if (!validEvidence(providerAudit.vercel?.currentMcpDeploymentRef)) issue(issues, "invalid_mcp_deployment_evidence");
 
   const backup = plan.backup ?? {};
@@ -196,7 +196,7 @@ export function assessCutoverReadiness(plan, options = {}) {
   const blockers = [...validation.issues];
   if (plan?.approvalState !== "APPROVED_FOR_OPERATION") issue(blockers, "owner_approval_missing");
   if (plan?.providerAudit?.evidenceRef === "NOT_VERIFIED") issue(blockers, "provider_audit_not_verified");
-  if (plan?.providerAudit?.heroku?.currentMcpReleaseRef === "NOT_VERIFIED") issue(blockers, "mcp_release_not_verified");
+  if (plan?.providerAudit?.vps?.currentMcpReleaseRef === "NOT_VERIFIED") issue(blockers, "mcp_release_not_verified");
   if (plan?.providerAudit?.vercel?.currentMcpDeploymentRef === "NOT_VERIFIED") issue(blockers, "mcp_deployment_not_verified");
   if (plan?.backup?.status !== "VERIFIED") issue(blockers, "current_backup_not_verified");
   if (plan?.backup?.restoreRehearsalStatus !== "VERIFIED") issue(blockers, "restore_rehearsal_not_verified");

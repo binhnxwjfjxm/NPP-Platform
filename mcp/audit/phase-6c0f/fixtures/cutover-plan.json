@@ -11,16 +11,16 @@
     "evidenceRef": "NOT_VERIFIED",
     "auditedAt": "2026-08-02T02:24:08.000Z",
     "auditedBy": "owner-required",
-    "heroku": {
-      "coreApp": "hung-phat",
-      "mcpApp": "hung-phat-mcp",
-      "autoDeployOff": true,
-      "currentMcpReleaseRef": "NOT_VERIFIED"
-    },
     "vercel": {
       "mcpProject": "mcp-field",
       "autoDeployOff": true,
       "currentMcpDeploymentRef": "NOT_VERIFIED"
+    },
+    "vps": {
+      "companyBackend": "company",
+      "mcpBackend": "mcp",
+      "autoDeployOff": true,
+      "currentMcpReleaseRef": "NOT_VERIFIED"
     }
   },
   "backup": {

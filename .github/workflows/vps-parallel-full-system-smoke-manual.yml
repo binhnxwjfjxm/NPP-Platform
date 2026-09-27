@@ -344,7 +344,6 @@ jobs:
           NODE
           port="$(read_env PORT)"; token="$(read_env BACKEND_API_TOKEN)"; origin="$(read_env CORS_ORIGINS | cut -d, -f1)"; sales_base="$(read_env CORE_SALES_API_BASE_URL)"
           test -n "$port"; test -n "$token"; test -n "$origin"; test -n "$sales_base"
-          ! grep -Fqi 'herokuapp.com' <<<"$sales_base"
           [[ "$sales_base" == https://*":3443" ]]
           base="http://127.0.0.1:$port"
           live="$(curl -sS -o /tmp/npp958-mcp-live.json -w '%{http_code}' "$base/health/live" || true)"
@@ -386,7 +385,7 @@ jobs:
           MCP_CORS=PASS
           MCP_TO_COMPANY_PRODUCTS=PASS
           MCP_PERMISSION_BOUNDARY=PASS
-          MCP_NOT_WIRED_TO_HEROKU=PASS
+          MCP_VPS_WIRING=PASS
           REPORT
 
       - name: MCP business workflow and cleanup smoke
@@ -509,9 +508,7 @@ jobs:
           node --test ../packages/contracts/test/idempotency-source-guard.test.js
           node --test test/a5-5-1-idempotency-caller-contract.test.mjs
           node --test test/production-hygiene.test.mjs
-          node --test test/heroku-root-contract.test.mjs
           node --test test/vps-parallel-private-network-contract.test.mjs
-          node --test ../npp-core/api/test/phase-9-8-three-source-write-smoke.test.js
           node --test ../npp-core/web/test/data-exchange-xlsx-compatibility.test.js
           node --test ../retail/web/test/retail-runtime-contract.test.mjs
           node --test ../delivery/web/test/delivery-location-media.test.mjs
@@ -521,26 +518,6 @@ jobs:
           IMPORT_EXPORT_XLSX_CONTRACT=PASS
           RETAIL_RUNTIME_CONTRACT=PASS
           DELIVERY_RUNTIME_CONTRACT=PASS
-          REPORT
-
-      - name: Verify production providers remain present
-        id: no_cutover
-        continue-on-error: true
-        shell: bash
-        env:
-          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
-        run: |
-          set -euo pipefail
-          test -n "$HEROKU_API_KEY"
-          for app in hung-phat hung-phat-mcp; do
-            status="$(curl -sS -o /dev/null -w '%{http_code}' -H 'Accept: application/vnd.heroku+json; version=3' -H "Authorization: Bearer $HEROKU_API_KEY" "https://api.heroku.com/apps/$app")"
-            test "$status" = 200
-          done
-          cat >> "$REPORT_FILE" <<'REPORT'
-          HEROKU_PRODUCTION_STILL_PRESENT=PASS
-          PRODUCTION_DB_CUTOVER=false
-          PRODUCTION_TRAFFIC_CUTOVER=false
-          PRODUCTION_DNS_CHANGED=false
           REPORT
 
       - name: Publish complete sanitized evidence
@@ -559,11 +536,10 @@ jobs:
           VERCEL: ${{ steps.vercel.outcome }}
           WIRING: ${{ steps.wiring.outcome }}
           CONTRACTS: ${{ steps.contracts.outcome }}
-          NO_CUTOVER: ${{ steps.no_cutover.outcome }}
         run: |
           set -euo pipefail
           overall=PASS
-          for state in "$RELEASES" "$PROXY" "$COMPANY_READS" "$COMPANY_WRITE" "$R2" "$MCP_BOUNDARY" "$MCP_BUSINESS" "$VERCEL" "$WIRING" "$CONTRACTS" "$NO_CUTOVER"; do
+          for state in "$RELEASES" "$PROXY" "$COMPANY_READS" "$COMPANY_WRITE" "$R2" "$MCP_BOUNDARY" "$MCP_BUSINESS" "$VERCEL" "$WIRING" "$CONTRACTS"; do
             [ "$state" = success ] || overall=FAIL
           done
           evidence="$(mktemp)"
@@ -572,7 +548,7 @@ jobs:
             echo
             echo "- Run ID: \`$GITHUB_RUN_ID\`"
             echo "- Exact main SHA: \`$SOURCE_SHA\`"
-            echo '- Không deploy Vercel/Heroku; không cutover DB/DNS/traffic.'
+            echo '- Không deploy production; không cutover DB/DNS/traffic.'
             echo '- Không restart/reconfigure/xóa MCP proxy.'
             echo
             echo '```text'

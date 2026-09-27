@@ -10,5 +10,5 @@ Key invariants:
 - MCP workflow rejects the Core project ID.
 - Both workflows deploy exact `main` only.
 - MCP workflow operates from root directory `mcp`.
-- No Heroku deploy is included.
+- No retired provider deploy is included.
 - No provider or production deployment is executed by this branch.

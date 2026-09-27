@@ -166,7 +166,7 @@ This phase does not:
 - execute a production migration;
 - attach a database to `hung-phat-mcp`;
 - create or alter production roles/grants;
-- deploy Heroku or Vercel;
+- deploy retired provider or Vercel;
 - import Supabase/VPS data;
 - cut existing field-domain handlers over to PostgreSQL;
 - implement the outbox publisher;

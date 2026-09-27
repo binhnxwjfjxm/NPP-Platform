@@ -12,8 +12,7 @@ test("VPS MCP migration 014 gate is exact-main, manual-only and serialized with 
   assert.match(workflow, /group: vps-production-db-migration/);
   assert.match(workflow, /git rev-parse origin\/main/);
   assert.match(workflow, /test \"\$sha\" = \"\$\(git rev-parse origin\/main\)\"/);
-  assert.doesNotMatch(workflow, /HEROKU_API_KEY|hung-phat-mcp|heroku config/);
-});
+  });
 
 test("VPS MCP migration 014 gate proves backup restore rehearsal before production mutation", () => {
   assert.match(workflow, /pg_dump/);

@@ -30,7 +30,6 @@ test("VPS production migrations 140-142 are ordered, gated and rehearse before p
   assert.match(workflow, /PROTECTED_ROWS_UNCHANGED=PASS/);
   assert.match(workflow, /PRODUCTION_RERUN_NOOP=PASS/);
 
-  assert.doesNotMatch(workflow, /HEROKU_/);
   assert.doesNotMatch(workflow, /DATABASE_URL/);
   assert.doesNotMatch(workflow, /postgres(?:ql)?:\/\/[^\s"']+@/i);
 });

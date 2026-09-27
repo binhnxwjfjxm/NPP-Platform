@@ -150,4 +150,4 @@ Still deferred:
 6C.1 customer onboarding bridge
 ```
 
-No Heroku/Vercel setting, production database, migration, deployment or MCP Vercel secret workflow is changed by this phase.
+No retired provider/Vercel setting, production database, migration, deployment or MCP Vercel secret workflow is changed by this phase.

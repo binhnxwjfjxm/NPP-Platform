@@ -197,7 +197,7 @@ Work **đúng trọng tâm, không lan man**. Do not jump to 8.1 before 8.0 is c
 Current architecture remains:
 
 - 5 Vercel frontends;
-- 2 Heroku backends;
+- 2 retired provider backends;
 - 1 shared PostgreSQL installation.
 
 Deployment follows actual diff ownership. Auto Deploy remains OFF.

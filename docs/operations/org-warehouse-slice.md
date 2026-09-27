@@ -229,5 +229,5 @@ Production rollout remains a separate explicit operation and requires:
 - provider configuration audit
 - server-only web-admin credentials
 - confirmed database backup and restore readiness before migration
-- manual Heroku deployment and health checks
+- manual retired provider deployment and health checks
 - separate Vercel production deployment command and route verification

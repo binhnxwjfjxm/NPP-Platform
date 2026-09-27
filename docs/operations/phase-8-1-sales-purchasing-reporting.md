@@ -98,7 +98,7 @@ Source merge does **not** authorize applying 064 on production. Any later produc
 
 This slice does not:
 
-- deploy Vercel or Heroku;
+- deploy Vercel or retired provider;
 - run migration 064 on production;
 - change the production database manually;
 - start Phase 8.2.

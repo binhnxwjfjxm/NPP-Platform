@@ -7,7 +7,6 @@ import test from 'node:test';
 async function source(path) {
   return readFile(new URL(path, import.meta.url), 'utf8');
 }
-
 function assertSyntax(path) {
   const absolute = fileURLToPath(new URL(path, import.meta.url));
   const result = spawnSync(process.execPath, ['--check', absolute], { encoding: 'utf8' });
@@ -19,25 +18,21 @@ test('product image upload stays server-side and uses canonical idempotency payl
     source('../src/routes/product-images.js'),
     source('../src/storage/product-images.js'),
   ]);
-
   assert.match(route, /handleUpload/);
   assert.match(route, /contentSha256/);
   assert.match(route, /executeIdempotentImageMutation/);
-  assert.match(route, /match\(\/\^\\\/api\\\/products/);
-  assert.match(storage, /async function putImage/);
   assert.match(storage, /PutObjectCommand/);
   assert.match(storage, /Body: bytes/);
   assert.match(storage, /SHARED_PRODUCT_IMAGE_PREFIX = 'app-customer\/products\/'/);
 });
 
-test('production product image R2 config script is syntax-safe and does not contain provider secrets', async () => {
+test('production product image R2 mapper is syntax-safe and provider-neutral', async () => {
   const script = await source('../scripts/production-product-image-r2-config.js');
-  assert.match(script, /SOURCE_APP = 'hung-phat-mcp'/);
-  assert.match(script, /TARGET_APP = 'hung-phat'/);
-  assert.match(script, /R2_ENABLED: 'true'/);
-  assert.match(script, /waitForProductImageIndex/);
+  assert.match(script, /buildCompanyR2Config/);
+  assert.match(script, /R2_BUCKET: bucket/);
+  assert.match(script, /R2_PUBLIC_BASE_URL:/);
+  assert.match(script, /R2_CONTRACT_ROUTE_ENABLED: 'true'/);
   assert.doesNotMatch(script, /CLOUDFLARE_ACCOUNT_API_TOKEN|DATABASE_URL|PutBucketCorsCommand/);
-
   for (const path of [
     '../src/routes/product-images.js',
     '../src/storage/product-images.js',

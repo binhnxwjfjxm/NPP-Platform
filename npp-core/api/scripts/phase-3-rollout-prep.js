@@ -53,13 +53,13 @@ async function createReadOnlyAuditReport(databaseUrl) {
 function buildBackupContractFromEnv(env) {
   requireConfirmation(env, 'PHASE_3_BACKUP_CONFIRM', PHASE_3_BACKUP_CONFIRM_VALUE);
   return buildBackupContract({
-    provider: 'Heroku PostgreSQL',
-    appName: env.HEROKU_APP_NAME || env.HEROKU_APP || null,
+    provider: 'VPS PostgreSQL',
+    appName: null,
     backupId: env.PHASE_3_BACKUP_ID || null,
     capturedAt: env.PHASE_3_BACKUP_CAPTURED_AT || null,
     sourceFingerprint: env.PHASE_3_SOURCE_FINGERPRINT || null,
     checksum: env.PHASE_3_BACKUP_CHECKSUM || null,
-    sourceLabel: env.PHASE_3_SOURCE_LABEL || null,
+    sourceLabel: env.PHASE_3_SOURCE_LABEL || env.VPS_DB_HOST || null,
   });
 }
 

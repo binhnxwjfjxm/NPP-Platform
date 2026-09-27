@@ -4,7 +4,7 @@
 > Branch: `agent/phase-4-inventory-contract`  
 > Base audited: `main@2e3638efd6290cfd459a6de93da3b20f916844db`  
 > Scope of this document: source contract, schema proposal, state machines, unresolved business decisions and acceptance-test matrix only.  
-> Explicit exclusions: no production provider call, no production database mutation, no Heroku/Vercel deployment, no Phase 4 migration, no posting service and no UI.
+> Explicit exclusions: no production provider call, no production database mutation, no retired provider/Vercel deployment, no Phase 4 migration, no posting service and no UI.
 
 ## 1. Evidence boundary and repository audit
 

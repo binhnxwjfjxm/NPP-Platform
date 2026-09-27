@@ -7,7 +7,7 @@ Phase: 3.2A + 3.2B + 3.2C
 Status: CLOSED
 Phase 3.2C application source SHA: e7122dc634dac51281727e294218a59819fd8863
 Vercel production: READY
-Heroku backend: READY
+retired provider backend: READY
 Auto Deploy: OFF
 ```
 
@@ -18,7 +18,7 @@ Auto Deploy: OFF
 - Production backend release before Phase 3.2C closeout: `v18`, release ID `c694af5f-aed3-4ccb-9fa7-ffcdfcf0cd78`, deployed from `main` at `12eb33551b9210fa9d1dd7d5e828bf4d611fef18`.
 - Phase 3.2A/3.2B Vercel production deployment ID: `dpl_AmoRj8DMe5z6WYbrPqZTUzbPCTDy`.
 - Vercel Auto Deploy remained OFF after closeout.
-- Heroku Auto Deploy remained OFF after closeout.
+- retired provider Auto Deploy remained OFF after closeout.
 
 ## Backup and restore
 
@@ -33,7 +33,7 @@ Auto Deploy: OFF
 
 ## Smoke results
 
-### Direct Heroku backend
+### Direct retired provider backend
 
 - `/health/live`: `200`
 - `/health/ready`: `200`
@@ -67,7 +67,7 @@ Auto Deploy: OFF
 - Current Vercel production deployment at closeout: `dpl_9q3fdg6A79XcGXngKoqxTMMXKHUw`, source one-shot gate commit `f72f4a42a4358be1b96db8dd59becfbad0c0956c`.
 - No Vercel redeploy occurred during the Phase 3.2C backend/database closeout task.
 - Vercel production gate was re-locked by commit `e5b218b5f057989f00be2ad4cf875188fd111982`.
-- Direct Heroku smoke:
+- Direct retired provider smoke:
   - `/health/live`: `200`
   - `/health/ready`: `200`
   - `GET /api/access/users` with bearer token: `200`
@@ -89,7 +89,7 @@ Auto Deploy: OFF
 - Browser HTML did not expose `CORE_API_SERVER_TOKEN`, `CORE_API_INTERNAL_URL`, `BACKEND_API_TOKEN`, or `DATABASE_URL`.
 - Post-migration backup: `b008`.
 - Vercel Auto Deploy: OFF.
-- Heroku Auto Deploy: OFF.
+- retired provider Auto Deploy: OFF.
 
 ## Security checks
 

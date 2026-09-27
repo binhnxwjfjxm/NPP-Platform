@@ -13,7 +13,7 @@ This slice turns the Phase 6C repository audit into reviewable, machine-readable
 It does not authorize:
 
 - production database access or mutation;
-- Supabase, VPS, Heroku, Vercel or R2 configuration changes;
+- Supabase, VPS, retired provider, Vercel or R2 configuration changes;
 - PostgreSQL `mcp` schema creation;
 - data migration, cutover or shutdown;
 - MCP-to-Core official Sales Order creation;
@@ -33,7 +33,7 @@ The intervening source changes were confined to NPP Core Sales commercial contro
 
 ```text
 5 Vercel frontend projects
-2 Heroku backend services
+2 retired provider backend services
 1 PostgreSQL installation
 ```
 

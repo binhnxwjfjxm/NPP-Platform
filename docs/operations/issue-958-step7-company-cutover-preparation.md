@@ -8,7 +8,7 @@
 
 ## 1. Nguồn quyết định
 
-Issue #958 là quyết định hạ tầng mới hơn và **ưu tiên hơn** các đoạn tài liệu cũ còn ghi Heroku là provider đích.
+Issue #958 là quyết định hạ tầng mới hơn và **ưu tiên hơn** các đoạn tài liệu cũ còn ghi retired provider là provider đích.
 
 Kiến trúc đích của Issue #958:
 
@@ -21,7 +21,7 @@ VPS 2 — Công Ty API
 VPS 3 — proxy hiện có + MCP API
 ```
 
-Heroku hiện vẫn là production cho đến khi Bước 8 được owner ra lệnh rõ ràng. Bước 7 không đổi authority DB, DNS, traffic hoặc provider production.
+retired provider hiện vẫn là production cho đến khi Bước 8 được owner ra lệnh rõ ràng. Bước 7 không đổi authority DB, DNS, traffic hoặc provider production.
 
 ## 2. Evidence đã đạt trước Bước 7
 
@@ -40,7 +40,7 @@ Evidence Bước 6 xác nhận:
 - R2 historical read + temporary write/read/delete PASS;
 - MCP boundary/business workflow PASS nhưng không phải trọng tâm cutover Công Ty;
 - frontend/server wiring liên quan đã được smoke;
-- production Heroku/Vercel vẫn hiện diện;
+- production retired provider/Vercel vẫn hiện diện;
 - `PRODUCTION_DB_CUTOVER=false`;
 - `PRODUCTION_TRAFFIC_CUTOVER=false`;
 - `PRODUCTION_DNS_CHANGED=false`.
@@ -75,13 +75,13 @@ Các mục dưới đây không được coi là PASS chỉ vì rehearsal trư�
 | Công Ty VPS | audit read-only CPU/RAM/disk/service/health | đủ headroom, service/health đúng | thiếu tài nguyên hoặc health fail |
 | PostgreSQL VPS | version/service/disk/firewall/network | healthy, 5432 không public, Công Ty kết nối được | network/firewall/service sai |
 | Migration head | audit migration registry production và target | khớp kế hoạch, không pending không giải thích | drift/pending chưa xử lý |
-| Heroku production | current release + health + DB attachment | xác minh được và đang phục vụ bình thường trước freeze | provider state không rõ |
+| retired provider production | current release + health + DB attachment | xác minh được và đang phục vụ bình thường trước freeze | provider state không rõ |
 | Backup cuối | fresh backup production ngay trước cutover | backup hoàn tất + reference/check xác minh được | backup fail/chưa xác minh |
 | Restore rehearsal | evidence restore + reconciliation gần nhất | PASS và còn phù hợp source/schema | stale/không phù hợp/fail |
 | Công Ty auth/CORS | smoke production contract + VPS target | PASS | fail |
 | R2 | historical read và temporary lifecycle | PASS | fail |
 | Frontend Công Ty wiring | production frontend/server routes biết target theo runbook | xác minh được | env/wiring UNKNOWN |
-| Rollback | previous Heroku state + previous VPS release/config reference | có đường quay lại trước GO write | thiếu rollback evidence |
+| Rollback | previous retired provider state + previous VPS release/config reference | có đường quay lại trước GO write | thiếu rollback evidence |
 
 Chỉ một dòng NO-GO là dừng cutover.
 
@@ -127,7 +127,7 @@ Thứ tự Công Ty:
 1. Chốt `CUTOVER_SHA` và khóa thay đổi source cho cửa sổ.
 2. Chạy read-only audit provider/VPS/DB và exact-head CI.
 3. Bật write-freeze theo cửa sổ owner đã duyệt.
-4. Tạo fresh Heroku PostgreSQL backup và xác minh.
+4. Tạo fresh VPS PostgreSQL backup và xác minh.
 5. Final restore/sync sang PostgreSQL VPS theo workflow được review.
 6. Migration status -> apply phần đã được duyệt nếu có -> rerun no-op -> verify.
 7. Reconciliation dữ liệu trọng yếu Công Ty.
@@ -137,7 +137,7 @@ Thứ tự Công Ty:
 11. Chuyển đường production Công Ty theo cơ chế đã audit (env/DNS/proxy tùy topology thực tế tại thời điểm đó).
 12. Smoke URL production thật: login/auth, khách hàng, sản phẩm/SKU, đơn bán hàng, tồn kho, công nợ, import/export cần thiết, R2.
 13. Chỉ khi smoke PASS mới gỡ write-freeze.
-14. Giữ Heroku/previous release trong thời gian quan sát; không xóa provider cũ trong cùng cutover operation.
+14. Giữ retired provider/previous release trong thời gian quan sát; không xóa provider cũ trong cùng cutover operation.
 
 MCP và các app khác không tự động đi theo bước 9–14 nếu chưa có lệnh riêng.
 
@@ -147,7 +147,7 @@ Rollback phải được quyết định theo thời điểm:
 
 ### Trước khi VPS DB nhận production write
 
-Có thể NO-GO và giữ nguyên Heroku + DB production hiện tại. Đây là rollback an toàn nhất.
+Có thể NO-GO và giữ nguyên retired provider + DB production hiện tại. Đây là rollback an toàn nhất.
 
 ### Sau khi đã chuyển authority nhưng trước khi mở write
 

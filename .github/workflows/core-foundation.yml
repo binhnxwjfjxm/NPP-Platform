@@ -93,12 +93,6 @@ jobs:
       - name: Verify Core web
         run: npm --prefix .. run verify:core-web
 
-      - name: Verify Heroku Core process contract
-        working-directory: .
-        run: |
-          test "$(cat Procfile)" = "web: npm run start:core-api"
-          node --test mcp/test/heroku-root-contract.test.mjs
-
   verify-migration-rehearsal:
     runs-on: ubuntu-latest
     timeout-minutes: 30

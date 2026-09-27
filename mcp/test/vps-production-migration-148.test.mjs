@@ -31,5 +31,4 @@ test('VPS production migration 148 is exact-main, backup-gated and rehearsed', a
   assert.match(runner, /attendance_basis/);
   assert.match(runner, /movement_reason/);
   assert.match(runner, /grant_company_runtime_access/);
-  assert.doesNotMatch(runner, /HEROKU_|DATABASE_URL/);
 });
