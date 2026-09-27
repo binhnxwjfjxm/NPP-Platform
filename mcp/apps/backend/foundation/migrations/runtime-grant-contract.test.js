@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const sql = readFileSync(
-  new URL("./sql/002_mcp_domain_read_models.sql", import.meta.url),
+  new URL("./sql/015_mcp_customer_media_boundary.sql", import.meta.url),
   "utf8"
 );
 
@@ -18,6 +18,7 @@ test("runtime grants are explicit and preserve append-only foundation boundaries
   assert.match(sql, /GRANT INSERT ON TABLE mcp\.audit_events/);
   assert.match(sql, /GRANT INSERT ON TABLE mcp\.outbox_events/);
   assert.match(sql, /GRANT SELECT ON TABLE mcp\.accounts, mcp\.products/);
+  assert.match(sql, /mcp\.customer_addresses, mcp\.customer_media/);
   assert.match(sql, /GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE/);
 
   assert.doesNotMatch(sql, /GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES/);
@@ -26,6 +27,7 @@ test("runtime grants are explicit and preserve append-only foundation boundaries
   assert.doesNotMatch(sql, /GRANT SELECT ON TABLE mcp\.audit_events/);
   assert.doesNotMatch(sql, /GRANT SELECT ON TABLE mcp\.outbox_events/);
   assert.doesNotMatch(sql, /GRANT[^\n]+DELETE[^\n]+mcp\.idempotency_records/);
+  assert.doesNotMatch(sql, /GRANT[^;]+ON TABLE shared\.(customers|customer_media)/);
 });
 
 test("future MCP objects receive no implicit runtime privileges", () => {
