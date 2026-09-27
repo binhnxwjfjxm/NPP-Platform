@@ -43,7 +43,7 @@ function upstreamHeaders(req, context, config) {
   const headers = {};
   for (const [name, value] of Object.entries(req.headers)) {
     if (value === undefined || REQUEST_HEADER_BLOCKLIST.has(name.toLowerCase())) continue;
-    if (name.toLowerCase() === "authorization" && /^Bearer\\s+nppusr\\./i.test(String(value))) continue;
+    if (name.toLowerCase() === "authorization" && /^Bearer\s+nppusr\./i.test(String(value))) continue;
     headers[name] = value;
   }
   Object.assign(headers, forwardedContextHeaders(context));
