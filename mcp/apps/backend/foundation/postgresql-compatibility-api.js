@@ -155,6 +155,13 @@ async function sessionStatus(url, context) {
   });
 }
 
+function normalizedSessionStatus(value) {
+  const status = String(value ?? "").trim().toLowerCase();
+  if (status === "completed" || status === "closed") return "done";
+  if (status === "done" || status === "cancelled") return status;
+  return status || "active";
+}
+
 function emptyMcpDayData(routeId, sessionDate) {
   return {
     sessionOpened: false,
@@ -312,7 +319,7 @@ async function mcpDayData(url, context) {
         routeName: session.route_name || "Tuyến MCP",
         date: dateOnly(session.session_date),
         owner: session.sales || "Sale",
-        status: session.status === "cancelled" ? "cancelled" : "opened",
+        status: normalizedSessionStatus(session.status),
         openedAt: timeOnly(session.created_at)
       },
       kpis: [

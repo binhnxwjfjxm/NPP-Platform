@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { bindProviderPersistence } from "./provider-runtime.js";
 import { handlePostgresqlCompatibilityApi } from "./postgresql-compatibility-api.js";
 
-function persistenceWithRows({ daySession = true } = {}) {
+function persistenceWithRows({ daySession = true, dayStatus = "active" } = {}) {
   const client = {
     async query(sql) {
       if (sql.includes("FROM mcp.products product")) {
@@ -43,7 +43,7 @@ function persistenceWithRows({ daySession = true } = {}) {
             session_date: "2026-08-02",
             sales: "Nhân viên A",
             area: "Quận 5",
-            status: "active",
+            status: dayStatus,
             created_at: "2026-08-02T01:30:00.000Z"
           }] : []
         };
@@ -184,6 +184,7 @@ test("PostgreSQL typed runtime exposes MCP day data using the actual PostgreSQL 
   assert.equal(result.payload.data.sessionOpened, true);
   assert.equal(result.payload.data.run.id, "session-1");
   assert.equal(result.payload.data.run.routeId, "route-1");
+  assert.equal(result.payload.data.run.status, "active");
   assert.equal(result.payload.data.lines.length, 1);
   assert.equal(result.payload.data.lines[0].sessionCustomerId, "session-customer-1");
   assert.equal(result.payload.data.lines[0].visitId, "visit-1");
@@ -191,6 +192,17 @@ test("PostgreSQL typed runtime exposes MCP day data using the actual PostgreSQL 
   assert.equal(result.payload.data.results.length, 1);
   assert.equal(result.payload.data.results[0].sessionCustomerId, "session-customer-1");
   assert.equal(result.payload.data.results[0].hasOrder, true);
+});
+
+test("PostgreSQL MCP day data preserves a completed session as completed", async () => {
+  bindProviderPersistence(persistenceWithRows({ dayStatus: "done" }));
+  const { req, url } = request("/api/mcp-day/data?routeId=route-1&date=2026-08-02");
+  const result = await handlePostgresqlCompatibilityApi(req, url, context);
+
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.payload.data.sessionOpened, true);
+  assert.equal(result.payload.data.run.id, "session-1");
+  assert.equal(result.payload.data.run.status, "done");
 });
 
 test("PostgreSQL typed runtime keeps the canonical empty MCP day contract", async () => {
