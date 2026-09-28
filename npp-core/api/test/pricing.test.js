@@ -168,6 +168,7 @@ test('Pricing service — retail/carton prices are independent and rules resolve
     assert.ok(fallbackResolved.ok, fallbackResolved.message);
     assert.equal(fallbackResolved.resolution.baseUnitPriceMinor, '320000');
     assert.equal(fallbackResolved.resolution.finalUnitPriceMinor, '304000');
+    assert.equal(fallbackResolved.resolution.steps[0].kind, 'RULE');
     assert.equal(fallbackResolved.resolution.steps[0].reason, 'CHANNEL_FIXED_FALLBACK');
     const carton = await pricingService.resolvePrice(pool, {
       installationId: config.installationId,

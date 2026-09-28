@@ -106,5 +106,6 @@ test('đơn bán hàng dùng giá trực tiếp của kênh làm giá gốc khi 
   assert.equal(result.ok, true);
   assert.equal(result.resolution.baseUnitPriceMinor, '320000');
   assert.equal(result.resolution.finalUnitPriceMinor, '304000');
+  assert.equal(result.resolution.steps[0].kind, 'RULE');
   assert.equal(result.resolution.steps[0].reason, 'CHANNEL_FIXED_FALLBACK');
 });

@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Customer, CustomerAddress } from '../../../lib/customer-types';
 import type { Product, ProductVariant } from '../../../lib/product-types';
 import type { Warehouse } from '../../../lib/organization-types';
@@ -532,7 +532,7 @@ const ExistingCustomerPicker = memo(function ExistingCustomerPicker({
 });
 
 type OrderNoteFieldProps = {
-  draftRef: MutableRefObject<string>;
+  draftRef: { current: string };
 };
 
 const OrderNoteField = memo(function OrderNoteField({ draftRef }: OrderNoteFieldProps) {
@@ -917,19 +917,21 @@ export default function SalesOrderCommercialForm(props: Props) {
       setAddresses([]);
       setDeliveryMode('PICKUP');
       setDeliveryExecutionMode(null);
-      if (!['PREPAID', 'COLLECT_ON_DELIVERY'].includes(collectionPolicy)) {
-        setCollectionPolicy('COLLECT_ON_DELIVERY');
-      }
+      setCollectionPolicy((current) => ['PREPAID', 'COLLECT_ON_DELIVERY'].includes(current)
+        ? current
+        : 'COLLECT_ON_DELIVERY');
       return;
     }
     if (!customerId) {
-      if (priceSelectionMode === 'LAST_PURCHASE') setPriceSelectionMode('STANDARD');
+      setPriceSelectionMode((current) => current === 'LAST_PURCHASE' ? 'STANDARD' : current);
       setAddresses([]);
       setAddressId('');
       return;
     }
-    apiRequest<CustomerAddress[]>(`/api/customers/${customerId}/addresses`)
+    const controller = new AbortController();
+    apiRequest<CustomerAddress[]>(`/api/customers/${customerId}/addresses`, { signal: controller.signal })
       .then((rows) => {
+        if (controller.signal.aborted) return;
         const active = rows.filter((item) => item.is_active);
         setAddresses(active);
         setAddressId((current) => current && active.some((item) => item.id === current)
@@ -938,7 +940,10 @@ export default function SalesOrderCommercialForm(props: Props) {
             ? ''
             : active.find((item) => item.is_default)?.id ?? active[0]?.id ?? '');
       })
-      .catch((error) => onError(error instanceof Error ? error.message : 'Không tải được địa chỉ khách hàng'));
+      .catch((error) => {
+        if (!controller.signal.aborted) onError(error instanceof Error ? error.message : 'Không tải được địa chỉ khách hàng');
+      });
+    return () => controller.abort();
   }, [customerId, customerMode, hasVersionDirectDestination, onError]);
 
   useEffect(() => {
