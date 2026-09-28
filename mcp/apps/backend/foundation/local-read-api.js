@@ -1,9 +1,12 @@
 const MCP_SHELL_PATH = "/api/local-read/mcp-shell";
 const MCP_REPORT_HISTORY_PATH = "/api/local-read/mcp-session-reports";
 const MCP_REPORT_DETAIL_PATH = "/api/local-read/mcp-session-report";
+const MCP_FOLLOWUPS_PATH = "/api/local-read/mcp-followups";
 const RECENT_SESSION_DAYS = 45;
 const RECENT_SESSION_LIMIT = 1200;
 const REPORT_HISTORY_LIMIT = 240;
+const FOLLOWUP_HISTORY_DAYS = 45;
+const FOLLOWUP_LIMIT = 500;
 
 function text(value) {
   return String(value ?? "").trim();
@@ -176,6 +179,58 @@ async function readReportHistory(client, installationId) {
   };
 }
 
+async function readFollowups(client, installationId) {
+  const result = await client.query(
+    `SELECT followup.id,
+            followup.session_id,
+            followup.session_customer_id,
+            followup.route_id,
+            COALESCE(session.route_name, route.route_name, '') AS route_name,
+            followup.route_customer_id,
+            followup.customer_id,
+            followup.customer_name,
+            followup.followup_type,
+            followup.title,
+            followup.due_date,
+            followup.status,
+            followup.priority,
+            followup.owner,
+            followup.note,
+            session.session_date,
+            followup.created_at,
+            followup.updated_at
+       FROM mcp.mcp_followups followup
+       LEFT JOIN mcp.mcp_route_sessions session
+         ON session.installation_id = followup.installation_id
+        AND session.id = followup.session_id
+       LEFT JOIN mcp.mcp_routes route
+         ON route.installation_id = followup.installation_id
+        AND route.id = followup.route_id
+      WHERE followup.installation_id = $1
+        AND (
+          COALESCE(lower(followup.status), 'pending') NOT IN
+            ('done', 'completed', 'closed', 'cancelled')
+          OR followup.created_at >= CURRENT_DATE - $2::integer
+        )
+      ORDER BY
+        CASE
+          WHEN COALESCE(lower(followup.status), 'pending') IN
+            ('done', 'completed', 'closed', 'cancelled') THEN 1
+          ELSE 0
+        END ASC,
+        followup.due_date ASC NULLS LAST,
+        followup.updated_at DESC,
+        followup.id DESC
+      LIMIT $3`,
+    [installationId, FOLLOWUP_HISTORY_DAYS, FOLLOWUP_LIMIT]
+  );
+
+  return {
+    days: FOLLOWUP_HISTORY_DAYS,
+    items: result.rows || []
+  };
+}
+
 async function readReportDetail(client, installationId, sessionId) {
   const sessionResult = await client.query(
     `SELECT id, route_id, route_name, session_date, sales, area, status,
@@ -293,7 +348,8 @@ export async function handleLocalReadApi(req, url, context, _config, { persisten
   const supported = new Set([
     MCP_SHELL_PATH,
     MCP_REPORT_HISTORY_PATH,
-    MCP_REPORT_DETAIL_PATH
+    MCP_REPORT_DETAIL_PATH,
+    MCP_FOLLOWUPS_PATH
   ]);
   if (!supported.has(url.pathname)) return null;
   if (!persistence || typeof persistence.assertReady !== "function" || typeof persistence.withTransaction !== "function") {
@@ -308,6 +364,13 @@ export async function handleLocalReadApi(req, url, context, _config, { persisten
   if (url.pathname === MCP_REPORT_HISTORY_PATH) {
     const data = await persistence.withTransaction((client) =>
       readReportHistory(client, installationId)
+    );
+    return { statusCode: 200, payload: { data, receivedAt: new Date().toISOString() } };
+  }
+
+  if (url.pathname === MCP_FOLLOWUPS_PATH) {
+    const data = await persistence.withTransaction((client) =>
+      readFollowups(client, installationId)
     );
     return { statusCode: 200, payload: { data, receivedAt: new Date().toISOString() } };
   }
@@ -337,7 +400,10 @@ export const localReadApiInternals = Object.freeze({
   MCP_SHELL_PATH,
   MCP_REPORT_HISTORY_PATH,
   MCP_REPORT_DETAIL_PATH,
+  MCP_FOLLOWUPS_PATH,
   RECENT_SESSION_DAYS,
   RECENT_SESSION_LIMIT,
-  REPORT_HISTORY_LIMIT
+  REPORT_HISTORY_LIMIT,
+  FOLLOWUP_HISTORY_DAYS,
+  FOLLOWUP_LIMIT
 });
