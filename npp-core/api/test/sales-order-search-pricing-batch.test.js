@@ -121,3 +121,44 @@ test('sales order search batches preview pricing for all visible SKU rows in one
   assert.equal(result.get(VARIANT_B)?.resolution?.resolutionStatus, 'MANUAL_PRICE_REQUIRED');
   assert.equal(result.get(VARIANT_C)?.resolution?.systemUnitPriceMinor, '80000');
 });
+
+test('sales order search dùng giá trực tiếp của đúng kênh làm giá gốc khi SKU chưa có giá nền', async () => {
+  const rows = [
+    candidate(VARIANT_B, {
+      item_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1',
+      price_list_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbc1',
+      price_list_code: 'GROUP-FALLBACK',
+      list_type: 'CUSTOMER_GROUP',
+      priority: 300,
+      stacking_mode: 'EXCLUSIVE',
+      adjustment_type: 'PERCENT_DISCOUNT',
+      amount_minor: null,
+      rate_bps: '500',
+      customer_group_id: CUSTOMER_GROUP_ID,
+    }),
+    candidate(VARIANT_B, {
+      item_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2',
+      price_list_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbc2',
+      price_list_code: 'CHANNEL-FALLBACK',
+      list_type: 'CHANNEL',
+      priority: 200,
+      stacking_mode: 'EXCLUSIVE',
+      adjustment_type: 'FIXED_PRICE',
+      amount_minor: '320000',
+      channel_id: CHANNEL_ID,
+    }),
+  ];
+  const client = { async query() { return { rows }; } };
+
+  const result = await resolveSalesOrderSearchPrices(client, {
+    installationId: 'installation-test',
+    variantIds: [VARIANT_B],
+    priceAt: '2026-09-28T03:00:00.000Z',
+    channelId: CHANNEL_ID,
+    customerGroupId: CUSTOMER_GROUP_ID,
+    customerId: null,
+  });
+
+  assert.equal(result.get(VARIANT_B)?.resolution?.systemUnitPriceMinor, '304000');
+  assert.equal(result.get(VARIANT_B)?.resolution?.finalUnitPriceMinor, '304000');
+});

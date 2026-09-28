@@ -81,8 +81,10 @@ test('sales order wrapper keeps the error callback stable so gateway errors cann
   assert.match(wrapper, /onErrorRef\.current\(message\)/);
   assert.match(wrapper, /\}, \[\]\);/);
   assert.doesNotMatch(wrapper, /const handleError = \(message: string\) =>/);
-  assert.match(form, /apiRequest<CustomerAddress\[]>\(`\/api\/customers\/\$\{customerId\}\/addresses`\)/);
-  assert.match(form, /\[collectionPolicy, customerId, customerMode, hasVersionDirectDestination, onError, priceSelectionMode\]/);
+  assert.match(form, /apiRequest<CustomerAddress\[]>\(`\/api\/customers\/\$\{customerId\}\/addresses`, \{ signal: controller\.signal \}\)/);
+  assert.match(form, /return \(\) => controller\.abort\(\)/);
+  assert.match(form, /\[customerId, customerMode, hasVersionDirectDestination, onError\]/);
+  assert.doesNotMatch(form, /\[collectionPolicy, customerId, customerMode, hasVersionDirectDestination, onError, priceSelectionMode\]/);
 });
 
 test('sales order preview makes product name primary and removes SKU text from the commercial line preview', async () => {

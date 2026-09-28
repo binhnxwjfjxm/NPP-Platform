@@ -1,4 +1,5 @@
 import * as repo from '../db/repositories/pricing.js';
+import { pricingStartStep, selectPricingStart } from './pricing-start.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CODE_PATTERN = /^[A-Z0-9_-]{1,64}$/;
@@ -406,14 +407,11 @@ export async function resolvePrice(client, { installationId, payload }) {
     installationId, variantId, currencyCode, priceAt: at.value, quantity: quantity.value,
     channelId, customerGroupId, customerId,
   });
-  const base = candidates.find((row) => row.list_type === 'BASE' && row.adjustment_type === 'FIXED_PRICE');
-  if (!base) return invalid('BASE_PRICE_NOT_FOUND', 'No active base price is available for this SKU and currency');
+  const start = selectPricingStart(candidates);
+  if (!start) return invalid('BASE_PRICE_NOT_FOUND', 'No active base or direct channel price is available for this SKU and currency');
+  const base = start.candidate;
   let current = BigInt(base.amount_minor);
-  const steps = [{
-    kind: 'BASE', priceListId: base.price_list_id, priceListCode: base.price_list_code,
-    itemId: base.item_id, adjustmentType: base.adjustment_type,
-    beforeUnitPriceMinor: null, afterUnitPriceMinor: current.toString(),
-  }];
+  const steps = [pricingStartStep(start)];
   const manual = amountMinor(payload.manualUnitPriceMinor, { optional: true, field: 'manualUnitPriceMinor' });
   if (!manual.ok) return manual;
   if (manual.value !== null) {
@@ -430,7 +428,14 @@ export async function resolvePrice(client, { installationId, payload }) {
   }
   let exclusiveApplied = false;
   for (const candidate of candidates) {
-    if (candidate.item_id === base.item_id || candidate.list_type === 'BASE') continue;
+    if (candidate.item_id === base.item_id) {
+      if (start.source === 'CHANNEL_FIXED_FALLBACK') {
+        if (candidate.stacking_mode === 'EXCLUSIVE') exclusiveApplied = true;
+        if (candidate.stop_processing) break;
+      }
+      continue;
+    }
+    if (candidate.list_type === 'BASE') continue;
     if (candidate.stacking_mode === 'EXCLUSIVE' && exclusiveApplied) {
       steps.push({ kind: 'SKIPPED', reason: 'LOWER_PRIORITY_EXCLUSIVE', priceListId: candidate.price_list_id, priceListCode: candidate.price_list_code, itemId: candidate.item_id });
       continue;
