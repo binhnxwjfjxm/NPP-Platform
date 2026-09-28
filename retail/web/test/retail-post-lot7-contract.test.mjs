@@ -49,14 +49,35 @@ test('thiếu Khả dụng được cảnh báo và chặn Chốt hoặc Xuất 
   assert.doesNotMatch(page, /return row\?\.availableQuantity \?\?/);
 });
 
-test('xóa dòng giỏ rõ ràng, số lượng về 0 xóa dòng và không seed lại từ bản nháp cũ', async () => {
+test('chỉnh số lượng trên mobile không được tự xóa sản phẩm khi ô nhập rỗng tạm thời', async () => {
   const page = await readWorkspace();
-  assert.match(page, /function removeCartLine/);
-  assert.match(page, /if \(normalized === '0'\) \{\s*removeCartLine\(id\);\s*return;\s*\}/);
+  assert.match(page, /const \[quantityInputs, setQuantityInputs\] = useState<Record<string, string>>\(\{\}\)/);
+  const edit = page.slice(page.indexOf('function updateCartQuantity'), page.indexOf('function setMultiSelectMode'));
+  assert.match(edit, /if \(!raw\)\s*return;/);
+  assert.match(edit, /if \(normalized === '0'\)\s*return;/);
+  assert.doesNotMatch(edit, /removeCartLine\(id\)/);
+  assert.match(page, /value=\{quantityInputs\[line\.id\] \?\? line\.quantity\}/);
+  assert.match(page, /onBlur=\{\(\) => clearQuantityInput\(line\.id\)\}/);
+  assert.match(page, /function stepCartQuantity/);
   assert.match(page, /aria-label={`Xóa \$\{line\.productName\} khỏi đơn`}/);
   assert.match(page, />Xóa<\/button>/);
   const addSelected = page.slice(page.indexOf('function addSelected()'), page.indexOf('function assertStockGate'));
   assert.doesNotMatch(addSelected, /cartFromOrder\(order\)/);
+});
+
+test('giỏ đang sửa rỗng không giữ tiền cũ và không cho Thanh toán', async () => {
+  const page = await readWorkspace();
+  assert.match(page, /const totalLabel = editingDraft[\s\S]*?money\.format\(cart\.length \? \(syncedDraft \? total : cartTotal\) : 0\)/);
+  assert.match(page, /const subtotalLabel = editingDraft[\s\S]*?money\.format\(cart\.length \? \(syncedDraft \? Number\(order\?\.subtotal \?\? total\) : cartTotal\) : 0\)/);
+  assert.match(page, /const discountDisplayLabel = editingDraft && !cart\.length[\s\S]*?money\.format\(0\)/);
+  assert.match(page, /\(editingDraft && !cart\.length\) \|\| stockBlocked \|\| stockGatePending/);
+});
+
+test('card sản phẩm mobile giữ kích thước gọn và ô số lượng không kích hoạt zoom iPhone', async () => {
+  const css = await read('app/retail-issue675.css');
+  assert.match(css, /\.retail-issue675 \.compact-product-card \{[\s\S]*?min-height: 0;[\s\S]*?align-items: start;/);
+  assert.match(css, /\.compact-product-card \.quantity-stepper input \{ width: 42px; font-size: 16px; \}/);
+  assert.match(css, /\.compact-product-card\.editable dl \{[\s\S]*?grid-template-columns: repeat\(2,minmax\(0,1fr\)\)/);
 });
 
 test('điều hướng Retail đưa Tồn kho xuống bottom nav và bỏ thanh chuyển chế độ phía trên', async () => {

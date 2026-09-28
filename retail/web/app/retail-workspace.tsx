@@ -386,6 +386,7 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
     const [orderVisibleCount, setOrderVisibleCount] = useState(ORDER_VISIBLE_STEP);
     const [order, setOrder] = useState<Order | null>(null);
     const [cart, setCart] = useState<CartLine[]>([]);
+    const [quantityInputs, setQuantityInputs] = useState<Record<string, string>>({});
     const [available, setAvailable] = useState<Availability[]>([]);
     const [availabilityLoading, setAvailabilityLoading] = useState(false);
     const [open, setOpen] = useState(false);
@@ -936,13 +937,20 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
     const total = order ? Number(order.total || 0) : 0;
     const cartTotal = cart.reduce((sum, line) => sum + effectiveLineTotal(line), 0);
     const syncedDraft = Boolean(order?.status === 'draft' && lastDraftFingerprint.current);
-    const totalLabel = cart.length ? money.format(syncedDraft ? total : (cartTotal || total)) : money.format(total);
+    const totalLabel = editingDraft
+        ? money.format(cart.length ? (syncedDraft ? total : cartTotal) : 0)
+        : money.format(total);
+    const subtotalLabel = editingDraft
+        ? money.format(cart.length ? (syncedDraft ? Number(order?.subtotal ?? total) : cartTotal) : 0)
+        : money.format(Number(order?.subtotal ?? total));
     const discountTotal = Number(order?.discountTotal ?? 0);
-    const discountDisplayLabel = syncedDraft || !editingDraft
-        ? money.format(discountTotal)
-        : documentDiscountMode === 'PERCENT' && Number(documentDiscountValue) > 0
-            ? `${documentDiscountValue}%`
-            : money.format(Number(documentDiscountValue || 0));
+    const discountDisplayLabel = editingDraft && !cart.length
+        ? money.format(0)
+        : syncedDraft || !editingDraft
+            ? money.format(discountTotal)
+            : documentDiscountMode === 'PERCENT' && Number(documentDiscountValue) > 0
+                ? `${documentDiscountValue}%`
+                : money.format(Number(documentDiscountValue || 0));
     const currentCustomerName = customerMode === 'EXISTING' ? customerName : 'Khách lẻ';
     const selectedWarehouseName = boot?.warehouses.find((warehouse) => warehouse.id === warehouseId)?.name ?? 'Chọn kho';
     const customerOptions = customerSearch.trim().length >= 2 ? customerResults : (boot?.recentCustomers ?? []);
@@ -984,19 +992,39 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
         : stockGatePending ? 'Đang kiểm tra Khả dụng trước khi xử lý.' : null;
     const visiblePrintFields = new Set(printTemplate?.visibleFieldKeys ?? ['line_no', 'line_item', 'line_quantity', 'line_unit_price', 'line_total', 'total_total']);
     const printOrder = printSourceOrder ?? order;
+    function clearQuantityInput(id: string) {
+        setQuantityInputs((current) => {
+            if (!(id in current))
+                return current;
+            const next = { ...current };
+            delete next[id];
+            return next;
+        });
+    }
     function removeCartLine(id: string) {
         lastDraftFingerprint.current = '';
+        clearQuantityInput(id);
         setSelected((current) => { const next = new Map(current); next.delete(id); return next; });
         setManualPrices((current) => { const next = { ...current }; delete next[id]; return next; });
         setPriceFailures((current) => { if (!current[id]) return current; const next = { ...current }; delete next[id]; return next; });
         setCart((rows) => rows.filter((row) => row.id !== id));
     }
     function updateCartQuantity(id: string, value: string, fractional: boolean | null) {
-        const normalized = normalizedQuantity(value, fractional);
-        if (normalized === '0') {
-            removeCartLine(id);
+        const raw = String(value ?? '').trim().replace(',', '.');
+        setQuantityInputs((current) => ({ ...current, [id]: raw }));
+        if (!raw)
             return;
-        }
+        const normalized = normalizedQuantity(raw, fractional);
+        if (normalized === '0')
+            return;
+        lastDraftFingerprint.current = '';
+        setCart((rows) => rows.map((row) => row.id === id ? { ...row, quantity: normalized } : row));
+    }
+    function stepCartQuantity(id: string, value: string, fractional: boolean | null) {
+        const normalized = normalizedQuantity(value, fractional);
+        clearQuantityInput(id);
+        if (normalized === '0')
+            return;
         lastDraftFingerprint.current = '';
         setCart((rows) => rows.map((row) => row.id === id ? { ...row, quantity: normalized } : row));
     }
@@ -1126,6 +1154,7 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
             const next = await api<Order>(`/api/retail/orders/${order.id}/pickup-edit`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': keyFor('pickup-edit', fingerprint) }, body: JSON.stringify(orderPayload(order.revision)) });
             setOrder(next);
             setCart([]);
+            setQuantityInputs({});
             setPrices({});
             setPriceFailures({});
             setManualPrices({});
@@ -1168,6 +1197,7 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
             setOrder(next);
             if (kind === 'confirm') {
                 setCart([]);
+                setQuantityInputs({});
                 setManualPrices({});
             }
             if (kind === 'issue-stock')
@@ -1287,6 +1317,7 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
             setDocumentDiscountReason(next.documentDiscountReason ?? '');
             setPolicy(next.collectionPolicy);
             setCart(next.status === 'draft' ? cartFromOrder(next) : []);
+            setQuantityInputs({});
             setPrices({});
             setPriceFailures({});
             setManualPrices(next.status === 'draft' ? manualPricesFromOrder(next) : {});
@@ -1299,8 +1330,8 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
         }
     }
     function beginPickupEdit() { if (!order)
-        return; setCart(cartFromOrder(order)); setManualPrices(manualPricesFromOrder(order)); setCustomerMode(order.customerMode); setCustomerId(order.customerId); setCustomerName(order.customerMode === 'EXISTING' ? order.customerName : 'Khách lẻ'); setWarehouseId(order.warehouseId); setPolicy(order.collectionPolicy); setNote(order.note ?? ''); setDocumentDiscountMode(order.documentDiscountMode ?? 'NONE'); setDocumentDiscountValue(order.documentDiscountValue ?? '0'); setDocumentDiscountReason(order.documentDiscountReason ?? ''); setEditPickup(true); setNotice('Có thể sửa đơn đến trước khi xuất kho.'); }
-    function resetEntry() { setOrder(null); setCart([]); setPrices({}); setPriceFailures({}); setManualPrices({}); setEditPickup(false); setAvailable([]); setCustomerMode('WALK_IN'); setCustomerId(''); setCustomerName('Khách lẻ'); setNote(''); setDocumentDiscountMode('NONE'); setDocumentDiscountValue('0'); setDocumentDiscountReason(''); setNotice(null); setError(null); setActiveTab('entry'); lastDraftFingerprint.current = ''; }
+        return; setCart(cartFromOrder(order)); setQuantityInputs({}); setManualPrices(manualPricesFromOrder(order)); setCustomerMode(order.customerMode); setCustomerId(order.customerId); setCustomerName(order.customerMode === 'EXISTING' ? order.customerName : 'Khách lẻ'); setWarehouseId(order.warehouseId); setPolicy(order.collectionPolicy); setNote(order.note ?? ''); setDocumentDiscountMode(order.documentDiscountMode ?? 'NONE'); setDocumentDiscountValue(order.documentDiscountValue ?? '0'); setDocumentDiscountReason(order.documentDiscountReason ?? ''); setEditPickup(true); setNotice('Có thể sửa đơn đến trước khi xuất kho.'); }
+    function resetEntry() { setOrder(null); setCart([]); setQuantityInputs({}); setPrices({}); setPriceFailures({}); setManualPrices({}); setEditPickup(false); setAvailable([]); setCustomerMode('WALK_IN'); setCustomerId(''); setCustomerName('Khách lẻ'); setNote(''); setDocumentDiscountMode('NONE'); setDocumentDiscountValue('0'); setDocumentDiscountReason(''); setNotice(null); setError(null); setActiveTab('entry'); lastDraftFingerprint.current = ''; }
     function applyTemplate(template: PrintTemplate) {
         setPrintTemplate(template);
         setTemplateHeading(template.heading ?? '');
@@ -1661,13 +1692,13 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
                 const preview = prices[line.id]?.inputKey === inputKey ? prices[line.id] : null;
                 const priceFailure = priceFailures[line.id]?.inputKey === inputKey ? priceFailures[line.id] : null;
                 const manualPrice = manualPriceFor(line.id);
-                return <article className={`cart-row editable compact-product-card ${isShortage(availability, line.quantity) ? 'stock-shortage' : ''}`} key={line.id}>{productPicture(line.imageKey ?? line.productCode, line.productName)}<div className="line-main"><strong>{line.productName}</strong><span>SKU: {line.sku}</span><em>{displayUnit(line.unitName, line.unitCode)}</em><small>Khả dụng {order ? availabilityLabel(availability, availabilityLoading) : 'Đang chuẩn bị'}</small>{isShortage(availability, line.quantity) ? <small className="shortage-text">Cần {formatQuantity(line.quantity)} · hiện có {availabilityLabel(availability)}</small> : null}</div><div className="quantity-stepper"><button type="button" aria-label={`Giảm ${line.productName}`} onClick={() => updateCartQuantity(line.id, String(Number(line.quantity) - 1), line.allowsFractional)}>−</button><input inputMode="decimal" aria-label={`Nhập số lượng ${line.productName}`} value={line.quantity} onChange={(event) => updateCartQuantity(line.id, event.target.value, line.allowsFractional)}/><button type="button" aria-label={`Tăng ${line.productName}`} onClick={() => updateCartQuantity(line.id, String(Number(line.quantity) + 1), line.allowsFractional)}>+</button></div><dl><div><dt>Đơn giá</dt><dd>{canPriceOverride ? <><input inputMode="numeric" aria-label={`Đơn giá ${line.sku}`} value={manualPrice || preview?.finalUnitPriceMinor || ''} placeholder={priceFailure ? 'Nhập giá' : 'Nhập giá'} onFocus={(event) => event.currentTarget.select()} onChange={(event) => { lastDraftFingerprint.current = ''; setManualPrices((current) => ({ ...current, [line.id]: normalizeVndInput(event.target.value) })); }}/>{manualPrice ? <small>Giá đã sửa</small> : priceFailure ? <small>Chưa có giá Công Ty</small> : null}</> : preview ? money.format(Number(preview.finalUnitPriceMinor)) : priceFailure ? 'Chưa có giá' : 'Đang tính'}</dd></div><div><dt>Thành tiền</dt><dd>{preview || manualPrice ? money.format(effectiveLineTotal(line)) : '—'}</dd></div></dl><button className="remove-line" type="button" aria-label={`Xóa ${line.productName} khỏi đơn`} onClick={() => removeCartLine(line.id)}>Xóa</button></article>;
+                return <article className={`cart-row editable compact-product-card ${isShortage(availability, line.quantity) ? 'stock-shortage' : ''}`} key={line.id}>{productPicture(line.imageKey ?? line.productCode, line.productName)}<div className="line-main"><strong>{line.productName}</strong><span>SKU: {line.sku}</span><em>{displayUnit(line.unitName, line.unitCode)}</em><small>Khả dụng {order ? availabilityLabel(availability, availabilityLoading) : 'Đang chuẩn bị'}</small>{isShortage(availability, line.quantity) ? <small className="shortage-text">Cần {formatQuantity(line.quantity)} · hiện có {availabilityLabel(availability)}</small> : null}</div><div className="quantity-stepper"><button type="button" aria-label={`Giảm ${line.productName}`} onClick={() => stepCartQuantity(line.id, String(Number(line.quantity) - 1), line.allowsFractional)}>−</button><input inputMode="decimal" aria-label={`Nhập số lượng ${line.productName}`} value={quantityInputs[line.id] ?? line.quantity} onFocus={(event) => event.currentTarget.select()} onChange={(event) => updateCartQuantity(line.id, event.target.value, line.allowsFractional)} onBlur={() => clearQuantityInput(line.id)}/><button type="button" aria-label={`Tăng ${line.productName}`} onClick={() => stepCartQuantity(line.id, String(Number(line.quantity) + 1), line.allowsFractional)}>+</button></div><dl><div><dt>Đơn giá</dt><dd>{canPriceOverride ? <><input inputMode="numeric" aria-label={`Đơn giá ${line.sku}`} value={manualPrice || preview?.finalUnitPriceMinor || ''} placeholder={priceFailure ? 'Nhập giá' : 'Nhập giá'} onFocus={(event) => event.currentTarget.select()} onChange={(event) => { lastDraftFingerprint.current = ''; setManualPrices((current) => ({ ...current, [line.id]: normalizeVndInput(event.target.value) })); }}/>{manualPrice ? <small>Giá đã sửa</small> : priceFailure ? <small>Chưa có giá Công Ty</small> : null}</> : preview ? money.format(Number(preview.finalUnitPriceMinor)) : priceFailure ? 'Chưa có giá' : 'Đang tính'}</dd></div><div><dt>Thành tiền</dt><dd>{preview || manualPrice ? money.format(effectiveLineTotal(line)) : '—'}</dd></div></dl><button className="remove-line" type="button" aria-label={`Xóa ${line.productName} khỏi đơn`} onClick={() => removeCartLine(line.id)}>Xóa</button></article>;
             })}
           {editingDraft && !cart.length ? <p className="empty-cart">Chưa có sản phẩm. Chọn sản phẩm để tiếp tục.</p> : null}
         </div>
         <footer className="order-total lot7-total pos-order-total">
           <button className="pos-promotion-row" type="button" disabled={!cart.length} onClick={() => setPriceDetailsOpen(true)}><span aria-hidden="true">🎁</span><strong>Khuyến mãi</strong><em>{promotionCount > 0 ? `${promotionCount} đang áp dụng` : 'Tự động theo chính sách'}</em><b aria-hidden="true">›</b></button>
-          <div><span>Tổng tiền hàng</span><strong>{cart.length ? money.format(cartTotal || total) : money.format(Number(order?.subtotal ?? total))}</strong></div>
+          <div><span>Tổng tiền hàng</span><strong>{subtotalLabel}</strong></div>
           <div><span>Chiết khấu</span><strong>{discountDisplayLabel}</strong></div>
           <div className="grand-total"><span>Tạm tính</span><strong>{totalLabel}</strong></div>
         </footer>
@@ -1676,7 +1707,7 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
         {editPickup ? <button className="primary-action" type="button" disabled={busy !== null || stockBlocked || stockGatePending || !cart.length} onClick={() => void savePickupEdit()}>{busy === 'save' ? 'Đang lưu…' : 'Lưu thay đổi'}</button> : order ? <>
           {canEditPickup ? <button className="secondary-action" type="button" disabled={busy !== null} onClick={beginPickupEdit}>Sửa đơn</button> : null}
           <button className="secondary-action" type="button" onClick={() => void openPrintPreview()}>In phiếu</button>
-          <button className="primary-action pos-checkout-action" type="button" disabled={busy !== null || order.status === 'cancelled' || (order.status === 'closed' && order.settlementStatus === 'paid') || stockBlocked || stockGatePending} onClick={() => void checkout()}>{busy === 'checkout' ? 'Đang xử lý…' : order.status === 'cancelled' ? 'Đơn đã hủy' : order.status === 'closed' && order.settlementStatus === 'paid' ? 'Đã thanh toán' : 'Thanh toán'}</button>
+          <button className="primary-action pos-checkout-action" type="button" disabled={busy !== null || order.status === 'cancelled' || (order.status === 'closed' && order.settlementStatus === 'paid') || (editingDraft && !cart.length) || stockBlocked || stockGatePending} onClick={() => void checkout()}>{busy === 'checkout' ? 'Đang xử lý…' : order.status === 'cancelled' ? 'Đơn đã hủy' : order.status === 'closed' && order.settlementStatus === 'paid' ? 'Đã thanh toán' : 'Thanh toán'}</button>
         </> : cart.length ? <button className="primary-action pos-checkout-action" type="button" disabled>Đang chuẩn bị đơn…</button> : <button className="primary-action pos-checkout-action" type="button" disabled>Thanh toán</button>}
       </section>
     </> : null}

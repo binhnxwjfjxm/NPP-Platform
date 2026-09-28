@@ -87,7 +87,8 @@
 .retail-issue675 .cart-list { gap: 7px; }
 .retail-issue675 .compact-product-card {
   grid-template-columns: 66px minmax(0,1fr) auto;
-  min-height: 88px;
+  min-height: 0;
+  align-items: start;
   border-radius: 14px;
   padding: 9px 11px;
   box-shadow: 0 3px 12px rgba(20,60,37,.04);
@@ -123,8 +124,15 @@
 .retail-issue675 .line-main em,
 .retail-issue675 .line-main small { font-size: 11px; line-height: 1.35; }
 .retail-issue675 .compact-product-card .quantity-stepper { grid-template-columns: 34px 42px 34px; min-height: 36px; border-radius: 11px; }
-.retail-issue675 .compact-product-card .quantity-stepper input { width: 42px; font-size: 14px; }
+.retail-issue675 .compact-product-card .quantity-stepper input { width: 42px; font-size: 16px; }
 .retail-issue675 .compact-product-card dl { min-width: 145px; }
+.retail-issue675 .compact-product-card.editable dl {
+  grid-column: 2 / -1;
+  grid-template-columns: repeat(2,minmax(0,1fr));
+  gap: 5px 10px;
+  text-align: left;
+}
+.retail-issue675 .compact-product-card.editable dl div { gap: 2px; }
 .retail-issue675 .compact-product-card dl dt { font-size: 10px; }
 .retail-issue675 .compact-product-card dl dd,
 .retail-issue675 .compact-product-card dl div:last-child dd { font-size: 13px; line-height: 1.25; }
