@@ -144,6 +144,31 @@ test('Pricing service — retail/carton prices are independent and rules resolve
     assert.equal(resolved.resolution.steps.filter((step) => step.kind === 'RULE').length, 2);
     assert.ok(resolved.resolution.steps.some((step) => step.kind === 'SKIPPED' && step.priceListCode === channelList.code));
 
+    const fallbackSuffix = randomUUID().slice(0, 8).toUpperCase();
+    const fallbackCatalog = await createCatalog(pool, config.installationId, fallbackSuffix);
+    await createItem(pool, config.installationId, channelList.id, {
+      variantId: fallbackCatalog.base.id,
+      adjustmentType: 'FIXED_PRICE',
+      amountMinor: '320000',
+    });
+    await createItem(pool, config.installationId, groupList.id, {
+      variantId: fallbackCatalog.base.id,
+      adjustmentType: 'PERCENT_DISCOUNT',
+      rateBps: 500,
+    });
+    const fallbackResolved = await pricingService.resolvePrice(pool, {
+      installationId: config.installationId,
+      payload: {
+        variantId: fallbackCatalog.base.id,
+        quantity: '1',
+        channelId: channel.channel.id,
+        customerId: customerContext.customer.id,
+      },
+    });
+    assert.ok(fallbackResolved.ok, fallbackResolved.message);
+    assert.equal(fallbackResolved.resolution.baseUnitPriceMinor, '320000');
+    assert.equal(fallbackResolved.resolution.finalUnitPriceMinor, '304000');
+    assert.equal(fallbackResolved.resolution.steps[0].reason, 'CHANNEL_FIXED_FALLBACK');
     const carton = await pricingService.resolvePrice(pool, {
       installationId: config.installationId,
       payload: { variantId: catalog.carton.id, quantity: '1' },

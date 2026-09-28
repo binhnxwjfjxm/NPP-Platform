@@ -1,4 +1,5 @@
 import * as repository from '../db/repositories/sales-order-search-pricing.js';
+import { selectPricingStart } from './pricing-start.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_PREVIEW_VARIANTS = 50;
@@ -20,24 +21,30 @@ function applyAdjustment(current, candidate) {
 }
 
 function resolveCandidatePrice(candidates) {
-  const base = candidates.find(
-    (row) => row.list_type === 'BASE' && row.adjustment_type === 'FIXED_PRICE',
-  );
-  if (!base) {
+  const start = selectPricingStart(candidates);
+  if (!start) {
     return Object.freeze({
       ok: true,
       resolution: Object.freeze({
         resolutionStatus: 'MANUAL_PRICE_REQUIRED',
         code: 'BASE_PRICE_NOT_FOUND',
-        message: 'Chưa có giá Công Ty. Nhập giá bán theo quyền được cấp để tiếp tục.',
+        message: 'Chưa có giá Công Ty hoặc giá trực tiếp theo kênh đang chọn.',
       }),
     });
   }
 
+  const base = start.candidate;
   let current = BigInt(base.amount_minor);
   let exclusiveApplied = false;
   for (const candidate of candidates) {
-    if (candidate.item_id === base.item_id || candidate.list_type === 'BASE') continue;
+    if (candidate.item_id === base.item_id) {
+      if (start.source === 'CHANNEL_FIXED_FALLBACK') {
+        if (candidate.stacking_mode === 'EXCLUSIVE') exclusiveApplied = true;
+        if (candidate.stop_processing) break;
+      }
+      continue;
+    }
+    if (candidate.list_type === 'BASE') continue;
     if (candidate.stacking_mode === 'EXCLUSIVE' && exclusiveApplied) continue;
     current = applyAdjustment(current, candidate);
     if (candidate.stacking_mode === 'EXCLUSIVE') exclusiveApplied = true;

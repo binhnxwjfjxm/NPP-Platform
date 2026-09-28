@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import type { Customer, CustomerAddress } from '../../../lib/customer-types';
 import type { Product, ProductVariant } from '../../../lib/product-types';
 import type { Warehouse } from '../../../lib/organization-types';
@@ -467,6 +467,88 @@ function lastPurchaseFallbackChannelId(
   return settings?.salesChannels.find((channel) => channel.code === 'GT')?.id ?? '';
 }
 
+type ExistingCustomerPickerProps = {
+  customers: Customer[];
+  selectedCustomer: Customer | null;
+  onSelect: (customerId: string) => void;
+};
+
+const ExistingCustomerPicker = memo(function ExistingCustomerPicker({
+  customers,
+  selectedCustomer,
+  onSelect,
+}: ExistingCustomerPickerProps) {
+  const [search, setSearch] = useState('');
+  const activeCustomers = useMemo(() => customers
+    .filter((item) => item.is_active)
+    .filter((item) => {
+      const term = search.trim().toLocaleLowerCase('vi');
+      return !term || [item.code, item.name, item.phone]
+        .filter(Boolean)
+        .some((value) => String(value).toLocaleLowerCase('vi').includes(term));
+    })
+    .sort((left, right) => left.name.localeCompare(right.name, 'vi') || left.code.localeCompare(right.code)), [customers, search]);
+
+  return (
+    <label className={styles.customerField}>
+      <span>Khách hàng *</span>
+      <div className={styles.productSearchBox}>
+        <input
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Tìm tên, mã hoặc số điện thoại"
+          autoComplete="off"
+          data-testid="sales-customer-search-input"
+        />
+        {search.trim() && activeCustomers.length > 0 ? (
+          <div className={styles.skuResults} role="listbox" aria-label="Kết quả tìm khách hàng" data-testid="sales-customer-results">
+            {activeCustomers.slice(0, SEARCH_PAGE_SIZE).map((item) => (
+              <button
+                type="button"
+                key={item.id}
+                className={styles.skuResult}
+                aria-label={`Chọn ${item.name} · ${customerGroupLabel(item)}`}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => {
+                  setSearch('');
+                  onSelect(item.id);
+                }}
+              >
+                <div><span>{item.name}</span><strong>{item.code}</strong><small>{item.phone || 'Không có số điện thoại'}</small></div>
+                <div><span style={{ color: '#66766f', opacity: 0.72, fontSize: '.74rem', fontWeight: 700 }}>{customerGroupLabel(item)}</span></div>
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
+      {selectedCustomer ? (
+        <div className={styles.walkInNotice} data-testid="sales-selected-customer">
+          <strong>{selectedCustomer.name}</strong>
+          <span>{selectedCustomer.code} · {selectedCustomer.phone || 'Không có số điện thoại'}</span>
+        </div>
+      ) : null}
+    </label>
+  );
+});
+
+type OrderNoteFieldProps = {
+  draftRef: MutableRefObject<string>;
+};
+
+const OrderNoteField = memo(function OrderNoteField({ draftRef }: OrderNoteFieldProps) {
+  return (
+    <label className={styles.noteField}>
+      <span>Ghi chú</span>
+      <textarea
+        rows={2}
+        defaultValue={draftRef.current}
+        onChange={(event) => {
+          draftRef.current = event.currentTarget.value;
+        }}
+      />
+    </label>
+  );
+});
 export default function SalesOrderCommercialForm(props: Props) {
   const { version, onClose, onError } = props;
   const initialWalkIn = version?.customerMode === 'WALK_IN';
@@ -479,7 +561,6 @@ export default function SalesOrderCommercialForm(props: Props) {
   const [customerMode, setCustomerMode] = useState<SalesOrderCustomerMode>(initialWalkIn ? 'WALK_IN' : 'EXISTING');
   const [customerRows, setCustomerRows] = useState(props.customers);
   const [customerId, setCustomerId] = useState(initialWalkIn ? '' : (version?.customerId ?? ''));
-  const [customerSearch, setCustomerSearch] = useState('');
   const [walkInDisplayName, setWalkInDisplayName] = useState(version?.walkInDisplayName ?? '');
   const [walkInPhone, setWalkInPhone] = useState(version?.walkInPhone ?? '');
   const [addressId, setAddressId] = useState(version?.customerAddressId ?? '');
@@ -497,7 +578,7 @@ export default function SalesOrderCommercialForm(props: Props) {
   const [requestedDeliveryDate, setRequestedDeliveryDate] = useState(version?.requestedDeliveryDate ?? '');
   const noteInitialRef = useRef(version?.note ?? '');
   const noteDraftRef = useRef(version?.note ?? '');
-  const noteMutationKeyRotatedRef = useRef(false);
+  const noteAttemptValueRef = useRef((version?.note ?? '').trim());
   const [showMore, setShowMore] = useState(Boolean(version?.note));
   const [lines, setLines] = useState<LineDraft[]>(versionLines(version));
   const [expandedLineId, setExpandedLineId] = useState<string | null>(null);
@@ -545,15 +626,6 @@ export default function SalesOrderCommercialForm(props: Props) {
   const canDiscountOverride = props.canDiscountOverride
     && (entrySettings?.permissions.canDiscountOverride ?? false);
 
-  const activeCustomers = useMemo(() => customerRows
-    .filter((item) => item.is_active)
-    .filter((item) => {
-      const term = customerSearch.trim().toLocaleLowerCase('vi');
-      return !term || [item.code, item.name, item.phone]
-        .filter(Boolean)
-        .some((value) => String(value).toLocaleLowerCase('vi').includes(term));
-    })
-    .sort((left, right) => left.name.localeCompare(right.name, 'vi') || left.code.localeCompare(right.code)), [customerRows, customerSearch]);
   const selectedCustomer = useMemo(
     () => customerRows.find((item) => item.id === customerId) ?? null,
     [customerId, customerRows],
@@ -604,18 +676,6 @@ export default function SalesOrderCommercialForm(props: Props) {
     onError('');
   }, [onError, props.mode]);
 
-  const markNoteDirty = useCallback(() => {
-    if (noteMutationKeyRotatedRef.current) return;
-    noteMutationKeyRotatedRef.current = true;
-    setDirty(true);
-    setSaveKey(mutationKey(`sales-${props.mode}-save`));
-    setConfirmKey(mutationKey(`sales-${props.mode}-confirm`));
-  }, [props.mode]);
-
-  const commitNoteDraft = useCallback(() => {
-    if (noteDraftRef.current === noteInitialRef.current) return;
-    markNoteDirty();
-  }, [markNoteDirty]);
 
   const requestClose = useCallback(() => {
     if (busy) return;
@@ -623,6 +683,11 @@ export default function SalesOrderCommercialForm(props: Props) {
     if ((dirty || noteChanged) && !window.confirm('Đơn bán hàng có thay đổi chưa lưu. Đóng và bỏ thay đổi?')) return;
     onClose();
   }, [busy, dirty, onClose]);
+  const selectExistingCustomer = useCallback((nextCustomerId: string) => {
+    if (nextCustomerId === customerId) return;
+    setCustomerId(nextCustomerId);
+    markDirty();
+  }, [customerId, markDirty]);
 
   const priceFor = useCallback(async ({
     variantId,
@@ -874,7 +939,7 @@ export default function SalesOrderCommercialForm(props: Props) {
             : active.find((item) => item.is_default)?.id ?? active[0]?.id ?? '');
       })
       .catch((error) => onError(error instanceof Error ? error.message : 'Không tải được địa chỉ khách hàng'));
-  }, [collectionPolicy, customerId, customerMode, hasVersionDirectDestination, onError, priceSelectionMode]);
+  }, [customerId, customerMode, hasVersionDirectDestination, onError]);
 
   useEffect(() => {
     const term = skuTerm.trim();
@@ -1378,7 +1443,16 @@ export default function SalesOrderCommercialForm(props: Props) {
   async function save(confirmAfter: boolean) {
     const issue = validate();
     if (issue) return onError(issue);
-    noteMutationKeyRotatedRef.current = false;
+    const noteValueAtSave = noteDraftRef.current.trim();
+    let requestSaveKey = saveKey;
+    let requestConfirmKey = confirmKey;
+    if (noteValueAtSave !== noteAttemptValueRef.current) {
+      requestSaveKey = mutationKey(`sales-${props.mode}-save`);
+      requestConfirmKey = mutationKey(`sales-${props.mode}-confirm`);
+      noteAttemptValueRef.current = noteValueAtSave;
+      setSaveKey(requestSaveKey);
+      setConfirmKey(requestConfirmKey);
+    }
     setBusy(true);
     let savedOrder: SalesOrder | null = null;
     let settingsWarning: string | null = null;
@@ -1408,7 +1482,7 @@ export default function SalesOrderCommercialForm(props: Props) {
       }
       savedOrder = await apiRequest<SalesOrder>(path, {
         method,
-        headers: { 'Idempotency-Key': saveKey },
+        headers: { 'Idempotency-Key': requestSaveKey },
         body: JSON.stringify(draftPayload),
       });
       if (props.mode !== 'manual-edit') committedDraftRef.current = savedOrder;
@@ -1419,7 +1493,7 @@ export default function SalesOrderCommercialForm(props: Props) {
           : `/api/sales-orders/${savedOrder.id}/confirm`;
         savedOrder = await apiRequest<SalesOrder>(confirmPath, {
           method: 'POST',
-          headers: { 'Idempotency-Key': confirmKey },
+          headers: { 'Idempotency-Key': requestConfirmKey },
           body: JSON.stringify({}),
         });
         committedDraftRef.current = null;
@@ -1442,6 +1516,8 @@ export default function SalesOrderCommercialForm(props: Props) {
         }
       }
 
+      noteInitialRef.current = noteDraftRef.current;
+      noteAttemptValueRef.current = noteValueAtSave;
       setDirty(false);
       if (settingsWarning) {
         onError(`Đơn đã lưu thành công nhưng chưa lưu được lựa chọn mặc định. ${settingsWarning}`);
@@ -1508,45 +1584,11 @@ export default function SalesOrderCommercialForm(props: Props) {
             </div>
 
             {customerMode === 'EXISTING' ? (
-              <label className={styles.customerField}>
-                <span>Khách hàng *</span>
-                <div className={styles.productSearchBox}>
-                  <input
-                    value={customerSearch}
-                    onChange={(event) => setCustomerSearch(event.target.value)}
-                    placeholder="Tìm tên, mã hoặc số điện thoại"
-                    autoComplete="off"
-                    data-testid="sales-customer-search-input"
-                  />
-                  {customerSearch.trim() && activeCustomers.length > 0 ? (
-                    <div className={styles.skuResults} role="listbox" aria-label="Kết quả tìm khách hàng" data-testid="sales-customer-results">
-                      {activeCustomers.slice(0, SEARCH_PAGE_SIZE).map((item) => (
-                        <button
-                          type="button"
-                          key={item.id}
-                          className={styles.skuResult}
-                          aria-label={`Chọn ${item.name} · ${customerGroupLabel(item)}`}
-                          onMouseDown={(event) => event.preventDefault()}
-                          onClick={() => {
-                            setCustomerId(item.id);
-                            setCustomerSearch('');
-                            markDirty();
-                          }}
-                        >
-                          <div><span>{item.name}</span><strong>{item.code}</strong><small>{item.phone || 'Không có số điện thoại'}</small></div>
-                          <div><span style={{ color: '#66766f', opacity: 0.72, fontSize: '.74rem', fontWeight: 700 }}>{customerGroupLabel(item)}</span></div>
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-                {selectedCustomer ? (
-                  <div className={styles.walkInNotice} data-testid="sales-selected-customer">
-                    <strong>{selectedCustomer.name}</strong>
-                    <span>{selectedCustomer.code} · {selectedCustomer.phone || 'Không có số điện thoại'}</span>
-                  </div>
-                ) : null}
-              </label>
+              <ExistingCustomerPicker
+                customers={customerRows}
+                selectedCustomer={selectedCustomer}
+                onSelect={selectExistingCustomer}
+              />
             ) : (
               <div className={styles.walkInFields}>
                 <label><span>Tên khách (tùy chọn)</span><input value={walkInDisplayName} onChange={(event) => { setWalkInDisplayName(event.target.value); markDirty(); }} placeholder="Ví dụ: Anh Nam" /></label>
@@ -1597,7 +1639,7 @@ export default function SalesOrderCommercialForm(props: Props) {
               </label>
             )}
             <button type="button" className={styles.moreButton} onClick={() => setShowMore((value) => !value)}>{showMore ? 'Ẩn thông tin thêm' : 'Thông tin thêm'}</button>
-            {showMore && <label className={styles.noteField}><span>Ghi chú</span><textarea rows={2} defaultValue={noteDraftRef.current} onChange={(event) => { noteDraftRef.current = event.currentTarget.value; }} onBlur={commitNoteDraft} /></label>}
+            {showMore && <OrderNoteField draftRef={noteDraftRef} />}
           </section>
 
           {quickOpen && props.canQuickCreateCustomer && (
