@@ -1,6 +1,9 @@
 const MCP_SHELL_PATH = "/api/local-read/mcp-shell";
+const MCP_REPORT_HISTORY_PATH = "/api/local-read/mcp-session-reports";
+const MCP_REPORT_DETAIL_PATH = "/api/local-read/mcp-session-report";
 const RECENT_SESSION_DAYS = 45;
 const RECENT_SESSION_LIMIT = 1200;
+const REPORT_HISTORY_LIMIT = 240;
 
 function text(value) {
   return String(value ?? "").trim();
@@ -139,18 +142,186 @@ async function readSnapshot(client, installationId) {
   };
 }
 
+async function readReportHistory(client, installationId) {
+  const result = await client.query(
+    `SELECT *
+       FROM (
+         SELECT DISTINCT ON (report.session_id)
+                report.id, report.session_id, report.route_id, report.route_name,
+                report.session_date, report.sales, report.status,
+                report.overview, report.sections, report.snapshot_source,
+                report.snapshot_at, report.created_at, report.updated_at,
+                session.status AS session_status,
+                session.planned_customers, session.visited_customers,
+                session.order_count, session.test_count, session.report_count,
+                session.followup_count
+           FROM mcp.mcp_session_reports report
+           JOIN mcp.mcp_route_sessions session
+             ON session.installation_id = report.installation_id
+            AND session.id = report.session_id
+          WHERE report.installation_id = $1
+            AND session.session_date >= CURRENT_DATE - $2::integer
+          ORDER BY report.session_id,
+                   report.snapshot_at DESC NULLS LAST,
+                   report.updated_at DESC,
+                   report.id DESC
+       ) recent
+      ORDER BY session_date DESC, snapshot_at DESC NULLS LAST, updated_at DESC, id DESC
+      LIMIT $3`,
+    [installationId, RECENT_SESSION_DAYS, REPORT_HISTORY_LIMIT]
+  );
+  return {
+    days: RECENT_SESSION_DAYS,
+    reports: result.rows || []
+  };
+}
+
+async function readReportDetail(client, installationId, sessionId) {
+  const sessionResult = await client.query(
+    `SELECT id, route_id, route_name, session_date, sales, area, status,
+            planned_customers, visited_customers, order_count, test_count,
+            report_count, followup_count, note, opened_at, closed_at,
+            created_at, updated_at
+       FROM mcp.mcp_route_sessions session
+      WHERE installation_id = $1 AND id = $2
+      LIMIT 1`,
+    [installationId, sessionId]
+  );
+  const session = sessionResult.rows?.[0];
+  if (!session) throw localReadError("mcp_session_not_found", 404);
+
+  const snapshotResult = await client.query(
+    `SELECT id, session_id, route_id, route_name, session_date, sales, status,
+            kpis, overview, sections, customer_details, summary_text,
+            snapshot_source, snapshot_at, created_at, updated_at
+       FROM mcp.mcp_session_reports report
+      WHERE installation_id = $1 AND session_id = $2
+      ORDER BY snapshot_at DESC NULLS LAST, updated_at DESC, id DESC
+      LIMIT 1`,
+    [installationId, sessionId]
+  );
+
+  const customersResult = await client.query(
+    `SELECT id, session_id, route_id, route_customer_id, customer_id,
+            customer_name, account_name, phone, area, address, sort_order,
+            source, status, visit_status, status_reason, order_id, test_id,
+            report_id, followup_count, note, checkin_at, updated_at
+       FROM mcp.mcp_session_customers
+      WHERE installation_id = $1 AND session_id = $2
+      ORDER BY sort_order ASC, id ASC`,
+    [installationId, sessionId]
+  );
+
+  const reportsResult = await client.query(
+    `SELECT sc.id AS session_customer_id,
+            sc.customer_name,
+            sc.area,
+            report.id,
+            report.report_date,
+            report.report_type,
+            report.content,
+            report.price_summary,
+            report.competitor_summary,
+            report.display_summary,
+            report.stock_summary,
+            report.demand_summary,
+            report.opportunity_summary,
+            report.risk_summary,
+            report.next_action,
+            report.note,
+            report.selected_competitor_ids,
+            report.selected_used_product_ids,
+            report.selected_setting_item_ids,
+            report.created_at,
+            report.updated_at
+       FROM mcp.mcp_session_customers sc
+       JOIN mcp.market_reports report
+         ON report.installation_id = sc.installation_id
+        AND report.id = sc.report_id
+      WHERE sc.installation_id = $1 AND sc.session_id = $2
+      ORDER BY sc.sort_order ASC, report.created_at ASC, report.id ASC`,
+    [installationId, sessionId]
+  );
+
+  const testsResult = await client.query(
+    `SELECT sc.id AS session_customer_id,
+            sc.customer_name,
+            sc.area,
+            result.id,
+            result.file_id,
+            result.product_id,
+            result.product_name,
+            result.status,
+            result.note,
+            result.created_at,
+            result.updated_at
+       FROM mcp.mcp_session_customers sc
+       JOIN mcp.test_customer_results result
+         ON result.installation_id = sc.installation_id
+        AND (
+          result.raw_payload ->> 'session_customer_id' = sc.id
+          OR result.id = sc.test_id
+        )
+      WHERE sc.installation_id = $1 AND sc.session_id = $2
+      ORDER BY sc.sort_order ASC, result.created_at ASC, result.id ASC`,
+    [installationId, sessionId]
+  );
+
+  const followupsResult = await client.query(
+    `SELECT id, session_id, session_customer_id, route_id, route_customer_id,
+            customer_id, customer_name, followup_type, title, due_date,
+            status, priority, owner, note, created_at, updated_at
+       FROM mcp.mcp_followups
+      WHERE installation_id = $1 AND session_id = $2
+      ORDER BY due_date ASC NULLS LAST, created_at ASC, id ASC`,
+    [installationId, sessionId]
+  );
+
+  return {
+    session,
+    snapshot: snapshotResult.rows?.[0] || null,
+    customers: customersResult.rows || [],
+    marketReports: reportsResult.rows || [],
+    tests: testsResult.rows || [],
+    followups: followupsResult.rows || []
+  };
+}
+
 export async function handleLocalReadApi(req, url, context, _config, { persistence } = {}) {
   const method = String(req.method || "GET").toUpperCase();
-  if (method !== "GET" || url.pathname !== MCP_SHELL_PATH) return null;
+  if (method !== "GET") return null;
+  const supported = new Set([
+    MCP_SHELL_PATH,
+    MCP_REPORT_HISTORY_PATH,
+    MCP_REPORT_DETAIL_PATH
+  ]);
+  if (!supported.has(url.pathname)) return null;
   if (!persistence || typeof persistence.assertReady !== "function" || typeof persistence.withTransaction !== "function") {
     throw localReadError("provider_unavailable", 503);
   }
 
   const installationId = text(context?.installation?.id);
   if (!installationId) throw localReadError("installation_context_required", 500);
-  const requestedCursor = text(url.searchParams.get("cursor"));
 
   await persistence.assertReady();
+
+  if (url.pathname === MCP_REPORT_HISTORY_PATH) {
+    const data = await persistence.withTransaction((client) =>
+      readReportHistory(client, installationId)
+    );
+    return { statusCode: 200, payload: { data, receivedAt: new Date().toISOString() } };
+  }
+
+  if (url.pathname === MCP_REPORT_DETAIL_PATH) {
+    const sessionId = text(url.searchParams.get("sessionId") || url.searchParams.get("session_id"));
+    if (!sessionId) throw localReadError("session_id_required", 400);
+    const data = await persistence.withTransaction((client) =>
+      readReportDetail(client, installationId, sessionId)
+    );
+    return { statusCode: 200, payload: { data, receivedAt: new Date().toISOString() } };
+  }
+
+  const requestedCursor = text(url.searchParams.get("cursor"));
   const data = await persistence.withTransaction(async (client) => {
     const cursor = await readCursor(client, installationId);
     if (requestedCursor && requestedCursor === cursor) {
@@ -162,4 +333,11 @@ export async function handleLocalReadApi(req, url, context, _config, { persisten
   return { statusCode: 200, payload: { data, receivedAt: new Date().toISOString() } };
 }
 
-export const localReadApiInternals = Object.freeze({ MCP_SHELL_PATH, RECENT_SESSION_DAYS, RECENT_SESSION_LIMIT });
+export const localReadApiInternals = Object.freeze({
+  MCP_SHELL_PATH,
+  MCP_REPORT_HISTORY_PATH,
+  MCP_REPORT_DETAIL_PATH,
+  RECENT_SESSION_DAYS,
+  RECENT_SESSION_LIMIT,
+  REPORT_HISTORY_LIMIT
+});
