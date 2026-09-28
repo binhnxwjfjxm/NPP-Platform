@@ -58,7 +58,8 @@ test('tìm khách dùng toàn bộ card để chọn và nhóm khách chỉ là 
   assert.ok(form.includes('function customerGroupLabel(customer: Customer): string'));
   assert.ok(form.includes("if (!group) return 'Chưa phân nhóm';"));
   assert.ok(form.includes('return /^khách hàng\\b/i.test(group) ? group : `Khách hàng ${group}`;'));
-  assert.match(form, /data-testid="sales-customer-results"[\s\S]*?<button[\s\S]*?onClick=\{\(\) => \{[\s\S]*?setCustomerId\(item\.id\)/);
+  assert.match(form, /data-testid="sales-customer-results"[\s\S]*?<button[\s\S]*?onClick=\{\(\) => \{[\s\S]*?onSelect\(item\.id\)/);
+  assert.match(form, /if \(nextCustomerId === customerId\) return;[\s\S]*?setCustomerId\(nextCustomerId\)/);
   assert.ok(form.includes("style={{ color: '#66766f', opacity: 0.72, fontSize: '.74rem', fontWeight: 700 }}"));
   assert.ok(form.includes('{customerGroupLabel(item)}</span>'));
   assert.doesNotMatch(form, /<b>Chọn khách<\/b>/);

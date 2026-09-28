@@ -14,7 +14,8 @@ test('Công Ty keeps a 120 percent typography baseline with shared display scali
 test('customer lookup selects directly from the search popup', () => {
   assert.match(sales, /data-testid="sales-customer-search-input"/);
   assert.match(sales, /data-testid="sales-customer-results"/);
-  assert.match(sales, /setCustomerId\(item\.id\)/);
+  assert.match(sales, /onSelect\(item\.id\)/);
+  assert.match(sales, /if \(nextCustomerId === customerId\) return;[\s\S]*?setCustomerId\(nextCustomerId\)/);
   assert.doesNotMatch(sales, /<select value=\{customerId\}/);
 });
 
