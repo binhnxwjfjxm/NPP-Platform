@@ -221,6 +221,9 @@ function mapLine(line) {
     unitId: line.unit_id,
     unitCode: line.unit_code_snapshot,
     unitName: line.unit_name ?? line.unit_code_snapshot,
+    allowsFractional: line.allows_fractional === null || line.allows_fractional === undefined
+      ? null
+      : Boolean(line.allows_fractional),
     conversionToBase: String(line.conversion_to_base),
     quantity: String(line.ordered_quantity),
     baseQuantity: String(line.base_quantity),

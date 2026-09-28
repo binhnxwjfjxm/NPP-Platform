@@ -58,6 +58,7 @@ type OrderLine = {
     itemName: string;
     unitCode: string;
     unitName: string;
+    allowsFractional?: boolean | null;
     quantity: string;
     unitPrice: string;
     lineTotal: string;
@@ -268,7 +269,7 @@ function normalizeQuantityInput(value: string | number | null | undefined) {
     const fraction = (match[2] ?? '').replace(/0+$/, '');
     return fraction ? `${whole}.${fraction}` : whole;
 }
-const cartFromOrder = (order: Order): CartLine[] => linesOf(order).map((line) => ({ id: line.variantId, productCode: line.sku, imageKey: null, productName: line.itemName, sku: line.sku, unitCode: line.unitCode, unitName: line.unitName, allowsFractional: null, quantity: normalizeQuantityInput(line.quantity), taxMode: line.taxMode, taxRate: line.taxRate }));
+const cartFromOrder = (order: Order): CartLine[] => linesOf(order).map((line) => ({ id: line.variantId, productCode: line.sku, imageKey: null, productName: line.itemName, sku: line.sku, unitCode: line.unitCode, unitName: line.unitName, allowsFractional: line.allowsFractional ?? null, quantity: normalizeQuantityInput(line.quantity), taxMode: line.taxMode, taxRate: line.taxRate }));
 const manualPricesFromOrder = (order: Order): Record<string, string> => Object.fromEntries(linesOf(order).filter((line) => line.priceSource === 'MANUAL_OVERRIDE').map((line) => [line.variantId, normalizeVndInput(line.unitPrice)]));
 async function api<T>(path: string, init?: RequestInit) {
     const response = await fetch(path, { cache: 'no-store', ...init, headers: { Accept: 'application/json', ...(init?.headers ?? {}) } });

@@ -65,6 +65,19 @@ test('chỉnh số lượng trên mobile không được tự xóa sản phẩm 
   assert.doesNotMatch(addSelected, /cartFromOrder\(order\)/);
 });
 
+test('đơn mở lại giữ đúng quy tắc số lẻ của đơn vị tính', async () => {
+  const [page, repository, salesOrderService] = await Promise.all([
+    readWorkspace(),
+    readRepo('npp-core/api/src/db/repositories/sales-order.js'),
+    readRepo('npp-core/api/src/services/sales-order-legacy.js'),
+  ]);
+  assert.match(repository, /u\.allows_fractional/);
+  assert.match(salesOrderService, /allowsFractional: line\.allows_fractional === null \|\| line\.allows_fractional === undefined[\s\S]*?Boolean\(line\.allows_fractional\)/);
+  assert.match(page, /allowsFractional\?: boolean \| null/);
+  assert.match(page, /allowsFractional: line\.allowsFractional \?\? null/);
+  assert.match(page, /return fractional \? String\(Math\.min\(n, 999999\)\) : String\(Math\.max\(1, Math\.trunc\(n\)\)\)/);
+});
+
 test('giỏ đang sửa rỗng không giữ tiền cũ và không cho Thanh toán', async () => {
   const page = await readWorkspace();
   assert.match(page, /const totalLabel = editingDraft[\s\S]*?money\.format\(cart\.length \? \(syncedDraft \? total : cartTotal\) : 0\)/);
