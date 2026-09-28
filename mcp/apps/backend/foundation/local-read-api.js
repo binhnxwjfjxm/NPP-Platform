@@ -2,6 +2,7 @@ const MCP_SHELL_PATH = "/api/local-read/mcp-shell";
 const MCP_REPORT_HISTORY_PATH = "/api/local-read/mcp-session-reports";
 const MCP_REPORT_DETAIL_PATH = "/api/local-read/mcp-session-report";
 const MCP_FOLLOWUPS_PATH = "/api/local-read/mcp-followups";
+const MCP_OUTLET_HISTORY_PATH = "/api/local-read/mcp-outlet-history";
 const RECENT_SESSION_DAYS = 45;
 const RECENT_SESSION_LIMIT = 1200;
 const REPORT_HISTORY_LIMIT = 240;
@@ -231,6 +232,58 @@ async function readFollowups(client, installationId) {
   };
 }
 
+async function readOutletHistory(client, installationId, routeCustomerId) {
+  const result = await client.query(
+    `SELECT session_customer.id AS session_customer_id,
+            session_customer.session_id,
+            session_customer.route_id,
+            session_customer.route_customer_id,
+            session_customer.customer_id,
+            session_customer.customer_name,
+            session_customer.account_name,
+            session_customer.phone,
+            session_customer.area,
+            session_customer.address,
+            session_customer.source,
+            session_customer.status,
+            session_customer.visit_status,
+            session_customer.status_reason,
+            session_customer.order_id,
+            session_customer.test_id,
+            session_customer.report_id,
+            session_customer.followup_count,
+            session_customer.note,
+            session_customer.checkin_at,
+            session_customer.checkin_lat,
+            session_customer.checkin_lng,
+            session_customer.checkin_accuracy,
+            session_customer.checkin_source,
+            session_customer.created_at,
+            session_customer.updated_at,
+            route_session.route_name,
+            route_session.session_date,
+            route_session.sales,
+            route_session.status AS session_status,
+            route_session.opened_at,
+            route_session.closed_at
+       FROM mcp.mcp_session_customers session_customer
+       JOIN mcp.mcp_route_sessions route_session
+         ON route_session.installation_id = session_customer.installation_id
+        AND route_session.id = session_customer.session_id
+      WHERE session_customer.installation_id = $1
+        AND session_customer.route_customer_id = $2
+      ORDER BY route_session.session_date DESC,
+               session_customer.updated_at DESC,
+               session_customer.id DESC`,
+    [installationId, routeCustomerId]
+  );
+
+  return {
+    routeCustomerId,
+    items: result.rows || []
+  };
+}
+
 async function readReportDetail(client, installationId, sessionId) {
   const sessionResult = await client.query(
     `SELECT id, route_id, route_name, session_date, sales, area, status,
@@ -349,7 +402,8 @@ export async function handleLocalReadApi(req, url, context, _config, { persisten
     MCP_SHELL_PATH,
     MCP_REPORT_HISTORY_PATH,
     MCP_REPORT_DETAIL_PATH,
-    MCP_FOLLOWUPS_PATH
+    MCP_FOLLOWUPS_PATH,
+    MCP_OUTLET_HISTORY_PATH
   ]);
   if (!supported.has(url.pathname)) return null;
   if (!persistence || typeof persistence.assertReady !== "function" || typeof persistence.withTransaction !== "function") {
@@ -384,6 +438,15 @@ export async function handleLocalReadApi(req, url, context, _config, { persisten
     return { statusCode: 200, payload: { data, receivedAt: new Date().toISOString() } };
   }
 
+  if (url.pathname === MCP_OUTLET_HISTORY_PATH) {
+    const routeCustomerId = text(url.searchParams.get("routeCustomerId") || url.searchParams.get("route_customer_id"));
+    if (!routeCustomerId) throw localReadError("route_customer_id_required", 400);
+    const data = await persistence.withTransaction((client) =>
+      readOutletHistory(client, installationId, routeCustomerId)
+    );
+    return { statusCode: 200, payload: { data, receivedAt: new Date().toISOString() } };
+  }
+
   const requestedCursor = text(url.searchParams.get("cursor"));
   const data = await persistence.withTransaction(async (client) => {
     const cursor = await readCursor(client, installationId);
@@ -401,6 +464,7 @@ export const localReadApiInternals = Object.freeze({
   MCP_REPORT_HISTORY_PATH,
   MCP_REPORT_DETAIL_PATH,
   MCP_FOLLOWUPS_PATH,
+  MCP_OUTLET_HISTORY_PATH,
   RECENT_SESSION_DAYS,
   RECENT_SESSION_LIMIT,
   REPORT_HISTORY_LIMIT,

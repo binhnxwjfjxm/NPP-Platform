@@ -26,6 +26,12 @@ function followupsUrl() {
   return new URL("http://mcp.local/api/local-read/mcp-followups");
 }
 
+function outletHistoryUrl(routeCustomerId = "rc-1") {
+  const target = new URL("http://mcp.local/api/local-read/mcp-outlet-history");
+  if (routeCustomerId) target.searchParams.set("routeCustomerId", routeCustomerId);
+  return target;
+}
+
 function context() {
   return { installation: { id: "installation-a" } };
 }
@@ -348,6 +354,93 @@ test("followup history reads real installation-scoped tasks and keeps open work"
   assert.match(state.queries[0].sql, /followup\.installation_id = \$1/);
   assert.match(state.queries[0].sql, /NOT IN/);
   assert.match(state.queries[0].sql, /LIMIT \$3/);
+});
+
+function outletHistoryPersistence() {
+  const queries = [];
+  const persistence = {
+    async assertReady() {},
+    async withTransaction(work) {
+      return work({
+        async query(sql, values) {
+          const source = String(sql);
+          queries.push({ sql: source, values });
+          if (source.includes("FROM mcp.mcp_session_customers session_customer")) {
+            return {
+              rows: [
+                {
+                  session_customer_id: "session-customer-2",
+                  session_id: "session-2",
+                  route_customer_id: "rc-1",
+                  customer_name: "Điểm bán 1",
+                  visit_status: "visited",
+                  checkin_at: "2026-09-28T02:00:00.000Z",
+                  order_id: "order-2",
+                  report_id: "report-2",
+                  followup_count: 1,
+                  route_name: "Tuyến 1",
+                  session_date: "2026-09-28",
+                  session_status: "done"
+                },
+                {
+                  session_customer_id: "session-customer-1",
+                  session_id: "session-1",
+                  route_customer_id: "rc-1",
+                  customer_name: "Tên cũ của điểm bán",
+                  visit_status: "skipped",
+                  status_reason: "closed",
+                  route_name: "Tuyến 1",
+                  session_date: "2026-09-21",
+                  session_status: "done"
+                }
+              ]
+            };
+          }
+          throw new Error(`unexpected_query:${source}`);
+        }
+      });
+    }
+  };
+  return { persistence, queries };
+}
+
+test("outlet history uses stable route-customer identity across all sessions", async () => {
+  const state = outletHistoryPersistence();
+  const result = await handleLocalReadApi(
+    request(),
+    outletHistoryUrl("rc-1"),
+    context(),
+    {},
+    { persistence: state.persistence }
+  );
+
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.payload.data.routeCustomerId, "rc-1");
+  assert.equal(result.payload.data.items.length, 2);
+  assert.equal(result.payload.data.items[0].session_id, "session-2");
+  assert.deepEqual(state.queries[0].values, ["installation-a", "rc-1"]);
+  assert.match(state.queries[0].sql, /session_customer\.installation_id = \$1/);
+  assert.match(state.queries[0].sql, /session_customer\.route_customer_id = \$2/);
+  assert.match(state.queries[0].sql, /JOIN mcp\.mcp_route_sessions route_session/);
+  assert.doesNotMatch(state.queries[0].sql, /customer_name\s*=/);
+  assert.doesNotMatch(state.queries[0].sql, /CURRENT_DATE/);
+  assert.doesNotMatch(state.queries[0].sql, /LIMIT/);
+});
+
+test("outlet history requires route customer id", async () => {
+  const state = outletHistoryPersistence();
+  await assert.rejects(
+    () =>
+      handleLocalReadApi(
+        request(),
+        outletHistoryUrl(""),
+        context(),
+        {},
+        { persistence: state.persistence }
+      ),
+    (error) => error.code === "route_customer_id_required" && error.statusCode === 400
+  );
+  assert.equal(state.queries.length, 0);
 });
 
 test("non-local-read routes are ignored", async () => {
