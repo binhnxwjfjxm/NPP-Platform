@@ -22,6 +22,10 @@ function reportDetailUrl(sessionId = "session-1") {
   return target;
 }
 
+function followupsUrl() {
+  return new URL("http://mcp.local/api/local-read/mcp-followups");
+}
+
 function context() {
   return { installation: { id: "installation-a" } };
 }
@@ -269,6 +273,81 @@ test("report detail requires session id", async () => {
     (error) => error.code === "session_id_required" && error.statusCode === 400
   );
   assert.equal(state.queries.length, 0);
+});
+
+
+function followupPersistence() {
+  const queries = [];
+  const persistence = {
+    async assertReady() {},
+    async withTransaction(work) {
+      return work({
+        async query(sql, values) {
+          const source = String(sql);
+          queries.push({ sql: source, values });
+          if (source.includes("FROM mcp.mcp_followups followup")) {
+            return {
+              rows: [
+                {
+                  id: "followup-open",
+                  session_id: "session-1",
+                  route_id: "route-1",
+                  route_name: "Tuyến 1",
+                  customer_name: "Điểm bán A",
+                  followup_type: "order",
+                  title: "Gọi lại chốt đơn",
+                  due_date: "2026-09-28",
+                  status: "pending",
+                  priority: "high",
+                  owner: "Nhân viên A"
+                },
+                {
+                  id: "followup-done",
+                  session_id: "session-2",
+                  route_id: "route-1",
+                  route_name: "Tuyến 1",
+                  customer_name: "Điểm bán B",
+                  followup_type: "test",
+                  title: "Kiểm tra sau thử",
+                  due_date: "2026-09-20",
+                  status: "done",
+                  priority: "medium",
+                  owner: "Nhân viên A"
+                }
+              ]
+            };
+          }
+          throw new Error(`unexpected_query:${source}`);
+        }
+      });
+    }
+  };
+  return { persistence, queries };
+}
+
+test("followup history reads real installation-scoped tasks and keeps open work", async () => {
+  const state = followupPersistence();
+  const result = await handleLocalReadApi(
+    request(),
+    followupsUrl(),
+    context(),
+    {},
+    { persistence: state.persistence }
+  );
+
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.payload.data.days, localReadApiInternals.FOLLOWUP_HISTORY_DAYS);
+  assert.equal(result.payload.data.items.length, 2);
+  assert.equal(result.payload.data.items[0].id, "followup-open");
+  assert.deepEqual(state.queries[0].values, [
+    "installation-a",
+    localReadApiInternals.FOLLOWUP_HISTORY_DAYS,
+    localReadApiInternals.FOLLOWUP_LIMIT
+  ]);
+  assert.match(state.queries[0].sql, /FROM mcp\.mcp_followups followup/);
+  assert.match(state.queries[0].sql, /followup\.installation_id = \$1/);
+  assert.match(state.queries[0].sql, /NOT IN/);
+  assert.match(state.queries[0].sql, /LIMIT \$3/);
 });
 
 test("non-local-read routes are ignored", async () => {
