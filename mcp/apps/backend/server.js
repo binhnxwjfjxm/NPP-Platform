@@ -1180,6 +1180,13 @@ async function loadSessionByRouteDate(routeId, sessionDate) {
   return sessions[0] || null;
 }
 
+function normalizedMcpSessionStatus(value) {
+  const status = String(value ?? "").trim().toLowerCase();
+  if (status === "completed" || status === "closed") return "done";
+  if (status === "done" || status === "cancelled") return status;
+  return status || "active";
+}
+
 function emptyMcpDayData(routeId, sessionDate) {
   return {
     sessionOpened: false,
@@ -1300,7 +1307,7 @@ async function loadMcpDayData(url = new URL("http://local/api/mcp-day/data")) {
   const added = lines.filter((line) => line.source === "added").length;
   return {
     sessionOpened: true,
-    run: { id: session.id, routeId: session.route_id, routeName: session.route_name || "Tuyến MCP", date: dateOnly(session.session_date), owner: session.sales || "Sale", status: session.status === "cancelled" ? "cancelled" : "opened", openedAt: timeOnly(session.created_at) },
+    run: { id: session.id, routeId: session.route_id, routeName: session.route_name || "Tuyến MCP", date: dateOnly(session.session_date), owner: session.sales || "Sale", status: normalizedMcpSessionStatus(session.status), openedAt: timeOnly(session.created_at) },
     kpis: [
       { label: "Trong phiên", value: lines.length, hint: "Snapshot ngày" },
       { label: "Đã ghé", value: visited, hint: "Có kết quả" },
