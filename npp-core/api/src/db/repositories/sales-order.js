@@ -240,7 +240,9 @@ export async function getSalesOrderVersion(client, {
 
 export async function getSalesOrderVersionLines(client, { installationId, versionId }) {
   return (await client.query(
-    `SELECT ${LINE_COLUMNS}, COALESCE(sovl.unit_name_snapshot, u.name) AS unit_name
+    `SELECT ${LINE_COLUMNS},
+            COALESCE(sovl.unit_name_snapshot, u.name) AS unit_name,
+            u.allows_fractional
      FROM sales.sales_order_version_lines sovl
      LEFT JOIN shared.units_of_measure u
        ON u.installation_id = sovl.installation_id
