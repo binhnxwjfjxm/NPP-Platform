@@ -495,7 +495,9 @@ export default function SalesOrderCommercialForm(props: Props) {
   const [rememberDeliveryChoice, setRememberDeliveryChoice] = useState(false);
   const [collectionPolicy, setCollectionPolicy] = useState<SalesOrderCollectionPolicy>(version?.collectionPolicy ?? 'COLLECT_ON_DELIVERY');
   const [requestedDeliveryDate, setRequestedDeliveryDate] = useState(version?.requestedDeliveryDate ?? '');
-  const [note, setNote] = useState(version?.note ?? '');
+  const noteInitialRef = useRef(version?.note ?? '');
+  const noteDraftRef = useRef(version?.note ?? '');
+  const noteMutationKeyRotatedRef = useRef(false);
   const [showMore, setShowMore] = useState(Boolean(version?.note));
   const [lines, setLines] = useState<LineDraft[]>(versionLines(version));
   const [expandedLineId, setExpandedLineId] = useState<string | null>(null);
@@ -602,9 +604,23 @@ export default function SalesOrderCommercialForm(props: Props) {
     onError('');
   }, [onError, props.mode]);
 
+  const markNoteDirty = useCallback(() => {
+    if (noteMutationKeyRotatedRef.current) return;
+    noteMutationKeyRotatedRef.current = true;
+    setDirty(true);
+    setSaveKey(mutationKey(`sales-${props.mode}-save`));
+    setConfirmKey(mutationKey(`sales-${props.mode}-confirm`));
+  }, [props.mode]);
+
+  const commitNoteDraft = useCallback(() => {
+    if (noteDraftRef.current === noteInitialRef.current) return;
+    markNoteDirty();
+  }, [markNoteDirty]);
+
   const requestClose = useCallback(() => {
     if (busy) return;
-    if (dirty && !window.confirm('Đơn bán hàng có thay đổi chưa lưu. Đóng và bỏ thay đổi?')) return;
+    const noteChanged = noteDraftRef.current !== noteInitialRef.current;
+    if ((dirty || noteChanged) && !window.confirm('Đơn bán hàng có thay đổi chưa lưu. Đóng và bỏ thay đổi?')) return;
     onClose();
   }, [busy, dirty, onClose]);
 
@@ -1309,6 +1325,7 @@ export default function SalesOrderCommercialForm(props: Props) {
   }
 
   function payload(): SalesOrderDraftPayload {
+    const noteValue = noteDraftRef.current.trim();
     return {
       sourceType: 'MANUAL',
       customerMode,
@@ -1335,7 +1352,7 @@ export default function SalesOrderCommercialForm(props: Props) {
       collectionPolicy,
       currency: 'VND',
       ...(requestedDeliveryDate ? { requestedDeliveryDate } : {}),
-      ...(note.trim() ? { note: note.trim() } : {}),
+      ...(noteValue ? { note: noteValue } : {}),
       ...(props.mode === 'create' ? {} : { expectedRevision: version?.revision }),
       documentDiscountMode,
       documentDiscountValue: documentDiscountMode === 'NONE' ? '0' : documentDiscountValue,
@@ -1361,6 +1378,7 @@ export default function SalesOrderCommercialForm(props: Props) {
   async function save(confirmAfter: boolean) {
     const issue = validate();
     if (issue) return onError(issue);
+    noteMutationKeyRotatedRef.current = false;
     setBusy(true);
     let savedOrder: SalesOrder | null = null;
     let settingsWarning: string | null = null;
@@ -1579,7 +1597,7 @@ export default function SalesOrderCommercialForm(props: Props) {
               </label>
             )}
             <button type="button" className={styles.moreButton} onClick={() => setShowMore((value) => !value)}>{showMore ? 'Ẩn thông tin thêm' : 'Thông tin thêm'}</button>
-            {showMore && <label className={styles.noteField}><span>Ghi chú</span><textarea rows={2} value={note} onChange={(event) => { setNote(event.target.value); markDirty(); }} /></label>}
+            {showMore && <label className={styles.noteField}><span>Ghi chú</span><textarea rows={2} defaultValue={noteDraftRef.current} onChange={(event) => { noteDraftRef.current = event.currentTarget.value; }} onBlur={commitNoteDraft} /></label>}
           </section>
 
           {quickOpen && props.canQuickCreateCustomer && (
