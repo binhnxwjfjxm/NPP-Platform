@@ -12,16 +12,11 @@ import styles from './inventory-workspace.module.css';
 
 type ErrorEnvelope = Readonly<{ error?: { message?: string } }>;
 
-type InventoryBalanceExportScope = Readonly<{
-  warehouseId: string;
-  baseVariantId: string;
-}>;
-
 type Props = Readonly<{
   scope: InventoryExportScope;
   search?: string;
-  balanceScope?: InventoryBalanceExportScope | null;
 }>;
+
 function filenameFrom(response: Response, scope: InventoryExportScope, format: InventoryExportFormat): string {
   const disposition = response.headers.get('content-disposition') ?? '';
   const match = /filename="([^"]+)"/i.exec(disposition);
@@ -39,7 +34,7 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(href);
 }
 
-export default function InventoryExportAction({ scope, search = '', balanceScope = null }: Props) {
+export default function InventoryExportAction({ scope, search = '' }: Props) {
   const [open, setOpen] = useState(false);
   const [format, setFormat] = useState<InventoryExportFormat>('xlsx');
   const [exportSearch, setExportSearch] = useState('');
@@ -79,10 +74,6 @@ export default function InventoryExportAction({ scope, search = '', balanceScope
     try {
       const query = new URLSearchParams({ scope, format });
       if (exportSearch.trim()) query.set('search', exportSearch.trim());
-      if (scope === 'balances' && balanceScope) {
-        query.set('warehouseId', balanceScope.warehouseId);
-        query.set('baseVariantId', balanceScope.baseVariantId);
-      }
       for (const column of orderedColumns) query.append('column', column);
       const response = await fetch(`/api/inventory/export?${query.toString()}`, { cache: 'no-store' });
       if (!response.ok) {
@@ -127,10 +118,6 @@ export default function InventoryExportAction({ scope, search = '', balanceScope
                 <input className={styles.textInput} value={exportSearch} onChange={(event) => setExportSearch(event.target.value)} disabled={busy} placeholder="Để trống để xuất toàn bộ trong phạm vi được phép" />
               </label>
             </div>
-
-            {scope === 'balances' && balanceScope ? (
-              <div className={`${styles.banner} ${styles.bannerSuccess}`}>File sẽ lấy đúng kho và mã hàng đang xem.</div>
-            ) : null}
 
             <div className={styles.panel}>
               <div className={styles.sectionHeader}>

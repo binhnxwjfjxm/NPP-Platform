@@ -39,9 +39,6 @@ export const runtime = 'nodejs';
 
 const MAX_EXPORT_ROWS = Math.min(10_000, TABULAR_XLSX_LIMITS.maxRows - 1);
 const MAX_SEARCH_LENGTH = 128;
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-type BalanceExportScope = Readonly<{ warehouseId: string; baseVariantId: string }> | null;
 
 class InventoryDataExportError extends Error {
   constructor(
@@ -75,16 +72,6 @@ function parseSearch(value: string | null): string {
   return search;
 }
 
-function parseBalanceScope(searchParams: URLSearchParams, scope: InventoryExportScope): BalanceExportScope {
-  const warehouseId = String(searchParams.get('warehouseId') ?? '').trim();
-  const baseVariantId = String(searchParams.get('baseVariantId') ?? '').trim();
-  if (!warehouseId && !baseVariantId) return null;
-  if (scope !== 'balances' || !UUID_PATTERN.test(warehouseId) || !UUID_PATTERN.test(baseVariantId)) {
-    throw new InventoryDataExportError('INVENTORY_EXPORT_FILTER_INVALID', 'Phạm vi lọc dữ liệu xuất không hợp lệ.');
-  }
-  return { warehouseId, baseVariantId };
-}
-
 function parseColumns(searchParams: URLSearchParams, scope: InventoryExportScope): readonly string[] {
   const requested = searchParams.getAll('column').map((value) => value.trim()).filter(Boolean);
   const columns = requested.length ? requested : [...INVENTORY_EXPORT_DEFAULT_COLUMNS[scope]];
@@ -108,14 +95,9 @@ function ensureRowLimit(rowCount: number) {
   }
 }
 
-async function loadRows(scope: InventoryExportScope, requestId: string, search: string, columns: readonly string[], balanceScope: BalanceExportScope): Promise<string[][]> {
+async function loadRows(scope: InventoryExportScope, requestId: string, search: string, columns: readonly string[]): Promise<string[][]> {
   if (scope === 'balances') {
-    const sourceParams = new URLSearchParams();
-    if (balanceScope) {
-      sourceParams.set('warehouseId', balanceScope.warehouseId);
-      sourceParams.set('baseVariantId', balanceScope.baseVariantId);
-    }
-    const rows = (await listAllInventoryBalances(requestId, sourceParams))
+    const rows = (await listAllInventoryBalances(requestId))
       .filter(isDisplayableInventoryBalance)
       .filter((row) => matchesInventoryBalanceExport(row, search));
     ensureRowLimit(rows.length);
@@ -181,10 +163,9 @@ export async function GET(request: NextRequest) {
     const scope = parseScope(request.nextUrl.searchParams.get('scope'));
     const format = parseFormat(request.nextUrl.searchParams.get('format'));
     const search = parseSearch(request.nextUrl.searchParams.get('search'));
-    const balanceScope = parseBalanceScope(request.nextUrl.searchParams, scope);
     const columns = parseColumns(request.nextUrl.searchParams, scope);
     const headers = inventoryExportHeaders(scope, columns);
-    const rows = await loadRows(scope, requestId, search, columns, balanceScope);
+    const rows = await loadRows(scope, requestId, search, columns);
 
     if (format === 'csv') {
       return new Response(createCsv(headers, rows), {

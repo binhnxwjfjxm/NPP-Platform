@@ -468,6 +468,20 @@ export async function listInventoryMovementHistory(client, {
               sum(line.base_quantity_delta)::numeric(30,12) AS base_quantity_delta,
               count(*)::int AS line_count,
               max(actor_employee.full_name) AS posted_by_name,
+              max(COALESCE(
+                source_delivery_order.customer_code_snapshot,
+                source_sales_version.customer_code_snapshot,
+                source_return_customer.code
+              )) AS customer_code,
+              max(COALESCE(
+                source_delivery_order.customer_name_snapshot,
+                source_sales_version.customer_name_snapshot,
+                source_return_customer.name
+              )) AS customer_name,
+              max(COALESCE(
+                source_sales_order.order_number,
+                source_delivery_sales_order.order_number
+              )) AS sales_order_number,
               string_agg(
                 DISTINCT COALESCE(location.code, 'Không vị trí'),
                 ', ' ORDER BY COALESCE(location.code, 'Không vị trí')
@@ -493,6 +507,33 @@ export async function listInventoryMovementHistory(client, {
          LEFT JOIN shared.employees actor_employee
            ON actor_employee.installation_id = actor_user.installation_id
           AND actor_employee.id = actor_user.employee_id
+         LEFT JOIN sales.sales_orders source_sales_order
+           ON movement.source_document_type = 'SALES_ORDER'
+          AND source_sales_order.installation_id = movement.installation_id
+          AND source_sales_order.id::text = movement.source_document_id
+         LEFT JOIN LATERAL (
+           SELECT version.customer_code_snapshot,
+                  version.customer_name_snapshot
+             FROM sales.sales_order_versions version
+            WHERE version.installation_id = source_sales_order.installation_id
+              AND version.sales_order_id = source_sales_order.id
+            ORDER BY version.version_number DESC
+            LIMIT 1
+         ) source_sales_version ON true
+         LEFT JOIN sales.delivery_orders source_delivery_order
+           ON movement.source_document_type = 'DELIVERY_ORDER'
+          AND source_delivery_order.installation_id = movement.installation_id
+          AND source_delivery_order.id::text = movement.source_document_id
+         LEFT JOIN sales.sales_orders source_delivery_sales_order
+           ON source_delivery_sales_order.installation_id = source_delivery_order.installation_id
+          AND source_delivery_sales_order.id = source_delivery_order.sales_order_id
+         LEFT JOIN sales.customer_returns source_customer_return
+           ON movement.source_document_type = 'CUSTOMER_RETURN'
+          AND source_customer_return.installation_id = movement.installation_id
+          AND source_customer_return.id::text = movement.source_document_id
+         LEFT JOIN shared.customers source_return_customer
+           ON source_return_customer.installation_id = source_customer_return.installation_id
+          AND source_return_customer.id = source_customer_return.customer_id
         WHERE line.installation_id = $1
           AND line.warehouse_id = $2
           AND line.base_variant_id = $3

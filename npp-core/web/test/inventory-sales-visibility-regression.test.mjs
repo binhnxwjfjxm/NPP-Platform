@@ -21,11 +21,14 @@ test('inventory history is warehouse-scoped, paginated and opens document detail
   assert.match(inventoryWorkspace, /<th>Thao tác<\/th>/);
   assert.match(inventoryWorkspace, /<th>Số lượng thay đổi<\/th>/);
   assert.match(inventoryWorkspace, /<th>Tồn kho<\/th>/);
-  assert.match(inventoryWorkspace, /<th>Mã chứng từ<\/th>/);
+  assert.match(inventoryWorkspace, /<th>Đơn \/ chứng từ<\/th>/);
+  assert.match(inventoryWorkspace, /<th>Khách hàng<\/th>/);
   assert.match(inventoryWorkspace, /<th>Kho<\/th>/);
   assert.match(inventoryWorkspace, /historyRows\.map\(\(row\) =>/);
   assert.match(inventoryWorkspace, /setSelectedHistory\(row\)/);
   assert.match(inventoryWorkspace, /role="dialog"/);
+  assert.match(inventoryWorkspace, /<span>Đơn bán hàng<\/span>/);
+  assert.match(inventoryWorkspace, /<span>Khách hàng<\/span>/);
   assert.match(inventoryWorkspace, /loadWarehouseHistory\(candidate, 0, requestedSku\)/);
   assert.match(inventoryWorkspace, /hasHistoryDeepLink \? 'history' : 'balances'/);
   assert.doesNotMatch(inventoryWorkspace, /inventory-drilldown-panel/);

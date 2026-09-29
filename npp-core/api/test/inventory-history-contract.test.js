@@ -16,6 +16,15 @@ test('inventory history follows the immutable ledger and groups physical lines i
   assert.match(repository, /LEFT JOIN shared\.users actor_user/);
   assert.match(repository, /LEFT JOIN shared\.employees actor_employee/);
   assert.match(repository, /max\(actor_employee\.full_name\) AS posted_by_name/);
+  assert.match(repository, /LEFT JOIN sales\.sales_orders source_sales_order/);
+  assert.match(repository, /LEFT JOIN sales\.delivery_orders source_delivery_order/);
+  assert.match(repository, /LEFT JOIN sales\.customer_returns source_customer_return/);
+  assert.match(repository, /AS customer_name/);
+  assert.match(repository, /AS customer_code/);
+  assert.match(repository, /AS sales_order_number/);
+  assert.match(repository, /source_sales_order\.id::text = movement\.source_document_id/);
+  assert.match(repository, /source_delivery_order\.id::text = movement\.source_document_id/);
+  assert.match(repository, /source_customer_return\.id::text = movement\.source_document_id/);
   assert.match(repository, /string_agg\([\s\S]*location\.code/);
   assert.match(repository, /string_agg\([\s\S]*line\.lot_code/);
 });

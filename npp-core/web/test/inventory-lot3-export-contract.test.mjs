@@ -12,14 +12,15 @@ const balances = read('../app/inventory/balances/inventory-balances-workspace.ts
 const lots = read('../app/inventory/inventory-scoped-workspace.tsx');
 const policies = read('../app/inventory/tracking-policies/tracking-policy-workspace.tsx');
 const route = read('../app/api/inventory/export/route.ts');
+const historyAction = read('../app/inventory/balances/inventory-history-export-action.tsx');
+const historyRoute = read('../app/api/inventory/balances/history/export/route.ts');
 const model = read('../lib/inventory-data-export-model.ts');
 
 test('inventory export is owned by each workspace so it receives the live filter state', () => {
   assert.doesNotMatch(shell, /inventoryExportScope|InventoryExportAction/);
-  assert.match(balances, /<InventoryExportAction[\s\S]*scope="balances"[\s\S]*search=\{activeTab === 'balances' \? search : ''\}/);
-  assert.match(balances, /balanceScope=\{activeTab === 'history' && selectedBalance/);
-  assert.match(balances, /warehouseId: selectedBalance\.warehouse_id/);
-  assert.match(balances, /baseVariantId: selectedBalance\.base_variant_id/);
+  assert.match(balances, /activeTab === 'history' && selectedBalance/);
+  assert.match(balances, /<InventoryHistoryExportAction/);
+  assert.match(balances, /<InventoryExportAction scope="balances" search=\{search\} \/>/);
   assert.match(lots, /<InventoryExportAction scope=\{scope\} search=\{search\} \/>/);
   assert.match(policies, /<InventoryExportAction scope="tracking-policies" search=\{search\} \/>/);
 });
@@ -28,24 +29,22 @@ test('export dialog uses explicit workspace filters instead of scraping the page
   assert.match(action, /Excel \(\.xlsx\)/);
   assert.match(action, /CSV \(\.csv\)/);
   assert.match(action, /search\?: string/);
-  assert.match(action, /balanceScope\?: InventoryBalanceExportScope/);
-  assert.match(action, /query\.set\('warehouseId', balanceScope\.warehouseId\)/);
-  assert.match(action, /query\.set\('baseVariantId', balanceScope\.baseVariantId\)/);
   assert.match(action, /query\.append\('column', column\)/);
   assert.match(action, /\/api\/inventory\/export/);
   assert.doesNotMatch(action, /document\.querySelector|currentPageSearch/);
   assert.doesNotMatch(action, /createTabularXlsx/);
 });
 
-test('export route scopes selected inventory history to the exact warehouse and SKU', () => {
-  assert.match(route, /parseBalanceScope/);
-  assert.match(route, /UUID_PATTERN/);
-  assert.match(route, /sourceParams\.set\('warehouseId', balanceScope\.warehouseId\)/);
-  assert.match(route, /sourceParams\.set\('baseVariantId', balanceScope\.baseVariantId\)/);
-  assert.match(route, /listAllInventoryBalances\(requestId, sourceParams\)/);
-  assert.match(route, /INVENTORY_EXPORT_FILTER_INVALID/);
+test('history export supports one or many SKU with one Excel sheet per SKU', () => {
+  assert.match(historyAction, /Mỗi mã hàng sẽ nằm ở một sheet Excel riêng/);
+  assert.match(historyAction, /query\.append\('baseVariantId'/);
+  assert.match(historyAction, /query\.append\('sku'/);
+  assert.match(historyRoute, /createTabularWorkbookXlsx/);
+  assert.match(historyRoute, /sheetName: item\.sku/);
+  assert.match(historyRoute, /Khách hàng/);
+  assert.match(historyRoute, /Mã chứng từ/);
+  assert.match(historyRoute, /Đơn bán hàng/);
 });
-
 test('export route uses canonical inventory reads and fails instead of truncating', () => {
   assert.match(route, /listAllInventoryBalances/);
   assert.match(route, /listAllInventoryLots/);

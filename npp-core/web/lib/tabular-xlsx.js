@@ -146,6 +146,66 @@ export function createTabularXlsx(input, limits = TABULAR_XLSX_LIMITS) {
   ]);
 }
 
+export function createTabularWorkbookXlsx(inputs, limits = TABULAR_XLSX_LIMITS) {
+  if (!Array.isArray(inputs) || inputs.length < 1) throw new Error('XLSX_EMPTY');
+  if (inputs.length > 20) throw new Error('XLSX_SHEET_LIMIT_EXCEEDED');
+  const usedNames = new Set();
+  const tables = inputs.map((input, index) => {
+    const table = normalizeTable(input ?? {}, limits);
+    const baseName = table.sheetName || ('Sheet ' + (index + 1));
+    let sheetName = baseName;
+    let suffix = 2;
+    while (usedNames.has(sheetName.toLocaleLowerCase('vi-VN'))) {
+      const tail = ' ' + suffix;
+      sheetName = baseName.slice(0, Math.max(1, 31 - tail.length)) + tail;
+      suffix += 1;
+    }
+    usedNames.add(sheetName.toLocaleLowerCase('vi-VN'));
+    return { ...table, sheetName };
+  });
+
+  const styles = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF1F4E78"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
+  const entries = [];
+  const contentOverrides = [];
+  const workbookSheets = [];
+  const workbookRelationships = [];
+  tables.forEach((table, index) => {
+    const sheetId = index + 1;
+    const lastColumn = columnName(table.headers.length - 1);
+    const lastRow = Math.max(2, table.rows.length + 1);
+    const tableRef = 'A1:' + lastColumn + lastRow;
+    const headerCells = table.headers.map((value, columnIndex) => inlineCell(columnName(columnIndex) + '1', value, 1)).join('');
+    const dataRows = table.rows.map((row, rowIndex) => {
+      const rowNumber = rowIndex + 2;
+      const cells = row.map((value, columnIndex) => inlineCell(columnName(columnIndex) + rowNumber, value)).join('');
+      return '<row r="' + rowNumber + '">' + cells + '</row>';
+    }).join('');
+    const emptyRow = table.rows.length === 0 ? '<row r="2">' + table.headers.map((_, columnIndex) => inlineCell(columnName(columnIndex) + '2', '')).join('') + '</row>' : '';
+    const widths = table.headers.map((header, columnIndex) => {
+      const dataWidth = table.rows.reduce((max, row) => Math.max(max, String(row[columnIndex] ?? '').length), 0);
+      const width = Math.min(48, Math.max(12, header.length + 2, dataWidth + 2));
+      return '<col min="' + (columnIndex + 1) + '" max="' + (columnIndex + 1) + '" width="' + width + '" customWidth="1"/>';
+    }).join('');
+    const sheet = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols>' + widths + '</cols><sheetData><row r="1">' + headerCells + '</row>' + dataRows + emptyRow + '</sheetData><autoFilter ref="' + tableRef + '"/><tableParts count="1"><tablePart r:id="rId1"/></tableParts></worksheet>';
+    const tableColumns = table.headers.map((header, columnIndex) => '<tableColumn id="' + (columnIndex + 1) + '" name="' + xmlEscape(header) + '"/>').join('');
+    entries.push(['xl/worksheets/sheet' + sheetId + '.xml', sheet]);
+    entries.push(['xl/worksheets/_rels/sheet' + sheetId + '.xml.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/table" Target="../tables/table' + sheetId + '.xml"/></Relationships>']);
+    entries.push(['xl/tables/table' + sheetId + '.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><table xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" id="' + sheetId + '" name="DataExchange' + sheetId + '" displayName="DataExchange' + sheetId + '" ref="' + tableRef + '" totalsRowShown="0"><autoFilter ref="' + tableRef + '"/><tableColumns count="' + table.headers.length + '">' + tableColumns + '</tableColumns><tableStyleInfo name="TableStyleMedium2" showFirstColumn="0" showLastColumn="0" showRowStripes="1" showColumnStripes="0"/></table>']);
+    contentOverrides.push('<Override PartName="/xl/worksheets/sheet' + sheetId + '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/tables/table' + sheetId + '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml"/>');
+    workbookSheets.push('<sheet name="' + xmlEscape(table.sheetName) + '" sheetId="' + sheetId + '" r:id="rId' + sheetId + '"/>');
+    workbookRelationships.push('<Relationship Id="rId' + sheetId + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet' + sheetId + '.xml"/>');
+  });
+  const stylesRelationshipId = tables.length + 1;
+  return zipStored([
+    ['[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' + contentOverrides.join('') + '</Types>'],
+    ['_rels/.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'],
+    ['xl/workbook.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>' + workbookSheets.join('') + '</sheets></workbook>'],
+    ['xl/_rels/workbook.xml.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' + workbookRelationships.join('') + '<Relationship Id="rId' + stylesRelationshipId + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>'],
+    ['xl/styles.xml', styles],
+    ...entries,
+  ]);
+}
+
 function locateEndOfCentralDirectory(buffer) {
   const minimum = Math.max(0, buffer.length - 65557);
   for (let offset = buffer.length - 22; offset >= minimum; offset -= 1) if (buffer.readUInt32LE(offset) === 0x06054b50) return offset;
@@ -319,6 +379,7 @@ export function parseTabularXlsx(buffer, limits = TABULAR_XLSX_LIMITS, expectedH
 export function tabularXlsxErrorMessage(error) {
   const code = error instanceof Error ? error.message : String(error ?? '');
   if (code === 'XLSX_FILE_SIZE_INVALID') return 'Tệp XLSX không được vượt quá 5 MB.';
+  if (code === 'XLSX_SHEET_LIMIT_EXCEEDED') return 'Mỗi file Excel chỉ xuất tối đa 20 mã hàng.';
   if (code === 'XLSX_ROW_LIMIT_EXCEEDED') return 'Tệp XLSX vượt quá 2.000 dòng dữ liệu.';
   if (code === 'XLSX_COLUMN_LIMIT_EXCEEDED') return 'Tệp XLSX vượt quá 24 cột dữ liệu.';
   if (code === 'XLSX_HEADER_INVALID' || code === 'XLSX_HEADER_DUPLICATE') return 'Tên cột XLSX không hợp lệ hoặc bị trùng.';
