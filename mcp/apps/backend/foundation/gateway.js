@@ -6,6 +6,7 @@ import { handleMobileAuthApi, isMobileSessionRequest, resolveMobileSessionPrinci
 import { withFoundationRequestContext } from "./request-context-store.js";
 import { handleReadApi } from "./read-api.js";
 import { handleLocalReadApi } from "./local-read-api.js";
+import { handleReportAnalysisApi } from "./report-analysis-api.js";
 
 const LIVE_PATHS = new Set(["/", "/health/live"]);
 const READY_PATHS = new Set(["/health", "/api/health", "/health/ready"]);
@@ -136,6 +137,12 @@ export function createFoundationGateway(config, { persistence, legacyHandlers = 
       req.foundationContext = context;
 
       await withFoundationRequestContext(context, async () => {
+        const reportAnalysisApi = await handleReportAnalysisApi(req, url, context, config, { persistence, fetchImpl });
+        if (reportAnalysisApi) {
+          writeNormalized(res, normalizeApiPayload(reportAnalysisApi.payload, { status: reportAnalysisApi.statusCode, requestId: context.requestId, receivedAt: context.receivedAt }), context.requestId, origin);
+          return;
+        }
+
         const localReadApi = await handleLocalReadApi(req, url, context, config, { persistence });
         if (localReadApi) {
           writeNormalized(res, normalizeApiPayload(localReadApi.payload, { status: localReadApi.statusCode, requestId: context.requestId, receivedAt: context.receivedAt }), context.requestId, origin);
