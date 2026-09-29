@@ -65,6 +65,27 @@ test('customer portal verifies Clerk RS256 token and rejects wrong issuer', asyn
   assert.equal(rejected.code, 'CUSTOMER_PORTAL_TOKEN_ISSUER_INVALID');
 });
 
+test('customer portal accepts native Clerk session token without browser authorized party', async () => {
+  const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const kid = 'portal-native-key';
+  const now = Date.parse('2026-08-08T04:00:00Z');
+  const env = authEnv();
+  const auth = createCustomerPortalAuthenticator({
+    env,
+    now: () => now,
+    fetchImpl: async () => ({ ok: true, json: async () => ({ keys: [jwkFor(publicKey, kid)] }) }),
+  });
+  const nativeToken = jwt(privateKey, kid, {
+    iss: env.CUSTOMER_PORTAL_CLERK_ISSUER,
+    sub: 'user_customer_native_123',
+    exp: Math.floor(now / 1000) + 300,
+  });
+
+  const result = await auth.authenticate({ headers: { authorization: `Bearer ${nativeToken}` } });
+  assert.equal(result.ok, true);
+  assert.equal(result.subject, 'user_customer_native_123');
+});
+
 test('customer portal rejects bad signature, expired token and wrong authorized party', async () => {
   const signing = generateKeyPairSync('rsa', { modulusLength: 2048 });
   const other = generateKeyPairSync('rsa', { modulusLength: 2048 });
