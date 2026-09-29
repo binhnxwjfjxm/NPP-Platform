@@ -21,6 +21,7 @@ const REGISTRATION_RESUBMIT_PATH = /^\/api\/customer-portal\/registrations\/([0-
 const STATIC_PATHS = new Set([
   '/api/customer-portal/me',
   '/api/customer-portal/addresses',
+  '/api/customer-portal/home-content',
   '/api/customer-portal/catalog',
   '/api/customer-portal/catalog-sync',
   '/api/customer-portal/catalog/prices',
@@ -479,6 +480,17 @@ export async function handleCustomerPortalRoutes(req, res, options) {
     } catch (error) {
       sendError(res, unexpectedMutationError(error, 'profile-update', options), options.requestId, options.receivedAt);
     }
+    return true;
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/customer-portal/home-content') {
+    const result = await service.getPortalHomeContent(options.getPool(), {
+      requestContext,
+      config: options.config,
+    });
+    result.ok
+      ? sendSuccess(res, { homeContent: result.content }, options.requestId, options.receivedAt)
+      : sendServiceError(res, result, options);
     return true;
   }
 

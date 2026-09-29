@@ -142,6 +142,7 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   migration('158_workforce_attendance_method_combinations', 'shared/158_workforce_attendance_method_combinations.sql'),
   migration('159_workforce_manual_attendance_leave', 'shared/159_workforce_manual_attendance_leave.sql'),
   migration('160_retail_web_push_subscriptions', 'shared/160_retail_web_push_subscriptions.sql'),
+  migration('161_customer_ordering_home_content', 'shared/161_customer_ordering_home_content.sql'),
 ]);
 
 export { runMigrations };
