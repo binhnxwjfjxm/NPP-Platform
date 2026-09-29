@@ -6,6 +6,56 @@ import { handlePostgresqlCompatibilityApi } from "./postgresql-compatibility-api
 function persistenceWithRows({ daySession = true, dayStatus = "active" } = {}) {
   const client = {
     async query(sql, params = []) {
+      if (sql.includes("FROM mcp.test_files")) {
+        assert.deepEqual(params, ["installation-test"]);
+        return {
+          rows: [{
+            id: "file-1",
+            title: "Phiếu thử L7",
+            test_date: "2026-09-29",
+            status: "active",
+            created_at: "2026-09-29T01:00:00.000Z"
+          }]
+        };
+      }
+      if (sql.includes("FROM mcp.test_file_products")) {
+        assert.deepEqual(params, ["installation-test"]);
+        return {
+          rows: [{
+            id: "test-product-1",
+            file_id: "file-1",
+            product_name: "Sản phẩm thử L7",
+            sort_order: 1,
+            created_at: "2026-09-29T01:05:00.000Z"
+          }]
+        };
+      }
+      if (sql.includes("FROM mcp.test_customer_results result")) {
+        assert.deepEqual(params, ["installation-test"]);
+        return {
+          rows: [{
+            id: "result-1",
+            product_name: "Sản phẩm thử L7",
+            status: "ok",
+            note: "Có cơ hội",
+            updated_at: "2026-09-29T02:00:00.000Z",
+            created_at: "2026-09-29T01:30:00.000Z",
+            customer_name: "Khách L7",
+            area: "Cần Thơ",
+            customer_note: ""
+          }, {
+            id: "result-2",
+            product_name: "Sản phẩm thử B",
+            status: "retry",
+            note: "Cần kiểm lại",
+            updated_at: "2026-09-29T01:50:00.000Z",
+            created_at: "2026-09-29T01:20:00.000Z",
+            customer_name: "Khách B",
+            area: "Vĩnh Long",
+            customer_note: ""
+          }]
+        };
+      }
       if (sql.includes("FROM mcp.mcp_report_setting_groups")) {
         assert.deepEqual(params, ["installation-test", "market_report", false]);
         return {
@@ -175,6 +225,49 @@ function request(path) {
     url: new URL(path, "http://mcp.local")
   };
 }
+
+test("PostgreSQL typed runtime exposes product-trial options for the mobile picker", async () => {
+  bindProviderPersistence(persistenceWithRows());
+  const { req, url } = request("/api/mcp-day/test-options");
+  const result = await handlePostgresqlCompatibilityApi(req, url, context);
+
+  assert.equal(result.statusCode, 200);
+  assert.deepEqual(result.payload.data, {
+    files: [{
+      id: "file-1",
+      title: "Phiếu thử L7",
+      testDate: "2026-09-29",
+      products: [{
+        id: "test-product-1",
+        productName: "Sản phẩm thử L7"
+      }]
+    }]
+  });
+});
+
+test("PostgreSQL typed runtime exposes field-check history with canonical mobile statuses", async () => {
+  bindProviderPersistence(persistenceWithRows());
+  const { req, url } = request("/api/market-checks/data?status=opportunity&search=kh%C3%A1ch");
+  const result = await handlePostgresqlCompatibilityApi(req, url, context);
+
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.payload.data.checks.length, 1);
+  assert.deepEqual(result.payload.data.checks[0], {
+    id: "result-1",
+    date: "2026-09-29",
+    routeName: "Cần Thơ",
+    accountName: "Khách L7",
+    productName: "Sản phẩm thử L7",
+    competitorName: "ok",
+    shelfPrice: 0,
+    stockStatus: "ok",
+    note: "Có cơ hội",
+    status: "opportunity"
+  });
+  assert.equal(result.payload.data.kpis[0].value, 1);
+  assert.equal(result.payload.data.kpis[1].value, 1);
+  assert.equal(result.payload.data.kpis[2].value, 0);
+});
 
 test("PostgreSQL typed runtime exposes report settings through the mobile compatibility contract", async () => {
   bindProviderPersistence(persistenceWithRows());

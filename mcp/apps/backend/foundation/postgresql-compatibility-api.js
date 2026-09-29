@@ -338,6 +338,126 @@ async function mcpDayData(url, context) {
 }
 
 
+function normalizeFieldCheckStatus(value) {
+  const status = String(value ?? "").trim().toLowerCase();
+  if (status === "ok") return "opportunity";
+  if (status === "retry") return "risk";
+  if (status === "opportunity" || status === "risk" || status === "normal") return status;
+  return "normal";
+}
+
+async function testOptions(context) {
+  const installationId = text(context?.installation?.id);
+  if (!installationId) throw badRequest("installation_context_required");
+
+  const data = await withClient(async (client) => {
+    const [filesResult, productsResult] = await Promise.all([
+      client.query(
+        `SELECT id, title, test_date, status, created_at
+         FROM mcp.test_files
+         WHERE installation_id = $1
+           AND COALESCE(status, '') <> 'deleted'
+         ORDER BY test_date DESC, created_at DESC
+         LIMIT 50`,
+        [installationId]
+      ),
+      client.query(
+        `SELECT id, file_id, product_name, sort_order, created_at
+         FROM mcp.test_file_products
+         WHERE installation_id = $1
+         ORDER BY sort_order ASC, created_at ASC, id ASC
+         LIMIT 1000`,
+        [installationId]
+      )
+    ]);
+    return {
+      files: filesResult.rows || [],
+      products: productsResult.rows || []
+    };
+  });
+
+  const productsByFile = new Map();
+  for (const product of data.products) {
+    if (!productsByFile.has(product.file_id)) productsByFile.set(product.file_id, []);
+    productsByFile.get(product.file_id).push({
+      id: product.id,
+      productName: product.product_name || "Sản phẩm thử"
+    });
+  }
+
+  return response({
+    files: data.files.map((file) => ({
+      id: file.id,
+      title: file.title || file.id,
+      testDate: dateOnly(file.test_date || file.created_at),
+      products: productsByFile.get(file.id) || []
+    }))
+  });
+}
+
+async function marketChecks(url, context) {
+  const installationId = text(context?.installation?.id);
+  if (!installationId) throw badRequest("installation_context_required");
+  const status = text(url.searchParams.get("status"));
+  const search = (text(url.searchParams.get("search")) || "").toLowerCase();
+
+  const rows = await withClient(async (client) => {
+    const result = await client.query(
+      `SELECT
+         result.id,
+         result.product_name,
+         result.status,
+         result.note,
+         result.updated_at,
+         result.created_at,
+         customer.customer_name,
+         customer.area,
+         customer.note AS customer_note
+       FROM mcp.test_customer_results result
+       LEFT JOIN mcp.test_customers customer
+         ON customer.installation_id = result.installation_id
+        AND customer.id = result.customer_id
+       WHERE result.installation_id = $1
+       ORDER BY result.updated_at DESC, result.created_at DESC
+       LIMIT 300`,
+      [installationId]
+    );
+    return result.rows || [];
+  });
+
+  const checks = rows.map((row) => ({
+    id: row.id,
+    date: dateOnly(row.updated_at || row.created_at),
+    routeName: row.area || "Thử sản phẩm",
+    accountName: row.customer_name || "Khách thử",
+    productName: row.product_name || "Sản phẩm thử",
+    competitorName: row.status || "-",
+    shelfPrice: 0,
+    stockStatus: row.status || "pending",
+    note: row.note || row.customer_note || "",
+    status: normalizeFieldCheckStatus(row.status)
+  })).filter((check) => {
+    if (status && check.status !== status) return false;
+    if (!search) return true;
+    return `${check.accountName} ${check.routeName} ${check.productName} ${check.competitorName} ${check.note}`
+      .toLowerCase()
+      .includes(search);
+  });
+
+  const opportunities = checks.filter((check) => check.status === "opportunity").length;
+  const risks = checks.filter((check) => check.status === "risk").length;
+  const skuCount = new Set(checks.map((check) => check.productName)).size;
+  return response({
+    kpis: [
+      { label: "Điểm đã kiểm", value: checks.length, hint: "Dữ liệu hiện tại" },
+      { label: "Cơ hội", value: opportunities, hint: "Kết quả tích cực" },
+      { label: "Rủi ro", value: risks, hint: "Cần theo dõi" },
+      { label: "SKU", value: skuCount, hint: "Sản phẩm ghi nhận" }
+    ],
+    checks
+  });
+}
+
 function reportSettingStatus(active) {
   return active === false ? "inactive" : "active";
 }
@@ -434,6 +554,8 @@ export async function handlePostgresqlCompatibilityApi(req, url, context) {
   if (pathname === "/api/products/search") return searchProducts(url);
   if (pathname === "/api/mcp-settings/session-status") return sessionStatus(url, context);
   if (pathname === "/api/mcp-day/data") return mcpDayData(url, context);
+  if (pathname === "/api/mcp-day/test-options") return testOptions(context);
+  if (pathname === "/api/market-checks/data") return marketChecks(url, context);
   if (pathname === "/api/mcp-report-settings") return reportSettings(url, context);
   const variantMatch = pathname.match(/^\/api\/products\/([^/]+)\/variants$/);
   if (variantMatch) {
