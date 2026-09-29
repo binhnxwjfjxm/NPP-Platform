@@ -9,6 +9,8 @@ const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._:-]{8,200}$/;
 const MAX_ORDER_LINES = 200;
 const PORTAL_SOURCE_PREFIX = 'CUSTOMER_PORTAL:';
 const CATALOG_PRICE_CONCURRENCY = 4;
+const CATALOG_PRICE_BATCH_LIMIT = 100;
+const CATALOG_PRICE_BATCH_CONCURRENCY = 8;
 const PURCHASE_MODES = new Set(['retail', 'case']);
 const PROCESSING_FULFILLMENT_STATES = new Set([
   'backordered',
@@ -178,6 +180,35 @@ function purchaseModeFor(option) {
   return String(option?.variant_kind ?? '').toUpperCase() === 'CARTON' ? 'case' : 'retail';
 }
 
+
+function normalizeCatalogCursor(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return null;
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return undefined;
+  return parsed.toISOString();
+}
+
+function mapCatalogSyncItem(option) {
+  return Object.freeze({
+    sku: option.sku,
+    variantId: option.id,
+    productId: option.product_id,
+    productCode: option.product_code,
+    name: option.product_name,
+    variantName: option.variant_name,
+    categoryId: option.category_id ?? null,
+    categoryName: option.category_name ?? null,
+    parentCategoryId: option.parent_category_id ?? null,
+    parentCategoryName: option.parent_category_name ?? null,
+    brandName: option.brand_name ?? null,
+    purchaseMode: purchaseModeFor(option),
+    unitCode: option.unit_code,
+    unitName: option.unit_name,
+    conversionToBase: option.conversion_to_base,
+  });
+}
+
 function variantKindsForPurchaseMode(purchaseMode) {
   if (purchaseMode === 'case') return Object.freeze(['CARTON']);
   if (purchaseMode === 'retail') return Object.freeze(['BASE', 'OTHER']);
@@ -313,6 +344,97 @@ export async function listPortalCatalog(client, {
   });
 }
 
+
+export async function syncPortalCatalog(client, {
+  requestContext,
+  since = null,
+}) {
+  const cursor = normalizeCatalogCursor(since);
+  if (cursor === undefined) {
+    return failure('INVALID_CATALOG_CURSOR', 'Mốc đồng bộ danh mục không hợp lệ.');
+  }
+  const [snapshot, categoryRows] = await Promise.all([
+    portalCatalogRepository.readPortalCatalogChanges(client, {
+      installationId: requestContext.installationId,
+      since: cursor,
+    }),
+    portalCatalogRepository.listPortalCatalogCategories(client, {
+      installationId: requestContext.installationId,
+    }),
+  ]);
+  const upserts = [];
+  const removeVariantIds = [];
+  for (const row of snapshot.rows) {
+    if (row.eligible === true) upserts.push(mapCatalogSyncItem(row));
+    else if (cursor) removeVariantIds.push(row.id);
+  }
+  return Object.freeze({
+    ok: true,
+    catalog: Object.freeze({
+      cursor: new Date(snapshot.cursor).toISOString(),
+      full: cursor === null,
+      upserts: Object.freeze(upserts),
+      removeVariantIds: Object.freeze([...new Set(removeVariantIds)]),
+      categories: Object.freeze(categoryRows.map(mapCatalogCategory)),
+    }),
+  });
+}
+
+export async function resolvePortalCatalogPrices(client, {
+  requestContext,
+  membership,
+  payload,
+}) {
+  const items = Array.isArray(payload?.items) ? payload.items : null;
+  if (!items || items.length === 0 || items.length > CATALOG_PRICE_BATCH_LIMIT) {
+    return failure(
+      'INVALID_PRICE_ITEMS',
+      `Danh sách tính giá phải có từ 1 đến ${CATALOG_PRICE_BATCH_LIMIT} sản phẩm.`,
+    );
+  }
+  const normalized = items.map((item) => ({
+    variantId: String(item?.variantId ?? '').trim(),
+    quantity: String(item?.quantity ?? '1').trim() || '1',
+  }));
+  if (normalized.some((item) => !UUID_PATTERN.test(item.variantId))) {
+    return failure('INVALID_PRICE_ITEMS', 'Danh sách sản phẩm cần tính giá không hợp lệ.');
+  }
+  const priceAt = new Date().toISOString();
+  const prices = await mapWithConcurrency(
+    normalized,
+    CATALOG_PRICE_BATCH_CONCURRENCY,
+    async (item) => {
+      const resolved = await pricingService.resolvePrice(client, {
+        installationId: requestContext.installationId,
+        payload: {
+          variantId: item.variantId,
+          quantity: item.quantity,
+          currencyCode: 'VND',
+          priceAt,
+          channelId: membership.sales_channel_id,
+          customerId: membership.customer_id,
+        },
+      });
+      return Object.freeze({
+        variantId: item.variantId,
+        quantity: item.quantity,
+        price: resolved.ok
+          ? Object.freeze({
+              status: 'available',
+              amount: Number(resolved.resolution.finalUnitPriceMinor),
+              currency: 'VND',
+            })
+          : Object.freeze({
+              status: 'customer_price_pending',
+              amount: null,
+              currency: 'VND',
+            }),
+      });
+    },
+  );
+  return Object.freeze({ ok: true, prices: Object.freeze(prices) });
+}
+
 async function resolveOrderLines(client, { requestContext, lines }) {
   if (!Array.isArray(lines) || lines.length < 1 || lines.length > MAX_ORDER_LINES) {
     return failure('INVALID_ORDER_LINES', `Đơn hàng phải có từ 1 đến ${MAX_ORDER_LINES} dòng.`);
@@ -424,4 +546,4 @@ export async function cancelPortalOrder(client, {
 }
 
 export const CUSTOMER_PORTAL_SOURCE_PREFIX = PORTAL_SOURCE_PREFIX;
-export const customerPortalCatalogInternals = Object.freeze({ purchaseModeFor, variantKindsForPurchaseMode });
+export const customerPortalCatalogInternals = Object.freeze({ purchaseModeFor, variantKindsForPurchaseMode, normalizeCatalogCursor, mapCatalogSyncItem });

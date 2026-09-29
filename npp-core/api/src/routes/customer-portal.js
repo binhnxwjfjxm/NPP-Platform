@@ -22,6 +22,8 @@ const STATIC_PATHS = new Set([
   '/api/customer-portal/me',
   '/api/customer-portal/addresses',
   '/api/customer-portal/catalog',
+  '/api/customer-portal/catalog-sync',
+  '/api/customer-portal/catalog/prices',
   '/api/customer-portal/orders',
   REGISTRATION_COLLECTION,
   REGISTRATION_CURRENT,
@@ -199,6 +201,13 @@ function parseCatalogQuery(url) {
     includeCategories: url.searchParams.get('includeCategories') === '1',
     limit: Number.isFinite(limit) ? Math.max(1, Math.min(50, Math.trunc(limit))) : 50,
     offset: Number.isFinite(offset) ? Math.max(0, Math.trunc(offset)) : 0,
+  };
+}
+
+
+function parseCatalogSyncQuery(url) {
+  return {
+    since: (url.searchParams.get('since') ?? '').trim() || null,
   };
 }
 
@@ -481,6 +490,33 @@ export async function handleCustomerPortalRoutes(req, res, options) {
   if (req.method === 'GET' && url.pathname === '/api/customer-portal/catalog') {
     const result = await service.listPortalCatalog(options.getPool(), { requestContext, membership, ...parseCatalogQuery(url) });
     result.ok ? sendSuccess(res, { items: result.items, categories: result.categories, limit: result.limit, offset: result.offset, hasMore: result.hasMore }, options.requestId, options.receivedAt) : sendServiceError(res, result, options);
+    return true;
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/customer-portal/catalog-sync') {
+    res.setHeader('Cache-Control', 'no-store');
+    const result = await service.syncPortalCatalog(options.getPool(), {
+      requestContext,
+      membership,
+      ...parseCatalogSyncQuery(url),
+    });
+    result.ok
+      ? sendSuccess(res, { catalog: result.catalog }, options.requestId, options.receivedAt)
+      : sendServiceError(res, result, options);
+    return true;
+  }
+  if (req.method === 'POST' && url.pathname === '/api/customer-portal/catalog/prices') {
+    res.setHeader('Cache-Control', 'no-store');
+    const payload = await readPayload(req, res, options);
+    if (payload === null) return true;
+    const result = await service.resolvePortalCatalogPrices(options.getPool(), {
+      requestContext,
+      membership,
+      payload,
+    });
+    result.ok
+      ? sendSuccess(res, { prices: result.prices }, options.requestId, options.receivedAt)
+      : sendServiceError(res, result, options);
     return true;
   }
   if (req.method === 'GET' && url.pathname === '/api/customer-portal/orders') {
