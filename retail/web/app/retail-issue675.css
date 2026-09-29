@@ -1,6 +1,6 @@
 /* Issue #675 — Retail UI hardening. Loaded after retail-lot7.css. */
 .retail-issue675 {
-  padding-bottom: calc(112px + env(safe-area-inset-bottom));
+  padding-bottom: calc(94px + env(safe-area-inset-bottom));
   font-size: 14px;
   line-height: 1.45;
 }
@@ -217,26 +217,73 @@
 .settings-sheet-actions .secondary-action { min-height: 42px; padding-inline: 16px; }
 .print-note { border-top: 1px dashed #ddd; padding-top: 8px; }
 
+/* Order cancellation */
+.retail-issue675 .retail-cancel-action {
+  min-height: 38px;
+  border: 1px solid #efb2ad;
+  border-radius: 11px;
+  padding: 0 12px;
+  background: #fff4f3;
+  color: #b42318;
+  font-size: 12px;
+  font-weight: 800;
+}
+.retail-issue675 .retail-cancel-action:not(:disabled):active { background: #fee4e2; }
+.cancel-dialog-backdrop { align-items: center; padding: 18px; }
+.cancel-dialog {
+  width: min(360px, 100%);
+  border-radius: 18px;
+  padding: 16px;
+  background: #fff;
+  box-shadow: 0 18px 48px rgba(15, 45, 29, .2);
+}
+.cancel-dialog > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.cancel-dialog h2 { margin: 2px 0 0; font-size: 19px; }
+.cancel-dialog-copy { margin: 12px 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
+.cancel-reason-field { display: grid; gap: 7px; color: #39463f; font-size: 12px; font-weight: 800; }
+.cancel-reason-field textarea {
+  min-height: 82px;
+  resize: vertical;
+  border: 1px solid #d6dfd9;
+  border-radius: 12px;
+  padding: 10px 11px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-size: 16px;
+  line-height: 1.4;
+}
+.cancel-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.cancel-dialog-actions button { min-height: 40px; padding-inline: 14px; }
+.cancel-confirm-action {
+  border: 1px solid #b42318;
+  border-radius: 11px;
+  background: #b42318;
+  color: #fff;
+  font-weight: 800;
+}
+.cancel-confirm-action:not(:disabled):active { background: #912018; }
+
 /* Bottom navigation */
 .retail-issue675 .bottom-nav {
   position: fixed;
   left: max(10px, env(safe-area-inset-left));
   right: max(10px, env(safe-area-inset-right));
-  bottom: max(9px, env(safe-area-inset-bottom));
+  bottom: max(8px, env(safe-area-inset-bottom));
   width: auto;
   max-width: 620px;
-  min-height: 66px;
+  min-height: 56px;
   margin-inline: auto;
   border: 1px solid rgba(89, 137, 111, .22);
-  border-radius: 22px;
-  padding: 6px;
+  border-radius: 18px;
+  padding: 4px;
   background: rgba(232, 246, 238, .86);
   box-shadow: 0 10px 30px rgba(19, 61, 38, .12);
   backdrop-filter: blur(18px) saturate(130%);
   -webkit-backdrop-filter: blur(18px) saturate(130%);
 }
-.retail-issue675 .bottom-nav button { min-width: 0; min-height: 52px; border-radius: 17px; font-size: 10px; line-height: 1.15; transition: transform 130ms ease, background 130ms ease, color 130ms ease; }
-.retail-issue675 .bottom-nav button > span { font-size: 20px; line-height: 1; }
+.retail-issue675 .bottom-nav button { min-width: 0; min-height: 44px; border-radius: 14px; padding-block: 3px; font-size: 10px; line-height: 1.1; transition: transform 130ms ease, background 130ms ease, color 130ms ease; }
+.retail-issue675 .bottom-nav button > span { font-size: 18px; line-height: 1; }
 .retail-issue675 .bottom-nav button.active { background: rgba(255,255,255,.82); box-shadow: 0 3px 12px rgba(27,72,46,.08); }
 
 /* Interaction */
@@ -248,7 +295,7 @@
 .retail-issue675 button:disabled { cursor: not-allowed; opacity: .52; box-shadow: none; }
 
 @media (max-width: 640px) {
-  .retail-issue675 { padding-bottom: calc(104px + env(safe-area-inset-bottom)); }
+  .retail-issue675 { padding-bottom: calc(88px + env(safe-area-inset-bottom)); }
   .home-feature { min-height: 150px; }
   .home-feature-copy { width: 74%; min-height: 150px; padding: 16px; }
   .home-feature-copy h2 { font-size: 22px; }
@@ -272,7 +319,7 @@
 
 @media (max-width: 390px) {
   .retail-issue675 .compact-home-actions strong { font-size: 12px; }
-  .retail-issue675 .bottom-nav { left: 7px; right: 7px; border-radius: 20px; }
+  .retail-issue675 .bottom-nav { left: 7px; right: 7px; border-radius: 17px; }
   .retail-issue675 .bottom-nav button { padding-inline: 4px; }
 }
 
