@@ -30,6 +30,22 @@ test('pricing workbook keeps summary and detailed conditions in separate sheets'
   assert.equal(details[1][4], '5%');
 });
 
+test('multi-sheet operational workbook trims redundant decimal scale', () => {
+  const workbook = createTabularWorkbookXlsx([
+    {
+      sheetName: 'Kho',
+      headers: ['Số lượng', 'Tồn kho', 'Mã chứng từ'],
+      rows: [['12.000000000000', '2799.000000000000', 'SO-001'], ['12.500000000000', '2811.500000000000', 'SO-002']],
+    },
+  ]);
+  const limits = { ...TABULAR_XLSX_LIMITS, maxRows: 12001, maxColumns: 200 };
+  assert.deepEqual(parseTabularXlsx(workbook, limits), [
+    ['Số lượng', 'Tồn kho', 'Mã chứng từ'],
+    ['12', '2799', 'SO-001'],
+    ['12.5', '2811.5', 'SO-002'],
+  ]);
+});
+
 test('pricing overview uses one business navigation level and filters price-list columns', () => {
   const overview = read('app/pricing/pricing-overview.tsx');
   const workspace = read('app/pricing/pricing-workspace.tsx');

@@ -1,3 +1,5 @@
+import { formatOfficeExportValue } from './office-export-value.js';
+
 export const TABULAR_WORKBOOK_XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 export const TABULAR_WORKBOOK_XLSX_LIMITS = Object.freeze({
   maxSheets: 8,
@@ -111,7 +113,7 @@ function normalizeSheets(input, limits) {
     if (new Set(headers.map((value) => value.toLocaleLowerCase('vi'))).size !== headers.length) throw new Error('WORKBOOK_HEADER_DUPLICATE');
     const rows = sheet.rows.map((row) => {
       if (!Array.isArray(row) || row.length > headers.length) throw new Error('WORKBOOK_COLUMN_LIMIT');
-      return headers.map((_, columnIndex) => String(row[columnIndex] ?? ''));
+      return headers.map((_, columnIndex) => formatOfficeExportValue(row[columnIndex]));
     });
     cellCount += headers.length * Math.max(1, rows.length + 1);
     if (cellCount > limits.maxCells) throw new Error('WORKBOOK_CELL_LIMIT');

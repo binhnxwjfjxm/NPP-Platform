@@ -1,4 +1,5 @@
 import { inflateRawSync } from 'node:zlib';
+import { formatOfficeExportValue } from './office-export-value.js';
 
 export const TABULAR_XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 export const TABULAR_XLSX_LIMITS = Object.freeze({
@@ -109,7 +110,7 @@ function normalizeTable({ sheetName = 'Dữ liệu', headers, rows }, limits) {
   if (new Set(safeHeaders.map((value) => value.toLowerCase())).size !== safeHeaders.length) throw new Error('XLSX_HEADER_DUPLICATE');
   const safeRows = rows.map((row) => {
     if (!Array.isArray(row) || row.length > safeHeaders.length) throw new Error('XLSX_COLUMN_LIMIT_EXCEEDED');
-    return safeHeaders.map((_, index) => String(row[index] ?? ''));
+    return safeHeaders.map((_, index) => formatOfficeExportValue(row[index]));
   });
   return { sheetName: sanitizeSheetName(sheetName), headers: safeHeaders, rows: safeRows };
 }
