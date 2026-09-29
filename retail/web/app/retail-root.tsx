@@ -74,7 +74,7 @@ export default function RetailRoot() {
 
   return <>
     {mode === 'inventory' && inventoryAccess
-      ? <div className={styles.root}><RetailInventoryPanel warehouses={inventoryAccess.warehouses} /></div>
+      ? <div className={`${styles.root} retail-lot7 retail-issue675`}><RetailInventoryPanel warehouses={inventoryAccess.warehouses} /></div>
       : <RetailWorkspace activeTab={salesTab} onTabChange={setSalesTab} />}
     {inventoryAccessResolved ? <RetailBottomNav
       mode={mode}

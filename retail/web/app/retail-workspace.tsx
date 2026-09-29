@@ -475,6 +475,11 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
         setOrdersHasMore(list.length > ORDER_BATCH_SIZE);
         setOrderVisibleCount(ORDER_VISIBLE_STEP);
     }, []);
+    useEffect(() => {
+        if (activeTab !== 'orders')
+            return;
+        void refreshOrders().catch(() => undefined);
+    }, [activeTab, refreshOrders]);
     async function loadMoreOrders() {
         if (ordersLoadingMore) return;
         if (filteredOrders.length > orderVisibleCount) {
@@ -1635,7 +1640,7 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
       </article>
       <div className="home-actions compact-home-actions">
         <button type="button" onClick={() => { resetEntry(); setActiveTab('entry'); }}><span aria-hidden="true">＋</span><strong>Lên đơn</strong><small>Tạo đơn mới</small></button>
-        <button type="button" onClick={() => { setActiveTab('orders'); void refreshOrders(); }}><span aria-hidden="true">▤</span><strong>Đơn hàng</strong><small>Theo dõi xử lý</small></button>
+        <button type="button" onClick={() => setActiveTab('orders')}><span aria-hidden="true">▤</span><strong>Đơn hàng</strong><small>Theo dõi xử lý</small></button>
         <button type="button" onClick={() => setActiveTab('settings')}><span aria-hidden="true">⚙</span><strong>Cài đặt</strong><small>In và tài khoản</small></button>
       </div>
       <section className="home-overview" aria-label="Tổng quan hôm nay"><header><div><p className="section-kicker">HÔM NAY</p><h3>Tổng quan quầy bán</h3></div><button className="text-action" type="button" onClick={() => void refreshOrders()}>Cập nhật</button></header><div className="home-metrics"><article><span>Đơn hôm nay</span><strong>{todayOrders.length}</strong></article><article><span>Cần xử lý</span><strong>{pendingOrders.length}</strong></article><article><span>Doanh số hoàn thành</span><strong>{money.format(todayRevenue)}</strong></article></div></section>
