@@ -2,8 +2,6 @@
 
 import Link from 'next/link';
 import type { ComponentProps } from 'react';
-import type { InventoryExportScope } from '../../lib/inventory-data-export-model';
-import InventoryExportAction from '../inventory/inventory-export-action';
 import { AppShell as CoreAppShell } from './app-shell-core';
 import styles from './app-shell-user-tabs.module.css';
 
@@ -32,13 +30,6 @@ function UserAccessTabs({ active }: { active: UserAccessTab }) {
   );
 }
 
-function inventoryExportScope(title: string): InventoryExportScope | null {
-  if (title === 'Tra cứu tồn kho') return 'balances';
-  if (title === 'Lô hàng') return 'lots';
-  if (title === 'Chính sách quản lý lô') return 'tracking-policies';
-  return null;
-}
-
 /**
  * Shared NPP Operations shell.
  *
@@ -52,16 +43,8 @@ export function AppShell({ children, ...props }: AppShellProps) {
     : props.title === 'Phạm vi chi nhánh & kho'
       ? 'scopes'
       : null;
-  const exportScope = inventoryExportScope(props.title);
-  const combinedActions = (props.actions != null || exportScope !== null) ? (
-    <>
-      {props.actions}
-      {exportScope ? <InventoryExportAction scope={exportScope} /> : null}
-    </>
-  ) : undefined;
-
   return (
-    <CoreAppShell {...props} actions={combinedActions}>
+    <CoreAppShell {...props}>
       {userTab ? <UserAccessTabs active={userTab} /> : null}
       {children}
     </CoreAppShell>
