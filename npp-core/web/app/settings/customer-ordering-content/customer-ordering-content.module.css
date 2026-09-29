@@ -1,0 +1,160 @@
+.workspace {
+  width: min(100%, 920px);
+  margin: 0 auto;
+}
+
+.card {
+  display: grid;
+  gap: 20px;
+  padding: 24px;
+  border: 1px solid var(--hp-border, #e4e8e4);
+  border-radius: 16px;
+  background: var(--hp-surface, #fff);
+  box-shadow: var(--hp-shadow, 0 8px 24px rgba(22, 58, 35, .06));
+}
+
+.heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.heading h2 {
+  margin: 2px 0 6px;
+  font-size: 22px;
+}
+
+.heading p {
+  margin: 0;
+  color: var(--hp-muted, #66736b);
+}
+
+.eyebrow {
+  color: var(--hp-primary, #198754) !important;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .08em;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: var(--hp-surface-soft, #eef5ef);
+  font-weight: 750;
+}
+
+.field {
+  display: grid;
+  gap: 7px;
+  font-weight: 750;
+}
+
+.field input {
+  min-height: 44px;
+  padding: 0 13px;
+  border: 1px solid var(--hp-border, #dfe5df);
+  border-radius: 10px;
+  background: var(--hp-surface, #fff);
+  color: var(--hp-ink, #17221a);
+  font: inherit;
+}
+
+.bannerField {
+  display: grid;
+  gap: 12px;
+}
+
+.bannerLabel {
+  display: grid;
+  gap: 3px;
+}
+
+.bannerLabel > span {
+  font-weight: 750;
+}
+
+.bannerLabel small {
+  color: var(--hp-muted, #66736b);
+}
+
+.preview {
+  width: 100%;
+  min-height: 118px;
+  aspect-ratio: 3.6 / 1;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--hp-border, #dfe5df);
+  border-radius: 14px;
+  background: var(--hp-surface-soft, #f5f8f5);
+  color: var(--hp-muted, #66736b);
+}
+
+.preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.actions button {
+  min-height: 42px;
+  padding: 0 16px;
+  border: 1px solid var(--hp-border, #dfe5df);
+  border-radius: 10px;
+  background: var(--hp-surface, #fff);
+  color: var(--hp-primary-strong, #0f6b3d);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.actions .primary {
+  border-color: var(--hp-primary, #198754);
+  background: var(--hp-primary, #198754);
+  color: #fff;
+}
+
+.actions button:disabled {
+  opacity: .58;
+  cursor: default;
+}
+
+.fileInput {
+  display: none;
+}
+
+.message {
+  margin: 0;
+  color: var(--hp-muted, #66736b);
+  font-size: 13px;
+}
+
+@media (max-width: 680px) {
+  .card {
+    padding: 18px;
+  }
+
+  .heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .toggle {
+    width: fit-content;
+  }
+
+  .preview {
+    min-height: 96px;
+  }
+}

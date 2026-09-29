@@ -44,6 +44,7 @@ import { handleRetailOwnerNotificationRoutes } from './routes/retail-owner-notif
 import { handleProductUnitRoutes } from './routes/product-units.js';
 import { handleDocumentNumberingRoutes } from './routes/document-numbering.js';
 import { handleDocumentPrintTemplateRoutes } from './routes/document-print-templates.js';
+import { handleCustomerOrderingHomeContentRoutes } from './routes/customer-ordering-home-content.js';
 import { handleInventoryRoutes } from './routes/inventory.js';
 import { handleGoodsReceiptRoutes } from './routes/goods-receipts.js';
 import { handleSupplierReturnRoutes } from './routes/supplier-returns.js';
@@ -502,6 +503,7 @@ export function createCoreApiServer(options = {}) {
     if (await handleSupplierReturnRoutes(req, res, routeContext)) return;
     if (await handleDocumentNumberingRoutes(req, res, routeContext)) return;
     if (await handleDocumentPrintTemplateRoutes(req, res, routeContext)) return;
+    if (await handleCustomerOrderingHomeContentRoutes(req, res, routeContext)) return;
     if (await handleInventoryRoutes(req, res, routeContext)) return;
     if (await handleProductUnitRoutes(req, res, routeContext)) return;
     if (await handleRetailOwnerNotificationRoutes(req, res, routeContext)) return;

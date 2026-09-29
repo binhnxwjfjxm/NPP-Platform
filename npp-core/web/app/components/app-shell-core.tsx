@@ -137,6 +137,7 @@ const accountingItems: NavItem[] = [
 const settingsItems: NavItem[] = [
   { href: '/settings', label: 'Thiết lập chung', icon: 'panel', testId: 'nav-settings' },
   { href: '/settings/mcp-routes', label: 'MCP và tuyến', icon: 'dashboard', testId: 'nav-employee-mcp-reporting' },
+  { href: '/settings/customer-ordering-content', label: 'Nội dung đặt hàng', icon: 'panel', testId: 'nav-customer-ordering-content' },
 ];
 
 function Icon({ name }: { name: IconName }) {
@@ -291,7 +292,7 @@ export function AppShell({ title, subtitle, kicker = 'Hệ thống quản trị 
         <p className={styles.navLabel}>Vận hành hệ thống</p><Link href="/operations/data-exchange" className={`${styles.navItem} ${pathname === '/operations/data-exchange' ? styles.navItemActive : ''}`} data-testid="nav-data-exchange" title={collapsed ? 'Nhập/xuất dữ liệu' : undefined}><span className={styles.navIcon}><Icon name="panel" /></span><span className={styles.navCopy}><span className={styles.navTitle}>Nhập/xuất dữ liệu</span><span className={styles.navHint}>Sản phẩm, giá bán, kiểm kê, biến động kho và biểu mẫu</span></span></Link>
         <Link href="/operations/audit-history" className={`${styles.navItem} ${pathname === '/operations/audit-history' ? styles.navItemActive : ''}`} data-testid="nav-audit-history" title={collapsed ? 'Lịch sử thay đổi' : undefined}><span className={styles.navIcon}><Icon name="dashboard" /></span><span className={styles.navCopy}><span className={styles.navTitle}>Lịch sử thay đổi</span><span className={styles.navHint}>Tra cứu thay đổi và dấu vết vận hành</span></span></Link>
         <Link href="/operations/import-export-history" className={`${styles.navItem} ${pathname === '/operations/import-export-history' ? styles.navItemActive : ''}`} data-testid="nav-import-export-history" title={collapsed ? 'Lịch sử nhập/xuất' : undefined}><span className={styles.navIcon}><Icon name="panel" /></span><span className={styles.navCopy}><span className={styles.navTitle}>Lịch sử nhập/xuất</span><span className={styles.navHint}>Theo dõi các lần nhập và xuất dữ liệu</span></span></Link>
-        {renderGroup({ sectionLabel: 'Cài đặt', title: 'Cài đặt Công Ty', hint: 'Thiết lập chung, MCP và tuyến', icon: 'panel', active: pathname.startsWith('/settings'), open: settingsOpen, setOpen: setSettingsOpen, testId: 'settings-menu-toggle', children: settingsChildren })}
+        {renderGroup({ sectionLabel: 'Cài đặt', title: 'Cài đặt Công Ty', hint: 'Thiết lập chung, MCP, tuyến và nội dung đặt hàng', icon: 'panel', active: pathname.startsWith('/settings'), open: settingsOpen, setOpen: setSettingsOpen, testId: 'settings-menu-toggle', children: settingsChildren })}
         {renderGroup({ sectionLabel: 'Quản trị hệ thống', title: 'Người dùng & phân quyền', hint: 'Tài khoản, vai trò và phạm vi truy cập', icon: 'user', active: pathname.startsWith('/access'), open: accessOpen, setOpen: setAccessOpen, testId: 'access-menu-toggle', children: accessChildren, stableMotion: true })}
       </nav></div>
       <div className={styles.sidebarFooter}>

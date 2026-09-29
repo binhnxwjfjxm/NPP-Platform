@@ -14,6 +14,8 @@ test('MCP supervision is placed under Company settings instead of user access', 
   assert.doesNotMatch(accessItems, /employees\/performance|Hiệu suất nhân viên thị trường/);
   assert.match(settingsItems, /\/settings\/mcp-routes/);
   assert.match(settingsItems, /MCP và tuyến/);
+  assert.match(settingsItems, /\/settings\/customer-ordering-content/);
+  assert.match(settingsItems, /Nội dung đặt hàng/);
   assert.match(shell, /Cài đặt Công Ty/);
   assert.match(shell, /Tài khoản, vai trò và phạm vi truy cập/);
 });

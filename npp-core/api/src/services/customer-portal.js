@@ -1,5 +1,6 @@
 import * as portalRepository from '../db/repositories/customer-portal.js';
 import * as portalCatalogRepository from '../db/repositories/customer-portal-catalog.js';
+import * as customerOrderingHomeContentService from './customer-ordering-home-content.js';
 import * as pricingService from './pricing.js';
 import * as salesOrderService from './sales-order.js';
 import * as salesOrderEntryService from './sales-order-entry.js';
@@ -255,6 +256,16 @@ export function portalProfile(membership) {
     displayName: membership.portal_display_name ?? membership.customer_name,
     outletName: membership.customer_name,
     phone: '',
+  });
+}
+
+export async function getPortalHomeContent(client, {
+  requestContext,
+  config,
+}) {
+  return customerOrderingHomeContentService.getCustomerOrderingHomeContent(client, {
+    installationId: requestContext.installationId,
+    config,
   });
 }
 
