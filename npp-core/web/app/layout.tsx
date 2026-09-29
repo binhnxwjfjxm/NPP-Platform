@@ -1,5 +1,4 @@
 import type { Metadata } from 'next';
-import { Be_Vietnam_Pro, IBM_Plex_Mono } from 'next/font/google';
 import { GlobalQuickActions } from './components/global-quick-actions';
 import {
   APPEARANCE_SCALE_STORAGE_KEY,
@@ -17,19 +16,6 @@ import './dark-theme-hardening.css';
 import './appearance-theme-runtime.css';
 import './appearance-theme-domain-coverage.css';
 
-const beVietnamPro = Be_Vietnam_Pro({
-  subsets: ['latin', 'vietnamese'],
-  variable: '--font-sans',
-  display: 'swap',
-  weight: ['400', '500', '600', '700', '800'],
-});
-
-const ibmPlexMono = IBM_Plex_Mono({
-  subsets: ['latin'],
-  variable: '--font-mono',
-  display: 'swap',
-  weight: ['400', '500', '600', '700'],
-});
 
 export const metadata: Metadata = {
   title: {
@@ -58,7 +44,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html
       lang="vi"
-      className={`${beVietnamPro.variable} ${ibmPlexMono.variable}`}
       data-hp-theme="default"
       data-hp-scale="0"
       suppressHydrationWarning

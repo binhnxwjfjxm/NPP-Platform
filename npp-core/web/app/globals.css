@@ -8,6 +8,8 @@
   --office-brown-dark: #3c241b;
   --office-border: #ded8d2;
   --office-muted: #6d645f;
+  --font-sans: 'Be Vietnam Pro', 'Segoe UI', Arial, sans-serif;
+  --font-mono: 'IBM Plex Mono', 'Cascadia Mono', Consolas, 'Courier New', monospace;
 }
 
 * {
@@ -28,7 +30,7 @@ body {
     linear-gradient(180deg, rgba(255, 255, 255, 0.46), transparent 180px),
     var(--page-bg);
   color: var(--page-fg);
-  font-family: var(--font-sans), 'Segoe UI', Arial, sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.875rem;
   font-variant-numeric: tabular-nums;
   text-rendering: optimizeLegibility;
@@ -65,7 +67,7 @@ textarea:focus-visible {
 code,
 pre,
 kbd {
-  font-family: var(--font-mono), monospace;
+  font-family: var(--font-mono);
 }
 
 ::selection {
