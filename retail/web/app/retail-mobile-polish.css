@@ -177,12 +177,6 @@ body {
   box-shadow: 0 11px 24px rgba(5, 131, 70, .22);
 }
 
-/* Fixed navigation không được tạo bề ngang lớn hơn viewport. */
-.retail-issue675 .bottom-nav {
-  width: auto;
-  max-width: min(620px, calc(100% - 16px));
-}
-
 @media (max-width: 560px) {
   .retail-issue675 .retail-topbar {
     margin-right: -12px;

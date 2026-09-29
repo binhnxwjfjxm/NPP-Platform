@@ -4,7 +4,7 @@ import test from 'node:test';
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
-test('Retail chỉ hiện tab Tồn kho sau khi backend xác nhận quyền xem', async () => {
+test('Retail chốt quyền Tồn kho trước khi hiện bottom nav để không nhảy 4 thành 5 nút', async () => {
   const [page, root, workspace] = await Promise.all([
     read('app/page.tsx'),
     read('app/retail-root.tsx'),
@@ -12,9 +12,12 @@ test('Retail chỉ hiện tab Tồn kho sau khi backend xác nhận quyền xem'
   ]);
   assert.match(page, /retail-root/);
   assert.match(root, /fetch\('\/api\/retail\/inventory'/);
-  assert.match(root, /inventoryAvailable=\{Boolean\(inventoryAccess\)\}/);
-  assert.match(workspace, /inventoryAvailable && onOpenInventory/);
-  assert.match(workspace, />Tồn kho<\/button>/);
+  assert.match(root, /const \[inventoryAccessResolved, setInventoryAccessResolved\] = useState\(false\)/);
+  assert.match(root, /setInventoryAccessResolved\(true\)/);
+  assert.match(root, /inventoryAccessResolved \? <RetailBottomNav/);
+  assert.match(root, /inventoryAvailable=\{inventoryAvailable\}/);
+  assert.match(root, /\{inventoryAvailable \? <button[\s\S]*?>Tồn kho<\/button> : null\}/);
+  assert.doesNotMatch(workspace, /inventoryAvailable|onOpenInventory|>Tồn kho<|retail-bottom-nav/);
 });
 
 test('Retail inventory gateway dùng quyền Công Ty và chỉ cho chọn kho có trong danh sách được trả về', async () => {
