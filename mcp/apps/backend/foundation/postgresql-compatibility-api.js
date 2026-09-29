@@ -1,3 +1,4 @@
+import { requirePermission } from "./authorization.js";
 import { providerPersistence } from "./provider-runtime.js";
 
 function text(value) {
@@ -336,6 +337,96 @@ async function mcpDayData(url, context) {
   return response(data);
 }
 
+
+function reportSettingStatus(active) {
+  return active === false ? "inactive" : "active";
+}
+
+function reportSettingValue(row) {
+  const value = row?.value;
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return text(row?.setting_name) || "";
+}
+
+function reportSettingItem(row) {
+  const meta = row?.raw_payload && typeof row.raw_payload === "object" && !Array.isArray(row.raw_payload)
+    ? row.raw_payload
+    : {};
+  return {
+    id: row.id,
+    key: row.setting_key,
+    label: row.setting_name,
+    value: reportSettingValue(row),
+    category: text(meta.category) || "",
+    brandName: text(meta.brand_name) || "",
+    productId: text(meta.product_id) || "",
+    status: reportSettingStatus(row.active),
+    sortOrder: numberValue(row.sort_order),
+    meta
+  };
+}
+
+function reportSettingGroup(row, items) {
+  const meta = row?.raw_payload && typeof row.raw_payload === "object" && !Array.isArray(row.raw_payload)
+    ? row.raw_payload
+    : {};
+  return {
+    id: row.id,
+    key: row.group_key,
+    title: row.group_name,
+    type: text(meta.group_type) || "market_report",
+    description: text(row.description) || "",
+    status: reportSettingStatus(row.active),
+    sortOrder: numberValue(row.sort_order),
+    meta,
+    items: items.filter((item) => item.group_id === row.id).map(reportSettingItem)
+  };
+}
+
+async function reportSettings(url, context) {
+  requirePermission(context, "mcp.report-setting.write");
+  const installationId = text(context?.installation?.id);
+  if (!installationId) {
+    const error = new Error("installation_context_required");
+    error.code = "installation_context_required";
+    error.statusCode = 500;
+    throw error;
+  }
+  const groupType = text(url.searchParams.get("groupType")) || "market_report";
+  const includeInactive = url.searchParams.get("includeInactive") === "1";
+
+  const data = await withClient(async (client) => {
+    const groupsResult = await client.query(
+      `SELECT *
+       FROM mcp.mcp_report_setting_groups
+       WHERE installation_id = $1
+         AND COALESCE(NULLIF(raw_payload->>'group_type', ''), 'market_report') = $2
+         AND ($3::boolean OR active IS TRUE)
+       ORDER BY sort_order, group_name, id`,
+      [installationId, groupType, includeInactive]
+    );
+    const groups = groupsResult.rows || [];
+    const groupIds = groups.map((group) => group.id);
+    if (!groupIds.length) return { groups, items: [] };
+
+    const itemsResult = await client.query(
+      `SELECT *
+       FROM mcp.mcp_report_settings
+       WHERE installation_id = $1
+         AND group_id = ANY($2::text[])
+         AND ($3::boolean OR active IS TRUE)
+       ORDER BY sort_order, setting_name, id`,
+      [installationId, groupIds, includeInactive]
+    );
+    return { groups, items: itemsResult.rows || [] };
+  });
+
+  return response({
+    groups: data.groups.map((group) => reportSettingGroup(group, data.items))
+  });
+}
+
 export async function handlePostgresqlCompatibilityApi(req, url, context) {
   const method = String(req.method || "GET").toUpperCase();
   const pathname = url.pathname;
@@ -343,6 +434,7 @@ export async function handlePostgresqlCompatibilityApi(req, url, context) {
   if (pathname === "/api/products/search") return searchProducts(url);
   if (pathname === "/api/mcp-settings/session-status") return sessionStatus(url, context);
   if (pathname === "/api/mcp-day/data") return mcpDayData(url, context);
+  if (pathname === "/api/mcp-report-settings") return reportSettings(url, context);
   const variantMatch = pathname.match(/^\/api\/products\/([^/]+)\/variants$/);
   if (variantMatch) {
     let productId = null;
