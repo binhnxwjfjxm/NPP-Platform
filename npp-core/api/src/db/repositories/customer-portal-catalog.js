@@ -120,6 +120,98 @@ export async function searchPortalCatalogOptions(client, {
   return result.rows;
 }
 
+
+export async function readPortalCatalogChanges(client, {
+  installationId,
+  since = null,
+}) {
+  const result = await client.query(
+    `WITH catalog_rows AS (
+       SELECT
+         pv.id,
+         pv.product_id,
+         pv.sku,
+         pv.name AS variant_name,
+         pv.variant_kind,
+         pv.unit_id,
+         pv.conversion_to_base,
+         p.code AS product_code,
+         p.name AS product_name,
+         category.id AS category_id,
+         category.name AS category_name,
+         parent_category.id AS parent_category_id,
+         parent_category.name AS parent_category_name,
+         brand.id AS brand_id,
+         brand.name AS brand_name,
+         u.code AS unit_code,
+         u.name AS unit_name,
+         GREATEST(
+           pv.updated_at,
+           p.updated_at,
+           COALESCE(u.updated_at, 'epoch'::timestamptz),
+           COALESCE(category.updated_at, 'epoch'::timestamptz),
+           COALESCE(parent_category.updated_at, 'epoch'::timestamptz),
+           COALESCE(brand.updated_at, 'epoch'::timestamptz)
+         ) AS changed_at,
+         (
+           p.is_active = true
+           AND p.is_orderable = true
+           AND pv.is_active = true
+           AND pv.is_sellable = true
+           AND pv.unit_id IS NOT NULL
+           AND u.is_active = true
+           AND pv.conversion_to_base IS NOT NULL
+           AND pv.conversion_to_base > 0
+         ) AS eligible
+       FROM shared.product_variants pv
+       JOIN shared.products p
+         ON p.installation_id = pv.installation_id
+        AND p.id = pv.product_id
+       LEFT JOIN shared.units_of_measure u
+         ON u.installation_id = pv.installation_id
+        AND u.id = pv.unit_id
+       LEFT JOIN shared.product_categories category
+         ON category.installation_id = p.installation_id
+        AND category.id = p.category_id
+       LEFT JOIN shared.product_categories parent_category
+         ON parent_category.installation_id = category.installation_id
+        AND parent_category.id = category.parent_category_id
+       LEFT JOIN shared.product_brands brand
+         ON brand.installation_id = p.installation_id
+        AND brand.id = p.brand_id
+       WHERE pv.installation_id = $1
+     ), boundary AS (
+       SELECT COALESCE(max(changed_at), 'epoch'::timestamptz) AS cursor
+       FROM catalog_rows
+     ), changes AS (
+       SELECT catalog_rows.*
+       FROM catalog_rows
+       CROSS JOIN boundary
+       WHERE catalog_rows.changed_at <= boundary.cursor
+         AND (
+           $2::timestamptz IS NULL
+           OR catalog_rows.changed_at >= $2::timestamptz - interval '1 second'
+         )
+         AND ($2::timestamptz IS NOT NULL OR catalog_rows.eligible = true)
+     )
+     SELECT
+       boundary.cursor,
+       COALESCE(
+         jsonb_agg(to_jsonb(changes) ORDER BY changes.changed_at, changes.id)
+           FILTER (WHERE changes.id IS NOT NULL),
+         '[]'::jsonb
+       ) AS rows
+     FROM boundary
+     LEFT JOIN changes ON true
+     GROUP BY boundary.cursor`,
+    [installationId, since],
+  );
+  return {
+    cursor: result.rows[0]?.cursor ?? new Date(0).toISOString(),
+    rows: Array.isArray(result.rows[0]?.rows) ? result.rows[0].rows : [],
+  };
+}
+
 export async function listPortalCatalogCategories(client, { installationId }) {
   const result = await client.query(
     `WITH RECURSIVE eligible_categories AS (
