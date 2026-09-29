@@ -32,9 +32,11 @@ test('Lịch sử kho always uses canonical warehouse scope', () => {
 
 test('Lịch sử kho keeps the Sapo-style table, 50 rows per page and inline document popup', () => {
   assert.ok(inventory.includes('const HISTORY_PAGE_SIZE = 50;'));
-  for (const header of ['Ngày ghi nhận', 'Nhân viên', 'Thao tác', 'Số lượng thay đổi', 'Tồn kho', 'Mã chứng từ', 'Kho']) {
+  for (const header of ['Ngày ghi nhận', 'Nhân viên', 'Thao tác', 'Số lượng thay đổi', 'Tồn kho', 'Đơn / chứng từ', 'Khách hàng', 'Kho']) {
     assert.ok(inventory.includes(`<th>${header}</th>`));
   }
   assert.ok(inventory.includes('onClick={() => setSelectedHistory(row)}'));
   assert.ok(inventory.includes('role="dialog" aria-modal="true"'));
+  assert.ok(inventory.includes('<span>Đơn bán hàng</span>'));
+  assert.ok(inventory.includes('<span>Khách hàng</span>'));
 });
