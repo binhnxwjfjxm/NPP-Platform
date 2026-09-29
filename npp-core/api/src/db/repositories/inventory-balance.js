@@ -510,7 +510,7 @@ export async function listInventoryMovementHistory(client, {
          LEFT JOIN sales.sales_orders source_sales_order
            ON movement.source_document_type = 'SALES_ORDER'
           AND source_sales_order.installation_id = movement.installation_id
-          AND source_sales_order.id = movement.source_document_id
+          AND source_sales_order.id::text = movement.source_document_id
          LEFT JOIN LATERAL (
            SELECT version.customer_code_snapshot,
                   version.customer_name_snapshot
@@ -523,14 +523,14 @@ export async function listInventoryMovementHistory(client, {
          LEFT JOIN sales.delivery_orders source_delivery_order
            ON movement.source_document_type = 'DELIVERY_ORDER'
           AND source_delivery_order.installation_id = movement.installation_id
-          AND source_delivery_order.id = movement.source_document_id
+          AND source_delivery_order.id::text = movement.source_document_id
          LEFT JOIN sales.sales_orders source_delivery_sales_order
            ON source_delivery_sales_order.installation_id = source_delivery_order.installation_id
           AND source_delivery_sales_order.id = source_delivery_order.sales_order_id
          LEFT JOIN sales.customer_returns source_customer_return
            ON movement.source_document_type = 'CUSTOMER_RETURN'
           AND source_customer_return.installation_id = movement.installation_id
-          AND source_customer_return.id = movement.source_document_id
+          AND source_customer_return.id::text = movement.source_document_id
          LEFT JOIN shared.customers source_return_customer
            ON source_return_customer.installation_id = source_customer_return.installation_id
           AND source_return_customer.id = source_customer_return.customer_id

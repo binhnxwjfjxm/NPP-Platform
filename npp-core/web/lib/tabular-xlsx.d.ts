@@ -21,6 +21,11 @@ export function createTabularXlsx(
   limits?: TabularXlsxLimits,
 ): Buffer;
 
+export function createTabularWorkbookXlsx(
+  inputs: TabularXlsxInput[],
+  limits?: TabularXlsxLimits,
+): Buffer;
+
 export function parseTabularXlsx(
   buffer: Buffer | Uint8Array,
   limits?: TabularXlsxLimits,
