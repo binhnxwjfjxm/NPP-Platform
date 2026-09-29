@@ -27,7 +27,7 @@ test('Công Ty quản lý tiêu đề và hiển thị, Customer Portal chỉ đ
   ]);
   assert.match(adminRoute, /coreOrganizationWrite/);
   assert.match(adminRoute, /idempotency-key/);
-  assert.match(adminRoute, /image\/webp/);
+  assert.match(adminRoute, /CUSTOMER_ORDERING_HOME_BANNER_CONTENT_TYPE/);
   assert.match(portalRoute, /\/api\/customer-portal\/home-content/);
   assert.match(server, /handleCustomerOrderingHomeContentRoutes/);
 });
