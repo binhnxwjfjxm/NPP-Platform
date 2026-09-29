@@ -199,6 +199,7 @@ export async function POST(request: NextRequest, { params }: { params: { segment
       const action = path[2]; const orderId = salesOrderId(path[1]);
       const mapping: Record<string, { path: string; body: Record<string, unknown> }> = {
         confirm: { path: `/api/sales-orders/${orderId}/confirm`, body: {} },
+        cancel: { path: `/api/sales-orders/${orderId}/cancel`, body: payload },
         'issue-stock': { path: `/api/sales-orders/${orderId}/issue-stock`, body: { ...payload, mode: 'PICKUP' } },
         'pickup-edit': { path: `/api/sales-orders/${orderId}/pickup-edit`, body: payload },
         complete: { path: `/api/pickup-sales-orders/${orderId}/complete`, body: payload },
