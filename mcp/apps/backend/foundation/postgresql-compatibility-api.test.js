@@ -5,7 +5,44 @@ import { handlePostgresqlCompatibilityApi } from "./postgresql-compatibility-api
 
 function persistenceWithRows({ daySession = true, dayStatus = "active" } = {}) {
   const client = {
-    async query(sql) {
+    async query(sql, params = []) {
+      if (sql.includes("FROM mcp.mcp_report_setting_groups")) {
+        assert.deepEqual(params, ["installation-test", "market_report", false]);
+        return {
+          rows: [{
+            id: "group-1",
+            installation_id: "installation-test",
+            group_key: "market_competitors",
+            group_name: "Đối thủ",
+            description: "Danh sách đối thủ",
+            sort_order: 10,
+            active: true,
+            raw_payload: { group_type: "market_report", section: "competitor" }
+          }]
+        };
+      }
+      if (sql.includes("FROM mcp.mcp_report_settings")) {
+        assert.equal(params[0], "installation-test");
+        assert.deepEqual(params[1], ["group-1"]);
+        assert.equal(params[2], false);
+        return {
+          rows: [{
+            id: "item-1",
+            installation_id: "installation-test",
+            group_id: "group-1",
+            setting_key: "competitor-a",
+            setting_name: "Đối thủ A",
+            value: "Đối thủ A",
+            sort_order: 20,
+            active: true,
+            raw_payload: {
+              category: "Siro",
+              brand_name: "Brand A",
+              product_id: "product-a"
+            }
+          }]
+        };
+      }
       if (sql.includes("FROM mcp.products product")) {
         return {
           rows: [{
@@ -122,12 +159,58 @@ const context = Object.freeze({
   installation: Object.freeze({ id: "installation-test" })
 });
 
+const reportSettingsContext = Object.freeze({
+  auth: Object.freeze({ authenticated: true }),
+  installation: Object.freeze({ id: "installation-test" }),
+  principal: Object.freeze({
+    id: "user:employee-test",
+    permissions: Object.freeze(["mcp.report-setting.write"]),
+    scopes: Object.freeze([])
+  })
+});
+
 function request(path) {
   return {
     req: { method: "GET" },
     url: new URL(path, "http://mcp.local")
   };
 }
+
+test("PostgreSQL typed runtime exposes report settings through the mobile compatibility contract", async () => {
+  bindProviderPersistence(persistenceWithRows());
+  const { req, url } = request("/api/mcp-report-settings?groupType=market_report");
+  const result = await handlePostgresqlCompatibilityApi(req, url, reportSettingsContext);
+
+  assert.equal(result.statusCode, 200);
+  assert.deepEqual(result.payload.data, {
+    groups: [{
+      id: "group-1",
+      key: "market_competitors",
+      title: "Đối thủ",
+      type: "market_report",
+      description: "Danh sách đối thủ",
+      status: "active",
+      sortOrder: 10,
+      meta: { group_type: "market_report", section: "competitor" },
+      items: [{
+        id: "item-1",
+        key: "competitor-a",
+        label: "Đối thủ A",
+        value: "Đối thủ A",
+        category: "Siro",
+        brandName: "Brand A",
+        productId: "product-a",
+        status: "active",
+        sortOrder: 20,
+        meta: {
+          category: "Siro",
+          brand_name: "Brand A",
+          product_id: "product-a"
+        }
+      }]
+    }]
+  });
+});
 
 test("PostgreSQL product search preserves the variant-level picker contract", async () => {
   bindProviderPersistence(persistenceWithRows());
