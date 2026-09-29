@@ -8,6 +8,7 @@ import {
   BusinessTableSequenceHeader,
 } from '../../components/business-table-sequence';
 import styles from '../inventory-workspace.module.css';
+import InventoryExportAction from '../inventory-export-action';
 import {
   normalizeSearch,
   matchTerm,
@@ -174,6 +175,7 @@ export default function TrackingPolicyWorkspace({ initialPolicies, initialCandid
       title="Chính sách quản lý lô"
       subtitle="Thiết lập quản lý lô và hạn sử dụng theo SKU tồn chuẩn. Có thể tìm bằng bất kỳ SKU nào của cùng sản phẩm."
       kicker="Tồn kho và lô hàng"
+      actions={<InventoryExportAction scope="tracking-policies" search={search} />}
     >
       <div className={styles.page} data-testid="inventory-tracking-policies-page">
         <section className={`${styles.hero} ${styles.compactHero}`}>

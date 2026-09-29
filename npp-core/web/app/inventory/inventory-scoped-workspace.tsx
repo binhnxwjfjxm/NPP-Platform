@@ -8,6 +8,7 @@ import {
   BusinessTableSequenceHeader,
 } from '../components/business-table-sequence';
 import styles from './inventory-workspace.module.css';
+import InventoryExportAction from './inventory-export-action';
 import {
   formatDate,
   formatDateTime,
@@ -294,7 +295,12 @@ export default function InventoryScopedWorkspace({
   }
 
   return (
-    <AppShell title={title} subtitle={subtitle} kicker="Tồn kho, lô và nhập đầu kỳ">
+    <AppShell
+      title={title}
+      subtitle={subtitle}
+      kicker="Tồn kho, lô và nhập đầu kỳ"
+      actions={<InventoryExportAction scope={scope} search={search} />}
+    >
       <div className={styles.page} data-testid={`inventory-${scope}-page`}>
         <section className={`${styles.hero} ${styles.compactHero}`} data-testid="inventory-local-controls">
           <div className={styles.heroControls}>
