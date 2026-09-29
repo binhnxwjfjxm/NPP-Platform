@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { createTabularWorkbookXlsx, createTabularXlsx, parseTabularXlsx } from '../lib/tabular-xlsx.js';
+import { formatOfficeExportValue } from '../lib/office-export-value.js';
 
 const root = path.resolve(import.meta.dirname, '..');
 const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
@@ -14,6 +15,28 @@ const preview = read('app/operations/data-exchange/data-exchange-preview.tsx');
 const view = read('app/operations/data-exchange/data-exchange-view.tsx');
 const quotation = read('app/sales/quotations/quotation-workspace.tsx');
 const dataExchange = [workspace, model, fileUtils, actions, preview, view].join('\n');
+
+test('office export strips only insignificant decimal zeros without using floating point', () => {
+  assert.equal(formatOfficeExportValue('12.000000000000'), '12');
+  assert.equal(formatOfficeExportValue('-240.000000000000'), '-240');
+  assert.equal(formatOfficeExportValue('12.340000000000'), '12.34');
+  assert.equal(formatOfficeExportValue('-0.500000000000'), '-0.5');
+  assert.equal(formatOfficeExportValue('00123'), '00123');
+  assert.equal(formatOfficeExportValue('SO-202609-000948'), 'SO-202609-000948');
+});
+
+test('shared XLSX writers remove insignificant decimal zeros from exported cells', () => {
+  const workbook = createTabularXlsx({
+    sheetName: 'Lịch sử kho',
+    headers: ['Số lượng thay đổi', 'Tồn kho', 'Mã chứng từ'],
+    rows: [['-12.000000000000', '2799.000000000000', 'SO-202609-000948'], ['-0.500000000000', '2798.500000000000', 'SO-2']],
+  });
+  assert.deepEqual(parseTabularXlsx(workbook), [
+    ['Số lượng thay đổi', 'Tồn kho', 'Mã chứng từ'],
+    ['-12', '2799', 'SO-202609-000948'],
+    ['-0.5', '2798.5', 'SO-2'],
+  ]);
+});
 
 test('shared XLSX writer supports one sheet per requested SKU', () => {
   const workbook = createTabularWorkbookXlsx([

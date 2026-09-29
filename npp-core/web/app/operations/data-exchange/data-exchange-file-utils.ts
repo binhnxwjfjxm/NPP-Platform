@@ -1,5 +1,6 @@
 import { canonicalDecimalString, createIdempotencyKey } from '@npp/contracts';
 import { type ApiEnvelope, type RowMap, labelFor, normalizeHeader, humanizeMessage } from './data-exchange-model';
+import { formatOfficeExportValue } from '../../../lib/office-export-value.js';
 
 export function optional(value: string | undefined) { const text = String(value ?? '').trim(); return text || null; }
 export function exactQuantity(value: string, field: string, scale = 12) {
@@ -8,7 +9,7 @@ export function exactQuantity(value: string, field: string, scale = 12) {
   if (!pattern.test(normalized)) throw new Error(`${labelFor(field)} phải là số không âm, tối đa ${scale} số lẻ.`);
   return canonicalDecimalString(normalized, { allowNegative: false }) ?? normalized;
 }
-export function csvEscape(value: unknown) { const text = String(value ?? ''); return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text; }
+export function csvEscape(value: unknown) { const text = formatOfficeExportValue(value); return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text; }
 export function toCsv(headers: string[], rows: string[][]) { return `\uFEFF${[headers.map(labelFor), ...rows].map((row) => row.map(csvEscape).join(',')).join('\r\n')}`; }
 export function parseCsv(text: string) {
   const rows: string[][] = []; let row: string[] = []; let cell = ''; let quoted = false;
