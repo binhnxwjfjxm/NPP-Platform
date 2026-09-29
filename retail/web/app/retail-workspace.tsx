@@ -120,6 +120,7 @@ type Bootstrap = {
             canPriceOverride?: boolean;
             canDiscountOverride?: boolean;
             canConfirm?: boolean;
+            canCancel?: boolean;
             canNegativeStockIssue?: boolean;
         };
     };
@@ -429,6 +430,8 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
     const [error, setError] = useState<string | null>(null);
     const [busy, setBusy] = useState<string | null>(null);
     const [payment, setPayment] = useState(false);
+    const [cancelOpen, setCancelOpen] = useState(false);
+    const [cancelReason, setCancelReason] = useState('');
     const [paid, setPaid] = useState('');
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
     const [activeTab, setActiveTab] = useState<RetailTab>(initialTab);
@@ -547,6 +550,7 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
     useEffect(() => { setOrderVisibleCount(ORDER_VISIBLE_STEP); }, [orderSearch, orderDateFrom, orderDateTo]);
     const canPriceOverride = Boolean(boot?.settings.permissions?.canPriceOverride);
     const canDiscountOverride = Boolean(boot?.settings.permissions?.canDiscountOverride);
+    const canCancel = Boolean(boot?.settings.permissions?.canCancel);
     const canNegativeStockIssue = Boolean(boot?.settings.permissions?.canNegativeStockIssue);
     function priceInputKey(variantId: string, quantity: string) { return [customerMode, customerMode === 'EXISTING' ? customerId : '', variantId, quantity].join(':'); }
     function manualPriceFor(variantId: string) { return String(manualPrices[variantId] ?? '').trim(); }
@@ -993,6 +997,12 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
         : stockGatePending ? 'Đang kiểm tra Khả dụng trước khi xử lý.' : null;
     const visiblePrintFields = new Set(printTemplate?.visibleFieldKeys ?? ['line_no', 'line_item', 'line_quantity', 'line_unit_price', 'line_total', 'total_total']);
     const printOrder = printSourceOrder ?? order;
+    const canCancelCurrentOrder = Boolean(
+        order
+        && canCancel
+        && ['draft', 'confirmed'].includes(order.status)
+        && !STOCK_ISSUED_FULFILLMENT_STATUSES.has(order.fulfillmentStatus),
+    );
     function clearQuantityInput(id: string) {
         setQuantityInputs((current) => {
             if (!(id in current))
@@ -1210,6 +1220,52 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
             if (kind === 'issue-stock' && isRevisionConflict(reason))
                 void api<Order>(`/api/retail/orders/${order.id}`).then((next) => { setOrder(next); setNotice('Đơn vừa thay đổi. Đã nạp dữ liệu mới nhất; kiểm tra lại rồi bấm Xuất kho.'); }).catch(() => undefined);
             setError(errorMessage(reason, 'Chưa thể thực hiện thao tác.'));
+        }
+        finally {
+            setBusy(null);
+        }
+    }
+    function openCancelDialog() {
+        setCancelReason('');
+        setError(null);
+        setCancelOpen(true);
+    }
+    function closeCancelDialog() {
+        if (busy === 'cancel')
+            return;
+        setCancelOpen(false);
+        setCancelReason('');
+        forgetOperationKey('cancel', 'current-order');
+    }
+    async function cancelOrder() {
+        if (!order)
+            return;
+        const reason = cancelReason.trim();
+        if (!reason) {
+            setError('Hãy nhập lý do hủy đơn.');
+            return;
+        }
+        setBusy('cancel');
+        setError(null);
+        try {
+            const intent = 'current-order';
+            const next = await api<Order>(`/api/retail/orders/${order.id}/cancel`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Idempotency-Key': operationKeyFor('cancel', intent) },
+                body: JSON.stringify({ reason }),
+            });
+            forgetOperationKey('cancel', intent);
+            setOrder(next);
+            setCancelOpen(false);
+            setCancelReason('');
+            setEditPickup(false);
+            setCart([]);
+            setQuantityInputs({});
+            setNotice('Đã hủy đơn.');
+            void refreshOrders().catch(() => undefined);
+        }
+        catch (reason) {
+            setError(errorMessage(reason, 'Chưa thể hủy đơn.'));
         }
         finally {
             setBusy(null);
@@ -1707,6 +1763,7 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
       <section className="order-action-bar pos-checkout-bar" aria-label="Thao tác đơn">
         {editPickup ? <button className="primary-action" type="button" disabled={busy !== null || stockBlocked || stockGatePending || !cart.length} onClick={() => void savePickupEdit()}>{busy === 'save' ? 'Đang lưu…' : 'Lưu thay đổi'}</button> : order ? <>
           {canEditPickup ? <button className="secondary-action" type="button" disabled={busy !== null} onClick={beginPickupEdit}>Sửa đơn</button> : null}
+          {canCancelCurrentOrder ? <button className="retail-cancel-action" type="button" disabled={busy !== null} onClick={openCancelDialog}>Hủy đơn</button> : null}
           <button className="secondary-action" type="button" onClick={() => void openPrintPreview()}>In phiếu</button>
           <button className="primary-action pos-checkout-action" type="button" disabled={busy !== null || order.status === 'cancelled' || (order.status === 'closed' && order.settlementStatus === 'paid') || (editingDraft && !cart.length) || stockBlocked || stockGatePending} onClick={() => void checkout()}>{busy === 'checkout' ? 'Đang xử lý…' : order.status === 'cancelled' ? 'Đơn đã hủy' : order.status === 'closed' && order.settlementStatus === 'paid' ? 'Đã thanh toán' : 'Thanh toán'}</button>
         </> : cart.length ? <button className="primary-action pos-checkout-action" type="button" disabled>Đang chuẩn bị đơn…</button> : <button className="primary-action pos-checkout-action" type="button" disabled>Thanh toán</button>}
@@ -1714,6 +1771,13 @@ export default function RetailWorkspace({ initialTab = 'home', inventoryAvailabl
     </> : null}
 
     
+
+    {cancelOpen && order ? <section className="dialog-backdrop cancel-dialog-backdrop" role="dialog" aria-modal="true" aria-labelledby="retail-cancel-title"><div className="cancel-dialog sheet-enter">
+      <header><div><p className="section-kicker">ĐƠN HÀNG</p><h2 id="retail-cancel-title">Hủy đơn</h2></div><button className="text-action" type="button" disabled={busy === 'cancel'} onClick={closeCancelDialog}>Đóng</button></header>
+      <p className="cancel-dialog-copy">Xác nhận hủy <strong>{order.number ?? 'đơn đang lập'}</strong>. Thao tác này sẽ dùng đúng quy trình hủy đơn của Công Ty.</p>
+      <label className="cancel-reason-field">Lý do hủy<textarea autoFocus rows={3} maxLength={1000} value={cancelReason} placeholder="Nhập lý do hủy đơn" onChange={(event) => setCancelReason(event.target.value)}/></label>
+      <div className="cancel-dialog-actions"><button className="secondary-action" type="button" disabled={busy === 'cancel'} onClick={closeCancelDialog}>Giữ đơn</button><button className="cancel-confirm-action" type="button" disabled={busy === 'cancel' || !cancelReason.trim()} onClick={() => void cancelOrder()}>{busy === 'cancel' ? 'Đang hủy…' : 'Xác nhận hủy'}</button></div>
+    </div></section> : null}
 
     {settingsPanel ? <section className="dialog-backdrop settings-sheet-backdrop" role="dialog" aria-modal="true" aria-label={settingsPanelTitle(settingsPanel)}><div className="settings-sheet sheet-enter">
       <header><div><p className="section-kicker">CÀI ĐẶT</p><h2>{settingsPanelTitle(settingsPanel)}</h2></div><button className="text-action" type="button" onClick={() => setSettingsPanel(null)}>Đóng</button></header>

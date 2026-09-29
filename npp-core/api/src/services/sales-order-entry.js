@@ -215,6 +215,7 @@ export async function getSalesOrderEntrySettings(client, { requestContext }) {
           'core.sales-order.discount.override',
         ),
         canConfirm: hasPermission(requestContext, 'core.sales-order.confirm'),
+        canCancel: hasPermission(requestContext, 'core.sales-order.cancel'),
         canNegativeStockIssue: hasPermission(
           requestContext,
           'core.inventory.negative-stock.issue',

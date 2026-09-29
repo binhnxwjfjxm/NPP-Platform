@@ -216,11 +216,13 @@ test('bottom nav tách khỏi nội dung nhưng topbar vẫn dùng document scro
   const end = css.indexOf('/* Interaction */', start);
   const nav = css.slice(start, end);
 
-  assert.match(nav, /bottom: max\(9px, env\(safe-area-inset-bottom\)\);/);
+  assert.match(nav, /bottom: max\(8px, env\(safe-area-inset-bottom\)\);/);
   assert.match(nav, /max-width: 620px;/);
-  assert.match(nav, /min-height: 66px;/);
-  assert.match(nav, /border-radius: 22px;/);
-  assert.match(nav, /padding: 6px;/);
+  assert.match(nav, /min-height: 56px;/);
+  assert.match(nav, /border-radius: 18px;/);
+  assert.match(nav, /padding: 4px;/);
+  assert.match(nav, /bottom-nav button \{ min-width: 0; min-height: 44px;/);
+  assert.match(nav, /bottom-nav button > span \{ font-size: 18px;/);
   assert.doesNotMatch(nav, /padding:[^;]*safe-area-inset-bottom/);
 
   assert.doesNotMatch(page, /RETAIL_SCROLL_REGION_STYLE|overflowY: 'auto'/);
@@ -245,4 +247,28 @@ test('lưu sửa thành công không bị báo thất bại chỉ vì bước GE
   const page = await readWorkspace();
   assert.match(page, /setNotice\('Đã lưu thay đổi đơn và giữ nguyên trạng thái Đã chốt\.'\)/);
   assert.match(page, /api<Order>\(`\/api\/retail\/orders\/\$\{next\.id\}`\)\.then\(setOrder\)\.catch\(\(\) => undefined\)/);
+});
+
+
+test('Retail có nút Hủy đơn nhỏ, popup lý do và gọi đúng contract Công Ty', async () => {
+  const [page, css, gateway, entryService] = await Promise.all([
+    readWorkspace(),
+    read('app/retail-issue675.css'),
+    read('app/api/retail/[...segments]/route.ts'),
+    readRepo('npp-core/api/src/services/sales-order-entry.js'),
+  ]);
+  assert.match(entryService, /canCancel: hasPermission\(requestContext, 'core\.sales-order\.cancel'\)/);
+  assert.match(page, /canCancel\?: boolean/);
+  assert.match(page, /const canCancel = Boolean\(boot\?\.settings\.permissions\?\.canCancel\)/);
+  assert.match(page, /const canCancelCurrentOrder = Boolean\([\s\S]*?\['draft', 'confirmed'\]\.includes\(order\.status\)[\s\S]*?!STOCK_ISSUED_FULFILLMENT_STATUSES\.has\(order\.fulfillmentStatus\)/);
+  assert.match(page, /className="retail-cancel-action"[\s\S]*?>Hủy đơn<\/button>/);
+  assert.match(page, /className="cancel-dialog sheet-enter"/);
+  assert.match(page, /placeholder="Nhập lý do hủy đơn"/);
+  assert.match(page, /operationKeyFor\('cancel', intent\)/);
+  assert.match(page, /\/api\/retail\/orders\/\$\{order\.id\}\/cancel/);
+  assert.match(page, /JSON\.stringify\(\{ reason \}\)/);
+  assert.match(gateway, /cancel: \{ path: `\/api\/sales-orders\/\$\{orderId\}\/cancel`, body: payload \}/);
+  assert.match(css, /\.retail-issue675 \.retail-cancel-action \{[\s\S]*?color: #b42318/);
+  assert.match(css, /\.cancel-dialog \{[\s\S]*?width: min\(360px, 100%\)/);
+  assert.match(css, /\.cancel-confirm-action \{[\s\S]*?background: #b42318/);
 });
