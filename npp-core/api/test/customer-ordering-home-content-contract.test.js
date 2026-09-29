@@ -31,3 +31,21 @@ test('Công Ty quản lý tiêu đề và hiển thị, Customer Portal chỉ đ
   assert.match(portalRoute, /\/api\/customer-portal\/home-content/);
   assert.match(server, /handleCustomerOrderingHomeContentRoutes/);
 });
+
+
+test('migration 161 production chạy exact-main với backup và restore rehearsal', async () => {
+  const [script, workflow] = await Promise.all([
+    read('scripts/vps-production-migrate-customer-ordering-home-content-161.sh'),
+    read('../../.github/workflows/vps-production-migration-161-manual.yml'),
+  ]);
+  assert.match(workflow, /\/migrate-vps-production-161/);
+  assert.match(workflow, /Verify exact origin\/main SHA/);
+  assert.match(workflow, /Fresh backup, restore rehearsal, migrate production and verify/);
+  assert.match(workflow, /group: vps-production-db-migration/);
+  assert.match(script, /pg_dump -Fc/);
+  assert.match(script, /pg_restore --exit-on-error/);
+  assert.match(script, /160_retail_web_push_subscriptions/);
+  assert.match(script, /customer_ordering_home_content/);
+  assert.match(script, /RUNTIME_PRIVILEGES=PASS/);
+  assert.match(script, /PRODUCTION_RERUN_NOOP=PASS/);
+});
