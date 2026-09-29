@@ -75,7 +75,10 @@ function verifyClaims(payload, config, nowMs) {
   if (!Number.isFinite(payload.exp) || payload.exp < nowSeconds - CLOCK_SKEW_SECONDS) return authFailure('CUSTOMER_PORTAL_TOKEN_EXPIRED');
   if (Number.isFinite(payload.nbf) && payload.nbf > nowSeconds + CLOCK_SKEW_SECONDS) return authFailure('CUSTOMER_PORTAL_TOKEN_NOT_ACTIVE');
   if (!audienceMatches(payload.aud, config.audience)) return authFailure('CUSTOMER_PORTAL_TOKEN_AUDIENCE_INVALID');
-  if (config.authorizedParties.length > 0 && !config.authorizedParties.includes(String(payload.azp ?? ''))) {
+  const authorizedParty = text(payload.azp);
+  // Clerk browser session tokens carry azp and must match the configured web origin.
+  // Native Clerk session tokens do not have a browser Origin, so azp can be absent.
+  if (config.authorizedParties.length > 0 && authorizedParty && !config.authorizedParties.includes(authorizedParty)) {
     return authFailure('CUSTOMER_PORTAL_TOKEN_AUTHORIZED_PARTY_INVALID');
   }
   return Object.freeze({ ok: true, subject: payload.sub.trim(), claims: payload });
