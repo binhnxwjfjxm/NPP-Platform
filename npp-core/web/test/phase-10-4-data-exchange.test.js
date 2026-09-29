@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
-import { createTabularXlsx, parseTabularXlsx } from '../lib/tabular-xlsx.js';
+import { createTabularWorkbookXlsx, createTabularXlsx, parseTabularXlsx } from '../lib/tabular-xlsx.js';
 
 const root = path.resolve(import.meta.dirname, '..');
 const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
@@ -15,6 +15,17 @@ const view = read('app/operations/data-exchange/data-exchange-view.tsx');
 const quotation = read('app/sales/quotations/quotation-workspace.tsx');
 const dataExchange = [workspace, model, fileUtils, actions, preview, view].join('\n');
 
+test('shared XLSX writer supports one sheet per requested SKU', () => {
+  const workbook = createTabularWorkbookXlsx([
+    { sheetName: 'SBALAN', headers: ['Mã chứng từ', 'Khách hàng'], rows: [['SO-1', 'Khách A']] },
+    { sheetName: 'SKU-002', headers: ['Mã chứng từ', 'Khách hàng'], rows: [['SO-2', 'Khách B']] },
+  ]);
+  assert.ok(Buffer.isBuffer(workbook));
+  assert.deepEqual(parseTabularXlsx(workbook, undefined, ['Mã chứng từ', 'Khách hàng']), [
+    ['Mã chứng từ', 'Khách hàng'],
+    ['SO-1', 'Khách A'],
+  ]);
+});
 test('Phase 10.4 generic XLSX round-trips a tabular workbook', () => {
   const workbook = createTabularXlsx({ sheetName: 'Kiểm kê', headers: ['Mã kho', 'SKU', 'Số đếm thực tế'], rows: [['KHO-A', 'SKU-001', '12.5'], ['KHO-A', 'SKU-002', '0']] });
   assert.equal(workbook.subarray(0, 2).toString('utf8'), 'PK');

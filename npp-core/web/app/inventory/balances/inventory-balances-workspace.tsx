@@ -9,6 +9,7 @@ import {
 } from '../../components/business-table-sequence';
 import styles from '../inventory-workspace.module.css';
 import InventoryExportAction from '../inventory-export-action';
+import InventoryHistoryExportAction from './inventory-history-export-action';
 import {
   formatDate,
   formatDateTime,
@@ -59,6 +60,9 @@ type InventoryMovementHistoryRow = {
   line_count: number;
   location_summary: string | null;
   lot_summary: string | null;
+  customer_code: string | null;
+  customer_name: string | null;
+  sales_order_number: string | null;
 };
 
 const QUANTITY_SCALE = 1_000_000_000_000n;
@@ -413,15 +417,15 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
       title={title}
       subtitle={subtitle}
       kicker="Tồn kho, lô và nhập đầu kỳ"
-      actions={(
-        <InventoryExportAction
-          scope="balances"
-          search={activeTab === 'balances' ? search : ''}
-          balanceScope={activeTab === 'history' && selectedBalance ? {
-            warehouseId: selectedBalance.warehouse_id,
-            baseVariantId: selectedBalance.base_variant_id,
-          } : null}
+      actions={activeTab === 'history' && selectedBalance ? (
+        <InventoryHistoryExportAction
+          warehouseId={selectedBalance.warehouse_id}
+          warehouseName={selectedBalance.warehouse_name}
+          currentSku={historySku || selectedBalance.base_sku}
+          balances={balances}
         />
+      ) : (
+        <InventoryExportAction scope="balances" search={search} />
       )}
     >
       <div className={styles.page} data-testid="inventory-balances-page">
@@ -593,7 +597,8 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
                           <th>Thao tác</th>
                           <th>Số lượng thay đổi</th>
                           <th>Tồn kho</th>
-                          <th>Mã chứng từ</th>
+                          <th>Đơn / chứng từ</th>
+                          <th>Khách hàng</th>
                           <th>Kho</th>
                         </tr>
                       </thead>
@@ -609,6 +614,10 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
                               <td className={`${styles.historyNumber} ${delta >= 0n ? styles.historyIncrease : styles.historyDecrease}`}>{canonicalQuantityLabel(row.base_quantity_delta, selectedBalance)}</td>
                               <td className={styles.historyNumber}>{canonicalQuantityLabel(row.stock_after, selectedBalance)}</td>
                               <td>{documentNumber ? <button type="button" className={styles.documentButton} onClick={() => setSelectedHistory(row)}>{documentNumber}</button> : '—'}</td>
+                              <td>
+                                <div>{row.customer_name || '—'}</div>
+                                {row.customer_code ? <div className={styles.subtle}>{row.customer_code}</div> : null}
+                              </td>
                               <td>{row.warehouse_code} · {row.warehouse_name}</td>
                             </tr>
                           );
@@ -639,6 +648,10 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
                 <button type="button" className={styles.miniButton} onClick={() => setSelectedHistory(null)}>Đóng</button>
               </div>
               <div className={styles.documentGrid}>
+                <div><span>Loại chứng từ</span><strong>{documentTypeLabel(selectedHistory.source_document_type)}</strong></div>
+                <div><span>Mã chứng từ</span><strong>{historyDocumentNumber(selectedHistory) || '—'}</strong></div>
+                <div><span>Đơn bán hàng</span><strong>{selectedHistory.sales_order_number || '—'}</strong></div>
+                <div><span>Khách hàng</span><strong>{selectedHistory.customer_name || '—'}{selectedHistory.customer_code ? ` · ${selectedHistory.customer_code}` : ''}</strong></div>
                 <div><span>Ngày ghi nhận</span><strong>{formatDateTime(selectedHistory.posted_at)}</strong></div>
                 <div><span>Nhân viên</span><strong>{selectedHistory.posted_by_name || 'Hệ thống'}</strong></div>
                 <div><span>Thao tác</span><strong>{movementLabel(selectedHistory)}</strong></div>
