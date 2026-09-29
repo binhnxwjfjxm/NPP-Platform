@@ -100,13 +100,13 @@ test('điều hướng Retail đưa Tồn kho xuống bottom nav và bỏ thanh 
     read('app/retail-inventory.module.css'),
   ]);
   assert.match(page, /type RetailTab = 'home' \| 'entry' \| 'orders' \| 'settings'/);
-  assert.match(page, />Trang chủ<\/button>/);
-  assert.match(page, />Lên đơn<\/button>/);
-  assert.match(page, />Đơn hàng<\/button>/);
-  assert.match(page, />Tồn kho<\/button>/);
-  assert.match(page, />Cài đặt<\/button>/);
+  assert.match(root, />Trang chủ<\/button>/);
+  assert.match(root, />Lên đơn<\/button>/);
+  assert.match(root, />Đơn hàng<\/button>/);
+  assert.match(root, />Tồn kho<\/button>/);
+  assert.match(root, />Cài đặt<\/button>/);
   assert.match(root, /<RetailInventoryPanel warehouses=\{inventoryAccess\.warehouses\} \/>/);
-  assert.match(root, /className="bottom-nav" aria-label="Điều hướng Retail"/);
+  assert.match(root, /className="retail-bottom-nav" aria-label="Điều hướng Retail"/);
   assert.doesNotMatch(root, /modeTabs|Chức năng Retail/);
   assert.doesNotMatch(inventoryStyles, /\.modeTabs/);
   assert.match(page, /activeTab === 'home' \? <span className="topbar-spacer"/);
