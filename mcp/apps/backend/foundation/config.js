@@ -15,6 +15,24 @@ function databaseUrlValue(value) { const raw = text(value); if (!raw) return nul
 function optionalSecret(value, name, nodeEnv) { const secret = text(value); if (!secret) return null; const minimumLength = nodeEnv === "production" ? 32 : 16; if (secret.length < minimumLength) fail(`invalid_${name.toLowerCase()}`, `${name} must contain at least ${minimumLength} characters`); if (nodeEnv === "production" && /replace|change[-_ ]?me|example|dev[-_ ]?only/i.test(secret)) fail(`invalid_${name.toLowerCase()}`, `${name} contains a placeholder value`); return secret; }
 function uuidValue(value, name) { const normalized = text(value); if (!UUID_PATTERN.test(normalized)) fail(`invalid_${name.toLowerCase()}`, `${name} must be a UUID`); return normalized; }
 
+function loadReportAgentConfig(env, nodeEnv) {
+  const urlRaw = text(env.MCP_REPORT_AGENT_URL);
+  const token = optionalSecret(env.MCP_REPORT_AGENT_TOKEN, "MCP_REPORT_AGENT_TOKEN", nodeEnv);
+  if (!urlRaw && !token) {
+    return Object.freeze({
+      configured: false, analyzeUrl: null, token: null,
+      timeoutMs: positiveInteger(env.MCP_REPORT_AGENT_TIMEOUT_MS, 55000, "MCP_REPORT_AGENT_TIMEOUT_MS")
+    });
+  }
+  if (!urlRaw) fail("incomplete_mcp_report_agent_config", "MCP_REPORT_AGENT_URL is required when MCP_REPORT_AGENT_TOKEN is set");
+  return Object.freeze({
+    configured: true,
+    analyzeUrl: httpUrlValue(urlRaw, "MCP_REPORT_AGENT_URL", { httpsInProduction: true, nodeEnv }),
+    token,
+    timeoutMs: positiveInteger(env.MCP_REPORT_AGENT_TIMEOUT_MS, 55000, "MCP_REPORT_AGENT_TIMEOUT_MS")
+  });
+}
+
 function loadR2Config(env, nodeEnv) {
   const names = ["R2_BUCKET_NAME", "R2_ENDPOINT", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY"];
   const present = names.filter((name) => text(env[name]));
@@ -170,11 +188,12 @@ export function loadFoundationConfig(env = process.env) {
     coreAuth,
     coreOnboarding,
     coreSales,
+    reportAgent: loadReportAgentConfig(env, nodeEnv),
     upstreamTimeoutMs: positiveInteger(env.UPSTREAM_TIMEOUT_MS, 65000, "UPSTREAM_TIMEOUT_MS"),
     r2: loadR2Config(env, nodeEnv)
   });
 }
 
 export function publicFoundationConfig(config) {
-  return Object.freeze({ service: config.service, nodeEnv: config.nodeEnv, installationId: config.installationId, nppCode: config.nppCode, authMode: config.authMode, publicHost: config.publicHost, publicPort: config.publicPort, persistenceProvider: config.persistence.provider, persistenceConfigured: config.persistence.configured, persistenceSchema: config.persistence.schema, legacyRuntimeEnabled: config.legacyRuntime.enabled, serviceRoleCount: config.servicePrincipal?.roles?.length || 0, servicePermissionCount: config.servicePrincipal?.permissions?.length || 0, serviceScopeCount: config.servicePrincipal?.scopes?.length || 0, r2Configured: config.r2?.configured === true, coreAuthConfigured: config.coreAuth?.configured === true, coreOnboardingConfigured: config.coreOnboarding?.configured === true, coreSalesConfigured: config.coreSales?.configured === true, corsOrigins: [...config.corsOrigins] });
+  return Object.freeze({ service: config.service, nodeEnv: config.nodeEnv, installationId: config.installationId, nppCode: config.nppCode, authMode: config.authMode, publicHost: config.publicHost, publicPort: config.publicPort, persistenceProvider: config.persistence.provider, persistenceConfigured: config.persistence.configured, persistenceSchema: config.persistence.schema, legacyRuntimeEnabled: config.legacyRuntime.enabled, serviceRoleCount: config.servicePrincipal?.roles?.length || 0, servicePermissionCount: config.servicePrincipal?.permissions?.length || 0, serviceScopeCount: config.servicePrincipal?.scopes?.length || 0, r2Configured: config.r2?.configured === true, coreAuthConfigured: config.coreAuth?.configured === true, coreOnboardingConfigured: config.coreOnboarding?.configured === true, coreSalesConfigured: config.coreSales?.configured === true, reportAgentConfigured: config.reportAgent?.configured === true, corsOrigins: [...config.corsOrigins] });
 }
