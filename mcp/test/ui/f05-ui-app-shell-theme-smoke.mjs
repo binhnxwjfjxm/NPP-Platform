@@ -118,8 +118,8 @@ try {
   const desktopPage = await desktopContext.newPage();
   for (const spec of listSpecs) {
     await desktopPage.goto(`${appBase}${spec.path}`, { waitUntil: "domcontentloaded" });
-    await desktopPage.locator(".route-desktop-table .desktop-table").waitFor({ state: "visible" });
-    assert.equal(await desktopPage.locator(".route-mobile-list").evaluate((node) => getComputedStyle(node).display), "none");
+    await desktopPage.locator("[data-plan-desktop-table='true'] [data-desktop-table='true']").waitFor({ state: "visible" });
+    assert.equal(await desktopPage.locator("[data-plan-mobile-list='true']").evaluate((node) => getComputedStyle(node).display), "none");
     const overflow = await horizontalOverflow(desktopPage);
     assert.ok(overflow <= 1, `${spec.path} desktop must not overflow horizontally; overflow=${overflow}`);
     await screenshot(desktopPage, `16-${spec.path.slice(1)}-desktop`);
