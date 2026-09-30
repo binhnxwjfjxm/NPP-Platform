@@ -29,7 +29,7 @@ test('Công Ty quản lý nội dung chương trình để Ordering mở popup c
   const workspace = await read('../web/app/settings/customer-ordering-content/customer-ordering-content-workspace.tsx');
   assert.match(workspace, /Nội dung chương trình/);
   assert.match(workspace, /programContent/);
-  assert.match(workspace, /maxLength={4000}/);
+  assert.match(workspace, /maxLength=\{4000\}/);
 });
 
 test('Công Ty quản lý tiêu đề và hiển thị, Customer Portal chỉ đọc nội dung công khai', async () => {
