@@ -94,3 +94,22 @@ test("cutover modules are part of backend source verification", () => {
   assert.match(pkg.scripts.test, /postgresql-cutover-flow-integration\.test\.js/);
   assert.equal(basename(here), "foundation");
 });
+
+test("PostgreSQL JSONB builders cast text parameters explicitly", () => {
+  const value = source("postgresql-compat-adapter.js");
+  for (const snippet of [
+    "'session_customer_id', $9::text",
+    "'content', $15::text",
+    "'display_summary', $16::text",
+    "'stock_summary', $17::text",
+    "'session_customer_id', $21::text",
+    "'session_customer_id', $7::text",
+    "'group_type', $8::text",
+    "'category', $9::text",
+    "'brand_name', $10::text",
+    "'product_id', $11::text"
+  ]) {
+    assert.equal(value.includes(snippet), true, snippet);
+  }
+});
+
