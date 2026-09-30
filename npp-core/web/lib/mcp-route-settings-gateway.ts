@@ -106,13 +106,18 @@ function mcpScopes(value: CoreMe['scopes']): string[] {
       .filter((item) => /^mcp:[a-z0-9*][a-z0-9._:*-]{0,126}$/.test(item)))].sort();
   }
   if (!value || typeof value !== 'object') return [];
+  const scoped = value as Readonly<{
+    branchIds?: readonly string[];
+    warehouseIds?: readonly string[];
+    territoryIds?: readonly string[];
+  }>;
   const output: string[] = [];
   for (const [key, prefix] of [
     ['branchIds', 'branch'],
     ['warehouseIds', 'warehouse'],
     ['territoryIds', 'territory'],
   ] as const) {
-    const values = key in value ? stringList(value[key]) : [];
+    const values = stringList(scoped[key]);
     for (const id of values) {
       if (UUID_PATTERN.test(id)) output.push(`mcp:${prefix}:${id.toLowerCase()}`);
     }
@@ -262,7 +267,7 @@ export function createMcpRoute<T>(requestId: string, body: unknown, idempotencyK
     path: '/api/routes',
     requestId,
     body,
-    idempotencyKey: mutationKey(idempotencyKey, 'company-mcp-route-create'),
+    idempotencyKey: mutationKey(idempotencyKey, 'route.create'),
   });
 }
 
@@ -274,7 +279,7 @@ export function patchMcpRoute<T>(routeId: string, requestId: string, body: unkno
     path: `/api/routes/${encodeURIComponent(id)}`,
     requestId,
     body,
-    idempotencyKey: mutationKey(idempotencyKey, 'company-mcp-route-update'),
+    idempotencyKey: mutationKey(idempotencyKey, 'route.update'),
   });
 }
 
@@ -285,6 +290,6 @@ export function archiveMcpRoute<T>(routeId: string, requestId: string, idempoten
     method: 'POST',
     path: `/api/routes/${encodeURIComponent(id)}/archive`,
     requestId,
-    idempotencyKey: mutationKey(idempotencyKey, 'company-mcp-route-archive'),
+    idempotencyKey: mutationKey(idempotencyKey, 'route.archive'),
   });
 }

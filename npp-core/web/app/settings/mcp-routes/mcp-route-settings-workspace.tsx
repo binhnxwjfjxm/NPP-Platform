@@ -128,7 +128,7 @@ export default function McpRouteSettingsWorkspace() {
       return;
     }
 
-    const operation = mode === 'create' ? 'company-mcp-route-create' : 'company-mcp-route-update';
+    const operation = mode === 'create' ? 'route.create' : 'route.update';
     const key = mutationKey || createIdempotencyKey(operation);
     setMutationKey(key);
     setSaving(true);
@@ -178,8 +178,8 @@ export default function McpRouteSettingsWorkspace() {
   }
 
   async function archiveRoute(route: RouteItem) {
-    if (!window.confirm(`Ngừng sử dụng tuyến “${route.name}”? Các phiên cũ vẫn được giữ để tra cứu.`)) return;
-    const key = archiveKeys[route.id] || createIdempotencyKey('company-mcp-route-archive');
+    if (!window.confirm(`Xóa tuyến “${route.name}”? Tuyến, danh sách điểm bán, media và dữ liệu liên quan sẽ bị xóa vĩnh viễn. Không thể khôi phục.`)) return;
+    const key = archiveKeys[route.id] || createIdempotencyKey('route.archive');
     setArchiveKeys((current) => ({ ...current, [route.id]: key }));
     setSaving(true);
     setError('');
@@ -196,10 +196,10 @@ export default function McpRouteSettingsWorkspace() {
         return next;
       });
       if (selected?.id === route.id) startCreate();
-      setMessage('Đã ngừng sử dụng tuyến.');
+      setMessage('Đã xóa tuyến.');
       await loadRoutes();
     } catch (archiveError) {
-      setError(archiveError instanceof Error ? archiveError.message : 'Không ngừng được tuyến.');
+      setError(archiveError instanceof Error ? archiveError.message : 'Không xóa được tuyến.');
     } finally {
       setSaving(false);
     }
@@ -243,7 +243,7 @@ export default function McpRouteSettingsWorkspace() {
                   </div>
                   <div className={styles.routeActions}>
                     <button type="button" onClick={() => startEdit(route)} disabled={saving}>Sửa tuyến</button>
-                    <button type="button" className={styles.dangerButton} onClick={() => void archiveRoute(route)} disabled={saving}>Ngừng sử dụng</button>
+                    <button type="button" className={styles.dangerButton} onClick={() => void archiveRoute(route)} disabled={saving}>Xóa tuyến</button>
                   </div>
                 </article>
               ))}

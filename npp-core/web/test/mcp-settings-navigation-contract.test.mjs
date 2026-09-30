@@ -16,6 +16,7 @@ test('MCP route setup stays under Company settings instead of user access', asyn
   assert.doesNotMatch(accessItems, /employees\/performance|Hiệu suất nhân viên thị trường/);
   assert.match(settingsItems, /\/settings\/mcp-routes/);
   assert.match(settingsItems, /MCP và tuyến/);
+  assert.match(settingsItems, /nav-mcp-route-settings/);
   assert.match(settingsItems, /\/settings\/customer-ordering-content/);
   assert.match(shell, /Cài đặt Công Ty/);
 });
@@ -48,5 +49,6 @@ test('Company route settings use workforce authority and canonical idempotency',
 
   assert.match(workspace, /createIdempotencyKey\(operation\)/);
   assert.match(workspace, /const key = mutationKey \|\| createIdempotencyKey\(operation\)/);
-  assert.match(workspace, /archiveKeys\[route\.id\] \|\| createIdempotencyKey\('company-mcp-route-archive'\)/);
+  assert.match(workspace, /mode === 'create' \? 'route\.create' : 'route\.update'/);
+  assert.match(workspace, /archiveKeys\[route\.id\] \|\| createIdempotencyKey\('route\.archive'\)/);
 });
