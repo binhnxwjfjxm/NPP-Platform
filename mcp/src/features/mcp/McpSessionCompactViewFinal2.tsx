@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/ui/shell/AppShell";
-import { PageHeader } from "@/ui/layout/PageHeader";
+import { McpCard, McpFilterChip, McpFilterRow, McpPageHeader, McpStatePanel, McpStatusPill } from "@/ui/foundation";
 import { BottomSheet } from "@/ui/overlay/BottomSheet";
 import { idempotentMutationFetch } from "@/lib/api/idempotent-fetch";
 import type { McpDayData, McpDayLine } from "@/features/mcp-day/mcp-day.types";
@@ -13,6 +13,7 @@ import { McpLineCard } from "./McpLineCard";
 import { mcpCustomerActionDescription, type McpCustomerAction } from "./mcp-customer-actions";
 import { McpMarketReportFields, buildMarketReportContent, emptyMarketReportDraft, marketReportHasInput, type MarketReportDraft } from "./McpMarketReportFields";
 import popupStyles from "./McpSessionPopupCompact.module.css";
+import styles from "./RouteWorkScreen.module.css";
 
 type SessionTab = "all" | "pending" | "visited" | "skipped" | "added" | "followups";
 type ActionDraft = { productName: string; note: string; skipReason: string; dueDate: string; priority: string; owner: string; testStatus: string; followupType: string };
@@ -101,5 +102,64 @@ export function McpSessionCompactView({ activeHref = "/visits", mcpDayData }: { 
   async function toggleCustomerCheckin(line: McpDayLine) { const sessionCustomerId = line.sessionCustomerId || line.id; if (checkinBusyIds.has(sessionCustomerId)) return; setCheckinNotice(null); setCheckinBusyIds((current) => new Set(current).add(sessionCustomerId)); try { if (line.checkedIn) { await saveManualCheckin(line, false); setCheckinNotice({ kind: "success", message: `Đã bỏ check-in của ${line.accountName}.` }); } else { const position = await currentSalesPosition(); await saveManualCheckin(line, true, position); setCheckinNotice({ kind: "success", message: `Đã check-in vị trí hiện tại tại ${line.accountName} · sai số khoảng ${Math.round(position.coords.accuracy)}m.` }); } router.refresh(); } catch (error) { setCheckinNotice({ kind: "error", message: geolocationMessage(error) }); } finally { setCheckinBusyIds((current) => { const next = new Set(current); next.delete(sessionCustomerId); return next; }); } }
   function submitAction() { if (!selectedAction || selectedAction.action === "order") return; const sessionCustomerId = selectedAction.line.sessionCustomerId || selectedAction.line.id; startSaving(() => { void (async () => { try { setMessage(null); if (selectedAction.action === "test") { if (!draft.productName.trim()) throw new Error("Cần chọn hoặc nhập sản phẩm test"); await postJson("/api/backend/mcp-day/session-customer/test", { sessionCustomerId, fileTitle: "Kết quả thử sản phẩm trong phiên", results: [{ productName: draft.productName, status: draft.testStatus || "tested", note: draft.note }], note: draft.note, customerStatus: "tested" }); } else if (selectedAction.action === "market_report") { if (!marketReportHasInput(marketReport)) throw new Error("Cần tick hoặc nhập ít nhất 1 nội dung quan sát"); await postJson("/api/backend/mcp-day/session-customer/report", { sessionCustomerId, reportType: "market_report", content: buildMarketReportContent(marketReport), fields: marketReport.fields, selected: { competitors: marketReport.selectedCompetitors, usedProducts: marketReport.selectedUsedProducts, settingItems: marketReport.selectedSettingItems }, context: { routeId: run.routeId || null, routeName: run.routeName, sessionDate: run.date, sales: run.owner, customerName: selectedAction.line.accountName, area: selectedAction.line.area, routeCustomerId: selectedAction.line.routeCustomerId || null } }); } else if (selectedAction.action === "follow_up") { await postJson("/api/backend/mcp-day/session-customer/followup", { sessionCustomerId, title: draft.productName || "Theo dõi khách", dueDate: draft.dueDate || undefined, priority: draft.priority, owner: draft.owner, note: draft.note, followupType: draft.followupType || "general" }); } else if (selectedAction.action === "skip") { await postJson("/api/backend/mcp-day/session-customer/status", { sessionCustomerId, visitStatus: "skipped", statusReason: draft.skipReason || "other", note: draft.note || draft.skipReason }); } setSelectedAction(null); setSelectedLine(null); router.refresh(); } catch (error) { setMessage(error instanceof Error ? error.message : "Không lưu được hành động MCP"); } })(); }); }
 
-  return <AppShell activeHref={activeHref}><PageHeader eyebrow="Phiên đi tuyến" title="Phiên đi tuyến" subtitle={`Tuyến: ${run.routeName} · Ngày: ${run.date} · Phụ trách: ${run.owner}`} /><section className="mcp-gate-banner mcp-session-compact-head"><strong>{counters.pending} chờ ghé</strong><span>{counters.visited} đã ghé · {counters.skipped} bỏ qua · {counters.added} phát sinh · {counters.followups} việc theo dõi · mở lúc {run.openedAt}</span></section><div className="mcp-status-chips" role="tablist" aria-label="Phiên đi tuyến"><button className={tab === "all" ? "active" : ""} type="button" onClick={() => setTab("all")}>Tất cả điểm bán <b>{counters.all}</b></button><button className={tab === "pending" ? "active" : ""} type="button" onClick={() => setTab("pending")}>Chờ ghé <b>{counters.pending}</b></button><button className={tab === "visited" ? "active" : ""} type="button" onClick={() => setTab("visited")}>Đã ghé <b>{counters.visited}</b></button><button className={tab === "skipped" ? "active" : ""} type="button" onClick={() => setTab("skipped")}>Bỏ qua <b>{counters.skipped}</b></button><button className={tab === "added" ? "active" : ""} type="button" onClick={() => setTab("added")}>Phát sinh <b>{counters.added}</b></button><button className={tab === "followups" ? "active" : ""} type="button" onClick={() => setTab("followups")}>Có việc theo dõi <b>{counters.followups}</b></button></div>{checkinNotice ? <p className={`${popupStyles.notice} ${checkinNotice.kind === "error" ? popupStyles.noticeError : ""}`}>{checkinNotice.message}</p> : null}<LineList lines={linesByTab[tab]} onOpen={setSelectedLine} onAction={openCustomerAction} onToggleCheckin={toggleCustomerCheckin} checkinBusyIds={checkinBusyIds} /><CustomerSheet line={selectedLine} onClose={() => setSelectedLine(null)} onAction={openCustomerAction} /><CustomerActionSheet selection={selectedAction} draft={draft} marketReport={marketReport} saving={saving} message={message} onChange={updateDraft} onMarketReportChange={setMarketReport} onClose={() => { if (!saving) setSelectedAction(null); }} onSubmit={submitAction} /></AppShell>;
+  return (
+    <AppShell activeHref={activeHref}>
+      <div className={styles.page} data-primary-screen="visits">
+        <McpPageHeader
+          eyebrow="MCP Field"
+          title="Đi tuyến"
+          description={`Tuyến: ${run.routeName} · Ngày: ${run.date} · Phụ trách: ${run.owner}`}
+          actions={<McpStatusPill tone="primary">Phiên đang mở</McpStatusPill>}
+        />
+
+        <McpCard className={styles.sessionSummary}>
+          <div className={styles.summaryTop}>
+            <div>
+              <span>Tiến độ phiên</span>
+              <strong>{run.routeName}</strong>
+              <small>Mở lúc {run.openedAt}</small>
+            </div>
+            <McpStatusPill tone={counters.pending ? "warning" : "success"}>
+              {counters.pending ? `${counters.pending} điểm bán chờ ghé` : "Đã xử lý hết danh sách"}
+            </McpStatusPill>
+          </div>
+          <div className={styles.metricGrid}>
+            <span><strong>{counters.all}</strong><small>Tổng điểm bán</small></span>
+            <span><strong>{counters.visited}</strong><small>Đã ghé</small></span>
+            <span><strong>{counters.skipped}</strong><small>Bỏ qua</small></span>
+            <span><strong>{counters.added}</strong><small>Phát sinh</small></span>
+            <span><strong>{counters.followups}</strong><small>Có theo dõi</small></span>
+          </div>
+        </McpCard>
+
+        <div className={styles.filterShell} role="tablist" aria-label="Phiên đi tuyến">
+          <McpFilterRow>
+            <McpFilterChip active={tab === "all"} role="tab" aria-selected={tab === "all"} onClick={() => setTab("all")}>Tất cả <b className={styles.tabCount}>{counters.all}</b></McpFilterChip>
+            <McpFilterChip active={tab === "pending"} role="tab" aria-selected={tab === "pending"} onClick={() => setTab("pending")}>Chờ ghé <b className={styles.tabCount}>{counters.pending}</b></McpFilterChip>
+            <McpFilterChip active={tab === "visited"} role="tab" aria-selected={tab === "visited"} onClick={() => setTab("visited")}>Đã ghé <b className={styles.tabCount}>{counters.visited}</b></McpFilterChip>
+            <McpFilterChip active={tab === "skipped"} role="tab" aria-selected={tab === "skipped"} onClick={() => setTab("skipped")}>Bỏ qua <b className={styles.tabCount}>{counters.skipped}</b></McpFilterChip>
+            <McpFilterChip active={tab === "added"} role="tab" aria-selected={tab === "added"} onClick={() => setTab("added")}>Phát sinh <b className={styles.tabCount}>{counters.added}</b></McpFilterChip>
+            <McpFilterChip active={tab === "followups"} role="tab" aria-selected={tab === "followups"} onClick={() => setTab("followups")}>Có theo dõi <b className={styles.tabCount}>{counters.followups}</b></McpFilterChip>
+          </McpFilterRow>
+        </div>
+
+        {checkinNotice ? <p className={checkinNotice.kind === "error" ? `${styles.notice} ${styles.noticeError}` : styles.notice}>{checkinNotice.message}</p> : null}
+        <LineList lines={linesByTab[tab]} onOpen={setSelectedLine} onAction={openCustomerAction} onToggleCheckin={toggleCustomerCheckin} checkinBusyIds={checkinBusyIds} />
+      </div>
+
+      <CustomerSheet line={selectedLine} onClose={() => setSelectedLine(null)} onAction={openCustomerAction} />
+      <CustomerActionSheet
+        selection={selectedAction}
+        draft={draft}
+        marketReport={marketReport}
+        saving={saving}
+        message={message}
+        onChange={updateDraft}
+        onMarketReportChange={setMarketReport}
+        onClose={() => { if (!saving) setSelectedAction(null); }}
+        onSubmit={submitAction}
+      />
+    </AppShell>
+  );
+}
 }

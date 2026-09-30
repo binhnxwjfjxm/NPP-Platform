@@ -5,9 +5,8 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ExportMenu } from "@/features/exports/ExportLinks";
 import type { RouteCustomerItem } from "@/features/mcp/route-customers.types";
 import type { ApiResult, OrderDto } from "@/lib/api/api.types";
-import { PageHeader } from "@/ui/layout/PageHeader";
+import { McpButton, McpCard, McpPageHeader, McpStatusPill } from "@/ui/foundation";
 import { AppShell } from "@/ui/shell/AppShell";
-import { SourceBadge } from "@/ui/status/SourceBadge";
 import { OrderCreateSheet } from "./OrderCreateSheet";
 import { OrderDetailDrawer } from "./OrderDetailDrawer";
 import { OrdersFilters } from "./OrdersFilters";
@@ -277,19 +276,25 @@ export function OrdersClientPage({
 
   return (
     <AppShell activeHref="/orders">
-      <PageHeader
-        eyebrow="Điều hành bán hàng"
-        title="Trung tâm đơn hàng"
-        subtitle="Tạo và tìm đơn, xử lý ngoại lệ, xem doanh số đặt hàng hoặc nhìn nhanh tổng quan."
-      >
-        <SourceBadge source={ordersResult.source} />
-        {activeView === "orders" || activeView === "sales" ? <ExportActions orders={filteredOrders} /> : null}
-        {activeView === "orders" ? (
-          <button className="button primary" type="button" onClick={() => void openCreateOrder()} disabled={createLoading}>
-            {createLoading ? "Đang tải phiên..." : "+ Tạo đơn"}
-          </button>
-        ) : null}
-      </PageHeader>
+      <div className={styles.page} data-primary-screen="orders">
+        <McpPageHeader
+          eyebrow="MCP Field"
+          title="Đơn hàng"
+          description="Tạo và tìm đơn, xử lý ngoại lệ, xem doanh số đặt hàng hoặc nhìn nhanh tổng quan."
+          actions={
+            <>
+              <McpStatusPill tone={ordersResult.source === "api" ? "success" : "warning"}>
+                {ordersResult.source === "api" ? "Dữ liệu Công Ty" : "Dữ liệu dự phòng"}
+              </McpStatusPill>
+              {activeView === "orders" || activeView === "sales" ? <ExportActions orders={filteredOrders} /> : null}
+              {activeView === "orders" ? (
+                <McpButton onClick={() => void openCreateOrder()} disabled={createLoading}>
+                  {createLoading ? "Đang tải phiên..." : "+ Tạo đơn"}
+                </McpButton>
+              ) : null}
+            </>
+          }
+        />
 
       <nav className={tabs.tabRail} role="tablist" aria-label="Phân tích và xử lý đơn hàng">
         {ORDER_VIEWS.map((view) => (
@@ -308,10 +313,10 @@ export function OrdersClientPage({
       </nav>
 
       {notice ? (
-        <section className={`card ${styles.notice}`}>
+        <McpCard className={styles.notice}>
           <strong>{notice}</strong>
           <span>{noticeDetail || "Danh sách đang được làm mới từ dữ liệu live."}</span>
-        </section>
+        </McpCard>
       ) : null}
 
       {activeView === "orders" ? (
@@ -334,7 +339,7 @@ export function OrdersClientPage({
                 <div className={styles.emptyOrders}>
                   <strong>Không có đơn phù hợp</strong>
                   <span>Thử xóa bớt bộ lọc hoặc đổi từ khóa.</span>
-                  <button className="button" type="button" onClick={() => setFilters(DEFAULT_ORDER_FILTERS)}>Đặt lại bộ lọc</button>
+                  <McpButton variant="secondary" onClick={() => setFilters(DEFAULT_ORDER_FILTERS)}>Đặt lại bộ lọc</McpButton>
                 </div>
               )}
             </div>
@@ -449,6 +454,8 @@ export function OrdersClientPage({
           </section>
         </div>
       ) : null}
+
+      </div>
 
       <OrderDetailDrawer
         open={Boolean(detailOrderId)}

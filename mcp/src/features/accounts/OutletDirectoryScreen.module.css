@@ -1,0 +1,236 @@
+.page {
+  display: grid;
+  gap: var(--mcp-space-md);
+}
+
+.tabCount {
+  margin-left: 6px;
+  font-size: 11px;
+}
+
+.filterCard {
+  padding: 14px;
+}
+
+.filterGrid {
+  display: grid;
+  grid-template-columns: minmax(240px, 1.5fr) repeat(2, minmax(160px, 0.7fr));
+  gap: var(--mcp-space-sm);
+}
+
+.kpiGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--mcp-space-sm);
+}
+
+.kpiCard {
+  display: grid;
+  gap: 5px;
+  min-height: 100px;
+}
+
+.kpiCard span,
+.cardHead span,
+.outletHead > div > span,
+.companyHead > div > span {
+  color: var(--mcp-color-primary);
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.kpiCard strong {
+  align-self: end;
+  font-size: 26px;
+}
+
+.kpiCard small {
+  color: var(--mcp-color-text-secondary);
+  font-size: 11px;
+}
+
+.contentGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: var(--mcp-space-md);
+  align-items: start;
+}
+
+.listCard,
+.qualityCard {
+  display: grid;
+  gap: var(--mcp-space-md);
+}
+
+.cardHead {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--mcp-space-sm);
+}
+
+.cardHead h2,
+.outletHead h3,
+.companyHead h3 {
+  margin: 3px 0 0;
+  color: var(--mcp-color-text-primary);
+}
+
+.cardHead h2 {
+  font-size: 18px;
+}
+
+.desktopTable {
+  min-width: 0;
+}
+
+.mobileList {
+  display: none;
+  gap: var(--mcp-space-sm);
+}
+
+.outletCard {
+  display: grid;
+  gap: var(--mcp-space-sm);
+}
+
+.outletHead,
+.companyHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--mcp-space-sm);
+}
+
+.outletHead h3,
+.companyHead h3 {
+  font-size: 15px;
+}
+
+.outletDecision {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--mcp-space-sm);
+}
+
+.outletDecision > span,
+.companyMeta > span,
+.qualityGrid > span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.outletDecision small,
+.companyMeta small,
+.qualityGrid small {
+  color: var(--mcp-color-text-secondary);
+  font-size: 10.5px;
+}
+
+.outletDecision strong,
+.companyMeta strong {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobileAction,
+.tableAction {
+  min-height: 40px;
+}
+
+.tableAction {
+  min-height: 36px;
+  padding: 0 12px;
+}
+
+.qualityGrid {
+  display: grid;
+  gap: 8px;
+}
+
+.qualityGrid > span {
+  border: 1px solid var(--mcp-color-border);
+  border-radius: var(--mcp-radius-md);
+  background: var(--mcp-color-surface-soft);
+  padding: 10px 11px;
+}
+
+.qualityGrid strong {
+  font-size: 20px;
+}
+
+.companyList {
+  display: grid;
+  gap: var(--mcp-space-sm);
+}
+
+.companyCard {
+  display: grid;
+  gap: var(--mcp-space-sm);
+  border: 1px solid var(--mcp-color-border);
+  border-radius: var(--mcp-radius-md);
+  background: var(--mcp-color-surface-soft);
+  padding: 12px;
+}
+
+.companyMeta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--mcp-space-sm);
+}
+
+@media (max-width: 980px) {
+  .contentGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .qualityGrid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 820px) {
+  .filterGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .kpiGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .desktopTable {
+    display: none;
+  }
+
+  .mobileList {
+    display: grid;
+  }
+
+  .qualityGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .cardHead {
+    align-items: flex-start;
+  }
+
+  .outletDecision {
+    grid-template-columns: 1fr;
+  }
+
+  .mobileAction {
+    width: 100%;
+  }
+
+  .companyMeta {
+    grid-template-columns: 1fr;
+  }
+}
