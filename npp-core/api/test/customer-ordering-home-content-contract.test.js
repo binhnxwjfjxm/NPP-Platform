@@ -62,3 +62,23 @@ test('migration 161 production chạy exact-main với backup và restore rehear
   assert.match(script, /RUNTIME_PRIVILEGES=PASS/);
   assert.match(script, /PRODUCTION_RERUN_NOOP=PASS/);
 });
+
+test('migration 162 production khóa backup, restore rehearsal và verify program_content', async () => {
+  const [script, workflow] = await Promise.all([
+    read('scripts/vps-production-migrate-customer-ordering-home-program-content-162.sh'),
+    read('../../.github/workflows/vps-production-migration-162-manual.yml'),
+  ]);
+  assert.match(workflow, /\/migrate-vps-production-162/);
+  assert.match(workflow, /Verify exact origin\/main SHA/);
+  assert.match(workflow, /Fresh backup, restore rehearsal, migrate production and verify/);
+  assert.match(workflow, /group: vps-production-db-migration/);
+  assert.match(script, /pg_dump -Fc/);
+  assert.match(script, /pg_restore --exit-on-error/);
+  assert.match(script, /161_customer_ordering_home_content/);
+  assert.match(script, /162_customer_ordering_home_program_content/);
+  assert.match(script, /program_content/);
+  assert.match(script, /customer_ordering_home_content_program_content_length/);
+  assert.match(script, /RUNTIME_PRIVILEGES=PASS/);
+  assert.match(script, /PRODUCTION_RERUN_NOOP=PASS/);
+});
+
