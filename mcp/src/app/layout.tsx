@@ -3,6 +3,7 @@ import { InteractionFeedbackProvider } from "@/ui/feedback/InteractionFeedbackPr
 import { McpProductCatalogWarmup } from "@/features/orders/McpProductCatalogWarmup";
 import { McpLocalIdentityProvider } from "@/lib/local-read/mcp-local-identity";
 import { mcpLocalCacheUserIdFromSession } from "@/lib/local-read/mcp-local-identity-server";
+import "@/ui/foundation/tokens.css";
 import "./globals.css";
 import "./mobile.css";
 import "./order-create-workspace.css";

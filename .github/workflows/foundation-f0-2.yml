@@ -76,6 +76,9 @@ jobs:
       - name: Install backend workspace dependencies
         run: npm ci --prefix apps/backend
 
+      - name: Verify MCP UI foundation
+        run: npm run test:ui-foundation
+
       - name: Audit runtime hardcodes
         run: npm run audit:runtime-config
 

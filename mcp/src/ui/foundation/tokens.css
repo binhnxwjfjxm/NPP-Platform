@@ -1,0 +1,64 @@
+/*
+ * Issue #1244 — MCP PWA design foundation.
+ * Canonical tokens for all UI migrated from Lô 1 onward.
+ * This file intentionally does not alias or override legacy --npp-* / global selectors.
+ */
+:root {
+  color-scheme: light;
+
+  --mcp-color-primary: #1677ff;
+  --mcp-color-primary-dark: #0b356d;
+  --mcp-color-primary-deep: #082b5a;
+  --mcp-color-primary-soft: #eaf3ff;
+
+  --mcp-color-background: #f3f6fa;
+  --mcp-color-surface: #ffffff;
+  --mcp-color-surface-soft: #f8fafc;
+  --mcp-color-border: #dde5ef;
+
+  --mcp-color-text-primary: #10233f;
+  --mcp-color-text-secondary: #66768a;
+
+  --mcp-color-success: #21b66f;
+  --mcp-color-success-soft: #e9f8f1;
+  --mcp-color-warning: #e69424;
+  --mcp-color-warning-soft: #fff4e2;
+  --mcp-color-danger: #ed5a64;
+  --mcp-color-danger-soft: #ffecee;
+
+  --mcp-space-xs: 6px;
+  --mcp-space-sm: 10px;
+  --mcp-space-md: 16px;
+  --mcp-space-lg: 20px;
+  --mcp-space-xl: 24px;
+  --mcp-space-xxl: 32px;
+
+  --mcp-radius-sm: 10px;
+  --mcp-radius-md: 14px;
+  --mcp-radius-lg: 18px;
+  --mcp-radius-xl: 24px;
+  --mcp-radius-pill: 999px;
+
+  --mcp-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --mcp-font-size-title: 25px;
+  --mcp-font-size-heading: 20px;
+  --mcp-font-size-subheading: 16px;
+  --mcp-font-size-body: 14px;
+  --mcp-font-size-label: 14px;
+  --mcp-font-size-caption: 12px;
+
+  --mcp-line-title: 1.12;
+  --mcp-line-body: 1.4;
+
+  --mcp-shadow-card: 0 1px 2px rgba(16, 35, 63, 0.05), 0 8px 24px rgba(16, 35, 63, 0.06);
+  --mcp-shadow-raised: 0 16px 40px rgba(16, 35, 63, 0.14);
+
+  --mcp-touch-target: 44px;
+  --mcp-control-height: 52px;
+  --mcp-bottom-nav-height: 68px;
+
+  --mcp-safe-top: env(safe-area-inset-top, 0px);
+  --mcp-safe-right: env(safe-area-inset-right, 0px);
+  --mcp-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --mcp-safe-left: env(safe-area-inset-left, 0px);
+}
