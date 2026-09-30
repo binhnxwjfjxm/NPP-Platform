@@ -15,9 +15,9 @@
   width: 54px;
   height: 32px;
   flex: 0 0 auto;
-  border: 1px solid var(--line);
+  border: 1px solid var(--mcp-color-border);
   border-radius: 999px;
-  background: var(--panel-soft);
+  background: var(--mcp-color-surface-soft);
   cursor: pointer;
   padding: 3px;
   transition: background 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
@@ -25,13 +25,13 @@
 }
 
 .switchOn {
-  border-color: var(--brand);
-  background: var(--brand);
-  box-shadow: 0 8px 20px color-mix(in srgb, var(--brand) 24%, transparent);
+  border-color: var(--mcp-color-primary);
+  background: var(--mcp-color-primary);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--mcp-color-primary) 24%, transparent);
 }
 
 .switch:focus-visible {
-  outline: 3px solid color-mix(in srgb, var(--brand) 30%, transparent);
+  outline: 3px solid color-mix(in srgb, var(--mcp-color-primary) 30%, transparent);
   outline-offset: 3px;
 }
 
@@ -55,9 +55,9 @@
   grid-template-columns: 44px minmax(0, 1fr);
   align-items: center;
   gap: 12px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--mcp-color-border);
   border-radius: 16px;
-  background: var(--panel-soft);
+  background: var(--mcp-color-surface-soft);
   padding: 12px;
 }
 
@@ -67,8 +67,8 @@
   width: 44px;
   height: 44px;
   border-radius: 14px;
-  background: var(--brand-soft);
-  color: var(--brand-strong);
+  background: var(--mcp-color-primary-soft);
+  color: var(--mcp-color-primary-dark);
   font-size: 24px;
   font-weight: 900;
 }
@@ -84,7 +84,7 @@
 
 .status small,
 .note {
-  color: var(--muted);
+  color: var(--mcp-color-text-secondary);
   font-size: 12px;
   line-height: 1.5;
 }

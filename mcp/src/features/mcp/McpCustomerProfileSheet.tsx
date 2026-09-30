@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { BottomSheet } from "@/ui/overlay/BottomSheet";
+import { McpSheet } from "@/ui/foundation";
 import type { McpDayLine } from "@/features/mcp-day/mcp-day.types";
 import { outletMediaData, outletMediaError } from "./outlet-media-client";
 import type { McpCustomerProfileFocus } from "./mcp-customer-profile-events";
@@ -200,7 +200,7 @@ export function McpCustomerProfileSheet({
   );
 
   return (
-    <BottomSheet
+    <McpSheet
       variant="compact"
       open={open}
       onClose={close}
@@ -220,6 +220,6 @@ export function McpCustomerProfileSheet({
         {focus === "media" ? detailSection : mediaSection}
         {message ? <p className={styles.message} role="status">{message}</p> : null}
       </div>
-    </BottomSheet>
+    </McpSheet>
   );
 }

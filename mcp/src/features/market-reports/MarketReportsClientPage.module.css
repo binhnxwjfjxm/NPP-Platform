@@ -12,11 +12,11 @@
 .card {
   display: grid;
   gap: 10px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--mcp-color-border);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.96);
   padding: 12px;
-  box-shadow: var(--shadow), var(--ring-soft);
+  box-shadow: var(--mcp-shadow-card), var(--mcp-color-primary-soft);
 }
 
 .head {
@@ -27,7 +27,7 @@
 }
 
 .head span {
-  color: var(--brand-strong);
+  color: var(--mcp-color-primary-dark);
   display: block;
   font-size: 11px;
   font-weight: 900;
@@ -77,7 +77,7 @@
 }
 
 .context small {
-  color: var(--muted);
+  color: var(--mcp-color-text-secondary);
   font-size: 12px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -108,7 +108,7 @@
 }
 
 .metrics small {
-  color: var(--muted);
+  color: var(--mcp-color-text-secondary);
   display: block;
   font-size: 10px;
   font-weight: 800;
@@ -137,10 +137,10 @@
 }
 
 .templateGrid span {
-  border: 1px solid var(--line);
+  border: 1px solid var(--mcp-color-border);
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.94);
-  color: var(--text);
+  color: var(--mcp-color-text-primary);
   font-size: 12px;
   font-weight: 900;
   padding: 10px;
@@ -166,10 +166,10 @@
 
 .tabBar button {
   flex: 0 0 auto;
-  border: 1px solid var(--line);
+  border: 1px solid var(--mcp-color-border);
   border-radius: 999px;
-  background: var(--panel-soft);
-  color: var(--muted);
+  background: var(--mcp-color-surface-soft);
+  color: var(--mcp-color-text-secondary);
   cursor: pointer;
   font-size: 12px;
   font-weight: 900;
@@ -206,7 +206,7 @@
 
 .reportHero span,
 .aiPanel span {
-  color: var(--muted);
+  color: var(--mcp-color-text-secondary);
   display: block;
   font-size: 12px;
   font-weight: 800;
@@ -223,7 +223,7 @@
 
 .reportHero p,
 .aiPanel p {
-  color: var(--muted);
+  color: var(--mcp-color-text-secondary);
   font-size: 13px;
   line-height: 1.45;
   margin: 4px 0 0;
@@ -246,7 +246,7 @@
 
 .reportMetric span,
 .reportMetric small {
-  color: var(--muted);
+  color: var(--mcp-color-text-secondary);
   font-size: 11px;
   font-weight: 800;
 }
@@ -264,7 +264,7 @@
 .detailRow {
   display: grid;
   gap: 7px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--mcp-color-border);
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.96);
   padding: 12px;
@@ -282,7 +282,7 @@
 
 .detailRow span,
 .detailRow p {
-  color: var(--muted);
+  color: var(--mcp-color-text-secondary);
   font-size: 12px;
   line-height: 1.4;
   margin: 0;
@@ -303,8 +303,8 @@
 .chips span {
   border: 1px solid rgba(37, 99, 235, 0.18);
   border-radius: 999px;
-  background: var(--brand-soft);
-  color: var(--brand-strong);
+  background: var(--mcp-color-primary-soft);
+  color: var(--mcp-color-primary-dark);
   font-size: 12px;
   font-weight: 900;
   padding: 7px 10px;
@@ -328,10 +328,10 @@
 }
 
 .textList p {
-  border: 1px solid var(--line);
+  border: 1px solid var(--mcp-color-border);
   border-radius: 14px;
-  background: var(--panel-soft);
-  color: var(--text);
+  background: var(--mcp-color-surface-soft);
+  color: var(--mcp-color-text-primary);
   font-size: 13px;
   line-height: 1.4;
   margin: 0;
