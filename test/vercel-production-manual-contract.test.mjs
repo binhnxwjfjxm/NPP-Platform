@@ -20,6 +20,15 @@ test('manual Vercel production workflow remains source deploy only', () => {
   assert.match(workflow, /smoke_login_assets/);
   assert.match(workflow, /for attempt in \{1\.\.12\}/);
   assert.match(workflow, /Hệ thống điều hành Công Ty/);
+  assert.match(workflow, /VPS_MCP_HOST:\s+\$\{\{ vars\.VPS_MCP_HOST \}\}/);
+  assert.match(workflow, /VPS_SSH_USER:\s+\$\{\{ vars\.VPS_SSH_USER \}\}/);
+  assert.match(workflow, /VPS_MCP_SSH_KEY/);
+  assert.match(workflow, /\/etc\/npp\/mcp\.env/);
+  assert.match(workflow, /BACKEND_API_TOKEN/);
+  assert.match(workflow, /MCP_API_INTERNAL_URL/);
+  assert.match(workflow, /MCP_API_SERVER_TOKEN/);
+  assert.match(workflow, /type:\"sensitive\"/);
+  assert.match(workflow, /assert_status \/api\/mcp-routes 401/);
   assert.doesNotMatch(workflow, /Welcome to Hung Phat Operations\./);
   assert.doesNotMatch(workflow, /startsWith\(github\.event\.comment\.body/);
   assert.doesNotMatch(workflow, /\bvercel build\b/);

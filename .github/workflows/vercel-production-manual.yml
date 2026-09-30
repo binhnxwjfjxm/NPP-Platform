@@ -24,6 +24,8 @@ jobs:
       VERCEL_PROJECT_ID: prj_vFEAzoxesLqNJIfD8uF4q1kytpvk
       DEPLOY_REF: main
       PRODUCTION_URL: https://npp-platform.vercel.app
+      VPS_MCP_HOST: ${{ vars.VPS_MCP_HOST }}
+      VPS_SSH_USER: ${{ vars.VPS_SSH_USER }}
     steps:
       - name: Checkout deploy ref
         uses: actions/checkout@v4
@@ -88,6 +90,96 @@ jobs:
           if (project?.rootDirectory !== desired.rootDirectory) throw new Error(`unexpected_root_directory:${project?.rootDirectory}`);
           if (project?.nodeVersion !== desired.nodeVersion) throw new Error(`unexpected_vercel_node_version:${project?.nodeVersion}`);
           NODE
+      - name: Prepare MCP route settings runtime credential
+        id: mcp_ssh
+        shell: bash
+        env:
+          VPS_MCP_SSH_KEY: '${{ secrets.VPS_MCP_SSH_KEY }}'
+        run: |
+          set -euo pipefail
+          test -n "$VPS_MCP_HOST"
+          test -n "$VPS_SSH_USER"
+          test -n "$VPS_MCP_SSH_KEY"
+          umask 077
+          key="$RUNNER_TEMP/vps-mcp.key"
+          printf '%s\n' "$VPS_MCP_SSH_KEY" > "$key"
+          chmod 600 "$key"
+          ssh-keygen -y -f "$key" >/dev/null
+          known_hosts="$RUNNER_TEMP/vps-mcp-known-hosts"
+          ssh-keyscan -T 10 -H "$VPS_MCP_HOST" > "$known_hosts" 2>/dev/null
+          test -s "$known_hosts"
+          chmod 600 "$known_hosts"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+          echo "known_hosts=$known_hosts" >> "$GITHUB_OUTPUT"
+
+      - name: Synchronize MCP route settings server binding
+        shell: bash
+        env:
+          VERCEL_TOKEN: '${{ secrets.VERCEL_TOKEN }}'
+          SSH_KEY: '${{ steps.mcp_ssh.outputs.key }}'
+          KNOWN_HOSTS: '${{ steps.mcp_ssh.outputs.known_hosts }}'
+        run: |
+          set -euo pipefail
+          test -n "$VERCEL_TOKEN"
+          echo "::add-mask::$VERCEL_TOKEN"
+          mcp_url="https://$VPS_MCP_HOST"
+          MCP_API_INTERNAL_URL="$mcp_url" node --input-type=module <<'NODE'
+          const url = new URL(process.env.MCP_API_INTERNAL_URL);
+          if (url.protocol !== 'https:' || url.username || url.password || url.pathname !== '/') {
+            throw new Error('invalid_mcp_route_settings_url');
+          }
+          NODE
+          for path in /health/live /health/ready; do
+            code="$(curl --silent --show-error --connect-timeout 5 --max-time 20 --output /dev/null --write-out '%{http_code}' "$mcp_url$path" || true)"
+            test "$code" = 200
+          done
+
+          token_file="$RUNNER_TEMP/mcp-backend-token"
+          ssh \
+            -i "$SSH_KEY" \
+            -o BatchMode=yes \
+            -o ConnectTimeout=10 \
+            -o ConnectionAttempts=1 \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$KNOWN_HOSTS" \
+            "$VPS_SSH_USER@$VPS_MCP_HOST" \
+            "sudo -n /usr/bin/node --env-file=/etc/npp/mcp.env -e 'process.stdout.write(process.env.BACKEND_API_TOKEN || \"\")'" \
+            > "$token_file"
+          token="$(cat "$token_file")"
+          test "${#token}" -ge 32
+          echo "::add-mask::$token"
+
+          body="$(jq -nc \
+            --arg url "$mcp_url" \
+            --arg token "$token" \
+            '[
+              {key:"MCP_API_INTERNAL_URL",value:$url,type:"sensitive",target:["production"]},
+              {key:"MCP_API_SERVER_TOKEN",value:$token,type:"sensitive",target:["production"]}
+            ]')"
+          status="$(curl --silent --show-error --output "$RUNNER_TEMP/company-mcp-route-env-upsert.json" --write-out '%{http_code}' \
+            -X POST \
+            -H "Authorization: Bearer $VERCEL_TOKEN" \
+            -H 'Content-Type: application/json' \
+            --data "$body" \
+            "https://api.vercel.com/v10/projects/$VERCEL_PROJECT_ID/env?teamId=$VERCEL_ORG_ID&upsert=true")"
+          case "$status" in 200|201) ;; *) exit 1 ;; esac
+          rm -f "$token_file"
+
+          metadata="$RUNNER_TEMP/company-mcp-route-env-metadata.json"
+          status="$(curl --silent --show-error --output "$metadata" --write-out '%{http_code}' \
+            -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v10/projects/$VERCEL_PROJECT_ID/env?teamId=$VERCEL_ORG_ID")"
+          test "$status" = 200
+          ENV_METADATA="$metadata" node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const payload = JSON.parse(readFileSync(process.env.ENV_METADATA, 'utf8'));
+          const envs = Array.isArray(payload.envs) ? payload.envs : [];
+          for (const key of ['MCP_API_INTERNAL_URL', 'MCP_API_SERVER_TOKEN']) {
+            const matches = envs.filter((entry) => entry?.key === key && Array.isArray(entry.target) && entry.target.includes('production'));
+            if (matches.length !== 1) throw new Error(`company_mcp_route_env_missing_or_ambiguous:${key}`);
+            if (matches[0].type === 'plain') throw new Error(`company_mcp_route_env_must_not_be_plain:${key}`);
+          }
+          NODE
       - name: Pull production project configuration
         run: npx --yes vercel@latest pull --yes --environment=production --token="${{ secrets.VERCEL_TOKEN }}"
       - name: Verify Vercel project link
@@ -126,6 +218,7 @@ jobs:
           assert_status /organization 302 307 401
           assert_status /api/customers 401
           assert_status /api/access/permissions 401
+          assert_status /api/mcp-routes 401
 
           smoke_login_assets() {
             local html css_asset js_asset
