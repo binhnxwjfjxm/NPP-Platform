@@ -179,7 +179,7 @@ export function McpProposalsPage() {
       if (!response.ok) throw new Error(publicError(payload, "Không gửi được Đề xuất"));
       if (!isProposal(payload.data)) throw new Error("Dữ liệu Đề xuất trả về không hợp lệ");
       form.reset();
-      setNotice("Đã gửi Đề xuất đến Admin.");
+      setNotice("Đã gửi Đề xuất đến quản trị viên.");
       await load();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Không gửi được Đề xuất");
@@ -210,7 +210,7 @@ export function McpProposalsPage() {
       const payload = await readEnvelope(response);
       if (!response.ok) throw new Error(publicError(payload, "Không gửi lại được Đề xuất"));
       if (!isProposal(payload.data)) throw new Error("Dữ liệu Đề xuất trả về không hợp lệ");
-      setNotice("Đã gửi nội dung bổ sung đến Admin.");
+      setNotice("Đã gửi nội dung bổ sung đến quản trị viên.");
       await load();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Không gửi lại được Đề xuất");
@@ -223,7 +223,7 @@ export function McpProposalsPage() {
     <AppShell activeHref="/reports">
       <div className={styles.page}>
         <header className={styles.header}>
-          <div><span className={styles.kicker}>Báo cáo MCP</span><h1>Đề xuất</h1><p>Chỉ cần nêu rõ tiêu đề và nội dung cần Admin quyết định. Thông tin liên quan có thể bổ sung khi cần.</p></div>
+          <div><span className={styles.kicker}>Báo cáo MCP</span><h1>Đề xuất</h1><p>Chỉ cần nêu rõ tiêu đề và nội dung cần quản trị viên quyết định. Thông tin liên quan có thể bổ sung khi cần.</p></div>
           <button type="button" className={styles.secondaryButton} onClick={() => void load()} disabled={loading}>Làm mới</button>
         </header>
 
@@ -243,10 +243,10 @@ export function McpProposalsPage() {
             <div className={styles.sectionHeading}><div><h2>Phiếu Đề xuất mới</h2><p>Chỉ Tiêu đề và Nội dung đề xuất là bắt buộc.</p></div></div>
             <div className={styles.grid}>
               <label className={styles.wide}><span>Tiêu đề</span><input name="title" maxLength={240} required placeholder="Ví dụ: Xin hỗ trợ chính sách cho khách hàng A" /></label>
-              <label className={styles.wide}><span>Nội dung đề xuất</span><textarea name="content" rows={5} maxLength={4000} required placeholder="Nêu rõ việc cần Admin xem xét và quyết định." /></label>
+              <label className={styles.wide}><span>Nội dung đề xuất</span><textarea name="content" rows={5} maxLength={4000} required placeholder="Nêu rõ việc cần quản trị viên xem xét và quyết định." /></label>
               <details className={`${styles.optionalDetails} ${styles.wide}`}>
                 <summary>Thêm thông tin liên quan <span>(không bắt buộc)</span></summary>
-                <p className={styles.optionalHint}>Chỉ bổ sung khi thông tin này giúp Admin hiểu hoặc kiểm tra đề xuất nhanh hơn.</p>
+                <p className={styles.optionalHint}>Chỉ bổ sung khi thông tin này giúp quản trị viên hiểu hoặc kiểm tra đề xuất nhanh hơn.</p>
                 <div className={styles.optionalGrid}>
                   <label><span>Liên quan đến</span><select name="entityType" defaultValue="other">{Object.entries(ENTITY_LABEL).map(([value, label]) => <option key={value} value={value}>{value === "other" ? "Khác / chưa xác định" : label}</option>)}</select></label>
                   <label><span>Mức ưu tiên</span><select name="priority" defaultValue="normal"><option value="normal">Bình thường</option><option value="high">Cần xử lý sớm</option><option value="critical">Ưu tiên cao</option></select></label>
@@ -264,7 +264,7 @@ export function McpProposalsPage() {
         )}
 
         <section className={styles.listSection}>
-          <div className={styles.sectionHeading}><div><h2>Đề xuất của tôi</h2><p>Quyết định từ Admin được cập nhật về đúng nguồn tạo.</p></div></div>
+          <div className={styles.sectionHeading}><div><h2>Đề xuất của tôi</h2><p>Quyết định từ quản trị viên được cập nhật về đúng nguồn tạo.</p></div></div>
           {loading ? <p className={styles.empty}>Đang tải Đề xuất…</p> : null}
           {!loading && !items.length ? <p className={styles.empty}>Chưa có Đề xuất nào.</p> : null}
           <div className={styles.list}>
@@ -273,7 +273,7 @@ export function McpProposalsPage() {
                 <div className={styles.itemTop}><div><span className={styles.meta}>{item.entityLabel ? `${ENTITY_LABEL[item.entityType] || "Đối tượng"} · ${item.entityLabel}` : "Đề xuất MCP"}</span><h3>{item.title}</h3></div><span className={styles.status}>{STATE_LABEL[item.status]}</span></div>
                 <p className={styles.content}>{item.content}</p>
                 <dl className={styles.details}><div><dt>Ưu tiên</dt><dd>{PRIORITY_LABEL[item.priority]}</dd></div><div><dt>Gửi lúc</dt><dd>{formatDateTime(item.createdAt)}</dd></div><div><dt>Cập nhật</dt><dd>{formatDateTime(item.updatedAt)}</dd></div></dl>
-                {item.decisionNote ? <div className={styles.decision}><strong>Phản hồi từ Admin</strong><p>{item.decisionNote}</p></div> : null}
+                {item.decisionNote ? <div className={styles.decision}><strong>Phản hồi từ quản trị viên</strong><p>{item.decisionNote}</p></div> : null}
                 {item.status === "needs-info" ? (
                   <form className={styles.resubmit} onSubmit={(event) => void resubmit(item, event)}>
                     <strong>Bổ sung theo yêu cầu</strong>

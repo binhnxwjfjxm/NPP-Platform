@@ -1,20 +1,2 @@
-import { PageHeader } from "@/ui/layout/PageHeader";
-import { AppShell } from "@/ui/shell/AppShell";
-import { InstallAppCard } from "./InstallAppCard";
-import { InteractionFeedbackCard } from "./InteractionFeedbackCard";
-import { McpLogoutButton } from "./McpLogoutButton";
-
-export function SettingsPage() {
-  return <AppShell activeHref="/settings">
-    <PageHeader eyebrow="Cài đặt" title="Cài đặt ứng dụng" subtitle="Cài ứng dụng, quản lý phản hồi tương tác, tài khoản và làm mới khi có phiên bản mới."><span className="badge">Web + mobile</span></PageHeader>
-    <section className="settings-grid">
-      <InteractionFeedbackCard />
-      <InstallAppCard />
-      <div className="card settings-card">
-        <div><span className="badge">Tài khoản</span><h2 className="panel-title">Phiên đăng nhập</h2><p className="page-subtitle">Đăng xuất khỏi MCP trên thiết bị này và xóa dữ liệu đọc nhanh của tài khoản hiện tại.</p></div>
-        <McpLogoutButton />
-      </div>
-      <div className="card settings-card"><div><span className="badge">Thông tin ứng dụng</span><h2 className="panel-title">Trạng thái sử dụng</h2><p className="page-subtitle">MCP-Plan sẵn sàng hỗ trợ quản lý tuyến bán hàng, chăm sóc điểm bán và theo dõi công việc hằng ngày.</p></div><div className="grid"><div className="metric-row"><span>Trạng thái</span><strong>Sẵn sàng sử dụng</strong></div><div className="metric-row"><span>Thiết bị</span><strong>Điện thoại và máy tính bảng</strong></div><div className="metric-row"><span>Cập nhật</span><strong>Làm mới nhanh</strong></div></div></div>
-    </section>
-  </AppShell>;
-}
+import { McpCard,McpPageHeader,McpStatusPill } from "@/ui/foundation"; import { AppShell } from "@/ui/shell/AppShell"; import { InstallAppCard } from "./InstallAppCard"; import { InteractionFeedbackCard } from "./InteractionFeedbackCard"; import { McpLogoutButton } from "./McpLogoutButton"; import styles from "./SettingsPage.module.css";
+export function SettingsPage(){return <AppShell activeHref="/settings"><div className={styles.page}><McpPageHeader eyebrow="Thiết lập" title="Thiết lập ứng dụng" description="Cài ứng dụng, quản lý phản hồi thao tác, tài khoản và cập nhật phiên bản." actions={<McpStatusPill tone="primary">Điện thoại & máy tính bảng</McpStatusPill>}/><section className={styles.grid}><InteractionFeedbackCard/><InstallAppCard/><McpCard className={styles.card}><div className={styles.copy}><McpStatusPill tone="neutral">Tài khoản</McpStatusPill><h2>Phiên đăng nhập</h2><p>Đăng xuất khỏi MCP trên thiết bị này và xóa dữ liệu đọc nhanh của tài khoản hiện tại.</p></div><McpLogoutButton/></McpCard><McpCard className={styles.card}><div className={styles.copy}><McpStatusPill tone="success">Thông tin ứng dụng</McpStatusPill><h2>Trạng thái sử dụng</h2><p>MCP Field sẵn sàng hỗ trợ quản lý tuyến, chăm sóc điểm bán và theo dõi công việc hằng ngày.</p></div><div className={styles.metrics}><div><span>Trạng thái</span><strong>Sẵn sàng sử dụng</strong></div><div><span>Thiết bị</span><strong>Điện thoại và máy tính bảng</strong></div><div><span>Cập nhật</span><strong>Làm mới nhanh</strong></div></div></McpCard></section></div></AppShell>}

@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { McpButton, McpCard, McpStatusPill } from "@/ui/foundation";
+import styles from "./InstallAppCard.module.css";
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -17,7 +19,7 @@ export function InstallAppCard() {
   const [isStandalone, setIsStandalone] = useState(false);
   const [isInstalling, setIsInstalling] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
-  const [message, setMessage] = useState("Có thể cài MCP-Plan như một ứng dụng riêng trên điện thoại.");
+  const [message, setMessage] = useState("Có thể cài MCP Field như một ứng dụng riêng trên điện thoại.");
 
   const platformHint = useMemo(() => {
     if (typeof navigator === "undefined") return "";
@@ -31,7 +33,7 @@ export function InstallAppCard() {
     function handleBeforeInstallPrompt(event: Event) {
       event.preventDefault();
       setInstallPrompt(event as BeforeInstallPromptEvent);
-      setMessage("Thiết bị này có thể cài MCP-Plan như một ứng dụng riêng.");
+      setMessage("Thiết bị này có thể cài MCP Field như một ứng dụng riêng.");
     }
     window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
     return () => window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
@@ -39,7 +41,7 @@ export function InstallAppCard() {
 
   async function handleInstall() {
     if (isInstalling) return;
-    if (isStandalone) { setMessage("MCP-Plan đã được cài trên thiết bị này."); return; }
+    if (isStandalone) { setMessage("MCP Field đã được cài trên thiết bị này."); return; }
     if (!installPrompt) { setMessage(platformHint || "Trình duyệt hiện chưa hỗ trợ nút cài đặt tự động."); return; }
     setIsInstalling(true);
     try {
@@ -64,11 +66,11 @@ export function InstallAppCard() {
     }
   }
 
-  return <div className="card settings-card">
-    <div><span className="badge">Cài trên thiết bị</span><h2 className="panel-title">Cài ứng dụng và cập nhật phiên bản</h2><p className="page-subtitle">{message}</p><p className="settings-hint">{platformHint}</p></div>
-    <div className="settings-actions">
-      <button className="button primary" disabled={isInstalling || isUpdating} onClick={handleInstall} type="button">{isInstalling ? "Đang mở..." : "Cài ứng dụng"}</button>
-      <button className="button" disabled={isUpdating} onClick={handleRefreshApp} type="button">{isUpdating ? "Đang làm mới..." : "Cập nhật bản mới"}</button>
+  return <McpCard className={styles.card}>
+    <div className={styles.copy}><McpStatusPill tone="primary">Cài trên thiết bị</McpStatusPill><h2>Cài ứng dụng và cập nhật phiên bản</h2><p>{message}</p><p className={styles.hint}>{platformHint}</p></div>
+    <div className={styles.actions}>
+      <McpButton disabled={isInstalling || isUpdating} onClick={handleInstall} type="button">{isInstalling ? "Đang mở..." : "Cài ứng dụng"}</McpButton>
+      <McpButton variant="secondary" disabled={isUpdating} onClick={handleRefreshApp} type="button">{isUpdating ? "Đang làm mới..." : "Cập nhật bản mới"}</McpButton>
     </div>
-  </div>;
+  </McpCard>;
 }

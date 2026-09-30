@@ -29,8 +29,8 @@ function apiErrorMessage(payload: MutationPayload, fallback: string) {
 
 function statusLabel(status: CustomerOnboardingQueueStatus) {
   if (status === "not_submitted") return "Chưa gửi";
-  if (status === "submitted") return "Đã gửi Core";
-  if (status === "under_review") return "Core đang xác minh";
+  if (status === "submitted") return "Đã gửi Công Ty";
+  if (status === "under_review") return "Công Ty đang xác minh";
   if (status === "need_more_info") return "Cần bổ sung";
   if (status === "approved") return "Đã mở mã";
   if (status === "linked_existing") return "Đã liên kết";
@@ -111,7 +111,7 @@ export function CustomerOnboardingClientPage({ items }: { items: CustomerOnboard
         title="Mở / liên kết mã"
         subtitle="Xác minh điểm bán độc lập với đơn hàng. Chỉ gửi hồ sơ khách sang Core khi nhân viên chủ động yêu cầu."
       >
-        <a className="button compact" href="/customers">Khách hệ thống</a>
+        <a className="button compact" href="/customers">Khách Công Ty</a>
       </PageHeader>
 
       <div className="mcp-status-chips" role="tablist" aria-label="Trạng thái mở và liên kết mã khách">
@@ -150,9 +150,9 @@ export function CustomerOnboardingClientPage({ items }: { items: CustomerOnboard
                 <div className="grid">
                   <div className="metric-row"><span>Điện thoại</span><strong>{item.phone || "-"}</strong></div>
                   <div className="metric-row"><span>Địa chỉ</span><strong>{item.address || "Chưa có địa chỉ"}</strong></div>
-                  <div className="metric-row"><span>Mã Core</span><strong>{item.coreCustomerCode || item.coreCustomerId || "Chưa có"}</strong></div>
-                  <div className="metric-row"><span>Core request</span><strong>{item.coreRequestId || "Chưa gửi"}</strong></div>
-                  <div className="metric-row"><span>Cập nhật Core</span><strong>{compactDate(item.lastSyncedAt || item.submittedAt)}</strong></div>
+                  <div className="metric-row"><span>Mã Công Ty</span><strong>{item.coreCustomerCode || item.coreCustomerId || "Chưa có"}</strong></div>
+                  <div className="metric-row"><span>Yêu cầu Công Ty</span><strong>{item.coreRequestId || "Chưa gửi"}</strong></div>
+                  <div className="metric-row"><span>Cập nhật Công Ty</span><strong>{compactDate(item.lastSyncedAt || item.submittedAt)}</strong></div>
                   {item.reviewReason ? <div className="metric-row"><span>Phản hồi</span><strong>{item.reviewReason}</strong></div> : null}
                 </div>
 
