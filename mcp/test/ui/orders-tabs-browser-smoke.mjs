@@ -112,7 +112,7 @@ async function verifyAuthenticatedOrdersMotion(browser, width, height) {
   const initialHeader = await headerGeometry(page);
   const actions = ordersHeader(page).locator(":scope > div").last();
   assert.ok((await actions.boundingBox())?.height >= 44, `${width}px: orders header actions must keep the foundation touch target`);
-  assert.equal(await actions.locator(":scope > *").count(), 3, "orders view starts with source, export and create actions");
+  assert.equal(await actions.locator(":scope > *").count(), 4, "orders view starts with source, export menu, quick export and create actions");
 
   const scrollRegion = page.locator("[data-mcp-scroll-region]");
   await scrollRegion.evaluate((node) => { node.scrollTop = Math.min(36, Math.max(0, node.scrollHeight - node.clientHeight)); });
@@ -124,10 +124,10 @@ async function verifyAuthenticatedOrdersMotion(browser, width, height) {
   const transforms = [await pseudoTransform(rail)];
 
   const sequence = [
-    { label: "Cần xử lý", view: "attention", actions: 0 },
-    { label: "Doanh số đặt hàng", view: "sales", actions: 2 },
-    { label: "Tổng quan", view: "overview", actions: 0 },
-    { label: "Đơn hàng", view: null, actions: 3 }
+    { label: "Cần xử lý", view: "attention", actions: 1 },
+    { label: "Doanh số đặt hàng", view: "sales", actions: 3 },
+    { label: "Tổng quan", view: "overview", actions: 1 },
+    { label: "Đơn hàng", view: null, actions: 4 }
   ];
 
   for (const step of sequence) {
