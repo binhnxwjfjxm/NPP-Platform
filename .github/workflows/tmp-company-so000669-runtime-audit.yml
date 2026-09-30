@@ -51,8 +51,6 @@ jobs:
           sed -E             -e 's#(postgres(ql)?://)[^[:space:]]+#\1<redacted>#g'             -e 's#(Bearer[[:space:]]+)[A-Za-z0-9._~+/=-]+#\1<redacted>#g'             -e 's#([A-Z0-9_]*(TOKEN|KEY|SECRET|PASSWORD)[A-Z0-9_]*=)[^[:space:]]+#\1<redacted>#g'             "$raw" > "$clean"
           echo '=== COMPANY JOURNAL MATCHES ==='
           grep -Ei -C 8 'web_d7ee65a4-f673-43a0-90b9-e65637909dc2|f0106c33-c78d-4521-ad45-d969fc4f5ef3|idempotent_request_processing_error|audit_outbox_transaction_failed|25P02|issue-stock|sales_fulfillment|inventory_' "$clean" || true
-          echo '=== COMPANY JOURNAL FULL WINDOW ==='
-          cat "$clean"
 
       - name: Read exact PostgreSQL error window
         shell: bash
@@ -70,3 +68,200 @@ jobs:
           sed -E             -e 's#(postgres(ql)?://)[^[:space:]]+#\1<redacted>#g'             -e 's#(Bearer[[:space:]]+)[A-Za-z0-9._~+/=-]+#\1<redacted>#g'             "$raw" > "$clean"
           echo '=== POSTGRES ERROR MATCHES ==='
           grep -Ei -C 12 'ERROR|FATAL|PANIC|DETAIL|CONTEXT|STATEMENT|25P02|23514|23505|23503|sales_order|fulfillment|inventory|f0106c33' "$clean" || true
+
+      - name: Read-only data reconciliation for SO000669
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -i "$RUNNER_TEMP/db.key" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$RUNNER_TEMP/db.known"             "$VPS_SSH_USER@$VPS_DB_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          db="$(sudo -n -u postgres psql -Atqc "SELECT datname FROM pg_database WHERE datname='npp_production'")"
+          test "$db" = "npp_production"
+          sudo -n -u postgres psql -X -v ON_ERROR_STOP=1 -d "$db" <<'SQL'
+          BEGIN TRANSACTION READ ONLY;
+          \pset tuples_only on
+          \pset format unaligned
+          \pset fieldsep '|'
+
+          SELECT 'ORDER',
+                 installation_id,
+                 order_number,
+                 status,
+                 current_version_number,
+                 fulfillment_status
+            FROM sales.sales_orders
+           WHERE id = 'f0106c33-c78d-4521-ad45-d969fc4f5ef3'::uuid;
+
+          SELECT 'CURRENT_VERSION',
+                 version.id,
+                 version.version_number,
+                 version.version_status,
+                 version.revision,
+                 version.warehouse_id,
+                 version.delivery_mode,
+                 COALESCE(version.delivery_execution_mode,'<null>'),
+                 warehouse.location_management_mode,
+                 warehouse.allow_negative_stock
+            FROM sales.sales_orders orders
+            JOIN sales.sales_order_versions version
+              ON version.installation_id = orders.installation_id
+             AND version.sales_order_id = orders.id
+             AND version.version_number = orders.current_version_number
+            JOIN shared.warehouses warehouse
+              ON warehouse.installation_id = version.installation_id
+             AND warehouse.id = version.warehouse_id
+           WHERE orders.id = 'f0106c33-c78d-4521-ad45-d969fc4f5ef3'::uuid;
+
+          SELECT 'DEMAND',
+                 demand.line_number,
+                 demand.sku_snapshot,
+                 demand.id,
+                 demand.sales_order_version_id,
+                 demand.sales_order_line_id,
+                 demand.warehouse_id,
+                 demand.base_variant_id,
+                 demand.ordered_base_quantity,
+                 COALESCE(demand.allocation_target_base_quantity,demand.ordered_base_quantity),
+                 demand.reserved_base_quantity,
+                 demand.backordered_base_quantity,
+                 demand.allocated_base_quantity,
+                 demand.picked_base_quantity,
+                 demand.packed_base_quantity,
+                 demand.issued_base_quantity,
+                 demand.negative_issued_base_quantity,
+                 demand.cancelled_base_quantity,
+                 demand.state
+            FROM sales.sales_order_fulfillment_demands demand
+           WHERE demand.sales_order_id = 'f0106c33-c78d-4521-ad45-d969fc4f5ef3'::uuid
+             AND demand.state = 'ACTIVE'
+           ORDER BY demand.line_number;
+
+          SELECT 'DEMAND_CHECK',
+                 demand.line_number,
+                 demand.sku_snapshot,
+                 (demand.sales_order_version_id = version.id) AS current_version,
+                 (line.sales_order_version_id = version.id) AS line_current_version,
+                 (COALESCE(demand.allocation_target_base_quantity,demand.ordered_base_quantity)
+                    = demand.reserved_base_quantity + demand.backordered_base_quantity) AS hold_reconciles,
+                 (demand.allocated_base_quantity = 0
+                    AND demand.picked_base_quantity = 0
+                    AND demand.packed_base_quantity = 0
+                    AND demand.issued_base_quantity = 0
+                    AND demand.negative_issued_base_quantity = 0) AS no_execution_facts,
+                 (demand.cancelled_base_quantity = 0) AS no_cancelled_quantity
+            FROM sales.sales_orders orders
+            JOIN sales.sales_order_versions version
+              ON version.installation_id = orders.installation_id
+             AND version.sales_order_id = orders.id
+             AND version.version_number = orders.current_version_number
+            JOIN sales.sales_order_fulfillment_demands demand
+              ON demand.installation_id = orders.installation_id
+             AND demand.sales_order_id = orders.id
+             AND demand.state = 'ACTIVE'
+            JOIN sales.sales_order_version_lines line
+              ON line.installation_id = demand.installation_id
+             AND line.id = demand.sales_order_line_id
+           WHERE orders.id = 'f0106c33-c78d-4521-ad45-d969fc4f5ef3'::uuid
+           ORDER BY demand.line_number;
+
+          WITH demands AS (
+            SELECT d.*
+              FROM sales.sales_order_fulfillment_demands d
+             WHERE d.sales_order_id = 'f0106c33-c78d-4521-ad45-d969fc4f5ef3'::uuid
+               AND d.state = 'ACTIVE'
+          ),
+          inventory_scope AS (
+            SELECT d.id AS demand_id,
+                   COALESCE(sum(b.on_hand_quantity),0)::numeric(30,12) AS on_hand,
+                   COALESCE(sum(b.reserved_quantity),0)::numeric(30,12) AS exact_reserved,
+                   COALESCE(sum(b.available_quantity),0)::numeric(30,12) AS available_sum
+              FROM demands d
+              LEFT JOIN inventory.inventory_balances b
+                ON b.installation_id=d.installation_id
+               AND b.warehouse_id=d.warehouse_id
+               AND b.base_variant_id=d.base_variant_id
+             GROUP BY d.id
+          ),
+          other_holds AS (
+            SELECT d.id AS demand_id,
+                   COALESCE(sum(o.reserved_base_quantity-o.allocated_base_quantity),0)::numeric(30,12) AS other_hold
+              FROM demands d
+              LEFT JOIN sales.sales_order_fulfillment_demands o
+                ON o.installation_id=d.installation_id
+               AND o.warehouse_id=d.warehouse_id
+               AND o.base_variant_id=d.base_variant_id
+               AND o.state='ACTIVE'
+               AND o.id<>d.id
+             GROUP BY d.id
+          )
+          SELECT 'AVAILABILITY',
+                 d.line_number,
+                 d.sku_snapshot,
+                 i.on_hand,
+                 i.exact_reserved,
+                 h.other_hold,
+                 greatest(i.on_hand-i.exact_reserved-h.other_hold,0)::numeric(30,12) AS free_for_demand,
+                 d.ordered_base_quantity
+            FROM demands d
+            JOIN inventory_scope i ON i.demand_id=d.id
+            JOIN other_holds h ON h.demand_id=d.id
+           ORDER BY d.line_number;
+
+          SELECT 'BALANCE',
+                 d.line_number,
+                 d.sku_snapshot,
+                 b.location_id,
+                 b.lot_id,
+                 b.on_hand_quantity,
+                 b.reserved_quantity,
+                 b.available_quantity,
+                 COALESCE(location.is_active,false),
+                 COALESCE(location.location_type,'<null>'),
+                 COALESCE(lot.expiry_date::text,'<null>'),
+                 COALESCE(policy.lot_tracking_mode,'NONE'),
+                 COALESCE(policy.expiry_tracking_mode,'NONE')
+            FROM sales.sales_order_fulfillment_demands d
+            LEFT JOIN inventory.inventory_balances b
+              ON b.installation_id=d.installation_id
+             AND b.warehouse_id=d.warehouse_id
+             AND b.base_variant_id=d.base_variant_id
+            LEFT JOIN shared.warehouse_locations location
+              ON location.installation_id=b.installation_id
+             AND location.warehouse_id=b.warehouse_id
+             AND location.id=b.location_id
+            LEFT JOIN inventory.inventory_lots lot
+              ON lot.installation_id=b.installation_id
+             AND lot.id=b.lot_id
+            LEFT JOIN inventory.product_tracking_policies policy
+              ON policy.installation_id=d.installation_id
+             AND policy.base_variant_id=d.base_variant_id
+           WHERE d.sales_order_id='f0106c33-c78d-4521-ad45-d969fc4f5ef3'::uuid
+             AND d.state='ACTIVE'
+           ORDER BY d.line_number, b.location_id NULLS FIRST, b.lot_id NULLS FIRST;
+
+          SELECT 'ALLOCATION',
+                 demand.line_number,
+                 demand.sku_snapshot,
+                 allocation.id,
+                 allocation.state,
+                 allocation.allocated_base_quantity,
+                 allocation.picked_base_quantity,
+                 allocation.packed_base_quantity,
+                 allocation.issued_base_quantity
+            FROM sales.sales_order_fulfillment_demands demand
+            JOIN sales.sales_order_fulfillment_allocations allocation
+              ON allocation.installation_id=demand.installation_id
+             AND allocation.fulfillment_demand_id=demand.id
+           WHERE demand.sales_order_id='f0106c33-c78d-4521-ad45-d969fc4f5ef3'::uuid
+           ORDER BY demand.line_number, allocation.allocation_sequence;
+
+          SELECT 'MOVEMENT_COUNT',
+                 count(*)
+            FROM inventory.inventory_movements
+           WHERE source_domain='SALES'
+             AND source_document_id='f0106c33-c78d-4521-ad45-d969fc4f5ef3'::uuid
+             AND movement_type='SALES_DELIVERY_ISSUE';
+
+          ROLLBACK;
+          SQL
+          REMOTE
