@@ -196,3 +196,65 @@ test("internal F05 fixture inventory rejects non-service actors before provider 
   );
   assert.equal(providerCalled, false);
 });
+
+
+test("typed route API serves /api/routes/data from PostgreSQL with installation scope", async () => {
+  const queries = [];
+  const persistence = {
+    async assertReady() {},
+    async withTransaction(work) {
+      return work({
+        async query(sql, values) {
+          queries.push({ sql: String(sql), values });
+          if (String(sql).includes("FROM mcp.mcp_routes")) {
+            return { rows: [
+              { id: "route-1", route_name: "Tuyến Bình Đại", area: "Bến Tre", active: true, weekday: 1, note: "Thứ 2", sales: "Sale A", created_at: "2026-09-30T00:00:00Z" },
+              { id: "route-2", route_name: "Tuyến tạm dừng", area: "Ba Tri", active: false, weekday: null, note: "", sales: null, created_at: "2026-09-29T00:00:00Z" }
+            ] };
+          }
+          if (String(sql).includes("FROM mcp.mcp_route_customers")) {
+            return { rows: [
+              { route_id: "route-1", active: true },
+              { route_id: "route-1", active: true },
+              { route_id: "route-2", active: false }
+            ] };
+          }
+          if (String(sql).includes("FROM mcp.mcp_route_sessions")) {
+            return { rows: [
+              { route_id: "route-1", session_date: "2026-09-30", visited_customers: 1, order_count: 2, status: "active", created_at: "2026-09-30T08:00:00Z" }
+            ] };
+          }
+          throw new Error("unexpected query");
+        }
+      });
+    }
+  };
+
+  const result = await handleRouteApi(
+    request("GET"),
+    new URL("http://local/api/routes/data"),
+    context,
+    { persistence: { provider: "postgresql" } },
+    { persistence }
+  );
+
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.payload.data.routes.length, 2);
+  assert.deepEqual(result.payload.data.routes[0], {
+    id: "route-1",
+    name: "Tuyến Bình Đại",
+    area: "Bến Tre",
+    salesOwner: "Sale A",
+    plannedCustomers: 2,
+    visitedCustomers: 1,
+    orderCount: 2,
+    lastVisitDate: "2026-09-30",
+    status: "watch",
+    weekday: 1,
+    note: "Thứ 2"
+  });
+  assert.equal(result.payload.data.routes[1].status, "paused");
+  assert.equal(result.payload.data.kpis[1].value, 2);
+  assert.equal(queries.length, 3);
+  assert.equal(queries.every((item) => item.values[0] === "installation-a"), true);
+});

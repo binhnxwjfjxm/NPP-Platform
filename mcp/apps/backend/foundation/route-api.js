@@ -1,5 +1,6 @@
 import { archiveRoute, archiveRouteCustomer } from "./archive-intents.js";
 import { unwrapIdempotentMutationResult } from "./idempotency.js";
+import { providerPersistence } from "./provider-runtime.js";
 import { updateRouteCustomer } from "./route-customer-update-mutations.js";
 import { createRoute, updateRoute } from "./route-mutations.js";
 import { supabaseRest } from "./supabase-adapter.js";
@@ -54,6 +55,92 @@ async function readJsonBody(req) {
   }
 }
 
+function numberValue(value) {
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function dateOnly(value) {
+  return value ? String(value).slice(0, 10) : "";
+}
+
+function routeStatus(route, plannedCustomers, visitedCustomers) {
+  if (route.active === false) return "paused";
+  if (plannedCustomers > 0 && visitedCustomers < plannedCustomers) return "watch";
+  return "active";
+}
+
+async function loadRoutesData(context, persistence = providerPersistence()) {
+  await persistence.assertReady?.();
+  return persistence.withTransaction(async (client) => {
+    const [routeResult, customerResult, sessionResult] = await Promise.all([
+      client.query(
+        `SELECT id, route_name, area, active, weekday, note, sales, created_at
+           FROM mcp.mcp_routes
+          WHERE installation_id = $1
+          ORDER BY created_at DESC, id DESC
+          LIMIT 100`,
+        [context.installation.id]
+      ),
+      client.query(
+        `SELECT route_id, active
+           FROM mcp.mcp_route_customers
+          WHERE installation_id = $1`,
+        [context.installation.id]
+      ),
+      client.query(
+        `SELECT route_id, session_date, visited_customers, order_count, status, created_at
+           FROM mcp.mcp_route_sessions
+          WHERE installation_id = $1
+          ORDER BY session_date DESC, created_at DESC, id DESC`,
+        [context.installation.id]
+      )
+    ]);
+
+    const customersByRoute = new Map();
+    for (const row of customerResult.rows || []) {
+      if (row.active === false) continue;
+      customersByRoute.set(row.route_id, (customersByRoute.get(row.route_id) || 0) + 1);
+    }
+
+    const latestSessionByRoute = new Map();
+    for (const row of sessionResult.rows || []) {
+      if (!latestSessionByRoute.has(row.route_id)) latestSessionByRoute.set(row.route_id, row);
+    }
+
+    const routes = (routeResult.rows || []).map((route) => {
+      const plannedCustomers = customersByRoute.get(route.id) || 0;
+      const latestSession = latestSessionByRoute.get(route.id);
+      const visitedCustomers = numberValue(latestSession?.visited_customers);
+      return {
+        id: route.id,
+        name: route.route_name || "Tuyến chưa đặt tên",
+        area: route.area || "-",
+        salesOwner: route.sales || "Sale",
+        plannedCustomers,
+        visitedCustomers,
+        orderCount: numberValue(latestSession?.order_count),
+        lastVisitDate: dateOnly(latestSession?.session_date),
+        status: routeStatus(route, plannedCustomers, visitedCustomers),
+        weekday: route.weekday == null ? null : Number(route.weekday),
+        note: route.note || ""
+      };
+    });
+
+    const totalCustomers = routes.reduce((sum, route) => sum + route.plannedCustomers, 0);
+    const totalVisited = routes.reduce((sum, route) => sum + route.visitedCustomers, 0);
+    return {
+      kpis: [
+        { label: "Tuyến active", value: routes.filter((route) => route.status === "active").length, hint: "Dữ liệu hiện tại" },
+        { label: "Tổng điểm bán", value: totalCustomers, hint: "Danh sách tuyến" },
+        { label: "Đã ghé", value: `${totalVisited}/${totalCustomers}`, hint: "Theo phiên gần nhất" },
+        { label: "Tuyến cần theo dõi", value: routes.filter((route) => route.status === "watch").length, hint: "Cần xem lại lịch ghé" }
+      ],
+      routes
+    };
+  });
+}
+
 function mutationResponse(result, statusCode = 200) {
   const { data, meta } = unwrapIdempotentMutationResult(result);
   return {
@@ -105,9 +192,19 @@ async function loadAllF05FixtureRoutes(context, config, fetchImpl) {
   throw error;
 }
 
-export async function handleRouteApi(req, url, context, config, { fetchImpl = fetch } = {}) {
+export async function handleRouteApi(req, url, context, config, { fetchImpl = fetch, persistence = null } = {}) {
   const method = String(req.method || "GET").toUpperCase();
   const pathname = url.pathname;
+
+  if (method === "GET" && pathname === "/api/routes/data") {
+    return {
+      statusCode: 200,
+      payload: {
+        data: await loadRoutesData(context, persistence || providerPersistence()),
+        receivedAt: new Date().toISOString()
+      }
+    };
+  }
 
   if (method === "GET" && pathname === "/api/internal/f05-smoke-fixtures") {
     return {
