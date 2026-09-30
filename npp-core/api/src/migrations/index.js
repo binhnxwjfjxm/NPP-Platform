@@ -89,6 +89,7 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({ id: '104_sales_order_execution_close_partial_release', sql: sql('sales/104_sales_order_execution_close_partial_release.sql') }),
   migration('105_business_purge_remaining_operational_guards', 'shared/105_business_purge_remaining_operational_guards.sql'),
   migration('106_business_purge_document_number_allocations', 'shared/106_business_purge_document_number_allocations.sql'),
+  migration('107_mcp_canonical_customer_orders', 'sales/105_mcp_canonical_customer_orders.sql'),
   migration('108_management_proposals', 'shared/108_management_proposals.sql'),
   migration('109_management_proposal_source_roundtrip', 'shared/109_management_proposal_source_roundtrip.sql'),
   migration('110_management_proposal_optional_details', 'shared/110_management_proposal_optional_details.sql'),
