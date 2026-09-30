@@ -1,6 +1,5 @@
 /* Issue #675 — Retail UI hardening. Loaded after retail-lot7.css. */
 .retail-issue675 {
-  padding-bottom: calc(94px + env(safe-area-inset-bottom));
   font-size: 14px;
   line-height: 1.45;
 }
@@ -151,10 +150,6 @@
 .retail-issue675 .lot7-product-row .product-copy b { font-size: 14px; }
 .retail-issue675 .sheet-submit { min-height: 52px; border-radius: 14px; font-size: 14px; }
 .retail-issue675 .scan-action { min-width: 68px; }
-.retail-issue675 .order-action-bar { gap: 7px; }
-.retail-issue675 .order-action-bar .primary-action,
-.retail-issue675 .order-action-bar .secondary-action { min-height: 44px; padding: 0 10px; font-size: 12px; }
-
 /* Settings */
 .settings-workspace { display: grid; gap: 12px; }
 .settings-heading h2 { margin: 2px 0 0; font-size: 20px; }
@@ -264,53 +259,6 @@
 }
 .cancel-confirm-action:not(:disabled):active { background: #912018; }
 
-/* Bottom navigation — single root-owned fixed implementation */
-.retail-bottom-nav {
-  position: fixed;
-  z-index: 9;
-  left: max(10px, env(safe-area-inset-left));
-  right: max(10px, env(safe-area-inset-right));
-  bottom: max(8px, env(safe-area-inset-bottom));
-  display: flex;
-  width: auto;
-  max-width: min(620px, calc(100% - 16px));
-  min-height: 56px;
-  margin-inline: auto;
-  justify-content: center;
-  gap: 5px;
-  border: 1px solid rgba(89, 137, 111, .22);
-  border-radius: 18px;
-  padding: 4px;
-  background: rgba(232, 246, 238, .86);
-  box-shadow: 0 10px 30px rgba(19, 61, 38, .12);
-  backdrop-filter: blur(18px) saturate(130%);
-  -webkit-backdrop-filter: blur(18px) saturate(130%);
-}
-.retail-bottom-nav button {
-  display: grid;
-  min-width: 0;
-  min-height: 44px;
-  flex: 1 1 0;
-  place-items: center;
-  gap: 2px;
-  border: 0;
-  border-radius: 14px;
-  padding: 3px 5px;
-  background: transparent;
-  color: var(--muted);
-  font: inherit;
-  font-size: 10px;
-  font-weight: 800;
-  line-height: 1.1;
-  cursor: pointer;
-  transition: transform 130ms ease, background 130ms ease, color 130ms ease;
-}
-.retail-bottom-nav button > span { font-size: 18px; line-height: 1; }
-.retail-bottom-nav button.active { background: rgba(255,255,255,.82); color: var(--green-dark); box-shadow: 0 3px 12px rgba(27,72,46,.08); }
-.retail-bottom-nav button:not(:disabled):active { transform: translateY(1px) scale(.985); }
-.retail-bottom-nav button:focus-visible { outline: 3px solid rgba(37, 112, 68, .18); outline-offset: 2px; }
-.retail-bottom-nav button:disabled { cursor: not-allowed; opacity: .52; box-shadow: none; }
-
 /* Interaction */
 .retail-issue675 button:not(:disabled):hover { border-color: rgba(43, 105, 69, .35); }
 .retail-issue675 button:not(:disabled):active { transform: translateY(1px) scale(.985); }
@@ -320,7 +268,6 @@
 .retail-issue675 button:disabled { cursor: not-allowed; opacity: .52; box-shadow: none; }
 
 @media (max-width: 640px) {
-  .retail-issue675 { padding-bottom: calc(88px + env(safe-area-inset-bottom)); }
   .home-feature { min-height: 150px; }
   .home-feature-copy { width: 74%; min-height: 150px; padding: 16px; }
   .home-feature-copy h2 { font-size: 22px; }
@@ -344,8 +291,6 @@
 
 @media (max-width: 390px) {
   .retail-issue675 .compact-home-actions strong { font-size: 12px; }
-  .retail-bottom-nav { left: 7px; right: 7px; border-radius: 17px; }
-  .retail-bottom-nav button { padding-inline: 4px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -353,10 +298,5 @@
   .sheet-enter { animation: none !important; }
   .retail-issue675 *,
   .retail-issue675 *::before,
-  .retail-issue675 *::after,
-  .retail-bottom-nav button { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
-}
-
-@media print {
-  .retail-bottom-nav { display: none !important; }
+  .retail-issue675 *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
 }

@@ -7,7 +7,7 @@
   width: min(760px, 100%);
   min-height: 100dvh;
   margin: 0 auto;
-  padding: 14px 12px calc(104px + env(safe-area-inset-bottom));
+  padding: 14px 12px calc(var(--retail-dock-bottom) + var(--retail-bottom-nav-height) + var(--retail-content-clearance));
   color: #101828;
 }
 

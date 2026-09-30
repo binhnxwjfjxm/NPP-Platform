@@ -1,7 +1,4 @@
 /* Retail POS entry — compact mobile-first order workspace */
-.retail-issue675 .retail-order-card {
-  padding-bottom: 180px;
-}
 .retail-issue675 .retail-order-card > .order-identity:first-child {
   margin-bottom: 8px;
 }
@@ -128,19 +125,6 @@
   white-space: nowrap;
 }
 .retail-issue675 .pos-promotion-row b { color: #98a2b3; }
-.retail-issue675 .pos-checkout-bar {
-  display: flex;
-  align-items: stretch;
-}
-.retail-issue675 .pos-checkout-bar .secondary-action {
-  flex: .72 1 0;
-}
-.retail-issue675 .pos-checkout-bar .pos-checkout-action {
-  flex: 1.8 1 0;
-  min-height: 52px;
-  font-size: 16px;
-  font-weight: 800;
-}
 .retail-issue675 .pos-dialog-backdrop {
   align-items: flex-end;
 }
@@ -384,9 +368,6 @@
   .retail-issue675 .order-identity,
   .retail-issue675 .order-timeline { display: none; }
   .retail-issue675 .retail-order-card { padding-top: 8px; }
-  .retail-issue675 .pos-checkout-bar {
-    display: flex;
-  }
   .retail-issue675 .product-sheet .lot7-product-row.pos-product-row {
     grid-template-columns: 48px minmax(0,1fr) 26px;
   }
