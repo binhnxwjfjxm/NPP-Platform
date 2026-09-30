@@ -1,5 +1,5 @@
 /* Retail Lô 7 — visual acceptance theo mẫu mobile-first. */
-.retail-lot7 { max-width: 920px; background: #fff; padding-bottom: calc(190px + env(safe-area-inset-bottom)); }
+.retail-lot7 { max-width: 920px; background: #fff; }
 .retail-lot7 .retail-topbar { position: sticky; z-index: 4; top: 0; margin: -18px -16px 18px; padding: max(16px, env(safe-area-inset-top)) 16px 14px; border-bottom: 1px solid #e9eeeb; background: rgba(255,255,255,.96); backdrop-filter: blur(16px); }
 .retail-lot7 .retail-title .brand-kicker { display: none; }
 .retail-lot7 .retail-title h1 { font-size: 30px; }
@@ -26,10 +26,6 @@
 .retail-lot7 .lot7-total > div strong { font-size: 18px; color: #111; }
 .retail-lot7 .lot7-total .grand-total { margin-top: 4px; border-top: 1px dashed #d6ded9; padding-top: 13px; font-size: 20px; font-weight: 800; }
 .retail-lot7 .lot7-total .grand-total strong { font-size: 30px; color: var(--green-dark); }
-.retail-lot7 .order-action-bar { right: max(12px, calc((100vw - 920px)/2 + 12px)); left: max(12px, calc((100vw - 920px)/2 + 12px)); grid-template-columns: repeat(3,minmax(0,1fr)); }
-.retail-lot7 .order-action-bar > .primary-action:last-child:nth-child(odd) { grid-column: auto; }
-.retail-lot7 .order-action-bar .primary-action, .retail-lot7 .order-action-bar .secondary-action { min-width: 0; white-space: nowrap; }
-.retail-lot7 .bottom-nav button { min-width: 0; flex: 1; padding-right: 5px; padding-left: 5px; }
 .retail-lot7 .order-badges { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .retail-lot7 .product-sheet { background: #fff; }
 .retail-lot7 .lot7-product-row { grid-template-columns: 126px minmax(0,1fr) auto; min-height: 142px; border-radius: 24px; padding: 14px 20px; }
@@ -123,8 +119,6 @@
   .retail-lot7 .editable dl { grid-column: 2 / -1; display: flex; justify-content: flex-end; gap: 16px; min-width: 0; }
   .retail-lot7 .cart-row-saved dl { grid-column: 2 / -1; grid-template-columns: repeat(3,minmax(0,1fr)); min-width: 0; }
   .retail-lot7 .lot7-total .grand-total strong { font-size: 25px; }
-  .retail-lot7 .order-action-bar { right: 8px; left: 8px; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 6px; padding: 8px; }
-  .retail-lot7 .order-action-bar .primary-action, .retail-lot7 .order-action-bar .secondary-action { min-height: 48px; padding: 0 5px; font-size: 12px; }
   .retail-lot7 .bottom-nav { padding-right: 4px; padding-left: 4px; }
   .retail-lot7 .bottom-nav button { padding-right: 2px; padding-left: 2px; font-size: 10px; }
   .home-actions { grid-template-columns: 1fr; }

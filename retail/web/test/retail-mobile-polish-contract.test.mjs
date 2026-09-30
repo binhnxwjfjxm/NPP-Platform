@@ -20,9 +20,13 @@ test('CTA Chọn sản phẩm và nút Xóa được canh lại rõ ràng', asyn
   assert.match(css, /\.compact-product-card\.editable \.line-main[\s\S]*?padding-right:\s*58px/);
 });
 
-test('thanh In phiếu và Chốt đơn không còn card chung, mỗi nút có chiều sâu riêng', async () => {
-  const css = await read('app/retail-mobile-polish.css');
-  assert.match(css, /\.retail-issue675 \.order-action-bar[\s\S]*?display:\s*flex[\s\S]*?border:\s*0[\s\S]*?background:\s*transparent[\s\S]*?box-shadow:\s*none/);
-  assert.match(css, /\.order-action-bar \.secondary-action[\s\S]*?box-shadow:\s*0 9px 22px/);
-  assert.match(css, /\.order-action-bar \.primary-action[\s\S]*?box-shadow:\s*0 11px 24px/);
+test('thanh In phiếu và Chốt đơn dùng một owner layout, mỗi nút vẫn có chiều sâu riêng', async () => {
+  const [canonicalCss, mobileCss] = await Promise.all([
+    read('app/retail-issue675.css'),
+    read('app/retail-mobile-polish.css'),
+  ]);
+  assert.match(canonicalCss, /\.retail-issue675 \.order-action-bar[\s\S]*?display:\s*flex[\s\S]*?border:\s*0[\s\S]*?background:\s*transparent[\s\S]*?box-shadow:\s*none/);
+  assert.match(canonicalCss, /\.order-action-bar \.secondary-action[\s\S]*?box-shadow:\s*0 9px 22px/);
+  assert.match(canonicalCss, /\.order-action-bar \.primary-action[\s\S]*?box-shadow:\s*0 11px 24px/);
+  assert.doesNotMatch(mobileCss, /\.retail-issue675 \.order-action-bar/);
 });

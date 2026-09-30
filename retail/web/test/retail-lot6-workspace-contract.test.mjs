@@ -25,7 +25,8 @@ test('Lô 6 có điều hướng Retail, thanh thao tác đáy và mở lại đ
   assert.match(page, /order-action-bar/);
   assert.match(page, /if \(activeTab !== 'orders'\)[\s\S]*?refreshOrders\(\)\.catch/);
   assert.match(root, /<nav className="retail-bottom-nav"/);
-  assert.match(styles, /\.order-action-bar \{ position: fixed/);
+  assert.doesNotMatch(styles, /\.order-action-bar \{/);
+  assert.match(navStyles, /\.retail-issue675 \.order-action-bar \{[\s\S]*?position: fixed;/);
   assert.match(navStyles, /\.retail-bottom-nav \{[\s\S]*?position: fixed;/);
 });
 

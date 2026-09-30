@@ -1,8 +1,15 @@
 /* Issue #675 — Retail UI hardening. Loaded after retail-lot7.css. */
 .retail-issue675 {
-  padding-bottom: calc(94px + env(safe-area-inset-bottom));
+  --retail-dock-bottom: max(8px, env(safe-area-inset-bottom));
+  --retail-bottom-nav-height: 56px;
+  --retail-dock-gap: 14px;
+  --retail-order-action-height: 52px;
+  padding-bottom: calc(var(--retail-dock-bottom) + var(--retail-bottom-nav-height) + 18px);
   font-size: 14px;
   line-height: 1.45;
+}
+.retail-issue675.retail-entry-active {
+  padding-bottom: calc(var(--retail-dock-bottom) + var(--retail-bottom-nav-height) + var(--retail-dock-gap) + var(--retail-order-action-height) + 18px);
 }
 .retail-issue675 .retail-topbar {
   min-height: 50px;
@@ -151,9 +158,45 @@
 .retail-issue675 .lot7-product-row .product-copy b { font-size: 14px; }
 .retail-issue675 .sheet-submit { min-height: 52px; border-radius: 14px; font-size: 14px; }
 .retail-issue675 .scan-action { min-width: 68px; }
-.retail-issue675 .order-action-bar { gap: 7px; }
+/* Fixed bottom docks — one layout owner for order actions and bottom navigation. */
+.retail-issue675 .order-action-bar {
+  position: fixed;
+  z-index: 8;
+  right: max(12px, env(safe-area-inset-right));
+  bottom: calc(var(--retail-dock-bottom) + var(--retail-bottom-nav-height) + var(--retail-dock-gap));
+  left: max(12px, env(safe-area-inset-left));
+  display: flex;
+  width: auto;
+  max-width: 620px;
+  margin-inline: auto;
+  gap: 10px;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.retail-issue675 .order-action-bar > * {
+  min-width: 0;
+  flex: 1 1 0;
+}
 .retail-issue675 .order-action-bar .primary-action,
-.retail-issue675 .order-action-bar .secondary-action { min-height: 44px; padding: 0 10px; font-size: 12px; }
+.retail-issue675 .order-action-bar .secondary-action {
+  min-height: var(--retail-order-action-height);
+  border-radius: 16px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+.retail-issue675 .order-action-bar .secondary-action {
+  border-color: #8dcea5;
+  background: rgba(255, 255, 255, .98);
+  box-shadow: 0 9px 22px rgba(20, 60, 37, .10);
+}
+.retail-issue675 .order-action-bar .primary-action {
+  box-shadow: 0 11px 24px rgba(5, 131, 70, .22);
+}
 
 /* Settings */
 .settings-workspace { display: grid; gap: 12px; }
@@ -270,11 +313,11 @@
   z-index: 9;
   left: max(10px, env(safe-area-inset-left));
   right: max(10px, env(safe-area-inset-right));
-  bottom: max(8px, env(safe-area-inset-bottom));
+  bottom: var(--retail-dock-bottom);
   display: flex;
   width: auto;
   max-width: min(620px, calc(100% - 16px));
-  min-height: 56px;
+  height: var(--retail-bottom-nav-height);
   margin-inline: auto;
   justify-content: center;
   gap: 5px;
@@ -320,7 +363,6 @@
 .retail-issue675 button:disabled { cursor: not-allowed; opacity: .52; box-shadow: none; }
 
 @media (max-width: 640px) {
-  .retail-issue675 { padding-bottom: calc(88px + env(safe-area-inset-bottom)); }
   .home-feature { min-height: 150px; }
   .home-feature-copy { width: 74%; min-height: 150px; padding: 16px; }
   .home-feature-copy h2 { font-size: 22px; }
@@ -344,6 +386,12 @@
 
 @media (max-width: 390px) {
   .retail-issue675 .compact-home-actions strong { font-size: 12px; }
+  .retail-issue675 .order-action-bar .primary-action,
+  .retail-issue675 .order-action-bar .secondary-action {
+    min-height: 50px;
+    padding-inline: 8px;
+    font-size: 12px;
+  }
   .retail-bottom-nav { left: 7px; right: 7px; border-radius: 17px; }
   .retail-bottom-nav button { padding-inline: 4px; }
 }
@@ -358,5 +406,6 @@
 }
 
 @media print {
+  .retail-issue675 .order-action-bar,
   .retail-bottom-nav { display: none !important; }
 }
