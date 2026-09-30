@@ -21,7 +21,7 @@ try {
   await page.goto(`${appBase}/visits?routeId=route-active&date=2099-12-30`, { waitUntil: "domcontentloaded" });
   await card(page).waitFor({ state: "visible" });
   const tokens = await page.evaluate(() => { const style = getComputedStyle(document.documentElement); return { background: style.getPropertyValue("--mcp-color-background").trim(), surface: style.getPropertyValue("--mcp-color-surface").trim(), text: style.getPropertyValue("--mcp-color-text-primary").trim(), primary: style.getPropertyValue("--mcp-color-primary").trim(), border: style.getPropertyValue("--mcp-color-border").trim() }; });
-  assert.deepEqual(tokens, { background: "#f3f6fa", surface: "#ffffff", text: "#10233f", primary: "#1677ff", border: "#dde5ef" }); await shot(page, "01-mobile-foundation-session");
+  assert.deepEqual(tokens, { background: "#f3f6fa", surface: "#fff", text: "#10233f", primary: "#1677ff", border: "#dde5ef" }); await shot(page, "01-mobile-foundation-session");
   await openCardAction(page, "Có đơn");
   assert.equal(await page.getByRole("dialog", { name: "Ghi nhận nhu cầu mua", exact: true }).count(), 0, "Có đơn must not open a popup");
   await card(page).getByText("Có đơn", { exact: true }).waitFor({ state: "visible" });

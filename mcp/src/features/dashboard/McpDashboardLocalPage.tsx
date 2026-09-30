@@ -77,12 +77,27 @@ function ActionCard({ action }: { action: McpShellAction }) {
   );
 }
 
+function TodayRouteAction() {
+  return (
+    <Link className={styles.primaryAction} data-client-navigation="true" href="/visits" prefetch={false}>
+      <span aria-hidden="true">◎</span>
+      <span><strong>Mở Đi tuyến</strong><small>Chọn tuyến hoặc phiên phù hợp</small></span>
+      <b aria-hidden="true">›</b>
+    </Link>
+  );
+}
+
 function LoadingState() {
   return (
     <AppShell activeHref="/">
       <div className={styles.page} data-primary-screen="today">
         <McpPageHeader eyebrow="MCP Field" title="Hôm nay" description="Đang mở dữ liệu đã lưu và cập nhật số liệu mới." />
-        <McpStatePanel title="Đang tải dữ liệu hôm nay" description="Ứng dụng ưu tiên dữ liệu đã lưu để mở nhanh, sau đó cập nhật số liệu mới." icon="↻" />
+        <McpStatePanel
+          title="Đang tải dữ liệu hôm nay"
+          description="Ứng dụng ưu tiên dữ liệu đã lưu để mở nhanh, sau đó cập nhật số liệu mới."
+          icon="↻"
+          action={<TodayRouteAction />}
+        />
       </div>
     </AppShell>
   );
@@ -102,7 +117,12 @@ export function McpDashboardLocalPage() {
             title="Chưa tải được dữ liệu"
             description="Vui lòng thử lại. Không có thao tác nghiệp vụ nào được thực hiện khi dữ liệu chưa sẵn sàng."
             icon="!"
-            action={<McpButton variant="secondary" onClick={() => void refresh()}>Tải lại</McpButton>}
+            action={
+              <div className={styles.stateActions}>
+                <McpButton variant="secondary" onClick={() => void refresh()}>Tải lại</McpButton>
+                <TodayRouteAction />
+              </div>
+            }
           />
         </div>
       </AppShell>
