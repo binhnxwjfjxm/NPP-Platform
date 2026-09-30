@@ -11,7 +11,7 @@ test('Lô 6 có điều hướng Retail, thanh thao tác đáy và mở lại đ
     readWorkspace(),
     read('app/retail-root.tsx'),
     read('app/globals.css'),
-    read('app/retail-issue675.css'),
+    read('app/retail-bottom-dock.css'),
   ]);
   assert.match(page, /type RetailTab = 'home' \| 'entry' \| 'orders' \| 'settings'/);
   assert.match(page, /Trang chủ/);

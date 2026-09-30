@@ -5,7 +5,7 @@ body { min-height: 100vh; margin: 0; color: var(--ink); background: radial-gradi
 button, input, select, textarea { font: inherit; }
 button { -webkit-tap-highlight-color: transparent; }
 h1, h2, h3, p { margin-top: 0; }
-.retail-shell { width: min(100%, 760px); min-height: 100vh; margin: 0 auto; padding: 18px 16px calc(92px + env(safe-area-inset-bottom)); }
+.retail-shell { width: min(100%, 760px); min-height: 100vh; margin: 0 auto; padding: 18px 16px 0; }
 .retail-topbar { display: grid; grid-template-columns: 52px 1fr 52px; align-items: center; gap: 10px; margin-bottom: 18px; }
 .retail-title { text-align: center; }.retail-title .brand-kicker { margin-bottom: 3px; }.retail-title h1 { margin: 0; font-size: clamp(26px, 7vw, 34px); letter-spacing: -.03em; }
 .brand-kicker, .section-kicker { margin: 0 0 8px; color: var(--green); font-size: 11px; font-weight: 800; letter-spacing: .13em; }

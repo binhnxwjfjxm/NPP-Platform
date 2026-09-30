@@ -22,7 +22,7 @@ test('CTA Chọn sản phẩm và nút Xóa được canh lại rõ ràng', asyn
 
 test('thanh In phiếu và Chốt đơn dùng một owner layout, mỗi nút vẫn có chiều sâu riêng', async () => {
   const [canonicalCss, mobileCss] = await Promise.all([
-    read('app/retail-issue675.css'),
+    read('app/retail-bottom-dock.css'),
     read('app/retail-mobile-polish.css'),
   ]);
   assert.match(canonicalCss, /\.retail-issue675 \.order-action-bar[\s\S]*?display:\s*flex[\s\S]*?border:\s*0[\s\S]*?background:\s*transparent[\s\S]*?box-shadow:\s*none/);

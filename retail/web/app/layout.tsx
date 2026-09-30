@@ -13,6 +13,7 @@ import './retail-print-template-editor.css';
 import './retail-printer.css';
 import './retail-pos-entry.css';
 import './retail-notifications.css';
+import './retail-bottom-dock.css';
 import { PwaRegistration } from './pwa-registration';
 import { RetailNotificationRuntime } from './retail-notification-runtime';
 import { RetailProductPickerRuntime } from './retail-product-picker-runtime';

@@ -210,11 +210,11 @@ test('bottom nav có một owner duy nhất, fixed trực tiếp và không còn
   const [page, root, css, lot7] = await Promise.all([
     readWorkspace(),
     read('app/retail-root.tsx'),
-    read('app/retail-issue675.css'),
+    read('app/retail-bottom-dock.css'),
     read('app/retail-lot7.css'),
   ]);
-  const start = css.indexOf('/* Bottom navigation');
-  const end = css.indexOf('/* Interaction */', start);
+  const start = css.indexOf('/* Bottom navigation */');
+  const end = css.indexOf('/* Order actions */', start);
   const nav = css.slice(start, end);
 
   assert.match(nav, /\.retail-bottom-nav \{[\s\S]*?position: fixed;/);
@@ -233,25 +233,31 @@ test('bottom nav có một owner duy nhất, fixed trực tiếp và không còn
   assert.match(lot7, /\.retail-lot7 \.retail-topbar \{ position: sticky; z-index: 4; top: 0;/);
 });
 
-test('dock cố định có một owner và Lên đơn chừa đủ chỗ cho cả thao tác lẫn điều hướng', async () => {
-  const [page, canonicalCss, globalsCss, lot7Css, mobileCss, posEntryCss] = await Promise.all([
+test('dock cố định có đúng một stylesheet sở hữu geometry và Lên đơn chừa đủ chỗ cho cả hai thanh', async () => {
+  const [page, canonicalCss, globalsCss, issueCss, lot7Css, mobileCss, posEntryCss, layout] = await Promise.all([
     readWorkspace(),
-    read('app/retail-issue675.css'),
+    read('app/retail-bottom-dock.css'),
     read('app/globals.css'),
+    read('app/retail-issue675.css'),
     read('app/retail-lot7.css'),
     read('app/retail-mobile-polish.css'),
     read('app/retail-pos-entry.css'),
+    read('app/layout.tsx'),
   ]);
   assert.match(page, /activeTab === 'entry' \? ' retail-entry-active' : ''/);
+  assert.match(layout, /retail-bottom-dock\.css/);
   assert.match(canonicalCss, /--retail-bottom-nav-height: 56px;/);
   assert.match(canonicalCss, /--retail-order-action-height: 52px;/);
-  assert.match(canonicalCss, /\.retail-issue675\.retail-entry-active \{[\s\S]*?padding-bottom: calc\(var\(--retail-dock-bottom\) \+ var\(--retail-bottom-nav-height\) \+ var\(--retail-dock-gap\) \+ var\(--retail-order-action-height\) \+ 18px\);/);
-  assert.match(canonicalCss, /\.retail-issue675 \.order-action-bar \{[\s\S]*?bottom: calc\(var\(--retail-dock-bottom\) \+ var\(--retail-bottom-nav-height\) \+ var\(--retail-dock-gap\)\);/);
+  assert.match(canonicalCss, /--retail-content-clearance: 32px;/);
+  assert.match(canonicalCss, /\.retail-shell\.retail-issue675\.retail-entry-active \{[\s\S]*?var\(--retail-order-action-height\)[\s\S]*?var\(--retail-content-clearance\)/);
+  assert.match(canonicalCss, /\.retail-issue675 \.order-action-bar \{[\s\S]*?var\(--retail-bottom-nav-height\)[\s\S]*?var\(--retail-dock-gap\)/);
   assert.match(canonicalCss, /\.retail-bottom-nav \{[\s\S]*?bottom: var\(--retail-dock-bottom\);[\s\S]*?height: var\(--retail-bottom-nav-height\);/);
-  assert.doesNotMatch(globalsCss, /\.order-action-bar \{|\.bottom-nav \{/);
+  assert.match(canonicalCss, /\.retail-issue675 \.pos-checkout-bar \.pos-checkout-action[\s\S]*?flex: 1\.8 1 0/);
+  assert.doesNotMatch(globalsCss, /\.order-action-bar \{|\.bottom-nav \{|padding: 18px 16px calc/);
+  assert.doesNotMatch(issueCss, /\.retail-bottom-nav|\.retail-issue675 \.order-action-bar|--retail-bottom-nav-height/);
   assert.doesNotMatch(lot7Css, /\.retail-lot7 \.order-action-bar|\.retail-lot7 \.bottom-nav|padding-bottom: calc\(190px/);
   assert.doesNotMatch(mobileCss, /\.retail-issue675 \.order-action-bar/);
-  assert.doesNotMatch(posEntryCss, /\.retail-issue675 \.pos-checkout-bar \{[^}]*display:\s*flex;/);
+  assert.doesNotMatch(posEntryCss, /\.retail-issue675 \.pos-checkout-bar|padding-bottom: 180px/);
 });
 
 test('trạng thái đơn có tone riêng và interaction có focus pressed disabled', async () => {
