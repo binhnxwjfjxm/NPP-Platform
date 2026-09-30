@@ -137,6 +137,59 @@ jobs:
             FROM target_lines
            ORDER BY sku_snapshot;
 
+
+          WITH target_orders AS (
+            SELECT o.id,
+                   o.installation_id,
+                   o.order_number,
+                   v.id AS version_id
+              FROM sales.sales_orders o
+              JOIN sales.sales_order_versions v
+                ON v.installation_id=o.installation_id
+               AND v.sales_order_id=o.id
+               AND v.version_number=o.current_version_number
+             WHERE o.order_number IN (
+               'SO-202609-001065',
+               'SO-202609-001074',
+               'SO-202609-001076'
+             )
+          )
+          SELECT 'ISSUED_CHECK',
+                 t.order_number,
+                 l.line_number,
+                 l.id::text,
+                 l.sku_snapshot,
+                 l.item_name_snapshot,
+                 l.ordered_quantity::text,
+                 l.unit_code_snapshot,
+                 l.conversion_to_base::text,
+                 l.base_quantity::text,
+                 COALESCE(sum(CASE WHEN ml.direction='OUT' THEN -ml.base_quantity_delta ELSE 0 END),0)::text AS issued_base_quantity,
+                 CASE
+                   WHEN l.conversion_to_base > 0 THEN
+                     (COALESCE(sum(CASE WHEN ml.direction='OUT' THEN -ml.base_quantity_delta ELSE 0 END),0)
+                       / l.conversion_to_base)::text
+                   ELSE NULL
+                 END AS issued_sales_quantity,
+                 count(DISTINCT m.id)::text AS movement_count
+            FROM target_orders t
+            JOIN sales.sales_order_version_lines l
+              ON l.installation_id=t.installation_id
+             AND l.sales_order_version_id=t.version_id
+            LEFT JOIN inventory.inventory_movements m
+              ON m.installation_id=t.installation_id
+             AND m.source_document_id=t.id
+             AND m.source_document_type='SALES_ORDER'
+             AND m.movement_type='SALES_DELIVERY_ISSUE'
+             AND m.reversal_of_movement_id IS NULL
+            LEFT JOIN inventory.inventory_movement_lines ml
+              ON ml.installation_id=m.installation_id
+             AND ml.movement_id=m.id
+             AND ml.metadata->>'salesOrderLineId'=l.id::text
+           GROUP BY t.order_number, l.line_number, l.id, l.sku_snapshot, l.item_name_snapshot,
+                    l.ordered_quantity, l.unit_code_snapshot, l.conversion_to_base, l.base_quantity
+           ORDER BY t.order_number, l.line_number;
+
           ROLLBACK;
           SQL
           REMOTE
