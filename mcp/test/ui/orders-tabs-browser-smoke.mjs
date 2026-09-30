@@ -66,9 +66,15 @@ async function railGeometry(rail) {
   return box;
 }
 
+function ordersHeader(page) {
+  return page
+    .getByRole("heading", { name: "Đơn hàng", exact: true, level: 1 })
+    .locator("xpath=ancestor::header[1]");
+}
+
 async function headerGeometry(page) {
-  const box = await page.locator(".page-header-copy").boundingBox();
-  assert.ok(box, "orders header copy must have geometry");
+  const box = await ordersHeader(page).boundingBox();
+  assert.ok(box, "orders page header must have geometry");
   return box;
 }
 
@@ -104,8 +110,8 @@ async function verifyAuthenticatedOrdersMotion(browser, width, height) {
   );
 
   const initialHeader = await headerGeometry(page);
-  const actions = page.locator(".page-header-actions");
-  assert.equal(Math.round((await actions.boundingBox())?.height || 0), 46, `${width}px: orders header action lane must be fixed at 46px`);
+  const actions = ordersHeader(page).locator(":scope > div").last();
+  assert.ok((await actions.boundingBox())?.height >= 44, `${width}px: orders header actions must keep the foundation touch target`);
   assert.equal(await actions.locator(":scope > *").count(), 3, "orders view starts with source, export and create actions");
 
   const scrollRegion = page.locator("[data-mcp-scroll-region]");
