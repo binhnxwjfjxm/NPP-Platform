@@ -2,6 +2,7 @@
 
 import { createIdempotencyKey } from '@npp/contracts';
 import { useEffect } from 'react';
+import { ensureRetailServiceWorkerRegistration } from './retail-service-worker';
 
 type RetailAuthMe = {
   data?: {
@@ -70,7 +71,6 @@ export type RetailForegroundNotification = Readonly<{
 }>;
 
 export const RETAIL_NOTIFICATION_FOREGROUND_EVENT = 'retail:notification-foreground';
-export const RETAIL_NOTIFICATION_OPEN_EVENT = 'retail:notification-open';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -142,22 +142,6 @@ function urlBase64ToUint8Array(value: string) {
   const base64 = (value + padding).replace(/-/g, '+').replace(/_/g, '/');
   const raw = window.atob(base64);
   return Uint8Array.from([...raw].map((character) => character.charCodeAt(0)));
-}
-
-async function ensureRootServiceWorker() {
-  const registrations = await navigator.serviceWorker.getRegistrations();
-  await Promise.all(registrations
-    .filter((registration) => {
-      try {
-        return new URL(registration.scope).origin === window.location.origin
-          && new URL(registration.scope).pathname !== '/';
-      } catch {
-        return false;
-      }
-    })
-    .map((registration) => registration.unregister().catch(() => false)));
-  await navigator.serviceWorker.register('/sw.js');
-  return navigator.serviceWorker.ready;
 }
 
 async function currentIdentity(): Promise<{ userId: string; isOwner: boolean }> {
@@ -374,9 +358,6 @@ export function RetailNotificationRuntime() {
       if (event.data?.type === 'retail:notification-foreground') {
         dispatchNotificationEvent(RETAIL_NOTIFICATION_FOREGROUND_EVENT, event.data.notification);
       }
-      if (event.data?.type === 'retail:notification-open') {
-        dispatchNotificationEvent(RETAIL_NOTIFICATION_OPEN_EVENT, event.data.notification);
-      }
     };
     navigator.serviceWorker?.addEventListener('message', handleWorkerMessage);
 
@@ -401,7 +382,7 @@ export function RetailNotificationRuntime() {
           return;
         }
         vapidPublicKey = config.publicKey;
-        activeRegistration = await ensureRootServiceWorker();
+        activeRegistration = await ensureRetailServiceWorkerRegistration();
         const subscription = await activeRegistration.pushManager.getSubscription();
         if (Notification.permission === 'granted' && subscription) {
           await registerSubscription(subscription);

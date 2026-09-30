@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { ensureRetailServiceWorkerRegistration } from './retail-service-worker';
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -31,7 +32,7 @@ export function PwaRegistration() {
   const [installMessage, setInstallMessage] = useState('Mở nhanh như ứng dụng, không cần tìm trong trình duyệt.');
 
   useEffect(() => {
-    if ('serviceWorker' in navigator) void navigator.serviceWorker.register('/sw.js').catch(() => undefined);
+    if ('serviceWorker' in navigator) void ensureRetailServiceWorkerRegistration().catch(() => undefined);
 
     const android = /Android/i.test(navigator.userAgent);
     const ios = isIosDevice();

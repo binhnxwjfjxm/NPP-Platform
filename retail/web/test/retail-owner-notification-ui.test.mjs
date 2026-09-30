@@ -30,27 +30,32 @@ test('Bật thông báo dùng Notification + PushManager và đăng ký thiết 
   assert.match(runtime, /pendingRegisterKey = null/);
 });
 
-test('Service Worker hiện notification hệ thống, banner trong app và mở đúng đơn', async () => {
-  const [runtime, worker, workspace, backend] = await Promise.all([
+test('Service Worker mở notification bằng một deep-link canonical và luôn điều hướng client cũ', async () => {
+  const [runtime, worker, workspace, backend, registration] = await Promise.all([
     read('app/retail-notification-runtime.tsx'),
     read('public/sw.js'),
     read('app/retail-workspace.tsx'),
     readRepo('npp-core/api/src/services/retail-owner-notification.js'),
+    read('app/retail-service-worker.ts'),
   ]);
   assert.match(worker, /addEventListener\('push'/);
   assert.match(worker, /showNotification\(payload\.title/);
   assert.match(worker, /retail:notification-foreground/);
   assert.match(worker, /notificationclick/);
-  assert.match(worker, /retail:notification-open/);
-  assert.match(worker, /existing\.postMessage\(\{ type: 'retail:notification-open'/);
-  assert.match(worker, /await existing\.focus\(\)/);
-  assert.doesNotMatch(worker, /existing\.navigate\(target\)/);
+  assert.match(worker, /const navigated = await existing\.navigate\(target\)/);
+  assert.match(worker, /await navigated\.focus\(\)/);
   assert.match(worker, /await self\.clients\.openWindow\(target\)/);
+  assert.doesNotMatch(worker, /retail:notification-open|existing\.postMessage/);
   assert.match(runtime, /RETAIL_NOTIFICATION_FOREGROUND_EVENT/);
-  assert.match(runtime, /RETAIL_NOTIFICATION_OPEN_EVENT/);
+  assert.doesNotMatch(runtime, /RETAIL_NOTIFICATION_OPEN_EVENT|retail:notification-open/);
   assert.match(workspace, /className="retail-notification-banner"/);
   assert.match(workspace, />Xem đơn<\/button>/);
   assert.match(workspace, /new URLSearchParams\(window\.location\.search\)\.get\('order'\)/);
+  assert.match(workspace, /openNotificationOrder\(deepLinkOrderId!\)/);
+  assert.match(workspace, /openOrder\(id, \{ resetScroll: true \}\)/);
+  assert.match(workspace, /requestAnimationFrame\(\(\) => window\.scrollTo\(\{ top: 0, left: 0, behavior: 'auto' \}\)\)/);
+  assert.match(registration, /navigator\.serviceWorker\.register\('\/sw\.js'/);
+  assert.match(registration, /updateViaCache: 'none'/);
   assert.match(backend, /\?order=/);
   assert.doesNotMatch(`${runtime}\n${worker}\n${backend}`, /OneSignal|ONESIGNAL|onesignal\.com/);
 });

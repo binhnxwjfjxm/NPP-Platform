@@ -1,4 +1,4 @@
-const STATIC_CACHE = 'hung-phat-retail-static-v2';
+const STATIC_CACHE = 'hung-phat-retail-static-v3';
 
 self.addEventListener('install', () => self.skipWaiting());
 
@@ -75,11 +75,18 @@ self.addEventListener('notificationclick', (event) => {
 
   event.waitUntil((async () => {
     const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-    const existing = windows.find((client) => new URL(client.url).origin === self.location.origin);
+    const sameOrigin = windows.filter((client) => new URL(client.url).origin === self.location.origin);
+    const existing = sameOrigin.find((client) => client.visibilityState === 'visible') ?? sameOrigin[0];
     if (existing) {
-      existing.postMessage({ type: 'retail:notification-open', notification: payload });
-      await existing.focus();
-      return;
+      try {
+        const navigated = await existing.navigate(target);
+        if (navigated) {
+          await navigated.focus();
+          return;
+        }
+      } catch {
+        // If this client cannot navigate, open the canonical deep link in a fresh window.
+      }
     }
     await self.clients.openWindow(target);
   })());
