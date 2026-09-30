@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 
 const guardedPaths = [
   "src/features/mcp-day/McpDayClientPage.tsx",
-  "src/features/mcp/McpSessionCompactView.tsx"
+  "src/features/mcp/McpSessionView.tsx"
 ];
 
 if (!process.env.CI) {

@@ -4,40 +4,7 @@ import { McpProductCatalogWarmup } from "@/features/orders/McpProductCatalogWarm
 import { McpLocalIdentityProvider } from "@/lib/local-read/mcp-local-identity";
 import { mcpLocalCacheUserIdFromSession } from "@/lib/local-read/mcp-local-identity-server";
 import "@/ui/foundation/tokens.css";
-import "./globals.css";
-import "./mobile.css";
-import "./order-popups.css";
-import "./outlet-profile.css";
-import "./polish.css";
-import "./dashboard-home.css";
-import "./compact-operational.css";
-import "./mcp-popup-compact.css";
-import "./mcp-popup-content-ownership.css";
-import "./mcp-order-tea-filter.css";
-import "./mcp-order-selected-compact.css";
-import "./mcp-order-mobile-workbench.css";
-import "./mcp-order-tree-readable.css";
-import "./mcp-order-report-style.css";
-import "./mcp-report-branch.css";
-import "./mcp-sessions-compact.css";
-import "./mcp-sessions-color.css";
-import "./mcp-compact-ui.css";
-import "./mcp-session-add-customer.css";
-import "./mcp-order-main-final.css";
-import "./mcp-scroll-restore.css";
-import "./export-menu-fix.css";
-import "./npp-theme.css";
-import "./app-shell-contract.css";
-import "./hung-phat-mobile-foundation.css";
-import "./mobile-app-experience.css";
-import "./mobile-app-geometry.css";
-import "./mcp-mobile-primary-flows.css";
-import "./mcp-mobile-support-flows.css";
-import "./mobile-home-dashboard.css";
-import "./mcp-lot-3-flows.css";
-import "./card-depth.css";
-import "./satin-metal-actions.css";
-import "./mcp-sessions-owner-polish.css";
+import "@/ui/foundation/base.css";
 
 export const metadata: Metadata = {
   title: "NPP MCP Field",
@@ -48,25 +15,8 @@ export const metadata: Metadata = {
   other: { "mobile-web-app-capable": "yes" },
   formatDetection: { telephone: false }
 };
-
-export const viewport: Viewport = {
-  width: "device-width",
-  initialScale: 1,
-  maximumScale: 1,
-  viewportFit: "cover",
-  themeColor: "#F3F6FA"
-};
-
+export const viewport: Viewport = { width: "device-width", initialScale: 1, maximumScale: 1, viewportFit: "cover", themeColor: "#F3F6FA" };
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const cacheUserId = mcpLocalCacheUserIdFromSession();
-  return (
-    <html lang="vi">
-      <body>
-        <McpLocalIdentityProvider userId={cacheUserId}>
-          <McpProductCatalogWarmup />
-          <InteractionFeedbackProvider>{children}</InteractionFeedbackProvider>
-        </McpLocalIdentityProvider>
-      </body>
-    </html>
-  );
+  return <html lang="vi"><body><McpLocalIdentityProvider userId={cacheUserId}><McpProductCatalogWarmup /><InteractionFeedbackProvider>{children}</InteractionFeedbackProvider></McpLocalIdentityProvider></body></html>;
 }

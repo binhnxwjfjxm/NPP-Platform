@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const master = await readFile(new URL("../src/features/mcp/McpMasterView.tsx", import.meta.url), "utf8");
-const session = await readFile(new URL("../src/features/mcp/McpSessionCompactViewFinal2.tsx", import.meta.url), "utf8");
-const manager = await readFile(new URL("../src/features/mcp/McpSessionsManagerSafe.tsx", import.meta.url), "utf8");
+const session = await readFile(new URL("../src/features/mcp/RouteSessionWorkScreen.tsx", import.meta.url), "utf8");
+const manager = await readFile(new URL("../src/features/mcp/SessionHistoryScreen.tsx", import.meta.url), "utf8");
 const openProxy = await readFile(new URL("../src/app/api/backend/mcp-day/open-session/route.ts", import.meta.url), "utf8");
 const statusProxy = await readFile(new URL("../src/app/api/backend/mcp-day/session-customer/status/route.ts", import.meta.url), "utf8");
 const actionProxy = await readFile(new URL("../src/app/api/backend/mcp-session-actions/[id]/route.ts", import.meta.url), "utf8");

@@ -5,7 +5,7 @@ const appShell = await readFile("src/ui/shell/AppShell.tsx", "utf8");
 const appMenu = await readFile("src/ui/shell/MobileAppMenu.tsx", "utf8");
 const appMenuStyles = await readFile("src/ui/shell/MobileAppMenu.module.css", "utf8");
 const owner = await readFile("src/features/mcp/VisitsSessionReportPanel.tsx", "utf8");
-const wrapper = await readFile("src/features/mcp/McpSessionCompactView.tsx", "utf8");
+const wrapper = await readFile("src/features/mcp/McpSessionView.tsx", "utf8");
 
 assert.match(appShell, /MobileAppMenuProvider/, "AppShell must own one shared mobile menu provider");
 assert.doesNotMatch(appShell, /SettingsQuickButton/, "standalone settings trigger must not return");

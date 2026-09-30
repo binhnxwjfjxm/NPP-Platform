@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const source = await readFile("src/features/mcp/McpSessionCompactViewFinal2.tsx", "utf8");
+const source = await readFile("src/features/mcp/RouteSessionWorkScreen.tsx", "utf8");
 const card = await readFile("src/features/mcp/McpLineCard.tsx", "utf8");
 
 const routes = [["test", "session-customer.test.create"], ["report", "session-customer.report.create"], ["followup", "session-customer.followup.create"]];

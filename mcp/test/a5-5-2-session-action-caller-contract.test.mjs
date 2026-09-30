@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const source = await readFile("src/features/mcp/McpSessionCompactViewFinal2.tsx", "utf8");
+const source = await readFile("src/features/mcp/RouteSessionWorkScreen.tsx", "utf8");
 const card = await readFile("src/features/mcp/McpLineCard.tsx", "utf8");
 const transitional = await readFile("apps/backend/foundation/transitional-api.js", "utf8");
 

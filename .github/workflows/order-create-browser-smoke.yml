@@ -12,7 +12,7 @@ on:
       - "mcp/src/lib/api/**"
       - "mcp/src/middleware.ts"
       - "mcp/src/ui/overlay/**"
-      - "mcp/src/app/order-create-workspace.css"
+      - "mcp/src/features/orders/OrderCreateSheet.module.css"
       - "mcp/test/orders-create-ui-contract.test.mjs"
       - "mcp/test/ui/order-create-**"
   workflow_dispatch:

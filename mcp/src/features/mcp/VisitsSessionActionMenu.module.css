@@ -10,10 +10,10 @@
   align-items: center;
   gap: 12px;
   min-height: 64px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--mcp-color-border);
   border-radius: 16px;
-  background: var(--panel);
-  color: var(--text);
+  background: var(--mcp-color-surface);
+  color: var(--mcp-color-text-primary);
   cursor: pointer;
   font: inherit;
   padding: 10px 12px;
@@ -23,7 +23,7 @@
 
 .exportItem:hover:not(:disabled) {
   border-color: rgba(37, 99, 235, 0.26);
-  background: var(--panel-soft);
+  background: var(--mcp-color-surface-soft);
 }
 
 .exportItem:disabled {
@@ -37,8 +37,8 @@
   width: 42px;
   height: 42px;
   border-radius: 13px;
-  background: var(--brand-soft);
-  color: var(--brand-strong);
+  background: var(--mcp-color-primary-soft);
+  color: var(--mcp-color-primary-dark);
   font-size: 15px;
   font-weight: 900;
 }
@@ -54,13 +54,13 @@
 }
 
 .menuCopy small {
-  color: var(--muted);
+  color: var(--mcp-color-text-secondary);
   font-size: 12px;
   line-height: 1.4;
 }
 
 .menuChevron {
-  color: var(--muted);
+  color: var(--mcp-color-text-secondary);
   font-size: 20px;
 }
 

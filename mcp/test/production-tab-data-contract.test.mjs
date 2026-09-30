@@ -95,7 +95,7 @@ test("action plan reads followups through the backend provider", () => {
 test("MCP recent sessions open local-first and keep the extended-range live fallback", () => {
   const page = read("src/app/mcp/sessions/page.tsx");
   const localPage = read("src/features/mcp/McpSessionsLocalPage.tsx");
-  const manager = read("src/features/mcp/McpSessionsManagerSafe.tsx");
+  const manager = read("src/features/mcp/SessionHistoryScreen.tsx");
   const route = read("src/app/api/mcp-sessions/route.ts");
   const loader = read("src/lib/mcp-sessions/load-mcp-sessions.ts");
   assert.match(page, /McpSessionsLocalPage/);

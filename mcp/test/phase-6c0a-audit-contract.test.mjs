@@ -18,9 +18,14 @@ async function readJson(url) {
   return JSON.parse(await readFile(url, "utf8"));
 }
 
+const retiredSourceMap = await readJson(mcpUrl("audit/phase-6c0a/retired-source-map.json"));
 async function exists(url) {
-  await access(url);
-  return true;
+  try { await access(url); return true; } catch (error) {
+    const relative = decodeURIComponent(url.pathname).split("/mcp/").pop();
+    const replacement = relative ? retiredSourceMap.replacements[relative] : undefined;
+    if (!replacement) throw error;
+    await access(mcpUrl(replacement)); return true;
+  }
 }
 
 test("all Phase 6C.0A contracts use the exact audited baseline", async () => {
@@ -70,26 +75,24 @@ test("dependency inventory is complete enough to drive the next audit", async ()
 test("the active UI chain remains distinct from legacy and dead-code findings", async () => {
   const visits = await readFile(mcpUrl("src/app/visits/page.tsx"), "utf8");
   const localVisits = await readFile(mcpUrl("src/features/mcp/VisitsLocalPage.tsx"), "utf8");
-  const pageExport = await readFile(mcpUrl("src/features/mcp/MCPPage.tsx"), "utf8");
-  const entry = await readFile(mcpUrl("src/features/mcp/MCPPageEntryReportReady.tsx"), "utf8");
-  const compact = await readFile(mcpUrl("src/features/mcp/McpSessionCompactView.tsx"), "utf8");
-  const finalView = await readFile(mcpUrl("src/features/mcp/McpSessionCompactViewFinal2.tsx"), "utf8");
+  const pageRuntime = await readFile(mcpUrl("src/features/mcp/MCPPage.tsx"), "utf8");
+  const sessionView = await readFile(mcpUrl("src/features/mcp/McpSessionView.tsx"), "utf8");
+  const workScreen = await readFile(mcpUrl("src/features/mcp/RouteSessionWorkScreen.tsx"), "utf8");
   const lineCard = await readFile(mcpUrl("src/features/mcp/McpLineCard.tsx"), "utf8");
 
   assert.match(visits, /VisitsLocalPage/);
   assert.match(localVisits, /from "@\/features\/mcp\/MCPPage"/);
   assert.match(localVisits, /useMcpVisitDay/);
-  assert.match(pageExport, /MCPPageEntryReportReady/);
-  assert.match(entry, /McpSessionCompactView/);
-  assert.match(compact, /McpSessionCompactViewFinal2/);
-  assert.match(finalView, /idempotentMutationFetch/);
+  assert.match(pageRuntime, /McpSessionView/);
+  assert.match(sessionView, /RouteSessionWorkScreen/);
+  assert.match(workScreen, /idempotentMutationFetch/);
 
   for (const action of ["test", "report", "followup", "status", "checkin"]) {
-    assert.match(finalView, new RegExp(`session-customer\\/${action}`));
+    assert.match(workScreen, new RegExp(`session-customer\\/${action}`));
   }
   assert.match(lineCard, /session-customer\/result/);
   assert.match(lineCard, /session-customer\.result\.record/);
-  assert.doesNotMatch(finalView, /session-customer\/order/);
+  assert.doesNotMatch(workScreen, /session-customer\/order/);
   assert.doesNotMatch(lineCard, /session-customer\/order/);
 });
 

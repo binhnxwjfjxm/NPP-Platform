@@ -53,7 +53,7 @@ test("session-customer result and add callers use stable idempotency while legac
 });
 
 test("session manager keeps snapshot and lifecycle mutations on stable idempotency", async () => {
-  const manager = await source("src/features/mcp/McpSessionsManagerSafe.tsx");
+  const manager = await source("src/features/mcp/SessionHistoryScreen.tsx");
   const callApiStart = manager.indexOf("async function callApi(");
   const callIdempotentStart = manager.indexOf("async function callIdempotentApi(");
 
