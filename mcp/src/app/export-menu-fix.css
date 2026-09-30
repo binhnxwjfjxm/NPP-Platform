@@ -88,7 +88,7 @@
 }
 
 /* Issue #600 Lot B: order-center actions stay low, compact and collision-free. */
-.app-shell[data-active-href="/orders"] .page-header-actions {
+[data-mcp-app-shell="true"][data-active-href="/orders"] .page-header-actions {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, max-content));
   align-items: center;
@@ -96,8 +96,8 @@
   gap: 6px;
 }
 
-.app-shell[data-active-href="/orders"] .page-header-actions > .button,
-.app-shell[data-active-href="/orders"] .page-header-actions .export-menu-trigger {
+[data-mcp-app-shell="true"][data-active-href="/orders"] .page-header-actions > .button,
+[data-mcp-app-shell="true"][data-active-href="/orders"] .page-header-actions .export-menu-trigger {
   min-height: 34px !important;
   height: 34px;
   border-radius: 999px;
@@ -107,7 +107,7 @@
   white-space: nowrap;
 }
 
-.app-shell[data-active-href="/orders"] .page-header-actions .export-menu {
+[data-mcp-app-shell="true"][data-active-href="/orders"] .page-header-actions .export-menu {
   max-width: 100%;
   min-width: 0;
 }
@@ -153,18 +153,18 @@
 }
 
 @media (max-width: 560px) {
-  .app-shell[data-active-href="/orders"] .page-header-actions {
+  [data-mcp-app-shell="true"][data-active-href="/orders"] .page-header-actions {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     width: 100%;
   }
 
-  .app-shell[data-active-href="/orders"] .page-header-actions .export-menu {
+  [data-mcp-app-shell="true"][data-active-href="/orders"] .page-header-actions .export-menu {
     display: block;
     width: 100%;
   }
 
-  .app-shell[data-active-href="/orders"] .page-header-actions > .button,
-  .app-shell[data-active-href="/orders"] .page-header-actions .export-menu-trigger {
+  [data-mcp-app-shell="true"][data-active-href="/orders"] .page-header-actions > .button,
+  [data-mcp-app-shell="true"][data-active-href="/orders"] .page-header-actions .export-menu-trigger {
     width: 100%;
     min-width: 0;
     padding: 0 7px;

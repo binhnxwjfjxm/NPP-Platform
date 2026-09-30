@@ -14,8 +14,8 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { usePathname, useRouter } from "next/navigation";
-import { useMcpAccess } from "@/lib/use-mcp-access";
-import { APP_MENU_GROUPS, navItemForHref } from "./navigation";
+import { NavIcon } from "./NavIcon";
+import { PRIMARY_NAV_ITEMS, navItemForHref, primaryNavItemForHref } from "./navigation";
 import styles from "./MobileAppMenu.module.css";
 
 export type MobileAppMenuItem = {
@@ -47,7 +47,6 @@ const MobileAppMenuContext = createContext<MobileAppMenuContextValue | null>(nul
 export function useRegisterMobileAppMenu(registration: MobileAppMenuRegistration) {
   const context = useContext(MobileAppMenuContext);
   if (!context) throw new Error("useRegisterMobileAppMenu must be used inside MobileAppMenuProvider");
-
   useEffect(() => context.register(registration), [context, registration]);
 }
 
@@ -63,7 +62,7 @@ export function AppTopBar({ activeHref }: { activeHref: string }) {
   const current = navItemForHref(activeHref);
 
   return (
-    <header className={styles.topBar} data-app-top-bar>
+    <header className={styles.topBar} data-mcp-app-top-bar="true">
       <div className={styles.topBarIdentity}>
         <span className={styles.topBarMark} aria-hidden="true"><img src="/npp-app-icon.png" alt="" /></span>
         <span className={styles.topBarCopy}>
@@ -71,8 +70,8 @@ export function AppTopBar({ activeHref }: { activeHref: string }) {
           <strong>{current.label}</strong>
         </span>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "0 0 auto" }}>
-        <div data-app-top-bar-tools style={{ display: "flex", alignItems: "center", gap: 8 }} />
+      <div className={styles.topBarActions}>
+        <div data-app-top-bar-tools className={styles.topBarTools} />
         <button
           aria-expanded={context.menuOpen}
           aria-haspopup="dialog"
@@ -139,7 +138,7 @@ function TopMenuPanel({ children, description, onClose, open, title }: TopMenuPa
       <section
         ref={panelRef}
         className={styles.menuPanel}
-        data-app-menu-panel="true"
+        data-mcp-app-menu-panel="true"
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
@@ -148,7 +147,7 @@ function TopMenuPanel({ children, description, onClose, open, title }: TopMenuPa
       >
         <header className={styles.panelHeader}>
           <div className={styles.panelTitle}>
-            <span className={styles.panelMark} aria-hidden="true">HP</span>
+            <span className={styles.panelMark} aria-hidden="true" />
             <div>
               <h2 id={titleId}>{title}</h2>
               <p id={descriptionId}>{description}</p>
@@ -163,36 +162,19 @@ function TopMenuPanel({ children, description, onClose, open, title }: TopMenuPa
   );
 }
 
-function requiredNavigationPermission(href: string) {
-  if (href === "/mcp-setting") return "mcp.report-setting.write";
-  return null;
-}
-
 function MobileAppMenuRoot({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const access = useMcpAccess();
   const [open, setOpen] = useState(false);
   const [registration, setRegistration] = useState<MobileAppMenuRegistration | null>(null);
 
   const register = useCallback((next: MobileAppMenuRegistration) => {
     setRegistration(next);
-    return () => {
-      setRegistration((current) => (current === next ? null : current));
-    };
+    return () => setRegistration((current) => (current === next ? null : current));
   }, []);
   const openMenu = useCallback(() => setOpen(true), []);
   const contextValue = useMemo(() => ({ register, openMenu, menuOpen: open }), [register, openMenu, open]);
-  const visibleGroups = useMemo(() => APP_MENU_GROUPS
-    .map((group) => ({
-      ...group,
-      items: group.items.filter((item) => {
-        const permission = requiredNavigationPermission(item.href);
-        return !permission || access.hasPermission(permission);
-      })
-    }))
-    .filter((group) => group.items.length > 0), [access]);
-  const isSettings = pathname === "/settings";
+  const activePrimaryHref = primaryNavItemForHref(pathname).href;
 
   useEffect(() => {
     setOpen(false);
@@ -210,23 +192,9 @@ function MobileAppMenuRoot({ children }: { children: ReactNode }) {
     router.push(href);
   }
 
-  function handleSettings() {
-    setOpen(false);
-    if (isSettings) {
-      if (window.history.length > 1) router.back();
-      else router.push("/");
-      return;
-    }
-    router.push("/settings");
-  }
-
-  function isActive(href: string) {
-    return pathname === href || (href !== "/" && pathname.startsWith(`${href}/`));
-  }
-
   const contextualItems = registration?.items || [];
-  const title = registration?.title || "Menu MCP";
-  const description = registration?.description || "Chuyển phân hệ, mở tác vụ màn hình và cài đặt ứng dụng.";
+  const title = registration?.title || "Menu ứng dụng";
+  const description = registration?.description || "Chuyển nhanh giữa 5 khu vực chính. Các chức năng khác nằm trong Thêm.";
 
   return (
     <MobileAppMenuContext.Provider value={contextValue}>
@@ -258,38 +226,32 @@ function MobileAppMenuRoot({ children }: { children: ReactNode }) {
             </section>
           ) : null}
 
-          {visibleGroups.map((group) => (
-            <section className={styles.menuSection} aria-label={group.label} key={group.id}>
-              <div className={styles.sectionHeading}><strong>{group.label}</strong></div>
-              <div className={styles.navigationGrid}>
-                {group.items.map((item) => (
+          <section className={styles.menuSection} aria-label="Điều hướng">
+            <div className={styles.sectionHeading}>
+              <strong>Điều hướng</strong>
+              <small>5 khu vực chính</small>
+            </div>
+            <div className={styles.navigationGrid}>
+              {PRIMARY_NAV_ITEMS.map((item) => {
+                const active = item.href === activePrimaryHref;
+                return (
                   <button
-                    aria-current={isActive(item.href) ? "page" : undefined}
-                    className={`${styles.navItem} ${isActive(item.href) ? styles.navItemActive : ""}`}
+                    aria-current={active ? "page" : undefined}
+                    className={active ? `${styles.navItem} ${styles.navItemActive}` : styles.navItem}
                     key={item.href}
                     type="button"
                     onClick={() => navigate(item.href)}
                   >
-                    <span className={styles.navIcon} aria-hidden="true">{item.icon}</span>
+                    <span className={styles.navIcon} aria-hidden="true"><NavIcon name={item.icon} width="22" height="22" /></span>
                     <span className={styles.navCopy}>
                       <strong>{item.label}</strong>
                       <small>{item.description}</small>
                     </span>
                   </button>
-                ))}
-              </div>
-            </section>
-          ))}
-
-          <div className={styles.divider} />
-          <button className={`${styles.menuItem} ${isSettings ? styles.menuItemActive : ""}`} type="button" onClick={handleSettings}>
-            <span className={styles.menuIcon} aria-hidden="true">⚙</span>
-            <span className={styles.menuCopy}>
-              <strong>{isSettings ? "Đóng cài đặt" : "Cài đặt ứng dụng"}</strong>
-              <small>{isSettings ? "Quay lại màn hình trước." : "Tùy chọn hiển thị và hành vi của ứng dụng."}</small>
-            </span>
-            <span className={styles.menuChevron} aria-hidden="true">›</span>
-          </button>
+                );
+              })}
+            </div>
+          </section>
 
           {registration?.message ? <p className={styles.error}>{registration.message}</p> : null}
         </div>

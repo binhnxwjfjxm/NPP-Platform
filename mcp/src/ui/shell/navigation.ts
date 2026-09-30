@@ -1,39 +1,72 @@
 import type { NavIconName } from "./NavIcon";
 
-export type NavItem = { label: string; shortLabel: string; href: string; description: string; icon: NavIconName };
-export type ShellSection = "overview" | "routes" | "session" | "business";
-export type AppMenuGroup = { id: string; label: string; items: NavItem[] };
+export type NavItem = {
+  label: string;
+  shortLabel: string;
+  href: string;
+  description: string;
+  icon: NavIconName;
+};
 
-const OVERVIEW_NAV_ITEM: NavItem = {
-  label: "Tổng quan",
-  shortLabel: "Tổng",
+export type MoreMenuItem = NavItem & {
+  id: string;
+  permission?: string;
+};
+
+export type MoreMenuGroup = {
+  id: string;
+  label: string;
+  items: MoreMenuItem[];
+};
+
+export type ShellSection = "overview" | "routes" | "session" | "business";
+
+export const TODAY_NAV_ITEM: NavItem = {
+  label: "Hôm nay",
+  shortLabel: "Hôm nay",
   href: "/",
-  description: "Tình hình kinh doanh và công việc cần xử lý",
+  description: "Tuyến, tiến độ và công việc cần xử lý trong ngày",
   icon: "⌂"
 };
 
-const MCP_NAV_ITEM: NavItem = {
-  label: "MCP",
-  shortLabel: "MCP",
-  href: "/mcp",
-  description: "Theo dõi tuyến và phiên đi thị trường",
-  icon: "◇"
+export const VISITS_NAV_ITEM: NavItem = {
+  label: "Đi tuyến",
+  shortLabel: "Đi tuyến",
+  href: "/visits",
+  description: "Làm việc theo tuyến và ghi nhận kết quả tại điểm bán",
+  icon: "◉"
+};
+
+export const CUSTOMERS_NAV_ITEM: NavItem = {
+  label: "Điểm bán",
+  shortLabel: "Điểm bán",
+  href: "/customers",
+  description: "Tra cứu điểm bán, khách Công Ty và thông tin liên hệ",
+  icon: "□"
+};
+
+export const ORDERS_NAV_ITEM: NavItem = {
+  label: "Đơn hàng",
+  shortLabel: "Đơn hàng",
+  href: "/orders",
+  description: "Theo dõi và tạo đơn hàng",
+  icon: "+"
+};
+
+export const MORE_NAV_ITEM: NavItem = {
+  label: "Thêm",
+  shortLabel: "Thêm",
+  href: "/more",
+  description: "Mở các chức năng quản lý, báo cáo và thiết lập",
+  icon: "⋯"
 };
 
 const ROUTES_NAV_ITEM: NavItem = {
-  label: "Tuyến bán hàng",
+  label: "Tuyến cố định",
   shortLabel: "Tuyến",
   href: "/routes",
   description: "Xem tuyến được Công Ty thiết lập và quản lý điểm bán",
   icon: "◎"
-};
-
-const VISITS_NAV_ITEM: NavItem = {
-  label: "Đi tuyến hôm nay",
-  shortLabel: "Đi tuyến",
-  href: "/visits",
-  description: "Ghi nhận kết quả tại từng điểm bán",
-  icon: "◉"
 };
 
 const SESSION_HISTORY_NAV_ITEM: NavItem = {
@@ -44,41 +77,11 @@ const SESSION_HISTORY_NAV_ITEM: NavItem = {
   icon: "▤"
 };
 
-const CUSTOMERS_NAV_ITEM: NavItem = {
-  label: "Khách hàng",
-  shortLabel: "Khách",
-  href: "/customers",
-  description: "Điểm bán và trạng thái mở / liên kết mã khách",
-  icon: "□"
-};
-
-const CUSTOMER_DIRECTORY_NAV_ITEM: NavItem = {
-  ...CUSTOMERS_NAV_ITEM,
-  label: "Điểm bán",
-  shortLabel: "Điểm bán"
-};
-
-const CUSTOMER_ONBOARDING_NAV_ITEM: NavItem = {
-  label: "Mở / liên kết mã",
-  shortLabel: "Mở mã",
-  href: "/customers/onboarding",
-  description: "Theo dõi và gửi đề nghị mở / liên kết mã khách sang Core",
-  icon: "◇"
-};
-
-const ORDERS_NAV_ITEM: NavItem = {
-  label: "Đơn hàng",
-  shortLabel: "Đơn",
-  href: "/orders",
-  description: "Theo dõi đơn hàng và doanh số",
-  icon: "+"
-};
-
 const REPORTS_NAV_ITEM: NavItem = {
-  label: "Báo cáo phiên",
+  label: "Báo cáo",
   shortLabel: "Báo cáo",
   href: "/reports",
-  description: "Báo cáo sau mỗi phiên đi tuyến",
+  description: "Báo cáo phiên, kết quả và nội dung đã ghi nhận",
   icon: "▣"
 };
 
@@ -91,94 +94,167 @@ export const FIELD_CHECKS_NAV_ITEM: NavItem = {
 };
 
 const PLANS_NAV_ITEM: NavItem = {
-  label: "Kế hoạch",
-  shortLabel: "Việc",
+  label: "Kế hoạch & Công việc",
+  shortLabel: "Công việc",
   href: "/plans",
-  description: "Công việc cần theo dõi và xử lý",
+  description: "Theo dõi công việc cần xử lý và chăm sóc tiếp theo",
   icon: "✓"
 };
 
+const CUSTOMER_ONBOARDING_NAV_ITEM: NavItem = {
+  label: "Mở hoặc liên kết mã khách",
+  shortLabel: "Mở mã",
+  href: "/customers/onboarding",
+  description: "Mở hoặc liên kết điểm bán với khách Công Ty",
+  icon: "◇"
+};
+
 const MCP_SETTINGS_NAV_ITEM: NavItem = {
-  label: "Cài đặt MCP",
-  shortLabel: "Mẫu",
+  label: "Thiết lập báo cáo thị trường",
+  shortLabel: "Báo cáo",
   href: "/mcp-setting",
-  description: "Thiết lập lựa chọn nhanh cho báo cáo",
+  description: "Quản lý lựa chọn dùng chung cho báo cáo thị trường",
   icon: "⚙"
+};
+
+export const SETTINGS_NAV_ITEM: NavItem = {
+  label: "Thiết lập",
+  shortLabel: "Thiết lập",
+  href: "/settings",
+  description: "Cài ứng dụng, phản hồi thao tác và tài khoản",
+  icon: "⚙"
+};
+
+const MCP_LEGACY_NAV_ITEM: NavItem = {
+  label: "Đi tuyến",
+  shortLabel: "Đi tuyến",
+  href: "/mcp",
+  description: "Lối vào cũ của màn đi tuyến",
+  icon: "◉"
 };
 
 export const PRIMARY_NAV_ITEMS: NavItem[] = [
-  OVERVIEW_NAV_ITEM,
-  MCP_NAV_ITEM,
-  ORDERS_NAV_ITEM,
-  REPORTS_NAV_ITEM,
-  PLANS_NAV_ITEM
-];
-
-export const SIDEBAR_NAV_ITEMS: NavItem[] = [
-  OVERVIEW_NAV_ITEM,
-  MCP_NAV_ITEM,
-  ROUTES_NAV_ITEM,
-  VISITS_NAV_ITEM,
-  SESSION_HISTORY_NAV_ITEM,
-  CUSTOMERS_NAV_ITEM,
-  ORDERS_NAV_ITEM,
-  REPORTS_NAV_ITEM,
-  FIELD_CHECKS_NAV_ITEM,
-  PLANS_NAV_ITEM,
-  MCP_SETTINGS_NAV_ITEM
-];
-
-export const FIELD_DOCK_ITEMS: NavItem[] = [
-  OVERVIEW_NAV_ITEM,
+  TODAY_NAV_ITEM,
   VISITS_NAV_ITEM,
   CUSTOMERS_NAV_ITEM,
   ORDERS_NAV_ITEM,
-  REPORTS_NAV_ITEM
+  MORE_NAV_ITEM
 ];
 
-export const SETTINGS_NAV_ITEM: NavItem = {
-  label: "Cài đặt ứng dụng",
-  shortLabel: "Cài đặt",
-  href: "/settings",
-  description: "Cài ứng dụng và cấu hình hành vi trên thiết bị",
-  icon: "⚙"
-};
+export const SIDEBAR_NAV_ITEMS = PRIMARY_NAV_ITEMS;
+export const FIELD_DOCK_ITEMS = PRIMARY_NAV_ITEMS;
 
-export const APP_MENU_GROUPS: AppMenuGroup[] = [
+export const MORE_MENU_GROUPS: MoreMenuGroup[] = [
   {
-    id: "today",
-    label: "Vận hành hôm nay",
-    items: [OVERVIEW_NAV_ITEM, VISITS_NAV_ITEM, ORDERS_NAV_ITEM, PLANS_NAV_ITEM]
+    id: "route",
+    label: "Đi tuyến",
+    items: [
+      { ...ROUTES_NAV_ITEM, id: "fixed-routes" },
+      { ...SESSION_HISTORY_NAV_ITEM, id: "session-history" }
+    ]
+  },
+  {
+    id: "reports",
+    label: "Báo cáo & Công việc",
+    items: [
+      { ...REPORTS_NAV_ITEM, id: "reports" },
+      { ...FIELD_CHECKS_NAV_ITEM, id: "product-trials" },
+      {
+        id: "data-exports",
+        label: "Xuất dữ liệu",
+        shortLabel: "Xuất dữ liệu",
+        href: "/mcp/sessions",
+        description: "Xuất dữ liệu phiên, đơn hàng, báo cáo và công việc từ khu vực lịch sử phiên",
+        icon: "▤"
+      },
+      { ...PLANS_NAV_ITEM, id: "plans" },
+      {
+        id: "proposals",
+        label: "Đề xuất",
+        shortLabel: "Đề xuất",
+        href: "/reports?view=proposals",
+        description: "Gửi và theo dõi đề xuất quản lý",
+        icon: "◇"
+      }
+    ]
   },
   {
     id: "customers",
     label: "Khách hàng",
-    items: [CUSTOMER_DIRECTORY_NAV_ITEM, CUSTOMER_ONBOARDING_NAV_ITEM]
+    items: [
+      { ...CUSTOMER_ONBOARDING_NAV_ITEM, id: "customer-onboarding" }
+    ]
   },
   {
-    id: "mcp",
-    label: "Quản lý MCP",
-    items: [MCP_NAV_ITEM, ROUTES_NAV_ITEM, SESSION_HISTORY_NAV_ITEM, REPORTS_NAV_ITEM, FIELD_CHECKS_NAV_ITEM]
-  },
-  {
-    id: "configuration",
-    label: "Thiết lập nghiệp vụ",
-    items: [MCP_SETTINGS_NAV_ITEM]
+    id: "settings",
+    label: "Thiết lập",
+    items: [
+      { ...MCP_SETTINGS_NAV_ITEM, id: "report-settings", permission: "mcp.report-setting.write" },
+      { ...SETTINGS_NAV_ITEM, id: "app-settings" }
+    ]
   }
 ];
 
-export const NAV_ITEMS = SIDEBAR_NAV_ITEMS;
+export const APP_MENU_GROUPS = [
+  {
+    id: "primary",
+    label: "Điều hướng",
+    items: PRIMARY_NAV_ITEMS
+  }
+];
+
+const CANONICAL_ROUTE_ITEMS = [
+  CUSTOMER_ONBOARDING_NAV_ITEM,
+  SESSION_HISTORY_NAV_ITEM,
+  MCP_SETTINGS_NAV_ITEM,
+  FIELD_CHECKS_NAV_ITEM,
+  ROUTES_NAV_ITEM,
+  VISITS_NAV_ITEM,
+  CUSTOMERS_NAV_ITEM,
+  ORDERS_NAV_ITEM,
+  REPORTS_NAV_ITEM,
+  PLANS_NAV_ITEM,
+  SETTINGS_NAV_ITEM,
+  MORE_NAV_ITEM,
+  MCP_LEGACY_NAV_ITEM,
+  TODAY_NAV_ITEM
+];
+
+function normalizeHref(href: string) {
+  const pathname = href.split("?")[0] || "/";
+  if (pathname === "/actions") return "/plans";
+  if (pathname === "/mcp/settings") return "/mcp-setting";
+  if (pathname === "/visits/order-intent") return "/orders";
+  return pathname;
+}
+
+export function requiredNavigationPermission(href: string) {
+  const pathname = normalizeHref(href);
+  if (pathname === "/mcp-setting" || pathname.startsWith("/mcp-setting/")) return "mcp.report-setting.write";
+  return null;
+}
 
 export function navItemForHref(href: string) {
-  const normalizedHref = href === "/actions" ? "/plans" : href;
-  return [...SIDEBAR_NAV_ITEMS, SETTINGS_NAV_ITEM]
+  const normalizedHref = normalizeHref(href);
+  return [...CANONICAL_ROUTE_ITEMS]
     .sort((a, b) => b.href.length - a.href.length)
-    .find((item) => item.href === normalizedHref || (item.href !== "/" && normalizedHref.startsWith(`${item.href}/`))) || OVERVIEW_NAV_ITEM;
+    .find((item) => item.href === normalizedHref || (item.href !== "/" && normalizedHref.startsWith(`${item.href}/`)))
+    || TODAY_NAV_ITEM;
+}
+
+export function primaryNavItemForHref(href: string) {
+  const normalizedHref = normalizeHref(href);
+  if (normalizedHref === "/") return TODAY_NAV_ITEM;
+  if (normalizedHref === "/visits" || normalizedHref.startsWith("/visits/") || normalizedHref === "/mcp") return VISITS_NAV_ITEM;
+  if (normalizedHref === "/customers" || (normalizedHref.startsWith("/customers/") && !normalizedHref.startsWith("/customers/onboarding"))) return CUSTOMERS_NAV_ITEM;
+  if (normalizedHref === "/orders" || normalizedHref.startsWith("/orders/")) return ORDERS_NAV_ITEM;
+  return MORE_NAV_ITEM;
 }
 
 export function shellSectionForHref(href: string): ShellSection {
-  if (href === "/") return "overview";
-  if (href === "/routes" || href.startsWith("/routes/")) return "routes";
-  if (href === "/visits" || href.startsWith("/visits/") || href.startsWith("/mcp/sessions")) return "session";
+  const normalizedHref = normalizeHref(href);
+  if (normalizedHref === "/") return "overview";
+  if (normalizedHref === "/routes" || normalizedHref.startsWith("/routes/")) return "routes";
+  if (normalizedHref === "/visits" || normalizedHref.startsWith("/visits/") || normalizedHref.startsWith("/mcp/sessions")) return "session";
   return "business";
 }

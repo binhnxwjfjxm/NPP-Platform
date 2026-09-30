@@ -68,7 +68,7 @@ try {
   await exportButton.waitFor({ state: "visible" });
   const closeSessionButton = menu.getByRole("button", { name: /Chốt phiên/ });
   await closeSessionButton.waitFor({ state: "visible" });
-  await menu.getByRole("button", { name: /Cài đặt ứng dụng/ }).waitFor({ state: "visible" });
+  await menu.locator('section[aria-label="Điều hướng"]').getByRole("button", { name: /^Thêm/ }).waitFor({ state: "visible" });
   assert.match(String(await closeSessionButton.getAttribute("class")), /danger/, "close session must remain a destructive menu item");
 
   await page.screenshot({ path: `${resultsDir}/13-unified-app-menu-mobile.png`, fullPage: true });
@@ -93,7 +93,7 @@ try {
     triggerCount: 1,
     standaloneSettingsButton: false,
     standaloneSessionButton: false,
-    actions: ["report", "export", "close", "settings"],
+    actions: ["report", "export", "close", "more"],
     exportActions: "PASS"
   }, null, 2));
 } finally {

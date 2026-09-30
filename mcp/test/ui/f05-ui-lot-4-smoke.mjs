@@ -31,10 +31,10 @@ async function screenshot(page, name) {
 }
 
 async function assertShell(page, routeName, mobile) {
-  await page.locator(".app-shell").waitFor({ state: "visible" });
+  await page.locator("[data-mcp-app-shell=\"true\"]").waitFor({ state: "visible" });
   assert.equal(await page.getByText("404: This page could not be found.", { exact: true }).count(), 0, `${routeName} must not render 404`);
   assert.ok(await horizontalOverflow(page) <= 1, `${routeName} must not overflow horizontally`);
-  if (mobile) await page.locator("[data-bottom-navigation]").waitFor({ state: "visible" });
+  if (mobile) await page.locator("[data-mcp-bottom-navigation]").waitFor({ state: "visible" });
 }
 
 const groupFixture = [

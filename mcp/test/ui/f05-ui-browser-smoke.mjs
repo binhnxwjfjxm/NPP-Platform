@@ -241,7 +241,7 @@ async function unifiedMobileMenu(browser) {
   await menu.getByRole("button", { name: /Xuất dữ liệu/ }).waitFor({ state: "visible" });
   const closeAction = menu.getByRole("button", { name: /Chốt phiên/ });
   await closeAction.waitFor({ state: "visible" });
-  await menu.getByRole("button", { name: /Cài đặt ứng dụng/ }).waitFor({ state: "visible" });
+  await menu.locator('section[aria-label="Điều hướng"]').getByRole("button", { name: /^Thêm/ }).waitFor({ state: "visible" });
   assert.match(String(await closeAction.getAttribute("class")), /danger/, "close session must remain destructive in unified menu");
   await screenshot(page, "10-unified-mobile-app-menu");
 
@@ -264,7 +264,7 @@ async function unifiedMobileMenu(browser) {
     triggerCount: 1,
     standaloneSettingsButton: false,
     sessionHeaderMenuButton: false,
-    actions: ["report", "export", "close", "settings"],
+    actions: ["report", "export", "close", "more"],
     exportActions: "PASS"
   };
 }
