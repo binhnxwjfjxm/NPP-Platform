@@ -11,8 +11,8 @@ const loader = await readFile(new URL("../src/features/orders/CoreOrderCreateLoa
 const sheet = await readFile(new URL("../src/features/orders/CoreOrderCreateSheet.tsx", import.meta.url), "utf8");
 const catalogStyles = await readFile(new URL("../src/features/orders/OrderCatalogQuick.module.css", import.meta.url), "utf8");
 const catalogPriority = await readFile(new URL("../src/features/orders/order-catalog-priority.ts", import.meta.url), "utf8");
-const workspaceStyles = await readFile(new URL("../src/app/order-create-workspace.css", import.meta.url), "utf8");
-const bottomSheet = await readFile(new URL("../src/ui/overlay/BottomSheet.tsx", import.meta.url), "utf8");
+const foundationStyles = await readFile(new URL("../src/ui/foundation/McpFoundation.module.css", import.meta.url), "utf8");
+const mcpSheet = await readFile(new URL("../src/ui/foundation/McpSheet.tsx", import.meta.url), "utf8");
 
 test("orders route keeps the existing order control center but reads its list local-first", () => {
   assert.match(routePage, /OrdersPage/);
@@ -52,8 +52,8 @@ test("restored create-order UI remains the fullscreen three-step mobile workspac
   assert.match(sheet, />1\. Khách</);
   assert.match(sheet, />2\. Sản phẩm</);
   assert.match(sheet, />3\. Đơn</);
-  assert.match(bottomSheet, /variant\?: "default" \| "compact" \| "workspace"/);
-  assert.match(workspaceStyles, /\.bottom-sheet-workspace\s*\{[\s\S]*height: 100% !important/);
+  assert.match(mcpSheet, /"default" \| "compact" \| "workspace"/);
+  assert.match(foundationStyles, /\.sheetWorkspace\s*\{[\s\S]*height:\s*100dvh/);
 });
 
 test("Công Ty order submit keeps canonical idempotency and never sends browser commercial authority", () => {

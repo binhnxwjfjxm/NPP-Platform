@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createIdempotencyKey, idempotentMutationFetch } from "@/lib/api/idempotent-fetch";
-import { BottomSheet } from "@/ui/overlay/BottomSheet";
+import { McpSheet } from "@/ui/foundation";
 import {
   catalogFamilyLabel,
   compareCatalogProducts,
@@ -499,7 +499,7 @@ export function CoreOrderCreateSheet({
       : `${items.length} dòng · ${totalQuantity} sản phẩm`);
 
   return (
-    <BottomSheet
+    <McpSheet
       open={open}
       onClose={requestClose}
       title="Tạo đơn hàng"
@@ -765,6 +765,6 @@ export function CoreOrderCreateSheet({
           </section>
         </aside>
       </div>
-    </BottomSheet>
+    </McpSheet>
   );
 }

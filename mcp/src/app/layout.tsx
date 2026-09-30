@@ -6,7 +6,6 @@ import { mcpLocalCacheUserIdFromSession } from "@/lib/local-read/mcp-local-ident
 import "@/ui/foundation/tokens.css";
 import "./globals.css";
 import "./mobile.css";
-import "./order-create-workspace.css";
 import "./order-popups.css";
 import "./outlet-profile.css";
 import "./polish.css";

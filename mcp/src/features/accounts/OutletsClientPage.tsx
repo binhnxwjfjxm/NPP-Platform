@@ -12,7 +12,7 @@ import {
   McpStatePanel,
   McpStatusPill
 } from "@/ui/foundation";
-import { BottomSheet } from "@/ui/overlay/BottomSheet";
+import { McpSheet } from "@/ui/foundation";
 import { AppShell } from "@/ui/shell/AppShell";
 import { DataTable, type DataTableColumn } from "@/ui/table/DataTable";
 import type { AccountKpi, OutletItem, OutletStatus } from "./accounts.types";
@@ -99,7 +99,7 @@ function OutletMobileCard({ item, onSelect }: { item: OutletItem; onSelect: (ite
 
 function OutletSheet({ item, onClose }: { item: OutletItem | null; onClose: () => void }) {
   return (
-    <BottomSheet
+    <McpSheet
       open={Boolean(item)}
       onClose={onClose}
       title={item ? item.name : "Hồ sơ điểm bán"}
@@ -134,7 +134,7 @@ function OutletSheet({ item, onClose }: { item: OutletItem | null; onClose: () =
           </div>
         </div>
       ) : null}
-    </BottomSheet>
+    </McpSheet>
   );
 }
 
