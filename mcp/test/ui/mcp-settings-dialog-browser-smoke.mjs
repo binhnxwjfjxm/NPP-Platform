@@ -113,9 +113,9 @@ try {
   await page.goto(`${appBase}/mcp-setting`, { waitUntil: "domcontentloaded" });
   await page.getByText("Đối thủ cũ", { exact: true }).waitFor({ state: "visible" });
 
-  const main = page.locator("[data-app-scroll-region]");
+  const main = page.locator("[data-mcp-scroll-region]");
   await page.addStyleTag({
-    content: `[data-app-scroll-region]::after { content: ""; display: block; height: 700px; flex: 0 0 700px; }`
+    content: `[data-mcp-scroll-region]::after { content: ""; display: block; height: 700px; flex: 0 0 700px; }`
   });
 
   const createButton = page.getByRole("button", { name: "Thêm mẫu", exact: true });

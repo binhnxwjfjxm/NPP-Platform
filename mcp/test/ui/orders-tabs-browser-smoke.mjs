@@ -108,7 +108,7 @@ async function verifyAuthenticatedOrdersMotion(browser, width, height) {
   assert.equal(Math.round((await actions.boundingBox())?.height || 0), 46, `${width}px: orders header action lane must be fixed at 46px`);
   assert.equal(await actions.locator(":scope > *").count(), 3, "orders view starts with source, export and create actions");
 
-  const scrollRegion = page.locator("[data-app-scroll-region]");
+  const scrollRegion = page.locator("[data-mcp-scroll-region]");
   await scrollRegion.evaluate((node) => { node.scrollTop = Math.min(36, Math.max(0, node.scrollHeight - node.clientHeight)); });
   const stableScrollTop = await scrollRegion.evaluate((node) => node.scrollTop);
   let expectedScrollTop = stableScrollTop;

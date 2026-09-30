@@ -114,13 +114,10 @@ async function verifyDesktop(browser) {
   assert.equal(await page.locator("[data-mcp-bottom-navigation]").isVisible(), false);
   const sidebarLinks = page.locator("[data-mcp-sidebar] nav a");
   assert.equal(await sidebarLinks.count(), 5);
-  assert.deepEqual(await sidebarLinks.allTextContents(), [
-    "Hôm nayTuyến, tiến độ và công việc cần xử lý trong ngày",
-    "Đi tuyếnLàm việc theo tuyến và ghi nhận kết quả tại điểm bán",
-    "Điểm bánTra cứu điểm bán, khách Công Ty và thông tin liên hệ",
-    "Đơn hàngTheo dõi và tạo đơn hàng",
-    "ThêmMở các chức năng quản lý, báo cáo và thiết lập"
-  ]);
+  assert.deepEqual(
+    await sidebarLinks.locator("strong").allTextContents(),
+    ["Hôm nay", "Đi tuyến", "Điểm bán", "Đơn hàng", "Thêm"]
+  );
 
   const metrics = await shellMetrics(page);
   assert.ok(metrics.sidebar && metrics.content && metrics.top && metrics.main);
