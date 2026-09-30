@@ -10,6 +10,7 @@ import type { McpDayData, McpDayLine } from "@/features/mcp-day/mcp-day.types";
 import type { RouteCustomersData } from "@/features/mcp/route-customers.types";
 import type { RoutesData } from "@/features/routes/routes.types";
 import { McpLineCard } from "./McpLineCard";
+import { McpSessionAddCustomerButton } from "./McpSessionAddCustomerButton";
 import { mcpCustomerActionDescription, type McpCustomerAction } from "./mcp-customer-actions";
 import { McpMarketReportFields, buildMarketReportContent, emptyMarketReportDraft, marketReportHasInput, type MarketReportDraft } from "./McpMarketReportFields";
 import popupStyles from "./McpSessionActionSheet.module.css";
@@ -109,7 +110,12 @@ export function RouteSessionWorkScreen({ activeHref = "/visits", mcpDayData }: {
           eyebrow="MCP Field"
           title="Đi tuyến"
           description={`Tuyến: ${run.routeName} · Ngày: ${run.date} · Phụ trách: ${run.owner}`}
-          actions={<McpStatusPill tone="primary">Phiên đang mở</McpStatusPill>}
+          actions={
+            <>
+              <McpStatusPill tone="primary">Phiên đang mở</McpStatusPill>
+              <McpSessionAddCustomerButton sessionId={run.id} routeName={run.routeName} />
+            </>
+          }
         />
 
         <McpCard className={styles.sessionSummary}>
