@@ -727,7 +727,7 @@ async function createTestFromSessionCustomer(client, args, context) {
     `INSERT INTO mcp.test_customers (
        installation_id, file_id, customer_id, customer_name, phone, area, status, note, raw_payload
      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
-       jsonb_build_object('session_customer_id', $9, 'foundation_context', $10::jsonb))
+       jsonb_build_object('session_customer_id', $9::text, 'foundation_context', $10::jsonb))
      RETURNING id`,
     [
       installationId(context), fileId, customer.customer_id, customer.customer_name, customer.phone,
@@ -776,9 +776,9 @@ async function createReportFromSessionCustomer(client, args, context) {
        risk_summary, next_action, note, raw_payload
      ) VALUES ($1, $2::date, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
        COALESCE($14::jsonb, '{}'::jsonb) || jsonb_build_object(
-         'content', $15, 'display_summary', $16, 'stock_summary', $17,
+         'content', $15::text, 'display_summary', $16::text, 'stock_summary', $17::text,
          'selected_competitor_ids', $18::jsonb, 'selected_used_product_ids', $19::jsonb,
-         'selected_setting_item_ids', $20::jsonb, 'session_customer_id', $21,
+         'selected_setting_item_ids', $20::jsonb, 'session_customer_id', $21::text,
          'foundation_context', $22::jsonb))
      RETURNING *`,
     [
@@ -921,7 +921,7 @@ async function updateFieldCheckResult(client, args, context) {
          status = $5,
          note = $6,
          raw_payload = COALESCE(raw_payload, '{}'::jsonb) || jsonb_build_object(
-           'session_customer_id', $7,
+           'session_customer_id', $7::text,
            'input_meta', $8::jsonb,
            'foundation_context', $9::jsonb
          ),
@@ -950,7 +950,7 @@ async function createReportSettingGroup(client, args, context) {
     `INSERT INTO mcp.mcp_report_setting_groups (
        installation_id, group_key, group_name, description, sort_order, active, raw_payload
      ) VALUES ($1, $2, $3, $4, $5, $6,
-       COALESCE($7::jsonb, '{}'::jsonb) || jsonb_build_object('group_type', $8, 'foundation_context', $9::jsonb))
+       COALESCE($7::jsonb, '{}'::jsonb) || jsonb_build_object('group_type', $8::text, 'foundation_context', $9::jsonb))
      RETURNING *`,
     [
       installationId(context), text(args.p_group_key), text(args.p_title), text(args.p_description),
@@ -1024,7 +1024,7 @@ async function createReportSettingItem(client, args, context) {
        sort_order, active, raw_payload
      ) VALUES ($1, $2, $3, $4, to_jsonb($5::text), 'text', $6, $7,
        COALESCE($8::jsonb, '{}'::jsonb) || jsonb_build_object(
-         'category', $9, 'brand_name', $10, 'product_id', $11,
+         'category', $9::text, 'brand_name', $10::text, 'product_id', $11::text,
          'foundation_context', $12::jsonb))
      RETURNING *`,
     [
