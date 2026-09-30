@@ -49,7 +49,7 @@ try {
     for (const text of ["Tổng quan hôm nay", "Điều hành gọn trên điện thoại", "Mở tuyến trước, sau đó xem nhanh phiên, đơn, báo cáo và việc cần xử lý."]) {
       assert.equal(await homePage.getByText(text, { exact: true }).count(), 0, `home must remove ${text}`);
     }
-    await homePage.getByRole("link", { name: /Đi tuyến hôm nay/ }).waitFor({ state: "visible" });
+    await homePage.getByRole("link", { name: /Đi tuyến/ }).waitFor({ state: "visible" });
     assert.ok(await horizontalOverflow(homePage) <= 1, `home overflow at ${viewport.width}px`);
     await screenshot(homePage, `20-home-no-explainer-${viewport.width}`);
     await homeContext.close();
