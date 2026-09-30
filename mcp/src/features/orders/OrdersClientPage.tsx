@@ -281,19 +281,6 @@ export function OrdersClientPage({
           eyebrow="MCP Field"
           title="Đơn hàng"
           description="Tạo và tìm đơn, xử lý ngoại lệ, xem doanh số đặt hàng hoặc nhìn nhanh tổng quan."
-          actions={
-            <>
-              <McpStatusPill tone={ordersResult.source === "api" ? "success" : "warning"}>
-                {ordersResult.source === "api" ? "Dữ liệu Công Ty" : "Dữ liệu dự phòng"}
-              </McpStatusPill>
-              {activeView === "orders" || activeView === "sales" ? <ExportActions orders={filteredOrders} /> : null}
-              {activeView === "orders" ? (
-                <McpButton onClick={() => void openCreateOrder()} disabled={createLoading}>
-                  {createLoading ? "Đang tải phiên..." : "+ Tạo đơn"}
-                </McpButton>
-              ) : null}
-            </>
-          }
         />
 
       <nav className={tabs.tabRail} role="tablist" aria-label="Phân tích và xử lý đơn hàng">
@@ -311,6 +298,18 @@ export function OrdersClientPage({
           </button>
         ))}
       </nav>
+
+      <div className={styles.viewActions} data-orders-view-actions="true" aria-label="Thao tác đơn hàng">
+        <McpStatusPill tone={ordersResult.source === "api" ? "success" : "warning"}>
+          {ordersResult.source === "api" ? "Dữ liệu Công Ty" : "Dữ liệu dự phòng"}
+        </McpStatusPill>
+        {activeView === "orders" || activeView === "sales" ? <ExportActions orders={filteredOrders} /> : null}
+        {activeView === "orders" ? (
+          <McpButton onClick={() => void openCreateOrder()} disabled={createLoading}>
+            {createLoading ? "Đang tải phiên..." : "+ Tạo đơn"}
+          </McpButton>
+        ) : null}
+      </div>
 
       {notice ? (
         <McpCard className={styles.notice}>

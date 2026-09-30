@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
 
-const [ordersPage, ordersUi, exportLinks, foundationStyles, filters] = await Promise.all([
+const [ordersPage, ordersUi, exportLinks, orderStyles, filters] = await Promise.all([
   readFile(new URL("../src/features/orders/OrdersClientPage.tsx", import.meta.url), "utf8"),
   readFile(new URL("../src/features/orders/orders-page-ui.tsx", import.meta.url), "utf8"),
   readFile(new URL("../src/features/exports/ExportLinks.tsx", import.meta.url), "utf8"),
-  readFile(new URL("../src/ui/foundation/McpFoundation.module.css", import.meta.url), "utf8"),
+  readFile(new URL("../src/features/orders/OrdersClientPage.module.css", import.meta.url), "utf8"),
   readFile(new URL("../src/features/orders/OrdersFilters.tsx", import.meta.url), "utf8")
 ]);
 
@@ -21,13 +21,15 @@ test("orders page exposes an explicit export type menu in list and sales views",
   assert.match(ordersPage, /activeView === "orders" \|\| activeView === "sales"/);
 });
 
-test("Lô 3 keeps order header actions responsive under the shared foundation owner", () => {
+test("Lô 3 keeps the tab rail stable by owning order actions below the rail", () => {
   assert.match(ordersPage, /<McpPageHeader/);
-  assert.match(ordersPage, /actions=\{/);
-  assert.match(foundationStyles, /\.pageHeaderActions\s*\{[\s\S]*?display:\s*flex/);
-  assert.match(foundationStyles, /\.pageHeaderActions\s*\{[\s\S]*?flex-wrap:\s*wrap/);
-  const mobile = foundationStyles.slice(foundationStyles.indexOf("@media (max-width: 640px)"));
-  assert.match(mobile, /\.pageHeaderActions\s*\{[\s\S]*?width:\s*100%/);
+  assert.doesNotMatch(ordersPage, /<McpPageHeader[\s\S]*?actions=\{/);
+  assert.match(ordersPage, /data-orders-view-actions="true"/);
+  assert.ok(ordersPage.indexOf('aria-label="Phân tích và xử lý đơn hàng"') < ordersPage.indexOf('data-orders-view-actions="true"'));
+  assert.match(orderStyles, /\.viewActions\s*\{[\s\S]*?display:\s*flex/);
+  assert.match(orderStyles, /\.viewActions\s*\{[\s\S]*?flex-wrap:\s*wrap/);
+  const mobile = orderStyles.slice(orderStyles.indexOf("@media (max-width: 640px)"));
+  assert.match(mobile, /\.viewActions\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
 });
 
 test("order filter card keeps controls and removes explanatory filler", () => {

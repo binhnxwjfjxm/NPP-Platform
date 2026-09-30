@@ -110,7 +110,7 @@ async function verifyAuthenticatedOrdersMotion(browser, width, height) {
   );
 
   const initialHeader = await headerGeometry(page);
-  const actions = ordersHeader(page).locator(":scope > div").last();
+  const actions = page.locator('[data-orders-view-actions="true"]');
   assert.ok((await actions.boundingBox())?.height >= 44, `${width}px: orders header actions must keep the foundation touch target`);
   assert.equal(await actions.locator(":scope > *").count(), 4, "orders view starts with source, export menu, quick export and create actions");
 

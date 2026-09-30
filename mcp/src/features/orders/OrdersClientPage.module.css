@@ -3,6 +3,33 @@
   gap: var(--mcp-space-md);
 }
 
+.viewActions {
+  display: flex;
+  min-height: var(--mcp-control-height);
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--mcp-space-sm);
+}
+
+.viewActions > * {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  .viewActions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch;
+  }
+
+  .viewActions > * {
+    width: 100%;
+    max-width: 100%;
+  }
+}
+
 .notice {
   display: flex;
   align-items: center;
