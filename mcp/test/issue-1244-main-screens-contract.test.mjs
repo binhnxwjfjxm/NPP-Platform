@@ -91,3 +91,11 @@ test("Đơn hàng main screen has no remaining route-level legacy CSS owner", as
     assert.doesNotMatch(css, /data-active-href="\/orders"/);
   }
 });
+
+
+test("report settings dialog restores app scroll after dialog layout settles", async () => {
+  const settings = await readFile("src/features/mcp-settings/McpReportSettingsPage.tsx", "utf8");
+  const effect = settings.match(/useLayoutEffect\(\(\) => \{[\s\S]*?\}, \[dialogMode\]\);/)?.[0] || "";
+  assert.match(effect, /focus\(\{ preventScroll: true \}\)/);
+  assert.match(effect, /restoreAppScroll\(scrollTop\)/);
+});
