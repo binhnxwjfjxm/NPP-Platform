@@ -6,7 +6,11 @@ const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 const readRepo = (path) => readFile(new URL(`../../../${path}`, import.meta.url), 'utf8');
 
 test('Retail Lên đơn dùng POS popup, chọn một/chọn nhiều và không mở trang phụ', async () => {
-  const [workspace, css] = await Promise.all([read('app/retail-workspace.tsx'), read('app/retail-pos-entry.css')]);
+  const [workspace, css, dockCss] = await Promise.all([
+    read('app/retail-workspace.tsx'),
+    read('app/retail-pos-entry.css'),
+    read('app/retail-bottom-dock.css'),
+  ]);
   assert.match(workspace, /Tìm và thêm sản phẩm vào đơn/);
   assert.match(workspace, /Chọn nhiều/);
   assert.match(workspace, /Tất cả loại sản phẩm/);
@@ -21,7 +25,7 @@ test('Retail Lên đơn dùng POS popup, chọn một/chọn nhiều và không 
   assert.match(workspace, /role="dialog"/);
   assert.match(css, /\.pos-product-search-trigger/);
   assert.match(css, /\.multi-select-toggle/);
-  assert.match(css, /\.pos-checkout-bar \.pos-checkout-action[\s\S]*?flex: 1\.8 1 0/);
+  assert.match(dockCss, /\.pos-checkout-bar \.pos-checkout-action[\s\S]*?flex: 1\.8 1 0/);
 });
 
 test('Khách lẻ là mặc định; khách Công Ty chỉ hiện theo quyền, dùng gần đây và tìm kiếm theo nhu cầu', async () => {

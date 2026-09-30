@@ -210,25 +210,54 @@ test('bottom nav có một owner duy nhất, fixed trực tiếp và không còn
   const [page, root, css, lot7] = await Promise.all([
     readWorkspace(),
     read('app/retail-root.tsx'),
-    read('app/retail-issue675.css'),
+    read('app/retail-bottom-dock.css'),
     read('app/retail-lot7.css'),
   ]);
-  const start = css.indexOf('/* Bottom navigation');
-  const end = css.indexOf('/* Interaction */', start);
+  const start = css.indexOf('/* Bottom navigation */');
+  const end = css.indexOf('/* Order actions */', start);
   const nav = css.slice(start, end);
 
   assert.match(nav, /\.retail-bottom-nav \{[\s\S]*?position: fixed;/);
-  assert.match(nav, /bottom: max\(8px, env\(safe-area-inset-bottom\)\);/);
+  assert.match(css, /--retail-dock-bottom: max\(8px, env\(safe-area-inset-bottom\)\);/);
+  assert.match(nav, /bottom: var\(--retail-dock-bottom\);/);
   assert.match(nav, /max-width: min\(620px, calc\(100% - 16px\)\);/);
-  assert.match(nav, /min-height: 56px;/);
+  assert.match(css, /--retail-bottom-nav-height: 56px;/);
+  assert.match(nav, /height: var\(--retail-bottom-nav-height\);/);
   assert.match(nav, /\.retail-bottom-nav button \{[\s\S]*?flex: 1 1 0;/);
 
   assert.doesNotMatch(page, /RETAIL_BOTTOM_NAV_SCOPE_STYLE|RETAIL_BOTTOM_NAV_STYLE|retail-bottom-nav-scope|className="bottom-nav"/);
-  assert.match(page, /<main className="retail-shell retail-lot7 retail-issue675">/);
+  assert.match(page, /activeTab === 'entry' \? ' retail-entry-active' : ''/);
   assert.match(root, /function RetailBottomNav/);
   assert.match(root, /<nav className="retail-bottom-nav" aria-label="Điều hướng Retail">/);
   assert.equal((root.match(/<nav className="retail-bottom-nav"/g) ?? []).length, 1);
   assert.match(lot7, /\.retail-lot7 \.retail-topbar \{ position: sticky; z-index: 4; top: 0;/);
+});
+
+test('dock cố định có đúng một stylesheet sở hữu geometry và Lên đơn chừa đủ chỗ cho cả hai thanh', async () => {
+  const [page, canonicalCss, globalsCss, issueCss, lot7Css, mobileCss, posEntryCss, layout] = await Promise.all([
+    readWorkspace(),
+    read('app/retail-bottom-dock.css'),
+    read('app/globals.css'),
+    read('app/retail-issue675.css'),
+    read('app/retail-lot7.css'),
+    read('app/retail-mobile-polish.css'),
+    read('app/retail-pos-entry.css'),
+    read('app/layout.tsx'),
+  ]);
+  assert.match(page, /activeTab === 'entry' \? ' retail-entry-active' : ''/);
+  assert.match(layout, /retail-bottom-dock\.css/);
+  assert.match(canonicalCss, /--retail-bottom-nav-height: 56px;/);
+  assert.match(canonicalCss, /--retail-order-action-height: 52px;/);
+  assert.match(canonicalCss, /--retail-content-clearance: 32px;/);
+  assert.match(canonicalCss, /\.retail-shell\.retail-issue675\.retail-entry-active \{[\s\S]*?var\(--retail-order-action-height\)[\s\S]*?var\(--retail-content-clearance\)/);
+  assert.match(canonicalCss, /\.retail-issue675 \.order-action-bar \{[\s\S]*?var\(--retail-bottom-nav-height\)[\s\S]*?var\(--retail-dock-gap\)/);
+  assert.match(canonicalCss, /\.retail-bottom-nav \{[\s\S]*?bottom: var\(--retail-dock-bottom\);[\s\S]*?height: var\(--retail-bottom-nav-height\);/);
+  assert.match(canonicalCss, /\.retail-issue675 \.pos-checkout-bar \.pos-checkout-action[\s\S]*?flex: 1\.8 1 0/);
+  assert.doesNotMatch(globalsCss, /\.order-action-bar \{|\.bottom-nav \{|padding: 18px 16px calc/);
+  assert.doesNotMatch(issueCss, /\.retail-bottom-nav|\.retail-issue675 \.order-action-bar|--retail-bottom-nav-height/);
+  assert.doesNotMatch(lot7Css, /\.retail-lot7 \.order-action-bar|\.retail-lot7 \.bottom-nav|padding-bottom: calc\(190px/);
+  assert.doesNotMatch(mobileCss, /\.retail-issue675 \.order-action-bar/);
+  assert.doesNotMatch(posEntryCss, /\.retail-issue675 \.pos-checkout-bar|padding-bottom: 180px/);
 });
 
 test('trạng thái đơn có tone riêng và interaction có focus pressed disabled', async () => {

@@ -1623,7 +1623,7 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
     const productPicture = (imageKey: string | undefined, label: string) => <span className="product-visual"><span className="product-symbol product-symbol-large product-fallback" aria-hidden="true">{label.slice(0, 1)}</span>{imageKey ? <img className="product-photo" src={productImage(imageKey)} alt="" onError={(event) => { event.currentTarget.hidden = true; }}/> : null}</span>;
     const title = activeTab === 'home' ? 'Trang chủ' : activeTab === 'orders' ? 'Đơn hàng' : activeTab === 'settings' ? 'Cài đặt' : order ? 'Chi tiết đơn' : 'Lên đơn';
     return <>
-  <main className="retail-shell retail-lot7 retail-issue675">
+  <main className={`retail-shell retail-lot7 retail-issue675${activeTab === 'entry' ? ' retail-entry-active' : ''}`}>
     <header className="retail-header retail-topbar">
       {activeTab === 'home' ? <span className="topbar-spacer" aria-hidden="true"/> : <button className="round-icon" type="button" aria-label="Quay lại" onClick={() => setActiveTab(activeTab === 'entry' && order ? 'orders' : 'home')}>‹</button>}
       <div className="retail-title"><h1>{title}</h1></div>
