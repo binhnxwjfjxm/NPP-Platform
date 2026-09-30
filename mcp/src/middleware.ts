@@ -84,8 +84,6 @@ function requiredPermission(request: NextRequest): string | null {
   const path = request.nextUrl.pathname;
   const method = request.method.toUpperCase();
   if (path === "/mcp-setting" || path.startsWith("/mcp-setting/")) return "mcp.report-setting.write";
-  if (path === "/routes" || path.startsWith("/routes/")) return "mcp.route.write";
-  if (path === "/api/routes" || path.startsWith("/api/routes/")) return "mcp.route.write";
   if (path === "/api/route-customers" || path.startsWith("/api/route-customers/")) return "mcp.route-customer.write";
   if (
     path.startsWith("/api/mcp-report-settings")
@@ -180,7 +178,6 @@ export const config = {
     "/mcp-setting/:path*",
     "/api/products/:path*",
     "/api/backend/:path*",
-    "/api/routes/:path*",
     "/api/route-customers/:path*",
     "/api/mcp-report-settings/:path*",
     "/api/mcp-report-setting-groups/:path*",

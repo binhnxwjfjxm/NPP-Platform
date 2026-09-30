@@ -136,7 +136,7 @@ const accountingItems: NavItem[] = [
 
 const settingsItems: NavItem[] = [
   { href: '/settings', label: 'Thiết lập chung', icon: 'panel', testId: 'nav-settings' },
-  { href: '/settings/mcp-routes', label: 'MCP và tuyến', icon: 'dashboard', testId: 'nav-employee-mcp-reporting' },
+  { href: '/settings/mcp-routes', label: 'MCP và tuyến', icon: 'dashboard', testId: 'nav-mcp-route-settings' },
   { href: '/settings/customer-ordering-content', label: 'Nội dung đặt hàng', icon: 'panel', testId: 'nav-customer-ordering-content' },
 ];
 

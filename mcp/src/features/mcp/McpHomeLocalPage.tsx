@@ -11,7 +11,7 @@ import { useMcpShellSnapshot } from "@/lib/local-read/use-mcp-shell";
 import styles from "@/app/mcp/McpHome.module.css";
 
 const DESKTOP_MODULES = [
-  { href: "/routes", tone: "routes", icon: "◎", title: "Tuyến bán hàng", description: "Quản lý tuyến, điểm bán và vị trí trước khi bắt đầu đi thị trường.", cta: "Xem tuyến" },
+  { href: "/routes", tone: "routes", icon: "◎", title: "Tuyến bán hàng", description: "Xem tuyến được Công Ty thiết lập, quản lý điểm bán và vị trí trước khi đi thị trường.", cta: "Xem tuyến" },
   { href: "/visits", tone: "session", icon: "◉", title: "Đi tuyến hôm nay", description: "Mở hoặc tiếp tục phiên để ghi nhận kết quả tại từng điểm bán.", cta: "Mở phiên" },
   { href: "/mcp/sessions", tone: "session", icon: "▤", title: "Lịch sử phiên", description: "Tra cứu kết quả đi tuyến theo ngày, tuyến và trạng thái.", cta: "Xem lịch sử" },
   { href: "/mcp-setting", tone: "settings", icon: "⚙", title: "Cài đặt MCP", description: "Quản lý các lựa chọn nhanh dùng khi tác nghiệp ngoài thị trường.", cta: "Mở cài đặt" }
@@ -49,7 +49,7 @@ export function McpHomeLocalPage() {
   const visitedCustomers = routes.reduce((sum, route) => sum + Number(route.visitedCustomers || 0), 0);
   const latestSession = snapshot.recentSessions.sessions[0];
   const mobileActions = [
-    { href: "/routes", icon: "◎", title: "Tuyến bán hàng", meta: `${routes.length} tuyến đang quản lý` },
+    { href: "/routes", icon: "◎", title: "Tuyến bán hàng", meta: `${routes.length} tuyến được phân công` },
     { href: "/mcp/sessions", icon: "▤", title: "Lịch sử phiên", meta: latestSession ? `${latestSession.routeName} · ${latestSession.sessionDate}` : "Xem lại các phiên đã thực hiện" },
     { href: "/mcp-setting", icon: "⚙", title: "Cài đặt MCP", meta: "Danh mục dùng khi tác nghiệp" }
   ] as const;
@@ -77,14 +77,14 @@ export function McpHomeLocalPage() {
     </section>
 
     <div className={styles.desktopFlow} data-mcp-desktop-flow="true">
-      <PageHeader eyebrow="MCP" title="Quản lý đi thị trường" subtitle="Chuẩn bị tuyến, thực hiện phiên đi thị trường và theo dõi kết quả tại từng điểm bán.">
+      <PageHeader eyebrow="MCP" title="Quản lý đi thị trường" subtitle="Xem tuyến đã được thiết lập, thực hiện phiên đi thị trường và theo dõi kết quả tại từng điểm bán.">
         <span className="badge">{source === "local" ? "Mở từ dữ liệu đã lưu" : refreshing ? "Đang cập nhật" : "Đã cập nhật"}</span>
         <ExportMenu label="Xuất dữ liệu" primary />
       </PageHeader>
       <TodaySummaryCard eyebrow="Sẵn sàng đi tuyến" value={`${activeRoutes} tuyến có thể đi`} description={`${plannedCustomers} điểm bán trong tuyến · ${visitedCustomers} lượt đã ghé theo dữ liệu hiện có`} pills={[{ label: "tuyến", value: routes.length }, { label: "đang hoạt động", value: activeRoutes }, { label: "tạm dừng", value: pausedRoutes }]} />
       <section className={styles.grid} aria-label="Chức năng MCP">{DESKTOP_MODULES.map(renderDesktopModule)}</section>
       <FilterBar title="Tình hình tuyến" filters={[{ label: "Tổng tuyến", value: String(routes.length) }, { label: "Có thể đi", value: String(activeRoutes) }, { label: "Tạm dừng", value: String(pausedRoutes) }, { label: "Điểm bán", value: String(plannedCustomers) }]} />
-      <CompactKpiStrip items={[{ label: "Tuyến", value: routes.length, hint: "Đang quản lý" }, { label: "Có thể đi", value: activeRoutes, hint: "Đang hoạt động hoặc cần theo dõi" }, { label: "Điểm bán", value: plannedCustomers, hint: "Tổng điểm bán trong tuyến" }, { label: "Đã ghé", value: visitedCustomers, hint: "Theo phiên gần nhất" }]} />
+      <CompactKpiStrip items={[{ label: "Tuyến", value: routes.length, hint: "Được phân công" }, { label: "Có thể đi", value: activeRoutes, hint: "Đang hoạt động hoặc cần theo dõi" }, { label: "Điểm bán", value: plannedCustomers, hint: "Tổng điểm bán trong tuyến" }, { label: "Đã ghé", value: visitedCustomers, hint: "Theo phiên gần nhất" }]} />
       {error ? <div className="empty-inline">Đang dùng dữ liệu đã lưu; lần cập nhật gần nhất chưa thành công.</div> : null}
     </div>
   </AppShell>;

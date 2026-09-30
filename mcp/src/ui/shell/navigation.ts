@@ -16,7 +16,7 @@ const MCP_NAV_ITEM: NavItem = {
   label: "MCP",
   shortLabel: "MCP",
   href: "/mcp",
-  description: "Quản lý tuyến và phiên đi thị trường",
+  description: "Theo dõi tuyến và phiên đi thị trường",
   icon: "◇"
 };
 
@@ -24,7 +24,7 @@ const ROUTES_NAV_ITEM: NavItem = {
   label: "Tuyến bán hàng",
   shortLabel: "Tuyến",
   href: "/routes",
-  description: "Quản lý tuyến và điểm bán trong tuyến",
+  description: "Xem tuyến được Công Ty thiết lập và quản lý điểm bán",
   icon: "◎"
 };
 
