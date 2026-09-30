@@ -53,8 +53,7 @@ jobs:
                    o.order_number,
                    o.current_version_number,
                    v.id AS version_id,
-                   v.customer_name_snapshot,
-                   v.document_date
+                   v.customer_name_snapshot
               FROM sales.sales_orders o
               JOIN sales.sales_order_versions v
                 ON v.installation_id=o.installation_id
@@ -68,8 +67,7 @@ jobs:
           )
           SELECT 'ORDER',
                  order_number,
-                 customer_name_snapshot,
-                 document_date::text
+                 customer_name_snapshot
             FROM target_orders
            ORDER BY order_number;
 
