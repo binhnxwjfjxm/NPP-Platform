@@ -67,3 +67,35 @@ test("top menu mirrors only the five primary areas and uses the new foundation t
   assert.match(menuStyles, /var\(--mcp-color-surface\)/);
   assert.doesNotMatch(menuStyles, /--npp-|#754706|#98600f|!important|:global\(/i);
 });
+
+
+test("legacy child-screen CSS uses the new shell scope without reactivating retired chrome", async () => {
+  const childStyleFiles = [
+    "src/app/npp-theme.css",
+    "src/app/mcp-compact-ui.css",
+    "src/app/mcp-lot-3-flows.css",
+    "src/app/export-menu-fix.css",
+    "src/app/mobile-home-dashboard.css",
+    "src/app/mobile-list-summaries.css",
+    "src/app/mcp-mobile-support-flows.css",
+    "src/app/mcp-mobile-primary-flows.css",
+    "src/app/mcp-sessions-owner-polish.css"
+  ];
+  for (const path of childStyleFiles) {
+    const css = await readFile(path, "utf8");
+    assert.doesNotMatch(css, /\.app-shell(?:\.app-shell)?(?:\[data-active-href|:is\()/, `${path} must not depend on retired app-shell screen scope`);
+    assert.doesNotMatch(css, /\[data-app-scroll-region\]/, `${path} must use the new scroll-region hook`);
+  }
+
+  const retiredChromeFiles = [
+    "src/app/globals.css",
+    "src/app/mobile.css",
+    "src/app/app-shell-contract.css",
+    "src/app/mobile-app-geometry.css",
+    "src/app/hung-phat-mobile-foundation.css"
+  ];
+  for (const path of retiredChromeFiles) {
+    const css = await readFile(path, "utf8");
+    assert.doesNotMatch(css, /data-mcp-app-shell|data-mcp-bottom-navigation|data-mcp-app-top-bar/, `${path} must remain disconnected from the new chrome`);
+  }
+});

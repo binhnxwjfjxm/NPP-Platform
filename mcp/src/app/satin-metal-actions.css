@@ -253,7 +253,7 @@ button.danger,
 
 @media (max-width: 820px) {
   /* Home reference: satin champagne CTA with fine brushing and low depth. */
-  .app-shell[data-active-href="/"] .mobile-home-primary-action {
+  [data-mcp-app-shell="true"][data-active-href="/"] .mobile-home-primary-action {
     border-radius: 18px;
     background: var(--mcp-metal-bronze-surface) !important;
     color: var(--mcp-metal-ink) !important;
@@ -263,7 +263,7 @@ button.danger,
       0 5px 12px rgba(82, 57, 31, 0.13) !important;
   }
 
-  .app-shell[data-active-href="/"] .mobile-home-primary-action > span:first-child {
+  [data-mcp-app-shell="true"][data-active-href="/"] .mobile-home-primary-action > span:first-child {
     border: 0;
     background: rgba(255, 250, 240, 0.24) !important;
     color: var(--mcp-metal-ink) !important;
@@ -272,11 +272,11 @@ button.danger,
       0 1px 3px rgba(82, 57, 31, 0.09);
   }
 
-  .app-shell[data-active-href="/"] .mobile-home-primary-action :is(strong, small, b) {
+  [data-mcp-app-shell="true"][data-active-href="/"] .mobile-home-primary-action :is(strong, small, b) {
     color: inherit !important;
   }
 
-  .app-shell[data-active-href="/"] .mobile-home-quick-grid a {
+  [data-mcp-app-shell="true"][data-active-href="/"] .mobile-home-quick-grid a {
     border: 0 !important;
     background: var(--mcp-metal-champagne-surface) !important;
     color: var(--mcp-metal-ink) !important;
@@ -284,7 +284,7 @@ button.danger,
     text-shadow: 0 1px 0 rgba(255, 255, 255, 0.24);
   }
 
-  .app-shell[data-active-href="/"] .mobile-home-quick-grid a :is(span, strong) {
+  [data-mcp-app-shell="true"][data-active-href="/"] .mobile-home-quick-grid a :is(span, strong) {
     color: inherit !important;
   }
 
@@ -359,8 +359,8 @@ button.danger,
 
 /* Metal shadows are decorative; keyboard focus stays stronger than them. */
 .app-shell :is(button, a.button, [role="button"], [role="tab"]):focus-visible,
-.app-shell[data-active-href="/"] .mobile-home-primary-action:focus-visible,
-.app-shell[data-active-href="/"] .mobile-home-quick-grid a:focus-visible,
+[data-mcp-app-shell="true"][data-active-href="/"] .mobile-home-primary-action:focus-visible,
+[data-mcp-app-shell="true"][data-active-href="/"] .mobile-home-quick-grid a:focus-visible,
 .app-content-shell > [data-bottom-navigation="true"] .bottom-nav-link:focus-visible {
   outline: 2px solid var(--npp-color-focus-inner) !important;
   outline-offset: 2px;

@@ -1,4 +1,4 @@
-.app-shell[data-active-href="/mcp/sessions"] .mcp-session-filter-shell {
+[data-mcp-app-shell="true"][data-active-href="/mcp/sessions"] .mcp-session-filter-shell {
   margin: 0 0 10px;
   padding: 0;
   border: 0;
@@ -7,7 +7,7 @@
   box-shadow: none;
 }
 
-.app-shell[data-active-href="/mcp/sessions"] .mcp-session-filter-toggle {
+[data-mcp-app-shell="true"][data-active-href="/mcp/sessions"] .mcp-session-filter-toggle {
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -16,20 +16,20 @@
   appearance: none;
 }
 
-.app-shell[data-active-href="/mcp/sessions"] .mcp-session-filter-toggle:hover,
-.app-shell[data-active-href="/mcp/sessions"] .mcp-session-filter-toggle:focus-visible {
+[data-mcp-app-shell="true"][data-active-href="/mcp/sessions"] .mcp-session-filter-toggle:hover,
+[data-mcp-app-shell="true"][data-active-href="/mcp/sessions"] .mcp-session-filter-toggle:focus-visible {
   background: transparent;
   box-shadow: none;
 }
 
-.app-shell[data-active-href="/mcp/sessions"] .mcp-session-filter {
+[data-mcp-app-shell="true"][data-active-href="/mcp/sessions"] .mcp-session-filter {
   border: 0;
   border-radius: 0;
   background: transparent;
   box-shadow: none;
 }
 
-.app-shell[data-active-href="/mcp/sessions"] .mcp-session-kpis {
+[data-mcp-app-shell="true"][data-active-href="/mcp/sessions"] .mcp-session-kpis {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0;
@@ -39,11 +39,11 @@
   border-bottom: 1px solid var(--npp-color-border);
 }
 
-.app-shell[data-active-href="/mcp/sessions"] .mcp-session-kpis > :nth-child(n + 4) {
+[data-mcp-app-shell="true"][data-active-href="/mcp/sessions"] .mcp-session-kpis > :nth-child(n + 4) {
   display: none !important;
 }
 
-.app-shell[data-active-href="/mcp/sessions"] .mcp-session-kpis .card {
+[data-mcp-app-shell="true"][data-active-href="/mcp/sessions"] .mcp-session-kpis .card {
   display: grid;
   min-width: 0;
   min-height: 0;
@@ -57,17 +57,17 @@
   transform: none;
 }
 
-.app-shell[data-active-href="/mcp/sessions"] .mcp-session-kpis .card + .card {
+[data-mcp-app-shell="true"][data-active-href="/mcp/sessions"] .mcp-session-kpis .card + .card {
   border-left: 1px solid var(--npp-color-border);
 }
 
-.app-shell[data-active-href="/mcp/sessions"] .mcp-session-kpis .card::before,
-.app-shell[data-active-href="/mcp/sessions"] .mcp-session-kpis .card::after {
+[data-mcp-app-shell="true"][data-active-href="/mcp/sessions"] .mcp-session-kpis .card::before,
+[data-mcp-app-shell="true"][data-active-href="/mcp/sessions"] .mcp-session-kpis .card::after {
   display: none;
   content: none;
 }
 
-.app-shell[data-active-href="/mcp/sessions"] .mcp-session-kpis .card-label {
+[data-mcp-app-shell="true"][data-active-href="/mcp/sessions"] .mcp-session-kpis .card-label {
   overflow: hidden;
   color: var(--npp-color-text-muted);
   font-size: 10.5px;
@@ -76,35 +76,35 @@
   white-space: nowrap;
 }
 
-.app-shell[data-active-href="/mcp/sessions"] .mcp-session-kpis .card-value {
+[data-mcp-app-shell="true"][data-active-href="/mcp/sessions"] .mcp-session-kpis .card-value {
   color: var(--npp-color-text);
   font-size: 1.35rem;
   font-weight: 900;
   line-height: 1.05;
 }
 
-.app-shell[data-active-href="/mcp/sessions"] .mcp-session-kpis .card-hint {
+[data-mcp-app-shell="true"][data-active-href="/mcp/sessions"] .mcp-session-kpis .card-hint {
   display: none;
 }
 
 @media (max-width: 820px) {
-  .app-shell[data-active-href="/mcp/sessions"] .mcp-session-filter-toggle {
+  [data-mcp-app-shell="true"][data-active-href="/mcp/sessions"] .mcp-session-filter-toggle {
     min-height: 44px;
     padding: 5px 0 7px;
   }
 
-  .app-shell[data-active-href="/mcp/sessions"] .mcp-session-filter {
+  [data-mcp-app-shell="true"][data-active-href="/mcp/sessions"] .mcp-session-filter {
     margin-top: 3px;
     padding: 7px 0 0;
   }
 
-  .app-shell[data-active-href="/mcp/sessions"] .mcp-session-kpis {
+  [data-mcp-app-shell="true"][data-active-href="/mcp/sessions"] .mcp-session-kpis {
     gap: 0;
     margin-bottom: 10px;
     padding-block: 6px;
   }
 
-  .app-shell[data-active-href="/mcp/sessions"] .mcp-session-kpis .card {
+  [data-mcp-app-shell="true"][data-active-href="/mcp/sessions"] .mcp-session-kpis .card {
     min-height: 0;
     padding: 3px 6px;
   }
