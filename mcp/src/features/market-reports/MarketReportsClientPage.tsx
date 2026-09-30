@@ -6,7 +6,7 @@ import { CompactKpiStrip } from "@/ui/cards/CompactKpiStrip";
 import { OperationalListCard } from "@/ui/cards/OperationalListCard";
 import { FilterBar } from "@/ui/layout/FilterBar";
 import { PageHeader } from "@/ui/layout/PageHeader";
-import { BottomSheet } from "@/ui/overlay/BottomSheet";
+import { McpSheet } from "@/ui/foundation";
 import { AppShell } from "@/ui/shell/AppShell";
 import { userFacingError } from "@/lib/ui/user-facing-error";
 import { idempotentMutationFetch } from "@/lib/api/idempotent-fetch";
@@ -302,9 +302,9 @@ function AiTab({ report }: { report: MarketReportItem }) {
 
 function ReportSheet({ report, onClose }: { report: MarketReportItem | null; onClose: () => void }) {
   const [tab, setTab] = useState<ReportTab>("overview");
-  return <BottomSheet open={Boolean(report)} onClose={onClose} title={report ? `Báo cáo phiên · ${report.routeName}` : "Chi tiết báo cáo phiên"} description={report ? `${report.accountName} · ${report.date}` : undefined} footer={<div className="sheet-action-grid"><button className="button" type="button" onClick={onClose}>Đóng</button>{report ? <ReportExportMenu report={report} /> : null}</div>}>
+  return <McpSheet open={Boolean(report)} onClose={onClose} title={report ? `Báo cáo phiên · ${report.routeName}` : "Chi tiết báo cáo phiên"} description={report ? `${report.accountName} · ${report.date}` : undefined} footer={<div className="sheet-action-grid"><button className="button" type="button" onClick={onClose}>Đóng</button>{report ? <ReportExportMenu report={report} /> : null}</div>}>
     {report ? <div className={styles.reportSheet}><div className={styles.tabBar}>{TABS.map((item) => <button key={item.id} className={tab === item.id ? styles.activeTab : ""} type="button" onClick={() => setTab(item.id)}>{item.label}</button>)}</div>{tab === "overview" ? <OverviewTab report={report} /> : null}{tab === "orders" ? <OrdersTab report={report} /> : null}{tab === "tests" ? <TestsTab report={report} /> : null}{tab === "observations" ? <ObservationsTab report={report} /> : null}{tab === "followups" ? <FollowupsTab report={report} /> : null}{tab === "customers" ? <CustomersTab report={report} /> : null}{tab === "ai" ? <AiTab key={report.id} report={report} /> : null}</div> : null}
-  </BottomSheet>;
+  </McpSheet>;
 }
 
 export function MarketReportsClientPage({ kpis, reports, focusSessionId = "" }: { kpis: MarketReportKpi[]; reports: MarketReportItem[]; focusSessionId?: string }) {

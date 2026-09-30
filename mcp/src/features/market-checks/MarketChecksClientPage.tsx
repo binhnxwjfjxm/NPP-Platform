@@ -6,7 +6,7 @@ import { CompactKpiStrip } from "@/ui/cards/CompactKpiStrip";
 import { OperationalListCard } from "@/ui/cards/OperationalListCard";
 import { FilterBar } from "@/ui/layout/FilterBar";
 import { PageHeader } from "@/ui/layout/PageHeader";
-import { BottomSheet } from "@/ui/overlay/BottomSheet";
+import { McpSheet } from "@/ui/foundation";
 import { AppShell } from "@/ui/shell/AppShell";
 import { idempotentMutationFetch } from "@/lib/api/idempotent-fetch";
 import { userFacingError } from "@/lib/ui/user-facing-error";
@@ -165,7 +165,7 @@ function FieldCheckSheet({ check, onClose, onSaved }: { check: MarketCheckItem |
   }
 
   return (
-    <BottomSheet
+    <McpSheet
       open={Boolean(check)}
       onClose={onClose}
       title={check ? check.productName : "Chi tiết kết quả thử"}
@@ -191,13 +191,13 @@ function FieldCheckSheet({ check, onClose, onSaved }: { check: MarketCheckItem |
           {error ? <p className={styles.errorText}>{error}</p> : null}
         </form>
       ) : null}
-    </BottomSheet>
+    </McpSheet>
   );
 }
 
 function SessionBranchSheet({ group, onClose, onSelect }: { group: MarketCheckSessionGroup | null; onClose: () => void; onSelect: (check: MarketCheckItem) => void }) {
   return (
-    <BottomSheet
+    <McpSheet
       open={Boolean(group)}
       onClose={onClose}
       title={group ? `Kết quả thử sản phẩm · ${group.routeName}` : "Kết quả thử sản phẩm"}
@@ -215,7 +215,7 @@ function SessionBranchSheet({ group, onClose, onSelect }: { group: MarketCheckSe
           <div className={styles.detailList}>{group.items.map((check) => <InlineTestRow check={check} key={check.id} onSelect={onSelect} />)}</div>
         </div>
       ) : null}
-    </BottomSheet>
+    </McpSheet>
   );
 }
 

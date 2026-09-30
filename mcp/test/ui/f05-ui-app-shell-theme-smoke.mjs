@@ -80,7 +80,7 @@ try {
       const listPage = await listContext.newPage();
       await listPage.goto(`${appBase}${spec.path}`, { waitUntil: "domcontentloaded" });
 
-      await listPage.locator(".page-header").waitFor({ state: "visible" });
+      await listPage.locator("[data-page-header='true']").waitFor({ state: "visible" });
       await listPage.locator(".route-mobile-list").waitFor({ state: "visible" });
       assert.equal(await listPage.locator(".route-desktop-table").evaluate((node) => getComputedStyle(node).display), "none");
 

@@ -5,7 +5,7 @@ import { useState, useTransition } from "react";
 import { userFacingError } from "@/lib/ui/user-facing-error";
 import { idempotentMutationFetch } from "@/lib/api/idempotent-fetch";
 import { dispatchMcpLocalReadRefresh } from "@/lib/local-read/use-mcp-shell";
-import { BottomSheet } from "@/ui/overlay/BottomSheet";
+import { McpSheet } from "@/ui/foundation";
 
 type SessionRow = {
   id: string;
@@ -480,7 +480,7 @@ export function McpSessionsManagerSafe({
         )}
       </section>
 
-      <BottomSheet
+      <McpSheet
         open={Boolean(editing)}
         onClose={close}
         title="Sửa phiên"
@@ -551,9 +551,9 @@ export function McpSessionsManagerSafe({
             {message ? <p className="page-subtitle order-message">{message}</p> : null}
           </div>
         ) : null}
-      </BottomSheet>
+      </McpSheet>
 
-      <BottomSheet
+      <McpSheet
         open={Boolean(deleting)}
         onClose={close}
         title="Xóa phiên"
@@ -601,7 +601,7 @@ export function McpSessionsManagerSafe({
             {message ? <p className="page-subtitle order-message">{message}</p> : null}
           </div>
         ) : null}
-      </BottomSheet>
+      </McpSheet>
     </>
   );
 }

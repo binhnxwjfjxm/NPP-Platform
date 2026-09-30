@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { KpiCard } from "@/ui/cards/KpiCard";
 import { FilterBar } from "@/ui/layout/FilterBar";
 import { PageHeader } from "@/ui/layout/PageHeader";
-import { BottomSheet } from "@/ui/overlay/BottomSheet";
+import { McpSheet } from "@/ui/foundation";
 import { AppShell } from "@/ui/shell/AppShell";
 import { DataTable, type DataTableColumn } from "@/ui/table/DataTable";
 import type { ActionItem, ActionKpi, ActionPriority, ActionSource, ActionStatus } from "./actions.types";
@@ -117,7 +117,7 @@ function ActionMobileCard({ item, onSelect }: { item: ActionItem; onSelect: (ite
 
 function ActionDetailSheet({ item, onClose }: { item: ActionItem | null; onClose: () => void }) {
   return (
-    <BottomSheet
+    <McpSheet
       open={Boolean(item)}
       onClose={onClose}
       title={item ? item.title : "Chi tiết việc"}
@@ -146,7 +146,7 @@ function ActionDetailSheet({ item, onClose }: { item: ActionItem | null; onClose
           </div>
         </div>
       ) : null}
-    </BottomSheet>
+    </McpSheet>
   );
 }
 
