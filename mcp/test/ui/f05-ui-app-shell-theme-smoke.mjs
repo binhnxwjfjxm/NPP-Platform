@@ -188,10 +188,16 @@ try {
     await input.waitFor({ state: "visible" });
     const formStyle = await input.evaluate((node) => {
       const style = getComputedStyle(node);
-      return { background: style.backgroundColor, border: style.borderTopColor };
+      const probe = document.createElement("div");
+      probe.style.cssText = "border:1px solid var(--mcp-color-border);background:var(--mcp-color-surface)";
+      document.body.appendChild(probe);
+      const probeStyle = getComputedStyle(probe);
+      const theme = { background: probeStyle.backgroundColor, border: probeStyle.borderTopColor };
+      probe.remove();
+      return { background: style.backgroundColor, border: style.borderTopColor, theme };
     });
-    assert.equal(formStyle.background, "rgb(255, 255, 255)");
-    assert.equal(formStyle.border, "rgb(216, 208, 196)");
+    assert.equal(formStyle.background, formStyle.theme.background);
+    assert.equal(formStyle.border, formStyle.theme.border);
     await screenshot(page, "19-business-form-theme");
 
     result.F05_APP_SHELL_THEME_SMOKE = "PASS";

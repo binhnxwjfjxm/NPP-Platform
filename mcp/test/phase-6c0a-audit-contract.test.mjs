@@ -21,7 +21,9 @@ async function readJson(url) {
 const retiredSourceMap = await readJson(mcpUrl("audit/phase-6c0a/retired-source-map.json"));
 async function exists(url) {
   try { await access(url); return true; } catch (error) {
-    const relative = decodeURIComponent(url.pathname).split("/mcp/").pop();
+    const rootPath = decodeURIComponent(mcpRoot.pathname);
+    const targetPath = decodeURIComponent(url.pathname);
+    const relative = targetPath.startsWith(rootPath) ? targetPath.slice(rootPath.length) : undefined;
     const replacement = relative ? retiredSourceMap.replacements[relative] : undefined;
     if (!replacement) throw error;
     await access(mcpUrl(replacement)); return true;
