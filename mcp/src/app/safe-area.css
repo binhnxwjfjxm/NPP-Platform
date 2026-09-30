@@ -1,7 +1,0 @@
-@media (max-width: 820px) {
-  .bottom-nav {
-    background:
-      linear-gradient(135deg, rgba(16, 24, 40, 0.04), rgba(52, 64, 84, 0.03) 58%, rgba(14, 116, 144, 0.06)),
-      rgba(255, 255, 255, 0.70);
-  }
-}

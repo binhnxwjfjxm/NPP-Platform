@@ -3,7 +3,7 @@
 import type { McpDayData } from "@/features/mcp-day/mcp-day.types";
 import type { RouteCustomersData } from "@/features/mcp/route-customers.types";
 import type { RoutesData } from "@/features/routes/routes.types";
-import { McpSessionCompactView } from "./McpSessionCompactView";
+import { McpSessionView } from "./McpSessionView";
 import { McpSessionReadonlyView } from "./McpSessionReadonlyView";
 import { McpMasterView } from "./McpMasterView";
 import { RouteCustomerLocationEnhancer } from "./RouteCustomerLocationEnhancer";
@@ -30,7 +30,7 @@ export function MCPPage({ activeHref = "/visits", routesData, mcpDayData, routeC
       return <McpSessionReadonlyView activeHref={activeHref} mcpDayData={mcpDayData} />;
     }
 
-    return <><ReportQuickFormEnhancer /><McpSessionCompactView activeHref={activeHref} routesData={routesData} mcpDayData={mcpDayData} routeCustomersData={routeCustomersData} /></>;
+    return <><ReportQuickFormEnhancer /><McpSessionView activeHref={activeHref} routesData={routesData} mcpDayData={mcpDayData} routeCustomersData={routeCustomersData} /></>;
   }
 
   return <><RouteCustomerLocationEnhancer /><McpMasterView activeHref={activeHref} routesData={routesData} routeCustomersData={routeCustomersData} /></>;
