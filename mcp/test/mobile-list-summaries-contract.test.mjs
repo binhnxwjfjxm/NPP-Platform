@@ -34,6 +34,8 @@ test("customer responsive ownership moved to the feature CSS module and Mobile f
 test("plans is owned by the Lô 4 feature module on desktop and mobile", () => {
   assert.match(plans, /<DataTable columns=\{columns\}/);
   assert.match(plans, /data-plan-mobile-card/);
+  assert.match(plans, /data-plan-mobile-list="true"/);
+  assert.match(plans, /data-plan-desktop-table="true"/);
   assert.match(plans, /Kế hoạch & Công việc/);
   assert.match(plans, /item\.accountName/);
   assert.match(plans, /item\.title/);

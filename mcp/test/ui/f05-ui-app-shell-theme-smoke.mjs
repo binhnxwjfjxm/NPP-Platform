@@ -81,8 +81,8 @@ try {
       await listPage.goto(`${appBase}${spec.path}`, { waitUntil: "domcontentloaded" });
 
       await listPage.locator("[data-page-header='true']").waitFor({ state: "visible" });
-      await listPage.locator(".route-mobile-list").waitFor({ state: "visible" });
-      assert.equal(await listPage.locator(".route-desktop-table").evaluate((node) => getComputedStyle(node).display), "none");
+      await listPage.locator("[data-plan-mobile-list='true']").waitFor({ state: "visible" });
+      assert.equal(await listPage.locator("[data-plan-desktop-table='true']").evaluate((node) => getComputedStyle(node).display), "none");
 
       const card = listPage.locator(spec.card).first();
       await card.waitFor({ state: "visible" });
