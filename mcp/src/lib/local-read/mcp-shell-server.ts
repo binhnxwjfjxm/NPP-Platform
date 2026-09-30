@@ -3,7 +3,6 @@ import "server-only";
 import {
   compareSessionsNewestFirst,
   derivePersistedRouteOverview,
-  vietnamBusinessDate,
   type DashboardReportRow,
   type DashboardRouteRow,
   type DashboardSessionRow
@@ -34,7 +33,7 @@ function routeData(routeRows: Row[], customerRows: Row[], latestSessions: Row[])
   for (const row of customerRows) { const routeId = text(row.route_id); if (!routeId || !bool(row.active, true)) continue; customerCount.set(routeId, (customerCount.get(routeId) || 0) + 1); }
   const routes = routeRows.map((row) => {
     const id = text(row.id); const latest = latestByRoute.get(id); const active = bool(row.active, true);
-    return { id, name: text(row.route_name) || "Tuyến chưa đặt tên", area: text(row.area) || "Chưa cập nhật khu vực", salesOwner: text(latest?.sales || row.sales) || "Chưa phân công", plannedCustomers: num(latest?.planned_customers, customerCount.get(id) || 0), visitedCustomers: num(latest?.visited_customers), orderCount: num(latest?.order_count), lastVisitDate: dateOnly(latest?.session_date) || "Chưa có", status: routeStatus(active, latest?.status) } satisfies RouteItem;
+    return { id, name: text(row.route_name) || "Tuyến chưa đặt tên", area: text(row.area) || "Chưa cập nhật khu vực", salesOwner: text(latest?.sales || row.sales) || "Chưa phân công", plannedCustomers: num(latest?.planned_customers, customerCount.get(id) || 0), visitedCustomers: num(latest?.visited_customers), orderCount: num(latest?.order_count), lastVisitDate: dateOnly(latest?.session_date) || "Chưa có", activeSessionId: text(latest?.status).toLowerCase() === "active" ? text(latest?.id) || null : null, activeSessionDate: text(latest?.status).toLowerCase() === "active" ? dateOnly(latest?.session_date) || null : null, status: routeStatus(active, latest?.status) } satisfies RouteItem;
   }).filter((row) => row.id);
   const activeRoutes = routes.filter((route) => route.status !== "paused").length;
   return { kpis: [{ label: "Tổng tuyến", value: routes.length, hint: "Đang quản lý" }, { label: "Có thể đi", value: activeRoutes, hint: "Đang hoạt động hoặc cần theo dõi" }, { label: "Điểm bán", value: routes.reduce((sum, route) => sum + route.plannedCustomers, 0), hint: "Trong các tuyến" }, { label: "Đã ghé", value: routes.reduce((sum, route) => sum + route.visitedCustomers, 0), hint: "Theo phiên gần nhất" }], routes };
@@ -61,7 +60,7 @@ function dashboardData(routeRows: Row[], latestSessions: Row[], latestReports: R
   const totals = routeHealth.reduce((acc, route) => { acc.planned += route.planned; acc.visited += route.visited; acc.orders += route.orders; acc.followups += route.followups; return acc; }, { planned: 0, visited: 0, orders: 0, followups: 0 });
   const rate = totals.planned > 0 ? Math.round(totals.visited / totals.planned * 100) : 0;
   const actions: McpShellAction[] = persistedRoutes.flatMap((route) => route.health === "good" ? [] : [{ title: route.sessionState === "none" ? `Lập phiên cho ${route.routeName}` : route.sessionState === "cancelled" ? `Kiểm tra phiên đã hủy tại ${route.routeName}` : route.health === "risk" ? `Kiểm tra độ phủ ${route.routeName}` : `Hoàn tất khách chưa ghé tại ${route.routeName}`, description: `${route.visited}/${route.planned || "-"} khách đã ghé trong phiên gần nhất.`, priority: route.health === "risk" ? "high" : "medium", owner: "Phụ trách tuyến" } satisfies McpShellAction]);
-  const sorted = [...dashboardSessions].sort(compareSessionsNewestFirst); const businessDate = vietnamBusinessDate(); const latestRaw = sorted.find((row) => text(row.status) === "active" && dateOnly(row.session_date) === businessDate) || sorted[0]; const persistedLatest = persistedRoutes.find((route) => route.sessionId === text(latestRaw?.id));
+  const sorted = [...dashboardSessions].sort(compareSessionsNewestFirst); const latestRaw = sorted.find((row) => text(row.status) === "active") || sorted[0]; const persistedLatest = persistedRoutes.find((route) => route.sessionId === text(latestRaw?.id));
   const latestSession = latestRaw ? { ...sessionRow(latestRaw), plannedCustomers: persistedLatest?.planned ?? num(latestRaw.planned_customers), visitedCustomers: persistedLatest?.visited ?? num(latestRaw.visited_customers), orderCount: persistedLatest?.orders ?? num(latestRaw.order_count), followupCount: persistedLatest?.followups ?? num(latestRaw.followup_count) } : null;
   const reportRaw = latestRaw ? dashboardReports.find((row) => text(row.session_id) === text(latestRaw.id)) : undefined;
   let latestReport: McpShellLatestReport | null = null;

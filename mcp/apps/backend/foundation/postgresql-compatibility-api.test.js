@@ -7,7 +7,7 @@ function persistenceWithRows({ daySession = true, dayStatus = "active" } = {}) {
   const client = {
     async query(sql, params = []) {
       if (sql.includes("FROM mcp.test_files")) {
-        assert.deepEqual(params, ["installation-test"]);
+        assert.deepEqual(params, ["installation-test", null]);
         return {
           rows: [{
             id: "file-1",
@@ -19,7 +19,7 @@ function persistenceWithRows({ daySession = true, dayStatus = "active" } = {}) {
         };
       }
       if (sql.includes("FROM mcp.test_file_products")) {
-        assert.deepEqual(params, ["installation-test"]);
+        assert.deepEqual(params, ["installation-test", null]);
         return {
           rows: [{
             id: "test-product-1",
@@ -31,7 +31,7 @@ function persistenceWithRows({ daySession = true, dayStatus = "active" } = {}) {
         };
       }
       if (sql.includes("FROM mcp.test_customer_results result")) {
-        assert.deepEqual(params, ["installation-test"]);
+        assert.deepEqual(params, ["installation-test", null]);
         return {
           rows: [{
             id: "result-1",

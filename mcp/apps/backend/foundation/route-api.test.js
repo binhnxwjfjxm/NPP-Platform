@@ -221,7 +221,7 @@ test("typed route API serves /api/routes/data from PostgreSQL with installation 
           }
           if (String(sql).includes("FROM mcp.mcp_route_sessions")) {
             return { rows: [
-              { route_id: "route-1", session_date: "2026-09-30", visited_customers: 1, order_count: 2, status: "active", created_at: "2026-09-30T08:00:00Z" }
+              { id: "session-1", route_id: "route-1", session_date: "2026-09-30", visited_customers: 1, order_count: 2, status: "active", created_at: "2026-09-30T08:00:00Z" }
             ] };
           }
           throw new Error("unexpected query");
@@ -249,6 +249,8 @@ test("typed route API serves /api/routes/data from PostgreSQL with installation 
     visitedCustomers: 1,
     orderCount: 2,
     lastVisitDate: "2026-09-30",
+    activeSessionId: "session-1",
+    activeSessionDate: "2026-09-30",
     status: "watch",
     weekday: 1,
     note: "Thứ 2"

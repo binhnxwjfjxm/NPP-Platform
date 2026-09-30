@@ -45,7 +45,8 @@ const EXPECTED_MIGRATIONS = [
   "mcp_013_customer_verification_review_reason",
   "mcp_014_customer_read_boundary",
   "mcp_015_customer_media_boundary",
-  "mcp_016_media_pending_expiry"
+  "mcp_016_media_pending_expiry",
+  "mcp_017_session_employee_ownership"
 ];
 
 test("MCP migrations use a unique registry namespace and apply once in one locked transaction", async () => {
@@ -370,6 +371,23 @@ test("MCP customer read boundary migration is canonical and grants only MCP read
   assert.match(sql, /mcp\.workforce_employees, mcp\.customer_addresses TO %I/);
   assert.doesNotMatch(sql, /GRANT[^\n]+ON TABLE shared\./i);
   assert.doesNotMatch(sql, /GRANT SELECT ON ALL TABLES/i);
+});
+
+test("MCP session employee ownership migration is canonical and keeps route masters shared", () => {
+  const sql = MCP_MIGRATIONS[16].sql;
+  const canonicalSql = readFileSync(
+    new URL("../../../../../database/migrations/mcp/017_mcp_session_employee_ownership.sql", import.meta.url),
+    "utf8"
+  );
+  assert.equal(sql, canonicalSql);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS owner_employee_id uuid NULL/);
+  assert.match(sql, /FOREIGN KEY \(installation_id, owner_employee_id\)/);
+  assert.match(sql, /REFERENCES shared\.employees \(installation_id, id\)/);
+  assert.match(sql, /mcp_route_sessions_one_active_employee_idx/);
+  assert.match(sql, /installation_id, route_id, owner_employee_id/);
+  assert.match(sql, /WHERE status = 'active' AND owner_employee_id IS NOT NULL/);
+  assert.match(sql, /DROP INDEX IF EXISTS mcp\.mcp_route_sessions_one_active_idx/);
+  assert.doesNotMatch(sql, /auto_closed_for_session_date/);
 });
 
 test("migration failure rolls back and preserves the original error", async () => {

@@ -46,7 +46,11 @@ function foundationContext(context) {
     nppCode: context.installation.nppCode,
     actorId: context.actor.id,
     actorType: context.actor.type,
-    actorAuthentication: context.actor.authentication || null
+    actorAuthentication: context.actor.authentication || null,
+    principalId: context.principal?.id || null,
+    principalType: context.principal?.type || null,
+    principalAuthentication: context.principal?.authentication || null,
+    employeeId: context.principal?.employeeId || null
   };
 }
 

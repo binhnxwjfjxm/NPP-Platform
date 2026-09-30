@@ -1,4 +1,7 @@
 const BUSINESS_ERROR_RULES: Array<{ match: string[]; message: string }> = [
+  { match: ["session_not_owned"], message: "Phiên này thuộc tài khoản khác. Vui lòng mở hoặc tiếp tục phiên của tài khoản đang đăng nhập." },
+  { match: ["employee_identity_required", "employee_scope_not_found"], message: "Không xác định được nhân viên đang đăng nhập. Vui lòng đăng nhập lại trước khi tiếp tục." },
+  { match: ["active_session_already_exists"], message: "Tài khoản này đang có phiên chưa kết thúc trên tuyến. Hãy tiếp tục phiên hiện tại hoặc kết thúc phiên trước khi mở phiên mới." },
   { match: ["route_active_session_ambiguous", "active_session_ambiguous", "nhiều hơn một phiên hoạt động"], message: "Tuyến đang có nhiều phiên cùng mở. Hãy vào Quản lý phiên để chốt hoặc hủy các phiên cũ, rồi thử lại." },
   { match: ["route_active_session_exists", "active_session_exists"], message: "Tuyến đang có một phiên khác chưa chốt. Hãy vào Quản lý phiên để chốt hoặc hủy phiên cũ trước khi mở phiên mới." },
   { match: ["session_not_found", "route_not_found", "session_customer_not_found", "no_data_found"], message: "Dữ liệu không còn tồn tại. Vui lòng tải lại trang." },

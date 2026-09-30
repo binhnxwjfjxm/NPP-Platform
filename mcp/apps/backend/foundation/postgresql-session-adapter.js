@@ -51,9 +51,41 @@ function requestContext(config, args) {
       type: text(source.actorType) || "service",
       authentication: text(source.actorAuthentication) || "backend-token"
     }),
-    principal: config.servicePrincipal,
+    principal: Object.freeze({
+      ...(config.servicePrincipal || {}),
+      id: text(source.principalId) || text(source.actorId) || text(config.servicePrincipal?.id) || "service:mcp",
+      type: text(source.principalType) || text(source.actorType) || text(config.servicePrincipal?.type) || "service",
+      authentication: text(source.principalAuthentication) || text(source.actorAuthentication) || text(config.servicePrincipal?.authentication) || "backend-token",
+      employeeId: text(source.employeeId) || text(config.servicePrincipal?.employeeId)
+    }),
     auth: Object.freeze({ mode: config.authMode, authenticated: true })
   });
+}
+
+function employeeId(context, { requiredForUser = false } = {}) {
+  const value = text(context?.principal?.employeeId);
+  if (requiredForUser && context?.principal?.type === "user" && !value) fail("employee_identity_required", 403);
+  return value;
+}
+
+async function resolveEmployeeOwner(client, context) {
+  const id = employeeId(context, { requiredForUser: true });
+  if (!id) return null;
+  const result = await client.query(
+    `SELECT id, code, full_name
+       FROM mcp.workforce_employees
+      WHERE installation_id = $1 AND id = $2::uuid AND is_active IS TRUE
+      LIMIT 1`,
+    [context.installation.id, id]
+  );
+  const row = result.rows?.[0];
+  if (!row) fail("employee_scope_not_found", 403);
+  return row;
+}
+
+function assertSessionOwner(session, context) {
+  const id = employeeId(context, { requiredForUser: true });
+  if (id && text(session?.owner_employee_id) !== id) fail("session_not_owned", 403);
 }
 
 function sessionResult(row, extra = {}) {
@@ -64,6 +96,7 @@ function sessionResult(row, extra = {}) {
     routeName: row.route_name,
     sessionDate: row.session_date,
     sales: row.sales,
+    ownerEmployeeId: row.owner_employee_id || null,
     area: row.area,
     status: row.status,
     plannedCustomers: row.planned_customers,
@@ -169,54 +202,6 @@ async function createSessionReportSnapshot(client, context, session, source = "c
   };
 }
 
-async function finalizeStaleSession(client, context, routeId, requestedDate) {
-  const active = await client.query(
-    `SELECT *, session_date::text AS session_date_text
-     FROM mcp.mcp_route_sessions
-     WHERE installation_id = $1 AND route_id = $2 AND status = 'active'
-     FOR UPDATE`,
-    [context.installation.id, routeId]
-  );
-  const session = active.rows?.[0];
-  if (!session) return;
-  if (session.session_date_text >= requestedDate) fail("active_session_already_exists", 409);
-
-  const closed = await client.query(
-    `WITH stats AS (
-       SELECT
-         COUNT(*)::integer AS planned,
-         COUNT(*) FILTER (WHERE visit_status = 'visited')::integer AS visited,
-         COUNT(*) FILTER (WHERE order_id IS NOT NULL)::integer AS orders,
-         COUNT(*) FILTER (WHERE test_id IS NOT NULL)::integer AS tests,
-         COUNT(*) FILTER (WHERE report_id IS NOT NULL)::integer AS reports,
-         COALESCE(SUM(followup_count), 0)::integer AS followups
-       FROM mcp.mcp_session_customers
-       WHERE installation_id = $1 AND session_id = $2
-     )
-     UPDATE mcp.mcp_route_sessions session
-     SET status = 'done',
-         planned_customers = stats.planned,
-         visited_customers = stats.visited,
-         order_count = stats.orders,
-         test_count = stats.tests,
-         report_count = stats.reports,
-         followup_count = stats.followups,
-         closed_at = COALESCE(session.closed_at, now()),
-         raw_payload = COALESCE(session.raw_payload, '{}'::jsonb) ||
-           jsonb_build_object(
-             'auto_closed_for_session_date', $3::text,
-             'auto_closed_context', $4::jsonb
-           ),
-         updated_at = now()
-     FROM stats
-     WHERE session.installation_id = $1 AND session.id = $2
-     RETURNING session.*`,
-    [context.installation.id, session.id, requestedDate, json({ requestId: context.requestId, actorId: context.actor.id })]
-  );
-  if (!closed.rows?.[0]) fail("session_not_found", 404);
-  await createSessionReportSnapshot(client, context, closed.rows[0], "close_session");
-}
-
 async function openRouteSession(client, args, context) {
   const routeId = text(args.p_route_id);
   const sessionDate = text(args.p_session_date)?.slice(0, 10);
@@ -232,7 +217,20 @@ async function openRouteSession(client, args, context) {
   const route = selectedRoute.rows?.[0];
   if (!route) fail("route_inactive_or_not_found", 404);
 
-  await finalizeStaleSession(client, context, route.id, sessionDate);
+  const owner = await resolveEmployeeOwner(client, context);
+  const ownerEmployeeId = owner?.id || null;
+  const active = await client.query(
+    `SELECT id
+       FROM mcp.mcp_route_sessions
+      WHERE installation_id = $1
+        AND route_id = $2
+        AND status = 'active'
+        AND (($3::uuid IS NOT NULL AND owner_employee_id = $3::uuid)
+          OR ($3::uuid IS NULL AND owner_employee_id IS NULL))
+      FOR UPDATE`,
+    [context.installation.id, route.id, ownerEmployeeId]
+  );
+  if (active.rows?.[0]) fail("active_session_already_exists", 409);
 
   const count = await client.query(
     `SELECT COUNT(*)::integer AS count
@@ -243,17 +241,18 @@ async function openRouteSession(client, args, context) {
   const created = await client.query(
     `INSERT INTO mcp.mcp_route_sessions (
        installation_id, route_id, route_name, session_date, sales, area, status,
-       planned_customers, opened_at, raw_payload
-     ) VALUES ($1, $2, $3, $4::date, $5, $6, 'active', $7, now(),
-       jsonb_build_object('foundation_context', $8::jsonb))
+       owner_employee_id, planned_customers, opened_at, raw_payload
+     ) VALUES ($1, $2, $3, $4::date, $5, $6, 'active', $7::uuid, $8, now(),
+       jsonb_build_object('foundation_context', $9::jsonb))
      RETURNING *`,
     [
       context.installation.id,
       route.id,
       route.route_name,
       sessionDate,
-      text(args.p_owner) || route.sales,
+      owner?.code || text(args.p_owner) || route.sales,
       route.area,
+      ownerEmployeeId,
       Number(count.rows?.[0]?.count || 0),
       json(args.p_context || {})
     ]
@@ -282,7 +281,8 @@ async function setSessionCustomerStatus(client, args, context) {
   if (!visitStatus) fail("visit_status_required");
 
   const selected = await client.query(
-    `SELECT customer.*, session.status AS session_status
+    `SELECT customer.*, session.status AS session_status,
+            session.owner_employee_id AS session_owner_employee_id
      FROM mcp.mcp_session_customers customer
      JOIN mcp.mcp_route_sessions session
        ON session.installation_id = customer.installation_id
@@ -293,6 +293,7 @@ async function setSessionCustomerStatus(client, args, context) {
   );
   const customer = selected.rows?.[0];
   if (!customer) fail("session_customer_not_found", 404);
+  assertSessionOwner({ owner_employee_id: customer.session_owner_employee_id }, context);
   if (customer.session_status !== "active") fail("session_read_only", 409);
 
   const updated = await client.query(
@@ -335,6 +336,7 @@ async function updateRouteSession(client, args, context) {
   );
   const session = selected.rows?.[0];
   if (!session) fail("session_not_found", 404);
+  assertSessionOwner(session, context);
   if (session.status !== "active") fail("session_read_only", 409);
 
   let nextStatus = (text(args.p_status) || session.status).toLowerCase();
