@@ -329,3 +329,25 @@
     grid-template-columns: 1fr;
   }
 }
+
+.stateActions {
+  display: grid;
+  width: min(100%, 420px);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--mcp-space-sm);
+}
+
+.stateActions > * {
+  width: 100%;
+}
+
+.stateActions .primaryAction {
+  min-height: var(--mcp-control-height);
+  box-shadow: none;
+}
+
+@media (max-width: 560px) {
+  .stateActions {
+    grid-template-columns: 1fr;
+  }
+}
