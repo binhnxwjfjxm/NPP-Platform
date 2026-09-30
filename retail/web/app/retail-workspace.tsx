@@ -9,7 +9,6 @@ import {
     requestRetailNotificationPermission,
     retailNotificationStatusLabel,
     RETAIL_NOTIFICATION_FOREGROUND_EVENT,
-    RETAIL_NOTIFICATION_OPEN_EVENT,
     sendRetailNotificationTest,
     subscribeRetailNotificationState,
     unregisterRetailNotificationForLogout,
@@ -514,24 +513,16 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
             if (detail)
                 setForegroundNotification(detail);
         };
-        const handleOpen = (event: Event) => {
-            const detail = (event as CustomEvent<RetailForegroundNotification>).detail;
-            if (detail?.orderId && isNotificationOrderId(detail.orderId))
-                void openOrder(detail.orderId);
-            setForegroundNotification(null);
-        };
         window.addEventListener(RETAIL_NOTIFICATION_FOREGROUND_EVENT, handleForeground);
-        window.addEventListener(RETAIL_NOTIFICATION_OPEN_EVENT, handleOpen);
         const deepLinkOrderId = new URLSearchParams(window.location.search).get('order');
         if (isNotificationOrderId(deepLinkOrderId)) {
-            void openOrder(deepLinkOrderId!);
+            void openNotificationOrder(deepLinkOrderId!);
             const nextUrl = new URL(window.location.href);
             nextUrl.searchParams.delete('order');
             window.history.replaceState({}, '', `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
         }
         return () => {
             window.removeEventListener(RETAIL_NOTIFICATION_FOREGROUND_EVENT, handleForeground);
-            window.removeEventListener(RETAIL_NOTIFICATION_OPEN_EVENT, handleOpen);
         };
     }, []);
     useEffect(() => { setOrderVisibleCount(ORDER_VISIBLE_STEP); }, [orderSearch, orderDateFrom, orderDateTo]);
@@ -1346,7 +1337,7 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
             setBusy(null);
         }
     }
-    async function openOrder(id: string) {
+    async function openOrder(id: string, options: { resetScroll?: boolean } = {}) {
         setError(null);
         try {
             const next = await api<Order>(`/api/retail/orders/${id}`);
@@ -1368,10 +1359,16 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
             setEditPickup(false);
             setActiveTab('entry');
             lastDraftFingerprint.current = '';
+            if (options.resetScroll) {
+                window.requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: 'auto' }));
+            }
         }
         catch (reason) {
             setError(errorMessage(reason, 'Không thể tải đơn.'));
         }
+    }
+    function openNotificationOrder(id: string) {
+        return openOrder(id, { resetScroll: true });
     }
     function beginPickupEdit() { if (!order)
         return; setCart(cartFromOrder(order)); setQuantityInputs({}); setManualPrices(manualPricesFromOrder(order)); setCustomerMode(order.customerMode); setCustomerId(order.customerId); setCustomerName(order.customerMode === 'EXISTING' ? order.customerName : 'Khách lẻ'); setWarehouseId(order.warehouseId); setPolicy(order.collectionPolicy); setNote(order.note ?? ''); setDocumentDiscountMode(order.documentDiscountMode ?? 'NONE'); setDocumentDiscountValue(order.documentDiscountValue ?? '0'); setDocumentDiscountReason(order.documentDiscountReason ?? ''); setEditPickup(true); setNotice('Có thể sửa đơn đến trước khi xuất kho.'); }
@@ -1630,7 +1627,7 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
       <span className="topbar-spacer" aria-hidden="true"/>
     </header>
     {error ? <p className="notice error" role="alert">{error}</p> : null}{notice ? <p className="notice" role="status">{notice}</p> : null}
-    {foregroundNotification ? <aside className="retail-notification-banner" role="status" aria-live="polite"><span aria-hidden="true">🔔</span><span><strong>{foregroundNotification.title}</strong><small>{foregroundNotification.body}</small></span>{foregroundNotification.orderId ? <button className="notification-open" type="button" onClick={() => { const id = foregroundNotification.orderId; setForegroundNotification(null); if (id) void openOrder(id); }}>Xem đơn</button> : null}<button className="notification-close" type="button" aria-label="Đóng thông báo" onClick={() => setForegroundNotification(null)}>×</button></aside> : null}
+    {foregroundNotification ? <aside className="retail-notification-banner" role="status" aria-live="polite"><span aria-hidden="true">🔔</span><span><strong>{foregroundNotification.title}</strong><small>{foregroundNotification.body}</small></span>{foregroundNotification.orderId ? <button className="notification-open" type="button" onClick={() => { const id = foregroundNotification.orderId; setForegroundNotification(null); if (id) void openNotificationOrder(id); }}>Xem đơn</button> : null}<button className="notification-close" type="button" aria-label="Đóng thông báo" onClick={() => setForegroundNotification(null)}>×</button></aside> : null}
 
     {activeTab === 'home' ? <section className="retail-home compact-home retail-page">
       {notificationState.ready && notificationState.isOwner && notificationState.status !== 'subscribed' ? <button className="retail-notification-warning" type="button" onClick={() => { setActiveTab('settings'); setSettingsPanel('notifications'); }}><span aria-hidden="true">🔔</span><span><strong>Thông báo đơn hàng chưa hoạt động</strong><small>{retailNotificationStatusLabel(notificationState)}</small></span><b>Thiết lập ›</b></button> : null}
