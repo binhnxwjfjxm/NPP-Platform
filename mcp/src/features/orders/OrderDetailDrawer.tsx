@@ -125,7 +125,7 @@ export function OrderDetailDrawer({ open, order, possibleDuplicate, onClose }: O
 
     const body = document.body;
     const html = document.documentElement;
-    const scrollRegion = document.querySelector<HTMLElement>("[data-app-scroll-region='true']");
+    const scrollRegion = document.querySelector<HTMLElement>("[data-mcp-scroll-region='true']");
     const scrollTop = scrollRegion?.scrollTop ?? 0;
     const previous = {
       bodyOverflow: body.style.overflow,

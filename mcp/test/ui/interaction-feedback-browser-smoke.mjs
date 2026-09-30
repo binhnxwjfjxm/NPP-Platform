@@ -40,7 +40,7 @@ try {
   });
   const webPage = await webContext.newPage();
   await webPage.goto(`${appBase}/settings`, { waitUntil: "domcontentloaded" });
-  await webPage.locator("[data-app-top-bar]").getByText("Cài đặt ứng dụng", { exact: true }).waitFor({ state: "visible" });
+  await webPage.locator("[data-mcp-app-top-bar]").getByText("Thiết lập", { exact: true }).waitFor({ state: "visible" });
 
   const feedbackSwitch = webPage.getByRole("switch", { name: "Phản hồi rung", exact: true });
   await feedbackSwitch.waitFor({ state: "visible" });

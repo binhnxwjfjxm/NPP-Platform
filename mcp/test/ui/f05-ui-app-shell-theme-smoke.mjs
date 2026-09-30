@@ -50,7 +50,7 @@ try {
 
     const launchpad = homePage.locator(".mobile-home-launchpad:visible");
     assert.equal(await launchpad.count(), 1, `home must show one launchpad at ${viewport.width}px`);
-    const primaryAction = launchpad.getByRole("link", { name: /Đi tuyến hôm nay/ });
+    const primaryAction = launchpad.getByRole("link", { name: /Đi tuyến/ });
     await primaryAction.waitFor({ state: "visible" });
     assert.equal(await primaryAction.getAttribute("href"), "/visits");
     assert.equal(await launchpad.locator(".mobile-home-quick-grid a").count(), 5, "home must keep five operational shortcuts");
@@ -63,7 +63,7 @@ try {
 
     const overflow = await horizontalOverflow(homePage);
     assert.ok(overflow <= 1, `home must not overflow horizontally at ${viewport.width}px; overflow=${overflow}`);
-    await homePage.locator("[data-bottom-navigation]").waitFor({ state: "visible" });
+    await homePage.locator("[data-mcp-bottom-navigation]").waitFor({ state: "visible" });
     await screenshot(homePage, `11-home-mobile-${viewport.width}`);
     await homeContext.close();
   }
@@ -114,7 +114,7 @@ try {
 
       const overflow = await horizontalOverflow(listPage);
       assert.ok(overflow <= 1, `${spec.path} must not overflow horizontally at ${viewport.width}px; overflow=${overflow}`);
-      await listPage.locator("[data-bottom-navigation]").waitFor({ state: "visible" });
+      await listPage.locator("[data-mcp-bottom-navigation]").waitFor({ state: "visible" });
       await screenshot(listPage, `15-${spec.path.slice(1)}-mobile-${viewport.width}`);
       await listContext.close();
     }
@@ -139,12 +139,12 @@ try {
 
   try {
     await page.goto(`${appBase}/routes`, { waitUntil: "domcontentloaded" });
-    const shell = page.locator(".app-shell");
+    const shell = page.locator("[data-mcp-app-shell=\"true\"]");
     assert.equal(await shell.getAttribute("data-shell-section"), "routes");
 
-    const topBar = page.locator("[data-app-top-bar]");
+    const topBar = page.locator("[data-mcp-app-top-bar]");
     await topBar.waitFor({ state: "visible" });
-    await topBar.getByText("Tuyến bán hàng", { exact: true }).waitFor({ state: "visible" });
+    await topBar.getByText("Tuyến cố định", { exact: true }).waitFor({ state: "visible" });
     const trigger = topBar.getByRole("button", { name: "Mở menu ứng dụng", exact: true });
     assert.equal(await trigger.count(), 1, "top bar must own exactly one menu trigger");
     assert.equal(await page.locator("body > .card").count(), 0, "route export must not render as a detached card before AppShell");
@@ -156,7 +156,7 @@ try {
     await exportTrigger.click();
 
     const positions = await page.evaluate(() => {
-      const bar = document.querySelector("[data-app-top-bar]");
+      const bar = document.querySelector("[data-mcp-app-top-bar]");
       const button = bar?.querySelector('button[aria-label="Mở menu ứng dụng"]');
       return {
         bar: bar ? getComputedStyle(bar).position : "missing",
@@ -170,22 +170,20 @@ try {
     await trigger.click();
     const menu = page.getByRole("dialog").last();
     await menu.waitFor({ state: "visible" });
-    for (const heading of ["Vận hành hôm nay", "Quản lý MCP", "Thiết lập nghiệp vụ"]) {
-      await menu.getByText(heading, { exact: true }).waitFor({ state: "visible" });
-    }
-    for (const label of ["Tổng quan", "Tuyến bán hàng", "Đi tuyến hôm nay", "Lịch sử phiên", "Điểm bán", "Đơn hàng", "Báo cáo phiên", "Kế hoạch", "Cài đặt MCP", "Cài đặt ứng dụng"]) {
+    await menu.getByText("Điều hướng", { exact: true }).waitFor({ state: "visible" });
+    for (const label of ["Hôm nay", "Đi tuyến", "Điểm bán", "Đơn hàng", "Thêm"]) {
       await menu.getByRole("button", { name: new RegExp(`^${label}`) }).first().waitFor({ state: "visible" });
     }
     await screenshot(page, "18-app-shell-expanded-menu");
 
-    await menu.getByRole("button", { name: /^Đi tuyến hôm nay/ }).click();
+    await menu.getByRole("button", { name: /^Đi tuyến/ }).click();
     await page.waitForURL((url) => url.pathname === "/routes");
-    assert.equal(await page.locator(".app-shell").getAttribute("data-shell-section"), "routes");
-    await page.locator("[data-app-top-bar]").getByText("Tuyến bán hàng", { exact: true }).waitFor({ state: "visible" });
+    assert.equal(await page.locator("[data-mcp-app-shell=\"true\"]").getAttribute("data-shell-section"), "routes");
+    await page.locator("[data-mcp-app-top-bar]").getByText("Tuyến cố định", { exact: true }).waitFor({ state: "visible" });
 
     await page.goto(`${appBase}/visits?routeId=route-active&date=2099-12-30`, { waitUntil: "domcontentloaded" });
-    assert.equal(await page.locator(".app-shell").getAttribute("data-shell-section"), "session");
-    await page.locator("[data-app-top-bar]").getByText("Đi tuyến hôm nay", { exact: true }).waitFor({ state: "visible" });
+    assert.equal(await page.locator("[data-mcp-app-shell=\"true\"]").getAttribute("data-shell-section"), "session");
+    await page.locator("[data-mcp-app-top-bar]").getByText("Đi tuyến", { exact: true }).waitFor({ state: "visible" });
     const customer = page.locator("article").filter({ hasText: "UI Existing Customer" }).first();
     const actionTrigger = customer.getByRole("button", { name: "Thao tác", exact: true });
     await actionTrigger.click();
