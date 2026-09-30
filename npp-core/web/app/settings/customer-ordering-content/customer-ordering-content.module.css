@@ -64,6 +64,23 @@
   font: inherit;
 }
 
+.field textarea {
+  min-height: 132px;
+  padding: 12px 13px;
+  resize: vertical;
+  border: 1px solid var(--hp-border, #dfe5df);
+  border-radius: 10px;
+  background: var(--hp-surface, #fff);
+  color: var(--hp-ink, #17221a);
+  font: inherit;
+  line-height: 1.5;
+}
+
+.field small {
+  color: var(--hp-muted, #66736b);
+  font-weight: 500;
+}
+
 .bannerField {
   display: grid;
   gap: 12px;
