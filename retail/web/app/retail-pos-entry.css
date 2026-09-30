@@ -129,7 +129,6 @@
 }
 .retail-issue675 .pos-promotion-row b { color: #98a2b3; }
 .retail-issue675 .pos-checkout-bar {
-  display: flex;
   align-items: stretch;
 }
 .retail-issue675 .pos-checkout-bar .secondary-action {
@@ -384,9 +383,6 @@
   .retail-issue675 .order-identity,
   .retail-issue675 .order-timeline { display: none; }
   .retail-issue675 .retail-order-card { padding-top: 8px; }
-  .retail-issue675 .pos-checkout-bar {
-    display: flex;
-  }
   .retail-issue675 .product-sheet .lot7-product-row.pos-product-row {
     grid-template-columns: 48px minmax(0,1fr) 26px;
   }

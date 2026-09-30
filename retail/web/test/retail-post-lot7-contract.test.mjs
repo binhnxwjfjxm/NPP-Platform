@@ -234,12 +234,13 @@ test('bottom nav có một owner duy nhất, fixed trực tiếp và không còn
 });
 
 test('dock cố định có một owner và Lên đơn chừa đủ chỗ cho cả thao tác lẫn điều hướng', async () => {
-  const [page, canonicalCss, globalsCss, lot7Css, mobileCss] = await Promise.all([
+  const [page, canonicalCss, globalsCss, lot7Css, mobileCss, posEntryCss] = await Promise.all([
     readWorkspace(),
     read('app/retail-issue675.css'),
     read('app/globals.css'),
     read('app/retail-lot7.css'),
     read('app/retail-mobile-polish.css'),
+    read('app/retail-pos-entry.css'),
   ]);
   assert.match(page, /activeTab === 'entry' \? ' retail-entry-active' : ''/);
   assert.match(canonicalCss, /--retail-bottom-nav-height: 56px;/);
@@ -250,6 +251,7 @@ test('dock cố định có một owner và Lên đơn chừa đủ chỗ cho c�
   assert.doesNotMatch(globalsCss, /\.order-action-bar \{|\.bottom-nav \{/);
   assert.doesNotMatch(lot7Css, /\.retail-lot7 \.order-action-bar|\.retail-lot7 \.bottom-nav|padding-bottom: calc\(190px/);
   assert.doesNotMatch(mobileCss, /\.retail-issue675 \.order-action-bar/);
+  assert.doesNotMatch(posEntryCss, /\.retail-issue675 \.pos-checkout-bar \{[^}]*display:\s*flex;/);
 });
 
 test('trạng thái đơn có tone riêng và interaction có focus pressed disabled', async () => {

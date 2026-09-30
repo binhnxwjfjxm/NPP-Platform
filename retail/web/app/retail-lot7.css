@@ -119,8 +119,6 @@
   .retail-lot7 .editable dl { grid-column: 2 / -1; display: flex; justify-content: flex-end; gap: 16px; min-width: 0; }
   .retail-lot7 .cart-row-saved dl { grid-column: 2 / -1; grid-template-columns: repeat(3,minmax(0,1fr)); min-width: 0; }
   .retail-lot7 .lot7-total .grand-total strong { font-size: 25px; }
-  .retail-lot7 .bottom-nav { padding-right: 4px; padding-left: 4px; }
-  .retail-lot7 .bottom-nav button { padding-right: 2px; padding-left: 2px; font-size: 10px; }
   .home-actions { grid-template-columns: 1fr; }
   .print-paper-picker { align-items: stretch; flex-direction: column; }
   .print-document { padding: 18px; }
