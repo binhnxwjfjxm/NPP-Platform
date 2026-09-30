@@ -164,7 +164,6 @@ function TopMenuPanel({ children, description, onClose, open, title }: TopMenuPa
 }
 
 function requiredNavigationPermission(href: string) {
-  if (href === "/routes") return "mcp.route.write";
   if (href === "/mcp-setting") return "mcp.report-setting.write";
   return null;
 }

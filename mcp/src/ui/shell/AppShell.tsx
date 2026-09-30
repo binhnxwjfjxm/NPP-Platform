@@ -32,7 +32,6 @@ function NavLinks({ activeHref, items }: { activeHref: string; items: NavItem[] 
 }
 
 function requiredNavigationPermission(href: string) {
-  if (href === "/routes") return "mcp.route.write";
   if (href === "/mcp-setting") return "mcp.report-setting.write";
   return null;
 }

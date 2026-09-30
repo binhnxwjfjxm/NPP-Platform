@@ -3,35 +3,27 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const master = await readFile(new URL("../src/features/mcp/McpMasterView.tsx", import.meta.url), "utf8");
+const companyWorkspace = await readFile(new URL("../../npp-core/web/app/settings/mcp-routes/mcp-route-settings-workspace.tsx", import.meta.url), "utf8");
 const createProxy = await readFile(new URL("../src/app/api/routes/route.ts", import.meta.url), "utf8");
 const updateProxy = await readFile(new URL("../src/app/api/routes/[id]/route.ts", import.meta.url), "utf8");
 const gateway = await readFile(new URL("../apps/backend/foundation/gateway.js", import.meta.url), "utf8");
 const legacyRuntime = await readFile(new URL("../apps/backend/foundation/legacy-runtime.js", import.meta.url), "utf8");
 const routeApi = await readFile(new URL("../apps/backend/foundation/route-api.js", import.meta.url), "utf8");
 
-test("route create and update use exact stable idempotency operations", () => {
-  assert.match(
-    master,
-    /idempotentMutationFetch\("\/api\/routes"[\s\S]*?method: "POST"[\s\S]*?operation: "route\.create"/
-  );
-  assert.match(
-    master,
-    /idempotentMutationFetch\(`\/api\/routes\/\$\{encodeURIComponent\(routeEditorRoute\.id\)\}`[\s\S]*?method: "PATCH"[\s\S]*?operation: "route\.update"/
-  );
-  assert.doesNotMatch(master, /fetch\("\/api\/routes"[\s\S]*?method: "POST"/);
+test("PWA no longer owns route master create update archive actions", () => {
+  assert.doesNotMatch(master, /submitRouteEditor|openRouteCreate|openRouteEdit|openRouteDelete/);
+  assert.doesNotMatch(master, /operation: "route\\.(?:create|update|archive|delete)"/);
+  assert.doesNotMatch(master, />Tạo tuyến</);
+  assert.match(master, /Tuyến được thiết lập tại Công Ty/);
 });
 
-test("route archive remains outside the DB-only create update slice", () => {
-  assert.match(
-    master,
-    /fetch\(`\/api\/routes\/\$\{encodeURIComponent\(routeEditorRoute\.id\)\}\/archive`[\s\S]*?method: "POST"/
-  );
-  assert.doesNotMatch(master, /operation: "route\.(?:archive|delete)"/);
-  assert.equal(
-    routeApi.includes("const routeMatch = pathname.match(/^\\/api\\/routes\\/([^/]+)$/);"),
-    true
-  );
-  assert.match(routeApi, /return null;/);
+test("Company route settings own route master mutations with canonical idempotency", () => {
+  assert.match(companyWorkspace, /createIdempotencyKey\\(operation\\)/);
+  assert.match(companyWorkspace, /company-mcp-route-create/);
+  assert.match(companyWorkspace, /company-mcp-route-update/);
+  assert.match(companyWorkspace, /company-mcp-route-archive/);
+  assert.match(companyWorkspace, /\\/api\\/mcp-routes/);
+  assert.equal(routeApi.includes("const routeMatch = pathname.match(/^\\\\/api\\\\/routes\\\\/([^/]+)$/);"), true);
 });
 
 test("same-origin proxies forward create and update to canonical backend routes", () => {

@@ -1,5 +1,5 @@
-import { EmployeeMcpReportingWorkspace } from '../../components/employee-mcp-reporting-workspace';
+import McpRouteSettingsWorkspace from './mcp-route-settings-workspace';
 
 export default function McpRouteSettingsPage() {
-  return <EmployeeMcpReportingWorkspace />;
+  return <McpRouteSettingsWorkspace />;
 }
