@@ -178,7 +178,7 @@ jobs:
              AND l.sales_order_version_id=t.version_id
             LEFT JOIN inventory.inventory_movements m
               ON m.installation_id=t.installation_id
-             AND m.source_document_id=t.id
+             AND m.source_document_id=t.id::text
              AND m.source_document_type='SALES_ORDER'
              AND m.movement_type='SALES_DELIVERY_ISSUE'
              AND m.reversal_of_movement_id IS NULL
