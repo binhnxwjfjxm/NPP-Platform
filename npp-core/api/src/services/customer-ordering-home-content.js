@@ -11,11 +11,20 @@ function normalizeTitle(value) {
   return { ok: true, value: title };
 }
 
+function normalizeProgramContent(value) {
+  const content = String(value ?? '').trim();
+  if (content.length > 4000) {
+    return { ok: false, code: 'INVALID_PROGRAM_CONTENT', message: 'Nội dung chương trình không được vượt quá 4.000 ký tự.' };
+  }
+  return { ok: true, value: content };
+}
+
 export function publicCustomerOrderingHomeContent(row, config) {
   const imagePresent = row?.banner_image_present === true;
   const version = Number(row?.banner_image_version ?? 0);
   return Object.freeze({
     sectionTitle: String(row?.section_title ?? DEFAULT_SECTION_TITLE),
+    programContent: String(row?.program_content ?? ''),
     visible: row?.is_visible === true,
     bannerUrl: imagePresent ? customerOrderingHomeBannerUrl(config, version) : null,
     imagePresent,
@@ -39,12 +48,18 @@ export async function updateCustomerOrderingHomeContent(client, {
 }) {
   const title = normalizeTitle(payload?.sectionTitle);
   if (!title.ok) return title;
+  const hasProgramContent = Object.prototype.hasOwnProperty.call(payload ?? {}, 'programContent');
+  const programContent = hasProgramContent
+    ? normalizeProgramContent(payload?.programContent)
+    : { ok: true, value: null };
+  if (!programContent.ok) return programContent;
   if (typeof payload?.visible !== 'boolean') {
     return { ok: false, code: 'INVALID_VISIBILITY', message: 'Trạng thái hiển thị không hợp lệ.' };
   }
   const row = await repository.saveCustomerOrderingHomeContent(client, {
     installationId,
     sectionTitle: title.value,
+    programContent: programContent.value,
     isVisible: payload.visible,
     actorId,
   });

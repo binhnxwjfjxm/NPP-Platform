@@ -8,6 +8,7 @@ import styles from './customer-ordering-content.module.css';
 
 type HomeContent = {
   sectionTitle: string;
+  programContent: string;
   visible: boolean;
   bannerUrl: string | null;
   imagePresent: boolean;
@@ -31,6 +32,7 @@ export default function CustomerOrderingContentWorkspace() {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [content, setContent] = useState<HomeContent | null>(null);
   const [sectionTitle, setSectionTitle] = useState('Sự kiện');
+  const [programContent, setProgramContent] = useState('');
   const [visible, setVisible] = useState(false);
   const [busy, setBusy] = useState<'load' | 'save' | 'upload' | null>('load');
   const [message, setMessage] = useState<string | null>(null);
@@ -43,6 +45,7 @@ export default function CustomerOrderingContentWorkspace() {
         if (!active) return;
         setContent(next);
         setSectionTitle(next.sectionTitle);
+        setProgramContent(next.programContent);
         setVisible(next.visible);
         setBusy(null);
       })
@@ -65,10 +68,15 @@ export default function CustomerOrderingContentWorkspace() {
           'Content-Type': 'application/json',
           'Idempotency-Key': createIdempotencyKey('customer-ordering-home-content-update'),
         },
-        body: JSON.stringify({ sectionTitle: sectionTitle.trim(), visible }),
+        body: JSON.stringify({
+          sectionTitle: sectionTitle.trim(),
+          programContent: programContent.trim(),
+          visible,
+        }),
       }));
       setContent(next);
       setSectionTitle(next.sectionTitle);
+      setProgramContent(next.programContent);
       setVisible(next.visible);
       setMessage('Đã lưu nội dung Trang chủ khách hàng.');
     } catch (error) {
@@ -113,7 +121,7 @@ export default function CustomerOrderingContentWorkspace() {
             <div>
               <p className={styles.eyebrow}>TRANG CHỦ KHÁCH HÀNG</p>
               <h2>Sự kiện / thông báo</h2>
-              <p>Tiêu đề và ảnh bên dưới sẽ hiển thị giống nhau trên PWA và ứng dụng đặt hàng.</p>
+              <p>Tiêu đề, nội dung chương trình và ảnh bên dưới dùng chung cho các kênh đặt hàng.</p>
             </div>
             <label className={styles.toggle}>
               <input type="checkbox" checked={visible} onChange={(event) => setVisible(event.currentTarget.checked)} disabled={busy !== null} />
@@ -124,6 +132,19 @@ export default function CustomerOrderingContentWorkspace() {
           <label className={styles.field}>
             <span>Tiêu đề mục</span>
             <input value={sectionTitle} maxLength={80} onChange={(event) => setSectionTitle(event.currentTarget.value)} disabled={busy !== null} placeholder="Ví dụ: Sự kiện" />
+          </label>
+
+          <label className={styles.field}>
+            <span>Nội dung chương trình</span>
+            <textarea
+              value={programContent}
+              maxLength={4000}
+              rows={7}
+              onChange={(event) => setProgramContent(event.currentTarget.value)}
+              disabled={busy !== null}
+              placeholder="Ví dụ: Nội dung ưu đãi, thời gian áp dụng, điều kiện chương trình…"
+            />
+            <small>Nội dung này hiển thị khi khách bấm vào banner Sự kiện trên ứng dụng đặt hàng.</small>
           </label>
 
           <div className={styles.bannerField}>
