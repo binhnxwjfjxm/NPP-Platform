@@ -44,7 +44,7 @@ async function verifyProtectedPage(browser, { viewport, path, expectedReturnTo, 
   await page.getByLabel("Tên đăng nhập hoặc email Owner", { exact: true }).waitFor({ state: "visible" });
   await page.getByLabel("Mật khẩu", { exact: true }).waitFor({ state: "visible" });
   await page.getByRole("button", { name: "Đăng nhập", exact: true }).waitFor({ state: "visible" });
-  assert.equal(await page.locator(".app-shell").count(), 0, "protected customer pages must not stream the MCP shell before authentication");
+  assert.equal(await page.locator("[data-mcp-app-shell=\"true\"]").count(), 0, "protected customer pages must not stream the MCP shell before authentication");
   assert.equal(new URL(page.url()).searchParams.get("returnTo"), expectedReturnTo);
   assert.equal(await page.locator('input[name="returnTo"]').inputValue(), expectedReturnTo || "/customers");
   const geometry = await verifyNoHorizontalOverflow(page, path);

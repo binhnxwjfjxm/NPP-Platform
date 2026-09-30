@@ -4,7 +4,7 @@ import { useState } from "react";
 import { clearMcpProductCatalogForCurrentUser } from "@/features/orders/mcp-product-local-cache";
 import { clearMcpLocalReadForCurrentUser } from "@/lib/local-read/use-mcp-shell";
 
-export function McpLogoutButton() {
+export function McpLogoutButton({ className = "button" }: { className?: string }) {
   const [pending, setPending] = useState(false);
 
   async function logout() {
@@ -21,5 +21,5 @@ export function McpLogoutButton() {
     }
   }
 
-  return <button className="button" type="button" disabled={pending} onClick={() => void logout()}>{pending ? "Đang đăng xuất..." : "Đăng xuất"}</button>;
+  return <button className={className} type="button" disabled={pending} onClick={() => void logout()}>{pending ? "Đang đăng xuất..." : "Đăng xuất"}</button>;
 }

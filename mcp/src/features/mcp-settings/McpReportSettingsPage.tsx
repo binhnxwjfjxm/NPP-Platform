@@ -106,7 +106,7 @@ function DraftFields({ draft, onChange, firstFieldRef }: DraftFieldsProps) {
 }
 
 function appScrollRegion() {
-  const node = document.querySelector("[data-app-scroll-region]");
+  const node = document.querySelector("[data-mcp-scroll-region]");
   return node instanceof HTMLElement ? node : null;
 }
 
