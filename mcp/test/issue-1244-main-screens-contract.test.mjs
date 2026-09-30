@@ -38,6 +38,8 @@ test("Đi tuyến keeps mutation callers while moving the main screen and card p
   assert.match(visits, /McpPageHeader/);
   assert.match(visits, /McpFilterChip/);
   assert.match(visits, /McpStatusPill/);
+  assert.match(visits, /className=\{styles\.lineList\}/);
+  assert.doesNotMatch(visits.match(/function LineList[\s\S]*?function CustomerSheet/)?.[0] || "", /empty-inline|page-subtitle|mcp-line-list/);
   for (const operation of [
     "session-customer.test.create",
     "session-customer.report.create",
@@ -71,4 +73,9 @@ test("Đơn hàng main screen and cards use foundation tokens without changing c
     assert.doesNotMatch(css, /--brand-strong|--muted|--line\)|--ink\)|--ring-soft|#754706|#98600f/i);
     assert.match(css, /--mcp-color-/);
   }
+});
+
+
+test("primary-screen copy does not expose implementation wording", () => {
+  assert.doesNotMatch(orders, /dữ liệu live|API hiện chưa|accountId/);
 });

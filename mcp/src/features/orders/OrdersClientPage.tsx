@@ -315,7 +315,7 @@ export function OrdersClientPage({
       {notice ? (
         <McpCard className={styles.notice}>
           <strong>{notice}</strong>
-          <span>{noticeDetail || "Danh sách đang được làm mới từ dữ liệu live."}</span>
+          <span>{noticeDetail || "Danh sách đang được cập nhật từ dữ liệu mới nhất của Công Ty."}</span>
         </McpCard>
       ) : null}
 
@@ -417,7 +417,7 @@ export function OrdersClientPage({
             <details>
               <summary>Định nghĩa số liệu</summary>
               <div className={styles.definitionGrid}>
-                <p><b>Khách phát sinh</b><span>Đếm tên khách duy nhất vì API hiện chưa trả accountId.</span></p>
+                <p><b>Khách phát sinh</b><span>Tạm đếm theo tên khách vì danh sách đơn hiện chưa có mã khách để đối chiếu.</span></p>
                 <p><b>SKU/đơn</b><span>Tổng số SKU trên đơn chia số đơn, chưa phải độ phủ SKU.</span></p>
                 <p><b>Chưa hiển thị</b><span>Giá vốn, lợi nhuận, giao hàng, thu tiền và công nợ.</span></p>
               </div>
@@ -471,7 +471,7 @@ export function OrdersClientPage({
         onCreated={(orderCode) => {
           setCreateOpen(false);
           setNotice(`Đã tạo ${orderCode}.`);
-          setNoticeDetail("Danh sách đang được làm mới từ dữ liệu live.");
+          setNoticeDetail("Danh sách đang được cập nhật từ dữ liệu mới nhất của Công Ty.");
           router.refresh();
         }}
       />

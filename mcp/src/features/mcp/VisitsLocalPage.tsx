@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { MCPPage } from "@/features/mcp/MCPPage";
 import { McpButton, McpPageHeader, McpStatePanel } from "@/ui/foundation";
@@ -37,7 +37,7 @@ function visitHref(routeId: string, date: string) {
 function StateScreen({ title, description, action, busy = false }: {
   title: string;
   description: string;
-  action?: React.ReactNode;
+  action?: ReactNode;
   busy?: boolean;
 }) {
   return (
