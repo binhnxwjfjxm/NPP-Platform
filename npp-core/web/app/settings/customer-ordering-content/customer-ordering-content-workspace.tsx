@@ -8,7 +8,7 @@ import styles from './customer-ordering-content.module.css';
 
 type HomeContent = {
   sectionTitle: string;
-  programContent: string;
+  programContent?: string;
   visible: boolean;
   bannerUrl: string | null;
   imagePresent: boolean;
@@ -45,7 +45,7 @@ export default function CustomerOrderingContentWorkspace() {
         if (!active) return;
         setContent(next);
         setSectionTitle(next.sectionTitle);
-        setProgramContent(next.programContent);
+        setProgramContent(next.programContent ?? '');
         setVisible(next.visible);
         setBusy(null);
       })
@@ -76,7 +76,7 @@ export default function CustomerOrderingContentWorkspace() {
       }));
       setContent(next);
       setSectionTitle(next.sectionTitle);
-      setProgramContent(next.programContent);
+      setProgramContent(next.programContent ?? '');
       setVisible(next.visible);
       setMessage('Đã lưu nội dung Trang chủ khách hàng.');
     } catch (error) {
