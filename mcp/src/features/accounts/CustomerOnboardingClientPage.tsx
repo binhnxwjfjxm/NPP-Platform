@@ -94,7 +94,7 @@ export function CustomerOnboardingClientPage({ items }: { items: CustomerOnboard
         { operation: `customer-verification.${mutation}` }
       );
       const payload = await response.json().catch(() => ({})) as MutationPayload;
-      if (!response.ok) throw new Error(apiErrorMessage(payload, mutation === "submit" ? "Không gửi được đề nghị mở / liên kết mã" : "Không đồng bộ được trạng thái Core"));
+      if (!response.ok) throw new Error(apiErrorMessage(payload, mutation === "submit" ? "Không gửi được đề nghị mở / liên kết mã" : "Không cập nhật được trạng thái Công Ty"));
       setNotice(`${item.customerName}: ${statusLabel((payload.data?.status || item.status) as CustomerOnboardingQueueStatus)}.`);
       router.refresh();
     } catch (error) {
@@ -109,7 +109,7 @@ export function CustomerOnboardingClientPage({ items }: { items: CustomerOnboard
       <PageHeader
         eyebrow="Khách hàng"
         title="Mở / liên kết mã"
-        subtitle="Xác minh điểm bán độc lập với đơn hàng. Chỉ gửi hồ sơ khách sang Core khi nhân viên chủ động yêu cầu."
+        subtitle="Xác minh điểm bán độc lập với đơn hàng. Chỉ gửi hồ sơ khách sang Công Ty khi nhân viên chủ động yêu cầu."
       >
         <a className="button compact" href="/customers">Khách Công Ty</a>
       </PageHeader>
@@ -128,7 +128,7 @@ export function CustomerOnboardingClientPage({ items }: { items: CustomerOnboard
         <div className="route-list-heading">
           <div>
             <h2 className="panel-title">Điểm bán của tôi</h2>
-            <p className="page-subtitle">Không cần có nhu cầu mua hoặc order intent để gửi xác minh.</p>
+            <p className="page-subtitle">Không cần có nhu cầu mua hoặc thao tác tạo đơn để gửi xác minh.</p>
           </div>
           <span>{visibleItems.length}/{items.length} điểm bán</span>
         </div>
@@ -163,7 +163,7 @@ export function CustomerOnboardingClientPage({ items }: { items: CustomerOnboard
                     </button>
                   ) : item.coreRequestId ? (
                     <button className="button primary compact" type="button" onClick={() => void mutate(item, "sync")} disabled={actionBusy}>
-                      {actionBusy ? "Đang đồng bộ..." : "Đồng bộ Core"}
+                      {actionBusy ? "Đang đồng bộ..." : "Cập nhật từ Công Ty"}
                     </button>
                   ) : null}
                   {!item.address ? <span className="badge">Cần bổ sung địa chỉ điểm bán</span> : null}

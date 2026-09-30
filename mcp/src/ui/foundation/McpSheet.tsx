@@ -23,8 +23,8 @@ export function McpSheet({open,title,description,children,footer,onClose,variant
     if(scrollRegion){scrollRegion.style.overflow="hidden";scrollRegion.style.overscrollBehavior="contain";}
     const frame=window.requestAnimationFrame(()=>{sheetRef.current?.focus({preventScroll:true});if(scrollRegion)scrollRegion.scrollTop=scrollTop;});
     function keydown(event:KeyboardEvent){
-      if(event.key==="Escape"){event.preventDefault();onCloseRef.current();return;}
-      if(event.key!=="Tab"||!sheetRef.current)return;
+      if (event.key === "Escape") { event.preventDefault(); onCloseRef.current(); return; }
+      if (event.key !== "Tab" || !sheetRef.current) return;
       const focusable=Array.from(sheetRef.current.querySelectorAll<HTMLElement>(focusableSelector)).filter(el=>el.getClientRects().length>0);
       if(!focusable.length){event.preventDefault();sheetRef.current.focus({preventScroll:true});return;}
       const first=focusable[0],last=focusable[focusable.length-1],active=document.activeElement;

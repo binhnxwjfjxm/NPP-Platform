@@ -34,7 +34,6 @@ import "./mobile-app-geometry.css";
 import "./mcp-mobile-primary-flows.css";
 import "./mcp-mobile-support-flows.css";
 import "./mobile-home-dashboard.css";
-import "./mobile-list-summaries.css";
 import "./mcp-lot-3-flows.css";
 import "./card-depth.css";
 import "./satin-metal-actions.css";

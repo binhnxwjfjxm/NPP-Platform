@@ -1,5 +1,6 @@
 import type {
   ButtonHTMLAttributes,
+  HTMLAttributes,
   InputHTMLAttributes,
   ReactNode,
   SelectHTMLAttributes,
@@ -19,8 +20,10 @@ export function McpStack({ children, className }: { children: ReactNode; classNa
   return <div className={cx(styles.stack, className)}>{children}</div>;
 }
 
-export function McpCard({ children, className }: { children: ReactNode; className?: string }) {
-  return <section className={cx(styles.card, className)}>{children}</section>;
+type McpCardProps = HTMLAttributes<HTMLElement> & { children: ReactNode };
+
+export function McpCard({ children, className, ...props }: McpCardProps) {
+  return <section {...props} className={cx(styles.card, className)}>{children}</section>;
 }
 
 type McpButtonVariant = "primary" | "secondary" | "danger";
