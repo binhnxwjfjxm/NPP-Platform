@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { withTransactionLocalSetting } from '../transaction-local-setting.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -187,42 +188,37 @@ export async function replaceBalances(client, {
   rebuildRunId,
   balances,
 }) {
-  const previous = await client.query(
-    `SELECT current_setting('npp.inventory_cost_write_context', true) AS value`,
-  );
-  const previousValue = previous.rows?.[0]?.value ?? '';
-  await client.query(`SELECT set_config('npp.inventory_cost_write_context', 'projector', true)`);
-  try {
-    await client.query(
-      `DELETE FROM inventory.inventory_cost_balances
-        WHERE installation_id = $1
-          AND warehouse_id = ANY($2::uuid[])`,
-      [installationId, safeWarehouseIds(warehouseIds)],
-    );
-    for (const balance of balances) {
+  await withTransactionLocalSetting(
+    client,
+    'npp.inventory_cost_write_context',
+    'projector',
+    async () => {
       await client.query(
-        `INSERT INTO inventory.inventory_cost_balances (
-           installation_id, warehouse_id, base_variant_id, method_version,
-           currency_code, quantity, inventory_value, average_unit_cost,
-           status, anomaly_count, projected_through_event, rebuild_run_id, updated_at
-         ) VALUES (
-           $1, $2, $3, $4, $5, $6::numeric, $7::numeric, $8::numeric,
-           $9, $10, $11, $12, now()
-         )`,
-        [
-          installationId, balance.warehouseId, balance.baseVariantId,
-          balance.methodVersion, balance.currencyCode, balance.quantity,
-          balance.inventoryValue, balance.averageUnitCost, balance.status,
-          balance.anomalyCount, balance.projectedThroughEvent, rebuildRunId,
-        ],
+        `DELETE FROM inventory.inventory_cost_balances
+          WHERE installation_id = $1
+            AND warehouse_id = ANY($2::uuid[])`,
+        [installationId, safeWarehouseIds(warehouseIds)],
       );
-    }
-  } finally {
-    await client.query(
-      `SELECT set_config('npp.inventory_cost_write_context', $1, true)`,
-      [previousValue],
-    );
-  }
+      for (const balance of balances) {
+        await client.query(
+          `INSERT INTO inventory.inventory_cost_balances (
+             installation_id, warehouse_id, base_variant_id, method_version,
+             currency_code, quantity, inventory_value, average_unit_cost,
+             status, anomaly_count, projected_through_event, rebuild_run_id, updated_at
+           ) VALUES (
+             $1, $2, $3, $4, $5, $6::numeric, $7::numeric, $8::numeric,
+             $9, $10, $11, $12, now()
+           )`,
+          [
+            installationId, balance.warehouseId, balance.baseVariantId,
+            balance.methodVersion, balance.currencyCode, balance.quantity,
+            balance.inventoryValue, balance.averageUnitCost, balance.status,
+            balance.anomalyCount, balance.projectedThroughEvent, rebuildRunId,
+          ],
+        );
+      }
+    },
+  );
 }
 
 export async function listBalances(client, {
