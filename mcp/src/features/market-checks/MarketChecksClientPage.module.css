@@ -8,15 +8,15 @@
 .setupCard {
   display: grid;
   gap: 10px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--mcp-color-border);
   border-radius: 20px;
   background: rgba(255, 255, 255, 0.96);
   padding: 14px;
-  box-shadow: var(--shadow), var(--ring-soft);
+  box-shadow: var(--mcp-shadow-card), var(--mcp-color-primary-soft);
 }
 
 .setupCard span {
-  color: var(--brand-strong);
+  color: var(--mcp-color-primary-dark);
   font-size: 11px;
   font-weight: 900;
 }
@@ -28,7 +28,7 @@
 }
 
 .setupCard p {
-  color: var(--muted);
+  color: var(--mcp-color-text-secondary);
   font-size: 13px;
   line-height: 1.4;
   margin: 0;
@@ -63,7 +63,7 @@
 
 .setupMetrics small,
 .branchMetrics small {
-  color: var(--muted);
+  color: var(--mcp-color-text-secondary);
   display: block;
   font-size: 10px;
   margin-top: 4px;
@@ -85,11 +85,11 @@
 .card {
   display: grid;
   gap: 10px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--mcp-color-border);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.96);
   padding: 12px;
-  box-shadow: var(--shadow), var(--ring-soft);
+  box-shadow: var(--mcp-shadow-card), var(--mcp-color-primary-soft);
 }
 
 .head {
@@ -100,7 +100,7 @@
 }
 
 .head span {
-  color: var(--brand-strong);
+  color: var(--mcp-color-primary-dark);
   display: block;
   font-size: 11px;
   font-weight: 900;
@@ -164,13 +164,13 @@
 }
 
 .testRow > div > strong {
-  color: var(--text);
+  color: var(--mcp-color-text-primary);
   font-size: 14px;
 }
 
 .testRow small,
 .testRow span {
-  color: var(--muted);
+  color: var(--mcp-color-text-secondary);
   font-size: 12px;
 }
 
@@ -188,7 +188,7 @@
 }
 
 .context small {
-  color: var(--muted);
+  color: var(--mcp-color-text-secondary);
   font-size: 12px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -219,7 +219,7 @@
 }
 
 .metrics small {
-  color: var(--muted);
+  color: var(--mcp-color-text-secondary);
   display: block;
   font-size: 10px;
   font-weight: 800;

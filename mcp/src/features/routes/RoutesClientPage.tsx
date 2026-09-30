@@ -5,7 +5,7 @@ import { CompactKpiStrip } from "@/ui/cards/CompactKpiStrip";
 import { OperationalListCard } from "@/ui/cards/OperationalListCard";
 import { FilterBar } from "@/ui/layout/FilterBar";
 import { PageHeader } from "@/ui/layout/PageHeader";
-import { BottomSheet } from "@/ui/overlay/BottomSheet";
+import { McpSheet } from "@/ui/foundation";
 import { AppShell } from "@/ui/shell/AppShell";
 import type { RouteItem, RouteKpi, RouteStatus } from "./routes.types";
 
@@ -45,7 +45,7 @@ function RouteCard({ route, onSelect }: { route: RouteItem; onSelect: (route: Ro
 
 function RouteSheet({ route, onClose }: { route: RouteItem | null; onClose: () => void }) {
   return (
-    <BottomSheet
+    <McpSheet
       open={Boolean(route)}
       onClose={onClose}
       title={route ? route.name : "Chi tiết tuyến"}
@@ -80,7 +80,7 @@ function RouteSheet({ route, onClose }: { route: RouteItem | null; onClose: () =
           </div>
         </div>
       ) : null}
-    </BottomSheet>
+    </McpSheet>
   );
 }
 

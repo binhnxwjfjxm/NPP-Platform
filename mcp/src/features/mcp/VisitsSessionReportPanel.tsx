@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { BottomSheet } from "@/ui/overlay/BottomSheet";
+import { McpSheet } from "@/ui/foundation";
 import { useRegisterMobileAppMenu } from "@/ui/shell/MobileAppMenu";
 import { idempotentMutationFetch } from "@/lib/api/idempotent-fetch";
 import type { McpDayData } from "@/features/mcp-day/mcp-day.types";
@@ -256,7 +256,7 @@ export function VisitsSessionReportPanel({ mcpDayData }: { mcpDayData: McpDayDat
   useRegisterMobileAppMenu(menuRegistration);
 
   return <>
-    <BottomSheet open={mode === "export"} onClose={() => { if (!exporting) setMode(null); }} title="Xuất dữ liệu phiên" description={description} footer={<div className="sheet-action-grid"><button className="button" type="button" onClick={() => setMode(null)} disabled={Boolean(exporting)}>Đóng</button></div>}>
+    <McpSheet open={mode === "export"} onClose={() => { if (!exporting) setMode(null); }} title="Xuất dữ liệu phiên" description={description} footer={<div className="sheet-action-grid"><button className="button" type="button" onClick={() => setMode(null)} disabled={Boolean(exporting)}>Đóng</button></div>}>
       <div className={styles.menuList}>
         <button className={styles.exportItem} type="button" data-export-kind="pdf" onClick={() => void runExport("pdf")} disabled={Boolean(exporting)}>
           <span className={styles.menuIcon} aria-hidden="true">PDF</span>
@@ -270,9 +270,9 @@ export function VisitsSessionReportPanel({ mcpDayData }: { mcpDayData: McpDayDat
         </button>
         {exportError ? <p className="page-subtitle order-message" role="alert">{exportError}</p> : null}
       </div>
-    </BottomSheet>
+    </McpSheet>
 
-    <BottomSheet open={mode === "report"} onClose={() => setMode(null)} title="BC phiên" description={description} footer={<div className="sheet-action-grid"><button className="button primary" type="button" onClick={() => { setSummary(null); setReportError(null); }}>Tải lại</button><button className="button" type="button" onClick={() => setMode(null)}>Đóng</button></div>}>
+    <McpSheet open={mode === "report"} onClose={() => setMode(null)} title="BC phiên" description={description} footer={<div className="sheet-action-grid"><button className="button primary" type="button" onClick={() => { setSummary(null); setReportError(null); }}>Tải lại</button><button className="button" type="button" onClick={() => setMode(null)}>Đóng</button></div>}>
       {loading ? <p className="page-subtitle">Đang tổng hợp dữ liệu phiên...</p> : null}
       {reportError ? <p className="page-subtitle order-message">{reportError}</p> : null}
       {summary ? <div className="grid">
@@ -288,6 +288,6 @@ export function VisitsSessionReportPanel({ mcpDayData }: { mcpDayData: McpDayDat
         <section className="card"><h2 className="panel-title">Rủi ro</h2><TextList items={summary.sections.risks} empty="Chưa ghi rủi ro." /></section>
         <section className="card"><h2 className="panel-title">Next action</h2><TextList items={summary.sections.nextActions} empty="Chưa có next action." /></section>
       </div> : null}
-    </BottomSheet>
+    </McpSheet>
   </>;
 }

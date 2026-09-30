@@ -7,7 +7,7 @@ import { TodaySummaryCard } from "@/ui/cards/TodaySummaryCard";
 import { FilterBar } from "@/ui/layout/FilterBar";
 import { PageHeader } from "@/ui/layout/PageHeader";
 import { StatusChipBar } from "@/ui/layout/StatusChipBar";
-import { BottomSheet } from "@/ui/overlay/BottomSheet";
+import { McpSheet } from "@/ui/foundation";
 import { AppShell } from "@/ui/shell/AppShell";
 import { DataTable, type DataTableColumn } from "@/ui/table/DataTable";
 import type { DayLineSource, DayLineStatus, McpDayData, McpDayLine, McpDayResult } from "./mcp-day.types";
@@ -62,7 +62,7 @@ function McpCustomerCard({ line, onSelect }: { line: McpDayLine; onSelect: (line
 
 function VisitSheet({ line, onClose }: { line: McpDayLine | null; onClose: () => void }) {
   return (
-    <BottomSheet
+    <McpSheet
       open={Boolean(line)}
       onClose={onClose}
       title={line ? line.accountName : "Xử lý điểm bán"}
@@ -97,7 +97,7 @@ function VisitSheet({ line, onClose }: { line: McpDayLine | null; onClose: () =>
           </div>
         </div>
       ) : null}
-    </BottomSheet>
+    </McpSheet>
   );
 }
 

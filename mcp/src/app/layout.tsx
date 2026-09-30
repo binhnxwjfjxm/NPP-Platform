@@ -6,7 +6,6 @@ import { mcpLocalCacheUserIdFromSession } from "@/lib/local-read/mcp-local-ident
 import "@/ui/foundation/tokens.css";
 import "./globals.css";
 import "./mobile.css";
-import "./order-create-workspace.css";
 import "./order-popups.css";
 import "./outlet-profile.css";
 import "./polish.css";
@@ -35,7 +34,6 @@ import "./mobile-app-geometry.css";
 import "./mcp-mobile-primary-flows.css";
 import "./mcp-mobile-support-flows.css";
 import "./mobile-home-dashboard.css";
-import "./mobile-list-summaries.css";
 import "./mcp-lot-3-flows.css";
 import "./card-depth.css";
 import "./satin-metal-actions.css";

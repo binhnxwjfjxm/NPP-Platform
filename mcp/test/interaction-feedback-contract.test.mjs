@@ -31,5 +31,6 @@ test("Settings exposes a persisted accessible vibration switch with enable previ
   assert.match(settings, /data-interaction-feedback="none"/);
   assert.match(settings, /setEnabled\(next\)/);
   assert.match(settings, /feedback\("success", \{ force: true \}\)/);
-  assert.match(settings, /Capacitor Haptics/);
+  assert.match(settings, /Phản hồi rung của ứng dụng/);
+  assert.doesNotMatch(settings, /Capacitor Haptics|native|fallback/i);
 });

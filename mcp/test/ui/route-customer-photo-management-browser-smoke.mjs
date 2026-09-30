@@ -186,9 +186,9 @@ await page.route("**/api/backend/outlet-media/**", async (route) => {
 page.on("dialog", (dialog) => void dialog.accept());
 await page.goto(`${appBase}/routes`, { waitUntil: "domcontentloaded" });
 
-const routeCard = page.locator("article.operational-list-card").filter({ hasText: "UI Smoke Active" }).first();
+const routeCard = page.locator('article[data-operational-list-card="true"]').filter({ hasText: "UI Smoke Active" }).first();
 await routeCard.getByRole("button", { name: "Chọn tuyến", exact: true }).click();
-const customerCard = page.locator("article.operational-list-card").filter({ hasText: "UI Existing Customer" }).first();
+const customerCard = page.locator('article[data-operational-list-card="true"]').filter({ hasText: "UI Existing Customer" }).first();
 await customerCard.waitFor({ state: "visible" });
 
 await customerCard.getByRole("button", { name: "Xem điểm bán", exact: true }).click();

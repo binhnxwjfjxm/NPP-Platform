@@ -1,4 +1,5 @@
 import { Fragment, type ReactNode } from "react";
+import styles from "./OperationalListCard.module.css";
 
 type OperationalAction = {
   label: string;
@@ -31,25 +32,25 @@ function singleOrderPdfHref(href: string) {
 
 export function OperationalListCard({ eyebrow, title, description, badge, leading, meta = [], actions = [], actionContent }: OperationalListCardProps) {
   return (
-    <article className="operational-list-card">
-      {leading ? <div className="operational-list-leading">{leading}</div> : null}
-      <div className="operational-list-body">
-        <div className="operational-list-head">
-          <div className="operational-list-title-wrap">
+    <article className={styles.card} data-operational-list-card="true">
+      {leading ? <div className={styles.leading}>{leading}</div> : null}
+      <div className={styles.body}>
+        <div className={styles.head}>
+          <div className={styles.titleWrap}>
             {eyebrow ? <span>{eyebrow}</span> : null}
             <h3>{title}</h3>
           </div>
-          {badge ? <div className="operational-list-badge">{badge}</div> : null}
+          {badge ? <div className={styles.badge}>{badge}</div> : null}
         </div>
         {description ? <p>{description}</p> : null}
-        {meta.length > 0 ? <div className="operational-list-meta">{meta.slice(0, 3).map((item) => <small key={item}>{item}</small>)}</div> : null}
+        {meta.length > 0 ? <div className={styles.meta}>{meta.slice(0, 3).map((item) => <small key={item}>{item}</small>)}</div> : null}
       </div>
-      {actions.length > 0 || actionContent ? <div className="operational-list-actions">{actions.map((action) => {
-        const className = action.tone === "primary" ? "button primary" : "button";
+      {actions.length > 0 || actionContent ? <div className={styles.actions}>{actions.map((action) => {
+        const className = action.tone === "primary" ? styles.actionPrimary : styles.action;
         if (action.href) {
           const pdfHref = singleOrderPdfHref(action.href);
           return <Fragment key={action.label}>
-            {pdfHref ? <a className="button" href={pdfHref} target="_blank" rel="noreferrer">PDF A5</a> : null}
+            {pdfHref ? <a className={styles.action} href={pdfHref} target="_blank" rel="noreferrer">PDF A5</a> : null}
             <a className={className} href={action.href}>{action.label}</a>
           </Fragment>;
         }

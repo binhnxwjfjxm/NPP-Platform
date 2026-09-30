@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { McpCard, McpStatusPill } from "@/ui/foundation";
 import { getInteractionFeedbackChannel, type InteractionFeedbackChannel } from "@/lib/interaction/interaction-feedback";
 import { useInteractionFeedback } from "@/ui/feedback/InteractionFeedbackProvider";
 import styles from "./InteractionFeedbackCard.module.css";
 
 function channelLabel(channel: InteractionFeedbackChannel) {
-  if (channel === "capacitor") return "Haptic native qua Capacitor";
-  if (channel === "web") return "Rung thiết bị qua trình duyệt";
+  if (channel === "capacitor") return "Phản hồi rung của ứng dụng";
+  if (channel === "web") return "Phản hồi rung của thiết bị";
   return "Thiết bị không hỗ trợ rung; giao diện vẫn phản hồi khi nhấn";
 }
 
@@ -29,12 +30,12 @@ export function InteractionFeedbackCard() {
   }
 
   return (
-    <section className={`card settings-card ${styles.card}`} data-interaction-feedback-setting>
+    <McpCard className={styles.card} data-interaction-feedback-setting>
       <div className={styles.header}>
         <div>
-          <span className="badge">Tương tác</span>
-          <h2 className="panel-title">Phản hồi rung</h2>
-          <p className="page-subtitle">Rung nhẹ khi bấm nút và phản hồi rõ hơn cho thao tác thành công, cảnh báo hoặc lỗi.</p>
+          <McpStatusPill tone="primary">Tương tác</McpStatusPill>
+          <h2>Phản hồi rung</h2>
+          <p>Rung nhẹ khi bấm nút và phản hồi rõ hơn cho thao tác thành công, cảnh báo hoặc lỗi.</p>
         </div>
         <button
           aria-checked={enabled}
@@ -57,7 +58,7 @@ export function InteractionFeedbackCard() {
         </div>
       </div>
 
-      <p className={styles.note}>Tùy chọn được lưu trên thiết bị này. Khi đóng gói app native, lớp dùng chung sẽ ưu tiên Capacitor Haptics; trên web sẽ tự fallback và không làm gián đoạn thao tác nếu trình duyệt chặn rung.</p>
-    </section>
+      <p className={styles.note}>Tùy chọn được lưu trên thiết bị này. Nếu thiết bị không hỗ trợ rung, các thao tác vẫn hoạt động bình thường.</p>
+    </McpCard>
   );
 }

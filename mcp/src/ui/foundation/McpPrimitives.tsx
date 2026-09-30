@@ -1,5 +1,6 @@
 import type {
   ButtonHTMLAttributes,
+  HTMLAttributes,
   InputHTMLAttributes,
   ReactNode,
   SelectHTMLAttributes,
@@ -19,8 +20,10 @@ export function McpStack({ children, className }: { children: ReactNode; classNa
   return <div className={cx(styles.stack, className)}>{children}</div>;
 }
 
-export function McpCard({ children, className }: { children: ReactNode; className?: string }) {
-  return <section className={cx(styles.card, className)}>{children}</section>;
+type McpCardProps = HTMLAttributes<HTMLElement> & { children: ReactNode };
+
+export function McpCard({ children, className, ...props }: McpCardProps) {
+  return <section {...props} className={cx(styles.card, className)}>{children}</section>;
 }
 
 type McpButtonVariant = "primary" | "secondary" | "danger";
@@ -139,13 +142,13 @@ type McpPageHeaderProps = {
 
 export function McpPageHeader({ title, description, eyebrow, actions, className }: McpPageHeaderProps) {
   return (
-    <header className={cx(styles.pageHeader, className)}>
+    <header className={cx(styles.pageHeader, className)} data-page-header="true">
       <div className={styles.pageHeaderCopy}>
         {eyebrow ? <p className={styles.eyebrow}>{eyebrow}</p> : null}
         <h1 className={styles.title}>{title}</h1>
         {description ? <p className={styles.description}>{description}</p> : null}
       </div>
-      {actions ? <div className={styles.pageHeaderActions}>{actions}</div> : null}
+      {actions ? <div className={styles.pageHeaderActions} data-page-header-actions>{actions}</div> : null}
     </header>
   );
 }

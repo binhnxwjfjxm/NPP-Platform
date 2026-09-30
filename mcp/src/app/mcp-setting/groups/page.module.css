@@ -4,9 +4,9 @@
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 12px;
-  border: 1px solid var(--npp-color-border);
+  border: 1px solid var(--mcp-color-border);
   border-radius: 14px;
-  background: linear-gradient(135deg, var(--npp-color-surface), var(--npp-color-surface-soft));
+  background: linear-gradient(135deg, var(--mcp-color-surface), var(--mcp-color-surface-soft));
   box-shadow: 0 6px 18px rgba(75, 47, 31, 0.05);
   padding: 11px 12px;
 }
@@ -17,7 +17,7 @@
 
 .summaryCopy strong {
   display: block;
-  color: var(--npp-color-text);
+  color: var(--mcp-color-text-primary);
   font-size: 14px;
   line-height: 1.3;
 }
@@ -25,7 +25,7 @@
 .summaryCopy span {
   display: block;
   margin-top: 2px;
-  color: var(--npp-color-text-muted);
+  color: var(--mcp-color-text-secondary);
   font-size: 12px;
   line-height: 1.35;
 }
@@ -37,8 +37,8 @@
   flex: 0 0 auto;
   min-height: 32px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--npp-color-primary) 12%, var(--npp-color-surface));
-  color: var(--npp-color-primary);
+  background: color-mix(in srgb, var(--mcp-color-primary) 12%, var(--mcp-color-surface));
+  color: var(--mcp-color-primary);
   padding: 6px 10px;
   font-size: 12px;
   font-weight: 800;
@@ -55,9 +55,9 @@
 }
 
 .groupCard {
-  border: 1px solid var(--npp-color-border);
+  border: 1px solid var(--mcp-color-border);
   border-radius: 15px;
-  background: var(--npp-color-surface);
+  background: var(--mcp-color-surface);
   box-shadow: 0 5px 16px rgba(75, 47, 31, 0.05);
   padding: 12px;
 }
@@ -75,7 +75,7 @@
 
 .groupCopy strong {
   display: block;
-  color: var(--npp-color-text);
+  color: var(--mcp-color-text-primary);
   font-size: 15px;
   line-height: 1.3;
   overflow-wrap: anywhere;
@@ -83,7 +83,7 @@
 
 .groupCopy p {
   margin: 4px 0 0;
-  color: var(--npp-color-text-muted);
+  color: var(--mcp-color-text-secondary);
   font-size: 12px;
   line-height: 1.4;
 }
@@ -102,13 +102,13 @@
 }
 
 .statusActive {
-  background: color-mix(in srgb, #16803d 12%, var(--npp-color-surface));
+  background: color-mix(in srgb, #16803d 12%, var(--mcp-color-surface));
   color: #176c39;
 }
 
 .statusInactive {
-  background: var(--npp-color-surface-soft);
-  color: var(--npp-color-text-muted);
+  background: var(--mcp-color-surface-soft);
+  color: var(--mcp-color-text-secondary);
 }
 
 .metaRow {
@@ -122,10 +122,10 @@
   display: inline-flex;
   align-items: center;
   min-height: 28px;
-  border: 1px solid color-mix(in srgb, var(--npp-color-border) 82%, transparent);
+  border: 1px solid color-mix(in srgb, var(--mcp-color-border) 82%, transparent);
   border-radius: 999px;
-  background: var(--npp-color-surface-soft);
-  color: var(--npp-color-text-muted);
+  background: var(--mcp-color-surface-soft);
+  color: var(--mcp-color-text-secondary);
   padding: 4px 8px;
   font-size: 11px;
   font-weight: 700;
@@ -146,9 +146,9 @@
 .desktopTableWrap {
   display: none;
   overflow: hidden;
-  border: 1px solid var(--npp-color-border);
+  border: 1px solid var(--mcp-color-border);
   border-radius: 16px;
-  background: var(--npp-color-surface);
+  background: var(--mcp-color-surface);
   box-shadow: 0 7px 20px rgba(75, 47, 31, 0.05);
 }
 
@@ -159,21 +159,21 @@
 
 .desktopTable th,
 .desktopTable td {
-  border-bottom: 1px solid color-mix(in srgb, var(--npp-color-border) 76%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--mcp-color-border) 76%, transparent);
   padding: 12px 14px;
   text-align: left;
   vertical-align: middle;
 }
 
 .desktopTable th {
-  background: var(--npp-color-surface-soft);
-  color: var(--npp-color-text-muted);
+  background: var(--mcp-color-surface-soft);
+  color: var(--mcp-color-text-secondary);
   font-size: 12px;
   font-weight: 800;
 }
 
 .desktopTable td {
-  color: var(--npp-color-text);
+  color: var(--mcp-color-text-primary);
   font-size: 13px;
 }
 
@@ -192,7 +192,7 @@
 
 .tableName small {
   margin-top: 3px;
-  color: var(--npp-color-text-muted);
+  color: var(--mcp-color-text-secondary);
   line-height: 1.35;
 }
 
@@ -204,10 +204,10 @@
 }
 
 .emptyState {
-  border: 1px dashed var(--npp-color-border);
+  border: 1px dashed var(--mcp-color-border);
   border-radius: 15px;
-  background: var(--npp-color-surface-soft);
-  color: var(--npp-color-text-muted);
+  background: var(--mcp-color-surface-soft);
+  color: var(--mcp-color-text-secondary);
   padding: 22px 14px;
   text-align: center;
   font-size: 13px;
@@ -228,9 +228,9 @@
   width: min(100%, 580px);
   max-height: min(86vh, 720px);
   overflow-y: auto;
-  border: 1px solid color-mix(in srgb, var(--npp-color-border) 88%, #ffffff);
+  border: 1px solid color-mix(in srgb, var(--mcp-color-border) 88%, #ffffff);
   border-radius: 20px 20px 16px 16px;
-  background: var(--npp-color-surface);
+  background: var(--mcp-color-surface);
   box-shadow: 0 22px 60px rgba(35, 25, 18, 0.28);
   padding: 14px;
 }
@@ -240,7 +240,7 @@
   height: 4px;
   margin: 0 auto 12px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--npp-color-text-muted) 32%, transparent);
+  background: color-mix(in srgb, var(--mcp-color-text-secondary) 32%, transparent);
 }
 
 .sheetHeader {
@@ -253,14 +253,14 @@
 
 .sheetHeader strong {
   display: block;
-  color: var(--npp-color-text);
+  color: var(--mcp-color-text-primary);
   font-size: 18px;
   line-height: 1.3;
 }
 
 .sheetHeader p {
   margin: 3px 0 0;
-  color: var(--npp-color-text-muted);
+  color: var(--mcp-color-text-secondary);
   font-size: 12px;
   line-height: 1.4;
 }
@@ -271,10 +271,10 @@
   flex: 0 0 44px;
   width: 44px;
   height: 44px;
-  border: 1px solid var(--npp-color-border);
+  border: 1px solid var(--mcp-color-border);
   border-radius: 12px;
-  background: var(--npp-color-surface-soft);
-  color: var(--npp-color-text);
+  background: var(--mcp-color-surface-soft);
+  color: var(--mcp-color-text-primary);
   cursor: pointer;
   font-size: 22px;
   line-height: 1;
@@ -291,7 +291,7 @@
 }
 
 .formField span {
-  color: var(--npp-color-text);
+  color: var(--mcp-color-text-primary);
   font-size: 12px;
   font-weight: 800;
 }
@@ -300,10 +300,10 @@
 .formField textarea {
   width: 100%;
   min-height: 46px;
-  border: 1px solid var(--npp-color-border);
+  border: 1px solid var(--mcp-color-border);
   border-radius: 12px;
-  background: var(--npp-color-surface);
-  color: var(--npp-color-text);
+  background: var(--mcp-color-surface);
+  color: var(--mcp-color-text-primary);
   padding: 10px 11px;
   font: inherit;
 }
@@ -315,8 +315,8 @@
 
 .formField input:focus,
 .formField textarea:focus {
-  outline: 3px solid color-mix(in srgb, var(--npp-color-primary) 20%, transparent);
-  border-color: var(--npp-color-primary);
+  outline: 3px solid color-mix(in srgb, var(--mcp-color-primary) 20%, transparent);
+  border-color: var(--mcp-color-primary);
 }
 
 .sheetActions {

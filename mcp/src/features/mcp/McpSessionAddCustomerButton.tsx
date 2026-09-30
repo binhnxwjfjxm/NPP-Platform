@@ -3,7 +3,7 @@
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { idempotentMutationFetch } from "@/lib/api/idempotent-fetch";
-import { BottomSheet } from "@/ui/overlay/BottomSheet";
+import { McpSheet } from "@/ui/foundation";
 import {
   MAX_OUTLET_PHOTOS,
   buildOutletPhotoDrafts,
@@ -254,7 +254,7 @@ export function McpSessionAddCustomerButton({
         <span aria-hidden="true">＋</span>
         <b>Thêm khách</b>
       </button>
-      <BottomSheet
+      <McpSheet
         open={open}
         onClose={close}
         title="Thêm khách"
@@ -424,7 +424,7 @@ export function McpSessionAddCustomerButton({
             </p>
           ) : null}
         </form>
-      </BottomSheet>
+      </McpSheet>
     </>
   );
 }

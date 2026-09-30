@@ -5,7 +5,7 @@ import test from "node:test";
 const source = readFileSync(new URL("../src/features/orders/CoreOrderCreateSheet.tsx", import.meta.url), "utf8");
 const loader = readFileSync(new URL("../src/features/orders/CoreOrderCreateLoader.tsx", import.meta.url), "utf8");
 const mobileFixCss = readFileSync(new URL("../src/features/orders/OrderCreateSheet.mobile-fix.module.css", import.meta.url), "utf8");
-const workspaceCss = readFileSync(new URL("../src/app/order-create-workspace.css", import.meta.url), "utf8");
+const workspaceCss = readFileSync(new URL("../src/ui/foundation/McpFoundation.module.css", import.meta.url), "utf8");
 
 test("order creation requires an explicit review step before POST", () => {
   assert.match(source, /if \(mobilePanel !== "cart"\) \{[\s\S]*?setMobilePanel\("cart"\);[\s\S]*?return;/);
@@ -32,8 +32,8 @@ test("unfinished order drafts require explicit discard confirmation", () => {
 });
 
 test("mobile viewport, product rows, and footer remain physically usable", () => {
-  assert.match(workspaceCss, /\.bottom-sheet-workspace\s*\{[\s\S]*?height:\s*100%\s*!important/);
-  assert.match(workspaceCss, /\.bottom-sheet-workspace \.sheet-body\s*\{[\s\S]*?overflow:\s*hidden\s*!important/);
+  assert.match(workspaceCss, /\.sheetWorkspace\s*\{[\s\S]*?height:\s*100dvh/);
+  assert.match(workspaceCss, /\.sheetWorkspace \.sheetBodyWorkspace\s*\{[\s\S]*?overflow:\s*hidden/);
   assert.match(mobileFixCss, /grid-auto-rows:\s*max-content/);
   assert.match(mobileFixCss, /\.productCard\s*\{[\s\S]*?min-height:\s*62px/);
   assert.match(mobileFixCss, /@media \(max-width: 900px\)[\s\S]*?\.productCard\s*\{[\s\S]*?min-height:\s*78px/);

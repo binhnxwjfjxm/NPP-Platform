@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const customerStyles = await readFile("src/features/accounts/OutletDirectoryScreen.module.css", "utf8");
-const legacyStyles = await readFile("src/app/mobile-list-summaries.css", "utf8");
+const plansStyles = await readFile("src/features/actions/ActionsClientPage.module.css", "utf8");
+const layout = await readFile("src/app/layout.tsx", "utf8");
 const customers = await readFile("src/features/accounts/OutletsClientPage.tsx", "utf8");
 const plans = await readFile("src/features/actions/ActionsClientPage.tsx", "utf8");
 
@@ -30,15 +31,20 @@ test("customer responsive ownership moved to the feature CSS module and Mobile f
   assert.doesNotMatch(customerStyles, /--npp-|--brand|#754706|#98600f/i);
 });
 
-test("plans keeps its existing desktop and mobile contract until the secondary-screen lot", () => {
+test("plans is owned by the Lô 4 feature module on desktop and mobile", () => {
   assert.match(plans, /<DataTable columns=\{columns\}/);
   assert.match(plans, /data-plan-mobile-card/);
-  assert.match(plans, /Danh sách kế hoạch trên điện thoại/);
+  assert.match(plans, /data-plan-mobile-list="true"/);
+  assert.match(plans, /data-plan-desktop-table="true"/);
+  assert.match(plans, /Kế hoạch & Công việc/);
   assert.match(plans, /item\.accountName/);
   assert.match(plans, /item\.title/);
   assert.match(plans, /Quá hạn/);
   assert.match(plans, /Ưu tiên \{priorityLabel\(item\.priority\)\}/);
   assert.match(plans, /statusLabel\(item\.status\)/);
-  assert.match(legacyStyles, /data-active-href="\/plans"/);
+  assert.match(plansStyles, /var\(--mcp-color-border\)/);
+  assert.match(plansStyles, /var\(--mcp-color-primary/);
+  assert.doesNotMatch(plansStyles, /--npp-|--brand|!important|:global\(/);
+  assert.doesNotMatch(layout, /mobile-list-summaries\.css/);
   assert.doesNotMatch(plans, forbiddenPhase6F);
 });
