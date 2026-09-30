@@ -1,7 +1,7 @@
 /*
  * Issue #1244 — MCP PWA design foundation.
  * Canonical tokens for all UI migrated from Lô 1 onward.
- * This file intentionally does not alias or override legacy --npp-* / global selectors.
+ * This file intentionally does not alias or override legacy design tokens or global selectors.
  */
 :root {
   color-scheme: light;
