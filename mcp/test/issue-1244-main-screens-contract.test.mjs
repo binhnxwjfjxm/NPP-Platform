@@ -79,3 +79,15 @@ test("Đơn hàng main screen and cards use foundation tokens without changing c
 test("primary-screen copy does not expose implementation wording", () => {
   assert.doesNotMatch(orders, /dữ liệu live|API hiện chưa|accountId/);
 });
+
+
+test("Đơn hàng main screen has no remaining route-level legacy CSS owner", async () => {
+  for (const path of [
+    "src/app/mcp-compact-ui.css",
+    "src/app/mcp-mobile-support-flows.css",
+    "src/app/export-menu-fix.css"
+  ]) {
+    const css = await readFile(path, "utf8");
+    assert.doesNotMatch(css, /data-active-href="\/orders"/);
+  }
+});

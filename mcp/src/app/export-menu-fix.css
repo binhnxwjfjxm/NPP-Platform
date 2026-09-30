@@ -87,31 +87,6 @@
   line-height: 1.35;
 }
 
-/* Issue #600 Lot B: order-center actions stay low, compact and collision-free. */
-[data-mcp-app-shell="true"][data-active-href="/orders"] .page-header-actions {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, max-content));
-  align-items: center;
-  justify-content: end;
-  gap: 6px;
-}
-
-[data-mcp-app-shell="true"][data-active-href="/orders"] .page-header-actions > .button,
-[data-mcp-app-shell="true"][data-active-href="/orders"] .page-header-actions .export-menu-trigger {
-  min-height: 34px !important;
-  height: 34px;
-  border-radius: 999px;
-  padding: 0 10px;
-  font-size: 11px;
-  line-height: 1;
-  white-space: nowrap;
-}
-
-[data-mcp-app-shell="true"][data-active-href="/orders"] .page-header-actions .export-menu {
-  max-width: 100%;
-  min-width: 0;
-}
-
 /* Root cause fix: these containers were clipping the opened details panel. */
 .operational-list-card:has(.export-menu[open]),
 .action-card:has(.export-menu[open]),
@@ -149,27 +124,5 @@
   .sheet-footer .export-menu-panel,
   .bottom-sheet .export-menu-panel {
     bottom: calc(18px + env(safe-area-inset-bottom));
-  }
-}
-
-@media (max-width: 560px) {
-  [data-mcp-app-shell="true"][data-active-href="/orders"] .page-header-actions {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    width: 100%;
-  }
-
-  [data-mcp-app-shell="true"][data-active-href="/orders"] .page-header-actions .export-menu {
-    display: block;
-    width: 100%;
-  }
-
-  [data-mcp-app-shell="true"][data-active-href="/orders"] .page-header-actions > .button,
-  [data-mcp-app-shell="true"][data-active-href="/orders"] .page-header-actions .export-menu-trigger {
-    width: 100%;
-    min-width: 0;
-    padding: 0 7px;
-    overflow: hidden;
-    font-size: 10px;
-    text-overflow: ellipsis;
   }
 }
