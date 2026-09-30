@@ -42,7 +42,7 @@ function sessionStatus(status: string) {
 function RouteCard({ route }: { route: McpShellRouteHealth }) {
   const progress = rate(route.visited, route.planned);
   return (
-    <McpCard className={styles.routeCard}>
+    <article className={styles.routeCard}>
       <div className={styles.routeHead}>
         <div>
           <span>{route.area || "Chưa có khu vực"}</span>
@@ -58,7 +58,7 @@ function RouteCard({ route }: { route: McpShellRouteHealth }) {
         <span><strong>{route.orders}</strong><small>Đơn</small></span>
         <span><strong>{route.followups}</strong><small>Theo dõi</small></span>
       </div>
-    </McpCard>
+    </article>
   );
 }
 

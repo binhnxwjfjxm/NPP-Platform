@@ -228,6 +228,11 @@
 .routeCard {
   display: grid;
   gap: var(--mcp-space-sm);
+  border: 1px solid var(--mcp-color-border);
+  border-radius: var(--mcp-radius-lg);
+  background: var(--mcp-color-surface);
+  box-shadow: var(--mcp-shadow-card);
+  padding: var(--mcp-space-md);
 }
 
 .routeHead {

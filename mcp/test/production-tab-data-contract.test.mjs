@@ -23,7 +23,7 @@ test("customer tab renders route outlets locally and refreshes scoped company cu
   assert.match(localPage, /useMcpLocalResource<CoreCustomerItem\[]>\("customers"\)/);
   assert.match(localPage, /accountsFromRouteCustomers/);
   assert.match(client, />Điểm bán/);
-  assert.match(client, />Khách công ty/);
+  assert.match(client, />Khách Công Ty/);
   assert.match(client, /\/customers\/onboarding\/\$\{encodeURIComponent\(item\.routeCustomerId\)\}/);
   assert.match(loader, /\/api\/customer-verifications/);
   assert.match(loader, /\/api\/core-customers/);

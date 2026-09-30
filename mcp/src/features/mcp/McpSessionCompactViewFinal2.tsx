@@ -162,4 +162,3 @@ export function McpSessionCompactView({ activeHref = "/visits", mcpDayData }: { 
     </AppShell>
   );
 }
-}

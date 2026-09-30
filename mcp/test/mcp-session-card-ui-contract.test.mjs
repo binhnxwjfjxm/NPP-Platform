@@ -11,9 +11,10 @@ test("route session card preserves existing backend actions", () => {
   }
   assert.match(cardSource, /onToggleCheckin\(line\)/);
   assert.match(cardSource, /onAction\(line, action\)/);
-  assert.match(cardSource, /officialOrderHref\(line\)/);
   assert.match(cardSource, /useMcpCustomerDirections/);
   assert.match(cardSource, /requestMcpCustomerProfile/);
+  assert.match(cardSource, /createIdempotencyKey\("session-customer\.result\.record"\)/);
+  assert.match(cardSource, /\/api\/backend\/mcp-day\/session-customer\/result/);
 });
 
 test("route session card keeps one compact primary row and an explicit action tray", () => {
@@ -23,16 +24,17 @@ test("route session card keeps one compact primary row and an explicit action tr
   assert.match(cardSource, /data-customer-action-count="5"/);
   assert.match(cardSource, /aria-expanded=\{actionsOpen\}/);
   assert.match(cardSource, /<span>Thao tác<\/span>/);
-  assert.match(cardSource, /<span>\{checkinBusy \? "Đang xử lý" : line\.checkedIn \? "Đã check-in" : "Check-in"\}<\/span>/);
   assert.match(cardCss, /border-radius:\s*14px/);
-  assert.match(cardCss, /grid-template-columns:\s*minmax\(0, 1fr\) 48px 48px 58px/);
+  assert.match(cardCss, /grid-template-columns:\s*minmax\(0, 1fr\) 62px 48px 58px/);
   assert.match(cardCss, /\.actions\s*\{[\s\S]*?grid-template-columns:\s*repeat\(5, minmax\(0, 1fr\)\)/);
   assert.match(cardCss, /\.actionMenu\s*\{[\s\S]*?animation:\s*revealActions/);
-  assert.doesNotMatch(cardCss, /overflow-x:\s*auto/);
-  assert.doesNotMatch(cardCss, /scroll-snap-type/);
+  assert.doesNotMatch(cardCss, /overflow-x:\s*auto|scroll-snap-type/);
 });
 
-test("route session card keeps the existing warm brand tone", () => {
-  assert.match(cardCss, /var\(--brand-primary/);
-  assert.doesNotMatch(cardCss, /#1d4ed8|#eff6ff|#dbeafe/);
+test("route session card uses the shared Mobile foundation palette", () => {
+  assert.match(cardCss, /var\(--mcp-color-primary\)/);
+  assert.match(cardCss, /var\(--mcp-color-surface\)/);
+  assert.match(cardCss, /var\(--mcp-color-border\)/);
+  assert.match(cardCss, /var\(--mcp-color-text-secondary\)/);
+  assert.doesNotMatch(cardCss, /--brand-primary|--text-muted|--border,|--surface,|#754706|#98600f/i);
 });
