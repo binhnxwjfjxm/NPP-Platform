@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
 
-const [ordersPage, ordersUi, exportLinks, exportStyles, filters] = await Promise.all([
+const [ordersPage, ordersUi, exportLinks, orderStyles, filters] = await Promise.all([
   readFile(new URL("../src/features/orders/OrdersClientPage.tsx", import.meta.url), "utf8"),
   readFile(new URL("../src/features/orders/orders-page-ui.tsx", import.meta.url), "utf8"),
   readFile(new URL("../src/features/exports/ExportLinks.tsx", import.meta.url), "utf8"),
-  readFile(new URL("../src/app/export-menu-fix.css", import.meta.url), "utf8"),
+  readFile(new URL("../src/features/orders/OrdersClientPage.module.css", import.meta.url), "utf8"),
   readFile(new URL("../src/features/orders/OrdersFilters.tsx", import.meta.url), "utf8")
 ]);
 
@@ -21,16 +21,18 @@ test("orders page exposes an explicit export type menu in list and sales views",
   assert.match(ordersPage, /activeView === "orders" \|\| activeView === "sales"/);
 });
 
-test("Issue #600 Lot B keeps the three order-center actions compact and collision-free", () => {
-  assert.match(exportStyles, /\.app-shell\[data-active-href="\/orders"\] \.page-header-actions\s*\{[\s\S]*grid-template-columns:\s*repeat\(3, minmax\(0, max-content\)\)/);
-  assert.match(exportStyles, /\.app-shell\[data-active-href="\/orders"\] \.page-header-actions > \.button,[\s\S]*min-height:\s*34px !important/);
-  assert.match(exportStyles, /\.app-shell\[data-active-href="\/orders"\] \.page-header-actions \.export-menu-trigger[\s\S]*white-space:\s*nowrap/);
-  const mobile = exportStyles.slice(exportStyles.indexOf("@media (max-width: 560px)"));
-  assert.match(mobile, /grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/);
-  assert.match(mobile, /text-overflow:\s*ellipsis/);
+test("Lô 3 keeps the tab rail stable by owning order actions below the rail", () => {
+  assert.match(ordersPage, /<McpPageHeader/);
+  assert.doesNotMatch(ordersPage, /<McpPageHeader[\s\S]*?actions=\{/);
+  assert.match(ordersPage, /data-orders-view-actions="true"/);
+  assert.ok(ordersPage.indexOf('aria-label="Phân tích và xử lý đơn hàng"') < ordersPage.indexOf('data-orders-view-actions="true"'));
+  assert.match(orderStyles, /\.viewActions\s*\{[\s\S]*?display:\s*flex/);
+  assert.match(orderStyles, /\.viewActions\s*\{[\s\S]*?flex-wrap:\s*wrap/);
+  const mobile = orderStyles.slice(orderStyles.indexOf("@media (max-width: 640px)"));
+  assert.match(mobile, /\.viewActions\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
 });
 
-test("Issue #600 Lot B filter card keeps controls and removes explanatory filler", () => {
+test("order filter card keeps controls and removes explanatory filler", () => {
   for (const label of ["Tìm nhanh", "Tuyến", "Nhân viên", "Trạng thái", "Nguồn đơn"]) {
     assert.match(filters, new RegExp(`>${label}<`));
   }
@@ -41,9 +43,11 @@ test("Issue #600 Lot B filter card keeps controls and removes explanatory filler
   assert.doesNotMatch(filters, /Chưa áp dụng bộ lọc bổ sung/);
 });
 
-test("per-order action names the approved workbook format", () => {
-  assert.match(ordersUi, /label: "XLSX mẫu"/);
+test("per-order actions keep PDF A5 and the approved workbook format", () => {
+  assert.match(ordersUi, />PDF A5<\/a>/);
+  assert.match(ordersUi, />XLSX mẫu<\/a>/);
   assert.match(ordersUi, /orderId=\$\{encodeURIComponent\(order\.id\)\}/);
+  assert.match(ordersUi, /data-order-card="true"/);
 });
 
 test("shared export menu supports local download actions", () => {

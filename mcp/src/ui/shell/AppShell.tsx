@@ -5,7 +5,6 @@ import { Suspense, type ReactNode } from "react";
 import { ReportsModeTabs } from "@/features/market-reports/ReportsModeTabs";
 import { McpBottomNav } from "@/ui/foundation";
 import { AppTopBar, MobileAppMenuProvider } from "./MobileAppMenu";
-import { MobileHomeLaunchpad } from "./MobileHomeLaunchpad";
 import { NavIcon } from "./NavIcon";
 import {
   PRIMARY_NAV_ITEMS,
@@ -81,7 +80,6 @@ export function AppShell({ children, activeHref = "/" }: AppShellProps) {
         <div className={styles.contentShell} data-mcp-app-content-shell="true">
           <AppTopBar activeHref={activeHref} />
           <main className={styles.main} data-mcp-scroll-region="true">
-            {activeHref === "/" ? <MobileHomeLaunchpad /> : null}
             {activeHref === "/reports" ? <Suspense fallback={null}><ReportsModeTabs /></Suspense> : null}
             {children}
           </main>

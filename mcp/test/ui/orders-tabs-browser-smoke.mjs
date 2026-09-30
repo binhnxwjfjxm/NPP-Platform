@@ -66,9 +66,15 @@ async function railGeometry(rail) {
   return box;
 }
 
+function ordersHeader(page) {
+  return page
+    .getByRole("heading", { name: "Đơn hàng", exact: true, level: 1 })
+    .locator("xpath=ancestor::header[1]");
+}
+
 async function headerGeometry(page) {
-  const box = await page.locator(".page-header-copy").boundingBox();
-  assert.ok(box, "orders header copy must have geometry");
+  const box = await ordersHeader(page).boundingBox();
+  assert.ok(box, "orders page header must have geometry");
   return box;
 }
 
@@ -104,9 +110,9 @@ async function verifyAuthenticatedOrdersMotion(browser, width, height) {
   );
 
   const initialHeader = await headerGeometry(page);
-  const actions = page.locator(".page-header-actions");
-  assert.equal(Math.round((await actions.boundingBox())?.height || 0), 46, `${width}px: orders header action lane must be fixed at 46px`);
-  assert.equal(await actions.locator(":scope > *").count(), 3, "orders view starts with source, export and create actions");
+  const actions = page.locator('[data-orders-view-actions="true"]');
+  assert.ok((await actions.boundingBox())?.height >= 44, `${width}px: orders header actions must keep the foundation touch target`);
+  assert.equal(await actions.locator(":scope > *").count(), 4, "orders view starts with source, export menu, quick export and create actions");
 
   const scrollRegion = page.locator("[data-mcp-scroll-region]");
   await scrollRegion.evaluate((node) => { node.scrollTop = Math.min(36, Math.max(0, node.scrollHeight - node.clientHeight)); });
@@ -118,10 +124,10 @@ async function verifyAuthenticatedOrdersMotion(browser, width, height) {
   const transforms = [await pseudoTransform(rail)];
 
   const sequence = [
-    { label: "Cần xử lý", view: "attention", actions: 0 },
-    { label: "Doanh số đặt hàng", view: "sales", actions: 2 },
-    { label: "Tổng quan", view: "overview", actions: 0 },
-    { label: "Đơn hàng", view: null, actions: 3 }
+    { label: "Cần xử lý", view: "attention", actions: 1 },
+    { label: "Doanh số đặt hàng", view: "sales", actions: 3 },
+    { label: "Tổng quan", view: "overview", actions: 1 },
+    { label: "Đơn hàng", view: null, actions: 4 }
   ];
 
   for (const step of sequence) {

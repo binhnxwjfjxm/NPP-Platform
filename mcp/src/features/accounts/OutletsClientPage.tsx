@@ -1,12 +1,22 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { KpiCard } from "@/ui/cards/KpiCard";
-import { PageHeader } from "@/ui/layout/PageHeader";
+import {
+  McpButton,
+  McpCard,
+  McpFilterChip,
+  McpFilterRow,
+  McpInput,
+  McpPageHeader,
+  McpSelect,
+  McpStatePanel,
+  McpStatusPill
+} from "@/ui/foundation";
 import { BottomSheet } from "@/ui/overlay/BottomSheet";
 import { AppShell } from "@/ui/shell/AppShell";
 import { DataTable, type DataTableColumn } from "@/ui/table/DataTable";
 import type { AccountKpi, OutletItem, OutletStatus } from "./accounts.types";
+import styles from "./OutletDirectoryScreen.module.css";
 
 type StatusFilter = "all" | OutletStatus;
 type CustomerTab = "outlets" | "company";
@@ -35,10 +45,10 @@ function statusLabel(status: OutletStatus) {
   return "Đang ẩn";
 }
 
-function statusClass(status: OutletStatus) {
-  if (status === "active") return "summary-status-good";
-  if (status === "needs_gps") return "summary-status-watch";
-  return "summary-status-muted";
+function statusTone(status: OutletStatus): "success" | "warning" | "neutral" {
+  if (status === "active") return "success";
+  if (status === "needs_gps") return "warning";
+  return "neutral";
 }
 
 function gpsLabel(item: OutletItem) {
@@ -54,37 +64,36 @@ function buildColumns(onSelect: (item: OutletItem) => void): DataTableColumn<Out
     { key: "area", header: "Khu vực", render: (row) => row.area },
     { key: "routeName", header: "Tuyến", render: (row) => row.routeName },
     { key: "gps", header: "Vị trí", render: (row) => row.gps ? "Đã có GPS" : "Chưa có GPS" },
-    { key: "status", header: "Trạng thái", render: (row) => <span className="badge">{statusLabel(row.status)}</span> },
-    { key: "detail", header: "", render: (row) => <button className="button compact" type="button" onClick={() => onSelect(row)}>Hồ sơ</button> }
+    { key: "status", header: "Trạng thái", render: (row) => <McpStatusPill tone={statusTone(row.status)}>{statusLabel(row.status)}</McpStatusPill> },
+    { key: "detail", header: "", render: (row) => <McpButton className={styles.tableAction} variant="secondary" onClick={() => onSelect(row)}>Hồ sơ</McpButton> }
   ];
 }
 
 function OutletMobileCard({ item, onSelect }: { item: OutletItem; onSelect: (item: OutletItem) => void }) {
   return (
-    <article className="mobile-summary-card outlet-mobile-summary" data-outlet-mobile-card>
-      <div className="mobile-summary-head">
-        <div className="mobile-summary-title">
+    <McpCard className={styles.outletCard} data-outlet-mobile-card>
+      <div className={styles.outletHead}>
+        <div>
           <span>{item.routeName} · {item.area}</span>
           <h3>{item.name}</h3>
         </div>
-        <span className={`mobile-summary-status ${statusClass(item.status)}`}>{statusLabel(item.status)}</span>
+        <McpStatusPill tone={statusTone(item.status)}>{statusLabel(item.status)}</McpStatusPill>
       </div>
-
-      <div className="mobile-summary-decision-row">
+      <div className={styles.outletDecision}>
         <span>
           <small>{hasContact(item.contactName) ? "Liên hệ" : "Vị trí"}</small>
           <strong>{hasContact(item.contactName) ? item.contactName : gpsLabel(item)}</strong>
         </span>
-        <button
-          className="button compact mobile-summary-action"
-          type="button"
+        <McpButton
+          className={styles.mobileAction}
+          variant="secondary"
           aria-label={`Mở hồ sơ ${item.name}`}
           onClick={() => onSelect(item)}
         >
           Mở hồ sơ
-        </button>
+        </McpButton>
       </div>
-    </article>
+    </McpCard>
   );
 }
 
@@ -131,38 +140,30 @@ function OutletSheet({ item, onClose }: { item: OutletItem | null; onClose: () =
 
 function CompanyCustomers({ customers }: { customers: CompanyCustomer[] }) {
   return (
-    <section className="card route-list-card" aria-label="Khách công ty đã mở hoặc liên kết mã">
-      <div className="route-list-heading">
-        <div>
-          <h2 className="panel-title">Khách công ty</h2>
-          <p className="page-subtitle">Chỉ gồm khách đã có mã công ty và thuộc nhân viên đang đăng nhập phụ trách.</p>
-        </div>
-        <span>{customers.length} khách</span>
+    <McpCard className={styles.listCard} aria-label="Khách Công Ty đã mở hoặc liên kết mã">
+      <div className={styles.cardHead}>
+        <div><span>Khách Công Ty</span><h2>Danh sách khách đã liên kết</h2></div>
+        <McpStatusPill tone="primary">{customers.length} khách</McpStatusPill>
       </div>
-      <div className="grid">
-        {customers.map((customer) => (
-          <article className="card" key={customer.id} data-company-customer-card>
-            <div className="mobile-summary-head">
-              <div className="mobile-summary-title">
-                <span>{customer.customerCode || "Đã liên kết"}</span>
-                <h3>{customer.name}</h3>
+      {customers.length ? (
+        <div className={styles.companyList}>
+          {customers.map((customer) => (
+            <article className={styles.companyCard} key={customer.id} data-company-customer-card>
+              <div className={styles.companyHead}>
+                <div><span>{customer.customerCode || "Đã liên kết"}</span><h3>{customer.name}</h3></div>
+                <McpStatusPill tone="success">Đang hoạt động</McpStatusPill>
               </div>
-              <span className="mobile-summary-status summary-status-good">Đang hoạt động</span>
-            </div>
-            <div className="grid">
-              <div className="metric-row"><span>Điện thoại</span><strong>{customer.phone || "-"}</strong></div>
-              <div className="metric-row"><span>Email</span><strong>{customer.email || "-"}</strong></div>
-            </div>
-          </article>
-        ))}
-        {customers.length === 0 ? (
-          <div className="empty-inline">
-            <strong>Chưa có khách công ty</strong>
-            <p className="page-subtitle">Mở hoặc liên kết mã từ tab Điểm bán trước.</p>
-          </div>
-        ) : null}
-      </div>
-    </section>
+              <div className={styles.companyMeta}>
+                <span><small>Điện thoại</small><strong>{customer.phone || "-"}</strong></span>
+                <span><small>Email</small><strong>{customer.email || "-"}</strong></span>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <McpStatePanel title="Chưa có khách Công Ty" description="Mở hoặc liên kết mã từ tab Điểm bán trước." icon="◇" />
+      )}
+    </McpCard>
   );
 }
 
@@ -202,76 +203,82 @@ export function OutletsClientPage({
 
   return (
     <AppShell activeHref="/customers">
-      <PageHeader eyebrow="Khách" title="Khách hàng" subtitle="Điểm bán MCP và khách công ty được tách rõ, không dùng khách công ty để thay mất dữ liệu tuyến.">
-        <span className="badge">{items.length} điểm bán · {coreCustomers.length} khách công ty</span>
-      </PageHeader>
+      <div className={styles.page} data-primary-screen="customers">
+        <McpPageHeader
+          eyebrow="MCP Field"
+          title="Điểm bán"
+          description="Điểm bán trong tuyến và Khách Công Ty được tách rõ để không làm mất dữ liệu tác nghiệp."
+          actions={<McpStatusPill tone="primary">{items.length} điểm bán · {coreCustomers.length} Khách Công Ty</McpStatusPill>}
+        />
 
-      <div className="mcp-status-chips" role="tablist" aria-label="Nhóm khách hàng">
-        <button className={activeTab === "outlets" ? "active" : ""} type="button" role="tab" aria-selected={activeTab === "outlets"} onClick={() => setActiveTab("outlets")}>Điểm bán <b>{items.length}</b></button>
-        <button className={activeTab === "company" ? "active" : ""} type="button" role="tab" aria-selected={activeTab === "company"} onClick={() => setActiveTab("company")}>Khách công ty <b>{coreCustomers.length}</b></button>
-      </div>
+        <div role="tablist" aria-label="Nhóm khách hàng">
+          <McpFilterRow>
+            <McpFilterChip active={activeTab === "outlets"} role="tab" aria-selected={activeTab === "outlets"} onClick={() => setActiveTab("outlets")}>
+              Điểm bán <b className={styles.tabCount}>{items.length}</b>
+            </McpFilterChip>
+            <McpFilterChip active={activeTab === "company"} role="tab" aria-selected={activeTab === "company"} onClick={() => setActiveTab("company")}>
+              Khách Công Ty <b className={styles.tabCount}>{coreCustomers.length}</b>
+            </McpFilterChip>
+          </McpFilterRow>
+        </div>
 
-      {activeTab === "outlets" ? (
-        <>
-          <section className="card route-guidance-card" aria-label="Tìm kiếm và lọc điểm bán">
-            <div className="grid route-secondary-grid">
-              <label className="form-field">
-                <small>Tìm điểm bán</small>
-                <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tên, liên hệ, khu vực hoặc tuyến" type="search" />
-              </label>
-              <label className="form-field">
-                <small>Tuyến</small>
-                <select value={route} onChange={(event) => setRoute(event.target.value)}>
+        {activeTab === "outlets" ? (
+          <>
+            <McpCard className={styles.filterCard} aria-label="Tìm kiếm và lọc điểm bán">
+              <div className={styles.filterGrid}>
+                <McpInput label="Tìm điểm bán" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tên, liên hệ, khu vực hoặc tuyến" type="search" />
+                <McpSelect label="Tuyến" value={route} onChange={(event) => setRoute(event.target.value)}>
                   <option value="all">Tất cả tuyến</option>
                   {routes.map((routeName) => <option key={routeName} value={routeName}>{routeName}</option>)}
-                </select>
-              </label>
-              <label className="form-field">
-                <small>Trạng thái</small>
-                <select value={status} onChange={(event) => setStatus(event.target.value as StatusFilter)}>
+                </McpSelect>
+                <McpSelect label="Trạng thái" value={status} onChange={(event) => setStatus(event.target.value as StatusFilter)}>
                   <option value="all">Tất cả trạng thái</option>
                   <option value="active">Đang trong tuyến</option>
                   <option value="needs_gps">Cần cập nhật GPS</option>
                   <option value="hidden">Đang ẩn</option>
-                </select>
-              </label>
-            </div>
-          </section>
-
-          <section className="grid cards route-kpi-grid">
-            {kpis.map((row) => <KpiCard key={row.label} label={row.label} value={row.value} hint={row.hint} />)}
-          </section>
-
-          <section className="hero-panel route-list-layout">
-            <div className="card route-list-card">
-              <div className="route-list-heading">
-                <h2 className="panel-title">Danh sách điểm bán</h2>
-                <span>{filteredItems.length}/{items.length} điểm bán</span>
+                </McpSelect>
               </div>
+            </McpCard>
 
-              <div className="route-desktop-table">
-                <DataTable columns={columns} rows={filteredItems} getRowKey={(row) => row.id} emptyMessage="Không có điểm bán phù hợp" />
-              </div>
+            <section className={styles.kpiGrid} aria-label="Chỉ số điểm bán">
+              {kpis.map((row) => (
+                <McpCard className={styles.kpiCard} key={row.label}>
+                  <span>{row.label}</span><strong>{row.value}</strong><small>{row.hint}</small>
+                </McpCard>
+              ))}
+            </section>
 
-              <div className="route-mobile-list" aria-label="Danh sách điểm bán trên điện thoại">
-                {filteredItems.length
-                  ? filteredItems.map((item) => <OutletMobileCard item={item} key={item.id} onSelect={setSelected} />)
-                  : <div className="empty-inline">Không có điểm bán phù hợp</div>}
-              </div>
-            </div>
+            <section className={styles.contentGrid}>
+              <McpCard className={styles.listCard}>
+                <div className={styles.cardHead}>
+                  <div><span>Điểm bán</span><h2>Danh sách điểm bán</h2></div>
+                  <McpStatusPill tone="primary">{filteredItems.length}/{items.length} điểm bán</McpStatusPill>
+                </div>
 
-            <div className="card route-secondary-card">
-              <h2 className="panel-title">Chất lượng hồ sơ</h2>
-              <div className="grid route-secondary-grid">
-                <div className="metric-row"><span>Cần cập nhật GPS</span><strong>{stats.needsGps}</strong></div>
-                <div className="metric-row"><span>Thiếu liên hệ</span><strong>{stats.missingContact}</strong></div>
-                <div className="metric-row"><span>Đang ẩn</span><strong>{stats.hidden}</strong></div>
-                <div className="metric-row"><span>Số tuyến</span><strong>{stats.routes}</strong></div>
-              </div>
-            </div>
-          </section>
-        </>
-      ) : <CompanyCustomers customers={coreCustomers} />}
+                <div className={styles.desktopTable}>
+                  <DataTable columns={columns} rows={filteredItems} getRowKey={(row) => row.id} emptyMessage="Không có điểm bán phù hợp" />
+                </div>
+
+                <div className={styles.mobileList} aria-label="Danh sách điểm bán trên điện thoại">
+                  {filteredItems.length
+                    ? filteredItems.map((item) => <OutletMobileCard item={item} key={item.id} onSelect={setSelected} />)
+                    : <McpStatePanel title="Không có điểm bán phù hợp" description="Thử thay đổi từ khóa, tuyến hoặc trạng thái." icon="□" />}
+                </div>
+              </McpCard>
+
+              <McpCard className={styles.qualityCard}>
+                <div className={styles.cardHead}><div><span>Hồ sơ</span><h2>Chất lượng dữ liệu</h2></div></div>
+                <div className={styles.qualityGrid}>
+                  <span><small>Cần cập nhật GPS</small><strong>{stats.needsGps}</strong></span>
+                  <span><small>Thiếu liên hệ</small><strong>{stats.missingContact}</strong></span>
+                  <span><small>Đang ẩn</small><strong>{stats.hidden}</strong></span>
+                  <span><small>Số tuyến</small><strong>{stats.routes}</strong></span>
+                </div>
+              </McpCard>
+            </section>
+          </>
+        ) : <CompanyCustomers customers={coreCustomers} />}
+      </div>
 
       <OutletSheet item={selected} onClose={() => setSelected(null)} />
     </AppShell>

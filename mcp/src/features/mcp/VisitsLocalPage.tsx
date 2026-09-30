@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { MCPPage } from "@/features/mcp/MCPPage";
-import { PageHeader } from "@/ui/layout/PageHeader";
+import { McpButton, McpPageHeader, McpStatePanel } from "@/ui/foundation";
 import { AppShell } from "@/ui/shell/AppShell";
 import { useMcpShellSnapshot } from "@/lib/local-read/use-mcp-shell";
 import { useMcpVisitDay } from "@/lib/local-read/use-mcp-visit-day";
+import styles from "./RouteWorkScreen.module.css";
 
 const VN_TIME_ZONE = "Asia/Ho_Chi_Minh";
 
@@ -33,11 +34,22 @@ function visitHref(routeId: string, date: string) {
   return `/visits?${query.toString()}`;
 }
 
-function LoadingState({ text }: { text: string }) {
-  return <AppShell activeHref="/visits">
-    <PageHeader eyebrow="MCP" title="Đi tuyến" subtitle="Mở dữ liệu đã lưu trước, số liệu mới được cập nhật phía sau." />
-    <section className="dashboard-section" aria-busy="true"><div className="empty-inline">{text}</div></section>
-  </AppShell>;
+function StateScreen({ title, description, action, busy = false }: {
+  title: string;
+  description: string;
+  action?: ReactNode;
+  busy?: boolean;
+}) {
+  return (
+    <AppShell activeHref="/visits">
+      <div className={styles.page} data-primary-screen="visits">
+        <McpPageHeader eyebrow="MCP Field" title="Đi tuyến" description="Mở phiên đang hoạt động và tiếp tục tác nghiệp tại điểm bán." />
+        <div aria-busy={busy || undefined}>
+          <McpStatePanel title={title} description={description} icon={busy ? "↻" : "◎"} action={action} />
+        </div>
+      </div>
+    </AppShell>
+  );
 }
 
 export function VisitsLocalPage() {
@@ -71,28 +83,29 @@ export function VisitsLocalPage() {
 
   if (!routeId) {
     if (!shell.snapshot && !shell.loading) {
-      return <AppShell activeHref="/visits">
-        <PageHeader eyebrow="MCP" title="Đi tuyến" subtitle="Chưa đọc được dữ liệu tuyến đã lưu." />
-        <section className="dashboard-section" role="alert"><div className="empty-inline"><strong>Chưa mở được dữ liệu tuyến</strong><br />Vui lòng thử lại.<div><button className="button" type="button" onClick={() => void shell.refresh()}>Tải lại</button></div></div></section>
-      </AppShell>;
+      return <StateScreen
+        title="Chưa mở được dữ liệu tuyến"
+        description="Vui lòng thử lại. Ứng dụng chưa thay đổi phiên hoặc tuyến khi dữ liệu chưa sẵn sàng."
+        action={<McpButton variant="secondary" onClick={() => void shell.refresh()}>Tải lại</McpButton>}
+      />;
     }
-    return <LoadingState text="Đang xác định phiên đang hoạt động..." />;
+    return <StateScreen busy title="Đang xác định phiên đang hoạt động" description="Nếu hôm nay chỉ có một phiên đang mở, ứng dụng sẽ vào thẳng phiên đó." />;
   }
 
   if (!shell.snapshot || !date) {
-    if (shell.loading || !shell.snapshot) return <LoadingState text="Đang mở tuyến từ dữ liệu đã lưu..." />;
-    return <AppShell activeHref="/visits">
-      <PageHeader eyebrow="MCP" title="Đi tuyến" subtitle="Chưa xác định được phiên gần nhất của tuyến." />
-      <section className="dashboard-section" role="alert"><div className="empty-inline"><strong>Chưa có phiên để mở</strong><br />Vui lòng mở phiên từ danh sách tuyến.</div></section>
-    </AppShell>;
+    if (shell.loading || !shell.snapshot) {
+      return <StateScreen busy title="Đang mở tuyến từ dữ liệu đã lưu" description="Đang xác định phiên gần nhất của tuyến." />;
+    }
+    return <StateScreen title="Chưa có phiên để mở" description="Vui lòng mở phiên từ Tuyến cố định trước khi đi tuyến." />;
   }
 
   if (!visit.data) {
-    if (visit.loading) return <LoadingState text="Đang mở phiên đi tuyến..." />;
-    return <AppShell activeHref="/visits">
-      <PageHeader eyebrow="MCP" title="Đi tuyến" subtitle="Dữ liệu đã lưu chưa có phiên này." />
-      <section className="dashboard-section" role="alert"><div className="empty-inline"><strong>Chưa mở được phiên</strong><br />Vui lòng thử cập nhật lại.<div><button className="button" type="button" onClick={() => void visit.refresh()}>Tải lại</button></div></div></section>
-    </AppShell>;
+    if (visit.loading) return <StateScreen busy title="Đang mở phiên đi tuyến" description="Đang tải danh sách điểm bán và trạng thái phiên." />;
+    return <StateScreen
+      title="Chưa mở được phiên"
+      description="Dữ liệu đã lưu chưa có phiên này. Vui lòng thử cập nhật lại."
+      action={<McpButton variant="secondary" onClick={() => void visit.refresh()}>Tải lại</McpButton>}
+    />;
   }
 
   return <MCPPage

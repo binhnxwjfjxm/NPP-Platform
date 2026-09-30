@@ -22,7 +22,7 @@ export function MorePage() {
 
   return (
     <AppShell activeHref="/more">
-      <div className={styles.page}>
+      <div className={styles.page} data-primary-screen="more">
         <McpPageHeader
           eyebrow="MCP Field"
           title="Thêm"

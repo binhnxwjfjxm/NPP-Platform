@@ -162,6 +162,7 @@ export function McpReportSettingsPage({ activeHref = "/mcp-setting" }: { activeH
     dialogFirstFieldRef.current?.focus({ preventScroll: true });
     const node = appScrollRegion();
     if (node && node.scrollTop !== scrollTop) node.scrollTop = scrollTop;
+    restoreAppScroll(scrollTop);
   }, [dialogMode]);
 
   async function loadSettings({ showLoading = true }: { showLoading?: boolean } = {}) {

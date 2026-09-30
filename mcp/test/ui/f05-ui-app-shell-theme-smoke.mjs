@@ -48,18 +48,12 @@ try {
     const homePage = await homeContext.newPage();
     await homePage.goto(`${appBase}/`, { waitUntil: "domcontentloaded" });
 
-    const launchpad = homePage.locator(".mobile-home-launchpad:visible");
-    assert.equal(await launchpad.count(), 1, `home must show one launchpad at ${viewport.width}px`);
-    const primaryAction = launchpad.getByRole("link", { name: /Đi tuyến/ });
+    const today = homePage.locator('[data-primary-screen="today"]');
+    await today.waitFor({ state: "visible" });
+    const primaryAction = today.getByRole("link", { name: /Đi tuyến/ }).first();
     await primaryAction.waitFor({ state: "visible" });
     assert.equal(await primaryAction.getAttribute("href"), "/visits");
-    assert.equal(await launchpad.locator(".mobile-home-quick-grid a").count(), 5, "home must keep five operational shortcuts");
-    assert.equal(await homePage.locator(".page-header:visible").count(), 0, "mobile home must not render a second hero/header");
-
-    const commandGrid = homePage.locator(".dashboard-command-grid");
-    if (await commandGrid.count()) {
-      assert.equal(await commandGrid.evaluate((node) => getComputedStyle(node).display), "none", "desktop command grid must be hidden on mobile home");
-    }
+    await today.getByRole("heading", { name: "Hôm nay", exact: true }).waitFor({ state: "visible" });
 
     const overflow = await horizontalOverflow(homePage);
     assert.ok(overflow <= 1, `home must not overflow horizontally at ${viewport.width}px; overflow=${overflow}`);

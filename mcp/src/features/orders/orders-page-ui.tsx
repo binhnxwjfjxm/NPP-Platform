@@ -1,7 +1,7 @@
 "use client";
 
 import type { OrderDto } from "@/lib/api/api.types";
-import { OperationalListCard } from "@/ui/cards/OperationalListCard";
+import { McpButton, McpStatusPill } from "@/ui/foundation";
 import type { OrderAlert, OrderBreakdownRow } from "./order-analytics";
 import { buildOrderAnalytics } from "./order-analytics";
 import styles from "./OrdersClientPage.module.css";
@@ -16,11 +16,12 @@ export function getOrderStatusLabel(status: string) {
   return status || "Chưa xác định";
 }
 
-function statusClass(status: string) {
-  if (status === "delivered") return `${styles.status} ${styles.delivered}`;
-  if (status === "confirmed") return `${styles.status} ${styles.confirmed}`;
-  if (status === "draft") return `${styles.status} ${styles.draft}`;
-  return `${styles.status} ${styles.cancelled}`;
+function statusTone(status: string): "neutral" | "primary" | "success" | "warning" | "danger" {
+  if (status === "delivered") return "success";
+  if (status === "confirmed") return "warning";
+  if (status === "draft") return "primary";
+  if (status === "cancelled") return "danger";
+  return "neutral";
 }
 
 function csvCell(value: unknown) {
@@ -106,15 +107,33 @@ export function OrderCard({ order, possibleDuplicate, onSelect }: {
   possibleDuplicate: boolean;
   onSelect: (order: OrderDto) => void;
 }) {
+  const pdfHref = `/api/pdf/order?orderId=${encodeURIComponent(order.id)}`;
+  const exportHref = `/api/backend/exports/orders.csv?orderId=${encodeURIComponent(order.id)}`;
   return (
-    <OperationalListCard
-      leading={<span>{order.skuCount}</span>}
-      eyebrow={`${order.source} · ${order.date}`}
-      title={`${order.code} · ${money.format(order.totalAmount)}`}
-      description={order.accountName}
-      badge={<span className={styles.badgeStack}><strong className={statusClass(order.status)}>{getOrderStatusLabel(order.status)}</strong>{possibleDuplicate ? <em>Nghi trùng</em> : null}</span>}
-      meta={[`${order.routeName} · ${order.owner}`, `${order.quantity} sản phẩm · ${order.skuCount} SKU`]}
-      actions={[{ label: "Xem", tone: "primary", onClick: () => onSelect(order) }, { label: "XLSX mẫu", href: `/api/backend/exports/orders.csv?orderId=${encodeURIComponent(order.id)}` }]}
-    />
+    <article className={styles.orderCard} data-order-card="true">
+      <div className={styles.orderLead}><strong>{order.skuCount}</strong><small>SKU</small></div>
+      <div className={styles.orderBody}>
+        <div className={styles.orderHead}>
+          <div>
+            <span>{order.source} · {order.date}</span>
+            <h3>{order.code} · {money.format(order.totalAmount)}</h3>
+          </div>
+          <div className={styles.badgeStack}>
+            <McpStatusPill tone={statusTone(order.status)}>{getOrderStatusLabel(order.status)}</McpStatusPill>
+            {possibleDuplicate ? <em>Nghi trùng</em> : null}
+          </div>
+        </div>
+        <p>{order.accountName}</p>
+        <div className={styles.orderMeta}>
+          <small>{order.routeName} · {order.owner}</small>
+          <small>{order.quantity} sản phẩm · {order.skuCount} SKU</small>
+        </div>
+      </div>
+      <div className={styles.orderActions}>
+        <McpButton onClick={() => onSelect(order)}>Xem</McpButton>
+        <a className={styles.orderActionLink} href={pdfHref} target="_blank" rel="noreferrer">PDF A5</a>
+        <a className={styles.orderActionLink} href={exportHref}>XLSX mẫu</a>
+      </div>
+    </article>
   );
 }
