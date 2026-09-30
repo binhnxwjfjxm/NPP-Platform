@@ -1,0 +1,144 @@
+name: TEMP audit sales orders 1065 1074 1076
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    if: github.head_ref == 'agent/tmp-audit-orders-1065-1074-1076'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VPS_DB_HOST: ${{ vars.VPS_DB_HOST }}
+      VPS_SSH_USER: ${{ vars.VPS_SSH_USER }}
+
+    steps:
+      - name: Prepare DB SSH credential
+        shell: bash
+        env:
+          VPS_DB_SSH_KEY: ${{ secrets.VPS_DB_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$VPS_DB_HOST"
+          test -n "$VPS_SSH_USER"
+          test -n "$VPS_DB_SSH_KEY"
+          umask 077
+          printf '%s\n' "$VPS_DB_SSH_KEY" > "$RUNNER_TEMP/db.key"
+          chmod 600 "$RUNNER_TEMP/db.key"
+          ssh-keygen -y -f "$RUNNER_TEMP/db.key" >/dev/null
+          ssh-keyscan -T 10 -H "$VPS_DB_HOST" > "$RUNNER_TEMP/db.known" 2>/dev/null
+          test -s "$RUNNER_TEMP/db.known"
+
+      - name: Read exact order lines
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -i "$RUNNER_TEMP/db.key" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$RUNNER_TEMP/db.known" \
+            "$VPS_SSH_USER@$VPS_DB_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          db=npp_production
+          sudo -n -u postgres psql -X -v ON_ERROR_STOP=1 -d "$db" <<'SQL'
+          BEGIN TRANSACTION READ ONLY;
+          \pset tuples_only on
+          \pset format unaligned
+          \pset fieldsep '|'
+
+          WITH target_orders AS (
+            SELECT o.id,
+                   o.installation_id,
+                   o.order_number,
+                   o.current_version_number,
+                   v.id AS version_id,
+                   v.customer_name_snapshot,
+                   v.document_date
+              FROM sales.sales_orders o
+              JOIN sales.sales_order_versions v
+                ON v.installation_id=o.installation_id
+               AND v.sales_order_id=o.id
+               AND v.version_number=o.current_version_number
+             WHERE o.order_number IN (
+               'SO-202609-001065',
+               'SO-202609-001074',
+               'SO-202609-001076'
+             )
+          )
+          SELECT 'ORDER',
+                 order_number,
+                 customer_name_snapshot,
+                 document_date::text
+            FROM target_orders
+           ORDER BY order_number;
+
+          WITH target_orders AS (
+            SELECT o.id,
+                   o.installation_id,
+                   o.order_number,
+                   v.id AS version_id
+              FROM sales.sales_orders o
+              JOIN sales.sales_order_versions v
+                ON v.installation_id=o.installation_id
+               AND v.sales_order_id=o.id
+               AND v.version_number=o.current_version_number
+             WHERE o.order_number IN (
+               'SO-202609-001065',
+               'SO-202609-001074',
+               'SO-202609-001076'
+             )
+          )
+          SELECT 'LINE',
+                 t.order_number,
+                 l.line_number,
+                 l.sku_snapshot,
+                 l.item_name_snapshot,
+                 l.ordered_quantity::text,
+                 l.unit_code_snapshot,
+                 l.conversion_to_base::text,
+                 l.base_quantity::text
+            FROM target_orders t
+            JOIN sales.sales_order_version_lines l
+              ON l.installation_id=t.installation_id
+             AND l.sales_order_version_id=t.version_id
+           ORDER BY t.order_number, l.line_number;
+
+          WITH target_orders AS (
+            SELECT o.id,
+                   o.installation_id,
+                   o.order_number,
+                   v.id AS version_id
+              FROM sales.sales_orders o
+              JOIN sales.sales_order_versions v
+                ON v.installation_id=o.installation_id
+               AND v.sales_order_id=o.id
+               AND v.version_number=o.current_version_number
+             WHERE o.order_number IN (
+               'SO-202609-001065',
+               'SO-202609-001074',
+               'SO-202609-001076'
+             )
+          ),
+          target_lines AS (
+            SELECT l.sku_snapshot,
+                   max(l.item_name_snapshot) AS item_name_snapshot,
+                   max(l.unit_code_snapshot) AS unit_code_snapshot,
+                   sum(l.ordered_quantity)::numeric(30,12) AS ordered_quantity
+              FROM target_orders t
+              JOIN sales.sales_order_version_lines l
+                ON l.installation_id=t.installation_id
+               AND l.sales_order_version_id=t.version_id
+             GROUP BY l.sku_snapshot
+          )
+          SELECT 'GROUPED',
+                 sku_snapshot,
+                 item_name_snapshot,
+                 trim(trailing '.' from trim(trailing '0' from ordered_quantity::text)),
+                 unit_code_snapshot
+            FROM target_lines
+           ORDER BY sku_snapshot;
+
+          ROLLBACK;
+          SQL
+          REMOTE
