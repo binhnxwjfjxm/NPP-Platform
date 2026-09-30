@@ -73,9 +73,9 @@ for (const filename of walk(srcRoot)) {
 
 const sourceFiles = walk(srcRoot);
 const integrityChecks = [
-  { path: "src/features/mcp/McpSessionsManagerSafe.tsx", phrase: "lượt thửCount" },
+  { path: "src/features/mcp/SessionHistoryScreen.tsx", phrase: "lượt thửCount" },
   { path: "src/features/market-checks/MarketChecksClientPage.tsx", phrase: "Phiên: check.sessionId" },
-  { path: "src/features/mcp/McpSessionCompactViewFinal2.tsx", phrase: "TEST_PRODUCT_CHIPS" },
+  { path: "src/features/mcp/RouteSessionWorkScreen.tsx", phrase: "TEST_PRODUCT_CHIPS" },
   { path: "src/features/mcp/McpMarketReportFields.tsx", phrase: "USED_PRODUCT_GROUPS" }
 ];
 for (const check of integrityChecks) {

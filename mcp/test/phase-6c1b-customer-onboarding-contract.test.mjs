@@ -54,7 +54,7 @@ test("standalone verification persists on route customer and uses canonical idem
 
 test("legacy session-order onboarding is retired from the active MCP runtime", () => {
   const transitionalApi = source("apps/backend/foundation/transitional-api.js");
-  const visitSession = source("src/features/mcp/McpSessionCompactViewFinal2.tsx");
+  const visitSession = source("src/features/mcp/RouteSessionWorkScreen.tsx");
   const lineCard = source("src/features/mcp/McpLineCard.tsx");
   const legacyPage = source("src/app/visits/order-intent/page.tsx");
   assert.doesNotMatch(transitionalApi, /\/api\/mcp-day\/session-customer\/customer-onboarding/);

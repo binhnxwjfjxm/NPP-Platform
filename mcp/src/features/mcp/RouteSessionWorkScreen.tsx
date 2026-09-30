@@ -10,9 +10,10 @@ import type { McpDayData, McpDayLine } from "@/features/mcp-day/mcp-day.types";
 import type { RouteCustomersData } from "@/features/mcp/route-customers.types";
 import type { RoutesData } from "@/features/routes/routes.types";
 import { McpLineCard } from "./McpLineCard";
+import { McpSessionAddCustomerButton } from "./McpSessionAddCustomerButton";
 import { mcpCustomerActionDescription, type McpCustomerAction } from "./mcp-customer-actions";
 import { McpMarketReportFields, buildMarketReportContent, emptyMarketReportDraft, marketReportHasInput, type MarketReportDraft } from "./McpMarketReportFields";
-import popupStyles from "./McpSessionPopupCompact.module.css";
+import popupStyles from "./McpSessionActionSheet.module.css";
 import styles from "./RouteWorkScreen.module.css";
 
 type SessionTab = "all" | "pending" | "visited" | "skipped" | "added" | "followups";
@@ -77,7 +78,7 @@ function ActionFields({ action, draft, marketReport, saving, onChange, onMarketR
 
 function CustomerActionSheet({ selection, draft, marketReport, saving, message, onChange, onMarketReportChange, onClose, onSubmit }: { selection: { line: McpDayLine; action: McpCustomerAction } | null; draft: ActionDraft; marketReport: MarketReportDraft; saving: boolean; message: string | null; onChange: (field: keyof ActionDraft, value: string) => void; onMarketReportChange: (value: MarketReportDraft) => void; onClose: () => void; onSubmit: () => void }) { return <McpSheet variant="compact" open={Boolean(selection)} onClose={onClose} title={selection ? actionTitle(selection.action) : "Thao tác tại điểm bán"} description={selection ? selection.line.accountName : undefined} footer={<div className={popupStyles.footer}><button className="button primary" type="button" onClick={onSubmit} disabled={saving}>{saving ? "Đang lưu..." : actionSaveLabel(selection?.action)}</button><button className="button" type="button" onClick={onClose} disabled={saving}>Đóng</button></div>}>{selection ? <div className={`visit-sheet-content ${popupStyles.content}`}><div className="visit-focus-card"><span>Khách</span><strong>{selection.line.accountName}</strong><small>{mcpCustomerActionDescription(selection.action)}</small></div><ActionFields action={selection.action} draft={draft} marketReport={marketReport} saving={saving} onChange={onChange} onMarketReportChange={onMarketReportChange} />{message ? <p className="page-subtitle order-message">{message}</p> : null}</div> : null}</McpSheet>; }
 
-export function McpSessionCompactView({ activeHref = "/visits", mcpDayData }: { activeHref?: string; routesData: RoutesData; mcpDayData: McpDayData; routeCustomersData: RouteCustomersData }) {
+export function RouteSessionWorkScreen({ activeHref = "/visits", mcpDayData }: { activeHref?: string; routesData: RoutesData; mcpDayData: McpDayData; routeCustomersData: RouteCustomersData }) {
   const [tab, setTab] = useState<SessionTab>("all");
   const [selectedLine, setSelectedLine] = useState<McpDayLine | null>(null);
   const [selectedAction, setSelectedAction] = useState<{ line: McpDayLine; action: McpCustomerAction } | null>(null);
@@ -109,7 +110,12 @@ export function McpSessionCompactView({ activeHref = "/visits", mcpDayData }: { 
           eyebrow="MCP Field"
           title="Đi tuyến"
           description={`Tuyến: ${run.routeName} · Ngày: ${run.date} · Phụ trách: ${run.owner}`}
-          actions={<McpStatusPill tone="primary">Phiên đang mở</McpStatusPill>}
+          actions={
+            <>
+              <McpStatusPill tone="primary">Phiên đang mở</McpStatusPill>
+              <McpSessionAddCustomerButton sessionId={run.id} routeName={run.routeName} />
+            </>
+          }
         />
 
         <McpCard className={styles.sessionSummary}>

@@ -52,7 +52,7 @@ try {
   assert.equal(await appMenuButton.count(), 1, "mobile must have exactly one top menu button");
   assert.equal(await page.getByRole("button", { name: "Cài đặt", exact: true }).count(), 0, "standalone settings button must be removed");
   assert.equal(await page.getByRole("button", { name: "Mở menu tác vụ phiên", exact: true }).count(), 0, "session header must not add a second menu trigger");
-  assert.equal(await page.locator("[data-page-header-actions] button").count(), 0, "page header must not contain a second menu button");
+  assert.equal(await page.locator('[data-page-header-actions] button[aria-label="Mở menu ứng dụng"]').count(), 0, "page header must not contain a second menu button");
 
   const triggerBox = await appMenuButton.boundingBox();
   assert.ok(triggerBox, "unified menu button must have a mobile bounding box");

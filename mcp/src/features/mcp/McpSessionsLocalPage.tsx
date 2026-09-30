@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/ui/shell/AppShell";
 import { PageHeader } from "@/ui/layout/PageHeader";
-import { McpSessionsManagerSafe } from "@/features/mcp/McpSessionsManagerSafe";
+import { SessionHistoryScreen } from "@/features/mcp/SessionHistoryScreen";
 import { ExportMenu, buildExportLink } from "@/features/exports/ExportLinks";
 import { useMcpShellSnapshot } from "@/lib/local-read/use-mcp-shell";
 import type { McpShellSessionRow } from "@/lib/local-read/mcp-shell-types";
@@ -116,7 +116,7 @@ export function McpSessionsLocalPage({ filters }: { filters: Filters }) {
         <ExportMenu label="Xuất danh sách" primary groups={[{ title: "Excel theo bộ lọc", links: [buildExportLink("Danh sách điểm bán trong phiên", `/api/backend/exports/mcp-sessions.csv${suffix}`, "primary", "Theo tuyến/trạng thái đang lọc"), buildExportLink("Đơn hàng", "/api/backend/exports/orders.csv"), buildExportLink("Báo cáo thị trường", "/api/backend/exports/market-reports.csv"), buildExportLink("Việc cần theo dõi", "/api/backend/exports/followups.csv")] }]} />
       </PageHeader>
       {extendedLoading ? <div className="empty-inline">Đang tải khoảng thời gian cũ hơn...</div> : null}
-      {data ? <McpSessionsManagerSafe data={data} filters={filters} /> : null}
+      {data ? <SessionHistoryScreen data={data} filters={filters} /> : null}
       {extendedError ? <div className="empty-inline" role="alert">Chưa tải được khoảng thời gian cũ hơn. Dữ liệu gần đây vẫn được giữ trên thiết bị.</div> : null}
       {error && !needsExtendedRange ? <div className="empty-inline">Đang dùng dữ liệu đã lưu; lần cập nhật gần nhất chưa thành công.</div> : null}
     </div>

@@ -6,7 +6,7 @@ const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf
 
 test("session Có đơn is a reporting fact; canonical Orders owns product selection and Sales Order creation", () => {
   const ordersUi = read("src/features/orders/McpCoreOrdersClient.tsx");
-  const visitSession = read("src/features/mcp/McpSessionCompactViewFinal2.tsx");
+  const visitSession = read("src/features/mcp/RouteSessionWorkScreen.tsx");
   const lineCard = read("src/features/mcp/McpLineCard.tsx");
   const resultProxy = read("src/app/api/backend/mcp-day/session-customer/result/route.ts");
   assert.match(ordersUi, /fetch\(`\/api\/products\/search/);
@@ -25,7 +25,7 @@ test("official MCP orders use only the direct canonical Core boundary; legacy or
   const api = read("apps/backend/foundation/core-sales-api.js");
   const directService = read("apps/backend/foundation/direct-sales-orders.js");
   const ordersUi = read("src/features/orders/McpCoreOrdersClient.tsx");
-  const visitSession = read("src/features/mcp/McpSessionCompactViewFinal2.tsx");
+  const visitSession = read("src/features/mcp/RouteSessionWorkScreen.tsx");
   const lineCard = read("src/features/mcp/McpLineCard.tsx");
   const readonly = read("src/features/mcp/McpSessionReadonlyView.tsx");
   const legacyPage = read("src/app/visits/order-intent/page.tsx");

@@ -1,7 +1,7 @@
 .searchBar {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  align-items: end;
+  align-items: flex-end;
   gap: 6px;
   flex: 0 0 auto;
 }
@@ -9,10 +9,10 @@
 .resetButton {
   min-width: 48px;
   min-height: 38px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--mcp-color-border);
   border-radius: 9px;
   background: #fff;
-  color: var(--muted);
+  color: var(--mcp-color-text-secondary);
   padding: 0 9px;
   font-size: 10px;
   font-weight: 900;
@@ -39,7 +39,7 @@
   gap: 4px;
   overflow-y: auto;
   overscroll-behavior: contain;
-  border-right: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
+  border-right: 1px solid color-mix(in srgb, var(--mcp-color-border) 76%, transparent);
   padding: 2px 7px 2px 0;
   scrollbar-width: thin;
   -webkit-overflow-scrolling: touch;
@@ -47,7 +47,7 @@
 
 .filterHeading {
   padding: 1px 5px 2px;
-  color: var(--muted);
+  color: var(--mcp-color-text-secondary);
   font-size: 8px;
   font-weight: 900;
   letter-spacing: 0.04em;
@@ -58,7 +58,7 @@
   height: 1px;
   flex: 0 0 auto;
   margin: 3px 2px;
-  background: color-mix(in srgb, var(--line) 70%, transparent);
+  background: color-mix(in srgb, var(--mcp-color-border) 70%, transparent);
 }
 
 .filterSection {
@@ -69,7 +69,7 @@
 .filterSection > small {
   overflow: hidden;
   padding: 2px 5px 0;
-  color: var(--muted);
+  color: var(--mcp-color-text-secondary);
   font-size: 8px;
   font-weight: 800;
   text-overflow: ellipsis;
@@ -86,7 +86,7 @@
   border: 0;
   border-radius: 8px;
   background: transparent;
-  color: var(--muted);
+  color: var(--mcp-color-text-secondary);
   padding: 5px 6px;
   font-size: 9px;
   font-weight: 850;
@@ -102,18 +102,18 @@
 
 .filterButton:hover:not(:disabled),
 .filterButton:focus-visible {
-  background: color-mix(in srgb, var(--brand-soft, #f3f7ed) 65%, transparent);
-  color: var(--text);
+  background: color-mix(in srgb, var(--mcp-color-primary-soft) 65%, transparent);
+  color: var(--mcp-color-text-primary);
 }
 
 .filterButton:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--brand-strong) 24%, transparent);
+  outline: 2px solid color-mix(in srgb, var(--mcp-color-primary-dark) 24%, transparent);
   outline-offset: -1px;
 }
 
 .filterActive {
-  background: var(--brand-soft, #f3f7ed);
-  color: var(--brand-strong);
+  background: var(--mcp-color-primary-soft);
+  color: var(--mcp-color-primary-dark);
 }
 
 .filterIcon {
@@ -170,9 +170,9 @@
   min-width: 0;
   min-height: 52px;
   border: 0;
-  border-top: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--mcp-color-border) 72%, transparent);
   background: transparent;
-  color: var(--text);
+  color: var(--mcp-color-text-primary);
   padding: 8px 4px;
   font: inherit;
   text-align: left;
@@ -216,39 +216,39 @@
 }
 
 .unitCopy small {
-  color: var(--muted);
+  color: var(--mcp-color-text-secondary);
   font-size: 9px;
 }
 
 .unitPrice strong {
-  color: var(--brand-strong);
+  color: var(--mcp-color-primary-dark);
   font-size: 13px;
   line-height: 1.15;
   font-weight: 900;
 }
 
 .unitPrice small {
-  color: var(--brand-strong);
+  color: var(--mcp-color-primary-dark);
   font-size: 10px;
   font-weight: 900;
 }
 
 .unitRow[data-selected="true"] {
-  background: color-mix(in srgb, var(--brand-soft, #f3f7ed) 72%, transparent);
+  background: color-mix(in srgb, var(--mcp-color-primary-soft) 72%, transparent);
 }
 
 .unitRow[data-selected="true"] .unitCopy > strong {
-  color: var(--brand-strong);
+  color: var(--mcp-color-primary-dark);
 }
 
 .unitRow:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--brand-soft, #f3f7ed) 56%, transparent);
+  background: color-mix(in srgb, var(--mcp-color-primary-soft) 56%, transparent);
 }
 
 .unitRow:focus-visible {
   position: relative;
   z-index: 1;
-  outline: 2px solid color-mix(in srgb, var(--brand-strong) 34%, transparent);
+  outline: 2px solid color-mix(in srgb, var(--mcp-color-primary-dark) 34%, transparent);
   outline-offset: -2px;
 }
 

@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "phase": "6C.0A",
+  "reason": "Issue #1244 Lô 5 retired UI lineage while preserving historical audit evidence.",
+  "replacements": {
+    "src/features/mcp/MCPPageEntryReportReady.tsx": "src/features/mcp/MCPPage.tsx",
+    "src/features/mcp/McpSessionCompactView.tsx": "src/features/mcp/McpSessionView.tsx",
+    "src/features/mcp/McpSessionCompactViewFinal2.tsx": "src/features/mcp/RouteSessionWorkScreen.tsx"
+  }
+}

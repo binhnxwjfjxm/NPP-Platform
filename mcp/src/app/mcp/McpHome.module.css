@@ -34,7 +34,7 @@
   border: 1px solid rgba(152, 96, 15, 0.16);
   border-radius: 15px;
   background: rgba(255, 250, 241, 0.86);
-  color: var(--npp-color-primary-strong);
+  color: var(--mcp-color-primary-dark);
   font-size: 20px;
   font-weight: 900;
 }
@@ -46,7 +46,7 @@
 }
 
 .content strong {
-  color: var(--npp-color-text);
+  color: var(--mcp-color-text-primary);
   font-size: 15.5px;
   font-weight: 850;
   letter-spacing: -0.02em;
@@ -57,7 +57,7 @@
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  color: var(--npp-color-text-muted);
+  color: var(--mcp-color-text-secondary);
   font-size: 12px;
   line-height: 1.4;
 }
@@ -67,7 +67,7 @@
   border: 1px solid rgba(152, 96, 15, 0.14);
   border-radius: 999px;
   background: rgba(255, 250, 241, 0.88);
-  color: var(--npp-color-primary-strong);
+  color: var(--mcp-color-primary-dark);
   font-size: 11.5px;
   font-weight: 850;
   padding: 7px 10px;
@@ -176,14 +176,14 @@
   }
 
   .mobileStats strong {
-    color: var(--npp-color-primary-strong);
+    color: var(--mcp-color-primary-dark);
     font-size: 22px;
     line-height: 1;
   }
 
   .mobileStats span {
     overflow: hidden;
-    color: var(--npp-color-text-muted);
+    color: var(--mcp-color-text-secondary);
     font-size: 11px;
     font-weight: 750;
     text-overflow: ellipsis;
@@ -207,7 +207,7 @@
     gap: 12px;
     min-height: 76px;
     padding: 12px 14px;
-    color: var(--npp-color-text);
+    color: var(--mcp-color-text-primary);
   }
 
   .mobileAction + .mobileAction {
@@ -222,7 +222,7 @@
     border: 1px solid rgba(152, 96, 15, 0.14);
     border-radius: 15px;
     background: rgba(243, 230, 207, 0.72);
-    color: var(--npp-color-primary-strong);
+    color: var(--mcp-color-primary-dark);
     font-size: 19px;
     font-weight: 900;
   }
@@ -240,7 +240,7 @@
 
   .mobileActionCopy small {
     overflow: hidden;
-    color: var(--npp-color-text-muted);
+    color: var(--mcp-color-text-secondary);
     font-size: 11.5px;
     line-height: 1.35;
     text-overflow: ellipsis;
@@ -268,7 +268,7 @@
     display: inline-flex;
     align-items: center;
     gap: 9px;
-    color: var(--npp-color-text);
+    color: var(--mcp-color-text-primary);
     font-size: 13px;
   }
 
@@ -279,38 +279,9 @@
     height: 32px;
     border-radius: 11px;
     background: rgba(243, 230, 207, 0.76);
-    color: var(--npp-color-primary-strong);
+    color: var(--mcp-color-primary-dark);
     font-size: 17px;
     font-weight: 900;
-  }
-
-  .mobileUtility :global(.export-menu) {
-    position: relative;
-  }
-
-  .mobileUtility :global(.export-menu-trigger) {
-    min-width: 78px;
-    min-height: 42px;
-    border-color: rgba(152, 96, 15, 0.2);
-    background: rgba(243, 230, 207, 0.72);
-    color: var(--npp-color-primary-strong);
-    font-size: 12px;
-  }
-
-  .mobileUtility :global(.export-menu-panel) {
-    position: fixed !important;
-    right: 12px !important;
-    bottom: calc(var(--app-bottom-nav-bar-height) + 10px) !important;
-    left: 12px !important;
-    z-index: 80 !important;
-    width: auto !important;
-    max-height: 64dvh;
-    overflow-y: auto;
-    border-color: rgba(152, 96, 15, 0.18);
-    border-radius: 20px;
-    background: rgba(255, 253, 248, 0.97);
-    box-shadow: 0 20px 54px rgba(72, 42, 18, 0.25);
-    backdrop-filter: blur(24px) saturate(1.24);
   }
 }
 

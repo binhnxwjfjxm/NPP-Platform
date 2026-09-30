@@ -17,16 +17,16 @@ test("session card keeps check-in and reporting actions behind compact controls 
 });
 
 test("GPS is captured only by the first manual click and never automatically reused", async () => {
-  const view = await source("src/features/mcp/McpSessionCompactViewFinal2.tsx");
+  const view = await source("src/features/mcp/RouteSessionWorkScreen.tsx");
   assert.match(view, /navigator\.geolocation\.getCurrentPosition/); assert.match(view, /enableHighAccuracy:\s*true/); assert.match(view, /maximumAge:\s*0/);
   assert.match(view, /if \(line\.checkedIn\)[\s\S]*?saveManualCheckin\(line, false\)[\s\S]*?else[\s\S]*?currentSalesPosition\(\)[\s\S]*?saveManualCheckin\(line, true, position\)/);
   assert.match(view, /geoSource:\s*"browser_manual"/); assert.match(view, /operation:\s*"session-customer\.checkin\.set"/);
 });
 
 test("Có đơn is a direct reversible fact toggle; only real reporting actions open compact sheets", async () => {
-  const view = await source("src/features/mcp/McpSessionCompactViewFinal2.tsx"); const card = await source("src/features/mcp/McpLineCard.tsx"); const sheet = await source("src/ui/foundation/McpSheet.tsx"); const css = await source("src/features/mcp/McpSessionPopupCompact.module.css");
+  const view = await source("src/features/mcp/RouteSessionWorkScreen.tsx"); const card = await source("src/features/mcp/McpLineCard.tsx"); const sheet = await source("src/ui/foundation/McpSheet.tsx"); const css = await source("src/features/mcp/McpSessionActionSheet.module.css");
   assert.match(card, /\[hasOrder, setHasOrder\] = useState\(Boolean\(line\.hasOrder\)\)/); assert.match(card, /target = !hasOrder/); assert.match(card, /setHasOrder\(target\)[\s\S]*?orderSubmission\.current = null/); assert.match(card, /actionItems\(displayLine\)/); assert.match(card, /resultSummary\(displayLine\)/); assert.match(card, /line\.hasOrder \? "Đã có đơn" : "Có đơn"/); assert.match(card, /\/api\/backend\/mcp-day\/session-customer\/result/); assert.match(card, /session-customer\.result\.record/);
-  assert.doesNotMatch(view, /Ghi nhận nhu cầu mua|Lưu nhu cầu mua|ProductPicker|OrderFields/); assert.doesNotMatch(view, /onAction\(line, "order"\)/); assert.match(view, /variant="compact"/); assert.match(sheet, /"default" \| "compact" \| "workspace"/); assert.match(css, /\.footer :global\(\.button\)[\s\S]*?min-height:\s*34px/);
+  assert.doesNotMatch(view, /Ghi nhận nhu cầu mua|Lưu nhu cầu mua|ProductPicker|OrderFields/); assert.match(view, /<McpSessionAddCustomerButton sessionId=\{run\.id\}/); assert.doesNotMatch(view, /onAction\(line, "order"\)/); assert.match(view, /variant="compact"/); assert.match(sheet, /"default" \| "compact" \| "workspace"/); assert.match(cssRule(css, "\\.footer"), /display:\s*(?:flex|grid)/); assert.match(css, /\.content :global\(\.visit-focus-card\)/); assert.match(css, /\.footer :global\(\.button\)/); assert.doesNotMatch(css, /!important/);
 });
 
 test("session data exposes dedicated sales check-in fields instead of outlet GPS", async () => {

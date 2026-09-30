@@ -3,7 +3,7 @@
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { idempotentMutationFetch } from "@/lib/api/idempotent-fetch";
-import { McpSheet } from "@/ui/foundation";
+import { McpButton, McpSheet } from "@/ui/foundation";
 import {
   MAX_OUTLET_PHOTOS,
   buildOutletPhotoDrafts,
@@ -242,18 +242,18 @@ export function McpSessionAddCustomerButton({
 
   return (
     <>
-      <button
-        className="mcp-add-customer-fab"
+      <McpButton
+        variant="primary"
         type="button"
         aria-label="Thêm khách vào phiên và tuyến"
+        data-session-add-customer="true"
         onClick={() => {
           setMessage(null);
           setOpen(true);
         }}
       >
-        <span aria-hidden="true">＋</span>
-        <b>Thêm khách</b>
-      </button>
+        ＋ Thêm khách
+      </McpButton>
       <McpSheet
         open={open}
         onClose={close}

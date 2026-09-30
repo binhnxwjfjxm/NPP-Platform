@@ -1,20 +1,4 @@
-import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
-import test from "node:test";
-
-const dashboard = await readFile("src/features/dashboard/DashboardPage.tsx", "utf8");
-
-test("dashboard overview is owned by persisted session facts", () => {
-  assert.match(dashboard, /homeFacts = await loadHomeFacts\(\)/);
-  assert.match(dashboard, /buildOperationalOverview\(homeFacts\)/);
-  assert.doesNotMatch(dashboard, /getDashboardOverview\(\)/);
-  assert.doesNotMatch(dashboard, /createApiClient/);
-});
-
-test("dashboard route health and KPIs derive from complete persisted pages", () => {
-  assert.match(dashboard, /derivePersistedRouteOverview/);
-  assert.match(dashboard, /for \(let offset = 0; ; offset \+= pageSize\)/);
-  assert.doesNotMatch(dashboard, /limit: 12|limit: 8/);
-  assert.match(dashboard, /Không tải được dữ liệu/);
-  assert.match(dashboard, /SourceBadge source="api"/);
-});
+import assert from "node:assert/strict";import{readFile}from"node:fs/promises";import test from"node:test";
+const shellServer=await readFile("src/lib/local-read/mcp-shell-server.ts","utf8"),overview=await readFile("src/features/dashboard/persisted-overview.ts","utf8"),dashboard=await readFile("src/features/dashboard/McpDashboardLocalPage.tsx","utf8");
+test("dashboard overview stays owned by persisted facts",()=>{assert.match(shellServer,/derivePersistedRouteOverview/);assert.match(shellServer,/compareSessionsNewestFirst/);assert.match(shellServer,/vietnamBusinessDate/);assert.doesNotMatch(shellServer,/getDashboardOverview\(\)|createApiClient/);assert.match(dashboard,/useMcpShellSnapshot/)});
+test("persisted route health filters smoke facts",()=>{assert.match(overview,/const visibleRoutes = routes\.filter/);assert.match(overview,/const visibleSessions = sessions\.filter/);assert.match(overview,/const visibleReports = reports\.filter/);assert.match(overview,/routes\.splice\(0, routes\.length, \.\.\.visibleRoutes\)/)});

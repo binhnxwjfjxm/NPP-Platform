@@ -237,7 +237,7 @@ function SessionMoreMenu({
   );
 }
 
-export function McpSessionsManagerSafe({
+export function SessionHistoryScreen({
   data,
   filters
 }: {
