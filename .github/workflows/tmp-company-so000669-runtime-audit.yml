@@ -1,0 +1,81 @@
+name: TEMP Công Ty SO000669 runtime audit
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    if: github.head_ref == 'agent/company-so000669-runtime-audit'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VPS_COMPANY_HOST: ${{ vars.VPS_COMPANY_HOST }}
+      VPS_DB_HOST: ${{ vars.VPS_DB_HOST }}
+      VPS_SSH_USER: ${{ vars.VPS_SSH_USER }}
+
+    steps:
+      - name: Prepare read-only SSH credentials
+        id: ssh
+        shell: bash
+        env:
+          VPS_COMPANY_SSH_KEY: ${{ secrets.VPS_COMPANY_SSH_KEY }}
+          VPS_DB_SSH_KEY: ${{ secrets.VPS_DB_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$VPS_COMPANY_HOST"
+          test -n "$VPS_DB_HOST"
+          test -n "$VPS_SSH_USER"
+          test -n "$VPS_COMPANY_SSH_KEY"
+          test -n "$VPS_DB_SSH_KEY"
+          umask 077
+          printf '%s\n' "$VPS_COMPANY_SSH_KEY" > "$RUNNER_TEMP/company.key"
+          printf '%s\n' "$VPS_DB_SSH_KEY" > "$RUNNER_TEMP/db.key"
+          chmod 600 "$RUNNER_TEMP/company.key" "$RUNNER_TEMP/db.key"
+          ssh-keygen -y -f "$RUNNER_TEMP/company.key" >/dev/null
+          ssh-keygen -y -f "$RUNNER_TEMP/db.key" >/dev/null
+          ssh-keyscan -T 10 -H "$VPS_COMPANY_HOST" > "$RUNNER_TEMP/company.known" 2>/dev/null
+          ssh-keyscan -T 10 -H "$VPS_DB_HOST" > "$RUNNER_TEMP/db.known" 2>/dev/null
+          test -s "$RUNNER_TEMP/company.known"
+          test -s "$RUNNER_TEMP/db.known"
+
+      - name: Read exact Công Ty application journal window
+        shell: bash
+        run: |
+          set -euo pipefail
+          raw="$RUNNER_TEMP/company-journal.raw"
+          ssh -i "$RUNNER_TEMP/company.key" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$RUNNER_TEMP/company.known"             "$VPS_SSH_USER@$VPS_COMPANY_HOST" \
+            "sudo -n journalctl -u npp-company-api.service --since '2026-09-30 04:55:00 UTC' --until '2026-09-30 05:05:00 UTC' --no-pager -o short-iso" > "$raw"
+          sed -E \
+            -e 's#(postgres(ql)?://)[^[:space:]"'\''']+#\1<redacted>#g' \
+            -e 's#(Bearer[[:space:]]+)[A-Za-z0-9._~+/=-]+#\1<redacted>#g' \
+            -e 's#([A-Z0-9_]*(TOKEN|KEY|SECRET|PASSWORD)[A-Z0-9_]*=)[^[:space:]]+#\1<redacted>#g' \
+            "$raw" > "$RUNNER_TEMP/company-journal.clean"
+          echo '=== COMPANY JOURNAL MATCHES ==='
+          grep -Ei -C 8 'web_d7ee65a4-f673-43a0-90b9-e65637909dc2|f0106c33-c78d-4521-ad45-d969fc4f5ef3|idempotent_request_processing_error|audit_outbox_transaction_failed|25P02|issue-stock|sales_fulfillment|inventory_' "$RUNNER_TEMP/company-journal.clean" || true
+          echo '=== COMPANY JOURNAL FULL WINDOW ==='
+          cat "$RUNNER_TEMP/company-journal.clean"
+
+      - name: Read exact PostgreSQL error window
+        shell: bash
+        run: |
+          set -euo pipefail
+          raw="$RUNNER_TEMP/postgres-window.raw"
+          ssh -i "$RUNNER_TEMP/db.key" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$RUNNER_TEMP/db.known"             "$VPS_SSH_USER@$VPS_DB_HOST" 'bash -s' > "$raw" <<'REMOTE'
+          set -euo pipefail
+          {
+            sudo -n journalctl -u postgresql@17-main --since '2026-09-30 04:55:00 UTC' --until '2026-09-30 05:05:00 UTC' --no-pager -o short-iso 2>/dev/null || true
+            if sudo -n test -r /var/log/postgresql/postgresql-17-main.log; then
+              sudo -n awk '$0 ~ /^2026-09-30 0[45]:/ || $0 ~ /^2026-09-30 05:0[0-5]:/' /var/log/postgresql/postgresql-17-main.log 2>/dev/null || true
+            fi
+          }
+          REMOTE
+          sed -E \
+            -e 's#(postgres(ql)?://)[^[:space:]"'\''']+#\1<redacted>#g' \
+            -e 's#(Bearer[[:space:]]+)[A-Za-z0-9._~+/=-]+#\1<redacted>#g' \
+            "$raw" > "$RUNNER_TEMP/postgres-window.clean"
+          echo '=== POSTGRES ERROR MATCHES ==='
+          grep -Ei -C 12 'ERROR|FATAL|PANIC|DETAIL|CONTEXT|STATEMENT|25P02|23514|23505|23503|sales_order|fulfillment|inventory|f0106c33' "$RUNNER_TEMP/postgres-window.clean" || true
