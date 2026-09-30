@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { IDEMPOTENCY_KEY_PATTERN } from '@npp/contracts';
 import * as inventoryRepository from '../db/repositories/inventory-ledger.js';
+import { withTransactionLocalSetting } from '../db/transaction-local-setting.js';
 import {
   readControlledNegativeStockEvidence,
   verifyControlledNegativeStockEvidence,
@@ -329,49 +330,46 @@ export async function postServerOwnedDomainMovement(client, {
     metadata: normalized.value.metadata,
   });
 
-  const previousContextResult = await client.query(
-    "SELECT current_setting('npp.inventory_negative_stock_context', true) AS value",
+  const lines = await withTransactionLocalSetting(
+    client,
+    'npp.inventory_negative_stock_context',
+    '',
+    async () => {
+      const postedLines = [];
+      for (const line of normalized.value.lines) {
+        const evidence = negativeValidation.evidenceByLine.get(line.lineNumber) ?? null;
+        await client.query(
+          "SELECT set_config('npp.inventory_negative_stock_context', $1, true)",
+          [evidence ? negativeStockContext({ requestContext, movementId: movement.id, evidence }) : ''],
+        );
+        const signedQuantity = normalized.value.direction === 'OUT' ? -line.quantity : line.quantity;
+        postedLines.push(await inventoryRepository.insertMovementLine(client, {
+          id: randomUUID(),
+          installationId: requestContext.installationId,
+          movementId: movement.id,
+          lineNumber: line.lineNumber,
+          warehouseId: line.warehouseId,
+          locationId: line.locationId,
+          sourceVariantId: line.baseVariantId,
+          sourceSku: line.baseSku,
+          sourceUnitId: line.baseUnitId,
+          sourceUnitCode: line.baseUnitCode,
+          sourceQuantity: formatQuantity(line.quantity),
+          conversionToBase: '1.000000000000',
+          baseVariantId: line.baseVariantId,
+          baseSku: line.baseSku,
+          direction: normalized.value.direction,
+          baseQuantityDelta: formatQuantity(signedQuantity),
+          lotId: line.lotId,
+          lotCode: line.lotCode,
+          expiryDate: line.expiryDate,
+          sourceLineReference: line.sourceLineId,
+          metadata: line.metadata,
+        }));
+      }
+      return postedLines;
+    },
   );
-  const previousContext = previousContextResult.rows?.[0]?.value ?? '';
-  const lines = [];
-  try {
-    for (const line of normalized.value.lines) {
-      const evidence = negativeValidation.evidenceByLine.get(line.lineNumber) ?? null;
-      await client.query(
-        "SELECT set_config('npp.inventory_negative_stock_context', $1, true)",
-        [evidence ? negativeStockContext({ requestContext, movementId: movement.id, evidence }) : ''],
-      );
-      const signedQuantity = normalized.value.direction === 'OUT' ? -line.quantity : line.quantity;
-      lines.push(await inventoryRepository.insertMovementLine(client, {
-        id: randomUUID(),
-        installationId: requestContext.installationId,
-        movementId: movement.id,
-        lineNumber: line.lineNumber,
-        warehouseId: line.warehouseId,
-        locationId: line.locationId,
-        sourceVariantId: line.baseVariantId,
-        sourceSku: line.baseSku,
-        sourceUnitId: line.baseUnitId,
-        sourceUnitCode: line.baseUnitCode,
-        sourceQuantity: formatQuantity(line.quantity),
-        conversionToBase: '1.000000000000',
-        baseVariantId: line.baseVariantId,
-        baseSku: line.baseSku,
-        direction: normalized.value.direction,
-        baseQuantityDelta: formatQuantity(signedQuantity),
-        lotId: line.lotId,
-        lotCode: line.lotCode,
-        expiryDate: line.expiryDate,
-        sourceLineReference: line.sourceLineId,
-        metadata: line.metadata,
-      }));
-    }
-  } finally {
-    await client.query(
-      "SELECT set_config('npp.inventory_negative_stock_context', $1, true)",
-      [previousContext],
-    );
-  }
   return Object.freeze({ ok: true, movement, lines: Object.freeze(lines), replayed: false });
 }
 

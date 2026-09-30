@@ -8,6 +8,7 @@ import {
   negativeStockScopeSupported,
   readControlledNegativeStockEvidence,
 } from '../src/services/inventory-negative-stock-policy.js';
+import { directStockIssueInternals } from '../src/services/sales-direct-stock-issue.js';
 
 const root = new URL('../', import.meta.url);
 const read = (path) => readFile(new URL(path, root), 'utf8');
@@ -102,13 +103,16 @@ test('ledger dùng shared idempotency, replay trước policy và set trusted co
   assert.match(source, /evidence \? negativeStockContext[\s\S]*: ''/);
 });
 
-test('direct issue giữ reservation thật và chỉ tách phần thiếu thành dòng OUT có evidence', async () => {
+test('direct issue giữ reservation thật, tách phần thiếu và ghi phần có tồn trước phần âm', async () => {
   const source = await read('src/services/sales-direct-stock-issue.js');
   assert.match(source, /reserved \+ backordered !== ordered/);
   assert.match(source, /negative_issued_base_quantity = backordered_base_quantity/);
   assert.match(source, /negative_stock_issue_service/);
   assert.match(source, /negativeStockQuantity: formatQuantity\(negativeQuantity\)/);
   assert.match(source, /negativeStockAuthorization: evidence/);
+  assert.match(source, /const negativeMovementLines = \[\]/);
+  assert.match(source, /negativeMovementLines\.push\(/);
+  assert.match(source, /orderMovementLinesForPosting\(movementLines, negativeMovementLines\)/);
   assert.match(source, /postServerOwnedSalesMovement/);
   assert.doesNotMatch(source, /UPDATE\s+inventory\.inventory_balances/i);
 });
@@ -155,4 +159,16 @@ test('warehouse repository/service đưa policy vào read + update và giữ m�
   assert.match(service, /allowNegativeStock/);
   assert.match(service, /INVALID_NEGATIVE_STOCK_POLICY/);
   assert.match(service, /existing\.allow_negative_stock === true/);
+});
+
+
+test('nhiều dòng cùng mã tồn luôn dùng hết tồn thật trước khi ghi phần xuất âm', () => {
+  const availableA = Object.freeze({ source: 'line-11-available' });
+  const availableB = Object.freeze({ source: 'line-12-available' });
+  const negativeA = Object.freeze({ source: 'line-11-negative' });
+  const ordered = directStockIssueInternals.orderMovementLinesForPosting(
+    [availableA, availableB],
+    [negativeA],
+  );
+  assert.deepEqual(ordered, [availableA, availableB, negativeA]);
 });

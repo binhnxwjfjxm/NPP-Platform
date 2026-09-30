@@ -1,3 +1,5 @@
+import { withTransactionLocalSetting } from '../db/transaction-local-setting.js';
+
 const QUANTITY_PATTERN = /^(0|[1-9]\d{0,17})(?:\.(\d{1,12}))?$/;
 const SCALE = 1_000_000_000_000n;
 
@@ -187,45 +189,37 @@ export async function reconcileDemandHold(client, {
 
   const reserved = clamp(capacity, allocated, requestedTarget);
   const backordered = requestedTarget - reserved;
-  const contextResult = await client.query(
-    "SELECT current_setting('npp.sales_fulfillment_write_context', true) AS previous_context",
+  const demand = await withTransactionLocalSetting(
+    client,
+    'npp.sales_fulfillment_write_context',
+    'fulfillment_hold_service',
+    async () => {
+      const updated = await client.query(
+        `UPDATE sales.sales_order_fulfillment_demands
+            SET allocation_target_base_quantity = $3::numeric,
+                reserved_base_quantity = $4::numeric,
+                backordered_base_quantity = $5::numeric,
+                updated_at = now(),
+                updated_by = $6
+          WHERE installation_id = $1
+            AND id = $2
+            AND state = 'ACTIVE'
+            AND picked_base_quantity = 0
+            AND packed_base_quantity = 0
+            AND issued_base_quantity = 0
+          RETURNING *`,
+        [
+          installationId,
+          demandId,
+          formatHoldQuantity(requestedTarget),
+          formatHoldQuantity(reserved),
+          formatHoldQuantity(backordered),
+          actorId,
+        ],
+      );
+      return updated.rows?.[0] ?? null;
+    },
   );
-  const previousContext = contextResult.rows?.[0]?.previous_context ?? '';
-  let demand;
-  try {
-    await client.query(
-      "SELECT set_config('npp.sales_fulfillment_write_context', 'fulfillment_hold_service', true)",
-    );
-    const updated = await client.query(
-      `UPDATE sales.sales_order_fulfillment_demands
-          SET allocation_target_base_quantity = $3::numeric,
-              reserved_base_quantity = $4::numeric,
-              backordered_base_quantity = $5::numeric,
-              updated_at = now(),
-              updated_by = $6
-        WHERE installation_id = $1
-          AND id = $2
-          AND state = 'ACTIVE'
-          AND picked_base_quantity = 0
-          AND packed_base_quantity = 0
-          AND issued_base_quantity = 0
-        RETURNING *`,
-      [
-        installationId,
-        demandId,
-        formatHoldQuantity(requestedTarget),
-        formatHoldQuantity(reserved),
-        formatHoldQuantity(backordered),
-        actorId,
-      ],
-    );
-    demand = updated.rows?.[0] ?? null;
-  } finally {
-    await client.query(
-      "SELECT set_config('npp.sales_fulfillment_write_context', $1, true)",
-      [previousContext],
-    );
-  }
 
   if (!demand) {
     return failure(

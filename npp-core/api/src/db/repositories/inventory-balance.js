@@ -1,3 +1,5 @@
+import { withTransactionLocalSetting } from '../transaction-local-setting.js';
+
 function toLocalDateOnly(value) {
   if (value === null || value === undefined || value === '') return null;
   if (value instanceof Date) {
@@ -32,22 +34,12 @@ function presentInventoryMovementHistory(row) {
 }
 
 async function withBalanceWriteContext(client, context, operation) {
-  const previousResult = await client.query(
-    "SELECT current_setting('npp.inventory_balance_write_context', true) AS value",
+  return withTransactionLocalSetting(
+    client,
+    'npp.inventory_balance_write_context',
+    context,
+    operation,
   );
-  const previous = previousResult.rows?.[0]?.value ?? '';
-  await client.query(
-    "SELECT set_config('npp.inventory_balance_write_context', $1, true)",
-    [context],
-  );
-  try {
-    return await operation();
-  } finally {
-    await client.query(
-      "SELECT set_config('npp.inventory_balance_write_context', $1, true)",
-      [previous],
-    );
-  }
 }
 
 export async function lockBalanceRebuild(client, { installationId }) {

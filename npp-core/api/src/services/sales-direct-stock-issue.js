@@ -293,6 +293,10 @@ function baseLineMetadata({ id, demand, contract }) {
   };
 }
 
+function orderMovementLinesForPosting(availableLines, negativeLines) {
+  return Object.freeze([...availableLines, ...negativeLines]);
+}
+
 export async function issueDirectSalesOrderStock(client, {
   requestContext,
   id,
@@ -455,6 +459,7 @@ export async function issueDirectSalesOrderStock(client, {
 
   const consumed = new Map();
   const movementLines = [];
+  const negativeMovementLines = [];
   for (const demand of demands) {
     let remaining = parseQuantity(demand.reserved_base_quantity) ?? 0n;
     const candidates = candidatesByScope.get(`${demand.warehouse_id}|${demand.base_variant_id}`) ?? [];
@@ -507,7 +512,7 @@ export async function issueDirectSalesOrderStock(client, {
       const sourceLineId = chunk === 0
         ? demand.source_sales_order_line_id
         : deterministicUuid(`${demand.id}|negative-stock|${chunk}`);
-      movementLines.push({
+      negativeMovementLines.push({
         sourceLineId,
         warehouseId: demand.warehouse_id,
         locationId: null,
@@ -528,6 +533,11 @@ export async function issueDirectSalesOrderStock(client, {
       });
     }
   }
+
+  // Consume every available-stock chunk before any controlled-negative chunk.
+  // Multiple sales lines may share one base SKU; posting in this order makes the
+  // server-authorized shortage the only line that is allowed to cross below zero.
+  const postingLines = orderMovementLinesForPosting(movementLines, negativeMovementLines);
 
   const prepared = await prepareDemandsForIssue(client, {
     installationId: requestContext.installationId,
@@ -562,7 +572,7 @@ export async function issueDirectSalesOrderStock(client, {
         controlledNegativeStock: negativeAuthorizationByDemand.size > 0,
         [contract.metadataFlag]: true,
       },
-      lines: movementLines,
+      lines: postingLines,
     },
   });
   if (!movementResult.ok) return movementResult;
@@ -596,4 +606,5 @@ export const directStockIssueInternals = Object.freeze({
   directMode,
   sourceMatches,
   baseLineMetadata,
+  orderMovementLinesForPosting,
 });
