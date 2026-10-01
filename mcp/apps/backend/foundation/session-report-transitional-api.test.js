@@ -60,7 +60,11 @@ test("session report snapshot route is intercepted by Foundation and calls the c
       nppCode: "NPP-A",
       actorId: "service:npp-a:mcp-v1",
       actorType: "service",
-      actorAuthentication: "proxy-token"
+      actorAuthentication: "proxy-token",
+      principalId: null,
+      principalType: null,
+      principalAuthentication: null,
+      employeeId: null
     }
   });
 });

@@ -65,6 +65,10 @@ const MCP_MEDIA_PENDING_EXPIRY_SQL = readFileSync(
   new URL("./sql/016_mcp_media_pending_expiry.sql", import.meta.url),
   "utf8"
 );
+const MCP_SESSION_EMPLOYEE_OWNERSHIP_SQL = readFileSync(
+  new URL("./sql/017_mcp_session_employee_ownership.sql", import.meta.url),
+  "utf8"
+);
 
 export const MCP_MIGRATIONS = Object.freeze([
   Object.freeze({ id: "mcp_001_write_foundation", sql: MCP_WRITE_FOUNDATION_SQL }),
@@ -82,7 +86,8 @@ export const MCP_MIGRATIONS = Object.freeze([
   Object.freeze({ id: "mcp_013_customer_verification_review_reason", sql: MCP_CUSTOMER_VERIFICATION_REVIEW_REASON_SQL }),
   Object.freeze({ id: "mcp_014_customer_read_boundary", sql: MCP_CUSTOMER_READ_BOUNDARY_SQL }),
   Object.freeze({ id: "mcp_015_customer_media_boundary", sql: MCP_CUSTOMER_MEDIA_BOUNDARY_SQL }),
-  Object.freeze({ id: "mcp_016_media_pending_expiry", sql: MCP_MEDIA_PENDING_EXPIRY_SQL })
+  Object.freeze({ id: "mcp_016_media_pending_expiry", sql: MCP_MEDIA_PENDING_EXPIRY_SQL }),
+  Object.freeze({ id: "mcp_017_session_employee_ownership", sql: MCP_SESSION_EMPLOYEE_OWNERSHIP_SQL })
 ]);
 
 const MCP_READ_MODELS = Object.freeze([

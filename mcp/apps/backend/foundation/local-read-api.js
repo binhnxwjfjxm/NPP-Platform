@@ -13,6 +13,13 @@ function text(value) {
   return String(value ?? "").trim();
 }
 
+function employeeScope(context) {
+  if (context?.principal?.type !== "user") return null;
+  const employeeId = text(context?.principal?.employeeId);
+  if (!employeeId) throw localReadError("employee_identity_required", 403);
+  return employeeId;
+}
+
 function localReadError(code, statusCode = 400) {
   const error = new Error(code);
   error.code = code;
@@ -20,7 +27,7 @@ function localReadError(code, statusCode = 400) {
   return error;
 }
 
-async function readCursor(client, installationId) {
+async function readCursor(client, installationId, employeeId) {
   const result = await client.query(
     `WITH route_state AS (
        SELECT MAX(updated_at)::text AS max_updated, COUNT(*)::text AS row_count
@@ -34,14 +41,23 @@ async function readCursor(client, installationId) {
        SELECT MAX(updated_at)::text AS max_updated, COUNT(*)::text AS row_count
          FROM mcp.mcp_route_sessions
         WHERE installation_id = $1
+          AND ($2::uuid IS NULL OR owner_employee_id = $2::uuid)
      ), session_customer_state AS (
-       SELECT MAX(updated_at)::text AS max_updated, COUNT(*)::text AS row_count
-         FROM mcp.mcp_session_customers
-        WHERE installation_id = $1
+       SELECT MAX(customer.updated_at)::text AS max_updated, COUNT(*)::text AS row_count
+         FROM mcp.mcp_session_customers customer
+         JOIN mcp.mcp_route_sessions session
+           ON session.installation_id = customer.installation_id
+          AND session.id = customer.session_id
+        WHERE customer.installation_id = $1
+          AND ($2::uuid IS NULL OR session.owner_employee_id = $2::uuid)
      ), report_state AS (
-       SELECT MAX(updated_at)::text AS max_updated, COUNT(*)::text AS row_count
-         FROM mcp.mcp_session_reports
-        WHERE installation_id = $1
+       SELECT MAX(report.updated_at)::text AS max_updated, COUNT(*)::text AS row_count
+         FROM mcp.mcp_session_reports report
+         JOIN mcp.mcp_route_sessions session
+           ON session.installation_id = report.installation_id
+          AND session.id = report.session_id
+        WHERE report.installation_id = $1
+          AND ($2::uuid IS NULL OR session.owner_employee_id = $2::uuid)
      )
      SELECT md5(concat_ws('|',
        COALESCE(route_state.max_updated, ''), route_state.row_count,
@@ -51,14 +67,14 @@ async function readCursor(client, installationId) {
        COALESCE(report_state.max_updated, ''), report_state.row_count
      )) AS cursor
        FROM route_state, route_customer_state, session_state, session_customer_state, report_state`,
-    [installationId]
+    [installationId, employeeId]
   );
   const cursor = text(result.rows?.[0]?.cursor);
   if (!cursor) throw localReadError("mcp_local_read_cursor_unavailable", 500);
   return cursor;
 }
 
-async function readSnapshot(client, installationId) {
+async function readSnapshot(client, installationId, employeeId) {
   const routesResult = await client.query(
     `SELECT id, route_name, area, active, sales, updated_at
        FROM mcp.mcp_routes
@@ -85,8 +101,9 @@ async function readSnapshot(client, installationId) {
             created_at, updated_at
        FROM mcp.mcp_route_sessions
       WHERE installation_id = $1
+        AND ($2::uuid IS NULL OR owner_employee_id = $2::uuid)
       ORDER BY route_id, session_date DESC, updated_at DESC, id DESC`,
-    [installationId]
+    [installationId, employeeId]
   );
 
   const recentSessionsResult = await client.query(
@@ -96,10 +113,11 @@ async function readSnapshot(client, installationId) {
             created_at, updated_at
        FROM mcp.mcp_route_sessions
       WHERE installation_id = $1
-        AND session_date >= CURRENT_DATE - $2::integer
+        AND ($2::uuid IS NULL OR owner_employee_id = $2::uuid)
+        AND (status = 'active' OR session_date >= CURRENT_DATE - $3::integer)
       ORDER BY session_date DESC, updated_at DESC, id DESC
-      LIMIT $3`,
-    [installationId, RECENT_SESSION_DAYS, RECENT_SESSION_LIMIT]
+      LIMIT $4`,
+    [installationId, employeeId, RECENT_SESSION_DAYS, RECENT_SESSION_LIMIT]
   );
 
   const latestSessionIds = (latestSessionsResult.rows || []).map((row) => text(row.id)).filter(Boolean);
@@ -146,7 +164,7 @@ async function readSnapshot(client, installationId) {
   };
 }
 
-async function readReportHistory(client, installationId) {
+async function readReportHistory(client, installationId, employeeId) {
   const result = await client.query(
     `SELECT *
        FROM (
@@ -165,6 +183,7 @@ async function readReportHistory(client, installationId) {
             AND session.id = report.session_id
           WHERE report.installation_id = $1
             AND session.session_date >= CURRENT_DATE - $2::integer
+            AND ($4::uuid IS NULL OR session.owner_employee_id = $4::uuid)
           ORDER BY report.session_id,
                    report.snapshot_at DESC NULLS LAST,
                    report.updated_at DESC,
@@ -172,7 +191,7 @@ async function readReportHistory(client, installationId) {
        ) recent
       ORDER BY session_date DESC, snapshot_at DESC NULLS LAST, updated_at DESC, id DESC
       LIMIT $3`,
-    [installationId, RECENT_SESSION_DAYS, REPORT_HISTORY_LIMIT]
+    [installationId, RECENT_SESSION_DAYS, REPORT_HISTORY_LIMIT, employeeId]
   );
   return {
     days: RECENT_SESSION_DAYS,
@@ -180,7 +199,7 @@ async function readReportHistory(client, installationId) {
   };
 }
 
-async function readFollowups(client, installationId) {
+async function readFollowups(client, installationId, employeeId) {
   const result = await client.query(
     `SELECT followup.id,
             followup.session_id,
@@ -208,6 +227,7 @@ async function readFollowups(client, installationId) {
          ON route.installation_id = followup.installation_id
         AND route.id = followup.route_id
       WHERE followup.installation_id = $1
+        AND ($4::uuid IS NULL OR session.owner_employee_id = $4::uuid)
         AND (
           COALESCE(lower(followup.status), 'pending') NOT IN
             ('done', 'completed', 'closed', 'cancelled')
@@ -223,7 +243,7 @@ async function readFollowups(client, installationId) {
         followup.updated_at DESC,
         followup.id DESC
       LIMIT $3`,
-    [installationId, FOLLOWUP_HISTORY_DAYS, FOLLOWUP_LIMIT]
+    [installationId, FOLLOWUP_HISTORY_DAYS, FOLLOWUP_LIMIT, employeeId]
   );
 
   return {
@@ -232,7 +252,7 @@ async function readFollowups(client, installationId) {
   };
 }
 
-async function readOutletHistory(client, installationId, routeCustomerId) {
+async function readOutletHistory(client, installationId, routeCustomerId, employeeId) {
   const result = await client.query(
     `SELECT session_customer.id AS session_customer_id,
             session_customer.session_id,
@@ -272,10 +292,11 @@ async function readOutletHistory(client, installationId, routeCustomerId) {
         AND route_session.id = session_customer.session_id
       WHERE session_customer.installation_id = $1
         AND session_customer.route_customer_id = $2
+        AND ($3::uuid IS NULL OR route_session.owner_employee_id = $3::uuid)
       ORDER BY route_session.session_date DESC,
                session_customer.updated_at DESC,
                session_customer.id DESC`,
-    [installationId, routeCustomerId]
+    [installationId, routeCustomerId, employeeId]
   );
 
   return {
@@ -284,7 +305,7 @@ async function readOutletHistory(client, installationId, routeCustomerId) {
   };
 }
 
-async function readReportDetail(client, installationId, sessionId) {
+async function readReportDetail(client, installationId, sessionId, employeeId) {
   const sessionResult = await client.query(
     `SELECT id, route_id, route_name, session_date, sales, area, status,
             planned_customers, visited_customers, order_count, test_count,
@@ -292,8 +313,9 @@ async function readReportDetail(client, installationId, sessionId) {
             created_at, updated_at
        FROM mcp.mcp_route_sessions session
       WHERE installation_id = $1 AND id = $2
+        AND ($3::uuid IS NULL OR owner_employee_id = $3::uuid)
       LIMIT 1`,
-    [installationId, sessionId]
+    [installationId, sessionId, employeeId]
   );
   const session = sessionResult.rows?.[0];
   if (!session) throw localReadError("mcp_session_not_found", 404);
@@ -412,19 +434,20 @@ export async function handleLocalReadApi(req, url, context, _config, { persisten
 
   const installationId = text(context?.installation?.id);
   if (!installationId) throw localReadError("installation_context_required", 500);
+  const employeeId = employeeScope(context);
 
   await persistence.assertReady();
 
   if (url.pathname === MCP_REPORT_HISTORY_PATH) {
     const data = await persistence.withTransaction((client) =>
-      readReportHistory(client, installationId)
+      readReportHistory(client, installationId, employeeId)
     );
     return { statusCode: 200, payload: { data, receivedAt: new Date().toISOString() } };
   }
 
   if (url.pathname === MCP_FOLLOWUPS_PATH) {
     const data = await persistence.withTransaction((client) =>
-      readFollowups(client, installationId)
+      readFollowups(client, installationId, employeeId)
     );
     return { statusCode: 200, payload: { data, receivedAt: new Date().toISOString() } };
   }
@@ -433,7 +456,7 @@ export async function handleLocalReadApi(req, url, context, _config, { persisten
     const sessionId = text(url.searchParams.get("sessionId") || url.searchParams.get("session_id"));
     if (!sessionId) throw localReadError("session_id_required", 400);
     const data = await persistence.withTransaction((client) =>
-      readReportDetail(client, installationId, sessionId)
+      readReportDetail(client, installationId, sessionId, employeeId)
     );
     return { statusCode: 200, payload: { data, receivedAt: new Date().toISOString() } };
   }
@@ -442,18 +465,18 @@ export async function handleLocalReadApi(req, url, context, _config, { persisten
     const routeCustomerId = text(url.searchParams.get("routeCustomerId") || url.searchParams.get("route_customer_id"));
     if (!routeCustomerId) throw localReadError("route_customer_id_required", 400);
     const data = await persistence.withTransaction((client) =>
-      readOutletHistory(client, installationId, routeCustomerId)
+      readOutletHistory(client, installationId, routeCustomerId, employeeId)
     );
     return { statusCode: 200, payload: { data, receivedAt: new Date().toISOString() } };
   }
 
   const requestedCursor = text(url.searchParams.get("cursor"));
   const data = await persistence.withTransaction(async (client) => {
-    const cursor = await readCursor(client, installationId);
+    const cursor = await readCursor(client, installationId, employeeId);
     if (requestedCursor && requestedCursor === cursor) {
       return { cursor, unchanged: true, snapshot: null };
     }
-    return { cursor, unchanged: false, snapshot: await readSnapshot(client, installationId) };
+    return { cursor, unchanged: false, snapshot: await readSnapshot(client, installationId, employeeId) };
   });
 
   return { statusCode: 200, payload: { data, receivedAt: new Date().toISOString() } };

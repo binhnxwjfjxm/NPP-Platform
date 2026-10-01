@@ -40,6 +40,18 @@ function badRequest(code) {
   return error;
 }
 
+function employeeScope(context) {
+  if (context?.principal?.type !== "user") return null;
+  const employeeId = text(context?.principal?.employeeId);
+  if (!employeeId) {
+    const error = new Error("employee_identity_required");
+    error.code = "employee_identity_required";
+    error.statusCode = 403;
+    throw error;
+  }
+  return employeeId;
+}
+
 function productItem(row) {
   return {
     productId: row.product_id,
@@ -135,13 +147,15 @@ async function loadVariants(productId) {
 async function sessionStatus(url, context) {
   const routeId = text(url.searchParams.get("routeId") || url.searchParams.get("route_id"));
   if (!routeId) throw badRequest("route_id_required");
+  const ownerEmployeeId = employeeScope(context);
   const rows = await withClient(async (client) => {
     const result = await client.query(
       `SELECT id, route_id, route_name, session_date, status
        FROM mcp.mcp_route_sessions
        WHERE installation_id = $1 AND route_id = $2 AND status = 'active'
+         AND ($3::uuid IS NULL OR owner_employee_id = $3::uuid)
        ORDER BY session_date DESC, created_at DESC`,
-      [context.installation.id, routeId]
+      [context.installation.id, routeId, ownerEmployeeId]
     );
     return result.rows || [];
   });
@@ -195,14 +209,16 @@ async function mcpDayData(url, context) {
   );
   if (!routeId || !sessionDate) throw badRequest("route_id_and_date_required");
 
+  const ownerEmployeeId = employeeScope(context);
   const data = await withClient(async (client) => {
     const sessionResult = await client.query(
       `SELECT id, route_id, route_name, session_date, sales, area, status, created_at
        FROM mcp.mcp_route_sessions
        WHERE installation_id = $1 AND route_id = $2 AND session_date = $3
+         AND ($4::uuid IS NULL OR owner_employee_id = $4::uuid)
        ORDER BY created_at DESC
        LIMIT 1`,
-      [context.installation.id, routeId, sessionDate]
+      [context.installation.id, routeId, sessionDate, ownerEmployeeId]
     );
     const session = sessionResult.rows?.[0] || null;
     if (!session) return emptyMcpDayData(routeId, sessionDate);
@@ -349,6 +365,7 @@ function normalizeFieldCheckStatus(value) {
 async function testOptions(context) {
   const installationId = text(context?.installation?.id);
   if (!installationId) throw badRequest("installation_context_required");
+  const ownerEmployeeId = employeeScope(context);
 
   const data = await withClient(async (client) => {
     const [filesResult, productsResult] = await Promise.all([
@@ -357,17 +374,25 @@ async function testOptions(context) {
          FROM mcp.test_files
          WHERE installation_id = $1
            AND COALESCE(status, '') <> 'deleted'
+           AND ($2::text IS NULL OR COALESCE(raw_payload->'foundation_context'->>'employeeId', '') = $2::text)
          ORDER BY test_date DESC, created_at DESC
          LIMIT 50`,
-        [installationId]
+        [installationId, ownerEmployeeId]
       ),
       client.query(
         `SELECT id, file_id, product_name, sort_order, created_at
-         FROM mcp.test_file_products
-         WHERE installation_id = $1
+         FROM mcp.test_file_products product
+         WHERE product.installation_id = $1
+           AND ($2::text IS NULL OR EXISTS (
+             SELECT 1
+               FROM mcp.test_files file
+              WHERE file.installation_id = product.installation_id
+                AND file.id = product.file_id
+                AND COALESCE(file.raw_payload->'foundation_context'->>'employeeId', '') = $2::text
+           ))
          ORDER BY sort_order ASC, created_at ASC, id ASC
          LIMIT 1000`,
-        [installationId]
+        [installationId, ownerEmployeeId]
       )
     ]);
     return {
@@ -400,6 +425,7 @@ async function marketChecks(url, context) {
   if (!installationId) throw badRequest("installation_context_required");
   const status = text(url.searchParams.get("status"));
   const search = (text(url.searchParams.get("search")) || "").toLowerCase();
+  const ownerEmployeeId = employeeScope(context);
 
   const rows = await withClient(async (client) => {
     const result = await client.query(
@@ -417,10 +443,14 @@ async function marketChecks(url, context) {
        LEFT JOIN mcp.test_customers customer
          ON customer.installation_id = result.installation_id
         AND customer.id = result.customer_id
+       JOIN mcp.test_files file
+         ON file.installation_id = result.installation_id
+        AND file.id = result.file_id
        WHERE result.installation_id = $1
+         AND ($2::text IS NULL OR COALESCE(file.raw_payload->'foundation_context'->>'employeeId', '') = $2::text)
        ORDER BY result.updated_at DESC, result.created_at DESC
        LIMIT 300`,
-      [installationId]
+      [installationId, ownerEmployeeId]
     );
     return result.rows || [];
   });

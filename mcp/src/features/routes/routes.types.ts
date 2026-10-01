@@ -9,6 +9,8 @@ export type RouteItem = {
   visitedCustomers: number;
   orderCount: number;
   lastVisitDate: string;
+  activeSessionId?: string | null;
+  activeSessionDate?: string | null;
   status: RouteStatus;
 };
 

@@ -9,24 +9,9 @@ import { useMcpShellSnapshot } from "@/lib/local-read/use-mcp-shell";
 import { useMcpVisitDay } from "@/lib/local-read/use-mcp-visit-day";
 import styles from "./RouteWorkScreen.module.css";
 
-const VN_TIME_ZONE = "Asia/Ho_Chi_Minh";
-
 function cleanDate(value: string | null) {
   const date = String(value || "").slice(0, 10);
   return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : "";
-}
-
-function vnToday() {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: VN_TIME_ZONE,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit"
-  }).formatToParts(new Date());
-  const year = parts.find((item) => item.type === "year")?.value || "";
-  const month = parts.find((item) => item.type === "month")?.value || "";
-  const day = parts.find((item) => item.type === "day")?.value || "";
-  return `${year}-${month}-${day}`;
 }
 
 function visitHref(routeId: string, date: string) {
@@ -61,20 +46,18 @@ export function VisitsLocalPage() {
   const latestRouteSession = routeId && shell.snapshot
     ? shell.snapshot.recentSessions.sessions.find((session) => session.routeId === routeId)
     : null;
-  const date = requestedDate || (routeId ? latestRouteSession?.sessionDate || "" : vnToday());
+  const date = requestedDate || (routeId ? latestRouteSession?.sessionDate || "" : "");
   const visit = useMcpVisitDay(routeId, date);
 
   useEffect(() => {
-    if (routeId || !shell.snapshot || !date) return;
-    const active = shell.snapshot.recentSessions.sessions.filter((session) => (
-      session.sessionDate === date && session.status === "active"
-    ));
+    if (routeId || !shell.snapshot) return;
+    const active = shell.snapshot.recentSessions.sessions.filter((session) => session.status === "active");
     if (active.length === 1) {
       router.replace(visitHref(active[0].routeId, active[0].sessionDate), { scroll: false });
       return;
     }
     if (active.length > 1) {
-      const query = new URLSearchParams({ dateFrom: date, dateTo: date, status: "active" });
+      const query = new URLSearchParams({ status: "active" });
       router.replace(`/mcp/sessions?${query.toString()}`, { scroll: false });
       return;
     }
@@ -89,7 +72,7 @@ export function VisitsLocalPage() {
         action={<McpButton variant="secondary" onClick={() => void shell.refresh()}>Tải lại</McpButton>}
       />;
     }
-    return <StateScreen busy title="Đang xác định phiên đang hoạt động" description="Nếu hôm nay chỉ có một phiên đang mở, ứng dụng sẽ vào thẳng phiên đó." />;
+    return <StateScreen busy title="Đang xác định phiên đang hoạt động" description="Nếu tài khoản này chỉ có một phiên đang mở, ứng dụng sẽ vào thẳng phiên đó." />;
   }
 
   if (!shell.snapshot || !date) {

@@ -194,7 +194,7 @@ test("MCP local-read backend stops after cursor check when nothing changed", asy
   assert.equal(result.payload.data.unchanged, true);
   assert.equal(result.payload.data.snapshot, null);
   assert.equal(queries.length, 1);
-  assert.deepEqual(queries[0].values, ["installation-a"]);
+  assert.deepEqual(queries[0].values, ["installation-a", null]);
 });
 
 test("legacy report settings GET reads PostgreSQL while writes keep the guarded backend mutation route", () => {

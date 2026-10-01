@@ -29,6 +29,7 @@ const ALLOWED_READ_TABLES = new Set([
 ]);
 
 const INSTALLATION_SCOPED_READ_TABLES = new Set([
+  "market_reports",
   "mcp_followups",
   "mcp_report_setting_groups",
   "mcp_report_settings",
@@ -37,7 +38,28 @@ const INSTALLATION_SCOPED_READ_TABLES = new Set([
   "mcp_routes",
   "mcp_session_customers",
   "mcp_session_reports",
-  "mcp_visits"
+  "mcp_visits",
+  "order_items",
+  "orders",
+  "test_customer_results",
+  "test_customers",
+  "test_file_products",
+  "test_files"
+]);
+
+const EMPLOYEE_SCOPED_READ_TABLES = new Set([
+  "market_reports",
+  "mcp_followups",
+  "mcp_route_sessions",
+  "mcp_session_customers",
+  "mcp_session_reports",
+  "mcp_visits",
+  "order_items",
+  "orders",
+  "test_customer_results",
+  "test_customers",
+  "test_file_products",
+  "test_files"
 ]);
 
 const READ_PERMISSION_BY_TABLE = new Map([
@@ -225,12 +247,101 @@ function installationScopedFilters(table, filters, context) {
   return next;
 }
 
+function employeeScopedClause(table, context, params) {
+  if (!EMPLOYEE_SCOPED_READ_TABLES.has(table) || context?.principal?.type !== "user") return null;
+  const employeeId = text(context?.principal?.employeeId);
+  if (!employeeId) throw readError("employee_identity_required", 403);
+
+  params.push(employeeId);
+  const employeeParam = `${params.length}`;
+  const outer = quoteIdentifier(table);
+  const sessionOwner = (sessionIdExpression) =>
+    `EXISTS (
+       SELECT 1
+         FROM mcp.mcp_route_sessions owner_session
+        WHERE owner_session.installation_id = ${outer}.installation_id
+          AND owner_session.id = ${sessionIdExpression}
+          AND owner_session.owner_employee_id = ${employeeParam}::uuid
+     )`;
+
+  if (table === "mcp_route_sessions") {
+    return `${quoteIdentifier("owner_employee_id")} = ${employeeParam}::uuid`;
+  }
+  if (table === "mcp_session_customers" || table === "mcp_session_reports") {
+    return sessionOwner(`${outer}.session_id`);
+  }
+  if (table === "mcp_visits" || table === "mcp_followups") {
+    return `(${sessionOwner(`${outer}.session_id`)}
+      OR COALESCE(${outer}.raw_payload->'foundation_context'->>'employeeId', '') = ${employeeParam}::text)`;
+  }
+  if (table === "market_reports") {
+    return `(EXISTS (
+       SELECT 1
+         FROM mcp.mcp_session_customers owner_customer
+         JOIN mcp.mcp_route_sessions owner_session
+           ON owner_session.installation_id = owner_customer.installation_id
+          AND owner_session.id = owner_customer.session_id
+        WHERE owner_customer.installation_id = ${outer}.installation_id
+          AND owner_customer.report_id = ${outer}.id
+          AND owner_session.owner_employee_id = ${employeeParam}::uuid
+     ) OR COALESCE(${outer}.raw_payload->'foundation_context'->>'employeeId', '') = ${employeeParam}::text)`;
+  }
+  if (table === "orders") {
+    return `(EXISTS (
+       SELECT 1
+         FROM mcp.mcp_session_customers owner_customer
+         JOIN mcp.mcp_route_sessions owner_session
+           ON owner_session.installation_id = owner_customer.installation_id
+          AND owner_session.id = owner_customer.session_id
+        WHERE owner_customer.installation_id = ${outer}.installation_id
+          AND owner_customer.order_id = ${outer}.id
+          AND owner_session.owner_employee_id = ${employeeParam}::uuid
+     ) OR COALESCE(${outer}.raw_payload->'foundation_context'->>'employeeId', '') = ${employeeParam}::text)`;
+  }
+  if (table === "order_items") {
+    return `EXISTS (
+       SELECT 1
+         FROM mcp.orders owner_order
+        WHERE owner_order.installation_id = ${outer}.installation_id
+          AND owner_order.id = ${outer}.order_id
+          AND (
+            COALESCE(owner_order.raw_payload->'foundation_context'->>'employeeId', '') = ${employeeParam}::text
+            OR EXISTS (
+              SELECT 1
+                FROM mcp.mcp_session_customers owner_customer
+                JOIN mcp.mcp_route_sessions owner_session
+                  ON owner_session.installation_id = owner_customer.installation_id
+                 AND owner_session.id = owner_customer.session_id
+               WHERE owner_customer.installation_id = owner_order.installation_id
+                 AND owner_customer.order_id = owner_order.id
+                 AND owner_session.owner_employee_id = ${employeeParam}::uuid
+            )
+          )
+     )`;
+  }
+  if (table === "test_files") {
+    return `COALESCE(${outer}.raw_payload->'foundation_context'->>'employeeId', '') = ${employeeParam}::text`;
+  }
+  if (table === "test_file_products" || table === "test_customers" || table === "test_customer_results") {
+    return `EXISTS (
+       SELECT 1
+         FROM mcp.test_files owner_file
+        WHERE owner_file.installation_id = ${outer}.installation_id
+          AND owner_file.id = ${outer}.file_id
+          AND COALESCE(owner_file.raw_payload->'foundation_context'->>'employeeId', '') = ${employeeParam}::text
+     )`;
+  }
+  return null;
+}
+
 function buildReadQuery(table, request, context) {
   const sqlParts = [`FROM ${quoteIdentifier(table)}`];
   const params = [];
   const filters = Object.entries(installationScopedFilters(table, request.filters, context))
     .map(([key, value]) => parseFilterClause(key, value, params))
     .filter(Boolean);
+  const employeeClause = employeeScopedClause(table, context, params);
+  if (employeeClause) filters.push(employeeClause);
 
   if (filters.length) sqlParts.push(`WHERE ${filters.join(" AND ")}`);
 

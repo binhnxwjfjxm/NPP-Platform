@@ -53,7 +53,11 @@ test("session report snapshot is owned by the canonical RPC", async () => {
       nppCode: "NPP-A",
       actorId: "service:npp-a:mcp-v1",
       actorType: "service",
-      actorAuthentication: "proxy-token"
+      actorAuthentication: "proxy-token",
+      principalId: null,
+      principalType: null,
+      principalAuthentication: null,
+      employeeId: null
     }
   });
 });

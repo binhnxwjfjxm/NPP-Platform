@@ -6,6 +6,9 @@
 > Merge SHA: **0fefd6e724bed25b829bbbaf61b81537bb4a5967**  
 > Trạng thái: **PRODUCTION MIGRATION APPLIED + DB VERIFIED — UI RETRY PENDING**
 
+> **Cập nhật 2026-10-01:** Quy tắc lifecycle trong tài liệu này về việc tự chốt phiên cũ khi mở ngày mới đã được **thay thế** bởi migration `mcp_017_session_employee_ownership`.
+> Phiên thuộc tài khoản/nhân viên đăng nhập và chỉ kết thúc khi người dùng chủ động Kết thúc/Hủy; qua ngày không tự chốt. Tuyến và điểm bán cố định vẫn dùng chung Công Ty.
+
 ## 1. Triệu chứng
 
 Màn hình tuyến cố định lấy được GPS nhưng khi bấm **Thêm điểm bán** chỉ hiện:

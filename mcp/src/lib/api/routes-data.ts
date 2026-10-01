@@ -34,6 +34,7 @@ type RouteCustomerRow = Record<string, unknown> & {
 };
 
 type RouteSessionRow = Record<string, unknown> & {
+  id?: unknown;
   route_id?: unknown;
   session_date?: unknown;
   sales?: unknown;
@@ -102,7 +103,7 @@ export async function loadRoutesData(): Promise<RoutesData> {
       order: "route_id.asc,sort_order.asc"
     }),
     backendReadRows<RouteSessionRow>("mcp_route_sessions", {
-      select: "route_id,session_date,sales,planned_customers,visited_customers,order_count,status,updated_at",
+      select: "id,route_id,session_date,sales,planned_customers,visited_customers,order_count,status,updated_at",
       order: "session_date.desc,updated_at.desc"
     })
   ]);
@@ -130,6 +131,8 @@ export async function loadRoutesData(): Promise<RoutesData> {
         visitedCustomers: numberOr(latest?.visited_customers),
         orderCount: numberOr(latest?.order_count),
         lastVisitDate: dateOnly(latest?.session_date) || "Chưa có",
+        activeSessionId: text(latest?.status).toLowerCase() === "active" ? text(latest?.id) || null : null,
+        activeSessionDate: text(latest?.status).toLowerCase() === "active" ? dateOnly(latest?.session_date) || null : null,
         status: routeStatus(active, latest?.status)
       } satisfies RouteItem;
     })

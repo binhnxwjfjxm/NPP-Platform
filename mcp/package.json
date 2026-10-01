@@ -19,7 +19,7 @@
     "test:edge-retirement": "node --test test/a5-3-edge-retirement.test.mjs test/a5-3-no-legacy-edge-caller.test.mjs",
     "test:direct-rest-retirement": "node --test test/a5-4-1-dead-session-mutations.test.mjs test/a5-4-2-session-report-caller-audit.test.mjs test/a5-4-3-report-settings-caller-audit.test.mjs test/a5-4-4-field-check-market-report-caller-audit.test.mjs",
     "test:idempotency": "node --test test/a5-5-1-idempotency-caller-contract.test.mjs test/a5-5-2-session-action-caller-contract.test.mjs test/a5-5-2-session-action-runtime-smoke-contract.test.mjs test/orders-create-ui-contract.test.mjs test/route-active-session-ui-contract.test.mjs test/mcp-session-checkin-ui-contract.test.mjs test/f05-runtime-smoke-script.test.mjs",
-    "test:session-lifecycle-caller": "node --test test/a5-5-2-session-lifecycle-caller-contract.test.mjs",
+    "test:session-lifecycle-caller": "node --test test/a5-5-2-session-lifecycle-caller-contract.test.mjs test/session-employee-ownership-contract.test.mjs",
     "test:route-master-caller": "node --test test/a5-5-2-route-master-write-caller-contract.test.mjs test/route-customer-resequence-contract.test.mjs",
     "test:route-customer-photo": "node --test test/route-customer-photo-gallery-contract.test.mjs test/route-customer-photo-management-contract.test.mjs",
     "test:production-hygiene": "node --test test/production-hygiene.test.mjs test/production-hygiene-no-fixture-leak.test.mjs test/mcp-smoke-hygiene-contract.test.mjs",

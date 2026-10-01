@@ -60,6 +60,13 @@ function numberValue(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function employeeScope(context) {
+  if (context?.principal?.type !== "user") return null;
+  const employeeId = String(context?.principal?.employeeId || "").trim();
+  if (!employeeId) forbidden("employee_identity_required");
+  return employeeId;
+}
+
 function dateOnly(value) {
   return value ? String(value).slice(0, 10) : "";
 }
@@ -71,6 +78,7 @@ function routeStatus(route, plannedCustomers, visitedCustomers) {
 }
 
 async function loadRoutesData(context, persistence = providerPersistence()) {
+  const ownerEmployeeId = employeeScope(context);
   await persistence.assertReady?.();
   return persistence.withTransaction(async (client) => {
     const [routeResult, customerResult, sessionResult] = await Promise.all([
@@ -89,11 +97,12 @@ async function loadRoutesData(context, persistence = providerPersistence()) {
         [context.installation.id]
       ),
       client.query(
-        `SELECT route_id, session_date, visited_customers, order_count, status, created_at
+        `SELECT id, route_id, session_date, visited_customers, order_count, status, created_at
            FROM mcp.mcp_route_sessions
           WHERE installation_id = $1
+            AND ($2::uuid IS NULL OR owner_employee_id = $2::uuid)
           ORDER BY session_date DESC, created_at DESC, id DESC`,
-        [context.installation.id]
+        [context.installation.id, ownerEmployeeId]
       )
     ]);
 
@@ -121,6 +130,8 @@ async function loadRoutesData(context, persistence = providerPersistence()) {
         visitedCustomers,
         orderCount: numberValue(latestSession?.order_count),
         lastVisitDate: dateOnly(latestSession?.session_date),
+        activeSessionId: latestSession?.status === "active" ? latestSession.id : null,
+        activeSessionDate: latestSession?.status === "active" ? dateOnly(latestSession.session_date) : null,
         status: routeStatus(route, plannedCustomers, visitedCustomers),
         weekday: route.weekday == null ? null : Number(route.weekday),
         note: route.note || ""

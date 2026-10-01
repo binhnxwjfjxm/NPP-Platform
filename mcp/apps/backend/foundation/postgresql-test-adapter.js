@@ -53,14 +53,32 @@ function requestContext(config, args) {
       type: text(source.actorType) || "service",
       authentication: text(source.actorAuthentication) || "backend-token"
     }),
-    principal: config.servicePrincipal,
+    principal: Object.freeze({
+      ...(config.servicePrincipal || {}),
+      id: text(source.principalId) || text(source.actorId) || text(config.servicePrincipal?.id) || "service:mcp",
+      type: text(source.principalType) || text(source.actorType) || text(config.servicePrincipal?.type) || "service",
+      authentication: text(source.principalAuthentication) || text(source.actorAuthentication) || text(config.servicePrincipal?.authentication) || "backend-token",
+      employeeId: text(source.employeeId) || text(config.servicePrincipal?.employeeId)
+    }),
     auth: Object.freeze({ mode: config.authMode, authenticated: true })
   });
 }
 
+function employeeId(context, { requiredForUser = false } = {}) {
+  const value = text(context?.principal?.employeeId);
+  if (requiredForUser && context?.principal?.type === "user" && !value) fail("employee_identity_required", 403);
+  return value;
+}
+
+function assertSessionOwner(ownerEmployeeId, context) {
+  const id = employeeId(context, { requiredForUser: true });
+  if (id && text(ownerEmployeeId) !== id) fail("session_not_owned", 403);
+}
+
 async function requireSessionCustomer(client, context, sessionCustomerId) {
   const selected = await client.query(
-    `SELECT sc.*, s.status AS session_status, s.session_date, s.sales, s.route_name
+    `SELECT sc.*, s.status AS session_status, s.session_date, s.sales, s.route_name,
+            s.owner_employee_id AS session_owner_employee_id
      FROM mcp.mcp_session_customers sc
      JOIN mcp.mcp_route_sessions s
        ON s.installation_id = sc.installation_id
@@ -71,6 +89,7 @@ async function requireSessionCustomer(client, context, sessionCustomerId) {
   );
   const customer = selected.rows?.[0];
   if (!customer) fail("session_customer_not_found", 404);
+  assertSessionOwner(customer.session_owner_employee_id, context);
   if (customer.session_status !== "active") fail("session_read_only", 409);
   return customer;
 }
@@ -78,11 +97,13 @@ async function requireSessionCustomer(client, context, sessionCustomerId) {
 async function resolveTestFile(client, args, context, customer) {
   const requestedFileId = text(args.p_file_id);
   if (requestedFileId) {
+    const ownerEmployeeId = employeeId(context, { requiredForUser: true });
     const existing = await client.query(
       `SELECT * FROM mcp.test_files
        WHERE installation_id = $1 AND id = $2
+         AND ($3::text IS NULL OR COALESCE(raw_payload->'foundation_context'->>'employeeId', '') = $3::text)
        FOR UPDATE`,
-      [context.installation.id, requestedFileId]
+      [context.installation.id, requestedFileId, ownerEmployeeId]
     );
     if (!existing.rows?.[0]) fail("test_file_not_found", 404);
     return existing.rows[0];

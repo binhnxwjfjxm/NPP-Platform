@@ -79,11 +79,43 @@ function requestContext(config, args) {
       type: text(source.actorType) || "service",
       authentication: text(source.actorAuthentication) || "backend-token"
     }),
-    principal: config.servicePrincipal,
+    principal: Object.freeze({
+      ...(config.servicePrincipal || {}),
+      id: text(source.principalId) || text(source.actorId) || text(config.servicePrincipal?.id) || "service:mcp",
+      type: text(source.principalType) || text(source.actorType) || text(config.servicePrincipal?.type) || "service",
+      authentication: text(source.principalAuthentication) || text(source.actorAuthentication) || text(config.servicePrincipal?.authentication) || "backend-token",
+      employeeId: text(source.employeeId) || text(config.servicePrincipal?.employeeId)
+    }),
     auth: Object.freeze({ mode: config.authMode, authenticated: true }),
     idempotencyKey,
     receivedAt: text(source.receivedAt) || new Date().toISOString()
   });
+}
+
+function employeeId(context, { requiredForUser = false } = {}) {
+  const value = text(context?.principal?.employeeId);
+  if (requiredForUser && context?.principal?.type === "user" && !value) throw businessError("employee_identity_required", 403);
+  return value;
+}
+
+async function resolveEmployeeOwner(client, context) {
+  const id = employeeId(context, { requiredForUser: true });
+  if (!id) return null;
+  const result = await client.query(
+    `SELECT id, code, full_name
+       FROM mcp.workforce_employees
+      WHERE installation_id = $1 AND id = $2::uuid AND is_active IS TRUE
+      LIMIT 1`,
+    [installationId(context), id]
+  );
+  const row = result.rows?.[0];
+  if (!row) throw businessError("employee_scope_not_found", 403);
+  return row;
+}
+
+function assertSessionOwner(session, context) {
+  const id = employeeId(context, { requiredForUser: true });
+  if (id && text(session?.owner_employee_id) !== id) throw businessError("session_not_owned", 403);
 }
 
 function routeResult(row) {
@@ -135,6 +167,7 @@ function sessionResult(row, extra = {}) {
     routeName: row.route_name,
     sessionDate: row.session_date,
     sales: row.sales,
+    ownerEmployeeId: row.owner_employee_id || null,
     area: row.area,
     status: row.status,
     plannedCustomers: row.planned_customers,
@@ -213,13 +246,14 @@ async function requireSession(client, context, id, { mutable = false, lock = fal
   );
   const row = result.rows?.[0];
   if (!row) throw businessError("session_not_found", 404);
+  assertSessionOwner(row, context);
   if (mutable && row.status !== "active") throw businessError("session_read_only", 409);
   return row;
 }
 
 async function requireSessionCustomer(client, context, id, { mutable = false, lock = false } = {}) {
   const result = await client.query(
-    `SELECT sc.*, s.status AS session_status
+    `SELECT sc.*, s.status AS session_status, s.owner_employee_id AS session_owner_employee_id
      FROM mcp.mcp_session_customers sc
      JOIN mcp.mcp_route_sessions s ON s.id = sc.session_id AND s.installation_id = sc.installation_id
      WHERE sc.installation_id = $1 AND sc.id = $2${lock ? " FOR UPDATE OF sc, s" : ""}`,
@@ -227,6 +261,7 @@ async function requireSessionCustomer(client, context, id, { mutable = false, lo
   );
   const row = result.rows?.[0];
   if (!row) throw businessError("session_customer_not_found", 404);
+  assertSessionOwner({ owner_employee_id: row.session_owner_employee_id }, context);
   if (mutable && row.session_status !== "active") throw businessError("session_read_only", 409);
   return row;
 }
@@ -366,10 +401,15 @@ async function updateRouteCustomer(client, args, context) {
 
 async function openRouteSession(client, args, context) {
   const route = await requireRoute(client, context, args.p_route_id, { active: true, lock: true });
+  const owner = await resolveEmployeeOwner(client, context);
+  const ownerEmployeeId = owner?.id || null;
   const existing = await client.query(
     `SELECT id FROM mcp.mcp_route_sessions
-     WHERE installation_id = $1 AND route_id = $2 AND status = 'active' FOR UPDATE`,
-    [installationId(context), route.id]
+     WHERE installation_id = $1 AND route_id = $2 AND status = 'active'
+       AND (($3::uuid IS NOT NULL AND owner_employee_id = $3::uuid)
+         OR ($3::uuid IS NULL AND owner_employee_id IS NULL))
+     FOR UPDATE`,
+    [installationId(context), route.id, ownerEmployeeId]
   );
   if (existing.rows?.[0]) throw businessError("active_session_already_exists", 409);
   const count = await client.query(
@@ -380,14 +420,14 @@ async function openRouteSession(client, args, context) {
   const created = await client.query(
     `INSERT INTO mcp.mcp_route_sessions (
        installation_id, route_id, route_name, session_date, sales, area, status,
-       planned_customers, opened_at, raw_payload
-     ) VALUES ($1, $2, $3, $4::date, $5, $6, 'active', $7, now(),
-       jsonb_build_object('foundation_context', $8::jsonb))
+       owner_employee_id, planned_customers, opened_at, raw_payload
+     ) VALUES ($1, $2, $3, $4::date, $5, $6, 'active', $7::uuid, $8, now(),
+       jsonb_build_object('foundation_context', $9::jsonb))
      RETURNING *`,
     [
       installationId(context), route.id, route.route_name, args.p_session_date,
-      text(args.p_owner) || route.sales, route.area, Number(count.rows?.[0]?.count || 0),
-      json(args.p_context || {})
+      owner?.code || text(args.p_owner) || route.sales, route.area, ownerEmployeeId,
+      Number(count.rows?.[0]?.count || 0), json(args.p_context || {})
     ]
   );
   await client.query(
@@ -709,9 +749,12 @@ async function createTestFromSessionCustomer(client, args, context) {
   const customer = await requireSessionCustomer(client, context, args.p_session_customer_id, { mutable: true, lock: true });
   let fileId = text(args.p_file_id);
   if (fileId) {
+    const ownerEmployeeId = employeeId(context, { requiredForUser: true });
     const existing = await client.query(
-      `SELECT id FROM mcp.test_files WHERE installation_id = $1 AND id = $2`,
-      [installationId(context), fileId]
+      `SELECT id FROM mcp.test_files
+       WHERE installation_id = $1 AND id = $2
+         AND ($3::text IS NULL OR COALESCE(raw_payload->'foundation_context'->>'employeeId', '') = $3::text)`,
+      [installationId(context), fileId, ownerEmployeeId]
     );
     if (!existing.rows?.[0]) throw businessError("test_file_not_found", 404);
   } else {

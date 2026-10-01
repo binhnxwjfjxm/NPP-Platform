@@ -77,8 +77,9 @@ test("MCP local read is installation-scoped, bounded and aggregated", async () =
   assert.match(cursorQuery.sql, /session_customer_state AS/);
   const recent = state.queries.find((item) => item.sql.includes("CURRENT_DATE"));
   assert.ok(recent);
-  assert.match(recent.sql, /LIMIT \$3/);
-  assert.deepEqual(recent.values, ["installation-a", localReadApiInternals.RECENT_SESSION_DAYS, localReadApiInternals.RECENT_SESSION_LIMIT]);
+  assert.match(recent.sql, /status = 'active' OR session_date >= CURRENT_DATE/);
+  assert.match(recent.sql, /LIMIT \$4/);
+  assert.deepEqual(recent.values, ["installation-a", null, localReadApiInternals.RECENT_SESSION_DAYS, localReadApiInternals.RECENT_SESSION_LIMIT]);
   assert.ok(state.queries.some((item) => item.sql.includes("DISTINCT ON (route_id)")));
   const reportQuery = state.queries.find((item) => item.sql.includes("DISTINCT ON (session_id)"));
   assert.ok(reportQuery);
@@ -237,7 +238,8 @@ test("report history is installation-scoped and bounded", async () => {
   assert.deepEqual(state.queries[0].values, [
     "installation-a",
     localReadApiInternals.RECENT_SESSION_DAYS,
-    localReadApiInternals.REPORT_HISTORY_LIMIT
+    localReadApiInternals.REPORT_HISTORY_LIMIT,
+    null
   ]);
   assert.match(state.queries[0].sql, /DISTINCT ON \(report\.session_id\)/);
   assert.match(state.queries[0].sql, /LIMIT \$3/);
@@ -348,7 +350,8 @@ test("followup history reads real installation-scoped tasks and keeps open work"
   assert.deepEqual(state.queries[0].values, [
     "installation-a",
     localReadApiInternals.FOLLOWUP_HISTORY_DAYS,
-    localReadApiInternals.FOLLOWUP_LIMIT
+    localReadApiInternals.FOLLOWUP_LIMIT,
+    null
   ]);
   assert.match(state.queries[0].sql, /FROM mcp\.mcp_followups followup/);
   assert.match(state.queries[0].sql, /followup\.installation_id = \$1/);
@@ -418,7 +421,7 @@ test("outlet history uses stable route-customer identity across all sessions", a
   assert.equal(result.payload.data.routeCustomerId, "rc-1");
   assert.equal(result.payload.data.items.length, 2);
   assert.equal(result.payload.data.items[0].session_id, "session-2");
-  assert.deepEqual(state.queries[0].values, ["installation-a", "rc-1"]);
+  assert.deepEqual(state.queries[0].values, ["installation-a", "rc-1", null]);
   assert.match(state.queries[0].sql, /session_customer\.installation_id = \$1/);
   assert.match(state.queries[0].sql, /session_customer\.route_customer_id = \$2/);
   assert.match(state.queries[0].sql, /JOIN mcp\.mcp_route_sessions route_session/);
