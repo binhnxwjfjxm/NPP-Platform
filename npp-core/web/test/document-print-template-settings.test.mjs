@@ -23,6 +23,8 @@ test('Cài đặt Mẫu in dùng cấu hình chung, có phần đầu phiếu v�
   assert.match(workspace, /printStyles\.header/);
   assert.match(workspace, /printStyles\.table/);
   assert.match(workspace, /Thông tin được in/);
+  assert.match(workspace, /Chọn hoặc bỏ chọn từng mục muốn xuất hiện trên bản in/);
+  assert.doesNotMatch(workspace, /Mục ghi “Luôn in” là thông tin bắt buộc của chứng từ/);
   assert.match(workspace, /Xem trước/);
   assert.match(workspace, /Khôi phục mặc định/);
   assert.match(workspace, /Idempotency-Key/);

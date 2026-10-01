@@ -267,19 +267,23 @@ export function buildSalesOrderPrintPayload(input: {
   lines: Array<{ itemName: string; sku: string; quantity: string; unitCode: string; unitName?: string | null; unitPrice: string; lineTotal: string }>;
   total: string;
 }): RetailPrintPayload {
+  const showProductColumn = input.visibleFields.has('line_item') || input.visibleFields.has('line_sku');
+  const showLineTable = ['line_no', 'line_item', 'line_sku', 'line_quantity', 'line_unit', 'line_unit_price', 'line_total'].some((key) => input.visibleFields.has(key));
   const columns = [
     ...(input.visibleFields.has('line_no') ? ['STT'] : []),
-    'Sản phẩm',
+    ...(showProductColumn ? [input.visibleFields.has('line_item') ? 'Sản phẩm' : 'SKU'] : []),
     ...(input.visibleFields.has('line_quantity') ? ['SL'] : []),
-    'ĐVT',
+    ...(input.visibleFields.has('line_unit') ? ['ĐVT'] : []),
     ...(input.visibleFields.has('line_unit_price') ? ['Đơn giá'] : []),
     ...(input.visibleFields.has('line_total') ? ['Thành tiền'] : []),
   ];
-  const rows = input.visibleFields.has('line_item') ? input.lines.map((line, index) => [
+  const rows = showLineTable ? input.lines.map((line, index) => [
     ...(input.visibleFields.has('line_no') ? [String(index + 1)] : []),
-    input.visibleFields.has('line_sku') ? `${line.itemName}\n${line.sku}` : line.itemName,
+    ...(showProductColumn ? [input.visibleFields.has('line_item')
+      ? (input.visibleFields.has('line_sku') ? `${line.itemName}\n${line.sku}` : line.itemName)
+      : line.sku] : []),
     ...(input.visibleFields.has('line_quantity') ? [line.quantity] : []),
-    line.unitName?.trim() || line.unitCode,
+    ...(input.visibleFields.has('line_unit') ? [line.unitName?.trim() || line.unitCode] : []),
     ...(input.visibleFields.has('line_unit_price') ? [line.unitPrice] : []),
     ...(input.visibleFields.has('line_total') ? [line.lineTotal] : []),
   ]) : [];

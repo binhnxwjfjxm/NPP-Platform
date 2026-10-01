@@ -95,7 +95,10 @@ test('direct print dùng payload chứng từ chuẩn hóa và fallback hệ th�
   assert.match(bridge, /documentType: 'SALES_ORDER' \| 'PRINTER_TEST'/);
   assert.match(bridge, /buildSalesOrderPrintPayload/);
   assert.match(bridge, /unitName\?: string \| null/);
+  assert.match(bridge, /const showProductColumn = input\.visibleFields\.has\('line_item'\) \|\| input\.visibleFields\.has\('line_sku'\)/);
+  assert.match(bridge, /input\.visibleFields\.has\('line_unit'\)/);
   assert.match(bridge, /line\.unitName\?\.trim\(\) \|\| line\.unitCode/);
+  assert.doesNotMatch(bridge, /const rows = input\.visibleFields\.has\('line_item'\)/);
   assert.match(workspace, /unitName: line\.unitName/);
   assert.match(workspace, /const displayUnit = .*unitName\?\.trim\(\) \|\| unitCode\?\.trim\(\)/);
   assert.match(workspace, /displayUnit\(line\.unitName, line\.unitCode\)/);

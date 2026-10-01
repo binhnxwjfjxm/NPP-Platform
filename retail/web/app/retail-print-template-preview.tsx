@@ -38,6 +38,8 @@ export function RetailPrintTemplatePreview({
   fontSizePercent: number;
 }) {
   const visible = new Set(visibleFieldKeys);
+  const showLineTable = ['line_no', 'line_item', 'line_sku', 'line_quantity', 'line_unit', 'line_unit_price', 'line_total'].some((key) => visible.has(key));
+  const showProductColumn = visible.has('line_item') || visible.has('line_sku');
   const total = SAMPLE_LINES.reduce((sum, line) => sum + line.total, 0);
 
   return (
@@ -62,20 +64,20 @@ export function RetailPrintTemplatePreview({
             {visible.has('warehouse') ? <p><span>Kho bán</span><strong>Kho Công Ty</strong></p> : null}
             {visible.has('document_date') ? <p><span>Ngày</span><strong>16/09/2026 17:30</strong></p> : null}
           </div>
-          {visible.has('line_item') ? <table>
+          {showLineTable ? <table>
             <thead><tr>
               {visible.has('line_no') ? <th>STT</th> : null}
-              <th>Sản phẩm</th>
+              {showProductColumn ? <th>{visible.has('line_item') ? 'Sản phẩm' : 'SKU'}</th> : null}
               {visible.has('line_quantity') ? <th>SL</th> : null}
-              <th>ĐVT</th>
+              {visible.has('line_unit') ? <th>ĐVT</th> : null}
               {visible.has('line_unit_price') ? <th>Đơn giá</th> : null}
               {visible.has('line_total') ? <th>Thành tiền</th> : null}
             </tr></thead>
             <tbody>{SAMPLE_LINES.map((line, index) => <tr key={line.sku}>
               {visible.has('line_no') ? <td>{index + 1}</td> : null}
-              <td><strong>{line.name}</strong>{visible.has('line_sku') ? <small>{line.sku}</small> : null}</td>
+              {showProductColumn ? <td>{visible.has('line_item') ? <strong>{line.name}</strong> : null}{visible.has('line_sku') ? <small>{line.sku}</small> : null}</td> : null}
               {visible.has('line_quantity') ? <td>{line.quantity}</td> : null}
-              <td>{line.unit}</td>
+              {visible.has('line_unit') ? <td>{line.unit}</td> : null}
               {visible.has('line_unit_price') ? <td>{money.format(line.unitPrice)}</td> : null}
               {visible.has('line_total') ? <td>{money.format(line.total)}</td> : null}
             </tr>)}</tbody>
