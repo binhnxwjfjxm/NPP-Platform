@@ -6,7 +6,7 @@ import { handlePostgresqlCompatibilityApi } from "./postgresql-compatibility-api
 function persistenceWithRows({ daySession = true, dayStatus = "active" } = {}) {
   const client = {
     async query(sql, params = []) {
-      if (sql.includes("FROM mcp.test_files")) {
+      if (sql.includes("FROM mcp.test_files") && !sql.includes("FROM mcp.test_file_products")) {
         assert.deepEqual(params, ["installation-test", null]);
         return {
           rows: [{
