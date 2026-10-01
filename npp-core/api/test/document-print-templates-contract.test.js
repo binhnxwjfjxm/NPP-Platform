@@ -40,7 +40,7 @@ test('print template migrations keep installation scope and add configurable hea
   assert.ok(PERMISSION_REGISTRY.has(PERMISSIONS.corePrintTemplateManage));
 });
 
-test('print template catalog keeps Sales Order core columns and separates optional SKU', () => {
+test('print template catalog keeps Sales Order columns individually configurable and default-on', () => {
   const keys = DOCUMENT_PRINT_TEMPLATE_CATALOG.map((item) => `${item.documentType}:${item.templateCode}`);
   for (const expected of ['SALES_ORDER:standard', 'PURCHASE_ORDER:standard', 'GOODS_RECEIPT:standard', 'CUSTOMER_PAYMENT:standard', 'DELIVERY_ORDER:standard', 'DELIVERY_ORDER:packing-list', 'INVENTORY_TRANSFER:standard', 'STOCKTAKE:standard']) assert.ok(keys.includes(expected), expected);
   const sales = documentPrintTemplateInternals.lookup('sales_order', 'standard');
@@ -52,13 +52,13 @@ test('print template catalog keeps Sales Order core columns and separates option
   assert.equal(defaults.headingAlign, 'left');
   assert.equal(defaults.titleAlign, 'right');
   assert.equal(sales.fields.find((field) => field.key === 'line_item')?.label, 'Tên sản phẩm');
-  assert.equal(sales.fields.find((field) => field.key === 'line_item')?.required, true);
   assert.equal(sales.fields.find((field) => field.key === 'line_sku')?.defaultSelected, false);
-  assert.equal(sales.fields.find((field) => field.key === 'line_sku')?.required, false);
-  assert.equal(sales.fields.find((field) => field.key === 'line_quantity')?.required, true);
-  assert.equal(sales.fields.find((field) => field.key === 'line_unit')?.required, true);
-  assert.equal(sales.fields.find((field) => field.key === 'line_unit_price')?.required, true);
-  assert.equal(sales.fields.find((field) => field.key === 'line_total')?.required, true);
+  for (const key of ['line_item', 'line_sku', 'line_quantity', 'line_unit', 'line_unit_price', 'line_total']) {
+    assert.equal(sales.fields.find((field) => field.key === key)?.required, false, key);
+  }
+  for (const key of ['line_item', 'line_quantity', 'line_unit', 'line_unit_price', 'line_total']) {
+    assert.ok(defaults.visibleFieldKeys.includes(key), key);
+  }
 
   const valid = documentPrintTemplateInternals.normalizePayload(sales, {
     pageSize: 'A4',
@@ -70,7 +70,7 @@ test('print template catalog keeps Sales Order core columns and separates option
     headingAlign: 'center',
     titleAlign: 'left',
   });
-  assert.deepEqual(valid.visibleFieldKeys, ['customer', 'line_item', 'line_sku', 'line_quantity', 'line_unit', 'line_unit_price', 'line_total', 'total_total']);
+  assert.deepEqual(valid.visibleFieldKeys, ['customer', 'line_sku', 'total_total']);
   assert.equal(valid.heading, 'NGUYÊN LIỆU TRÀ SỮA');
   assert.equal(valid.title, 'PHIẾU XUẤT KHO');
   assert.equal(valid.subtitle, 'Bán tại quầy');
@@ -91,7 +91,7 @@ test('print template catalog keeps Sales Order core columns and separates option
     heading_align: 'right',
     title_align: 'center',
   });
-  assert.deepEqual(presented.visibleFieldKeys, ['customer', 'line_item', 'line_sku', 'line_quantity', 'line_unit', 'line_unit_price', 'line_total']);
+  assert.deepEqual(presented.visibleFieldKeys, ['customer', 'line_sku']);
   assert.equal(presented.headingVisible, false);
   assert.equal(presented.headingAlign, 'right');
   assert.equal(presented.titleAlign, 'center');

@@ -177,7 +177,7 @@ export default function PrintTemplatesWorkspace() {
                   </div>
                 </div>
 
-                <h3>Thông tin được in</h3><p className={styles.helper}>Bỏ chọn mục không cần xuất hiện. Mục ghi “Luôn in” là thông tin bắt buộc của chứng từ.</p><div className={styles.fieldGrid}>
+                <h3>Thông tin được in</h3><p className={styles.helper}>Chọn hoặc bỏ chọn từng mục muốn xuất hiện trên bản in.</p><div className={styles.fieldGrid}>
                   {selected.fields.map((field) => <label key={field.key} className={styles.fieldChoice}><input type="checkbox" checked={visibleFieldKeys.includes(field.key)} onChange={() => toggleField(field.key)} disabled={Boolean(busy) || field.required} /><span>{field.label}{field.required ? ' · Luôn in' : ''}</span></label>)}
                 </div>
               </section>

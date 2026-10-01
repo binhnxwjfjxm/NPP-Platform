@@ -179,11 +179,15 @@ test('tiền VND không để phần thập phân rác ở ô thu tiền', async
   assert.match(page, /currency: 'VND', maximumFractionDigits: 0/);
 });
 
-test('in phiếu hỗ trợ A4 A5 80mm 58mm và không đưa ảnh vào chứng từ', async () => {
+test('in phiếu hỗ trợ A4 A5 80mm 58mm và từng cột hàng hóa tùy chỉnh độc lập', async () => {
   const page = await readWorkspace();
   assert.match(page, /type PrintPaper = PrinterPaper/);
-  assert.match(page, /visiblePrintFields\.has\('line_item'\)/);
+  assert.match(page, /SALES_ORDER_PRINT_LINE_FIELDS/);
+  assert.match(page, /const showPrintLineTable = SALES_ORDER_PRINT_LINE_FIELDS\.some/);
+  assert.match(page, /const showPrintProductColumn = visiblePrintFields\.has\('line_item'\) \|\| visiblePrintFields\.has\('line_sku'\)/);
   const printSlice = page.slice(page.indexOf('className="print-document"'));
+  assert.match(printSlice, /visiblePrintFields\.has\('line_unit'\)/);
+  assert.doesNotMatch(printSlice, /\{visiblePrintFields\.has\('line_item'\) \? <table>/);
   assert.doesNotMatch(printSlice, /productPicture|product-photo/);
 });
 

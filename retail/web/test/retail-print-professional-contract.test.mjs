@@ -22,7 +22,9 @@ test('phiếu Retail lấy tên sản phẩm thật mà không đổi snapshot c
   assert.match(gateway, /retailVariantName: label\?\.variantName/);
   assert.match(gateway, /presentationOrderNumber/);
   assert.match(gateway, /return number \|\| 'Đơn đang lập'/);
-  assert.match(workspace, /<strong>\{line\.itemName\}<\/strong>\{visiblePrintFields\.has\('line_sku'\) \? <small>\{line\.sku\}<\/small> : null\}/);
+  assert.match(workspace, /visiblePrintFields\.has\('line_item'\) \? <strong>\{line\.itemName\}<\/strong> : null/);
+  assert.match(workspace, /visiblePrintFields\.has\('line_sku'\) \? <small>\{line\.sku\}<\/small> : null/);
+  assert.match(workspace, /showPrintProductColumn/);
 });
 
 test('A4 A5 cân header và 80 58 dùng bố cục receipt riêng thay vì bảng thu nhỏ', async () => {
