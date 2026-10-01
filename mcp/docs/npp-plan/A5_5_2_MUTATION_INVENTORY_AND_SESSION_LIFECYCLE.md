@@ -5,6 +5,9 @@
 > Decision: continue the Foundation master plan now; defer MCP live-device testing and UI fixes to a later focused pass.  
 > This document changes sequencing only. It does not waive any production smoke or rollout gate.
 
+> **Cập nhật 2026-10-01:** Quy tắc lifecycle trong tài liệu này về việc tự chốt phiên cũ khi mở ngày mới đã được **thay thế** bởi migration `mcp_017_session_employee_ownership`.
+> Phiên thuộc tài khoản/nhân viên đăng nhập và chỉ kết thúc khi người dùng chủ động Kết thúc/Hủy; qua ngày không tự chốt. Tuyến và điểm bán cố định vẫn dùng chung Công Ty.
+
 ## 1. Corrected coverage baseline
 
 The previous handoff reported `13/30` and `17 remaining`. That count omitted the persisted-idempotent `route-customer.add` operation delivered by PR #29.
