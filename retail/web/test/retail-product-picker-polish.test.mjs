@@ -4,9 +4,9 @@ import test from 'node:test';
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
-test('Retail product picker loads final polish after existing styles', async () => {
+test('Retail product picker stylesheet owns picker geometry after POS styles', async () => {
   const layout = await read('app/layout.tsx');
-  assert.match(layout, /import '\.\/retail-print-professional\.css';\nimport '\.\/retail-product-picker-polish\.css';/);
+  assert.match(layout, /import '\.\/retail-pos-entry\.css';\nimport '\.\/retail-product-picker-polish\.css';/);
 });
 
 test('Retail product picker keeps fast search and removes category pills from the visible UI', async () => {
@@ -18,14 +18,25 @@ test('Retail product picker keeps fast search and removes category pills from th
   assert.match(css, /\.product-sheet \.filter-tabs \{\s*display: none !important;/);
 });
 
-test('Retail product card keeps current height, enlarges text and moves price plus availability to two right rows', async () => {
-  const css = await read('app/retail-product-picker-polish.css');
+test('Retail product card giữ nguyên chiều cao, tên dễ đọc và số lượng gọn một chữ số thập phân', async () => {
+  const [page, css, posCss] = await Promise.all([
+    read('app/retail-workspace.tsx'),
+    read('app/retail-product-picker-polish.css'),
+    read('app/retail-pos-entry.css'),
+  ]);
   assert.match(css, /\.choose-products \{[\s\S]*width: min\(82%, 360px\);[\s\S]*min-height: 58px;[\s\S]*border: 0;[\s\S]*box-shadow:/);
-  assert.match(css, /\.lot7-product-row \{[\s\S]*grid-template-columns: 56px minmax\(0, 1fr\);[\s\S]*min-height: 90px;[\s\S]*overflow: hidden;/);
-  assert.match(css, /\.lot7-product-row \.product-copy \{[\s\S]*grid-template-columns: minmax\(0, 1fr\) minmax\(118px, auto\);[\s\S]*grid-template-rows: auto auto;/);
-  assert.match(css, /\.product-copy strong \{[\s\S]*grid-column: 1;[\s\S]*font-size: 16px;/);
-  assert.match(css, /\.product-copy b \{[\s\S]*grid-column: 2;[\s\S]*grid-row: 1;[\s\S]*font-size: 16px;/);
-  assert.match(css, /\.product-copy em \{[\s\S]*grid-column: 2;[\s\S]*grid-row: 2;/);
+  assert.match(css, /\.lot7-product-row \{[\s\S]*grid-template-columns: 56px minmax\(0, 1fr\) 28px;[\s\S]*height: 90px;[\s\S]*min-height: 90px;[\s\S]*overflow: hidden;/);
+  assert.match(css, /@media \(max-width: 480px\)[\s\S]*\.lot7-product-row \{[\s\S]*height: 86px;[\s\S]*min-height: 86px;/);
+  assert.match(css, /\.product-copy strong \{[\s\S]*-webkit-line-clamp: 2;[\s\S]*white-space: normal;[\s\S]*text-overflow: clip;/);
+  assert.match(css, /\.product-unit \{[\s\S]*font-size: 14px;/);
+  assert.match(css, /\.product-availability \{[\s\S]*font-size: 16px;[\s\S]*font-weight: 900;[\s\S]*font-variant-numeric: tabular-nums;/);
+  assert.match(page, /pickerQuantityNumber = new Intl\.NumberFormat\('vi-VN', \{ maximumFractionDigits: 1 \}\)/);
+  assert.match(page, /className="product-unit"/);
+  assert.match(page, /className="product-availability"/);
+  assert.doesNotMatch(page, /· Khả dụng:/);
+  const posRuleStart = posCss.indexOf('.retail-issue675 .product-sheet .lot7-product-row.pos-product-row {');
+  const posRule = posCss.slice(posRuleStart, posCss.indexOf('}', posRuleStart) + 1);
+  assert.doesNotMatch(posRule, /grid-template-columns|min-height|height:/);
 });
 
 test('Retail search result: chế độ đơn chọn/bỏ; Chọn nhiều chạm lặp để tăng số lượng', async () => {

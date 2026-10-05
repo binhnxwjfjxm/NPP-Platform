@@ -472,6 +472,7 @@ export async function searchSalesOrderSkuOptions(client, {
          ELSE 9
        END,
        p.code ASC,
+       CASE WHEN $6::boolean THEN pv.conversion_to_base END ASC NULLS LAST,
        pv.sku ASC,
        pv.id ASC
      LIMIT $9 OFFSET $10`,
