@@ -165,43 +165,51 @@ jobs:
                   OR c.name ILIKE '%Béo VL%'
                   OR coalesce(so.walk_in_display_name, '') ILIKE '%Béo VL%'
                 )
+            ),
+            active_direct_movements AS (
+              SELECT m.*
+              FROM candidates so
+              JOIN inventory.inventory_movements m
+                ON m.installation_id = so.installation_id
+               AND m.source_document_type = 'SALES_ORDER'
+               AND m.source_document_id = so.id::text
+               AND m.movement_type = 'SALES_DELIVERY_ISSUE'
+               AND m.reversal_of_movement_id IS NULL
+              WHERE NOT EXISTS (
+                SELECT 1
+                FROM inventory.inventory_movements reversal
+                WHERE reversal.installation_id = m.installation_id
+                  AND reversal.reversal_of_movement_id = m.id
+              )
             )
             SELECT
               so.id::text AS sales_order_id,
               coalesce(so.order_number, '') AS order_number,
-              d.delivery_order_number,
-              i.issue_source_type,
-              i.status AS issue_status,
-              to_char(i.posted_at AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD HH24:MI:SS') AS issued_local,
-              dl.sales_order_line_id::text,
-              dl.sku_snapshot AS sku,
-              dl.item_name_snapshot AS product_name,
-              dl.unit_code_snapshot AS unit_code,
-              trim(trailing '.' from trim(trailing '0' from sum(il.issued_base_quantity / NULLIF(sol.conversion_to_base, 0))::text)) AS issued_quantity,
-              trim(trailing '.' from trim(trailing '0' from sum(il.issued_base_quantity)::text)) AS issued_base_quantity,
+              to_char(min(m.posted_at) AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD HH24:MI:SS') AS issued_local,
+              sol.id::text AS sales_order_line_id,
+              sol.sku_snapshot AS sku,
+              sol.item_name_snapshot AS product_name,
+              sol.unit_code_snapshot AS unit_code,
+              trim(trailing '.' from trim(trailing '0' from (
+                sum(abs(ml.base_quantity_delta)) / NULLIF(sol.conversion_to_base, 0)
+              )::text)) AS issued_quantity,
+              trim(trailing '.' from trim(trailing '0' from sum(abs(ml.base_quantity_delta))::text)) AS issued_base_quantity,
               trim(trailing '.' from trim(trailing '0' from sol.conversion_to_base::text)) AS conversion_to_base
             FROM candidates so
-            JOIN sales.delivery_orders d
-              ON d.installation_id = so.installation_id
-             AND d.sales_order_id = so.id
-            JOIN sales.delivery_order_inventory_issues i
-              ON i.installation_id = d.installation_id
-             AND i.delivery_order_id = d.id
-             AND i.status = 'POSTED'
-            JOIN sales.delivery_order_inventory_issue_lines il
-              ON il.installation_id = i.installation_id
-             AND il.issue_id = i.id
-            JOIN sales.delivery_order_lines dl
-              ON dl.installation_id = il.installation_id
-             AND dl.id = il.delivery_order_line_id
+            JOIN active_direct_movements m
+              ON m.installation_id = so.installation_id
+             AND m.source_document_id = so.id::text
+            JOIN inventory.inventory_movement_lines ml
+              ON ml.installation_id = m.installation_id
+             AND ml.movement_id = m.id
+             AND ml.direction = 'OUT'
             JOIN sales.sales_order_version_lines sol
-              ON sol.installation_id = dl.installation_id
-             AND sol.id = dl.sales_order_line_id
+              ON sol.installation_id = ml.installation_id
+             AND sol.id = NULLIF(ml.metadata->>'salesOrderLineId', '')::uuid
             GROUP BY
-              so.id, so.order_number, d.delivery_order_number, i.issue_source_type, i.status, i.posted_at,
-              dl.sales_order_line_id, dl.sku_snapshot, dl.item_name_snapshot, dl.unit_code_snapshot,
-              sol.conversion_to_base
-            ORDER BY so.id, min(dl.line_number), dl.sku_snapshot
+              so.id, so.order_number, sol.id, sol.line_number, sol.sku_snapshot,
+              sol.item_name_snapshot, sol.unit_code_snapshot, sol.conversion_to_base
+            ORDER BY so.id, sol.line_number
           ) TO STDOUT WITH CSV HEADER;
           COMMIT;
           SQL
@@ -240,27 +248,37 @@ jobs:
               m.source_document_type,
               m.source_document_number,
               ml.line_number AS movement_line_number,
-              ml.source_sku,
-              ml.source_unit_code,
-              trim(trailing '.' from trim(trailing '0' from ml.source_quantity::text)) AS source_quantity,
+              coalesce(sol.sku_snapshot, ml.source_sku) AS sale_sku,
+              coalesce(sol.item_name_snapshot, '') AS product_name,
+              coalesce(sol.unit_code_snapshot, ml.source_unit_code) AS sale_unit_code,
+              ml.source_sku AS ledger_source_sku,
+              ml.source_unit_code AS ledger_source_unit_code,
+              trim(trailing '.' from trim(trailing '0' from ml.source_quantity::text)) AS ledger_source_quantity,
               ml.base_sku,
               ml.direction,
               trim(trailing '.' from trim(trailing '0' from ml.base_quantity_delta::text)) AS base_quantity_delta,
               ml.lot_code,
-              ml.expiry_date
+              ml.expiry_date,
+              ml.metadata->>'salesOrderLineId' AS sales_order_line_id
             FROM candidates so
-            JOIN sales.delivery_orders d
-              ON d.installation_id = so.installation_id AND d.sales_order_id = so.id
-            JOIN sales.delivery_order_inventory_issues i
-              ON i.installation_id = d.installation_id
-             AND i.delivery_order_id = d.id
-             AND i.status = 'POSTED'
             JOIN inventory.inventory_movements m
-              ON m.installation_id = i.installation_id
-             AND m.id = i.inventory_movement_id
+              ON m.installation_id = so.installation_id
+             AND m.source_document_type = 'SALES_ORDER'
+             AND m.source_document_id = so.id::text
+             AND m.movement_type = 'SALES_DELIVERY_ISSUE'
+             AND m.reversal_of_movement_id IS NULL
             JOIN inventory.inventory_movement_lines ml
               ON ml.installation_id = m.installation_id
              AND ml.movement_id = m.id
+            LEFT JOIN sales.sales_order_version_lines sol
+              ON sol.installation_id = ml.installation_id
+             AND sol.id = NULLIF(ml.metadata->>'salesOrderLineId', '')::uuid
+            WHERE NOT EXISTS (
+              SELECT 1
+              FROM inventory.inventory_movements reversal
+              WHERE reversal.installation_id = m.installation_id
+                AND reversal.reversal_of_movement_id = m.id
+            )
             ORDER BY so.id, m.posted_at, ml.line_number
           ) TO STDOUT WITH CSV HEADER;
           COMMIT;
