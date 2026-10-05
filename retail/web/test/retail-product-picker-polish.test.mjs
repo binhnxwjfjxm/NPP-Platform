@@ -6,7 +6,7 @@ const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
 test('Retail product picker stylesheet owns picker geometry after POS styles', async () => {
   const layout = await read('app/layout.tsx');
-  assert.match(layout, /import '\.\/retail-pos-entry\.css';\nimport '\.\/retail-product-picker-polish\.css';/);
+  assert.match(layout, /import '\.\/retail-pos-entry\.css';\nimport '\.\/retail-product-picker-polish\.css';\nimport '\.\/retail-orders-polish\.css';/);
 });
 
 test('Retail product picker keeps fast search and removes category pills from the visible UI', async () => {
