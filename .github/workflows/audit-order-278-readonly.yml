@@ -66,6 +66,7 @@ jobs:
               so.delivery_status,
               w.code AS warehouse_code,
               w.name AS warehouse_name,
+              w.location_management_mode,
               to_char(so.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD HH24:MI:SS') AS created_local,
               to_char(so.confirmed_at AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD HH24:MI:SS') AS confirmed_local,
               so.current_version_number
@@ -248,6 +249,8 @@ jobs:
               m.source_document_type,
               m.source_document_number,
               ml.line_number AS movement_line_number,
+              w.location_management_mode,
+              loc.code AS location_code,
               coalesce(sol.sku_snapshot, ml.source_sku) AS sale_sku,
               coalesce(sol.item_name_snapshot, '') AS product_name,
               coalesce(sol.unit_code_snapshot, ml.source_unit_code) AS sale_unit_code,
@@ -270,6 +273,13 @@ jobs:
             JOIN inventory.inventory_movement_lines ml
               ON ml.installation_id = m.installation_id
              AND ml.movement_id = m.id
+            JOIN shared.warehouses w
+              ON w.installation_id = ml.installation_id
+             AND w.id = ml.warehouse_id
+            LEFT JOIN shared.warehouse_locations loc
+              ON loc.installation_id = ml.installation_id
+             AND loc.warehouse_id = ml.warehouse_id
+             AND loc.id = ml.location_id
             LEFT JOIN sales.sales_order_version_lines sol
               ON sol.installation_id = ml.installation_id
              AND sol.id = NULLIF(ml.metadata->>'salesOrderLineId', '')::uuid
