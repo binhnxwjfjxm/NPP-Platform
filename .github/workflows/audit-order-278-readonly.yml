@@ -1,0 +1,287 @@
+name: One-time order 278 read-only audit
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/audit-order-278-readonly.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    if: github.head_ref == 'audit/order-278-beo-vl-readonly'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      VPS_COMPANY_HOST: ${{ vars.VPS_COMPANY_HOST }}
+      VPS_SSH_USER: ${{ vars.VPS_SSH_USER }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare SSH
+        shell: bash
+        env:
+          VPS_COMPANY_SSH_KEY: ${{ secrets.VPS_COMPANY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$VPS_COMPANY_HOST"
+          test -n "$VPS_SSH_USER"
+          test -n "$VPS_COMPANY_SSH_KEY"
+          umask 077
+          printf '%s\n' "$VPS_COMPANY_SSH_KEY" > "$RUNNER_TEMP/company.key"
+          chmod 600 "$RUNNER_TEMP/company.key"
+          ssh-keygen -y -f "$RUNNER_TEMP/company.key" >/dev/null
+          ssh-keyscan -T 10 -H "$VPS_COMPANY_HOST" > "$RUNNER_TEMP/company.known" 2>/dev/null
+          test -s "$RUNNER_TEMP/company.known"
+
+      - name: Read order 278 from production without mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/order-278-audit"
+          mkdir -p "$out"
+          ssh -i "$RUNNER_TEMP/company.key" \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/company.known" \
+            "$VPS_SSH_USER@$VPS_COMPANY_HOST" 'bash -s' > "$out/candidates.csv" <<'REMOTE'
+          set -euo pipefail
+          env_file=/etc/npp/company.env
+          db_url="$(sudo -n awk -F= '/^DATABASE_URL=/{sub(/^DATABASE_URL=/,""); gsub(/^["'"'"']|["'"'"']$/ ,""); print; exit}' "$env_file")"
+          test -n "$db_url"
+          psql "$db_url" -X -q -v ON_ERROR_STOP=1 <<'SQL'
+          BEGIN TRANSACTION READ ONLY;
+          COPY (
+            SELECT
+              so.id::text AS sales_order_id,
+              coalesce(so.order_number, '') AS order_number,
+              c.code AS customer_code,
+              c.name AS customer_name,
+              coalesce(so.walk_in_display_name, '') AS walk_in_display_name,
+              so.status,
+              so.fulfillment_status,
+              so.delivery_status,
+              w.code AS warehouse_code,
+              w.name AS warehouse_name,
+              to_char(so.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD HH24:MI:SS') AS created_local,
+              to_char(so.confirmed_at AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD HH24:MI:SS') AS confirmed_local,
+              so.current_version_number
+            FROM sales.sales_orders so
+            JOIN shared.customers c
+              ON c.installation_id = so.installation_id AND c.id = so.customer_id
+            JOIN shared.warehouses w
+              ON w.installation_id = so.installation_id AND w.id = so.warehouse_id
+            WHERE (coalesce(so.confirmed_at, so.created_at) AT TIME ZONE 'Asia/Ho_Chi_Minh')::date
+                    BETWEEN DATE '2026-10-01' AND DATE '2026-10-31'
+              AND (
+                right(regexp_replace(coalesce(so.order_number, ''), '[^0-9]', '', 'g'), 3) = '278'
+                OR c.name ILIKE '%Béo VL%'
+                OR coalesce(so.walk_in_display_name, '') ILIKE '%Béo VL%'
+              )
+            ORDER BY
+              CASE WHEN right(regexp_replace(coalesce(so.order_number, ''), '[^0-9]', '', 'g'), 3) = '278' THEN 0 ELSE 1 END,
+              CASE WHEN c.name ILIKE '%Béo VL%' OR coalesce(so.walk_in_display_name, '') ILIKE '%Béo VL%' THEN 0 ELSE 1 END,
+              coalesce(so.confirmed_at, so.created_at) DESC,
+              so.id
+          ) TO STDOUT WITH CSV HEADER;
+          COMMIT;
+          SQL
+          REMOTE
+
+          ssh -i "$RUNNER_TEMP/company.key" \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/company.known" \
+            "$VPS_SSH_USER@$VPS_COMPANY_HOST" 'bash -s' > "$out/ordered-lines.csv" <<'REMOTE'
+          set -euo pipefail
+          env_file=/etc/npp/company.env
+          db_url="$(sudo -n awk -F= '/^DATABASE_URL=/{sub(/^DATABASE_URL=/,""); gsub(/^["'"'"']|["'"'"']$/ ,""); print; exit}' "$env_file")"
+          test -n "$db_url"
+          psql "$db_url" -X -q -v ON_ERROR_STOP=1 <<'SQL'
+          BEGIN TRANSACTION READ ONLY;
+          COPY (
+            WITH candidates AS (
+              SELECT so.*
+              FROM sales.sales_orders so
+              JOIN shared.customers c
+                ON c.installation_id = so.installation_id AND c.id = so.customer_id
+              WHERE (coalesce(so.confirmed_at, so.created_at) AT TIME ZONE 'Asia/Ho_Chi_Minh')::date
+                      BETWEEN DATE '2026-10-01' AND DATE '2026-10-31'
+                AND (
+                  right(regexp_replace(coalesce(so.order_number, ''), '[^0-9]', '', 'g'), 3) = '278'
+                  OR c.name ILIKE '%Béo VL%'
+                  OR coalesce(so.walk_in_display_name, '') ILIKE '%Béo VL%'
+                )
+            )
+            SELECT
+              so.id::text AS sales_order_id,
+              coalesce(so.order_number, '') AS order_number,
+              sov.version_number,
+              l.line_number,
+              l.sku_snapshot AS sku,
+              l.item_name_snapshot AS product_name,
+              l.unit_code_snapshot AS unit_code,
+              trim(trailing '.' from trim(trailing '0' from l.ordered_quantity::text)) AS ordered_quantity,
+              trim(trailing '.' from trim(trailing '0' from l.conversion_to_base::text)) AS conversion_to_base,
+              trim(trailing '.' from trim(trailing '0' from l.base_quantity::text)) AS ordered_base_quantity
+            FROM candidates so
+            JOIN sales.sales_order_versions sov
+              ON sov.installation_id = so.installation_id
+             AND sov.sales_order_id = so.id
+             AND sov.version_number = so.current_version_number
+            JOIN sales.sales_order_version_lines l
+              ON l.installation_id = sov.installation_id
+             AND l.sales_order_version_id = sov.id
+            ORDER BY so.id, l.line_number
+          ) TO STDOUT WITH CSV HEADER;
+          COMMIT;
+          SQL
+          REMOTE
+
+          ssh -i "$RUNNER_TEMP/company.key" \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/company.known" \
+            "$VPS_SSH_USER@$VPS_COMPANY_HOST" 'bash -s' > "$out/issued-lines.csv" <<'REMOTE'
+          set -euo pipefail
+          env_file=/etc/npp/company.env
+          db_url="$(sudo -n awk -F= '/^DATABASE_URL=/{sub(/^DATABASE_URL=/,""); gsub(/^["'"'"']|["'"'"']$/ ,""); print; exit}' "$env_file")"
+          test -n "$db_url"
+          psql "$db_url" -X -q -v ON_ERROR_STOP=1 <<'SQL'
+          BEGIN TRANSACTION READ ONLY;
+          COPY (
+            WITH candidates AS (
+              SELECT so.*
+              FROM sales.sales_orders so
+              JOIN shared.customers c
+                ON c.installation_id = so.installation_id AND c.id = so.customer_id
+              WHERE (coalesce(so.confirmed_at, so.created_at) AT TIME ZONE 'Asia/Ho_Chi_Minh')::date
+                      BETWEEN DATE '2026-10-01' AND DATE '2026-10-31'
+                AND (
+                  right(regexp_replace(coalesce(so.order_number, ''), '[^0-9]', '', 'g'), 3) = '278'
+                  OR c.name ILIKE '%Béo VL%'
+                  OR coalesce(so.walk_in_display_name, '') ILIKE '%Béo VL%'
+                )
+            )
+            SELECT
+              so.id::text AS sales_order_id,
+              coalesce(so.order_number, '') AS order_number,
+              d.delivery_order_number,
+              i.issue_source_type,
+              i.status AS issue_status,
+              to_char(i.posted_at AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD HH24:MI:SS') AS issued_local,
+              dl.sales_order_line_id::text,
+              dl.sku_snapshot AS sku,
+              dl.item_name_snapshot AS product_name,
+              dl.unit_code_snapshot AS unit_code,
+              trim(trailing '.' from trim(trailing '0' from sum(il.issued_base_quantity / NULLIF(sol.conversion_to_base, 0))::text)) AS issued_quantity,
+              trim(trailing '.' from trim(trailing '0' from sum(il.issued_base_quantity)::text)) AS issued_base_quantity,
+              trim(trailing '.' from trim(trailing '0' from sol.conversion_to_base::text)) AS conversion_to_base
+            FROM candidates so
+            JOIN sales.delivery_orders d
+              ON d.installation_id = so.installation_id
+             AND d.sales_order_id = so.id
+            JOIN sales.delivery_order_inventory_issues i
+              ON i.installation_id = d.installation_id
+             AND i.delivery_order_id = d.id
+             AND i.status = 'POSTED'
+            JOIN sales.delivery_order_inventory_issue_lines il
+              ON il.installation_id = i.installation_id
+             AND il.issue_id = i.id
+            JOIN sales.delivery_order_lines dl
+              ON dl.installation_id = il.installation_id
+             AND dl.id = il.delivery_order_line_id
+            JOIN sales.sales_order_version_lines sol
+              ON sol.installation_id = dl.installation_id
+             AND sol.id = dl.sales_order_line_id
+            GROUP BY
+              so.id, so.order_number, d.delivery_order_number, i.issue_source_type, i.status, i.posted_at,
+              dl.sales_order_line_id, dl.sku_snapshot, dl.item_name_snapshot, dl.unit_code_snapshot,
+              sol.conversion_to_base
+            ORDER BY so.id, min(dl.line_number), dl.sku_snapshot
+          ) TO STDOUT WITH CSV HEADER;
+          COMMIT;
+          SQL
+          REMOTE
+
+          ssh -i "$RUNNER_TEMP/company.key" \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/company.known" \
+            "$VPS_SSH_USER@$VPS_COMPANY_HOST" 'bash -s' > "$out/movement-lines.csv" <<'REMOTE'
+          set -euo pipefail
+          env_file=/etc/npp/company.env
+          db_url="$(sudo -n awk -F= '/^DATABASE_URL=/{sub(/^DATABASE_URL=/,""); gsub(/^["'"'"']|["'"'"']$/ ,""); print; exit}' "$env_file")"
+          test -n "$db_url"
+          psql "$db_url" -X -q -v ON_ERROR_STOP=1 <<'SQL'
+          BEGIN TRANSACTION READ ONLY;
+          COPY (
+            WITH candidates AS (
+              SELECT so.*
+              FROM sales.sales_orders so
+              JOIN shared.customers c
+                ON c.installation_id = so.installation_id AND c.id = so.customer_id
+              WHERE (coalesce(so.confirmed_at, so.created_at) AT TIME ZONE 'Asia/Ho_Chi_Minh')::date
+                      BETWEEN DATE '2026-10-01' AND DATE '2026-10-31'
+                AND (
+                  right(regexp_replace(coalesce(so.order_number, ''), '[^0-9]', '', 'g'), 3) = '278'
+                  OR c.name ILIKE '%Béo VL%'
+                  OR coalesce(so.walk_in_display_name, '') ILIKE '%Béo VL%'
+                )
+            )
+            SELECT
+              so.id::text AS sales_order_id,
+              coalesce(so.order_number, '') AS order_number,
+              m.id::text AS movement_id,
+              m.movement_type,
+              m.source_document_type,
+              m.source_document_number,
+              ml.line_number AS movement_line_number,
+              ml.source_sku,
+              ml.source_unit_code,
+              trim(trailing '.' from trim(trailing '0' from ml.source_quantity::text)) AS source_quantity,
+              ml.base_sku,
+              ml.direction,
+              trim(trailing '.' from trim(trailing '0' from ml.base_quantity_delta::text)) AS base_quantity_delta,
+              ml.lot_code,
+              ml.expiry_date
+            FROM candidates so
+            JOIN sales.delivery_orders d
+              ON d.installation_id = so.installation_id AND d.sales_order_id = so.id
+            JOIN sales.delivery_order_inventory_issues i
+              ON i.installation_id = d.installation_id
+             AND i.delivery_order_id = d.id
+             AND i.status = 'POSTED'
+            JOIN inventory.inventory_movements m
+              ON m.installation_id = i.installation_id
+             AND m.id = i.inventory_movement_id
+            JOIN inventory.inventory_movement_lines ml
+              ON ml.installation_id = m.installation_id
+             AND ml.movement_id = m.id
+            ORDER BY so.id, m.posted_at, ml.line_number
+          ) TO STDOUT WITH CSV HEADER;
+          COMMIT;
+          SQL
+          REMOTE
+
+          python - <<'PY'
+          import csv, pathlib, sys
+          root = pathlib.Path("$RUNNER_TEMP/order-278-audit")
+          for name in ["candidates.csv","ordered-lines.csv","issued-lines.csv","movement-lines.csv"]:
+              p = root / name
+              with p.open(newline="", encoding="utf-8") as f:
+                  rows = list(csv.reader(f))
+              if not rows:
+                  raise SystemExit(f"{name}: no CSV output")
+          PY
+
+      - name: Upload read-only evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: order-278-beo-vl-readonly
+          path: ${{ runner.temp }}/order-278-audit/*.csv
+          if-no-files-found: error
+          retention-days: 1
