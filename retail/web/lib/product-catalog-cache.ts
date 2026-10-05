@@ -1,11 +1,14 @@
 export type RetailCachedProduct = {
   id: string;
+  productId?: string;
   productCode: string;
   imageKey?: string | null;
   productName: string;
   sku: string;
   barcode?: string | null;
   unitCode: string;
+  unitName?: string | null;
+  conversionToBase?: string | null;
   allowsFractional: boolean | null;
 };
 
@@ -15,7 +18,7 @@ type CacheMeta = {
 };
 
 const LEGACY_DB_NAME = 'npp-retail-catalog';
-const DB_NAME_PREFIX = 'npp-retail-catalog-v2-';
+const DB_NAME_PREFIX = 'npp-retail-catalog-v3-';
 const DB_VERSION = 1;
 const PRODUCT_STORE = 'products';
 const META_STORE = 'meta';
@@ -71,6 +74,11 @@ function productRank(product: RetailCachedProduct, query: string) {
   if (name.startsWith(query) || code.startsWith(query)) return 2;
   if (sku.includes(query) || barcode.includes(query) || name.includes(query) || code.includes(query)) return 3;
   return null;
+}
+
+function productConversionRank(product: RetailCachedProduct) {
+  const conversion = Number(product.conversionToBase);
+  return Number.isFinite(conversion) && conversion > 0 ? conversion : Number.POSITIVE_INFINITY;
 }
 
 function transactionDone(transaction: IDBTransaction) {
@@ -157,7 +165,20 @@ export async function findCachedRetailProducts(scope: string, search: string, li
         return rank === null ? null : { product, rank };
       })
       .filter((row): row is { product: RetailCachedProduct; rank: number } => row !== null)
-      .sort((left, right) => left.rank - right.rank || left.product.productName.localeCompare(right.product.productName, 'vi'));
+      .sort((left, right) => {
+        const rankDelta = left.rank - right.rank;
+        if (rankDelta !== 0) return rankDelta;
+        const nameDelta = left.product.productName.localeCompare(right.product.productName, 'vi');
+        if (nameDelta !== 0) return nameDelta;
+        const sameProduct = (left.product.productId && left.product.productId === right.product.productId)
+          || left.product.productCode === right.product.productCode;
+        if (sameProduct) {
+          const leftConversion = productConversionRank(left.product);
+          const rightConversion = productConversionRank(right.product);
+          if (leftConversion !== rightConversion) return leftConversion < rightConversion ? -1 : 1;
+        }
+        return left.product.sku.localeCompare(right.product.sku, 'vi');
+      });
     return ranked.slice(offset, offset + limit).map((row) => row.product);
   } finally {
     db.close();

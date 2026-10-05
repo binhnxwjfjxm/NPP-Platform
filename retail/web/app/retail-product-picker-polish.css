@@ -51,9 +51,10 @@
 /* The whole card is the add action. Existing controls keep React order state as the single source of truth. */
 .retail-issue675 .product-sheet .lot7-product-row {
   position: relative;
-  grid-template-columns: 56px minmax(0, 1fr);
+  grid-template-columns: 56px minmax(0, 1fr) 28px;
   align-items: center;
   gap: 10px;
+  height: 90px;
   min-height: 90px;
   overflow: hidden;
   box-sizing: border-box;
@@ -83,12 +84,12 @@
   align-self: center;
 }
 
-/* Name/SKU stay left; price and unit/availability form exactly two right-aligned rows. */
+/* Name/SKU stay left; price and unit/quantity stay compact on the right without growing the card. */
 .retail-issue675 .product-sheet .lot7-product-row .product-copy {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(118px, auto);
+  grid-template-columns: minmax(0, 1fr) minmax(104px, auto);
   grid-template-rows: auto auto;
-  column-gap: 10px;
+  column-gap: 8px;
   row-gap: 3px;
   min-width: 0;
   align-content: center;
@@ -104,6 +105,11 @@
   min-width: 0;
   margin: 0;
   overflow: hidden;
+}
+
+.retail-issue675 .product-sheet .lot7-product-row .product-copy small,
+.retail-issue675 .product-sheet .lot7-product-row .product-copy em,
+.retail-issue675 .product-sheet .lot7-product-row .product-copy b {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -112,8 +118,15 @@
   grid-column: 1;
   grid-row: 1;
   align-self: end;
+  display: -webkit-box;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  white-space: normal;
+  text-overflow: clip;
   font-size: 16px;
-  line-height: 1.22;
+  line-height: 1.14;
 }
 
 .retail-issue675 .product-sheet .lot7-product-row .product-copy small {
@@ -141,15 +154,33 @@
   grid-row: 2;
   align-self: start;
   justify-self: end;
+  display: inline-flex;
   width: auto;
+  align-items: baseline;
+  gap: 5px;
   color: #35694a;
   background: transparent;
   padding: 0;
-  font-size: 12px;
   font-style: normal;
-  font-weight: 700;
-  line-height: 1.25;
+  line-height: 1.2;
   text-align: right;
+  white-space: nowrap;
+}
+
+.retail-issue675 .product-sheet .lot7-product-row .product-unit {
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.retail-issue675 .product-sheet .lot7-product-row .product-availability {
+  font-size: 16px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.retail-issue675 .product-sheet .lot7-product-row .product-availability::before {
+  content: "·";
+  margin-right: 5px;
 }
 
 /* No +/- controls in search results. A small read-only counter confirms repeated taps on the same SKU. */
@@ -199,8 +230,9 @@
   }
 
   .retail-issue675 .product-sheet .lot7-product-row {
-    grid-template-columns: 48px minmax(0, 1fr);
+    grid-template-columns: 48px minmax(0, 1fr) 26px;
     gap: 8px;
+    height: 86px;
     min-height: 86px;
     padding: 8px 9px;
   }
@@ -211,8 +243,8 @@
   }
 
   .retail-issue675 .product-sheet .lot7-product-row .product-copy {
-    grid-template-columns: minmax(0, 1fr) minmax(108px, auto);
-    column-gap: 7px;
+    grid-template-columns: minmax(0, 1fr) minmax(94px, auto);
+    column-gap: 6px;
   }
 
   .retail-issue675 .product-sheet .lot7-product-row .product-copy strong,
@@ -220,7 +252,11 @@
     font-size: 15px;
   }
 
-  .retail-issue675 .product-sheet .lot7-product-row .product-copy em {
-    font-size: 11.5px;
+  .retail-issue675 .product-sheet .lot7-product-row .product-unit {
+    font-size: 13px;
+  }
+
+  .retail-issue675 .product-sheet .lot7-product-row .product-availability {
+    font-size: 15.5px;
   }
 }

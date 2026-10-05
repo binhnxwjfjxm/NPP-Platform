@@ -19,6 +19,7 @@ test('Retail catalog tái sử dụng SKU search chuẩn nhưng không trả d�
   assert.match(service, /salesOrderEntryService\.searchSalesOrderSkuOptions/);
   assert.match(productResponse, /productCode/);
   assert.match(productResponse, /unitCode/);
+  assert.match(productResponse, /conversionToBase: option\.conversionToBase/);
   assert.doesNotMatch(productResponse, /availableQuantity|inventory|onHand|held|baseQuantity/i);
 });
 
@@ -30,6 +31,7 @@ test('Retail product search có lọc nhóm và ưu tiên SKU chính xác/prefix
   assert.match(repository, /\$6::boolean AND upper\(pv\.sku\) LIKE \$2 \|\| '%'/);
   assert.match(repository, /WHEN upper\(pv\.sku\) = \$2 THEN 0/);
   assert.match(repository, /WHEN \$6::boolean AND upper\(pv\.sku\) LIKE \$2 \|\| '%' THEN 3/);
+  assert.match(repository, /CASE WHEN \$6::boolean THEN pv\.conversion_to_base END ASC NULLS LAST/);
 });
 
 test('Tìm SKU cũ giữ nguyên thứ tự, chỉ Retail mới bật thứ tự prefix', async () => {

@@ -16,11 +16,14 @@ test('Retail product catalog uses session-scoped IndexedDB with network fallback
     read('lib/product-catalog-cache.ts'),
     read('app/api/auth/cache-scope/route.ts'),
   ]);
-  assert.match(cache, /DB_NAME_PREFIX = 'npp-retail-catalog-v2-'/);
+  assert.match(cache, /DB_NAME_PREFIX = 'npp-retail-catalog-v3-'/);
   assert.match(cache, /function databaseName\(scope: string\)/);
   assert.match(cache, /export async function findCachedRetailProducts\(scope: string/);
   assert.match(cache, /export async function replaceRetailProductCache\(scope: string/);
   assert.match(cache, /export async function removeLegacyRetailProductCache/);
+  assert.match(cache, /conversionToBase\?: string \| null/);
+  assert.match(cache, /productConversionRank/);
+  assert.match(cache, /leftConversion < rightConversion \? -1 : 1/);
   assert.match(runtime, /const nativeFetch = window\.fetch\.bind\(window\)/);
   assert.match(runtime, /CACHE_SCOPE_PATH = '\/api\/auth\/cache-scope'/);
   assert.match(runtime, /findCachedRetailProducts\(scope, search, limit, offset\)/);

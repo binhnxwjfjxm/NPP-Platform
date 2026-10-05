@@ -193,6 +193,7 @@ export async function searchRetailCatalog(client, {
       unitId: option.unitId,
       unitCode: option.unitCode,
       unitName: option.unitName,
+      conversionToBase: option.conversionToBase,
       allowsFractional: option.allowsFractional,
     }))),
   });
