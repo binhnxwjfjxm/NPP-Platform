@@ -267,16 +267,9 @@ jobs:
           SQL
           REMOTE
 
-          python - <<'PY'
-          import csv, pathlib, sys
-          root = pathlib.Path("$RUNNER_TEMP/order-278-audit")
-          for name in ["candidates.csv","ordered-lines.csv","issued-lines.csv","movement-lines.csv"]:
-              p = root / name
-              with p.open(newline="", encoding="utf-8") as f:
-                  rows = list(csv.reader(f))
-              if not rows:
-                  raise SystemExit(f"{name}: no CSV output")
-          PY
+          for name in candidates.csv ordered-lines.csv issued-lines.csv movement-lines.csv; do
+            test -s "$out/$name"
+          done
 
       - name: Upload read-only evidence
         uses: actions/upload-artifact@v4
