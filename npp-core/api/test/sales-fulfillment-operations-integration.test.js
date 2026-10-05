@@ -36,6 +36,12 @@ function sha256Hex(value) {
   return createHash('sha256').update(JSON.stringify(canonicalize(value))).digest('hex');
 }
 
+function utcDateAfterDays(days) {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 function requestContext(installationId, warehouseId, requestId) {
   return Object.freeze({
     installationId,
@@ -298,19 +304,21 @@ test('Phase 6D.2 allocates FEFO, creates exact reservations and keeps pick/pack 
     });
     assert.equal(policy.ok, true, JSON.stringify(policy));
 
+    const earlyExpiryDate = utcDateAfterDays(30);
+    const lateExpiryDate = utcDateAfterDays(90);
     const early = await seedLotBalance(pool, inventoryContext, master, {
       sourceKey: `early-${randomUUID()}`,
       locationId: master.earlyLocationId,
       quantity: '3',
       lotCode: `LOT-EARLY-${randomUUID().slice(0, 8)}`,
-      expiryDate: '2026-10-01',
+      expiryDate: earlyExpiryDate,
     });
     const late = await seedLotBalance(pool, inventoryContext, master, {
       sourceKey: `late-${randomUUID()}`,
       locationId: master.lateLocationId,
       quantity: '7',
       lotCode: `LOT-LATE-${randomUUID().slice(0, 8)}`,
-      expiryDate: '2026-12-01',
+      expiryDate: lateExpiryDate,
     });
 
     server = await startServer({ config });
