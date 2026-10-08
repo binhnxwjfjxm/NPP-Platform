@@ -126,3 +126,12 @@
   .template-font-size-control > small { grid-column: 1; }
   .template-preview-stage { margin-right: -4px; margin-left: -4px; padding: 8px; }
 }
+
+
+/* Số tiền từng dòng cần nổi bật hơn tên hàng nhưng vẫn tăng/giảm theo cỡ chữ chung. */
+.print-document td.print-money-value {
+  font-size: 1.35em;
+  font-weight: 900;
+  line-height: 1.2;
+  white-space: nowrap;
+}

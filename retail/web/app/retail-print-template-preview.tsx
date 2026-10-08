@@ -79,7 +79,7 @@ export function RetailPrintTemplatePreview({
               {visible.has('line_quantity') ? <td>{line.quantity}</td> : null}
               {visible.has('line_unit') ? <td>{line.unit}</td> : null}
               {visible.has('line_unit_price') ? <td>{money.format(line.unitPrice)}</td> : null}
-              {visible.has('line_total') ? <td>{money.format(line.total)}</td> : null}
+              {visible.has('line_total') ? <td className="print-money-value">{money.format(line.total)}</td> : null}
             </tr>)}</tbody>
           </table> : null}
           <footer>

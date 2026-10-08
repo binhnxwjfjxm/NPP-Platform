@@ -16,16 +16,20 @@ test('Mẫu phiếu Retail có preview trực tiếp và cỡ chữ lưu dùng c
   assert.match(workspace, /templateFontSizePercent/);
   assert.match(workspace, /fontSizePercent: templateFontSizePercent/);
   assert.match(workspace, /--retail-print-font-scale/);
+  assert.match(workspace, /className="print-money-value"/);
   assert.doesNotMatch(workspace, /disabled=\{!order\}>Xem trước<\/button>/);
 
   assert.match(preview, /Xem trước thực tế/);
   assert.match(preview, /className="print-document"/);
   assert.match(preview, /visibleFieldKeys/);
   assert.match(preview, /dữ liệu mẫu/);
+  assert.match(preview, /className="print-money-value"/);
 
   assert.match(css, /template-font-size-stepper/);
   assert.match(css, /--retail-print-font-scale/);
   assert.match(css, /template-preview-stage/);
+  assert.match(css, /\.print-document td\.print-money-value/);
+  assert.match(css, /font-size: 1\.35em/);
   assert.match(layout, /retail-print-template-editor\.css/);
 
   assert.match(bridge, /fontSizePercent\?: number/);
