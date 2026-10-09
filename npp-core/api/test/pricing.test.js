@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { loadConfig } from '../src/config.js';
@@ -241,6 +242,126 @@ test('Pricing service — retail/carton prices are independent and rules resolve
     });
     assert.equal(isolated.ok, false);
     assert.equal(isolated.code, 'VARIANT_NOT_FOUND');
+  } finally {
+    await closePool();
+  }
+});
+
+
+test('Chuyển bảng giá Đại Lý tại chỗ: giữ nguyên SKU và ID, áp giá theo nhóm khách thật', async () => {
+  const config = loadConfig(testEnv());
+  const pool = getPool(config);
+  const correctionSql = readFileSync(
+    new URL('../../../database/operations/price-list-channel-to-customer-group.sql', import.meta.url),
+    'utf8',
+  );
+  try {
+    const suffix = randomUUID().slice(0, 8).toUpperCase();
+    const catalog = await createCatalog(pool, config.installationId, suffix);
+    const dealer = await createCustomerContext(pool, config.installationId, 'DEALER' + suffix);
+    const loyal = await createCustomerContext(pool, config.installationId, 'LOYAL' + suffix);
+    const dealerChannel = await pricingService.createSalesChannel(pool, {
+      installationId: config.installationId,
+      payload: { code: 'GT-' + suffix, name: 'Kênh Đại Lý' }, createdBy: 'test:user',
+    });
+    assert.ok(dealerChannel.ok, dealerChannel.message);
+    const base = await createList(pool, config.installationId, {
+      code: 'RETAIL-' + suffix, name: 'Giá nền', listType: 'BASE', priority: 100,
+    });
+    const dealerList = await createList(pool, config.installationId, {
+      code: 'PR-GT-' + suffix, name: 'Giá Đại Lý', listType: 'CHANNEL',
+      channelId: dealerChannel.channel.id, priority: 200,
+    });
+    await createItem(pool, config.installationId, base.id, {
+      variantId: catalog.base.id, adjustmentType: 'FIXED_PRICE', amountMinor: '624000',
+    });
+    const dealerBaseItem = await createItem(pool, config.installationId, dealerList.id, {
+      variantId: catalog.base.id, adjustmentType: 'FIXED_PRICE', amountMinor: '610000',
+    });
+    const dealerCartonItem = await createItem(pool, config.installationId, dealerList.id, {
+      variantId: catalog.carton.id, adjustmentType: 'FIXED_PRICE', amountMinor: '610000',
+    });
+    const runCorrection = async ({ groupCode, expectedItems = 2 }) => {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const settings = {
+          installation_id: config.installationId,
+          list_code: dealerList.code,
+          channel_code: dealerChannel.channel.code,
+          group_code: groupCode,
+          actor_id: 'test:pricing-migration',
+          request_id: randomUUID(),
+          expected_active_items: String(expectedItems),
+        };
+        for (const [key, value] of Object.entries(settings)) {
+          await client.query('SELECT set_config($1, $2, true)', ['npp.price_scope.' + key, value]);
+        }
+        await client.query(correctionSql);
+        await client.query('COMMIT');
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    };
+    const resolve = async (variantId, customerId, extra = {}) => pricingService.resolvePrice(pool, {
+      installationId: config.installationId,
+      payload: { variantId, channelId: dealerChannel.channel.id, customerId, quantity: '1', ...extra },
+    });
+    const before = await resolve(catalog.base.id, loyal.customer.id);
+    assert.ok(before.ok, before.message);
+    assert.equal(before.resolution.finalUnitPriceMinor, '610000',
+      'Giá Theo kênh ban đầu chưa giới hạn nhóm khách');
+
+    await assert.rejects(runCorrection({ groupCode: 'NOT-EXIST' }),
+      /price_scope_correction_group_not_found_or_inactive/);
+    await assert.rejects(runCorrection({ groupCode: dealer.group.code, expectedItems: 1 }),
+      /price_scope_correction_active_items_mismatch/);
+    const unchanged = (await pool.query(
+      'SELECT list_type, customer_group_id FROM shared.price_lists WHERE id = $1', [dealerList.id],
+    )).rows[0];
+    assert.equal(unchanged.list_type, 'CHANNEL');
+    assert.equal(unchanged.customer_group_id, null);
+
+    await runCorrection({ groupCode: dealer.group.code });
+    await runCorrection({ groupCode: dealer.group.code });
+    const corrected = (await pool.query(
+      'SELECT id, list_type, channel_id, customer_group_id, priority FROM shared.price_lists WHERE id = $1',
+      [dealerList.id],
+    )).rows[0];
+    assert.equal(corrected.id, dealerList.id);
+    assert.equal(corrected.list_type, 'CUSTOMER_GROUP');
+    assert.equal(corrected.channel_id, dealerChannel.channel.id);
+    assert.equal(corrected.customer_group_id, dealer.group.id);
+    assert.equal(Number(corrected.priority), 200);
+    const priceItems = (await pool.query(
+      'SELECT id, amount_minor FROM shared.price_list_items WHERE price_list_id = $1 ORDER BY id',
+      [dealerList.id],
+    )).rows;
+    assert.deepEqual(priceItems.map(row => row.id).sort(), [dealerBaseItem.id, dealerCartonItem.id].sort());
+    assert.ok(priceItems.every(row => String(row.amount_minor) === '610000'));
+    const audit = await pool.query(
+      "SELECT count(*)::int AS n FROM shared.core_audit_records WHERE installation_id = $1 AND action = 'price_list.scope_correction' AND resource_id = $2",
+      [config.installationId, dealerList.id],
+    );
+    assert.equal(audit.rows[0].n, 1, 'Chạy lại không thêm audit');
+
+    const dealerPrice = await resolve(catalog.base.id, dealer.customer.id);
+    const loyalWrongChannel = await resolve(catalog.base.id, loyal.customer.id);
+    const dealerNoBase = await resolve(catalog.carton.id, dealer.customer.id);
+    const loyalNoBase = await resolve(catalog.carton.id, loyal.customer.id);
+    for (const result of [dealerPrice, loyalWrongChannel, dealerNoBase, loyalNoBase]) {
+      assert.ok(result.ok, result.message);
+    }
+    assert.equal(dealerPrice.resolution.finalUnitPriceMinor, '610000');
+    assert.equal(loyalWrongChannel.resolution.finalUnitPriceMinor, '624000');
+    assert.equal(dealerNoBase.resolution.finalUnitPriceMinor, '610000');
+    assert.equal(loyalNoBase.resolution.finalUnitPriceMinor, '0');
+    const forgedGroup = await resolve(catalog.base.id, loyal.customer.id, { customerGroupId: dealer.group.id });
+    assert.equal(forgedGroup.ok, false, 'Không tin nhóm do frontend tự gửi');
+    assert.equal(forgedGroup.code, 'CUSTOMER_GROUP_MISMATCH');
   } finally {
     await closePool();
   }

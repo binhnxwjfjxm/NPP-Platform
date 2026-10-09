@@ -65,3 +65,17 @@ test('tìm đơn trên máy chủ dùng phân trang và cùng phạm vi quyền 
  assert.match(repo, /concat_ws\(' ', c\.code, c\.name\)/);
  assert.match(repo, /right\(coalesce\(so\.order_number/);
 });
+
+
+test('Chuyển giá Theo kênh sang Theo nhóm khách không thêm UI hay sửa dòng giá', () => {
+  const sql = read('../../../database/operations/price-list-channel-to-customer-group.sql');
+  assert.match(sql, /UPDATE shared\.price_lists/);
+  assert.match(sql, /list_type = 'CUSTOMER_GROUP'/);
+  assert.match(sql, /customer_group_id = v_group_id/);
+  assert.match(sql, /FOR UPDATE/);
+  assert.match(sql, /price_scope_correction_group_not_found_or_inactive/);
+  assert.match(sql, /price_scope_correction_active_items_mismatch/);
+  assert.match(sql, /shared\.core_audit_records/);
+  assert.doesNotMatch(sql, /UPDATE shared\.price_list_items|DELETE FROM shared\.price_list_items|INSERT INTO shared\.price_list_items/);
+  assert.doesNotMatch(read('../src/migrations/index.js'), /price-list-channel-to-customer-group\.sql/);
+});
