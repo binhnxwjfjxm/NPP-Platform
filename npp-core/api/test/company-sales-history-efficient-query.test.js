@@ -45,6 +45,18 @@ test('tháng Việt Nam và đơn tồn đọng được lọc tại SQL sau gi�
   assert.match(calls[1].query, /work_stage NOT IN \('completed','cancelled'\)/);
   assert.match(calls[1].query, /so\.created_at < \$\d+::timestamptz/);
   assert.ok(calls[1].values.includes(dateFrom));
+
+  await listSalesOrders(client, { ...scope, scope: 'month', dateFrom, dateTo, compact: true, limit: 1000 });
+  assert.match(calls[2].query, /SELECT so\.id, so\.order_number, so\.status, so\.source_type/);
+  assert.match(calls[2].query, /current_version\.total AS total/);
+  assert.doesNotMatch(calls[2].query, /accounting\.receivable_documents/);
+  assert.match(calls[2].query, /FROM sales\.delivery_orders/);
+
+  const cursorId = '33333333-3333-4333-8333-333333333333';
+  await listSalesOrders(client, {...scope, scope:'month', dateFrom, dateTo, compact:true, cursorId, limit:1000});
+  assert.match(calls[3].query, /page_cursor\.id = \$\d+::uuid/);
+  assert.match(calls[3].query, /\(so\.created_at, so\.id\) < \(page_cursor\.created_at, page_cursor\.id\)/);
+  assert.ok(calls[3].values.includes(cursorId));
 });
 
 test('đếm toàn bộ đơn hợp quyền, không thực hiện truy vấn chi tiết từng đơn', async () => {

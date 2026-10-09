@@ -268,13 +268,14 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
     const { dateFrom, dateTo } = vietnamMonthBounds(key);
     const results = [...seed];
     const seen = new Set(results.map((order) => order.id));
-    let offset = seed.length;
+    let cursorId = seed.length ? seed[seed.length - 1].id : null;
     let continuePaging = seed.length === 0 || seed.length === MONTH_BATCH_SIZE;
     try {
       while (continuePaging) {
         const params = new URLSearchParams({
-          scope: kind, compact: '1', limit: String(MONTH_BATCH_SIZE), offset: String(offset),
+          scope: kind, compact: '1', limit: String(MONTH_BATCH_SIZE),
         });
+        if (cursorId) params.set('cursorId', cursorId);
         if (kind === 'month') {
           params.set('dateFrom', dateFrom);
           params.set('dateTo', dateTo);
@@ -286,7 +287,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
         for (const item of next) {
           if (!seen.has(item.id)) { seen.add(item.id); results.push(item); }
         }
-        offset += next.length;
+        if (next.length) cursorId = next[next.length - 1].id;
         continuePaging = next.length === MONTH_BATCH_SIZE;
       }
       if (run !== listRequestRef.current || controller.signal.aborted) return;
@@ -648,6 +649,8 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
             <select value={periodMode === 'history' ? 'history' : periodMode === 'pending' ? 'pending' : periodChoice}
               onChange={(event) => {
                 const value = event.target.value;
+                if (periodMode === 'history' && value !== 'history') setSearch('');
+                if (value !== 'custom') setWorkStage('all');
                 setPeriodChoice(value);
                 if (value === 'history') setPeriodMode('history');
                 else if (value === 'pending') setPeriodMode('pending');

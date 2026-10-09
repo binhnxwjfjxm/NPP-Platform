@@ -29,6 +29,7 @@ export async function GET(request: NextRequest) {
       dateFrom: request.nextUrl.searchParams.get('dateFrom') || undefined,
       dateTo: request.nextUrl.searchParams.get('dateTo') || undefined,
       beforeDate: request.nextUrl.searchParams.get('beforeDate') || undefined,
+      cursorId: request.nextUrl.searchParams.get('cursorId') || undefined,
       compact: request.nextUrl.searchParams.get('compact') === '1',
     });
     return salesOrderResponse(data, requestId);

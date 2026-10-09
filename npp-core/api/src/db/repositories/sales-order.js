@@ -1,12 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-const ORDER_COLUMNS = `so.id, so.installation_id, so.order_number, so.order_number_allocation_id,
-  so.status, so.current_version_number, so.source_type, so.source_id, so.source_outlet_id,
-  so.customer_id, c.code AS customer_code, c.name AS customer_name,
-  so.customer_mode, so.walk_in_display_name, so.walk_in_phone,
-  so.customer_address_id, so.warehouse_id, w.code AS warehouse_code, w.name AS warehouse_name,
-  so.delivery_mode, so.collection_policy, so.fulfillment_status,
-  CASE
+const DELIVERY_STATUS_COLUMN = `  CASE
     WHEN so.delivery_status IN ('returned', 'cancelled') THEN so.delivery_status
     WHEN so.delivery_mode = 'PICKUP' THEN 'not_required'
     ELSE COALESCE((
@@ -56,7 +50,21 @@ const ORDER_COLUMNS = `so.id, so.installation_id, so.order_number, so.order_numb
            AND delivery_order.status <> 'cancelled'
       ) delivery
     ), so.delivery_status)
-  END AS delivery_status,
+  END AS delivery_status,`;
+
+const COMPACT_ORDER_COLUMNS = `so.id, so.order_number, so.status, so.source_type, so.source_id,
+  so.customer_id, c.code AS customer_code, c.name AS customer_name,
+  so.walk_in_display_name, so.warehouse_id, so.delivery_mode, so.fulfillment_status,
+${DELIVERY_STATUS_COLUMN}
+  so.created_at, so.updated_at`;
+
+const ORDER_COLUMNS = `so.id, so.installation_id, so.order_number, so.order_number_allocation_id,
+  so.status, so.current_version_number, so.source_type, so.source_id, so.source_outlet_id,
+  so.customer_id, c.code AS customer_code, c.name AS customer_name,
+  so.customer_mode, so.walk_in_display_name, so.walk_in_phone,
+  so.customer_address_id, so.warehouse_id, w.code AS warehouse_code, w.name AS warehouse_name,
+  so.delivery_mode, so.collection_policy, so.fulfillment_status,
+${DELIVERY_STATUS_COLUMN}
   so.settlement_status,
   COALESCE((
     SELECT sum(receivable.remaining_amount)::numeric(20,6)
@@ -159,7 +167,7 @@ const SALES_ORDER_WORK_STAGE = `CASE
 function salesOrderListQuery({
  installationId, warehouseIds, employeeId = null, actorId = null, allowAllEmployees = false,
  status, customerId, warehouseId, deliveryMode, search, source = 'all', lane = 'all',
- scope = 'history', dateFrom = null, dateTo = null, beforeDate = null,
+ scope = 'history', dateFrom = null, dateTo = null, beforeDate = null, cursorId = null,
 }) {
  const params = [installationId];
  // Filter and count with narrow rows. Expensive delivery/receivable projections
@@ -182,6 +190,12 @@ function salesOrderListQuery({
  if (scope === 'pending') {
    params.push(beforeDate);
    query += ` AND so.created_at < $${params.length}::timestamptz`;
+ }
+ if (cursorId) {
+   params.push(cursorId);
+   query += ` AND EXISTS (SELECT 1 FROM sales.sales_orders page_cursor
+     WHERE page_cursor.installation_id = so.installation_id AND page_cursor.id = $${params.length}::uuid
+       AND (so.created_at, so.id) < (page_cursor.created_at, page_cursor.id))`;
  }
  if(status){params.push(status);query+=` AND so.status = $${params.length}`;}
  if(customerId){params.push(customerId);query+=` AND so.customer_id = $${params.length}`;}
@@ -220,18 +234,23 @@ function stagedSalesOrderQuery(input){
   staged_orders AS (SELECT id, installation_id, created_at, ${SALES_ORDER_WORK_STAGE} AS work_stage FROM matching_orders)`,params};
 }
 
-export async function listSalesOrders(client,{limit=100,offset=0,stage='all',scope='history',...input}){
- const {query,params}=stagedSalesOrderQuery({...input,scope});
+export async function listSalesOrders(client,{limit=100,offset=0,stage='all',scope='history',compact=false,cursorId=null,...input}){
+ const {query,params}=stagedSalesOrderQuery({...input,scope,cursorId});
  let where=scope === 'pending' ? " WHERE work_stage NOT IN ('completed','cancelled')" : '';
  if(stage&&stage!=='all'){params.push(stage);where+=`${where ? ' AND' : ' WHERE'} work_stage = $${params.length}`;}
  params.push(limit,offset);
+ const selection = compact ? COMPACT_ORDER_COLUMNS : ORDER_COLUMNS;
+ const numericColumns = compact ? ', current_version.total AS total, current_version.delivery_execution_mode AS delivery_execution_mode' : '';
+ const versionJoin = compact ? `LEFT JOIN sales.sales_order_versions current_version
+    ON current_version.installation_id = so.installation_id
+   AND current_version.sales_order_id = so.id
+   AND current_version.version_number = so.current_version_number` : '';
  return (await client.query(`${query},
   selected_page AS (
     SELECT id, installation_id, created_at FROM staged_orders${where}
     ORDER BY created_at DESC,id DESC LIMIT $${params.length-1} OFFSET $${params.length}
   )
-  SELECT ${ORDER_COLUMNS}, current_version.total AS total,
-    current_version.delivery_execution_mode AS delivery_execution_mode
+  SELECT ${selection}${numericColumns}
   FROM selected_page
   JOIN sales.sales_orders so
     ON so.installation_id = selected_page.installation_id AND so.id = selected_page.id
@@ -239,10 +258,7 @@ export async function listSalesOrders(client,{limit=100,offset=0,stage='all',sco
     ON c.installation_id = so.installation_id AND c.id = so.customer_id
   JOIN shared.warehouses w
     ON w.installation_id = so.installation_id AND w.id = so.warehouse_id
-  LEFT JOIN sales.sales_order_versions current_version
-    ON current_version.installation_id = so.installation_id
-   AND current_version.sales_order_id = so.id
-   AND current_version.version_number = so.current_version_number
+  ${versionJoin}
   ORDER BY selected_page.created_at DESC,selected_page.id DESC`,params)).rows;
 }
 

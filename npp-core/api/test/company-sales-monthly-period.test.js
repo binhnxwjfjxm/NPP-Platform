@@ -10,6 +10,7 @@ test('từ chối phạm vi tháng không hợp lệ trước khi truy vấn cơ
     {scope:'month',dateFrom:'2026-09-30T17:00:00.000Z',dateTo:'2026-11-30T17:00:00.000Z'},
     {scope:'pending',beforeDate:'invalid'},
     {scope:'something-else'},
+    {scope:'month',dateFrom:'2026-09-30T17:00:00.000Z',dateTo:'2026-10-31T17:00:00.000Z',cursorId:'not-a-uuid'},
   ];
   for (const filters of invalid) {
     const result = await listSalesOrders(client, {requestContext,...filters});

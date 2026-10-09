@@ -67,6 +67,8 @@ test('danh sách tháng không yêu cầu máy chủ sau mỗi lần đổi từ
   const source = readFileSync(new URL('../app/sales/sales-orders/SalesOrderWorkspace.tsx', import.meta.url), 'utf8');
   assert.match(source, /monthCacheRef\.current\.set\(cacheKey, complete\)/);
   assert.match(source, /while \(continuePaging\)/);
+  assert.match(source, /params\.set\('cursorId', cursorId\)/);
+  assert.match(source, /cursorId = next\[next\.length - 1\]\.id/);
   assert.match(source, /\[periodMode, monthKey\]/);
   assert.match(source, /matchesSalesOrderSearch\(order, search\)/);
   assert.match(source, /visibleOrders\.map/);

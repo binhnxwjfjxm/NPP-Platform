@@ -229,6 +229,7 @@ export type ListSalesOrdersParams = {
   dateFrom?: string;
   dateTo?: string;
   beforeDate?: string;
+  cursorId?: string;
   compact?: boolean;
   limit?: number;
   offset?: number;

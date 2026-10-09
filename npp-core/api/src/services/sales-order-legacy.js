@@ -377,17 +377,15 @@ function validOrderTime(value) {
 }
 
 function mapOrderList(row) {
-  const mapped = mapOrder(row);
   return Object.freeze({
-    id: mapped.id, number: mapped.number, status: mapped.status,
-    sourceType: mapped.sourceType, sourceId: mapped.sourceId,
-    customerId: mapped.customerId, customerCode: mapped.customerCode,
-    customerName: mapped.customerName, warehouseId: mapped.warehouseId,
-    deliveryMode: mapped.deliveryMode,
+    id: row.id, number: row.order_number ?? null, status: row.status,
+    sourceType: row.source_type, sourceId: row.source_id ?? null,
+    customerId: row.customer_id, customerCode: row.customer_code,
+    customerName: row.walk_in_display_name ?? row.customer_name,
+    warehouseId: row.warehouse_id, deliveryMode: row.delivery_mode,
     deliveryExecutionMode: row.delivery_execution_mode ?? null,
-    fulfillmentStatus: mapped.fulfillmentStatus,
-    deliveryStatus: mapped.deliveryStatus,
-    createdAt: mapped.createdAt, updatedAt: mapped.updatedAt,
+    fulfillmentStatus: row.fulfillment_status, deliveryStatus: row.delivery_status,
+    createdAt: row.created_at, updatedAt: row.updated_at,
     total: String(row.total ?? '0'),
   });
 }
@@ -408,6 +406,9 @@ function validateList(input) {
     return failure('INVALID_ORDER_PERIOD', 'Tháng cần xem không hợp lệ');
   }
   if (scope === 'pending' && !validOrderTime(input.beforeDate)) return failure('INVALID_ORDER_PERIOD', 'Thời gian xem đơn chưa hoàn thành không hợp lệ');
+  if (input.cursorId && (!isUuid(input.cursorId) || !['month', 'pending'].includes(scope))) {
+    return failure('INVALID_ORDER_CURSOR', 'Trang danh sách đơn không hợp lệ');
+  }
   const search = text(input.search, 256, false);
   if (input.search && search === null) return failure('INVALID_SEARCH', 'Search must not exceed 256 characters');
   const source = String(input.source ?? 'all').toLowerCase();
@@ -434,8 +435,9 @@ export async function listSalesOrders(client, input) {
     source: validation.source,
     lane: validation.lane,
     stage: validation.stage,
-    scope: validation.scope,
+    scope: validation.scope, compact: input.compact === true,
     dateFrom: input.dateFrom, dateTo: input.dateTo, beforeDate: input.beforeDate,
+    cursorId: input.cursorId ?? null,
     limit: Math.max(1, Math.min(1000, Number(input.limit) || 100)),
     offset: Math.max(0, Number(input.offset) || 0),
   });
