@@ -104,7 +104,7 @@ test.describe('Giá bán', () => {
     await expect(page.getByTestId('pricing-step-rule')).toHaveCount(0);
 
     // A channel alone must not grant its special price; the allowed customer group must match.
-    await page.getByLabel('Nhóm khách', { exact: true }).selectOption(group.id);
+    await page.getByTestId('resolver-customer-group-select').selectOption(group.id);
     await page.getByTestId('resolve-price-button').click();
     await expect(page.getByTestId('resolved-unit-price')).toContainText('9.000');
     await expect(page.getByTestId('resolved-line-total')).toContainText('18.000');
