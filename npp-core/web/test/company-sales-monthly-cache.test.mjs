@@ -78,19 +78,34 @@ test('danh sách tháng không yêu cầu máy chủ sau mỗi lần đổi từ
   assert.match(source, /scope: 'history', compact: '1'/);
 });
 
-test('Thời gian tùy chọn dùng Từ ngày - Đến ngày, công việc tồn đọng tách riêng', () => {
+test('bộ chọn Thời gian - Từ ngày - Đến ngày luôn nằm trong một cụm cố định', () => {
   const source = readFileSync(new URL('../app/sales/sales-orders/SalesOrderWorkspace.tsx', import.meta.url), 'utf8');
-  assert.match(source, /Tùy chọn khoảng thời gian/);
-  assert.match(source, /type="date" value=\{rangeFrom\}/);
-  assert.match(source, /type="date" value=\{rangeTo\}/);
+  const styles = readFileSync(new URL('../app/sales/sales-orders/sales-orders.module.css', import.meta.url), 'utf8');
+  const start = source.indexOf('<div className={styles.periodControls}');
+  const end = source.indexOf('<label className={styles.orderSearchField}>', start);
+  assert.ok(start > 0 && end > start);
+  const group = source.slice(start, end);
+  assert.match(group, /<select value=\{periodChoice\}/);
+  assert.match(group, /type="date" value=\{rangeFrom\}/);
+  assert.match(group, /type="date" value=\{rangeTo\}/);
+  assert.doesNotMatch(group, /periodMode === 'range' &&/);
+  assert.doesNotMatch(group, /Đơn chưa hoàn thành/);
+  assert.doesNotMatch(source, /pendingFilterRow/);
   assert.doesNotMatch(source, /type="month"/);
-  assert.match(source, /className=\{styles\.pendingFilterRow\}/);
-  assert.match(source, /aria-pressed=\{periodMode === 'pending'\}/);
-  const start = source.indexOf('<select value={periodChoice}');
-  const select = source.slice(start, source.indexOf('</select>', start));
-  assert.ok(start > 0);
-  assert.doesNotMatch(select, /Đơn chưa hoàn thành/);
+  assert.match(styles, /\.toolbar \.periodControls\{display:grid;grid-template-columns:/);
+  assert.match(styles, /flex-wrap:wrap/);
+  assert.match(styles, /grid-template-columns:154px 132px 132px;overflow-x:auto/);
   assert.match(source, /scope: 'history', compact: '1'/);
+});
+
+test('đổi nhanh Tháng này - Tháng trước hoặc thay ngày dùng đúng bộ lọc', () => {
+  const source = readFileSync(new URL('../app/sales/sales-orders/SalesOrderWorkspace.tsx', import.meta.url), 'utf8');
+  assert.match(source, /setRangeTo\(value === 'current' \? getVietnamDateKey\(new Date\(\)\) : lastDayOfVietnamMonth\(month\)\)/);
+  assert.match(source, /setPeriodChoice\('custom'\)/);
+  assert.match(source, /setPeriodMode\('range'\)/);
+  assert.match(source, /lastDayOfVietnamMonth\(key: string\)/);
+  assert.match(source, /monthCacheRef\.current\.set\(cacheKey, complete\)/);
+  assert.match(source, /matchesSalesOrderSearch\(order, search\)/);
 });
 
 test('Ngày bao gồm cả ngày kết thúc theo giờ Việt Nam, chặn khoảng ngày sai', () => {
