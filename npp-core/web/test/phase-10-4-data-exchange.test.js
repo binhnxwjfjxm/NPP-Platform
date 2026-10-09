@@ -11,6 +11,7 @@ const workspace = read('app/operations/data-exchange/workspace.tsx');
 const model = read('app/operations/data-exchange/data-exchange-model.ts');
 const fileUtils = read('app/operations/data-exchange/data-exchange-file-utils.ts');
 const actions = read('app/operations/data-exchange/data-exchange-import-actions.ts');
+const pricingFileImport = read('lib/pricing-file-import.ts');
 const preview = read('app/operations/data-exchange/data-exchange-preview.tsx');
 const view = read('app/operations/data-exchange/data-exchange-view.tsx');
 const quotation = read('app/sales/quotations/quotation-workspace.tsx');
@@ -58,7 +59,7 @@ test('Phase 10.4 generic XLSX round-trips a tabular workbook', () => {
 test('Phase 10.4 workspace uses official file operations and canonical SKU pricing mutation', () => {
   for (const endpoint of ['products/export', 'products/import', 'pricing/export', 'stocktake/export', 'stocktake/import']) assert.match(dataExchange, new RegExp(`/api/file-operations/${endpoint}`));
   assert.match(quotation, /\/api\/file-operations\/quotation/);
-  assert.match(actions, /\/api\/pricing\/import/);
+  assert.match(pricingFileImport, /\/api\/pricing\/import/);
   assert.match(actions, /matchBySku:\s*true/);
   assert.match(workspace, /\/api\/inventory\/balances\/drill-down/);
   assert.doesNotMatch(dataExchange, /\/api\/inventory\/balances[^'"`]*['"`][\s\S]{0,80}method:\s*['"](?:POST|PUT|PATCH|DELETE)['"]/);
@@ -99,8 +100,9 @@ test('SKU-keyed price updates preserve quotation lineage', () => {
   assert.match(actions, /matchBySku:\s*true/);
   assert.match(actions, /const key = importOperationKeyRef\.current \?\? idempotency\(importOperation\(kind\)\)/);
   assert.match(actions, /const sourceBatchId = operationKey/);
-  assert.match(actions, /'Idempotency-Key': operationKey/);
-  assert.match(actions, /JSON\.stringify\(\{ matchBySku: true, sourceBatchId, items \}\)/);
+  assert.match(actions, /operationKey,/);
+  assert.match(actions, /payload: \{ matchBySku: true, sourceBatchId, items \}/);
+  assert.match(pricingFileImport, /'Idempotency-Key': operationKey/);
   assert.doesNotMatch(actions, /price-file-\$\{crypto\.randomUUID\(\)\}/);
   assert.match(quotation, /lineTotal: String\(row\.lineTotalMinor/);
   assert.match(quotation, /priceListCode: String\(row\.priceListCode/);
