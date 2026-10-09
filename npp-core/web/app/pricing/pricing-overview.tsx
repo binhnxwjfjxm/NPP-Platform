@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../components/app-shell';
 import PricingBulkOverlay from './pricing-bulk-overlay';
 import PricingFileAdjustment from './pricing-file-adjustment';
+import { decimalKey, summarizeCurrentPriceRules } from './pricing-overview-summary';
 import type { PriceList, PriceListItem, PriceListType, PricingProduct, PricingVariant } from '../../lib/pricing-types';
 import styles from './pricing-overview.module.css';
 import workspaceStyles from './pricing.module.css';
@@ -27,6 +28,9 @@ type RuleView = {
   externalRuleCode: string;
   note: string;
   isActive: boolean;
+  listIsActive: boolean;
+  listEffectiveFrom: string;
+  listEffectiveTo: string;
 };
 type SkuView = {
   productCode: string;
@@ -74,12 +78,6 @@ function money(value: string | null | undefined) {
   return `${new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 0 }).format(BigInt(normalized))} ₫`;
 }
 
-function decimalKey(value: string | null | undefined) {
-  const normalized = String(value ?? '').trim();
-  if (!normalized) return '';
-  return normalized.includes('.') ? normalized.replace(/0+$/, '').replace(/\.$/, '') || '0' : normalized;
-}
-
 function dateText(value: string | null | undefined) {
   const normalized = String(value ?? '').trim();
   if (!normalized) return '';
@@ -99,17 +97,12 @@ function ruleValue(rule: RuleView) {
   return ['PERCENT_DISCOUNT', 'PERCENT_MARKUP'].includes(rule.adjustmentType) ? rateText(rule.rateBps) : money(rule.amountMinor);
 }
 
-function summarizeRules(rules: RuleView[]) {
-  const active = rules.filter((rule) => rule.isActive);
-  if (!active.length) return '—';
-  if (active.length !== 1) return 'Nhiều mức giá';
-  const rule = active[0];
-  if (rule.adjustmentType !== 'FIXED_PRICE'
-    || decimalKey(rule.minQuantity || '0') !== '0'
-    || decimalKey(rule.maxQuantity)
-    || rule.effectiveFrom
-    || rule.effectiveTo) return 'Nhiều mức giá';
-  return money(rule.amountMinor);
+function summarizeRules(rules: RuleView[], priceAt: number) {
+  const summary = summarizeCurrentPriceRules(rules, priceAt);
+  if (summary.kind === 'FIXED') return money(summary.amountMinor);
+  if (summary.kind === 'CONDITIONAL') return 'Theo điều kiện';
+  if (summary.kind === 'MULTIPLE') return 'Nhiều mức giá';
+  return '—';
 }
 
 function activeValue(value: unknown) {
@@ -140,6 +133,9 @@ function fromItem(item: PriceListItem, list: PriceList): RuleView {
     externalRuleCode: item.external_rule_code ?? '',
     note: item.note ?? '',
     isActive: item.is_active,
+    listIsActive: list.is_active,
+    listEffectiveFrom: list.effective_from ?? '',
+    listEffectiveTo: list.effective_to ?? '',
   };
 }
 
@@ -161,6 +157,9 @@ function fromOfficial(row: Record<string, unknown>, listByCode: Map<string, Pric
     externalRuleCode: String(row.externalRuleCode ?? '').trim(),
     note: String(row.note ?? '').trim(),
     isActive: activeValue(row.isActive),
+    listIsActive: list?.is_active ?? false,
+    listEffectiveFrom: list?.effective_from ?? '',
+    listEffectiveTo: list?.effective_to ?? '',
   };
 }
 
@@ -463,6 +462,7 @@ export default function PricingOverview() {
   }
 
   function summarySheet(sourceRules: RuleView[]) {
+    const priceAt = Date.now();
     const indexes = indexRules(sourceRules);
     const headers = ['Mã SP', 'Tên SP', 'SKU', 'Quy cách', 'ĐVT', 'Giá nền', ...listColumns.map((list) => `${list.code} · ${list.name}${list.is_active ? '' : ' (Ngừng)'}`)];
     const rows = skuRows.map((sku) => [
@@ -471,13 +471,14 @@ export default function PricingOverview() {
       sku.sku,
       sku.variantName,
       sku.unitName,
-      summarizeRules(indexes.baseBySku.get(sku.sku.toUpperCase()) ?? []),
-      ...listColumns.map((list) => summarizeRules(indexes.byListSku.get(ruleKey(list.code, sku.sku)) ?? [])),
+      summarizeRules(indexes.baseBySku.get(sku.sku.toUpperCase()) ?? [], priceAt),
+      ...listColumns.map((list) => summarizeRules(indexes.byListSku.get(ruleKey(list.code, sku.sku)) ?? [], priceAt)),
     ]);
     return { sheetName: 'Bảng giá tổng hợp', headers, rows };
   }
 
   function selectedListSummarySheet(list: PriceList, sourceRules: RuleView[]) {
+    const priceAt = Date.now();
     const indexes = indexRules(sourceRules);
     const headers = ['Mã SP', 'Tên SP', 'SKU', 'Quy cách', 'ĐVT', 'Giá nền', `${list.code} · ${list.name}${list.is_active ? '' : ' (Ngừng)'}`];
     const rows = skuRows.map((sku) => [
@@ -486,8 +487,8 @@ export default function PricingOverview() {
       sku.sku,
       sku.variantName,
       sku.unitName,
-      summarizeRules(indexes.baseBySku.get(sku.sku.toUpperCase()) ?? []),
-      summarizeRules(indexes.byListSku.get(ruleKey(list.code, sku.sku)) ?? []),
+      summarizeRules(indexes.baseBySku.get(sku.sku.toUpperCase()) ?? [], priceAt),
+      summarizeRules(indexes.byListSku.get(ruleKey(list.code, sku.sku)) ?? [], priceAt),
     ]);
     return { sheetName: `Tổng hợp ${list.code}`, headers, rows };
   }
@@ -534,6 +535,7 @@ export default function PricingOverview() {
       : `Đang tải bảng giá ${selectedList?.code ?? 'đã chọn'}…`
     : '';
 
+  const displayPriceAt = Date.now();
   return (
     <AppShell title="Điều chỉnh giá" subtitle="Xem giá hiện tại, điều chỉnh trực tiếp hoặc bằng file và chọn thời điểm áp dụng.">
       <div className={styles.page} data-testid="pricing-overview-page">
@@ -589,14 +591,14 @@ export default function PricingOverview() {
                   <td><strong>{row.sku}</strong></td>
                   <td>{row.variantName}</td>
                   <td>{row.unitName || '—'}</td>
-                  <td>{summarizeRules(ruleIndexes.baseBySku.get(row.sku.toUpperCase()) ?? [])}</td>
-                  {visibleListColumns.map((list) => <td key={`${row.sku}:${list.id}`}>{summarizeRules(ruleIndexes.byListSku.get(ruleKey(list.code, row.sku)) ?? [])}</td>)}
+                  <td>{summarizeRules(ruleIndexes.baseBySku.get(row.sku.toUpperCase()) ?? [], displayPriceAt)}</td>
+                  {visibleListColumns.map((list) => <td key={`${row.sku}:${list.id}`}>{summarizeRules(ruleIndexes.byListSku.get(ruleKey(list.code, row.sku)) ?? [], displayPriceAt)}</td>)}
                 </tr>
               ))}</tbody>
             </table>
           </div>
         ) : null}
-        <p className={styles.note}><strong>Nhiều mức giá</strong> nghĩa là sản phẩm có nhiều mức hoặc có điều kiện theo số lượng/thời gian. Tệp Excel luôn kèm sheet <strong>Điều kiện áp dụng</strong> để giữ đầy đủ thông tin.</p>
+        <p className={styles.note}>Giá trên màn hình và trong Excel là giá đang có hiệu lực tại thời điểm xem hoặc xuất. <strong>Theo điều kiện</strong> là giá phụ thuộc số lượng hoặc cách điều chỉnh; <strong>Nhiều mức giá</strong> là có nhiều quy tắc cùng hiệu lực. Sheet <strong>Điều kiện áp dụng</strong> giữ đầy đủ lịch sử và điều kiện giá.</p>
       </div>
     </AppShell>
   );
