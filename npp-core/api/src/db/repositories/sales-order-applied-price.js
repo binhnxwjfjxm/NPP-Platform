@@ -47,6 +47,29 @@ export async function listLastPurchasePrices(client, {
         AND sales_order.status IN ('confirmed', 'closed')
         AND version.version_status = 'confirmed'
         AND version.confirmed_at IS NOT NULL
+        AND (
+          line.price_source = 'MANUAL_OVERRIDE'
+          OR (
+            line.price_source = 'PRICE_ENGINE'
+            AND jsonb_array_length(COALESCE(line.pricing_trace_snapshot, '[]'::jsonb)) > 0
+            AND NOT EXISTS (
+              SELECT 1
+              FROM jsonb_array_elements(COALESCE(line.pricing_trace_snapshot, '[]'::jsonb)) AS step
+              WHERE step->>'priceListType' = 'CHANNEL'
+                OR step->>'reason' = 'CHANNEL_FIXED_FALLBACK'
+            )
+          )
+          OR EXISTS (
+            SELECT 1
+            FROM shared.sales_channel_customer_groups membership
+            JOIN shared.customers historical_customer
+              ON historical_customer.installation_id = membership.installation_id
+             AND historical_customer.group_id = membership.customer_group_id
+             AND historical_customer.id = sales_order.customer_id
+            WHERE membership.installation_id = sales_order.installation_id
+              AND membership.channel_id = version.sales_channel_id
+          )
+        )
       ORDER BY line.variant_id ASC,
                version.confirmed_at DESC,
                sales_order.id DESC,
@@ -174,7 +197,12 @@ export async function getStandardPriceResolutionContext(client, {
               AND (
                 price_list.list_type = 'BASE'
                 OR (
-                  (price_list.channel_id IS NULL OR price_list.channel_id = $6)
+                  (price_list.channel_id IS NULL OR (price_list.channel_id = $6 AND EXISTS (
+             SELECT 1 FROM shared.sales_channel_customer_groups eligibility
+             WHERE eligibility.installation_id = price_list.installation_id
+               AND eligibility.channel_id = price_list.channel_id
+               AND eligibility.customer_group_id = COALESCE((SELECT customer.group_id FROM shared.customers customer WHERE customer.installation_id = $1 AND customer.id = $8), $7::uuid)
+           )))
                   AND (
                     price_list.customer_group_id IS NULL
                     OR price_list.customer_group_id = COALESCE(

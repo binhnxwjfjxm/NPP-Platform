@@ -195,9 +195,9 @@ async function resolveStandardAppliedPrice(client, { installationId, payload }) 
   let current = BigInt(String(base.amount_minor));
   const steps = [pricingStartStep(start)];
   let exclusiveApplied = false;
-  for (const candidate of candidates) {
+  for (const candidate of start.source === 'ZERO_BASE' ? [] : candidates) {
     if (candidate.item_id === base.item_id) {
-      if (start.source === 'CHANNEL_FIXED_FALLBACK') {
+      if (start.source === 'CHANNEL_FIXED_FALLBACK' || start.source === 'SCOPED_FIXED_FALLBACK') {
         if (candidate.stacking_mode === 'EXCLUSIVE') exclusiveApplied = true;
         if (candidate.stop_processing) break;
       }

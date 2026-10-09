@@ -118,7 +118,8 @@ test('sales order search batches preview pricing for all visible SKU rows in one
 
   assert.equal(result.get(VARIANT_A)?.resolution?.systemUnitPriceMinor, '85000');
   assert.equal(result.get(VARIANT_A)?.resolution?.finalUnitPriceMinor, '85000');
-  assert.equal(result.get(VARIANT_B)?.resolution?.resolutionStatus, 'MANUAL_PRICE_REQUIRED');
+  assert.equal(result.get(VARIANT_B)?.resolution?.systemUnitPriceMinor, '0');
+  assert.equal(result.get(VARIANT_B)?.resolution?.finalUnitPriceMinor, '0');
   assert.equal(result.get(VARIANT_C)?.resolution?.systemUnitPriceMinor, '80000');
 });
 
