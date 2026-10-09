@@ -219,7 +219,7 @@ export async function listSalesOrders(client,{limit=100,offset=0,stage='all',...
  return (await client.query(`${query},
   selected_page AS (
     SELECT id, installation_id, created_at FROM staged_orders${where}
-    ORDER BY created_at DESC,id DESC LIMIT ${params.length-1} OFFSET ${params.length}
+    ORDER BY created_at DESC,id DESC LIMIT $${params.length-1} OFFSET $${params.length}
   )
   SELECT ${ORDER_COLUMNS}
   FROM selected_page

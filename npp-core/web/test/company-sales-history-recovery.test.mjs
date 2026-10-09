@@ -10,7 +10,7 @@ test('lỗi thống kê độc lập với danh sách và thay đổi bộ lọc
   assert.match(source, /requestAbortRef\.current\?\.abort\(\)/);
   assert.match(source, /setOrders\(\[\]\)/);
   assert.match(source, /setSummary\(null\)/);
-  assert.match(source, /const result = await summaryRequest/);
+  assert.match(source, /void summaryRequest\.then/);
   assert.match(source, /setSummaryUnavailable\(result\.failed\)/);
 });
 

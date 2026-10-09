@@ -269,10 +269,12 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
       setError(null);
       if (showNotice) setNotice('Danh sách đơn bán hàng đã được làm mới.');
       if (summaryRequest) {
-        const result = await summaryRequest;
-        if (run !== listRequestRef.current) return;
-        if (result.data) setSummary(result.data);
-        else setSummaryUnavailable(result.failed);
+        // Thống kê tải riêng, không chặn việc hiển thị và thao tác với danh sách.
+        void summaryRequest.then((result) => {
+          if (run !== listRequestRef.current) return;
+          if (result.data) setSummary(result.data);
+          else setSummaryUnavailable(result.failed);
+        });
       }
     } catch (caught) {
       if (run === listRequestRef.current && !controller.signal.aborted) {
