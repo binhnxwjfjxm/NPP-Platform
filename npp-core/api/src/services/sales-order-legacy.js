@@ -379,7 +379,13 @@ function validateList(input) {
   }
   const search = text(input.search, 256, false);
   if (input.search && search === null) return failure('INVALID_SEARCH', 'Search must not exceed 256 characters');
-  return { ok: true, search, deliveryMode };
+  const source = String(input.source ?? 'all').toLowerCase();
+  const lane = String(input.lane ?? 'all').toLowerCase();
+  const stage = String(input.stage ?? 'all').toLowerCase();
+  if (!['all', 'internal', 'mcp', 'customer'].includes(source)) return failure('INVALID_SOURCE_FILTER', 'Nguồn đơn không hợp lệ');
+  if (!['all', 'counter', 'manual', 'trip'].includes(lane)) return failure('INVALID_LANE_FILTER', 'Hình thức giao không hợp lệ');
+  if (!['all', 'active', 'preparing', 'waiting_delivery', 'completed', 'cancelled'].includes(stage)) return failure('INVALID_STAGE_FILTER', 'Trạng thái đơn không hợp lệ');
+  return { ok: true, search, deliveryMode, source, lane, stage };
 }
 
 export async function listSalesOrders(client, input) {
@@ -394,10 +400,27 @@ export async function listSalesOrders(client, input) {
     warehouseId: input.warehouseId ?? null,
     deliveryMode: validation.deliveryMode,
     search: validation.search,
+    source: validation.source,
+    lane: validation.lane,
+    stage: validation.stage,
     limit: Math.max(1, Math.min(1000, Number(input.limit) || 100)),
     offset: Math.max(0, Number(input.offset) || 0),
   });
   return Object.freeze({ ok: true, salesOrders: Object.freeze(rows.map((row) => mapOrder(row))) });
+}
+
+export async function summarizeSalesOrders(client, input) {
+ const validation = validateList(input);
+ if (!validation.ok) return validation;
+ const summary = await repository.summarizeSalesOrders(client, {
+  installationId: input.requestContext.installationId,
+  warehouseIds: warehouseIds(input.requestContext),
+  ...orderEmployeeVisibility(input.requestContext),
+  status: input.status ?? null, customerId: input.customerId ?? null,
+  warehouseId: input.warehouseId ?? null, deliveryMode: validation.deliveryMode,
+  search: validation.search, source: validation.source, lane: validation.lane,
+ });
+ return {ok:true,summary};
 }
 
 export async function getSalesOrder(client, input) {
