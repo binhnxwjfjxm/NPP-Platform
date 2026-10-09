@@ -5,6 +5,7 @@ import {
   labelFor, displayCell, boolChoice, variantChoice, lotChoice, expiryChoice, normalizeProductChoices,
 } from './data-exchange-model';
 import { exactQuantity, exportTable, readTable, requireColumns, requestJson, idempotency, trimDecimal } from './data-exchange-file-utils';
+import { importPricingFileWithConfirmation } from '../../../lib/pricing-file-import';
 
 type WarehouseOption = { id: string; code: string; name: string };
 type ImportActionsContext = Record<string, any> & {
@@ -145,9 +146,10 @@ export function buildDataExchangeImportActions(ctx: ImportActionsContext) {
         return { priceListCode: list.code, sku, adjustmentType: 'FIXED_PRICE', amountMinor, minQuantity: '0', maxQuantity: null, effectiveFrom: null, effectiveTo: null, sourceKind: 'IMPORT', note: null, isActive: true };
       });
       const sourceBatchId = operationKey;
-      const result = await requestJson<{ itemsCreated?: number; itemsUpdated?: number; totalItems?: number }>('/api/pricing/import', {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': operationKey },
-        body: JSON.stringify({ matchBySku: true, sourceBatchId, items }),
+      const result = await importPricingFileWithConfirmation({
+        operationKey,
+        payload: { matchBySku: true, sourceBatchId, items },
+        onChecking: () => setMessage('Máy chủ đang xử lý hoặc xác nhận kết quả nhập giá. Vui lòng đợi, không nhập lại tệp.'),
       });
       completeImport();
       setMessage(`Đã cập nhật ${result.itemsUpdated ?? 0} SKU, tạo mới ${result.itemsCreated ?? 0} dòng giá theo SKU trong ${list.code}.`);

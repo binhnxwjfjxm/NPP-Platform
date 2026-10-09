@@ -5,20 +5,14 @@ import { useEffect, useRef, useState } from 'react';
 import Modal from '../components/modal';
 import type { PriceList } from '../../lib/pricing-types';
 import { exportTable, readTable, requireColumns } from '../operations/data-exchange/data-exchange-file-utils';
+import { importPricingFileWithConfirmation, PricingImportUnconfirmedError } from '../../lib/pricing-file-import';
 import styles from './pricing-bulk-overlay.module.css';
 
 type RowMap = Record<string, string>;
 type ApplyMode = 'NOW' | 'SCHEDULED';
-type ImportResult = { itemsCreated: number; itemsUpdated: number; itemsReplaced?: number; totalItems: number };
 type Props = { priceLists: PriceList[]; defaultPriceListId?: string; onApplied?: (priceListId: string) => void | Promise<void> };
 const COLUMNS = ['sku', 'amountMinor'] as const;
 
-async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, { cache: 'no-store', ...init });
-  const payload = await response.json().catch(() => null) as { data?: T; error?: { message?: string; code?: string } } | null;
-  if (!response.ok || !payload || !Object.prototype.hasOwnProperty.call(payload, 'data')) throw new Error(payload?.error?.message || payload?.error?.code || 'Yêu cầu không thành công');
-  return payload.data as T;
-}
 function apiDate(value: string) { return value ? new Date(value).toISOString() : null; }
 
 export default function PricingFileAdjustment({ priceLists, defaultPriceListId = '', onApplied }: Props) {
@@ -31,6 +25,7 @@ export default function PricingFileAdjustment({ priceLists, defaultPriceListId =
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [unconfirmed, setUnconfirmed] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const operationKeyRef = useRef<string | null>(null);
   const lists = priceLists.filter((list) => list.is_active);
@@ -41,7 +36,7 @@ export default function PricingFileAdjustment({ priceLists, defaultPriceListId =
     return lists.some((list) => list.id === defaultPriceListId) ? defaultPriceListId : lists.find((list) => list.list_type === 'BASE')?.id ?? lists[0]?.id ?? '';
   }
   function openImport() {
-    setSelectedListId(preferredListId()); setApplyMode('NOW'); setApplyAt(''); setRows([]); setFileName(''); setMessage(''); setError(''); setOpen(true);
+    setSelectedListId(preferredListId()); setApplyMode('NOW'); setApplyAt(''); setRows([]); setFileName(''); setMessage(''); setError(''); setUnconfirmed(false); setOpen(true);
   }
   async function downloadTemplate() {
     setBusy(true); setError('');
@@ -50,7 +45,7 @@ export default function PricingFileAdjustment({ priceLists, defaultPriceListId =
     finally { setBusy(false); }
   }
   async function loadFile(file: File) {
-    setBusy(true); setError(''); setMessage('');
+    setBusy(true); setError(''); setMessage(''); setUnconfirmed(false);
     try {
       const parsed = await readTable(file, COLUMNS);
       requireColumns(parsed, COLUMNS);
@@ -80,29 +75,33 @@ export default function PricingFileAdjustment({ priceLists, defaultPriceListId =
     try {
       const operationKey = operationKeyRef.current ?? createIdempotencyKey('pricing_adjust_file');
       operationKeyRef.current = operationKey;
-      const result = await requestJson<ImportResult>('/api/pricing/import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': operationKey },
-        body: JSON.stringify({
+      const result = await importPricingFileWithConfirmation({
+        operationKey,
+        onChecking: () => setMessage('Máy chủ đang xử lý hoặc xác nhận kết quả lưu giá. Vui lòng đợi, không nhập lại tệp.'),
+        payload: {
           matchBySku: true, replaceFrom: true, applyAt: applyMode === 'SCHEDULED' ? apiDate(applyAt) : null, sourceBatchId: operationKey,
           items: rows.map((row) => ({
             priceListCode: list.code, sku: row.sku, adjustmentType: 'FIXED_PRICE', amountMinor: row.amountMinor,
             minQuantity: '0', maxQuantity: null, sourceKind: 'IMPORT', externalRuleCode: 'PRICE_FILE_ADJUSTMENT', note: null, isActive: true,
           })),
-        }),
+        },
       });
-      operationKeyRef.current = null; setRows([]); setFileName('');
-      setMessage(`Đã điều chỉnh ${result.totalItems} SKU${applyMode === 'NOW' ? ' và áp dụng ngay.' : ' theo ngày đã chọn.'}`);
-      await onApplied?.(list.id);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Không cập nhật được giá từ file.'); }
-    finally { setBusy(false); }
+      operationKeyRef.current = null; setUnconfirmed(false); setRows([]); setFileName('');
+      setMessage('Đã lưu thành công ' + result.totalItems + ' SKU' + (applyMode === 'NOW' ? ' và áp dụng ngay.' : ' theo ngày đã chọn.'));
+      try { await onApplied?.(list.id); }
+      catch { setMessage('Giá đã lưu thành công. Tải lại trang để xem bảng giá mới.'); }
+    } catch (cause) {
+      setUnconfirmed(cause instanceof PricingImportUnconfirmedError);
+      setError(cause instanceof Error ? cause.message : 'Chưa xác nhận được kết quả lưu giá.');
+    } finally { setBusy(false); }
   }
 
   return <>
     <button type="button" className={styles.secondaryButton} onClick={() => void downloadTemplate()} disabled={busy} data-testid="download-pricing-template">Tải file mẫu</button>
     <button type="button" className={styles.secondaryButton} onClick={openImport} disabled={busy} data-testid="open-pricing-file-adjustment">Nhập từ file</button>
     <Modal open={open} title="Điều chỉnh giá từ file" description="File chỉ cần SKU và Giá bán (VND). Chỉ các SKU có trong file mới thay đổi." onClose={() => { if (!busy) setOpen(false); }} testId="pricing-file-adjustment-modal" size="workspace"
-      footer={<><button type="button" className={styles.secondaryButton} onClick={() => setOpen(false)} disabled={busy}>Đóng</button><button type="button" className={styles.primaryButton} onClick={() => void confirm()} disabled={busy || !rows.length}>{busy ? 'Đang cập nhật…' : `Xác nhận ${rows.length || ''} SKU`}</button></>}>
+      footer={<><button type="button" className={styles.secondaryButton} onClick={() => setOpen(false)} disabled={busy}>Đóng</button><button type="button" className={styles.primaryButton} onClick={() => void confirm()} disabled={busy || !rows.length}>{busy ? 'Đang xác nhận…' : unconfirmed ? 'Kiểm tra lại kết quả' : `Xác nhận ${rows.length || ''} SKU`}</button></>}>
+      <div className={styles.fileImportLayout}>
       {error ? <div className={styles.errorNotice} role="alert">{error}</div> : null}
       {message ? <div className={styles.notice} role="status">{message}</div> : null}
       <div className={styles.scopeGrid}>
@@ -116,6 +115,7 @@ export default function PricingFileAdjustment({ priceLists, defaultPriceListId =
         <span>{fileName || 'Chưa chọn file'}</span>
       </div>
       {rows.length ? <div className={styles.filePreview}><table><thead><tr><th>SKU</th><th>Giá mới</th></tr></thead><tbody>{rows.slice(0, 200).map((row) => <tr key={row.sku}><td><strong>{row.sku}</strong></td><td>{new Intl.NumberFormat('vi-VN').format(BigInt(row.amountMinor))} ₫</td></tr>)}</tbody></table>{rows.length > 200 ? <p>Đang hiển thị 200/{rows.length} dòng để kiểm tra nhanh.</p> : null}</div> : null}
+      </div>
     </Modal>
   </>;
 }
