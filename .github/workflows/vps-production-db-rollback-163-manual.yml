@@ -1,0 +1,117 @@
+name: VPS production DB rollback migration 163
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: vps-production-db-migration
+  cancel-in-progress: false
+
+jobs:
+  rollback-163:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 5 &&
+      github.event.comment.body == '/rollback-vps-production-163' &&
+      contains(fromJSON('["binhnxwjfjxm","khuongbinhinfo-a11y","gustavjung01"]'), github.actor)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      VPS_DB_HOST: ${{ vars.VPS_DB_HOST }}
+      VPS_SSH_USER: ${{ vars.VPS_SSH_USER }}
+    steps:
+      - name: Verify exact main and absent migration source
+        id: source
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate rollback target and source
+        id: validate
+        shell: bash
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          test "$COMMENT_BODY" = '/rollback-vps-production-163'
+          git fetch origin main --depth=1
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          test -f npp-core/api/scripts/vps-production-rollback-163.sh
+          test ! -e database/migrations/shared/163_sales_channel_customer_group_eligibility.sql
+          ! grep -q '163_sales_channel_customer_group_eligibility' npp-core/api/src/migrations/index.js
+          ! grep -R -q 'sales_channel_customer_groups' npp-core/api/src
+          bash -n npp-core/api/scripts/vps-production-rollback-163.sh
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Prepare DB SSH access
+        id: ssh
+        shell: bash
+        env:
+          VPS_DB_SSH_KEY: ${{ secrets.VPS_DB_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$VPS_DB_HOST"
+          test -n "$VPS_SSH_USER"
+          test -n "$VPS_DB_SSH_KEY"
+          umask 077
+          key="$RUNNER_TEMP/rollback-db.key"
+          printf '%s\n' "$VPS_DB_SSH_KEY" > "$key"
+          chmod 600 "$key"
+          ssh-keygen -y -f "$key" >/dev/null
+          known_hosts="$RUNNER_TEMP/rollback-db-known-hosts"
+          ssh-keyscan -T 10 -H "$VPS_DB_HOST" > "$known_hosts" 2>/dev/null
+          test -s "$known_hosts"
+          chmod 600 "$known_hosts"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+          echo "known_hosts=$known_hosts" >> "$GITHUB_OUTPUT"
+      - name: Backup, rehearse, revert migration and reconcile
+        id: rollback
+        shell: bash
+        env:
+          SSH_KEY: ${{ steps.ssh.outputs.key }}
+          KNOWN_HOSTS: ${{ steps.ssh.outputs.known_hosts }}
+          SOURCE_SHA: ${{ steps.validate.outputs.sha }}
+        run: |
+          set -euo pipefail
+          remote="/tmp/npp-rollback-163-$SOURCE_SHA.sh"
+          ssh_opts=(-i "$SSH_KEY" -o BatchMode=yes -o ConnectTimeout=10 -o ConnectionAttempts=1 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN_HOSTS")
+          scp "${ssh_opts[@]}" npp-core/api/scripts/vps-production-rollback-163.sh \
+            "$VPS_SSH_USER@$VPS_DB_HOST:$remote"
+          log="$RUNNER_TEMP/npp-rollback-163-sanitized.txt"
+          set +e
+          ssh "${ssh_opts[@]}" "$VPS_SSH_USER@$VPS_DB_HOST" \
+            "chmod 0700 '$remote' && '$remote' '$SOURCE_SHA' '$GITHUB_RUN_ID'; status=\$?; rm -f '$remote'; exit \$status" \
+            >"$log" 2>&1
+          status=$?
+          set -e
+          cat "$log"
+          echo "report=$log" >> "$GITHUB_OUTPUT"
+          exit "$status"
+      - name: Publish sanitized rollback evidence
+        if: always() && steps.rollback.outputs.report != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPORT: ${{ steps.rollback.outputs.report }}
+        run: |
+          set -euo pipefail
+          report="$RUNNER_TEMP/rollback-evidence.md"
+          {
+            echo '## VPS production rollback migration 163'
+            echo
+            echo "- Run ID: $GITHUB_RUN_ID"
+            echo "- Exact main SHA: ${{ steps.validate.outputs.sha }}"
+            echo "- Operation status: ${{ job.status }}"
+            echo '- No credential values or database URLs are included.'
+            echo
+            echo '~~~text'
+            cat "$REPORT"
+            echo '~~~'
+          } > "$report"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/958/comments" -f body="$(cat "$report")" >/dev/null
