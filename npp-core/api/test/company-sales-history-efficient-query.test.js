@@ -1,0 +1,46 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { listSalesOrders, summarizeSalesOrders } from '../src/db/repositories/sales-order.js';
+
+const scope = {
+  installationId: 'install-test',
+  warehouseIds: ['11111111-1111-4111-8111-111111111111'],
+  employeeId: '22222222-2222-4222-8222-222222222222',
+  actorId: 'user:test',
+  allowAllEmployees: false,
+};
+
+test('phân trang và lọc quyền trước khi tải thông tin giao hàng/thu tiền chi tiết', async () => {
+  let sql = ''; let params = [];
+  const client = {async query(query, values) {sql = query; params = values; return {rows: []};}};
+  await listSalesOrders(client, {...scope, search: '1992 Tân Phước', source: 'internal', lane: 'manual', stage: 'completed', limit: 50, offset: 100});
+  assert.match(sql, /WITH matching_orders AS \(SELECT so\.id, so\.installation_id, so\.created_at,/);
+  assert.match(sql, /selected_page AS \(\s*SELECT id, installation_id, created_at FROM staged_orders WHERE work_stage =/);
+  assert.match(sql, /ORDER BY created_at DESC,id DESC LIMIT \$\d+ OFFSET \$\d+/);
+  assert.match(sql, /SELECT so\.id, so\.installation_id, so\.order_number/);
+  assert.match(sql, /JOIN sales\.sales_orders so\s+ON so\.installation_id = selected_page\.installation_id AND so\.id = selected_page\.id/);
+  assert.match(sql, /so\.warehouse_id = ANY/);
+  assert.match(sql, /so\.source_employee_id/);
+  assert.ok(params.includes('%1992%'));
+  assert.ok(params.includes('%Tân%'));
+  assert.ok(params.includes('%Phước%'));
+  assert.equal(params.at(-2), 50);
+  assert.equal(params.at(-1), 100);
+});
+
+test('đếm toàn bộ đơn hợp quyền, không thực hiện truy vấn chi tiết từng đơn', async () => {
+  let sql = '';
+  const client = {async query(query) {
+    sql = query;
+    return {rows: [{total: 1746, active: 25, preparing: 10, waiting_delivery: 11, completed: 1700, cancelled: 0}]};
+  }};
+  const summary = await summarizeSalesOrders(client, {...scope, search: '', source: 'all', lane: 'all'});
+  assert.equal(summary.total, 1746);
+  assert.match(sql, /count\(\*\)::int AS total/);
+  assert.match(sql, /count\(\*\) FILTER \(WHERE work_stage='completed'\)/);
+  assert.doesNotMatch(sql, /FROM sales\.delivery_orders/);
+  assert.doesNotMatch(sql, /accounting\.receivable_documents/);
+  assert.doesNotMatch(sql, /ORDER BY created_at DESC,id DESC LIMIT/);
+  assert.match(sql, /so\.warehouse_id = ANY/);
+  assert.match(sql, /so\.source_employee_id/);
+});

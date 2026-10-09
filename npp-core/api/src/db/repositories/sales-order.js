@@ -161,7 +161,10 @@ function salesOrderListQuery({
  status, customerId, warehouseId, deliveryMode, search, source = 'all', lane = 'all',
 }) {
  const params = [installationId];
- let query = `SELECT ${ORDER_COLUMNS}
+ // Filter and count with narrow rows. Expensive delivery/receivable projections
+ // belong only to the selected page, never to the full historical dataset.
+ let query = `SELECT so.id, so.installation_id, so.created_at,
+   so.status, so.delivery_status, so.fulfillment_status
  FROM sales.sales_orders so
  JOIN shared.customers c ON c.installation_id = so.installation_id AND c.id = so.customer_id
  JOIN shared.warehouses w ON w.installation_id = so.installation_id AND w.id = so.warehouse_id
@@ -205,7 +208,7 @@ function salesOrderListQuery({
 function stagedSalesOrderQuery(input){
  const {query,params}=salesOrderListQuery(input);
  return {query:`WITH matching_orders AS (${query}),
-  staged_orders AS (SELECT *,${SALES_ORDER_WORK_STAGE} AS work_stage FROM matching_orders)`,params};
+  staged_orders AS (SELECT id, installation_id, created_at, ${SALES_ORDER_WORK_STAGE} AS work_stage FROM matching_orders)`,params};
 }
 
 export async function listSalesOrders(client,{limit=100,offset=0,stage='all',...input}){
@@ -213,8 +216,20 @@ export async function listSalesOrders(client,{limit=100,offset=0,stage='all',...
  let where='';
  if(stage&&stage!=='all'){params.push(stage);where=` WHERE work_stage = $${params.length}`;}
  params.push(limit,offset);
- return (await client.query(`${query} SELECT * FROM staged_orders${where}
-  ORDER BY created_at DESC,id DESC LIMIT $${params.length-1} OFFSET $${params.length}`,params)).rows;
+ return (await client.query(`${query},
+  selected_page AS (
+    SELECT id, installation_id, created_at FROM staged_orders${where}
+    ORDER BY created_at DESC,id DESC LIMIT ${params.length-1} OFFSET ${params.length}
+  )
+  SELECT ${ORDER_COLUMNS}
+  FROM selected_page
+  JOIN sales.sales_orders so
+    ON so.installation_id = selected_page.installation_id AND so.id = selected_page.id
+  JOIN shared.customers c
+    ON c.installation_id = so.installation_id AND c.id = so.customer_id
+  JOIN shared.warehouses w
+    ON w.installation_id = so.installation_id AND w.id = so.warehouse_id
+  ORDER BY selected_page.created_at DESC,selected_page.id DESC`,params)).rows;
 }
 
 export async function summarizeSalesOrders(client,input){

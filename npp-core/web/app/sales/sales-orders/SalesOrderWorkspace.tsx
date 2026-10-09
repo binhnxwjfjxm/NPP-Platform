@@ -130,19 +130,6 @@ export function compactOrderNumber(value: string | null | undefined): string {
   return match ? `SO${match[1]}` : normalized;
 }
 
-function stageCountsFor(orders: SalesOrder[]) {
-  const counts: Record<OrderWorkStage, number> = {
-    all: orders.length,
-    active: 0,
-    preparing: 0,
-    waiting_delivery: 0,
-    completed: 0,
-    cancelled: 0,
-  };
-  for (const order of orders) counts[orderWorkStage(order)] += 1;
-  return counts;
-}
-
 export function orderBusinessStateKey(order: SalesOrder): string {
   const current = activeVersion(order);
   return [
@@ -167,6 +154,8 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
   const [search, setSearch] = useState('');
   const [hasMore, setHasMore] = useState(true);
   const [summary, setSummary] = useState<SalesOrderSummary | null>(null);
+  const [summaryUnavailable, setSummaryUnavailable] = useState(false);
+  const requestAbortRef = useRef<AbortController | null>(null);
   const offsetRef = useRef(0);
   const listRequestRef = useRef(0);
   const [workStage, setWorkStage] = useState<OrderWorkStage>('all');
@@ -239,54 +228,78 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
 
   const refreshOrders = useCallback(async (showNotice: boolean, append = false) => {
     const run = ++listRequestRef.current;
+    requestAbortRef.current?.abort();
+    const controller = new AbortController();
+    requestAbortRef.current = controller;
     setRefreshing(true);
+    if (!append) {
+      offsetRef.current = 0;
+      setOrders([]);
+      setHasMore(false);
+      setSummary(null);
+      setSummaryUnavailable(false);
+    }
     if (showNotice) {
       setError(null);
       setOperationError(null);
       setNotice(null);
     }
+    const params = new URLSearchParams({
+      limit: String(SALES_PAGE_SIZE),
+      offset: String(append ? offsetRef.current : 0),
+      source,
+      lane,
+      stage: workStage,
+    });
+    if (search.trim()) params.set('search', search.trim());
+    const summaryParams = new URLSearchParams({ source, lane });
+    if (search.trim()) summaryParams.set('search', search.trim());
+    // Thống kê có thể lỗi độc lập; tuyệt đối không làm mất danh sách đơn.
+    const summaryRequest = append ? null : apiRequest<SalesOrderSummary>(
+      `/api/sales-orders/summary?${summaryParams}`, { signal: controller.signal },
+    ).then((data) => ({ data, failed: false }), () => ({ data: null, failed: true }));
     try {
-      const params = new URLSearchParams({
-        limit: String(SALES_PAGE_SIZE),
-        offset: String(append ? offsetRef.current : 0),
-        source,
-        lane,
-        stage: workStage,
-      });
-      if (search.trim()) params.set('search', search.trim());
-      const summaryParams = new URLSearchParams({ source, lane });
-      if (search.trim()) summaryParams.set('search', search.trim());
-      const [next, nextSummary] = await Promise.all([
-        apiRequest<SalesOrder[]>(`/api/sales-orders?${params}`),
-        append ? Promise.resolve(null) : apiRequest<SalesOrderSummary>(`/api/sales-orders/summary?${summaryParams}`),
-      ]);
+      const next = await apiRequest<SalesOrder[]>(`/api/sales-orders?${params}`, { signal: controller.signal });
       if (run !== listRequestRef.current) return;
       offsetRef.current = (append ? offsetRef.current : 0) + next.length;
       setOrders((current) => append
         ? sortOrdersByCreatedAt([...current, ...next.filter((item) => !current.some((row) => row.id === item.id))])
         : sortOrdersByCreatedAt(next));
       setHasMore(next.length === SALES_PAGE_SIZE);
-      if (nextSummary) setSummary(nextSummary);
       setError(null);
       if (showNotice) setNotice('Danh sách đơn bán hàng đã được làm mới.');
+      if (summaryRequest) {
+        const result = await summaryRequest;
+        if (run !== listRequestRef.current) return;
+        if (result.data) setSummary(result.data);
+        else setSummaryUnavailable(result.failed);
+      }
     } catch (caught) {
-      if (run === listRequestRef.current) setError(caught instanceof Error ? caught.message : 'Không tải được danh sách đơn bán hàng');
+      if (run === listRequestRef.current && !controller.signal.aborted) {
+        setError(caught instanceof Error ? caught.message : 'Không tải được danh sách đơn bán hàng');
+      }
     } finally {
       if (run === listRequestRef.current) setRefreshing(false);
     }
   }, [search, source, lane, workStage]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => { void refreshOrders(false); }, search.trim() ? 250 : 0);
-    return () => { window.clearTimeout(timer); listRequestRef.current += 1; };
+    const timer = window.setTimeout(() => { void refreshOrders(false); }, search.trim() ? 500 : 0);
+    return () => {
+      window.clearTimeout(timer);
+      requestAbortRef.current?.abort();
+      listRequestRef.current += 1;
+    };
   }, [refreshOrders]);
 
   const filtered = orders;
-  const stageCounts: Record<OrderWorkStage, number> = summary
+  const stageCounts: Record<OrderWorkStage, number> | null = summary
     ? { all: summary.total, active: summary.active, preparing: summary.preparing,
         waiting_delivery: summary.waiting_delivery, completed: summary.completed, cancelled: summary.cancelled }
-    : stageCountsFor(orders);
+    : null;
   const allStageCounts = stageCounts;
+  const totalForCurrentStage = workStage === 'all' ? summary?.total : summary?.[workStage];
+  const canLoadMore = hasMore && (totalForCurrentStage === undefined || filtered.length < totalForCurrentStage);
 
   const handleFormError = useCallback((message: string) => {
     if (!message) {
@@ -420,7 +433,10 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
     }
   }
 
-  const warnings = Object.values(initialBootstrap.errors).filter(Boolean);
+  // Một lần tải ban đầu lỗi không được tiếp tục cảnh báo sau khi tải lại thành công.
+  const warnings = Object.entries(initialBootstrap.errors)
+    .filter(([name, value]) => name !== 'orders' && Boolean(value))
+    .map(([, value]) => value);
   return (
     <AppShell
       title="Đơn bán hàng"
@@ -436,10 +452,10 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
         )}
 
         <section className={styles.summaryGrid} aria-label="Tổng hợp đơn bán hàng">
-          <article><strong>{summary?.total ?? orders.length}</strong><span>Tổng số đơn phù hợp</span></article>
-          <article><strong>{allStageCounts.active}</strong><span>Đang xử lý</span></article>
-          <article><strong>{allStageCounts.waiting_delivery}</strong><span>Chờ giao</span></article>
-          <article><strong>{allStageCounts.completed}</strong><span>Đã hoàn thành</span></article>
+          <article><strong>{summary?.total ?? '—'}</strong><span>{search.trim() || source !== 'all' || lane !== 'all' ? 'Tổng số đơn phù hợp' : 'Tổng số đơn'}</span></article>
+          <article><strong>{allStageCounts?.active ?? '—'}</strong><span>Đang xử lý</span></article>
+          <article><strong>{allStageCounts?.waiting_delivery ?? '—'}</strong><span>Chờ giao</span></article>
+          <article><strong>{allStageCounts?.completed ?? '—'}</strong><span>Đã hoàn thành</span></article>
         </section>
 
         <section className={`${styles.filterPanel} ${polishStyles.filterPanelCompact}`} aria-label="Bộ lọc đơn bán hàng">
@@ -477,7 +493,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
                     className={`${workStage === option.value ? styles.segmentActive : styles.segment} ${polishStyles.filterChip} ${polishStyles.statusChip}`}
                     onClick={() => setWorkStage(option.value)}
                   >
-                    {option.label} · {stageCounts[option.value]}
+                    {option.label} · {stageCounts?.[option.value] ?? '—'}
                   </button>
                 ))}
               </div>
@@ -493,7 +509,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
 
         <div className={styles.contentGrid}>
           <section className={styles.listPanel} aria-label="Danh sách đơn bán hàng">
-            <header className={styles.panelHeading}><div><h2>Danh sách đơn</h2><p>Đang hiển thị {filtered.length} đơn · {workStage === 'all' ? stageCounts.all : stageCounts[workStage]} đơn phù hợp</p></div></header>
+            <header className={styles.panelHeading}><div><h2>Danh sách đơn</h2><p>Đang hiển thị {filtered.length} đơn{totalForCurrentStage === undefined ? ' · Tổng số đang cập nhật' : ` / ${totalForCurrentStage} đơn phù hợp`}{summaryUnavailable ? ' · Chưa tải được thống kê, danh sách vẫn sử dụng được' : ''}</p></div></header>
             <div className={styles.orderList}>
               {filtered.map((order, rowIndex) => (
                 <button
@@ -524,8 +540,8 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
                   </div>
                 </button>
               ))}
-              {filtered.length === 0 && <p className={styles.empty}>Chưa có đơn phù hợp trong nhóm này.</p>}
-              {hasMore && <button type="button" disabled={refreshing} onClick={() => void refreshOrders(false, true)}>{refreshing ? 'Đang tải…' : 'Xem thêm đơn cũ'}</button>}
+              {filtered.length === 0 && !refreshing && !error && <p className={styles.empty}>Chưa có đơn phù hợp trong nhóm này.</p>}
+              {canLoadMore && <button type="button" disabled={refreshing} onClick={() => void refreshOrders(false, true)}>{refreshing ? 'Đang tải…' : 'Xem thêm đơn cũ'}</button>}
             </div>
           </section>
 
