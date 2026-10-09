@@ -146,6 +146,7 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   migration('161_customer_ordering_home_content', 'shared/161_customer_ordering_home_content.sql'),
   migration('162_customer_ordering_home_program_content', 'shared/162_customer_ordering_home_program_content.sql'),
   migration('163_sales_channel_customer_group_eligibility', 'shared/163_sales_channel_customer_group_eligibility.sql'),
+  migration('164_remove_sales_channel_group_eligibility', 'shared/164_remove_sales_channel_group_eligibility.sql'),
 ]);
 
 export { runMigrations };

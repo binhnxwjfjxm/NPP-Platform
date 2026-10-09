@@ -35,13 +35,14 @@ export async function listSalesOrderSearchPriceCandidates(client, {
        AND (
          pl.list_type = 'BASE'
          OR (
-           (pl.channel_id IS NULL OR (pl.channel_id = $6 AND EXISTS (
-             SELECT 1 FROM shared.sales_channel_customer_groups eligibility
-             WHERE eligibility.installation_id = pl.installation_id
-               AND eligibility.channel_id = pl.channel_id
-               AND eligibility.customer_group_id = COALESCE((SELECT customer.group_id FROM shared.customers customer WHERE customer.installation_id = $1 AND customer.id = $8), $7::uuid)
-           )))
-           AND (pl.customer_group_id IS NULL OR pl.customer_group_id = $7)
+           (pl.channel_id IS NULL OR pl.channel_id = $6)
+           AND (pl.customer_group_id IS NULL OR pl.customer_group_id = CASE
+              WHEN $8::uuid IS NOT NULL THEN (
+                SELECT customer.group_id FROM shared.customers customer
+                WHERE customer.installation_id = $1 AND customer.id = $8
+              )
+              ELSE $7::uuid
+            END)
            AND (pl.customer_id IS NULL OR pl.customer_id = $8)
          )
        )

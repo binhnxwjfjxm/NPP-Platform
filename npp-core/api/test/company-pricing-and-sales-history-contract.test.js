@@ -29,15 +29,29 @@ test('kênh có giá cố định vẫn được sử dụng khi nhóm khách h�
  assert.equal(start.candidate.amount_minor, '610000');
 });
 
-test('cả ba đường kiểm tra giá đều ràng buộc kênh theo nhóm khách chính thức', () => {
+test('mọi đường tính giá xét phạm vi của từng bảng, không yêu cầu gán nhóm vào kênh', () => {
  for (const file of [
   '../src/db/repositories/pricing.js',
   '../src/db/repositories/sales-order-applied-price.js',
   '../src/db/repositories/sales-order-search-pricing.js',
  ]) {
-  assert.match(read(file), /shared\.sales_channel_customer_groups eligibility/);
-  assert.match(read(file), /eligibility\.customer_group_id/);
+  const source = read(file);
+  assert.ok(!source.includes('sales_channel_customer_groups'));
+  assert.ok(source.includes('channel_id = $6'));
+  assert.ok(source.includes('customer_group_id IS NULL'));
  }
+ assert.ok(!read('../src/services/pricing-legacy.js').includes('customerGroupIds'));
+ assert.ok(!read('../src/db/repositories/sales-order-applied-price.js').includes("line.price_source = 'MANUAL_OVERRIDE'"));
+});
+
+test('migration chỉ gỡ bảng nhóm–kênh khi trống, không CASCADE', () => {
+ const sql = read('../../../database/migrations/shared/164_remove_sales_channel_group_eligibility.sql');
+ assert.ok(sql.includes('DROP TABLE shared.sales_channel_customer_groups'));
+ assert.ok(sql.includes('EXISTS (SELECT 1 FROM shared.sales_channel_customer_groups)'));
+ assert.ok(sql.includes('RAISE EXCEPTION'));
+ assert.ok(!sql.includes('CASCADE'));
+ assert.ok(!sql.includes('DROP TABLE shared.customers'));
+ assert.ok(!sql.includes('DROP TABLE shared.price_lists'));
 });
 
 test('tìm đơn trên máy chủ dùng phân trang và cùng phạm vi quyền với số liệu tổng hợp', () => {

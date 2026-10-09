@@ -3,7 +3,6 @@ export type SalesChannel = {
   code: string;
   name: string;
   description: string | null;
-  customer_group_ids: string[];
   is_active: boolean;
   created_at: string;
   updated_at: string;

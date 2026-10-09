@@ -117,14 +117,14 @@ test('Pricing service — retail/carton prices are independent and rules resolve
     const customerContext = await createCustomerContext(pool, config.installationId, suffix);
     const channel = await pricingService.createSalesChannel(pool, {
       installationId: config.installationId,
-      payload: { code: `VENUE-${suffix}`, name: 'Kênh quán', customerGroupIds: [customerContext.group.id] },
+      payload: { code: `VENUE-${suffix}`, name: 'Kênh quán' },
       createdBy: 'test:user',
     });
     assert.ok(channel.ok, channel.message);
 
     const baseList = await createList(pool, config.installationId, { code: `BASE-${suffix}`, name: 'Giá nền', listType: 'BASE', priority: 100 });
     const channelList = await createList(pool, config.installationId, { code: `CHANNEL-${suffix}`, name: 'Giá kênh', listType: 'CHANNEL', channelId: channel.channel.id, priority: 200, stackingMode: 'EXCLUSIVE' });
-    const groupList = await createList(pool, config.installationId, { code: `GROUP-${suffix}`, name: 'Giá nhóm VIP', listType: 'CUSTOMER_GROUP', customerGroupId: customerContext.group.id, priority: 300, stackingMode: 'EXCLUSIVE' });
+    const groupList = await createList(pool, config.installationId, { code: `GROUP-${suffix}`, name: 'Giá nhóm VIP', listType: 'CUSTOMER_GROUP', channelId: channel.channel.id, customerGroupId: customerContext.group.id, priority: 300, stackingMode: 'EXCLUSIVE' });
     const promoList = await createList(pool, config.installationId, { code: `PROMO-${suffix}`, name: 'Khuyến mãi', listType: 'PROMOTION', channelId: channel.channel.id, priority: 400, stackingMode: 'STACKABLE' });
 
     await createItem(pool, config.installationId, baseList.id, { variantId: catalog.base.id, adjustmentType: 'FIXED_PRICE', amountMinor: '10000' });
@@ -170,21 +170,54 @@ test('Pricing service — retail/carton prices are independent and rules resolve
     assert.equal(fallbackResolved.resolution.finalUnitPriceMinor, '304000');
     assert.equal(fallbackResolved.resolution.steps[0].kind, 'RULE');
     assert.equal(fallbackResolved.resolution.steps[0].reason, 'CHANNEL_FIXED_FALLBACK');
+    const specialList = await createList(pool, config.installationId, {
+      code: `GROUP-SPECIAL-${suffix}`, name: 'Ưu đãi KHTV ở Kênh Quán',
+      listType: 'CUSTOMER_GROUP', channelId: channel.channel.id,
+      customerGroupId: customerContext.group.id, priority: 350, stackingMode: 'EXCLUSIVE',
+    });
+    await createItem(pool, config.installationId, specialList.id, {
+      variantId: catalog.base.id, adjustmentType: 'FIXED_PRICE', amountMinor: '7500',
+    });
+    const special = await pricingService.resolvePrice(pool, {
+      installationId: config.installationId,
+      payload: { variantId: catalog.base.id, quantity: '1', channelId: channel.channel.id, customerId: customerContext.customer.id },
+    });
+    assert.ok(special.ok, special.message);
+    assert.equal(special.resolution.finalUnitPriceMinor, '7500', 'Giá KHTV Kênh Quán chỉ ở SKU có điều kiện');
+
     const unrelated = await createCustomerContext(pool, config.installationId, randomUUID().slice(0, 8).toUpperCase());
     const foreignChannel = await pricingService.resolvePrice(pool, {
       installationId: config.installationId,
       payload: { variantId: catalog.base.id, quantity: '1', channelId: channel.channel.id, customerId: unrelated.customer.id },
     });
     assert.ok(foreignChannel.ok, foreignChannel.message);
-    assert.equal(foreignChannel.resolution.finalUnitPriceMinor, '10000', 'Khách ngoài nhóm không hưởng giá kênh');
+    assert.equal(foreignChannel.resolution.finalUnitPriceMinor, '9000', 'Giá kênh không phụ thuộc nhóm khách');
 
     const noBaseForUnrelated = await pricingService.resolvePrice(pool, {
       installationId: config.installationId,
       payload: { variantId: fallbackCatalog.base.id, quantity: '1', channelId: channel.channel.id, customerId: unrelated.customer.id },
     });
     assert.ok(noBaseForUnrelated.ok, noBaseForUnrelated.message);
-    assert.equal(noBaseForUnrelated.resolution.finalUnitPriceMinor, '0', 'Thiếu giá nền và không đủ nhóm thì giá 0');
-    assert.equal(noBaseForUnrelated.resolution.steps[0].reason, 'MISSING_BASE_ZERO');
+    assert.equal(noBaseForUnrelated.resolution.finalUnitPriceMinor, '320000', 'Giá kênh áp dụng cho mọi nhóm khi SKU thiếu giá nền');
+
+    const otherChannel = await pricingService.createSalesChannel(pool, {
+      installationId: config.installationId,
+      payload: { code: `OTHER-${suffix}`, name: 'Kênh bán khác' }, createdBy: 'test:user',
+    });
+    assert.ok(otherChannel.ok, otherChannel.message);
+    const unrelatedChannelPrice = await pricingService.resolvePrice(pool, {
+      installationId: config.installationId,
+      payload: { variantId: catalog.base.id, quantity: '1', channelId: otherChannel.channel.id, customerId: customerContext.customer.id },
+    });
+    assert.ok(unrelatedChannelPrice.ok, unrelatedChannelPrice.message);
+    assert.equal(unrelatedChannelPrice.resolution.finalUnitPriceMinor, '10000', 'KHTV không nhận giá chỉ dành cho Kênh Quán ở kênh khác');
+    const noBaseNoChannelPrice = await pricingService.resolvePrice(pool, {
+      installationId: config.installationId,
+      payload: { variantId: fallbackCatalog.base.id, quantity: '1', channelId: otherChannel.channel.id, customerId: unrelated.customer.id },
+    });
+    assert.ok(noBaseNoChannelPrice.ok, noBaseNoChannelPrice.message);
+    assert.equal(noBaseNoChannelPrice.resolution.finalUnitPriceMinor, '0', 'Không có giá nền và giá phù hợp thì bằng 0');
+    assert.equal(noBaseNoChannelPrice.resolution.steps[0].reason, 'MISSING_BASE_ZERO');
 
     const carton = await pricingService.resolvePrice(pool, {
       installationId: config.installationId,
