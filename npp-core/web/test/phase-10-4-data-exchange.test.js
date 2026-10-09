@@ -59,7 +59,7 @@ test('Phase 10.4 generic XLSX round-trips a tabular workbook', () => {
 test('Phase 10.4 workspace uses official file operations and canonical SKU pricing mutation', () => {
   for (const endpoint of ['products/export', 'products/import', 'pricing/export', 'stocktake/export', 'stocktake/import']) assert.match(dataExchange, new RegExp(`/api/file-operations/${endpoint}`));
   assert.match(quotation, /\/api\/file-operations\/quotation/);
-  assert.match(actions, /\/api\/pricing\/import/);
+  assert.match(pricingFileImport, /\/api\/pricing\/import/);
   assert.match(actions, /matchBySku:\s*true/);
   assert.match(workspace, /\/api\/inventory\/balances\/drill-down/);
   assert.doesNotMatch(dataExchange, /\/api\/inventory\/balances[^'"`]*['"`][\s\S]{0,80}method:\s*['"](?:POST|PUT|PATCH|DELETE)['"]/);

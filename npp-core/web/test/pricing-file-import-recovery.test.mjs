@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { importPricingFileWithConfirmation, PricingImportUnconfirmedError } from '../lib/pricing-file-import.ts';
+import ts from 'typescript';
+
+const source = readFileSync(new URL('../lib/pricing-file-import.ts', import.meta.url), 'utf8');
+const transpiled = ts.transpileModule(source, {
+  compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
+}).outputText;
+const { importPricingFileWithConfirmation, PricingImportUnconfirmedError } =
+  await import('data:text/javascript;base64,' + Buffer.from(transpiled).toString('base64'));
 
 const payload = { matchBySku: true, sourceBatchId: 'price-file-existing', items: Array.from({ length: 1412 }, (_, i) => ({ sku: 'SKU-' + i, amountMinor: i ? '25000' : '0' })) };
 const done = { data: { itemsCreated: 1412, itemsUpdated: 0, totalItems: 1412 } };
