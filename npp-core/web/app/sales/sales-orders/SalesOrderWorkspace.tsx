@@ -6,6 +6,8 @@ import { BusinessSequenceNumber } from '../../components/business-table-sequence
 import type { SalesOrderBootstrap } from '../../../lib/sales-order-bootstrap';
 import type { SalesOrder, SalesOrderVersion } from '../../../lib/sales-order-types';
 import { SALES_ORDER_PERMISSION_KEYS } from '../../../lib/sales-order-permissions';
+import { vietnamMonthBounds, previousVietnamMonth } from '../../../lib/sales-order-period';
+import { matchesSalesOrderSearch, matchesSalesOrderSource, matchesSalesOrderLane } from '../../../lib/sales-order-list-filter';
 import SalesOrderDetail from './SalesOrderDetail';
 import SalesOrderForm, { type SalesOrderFormMode } from './SalesOrderForm';
 import {
@@ -33,6 +35,9 @@ type StockIssueKeyState = Readonly<{ orderId: string; stateKey: string; key: str
 type SalesOrderListValue = SalesOrder & Readonly<{ total?: string }>;
 type SalesOrderSummary = Readonly<{ total: number; active: number; preparing: number; waiting_delivery: number; completed: number; cancelled: number }>;
 const SALES_PAGE_SIZE = 50;
+const MONTH_BATCH_SIZE = 1000;
+const LIST_RENDER_BATCH = 80;
+type OrderPeriodMode = 'month' | 'pending' | 'history';
 
 const WORK_STAGE_OPTIONS: ReadonlyArray<Readonly<{ value: OrderWorkStage; label: string }>> = [
   { value: 'all', label: 'Tất cả trạng thái' },
@@ -151,8 +156,16 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(initialBootstrap.errors.orders);
   const [operationError, setOperationError] = useState<OrderOperationError | null>(null);
-  const [search, setSearch] = useState('');
-  const [hasMore, setHasMore] = useState(true);
+  const [search, setSearch] = useState(initialBootstrap.initialSearch);
+  const [periodMode, setPeriodMode] = useState<OrderPeriodMode>(initialBootstrap.initialSearch ? 'history' : 'month');
+  const [monthKey, setMonthKey] = useState(initialBootstrap.currentMonth);
+  const [periodChoice, setPeriodChoice] = useState('current');
+  const [periodLoaded, setPeriodLoaded] = useState(false);
+  const [renderCount, setRenderCount] = useState(LIST_RENDER_BATCH);
+  const monthCacheRef = useRef(new Map<string, SalesOrder[]>());
+  const initialSeedRef = useRef<SalesOrder[] | null>(initialBootstrap.salesOrders);
+  const listElementRef = useRef<HTMLDivElement | null>(null);
+  const [hasMore, setHasMore] = useState(false);
   const [summary, setSummary] = useState<SalesOrderSummary | null>(null);
   const [summaryUnavailable, setSummaryUnavailable] = useState(false);
   const requestAbortRef = useRef<AbortController | null>(null);
@@ -226,82 +239,200 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
     }
   }, [operationError, selected]);
 
-  const refreshOrders = useCallback(async (showNotice: boolean, append = false) => {
+  // A month is loaded in bounded server pages, but never capped at one page.
+  // Only a completed snapshot is cached, so an interrupted request cannot hide orders.
+  async function loadPeriod(kind: 'month' | 'pending', key: string, force = false) {
+    const cacheKey = `${kind}:${key}`;
+    const cached = !force ? monthCacheRef.current.get(cacheKey) : undefined;
     const run = ++listRequestRef.current;
     requestAbortRef.current?.abort();
+    if (cached) {
+      setOrders(cached);
+      setPeriodLoaded(true);
+      setHasMore(false);
+      setRefreshing(false);
+      setError(null);
+      return;
+    }
+    const controller = new AbortController();
+    requestAbortRef.current = controller;
+    const seed = !force && kind === 'month' && key === initialBootstrap.currentMonth
+      ? initialSeedRef.current ?? [] : [];
+    initialSeedRef.current = null;
+    setOrders(seed);
+    setRefreshing(true);
+    setPeriodLoaded(false);
+    setSummary(null);
+    setSummaryUnavailable(false);
+    setHasMore(false);
+    const { dateFrom, dateTo } = vietnamMonthBounds(key);
+    const results = [...seed];
+    const seen = new Set(results.map((order) => order.id));
+    let offset = seed.length;
+    let continuePaging = seed.length === 0 || seed.length === MONTH_BATCH_SIZE;
+    try {
+      while (continuePaging) {
+        const params = new URLSearchParams({
+          scope: kind, compact: '1', limit: String(MONTH_BATCH_SIZE), offset: String(offset),
+        });
+        if (kind === 'month') {
+          params.set('dateFrom', dateFrom);
+          params.set('dateTo', dateTo);
+        } else {
+          params.set('beforeDate', dateFrom);
+        }
+        const next = await apiRequest<SalesOrder[]>(`/api/sales-orders?${params}`, { signal: controller.signal });
+        if (run !== listRequestRef.current || controller.signal.aborted) return;
+        for (const item of next) {
+          if (!seen.has(item.id)) { seen.add(item.id); results.push(item); }
+        }
+        offset += next.length;
+        continuePaging = next.length === MONTH_BATCH_SIZE;
+      }
+      if (run !== listRequestRef.current || controller.signal.aborted) return;
+      const complete = sortOrdersByCreatedAt(results);
+      monthCacheRef.current.set(cacheKey, complete);
+      setOrders(complete);
+      setPeriodLoaded(true);
+      setError(null);
+      if (force) setNotice('Danh sách đơn đã được cập nhật.');
+    } catch (caught) {
+      if (run === listRequestRef.current && !controller.signal.aborted) {
+        setError(caught instanceof Error ? caught.message : 'Không tải đủ danh sách đơn');
+        setPeriodLoaded(false);
+      }
+    } finally {
+      if (run === listRequestRef.current) setRefreshing(false);
+    }
+  }
+
+  async function loadHistory(append = false) {
+    const keyword = search.trim();
+    const run = ++listRequestRef.current;
+    requestAbortRef.current?.abort();
+    if (!keyword) {
+      setOrders([]);
+      setSummary(null);
+      setHasMore(false);
+      setRefreshing(false);
+      setPeriodLoaded(true);
+      return;
+    }
     const controller = new AbortController();
     requestAbortRef.current = controller;
     setRefreshing(true);
     if (!append) {
       offsetRef.current = 0;
       setOrders([]);
-      setHasMore(false);
       setSummary(null);
       setSummaryUnavailable(false);
-    }
-    if (showNotice) {
-      setError(null);
-      setOperationError(null);
-      setNotice(null);
+      setHasMore(false);
     }
     const params = new URLSearchParams({
-      limit: String(SALES_PAGE_SIZE),
-      offset: String(append ? offsetRef.current : 0),
-      source,
-      lane,
-      stage: workStage,
+      scope: 'history', compact: '1',
+      limit: String(SALES_PAGE_SIZE), offset: String(append ? offsetRef.current : 0),
+      search: keyword, source, lane, stage: workStage,
     });
-    if (search.trim()) params.set('search', search.trim());
-    const summaryParams = new URLSearchParams({ source, lane });
-    if (search.trim()) summaryParams.set('search', search.trim());
-    // Thống kê có thể lỗi độc lập; tuyệt đối không làm mất danh sách đơn.
+    const summaryParams = new URLSearchParams({ search: keyword, source, lane });
+    // A summary error is independent of the result list.
     const summaryRequest = append ? null : apiRequest<SalesOrderSummary>(
       `/api/sales-orders/summary?${summaryParams}`, { signal: controller.signal },
     ).then((data) => ({ data, failed: false }), () => ({ data: null, failed: true }));
     try {
       const next = await apiRequest<SalesOrder[]>(`/api/sales-orders?${params}`, { signal: controller.signal });
-      if (run !== listRequestRef.current) return;
+      if (run !== listRequestRef.current || controller.signal.aborted) return;
       offsetRef.current = (append ? offsetRef.current : 0) + next.length;
       setOrders((current) => append
         ? sortOrdersByCreatedAt([...current, ...next.filter((item) => !current.some((row) => row.id === item.id))])
         : sortOrdersByCreatedAt(next));
       setHasMore(next.length === SALES_PAGE_SIZE);
+      setPeriodLoaded(true);
       setError(null);
-      if (showNotice) setNotice('Danh sách đơn bán hàng đã được làm mới.');
       if (summaryRequest) {
-        // Thống kê tải riêng, không chặn việc hiển thị và thao tác với danh sách.
         void summaryRequest.then((result) => {
-          if (run !== listRequestRef.current) return;
+          if (run !== listRequestRef.current || controller.signal.aborted) return;
           if (result.data) setSummary(result.data);
           else setSummaryUnavailable(result.failed);
         });
       }
     } catch (caught) {
       if (run === listRequestRef.current && !controller.signal.aborted) {
-        setError(caught instanceof Error ? caught.message : 'Không tải được danh sách đơn bán hàng');
+        setError(caught instanceof Error ? caught.message : 'Không tìm được đơn bán hàng');
       }
     } finally {
       if (run === listRequestRef.current) setRefreshing(false);
     }
-  }, [search, source, lane, workStage]);
+  }
+
+  function refreshOrders(showNotice: boolean, append = false) {
+    if (showNotice) {
+      setNotice(null);
+      setError(null);
+      setOperationError(null);
+      if (periodMode !== 'history') monthCacheRef.current.delete(`${periodMode}:${monthKey}`);
+    }
+    if (periodMode === 'history') return loadHistory(append);
+    return loadPeriod(periodMode, monthKey, showNotice);
+  }
+
+  // Changing filters in a loaded month never re-requests its server data.
+  useEffect(() => {
+    if (periodMode === 'history') return;
+    void refreshOrders(false);
+    return () => {
+      requestAbortRef.current?.abort();
+      listRequestRef.current += 1;
+    };
+  }, [periodMode, monthKey]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => { void refreshOrders(false); }, search.trim() ? 500 : 0);
+    if (periodMode !== 'history') return;
+    const timer = window.setTimeout(() => { void refreshOrders(false); }, search.trim() ? 450 : 0);
     return () => {
       window.clearTimeout(timer);
       requestAbortRef.current?.abort();
       listRequestRef.current += 1;
     };
-  }, [refreshOrders]);
+  }, [periodMode, search, source, lane, workStage]);
 
-  const filtered = orders;
-  const stageCounts: Record<OrderWorkStage, number> | null = summary
-    ? { all: summary.total, active: summary.active, preparing: summary.preparing,
-        waiting_delivery: summary.waiting_delivery, completed: summary.completed, cancelled: summary.cancelled }
-    : null;
+  const locallyMatched = useMemo(() => periodMode === 'history' ? [] : orders.filter((order) =>
+    matchesSalesOrderSearch(order, search)
+    && matchesSalesOrderSource(order, source)
+    && matchesSalesOrderLane(order, lane)
+  ), [orders, search, source, lane, periodMode]);
+
+  const filtered = useMemo(() => periodMode === 'history' ? orders
+    : locallyMatched.filter((order) => workStage === 'all' || orderWorkStage(order) === workStage),
+  [orders, locallyMatched, workStage, periodMode]);
+
+  const stageCounts = useMemo<Record<OrderWorkStage, number> | null>(() => {
+    if (periodMode === 'history') return summary
+      ? { all: summary.total, active: summary.active, preparing: summary.preparing,
+          waiting_delivery: summary.waiting_delivery, completed: summary.completed, cancelled: summary.cancelled }
+      : null;
+    if (!periodLoaded) return null;
+    const counts = { all: locallyMatched.length, active: 0, preparing: 0,
+      waiting_delivery: 0, completed: 0, cancelled: 0 };
+    for (const order of locallyMatched) counts[orderWorkStage(order)] += 1;
+    return counts;
+  }, [periodMode, summary, periodLoaded, locallyMatched]);
   const allStageCounts = stageCounts;
-  const totalForCurrentStage = workStage === 'all' ? summary?.total : summary?.[workStage];
-  const canLoadMore = hasMore && (totalForCurrentStage === undefined || filtered.length < totalForCurrentStage);
+  const totalForCurrentStage = stageCounts?.[workStage];
+  const canLoadMore = periodMode === 'history' && hasMore
+    && (totalForCurrentStage === undefined || orders.length < totalForCurrentStage);
+  const visibleOrders = useMemo(() => filtered.slice(0, renderCount), [filtered, renderCount]);
+
+  useEffect(() => {
+    setRenderCount(LIST_RENDER_BATCH);
+    if (listElementRef.current) listElementRef.current.scrollTop = 0;
+  }, [periodMode, monthKey, search, source, lane, workStage]);
+
+  function handleListScroll(event: React.UIEvent<HTMLDivElement>) {
+    const element = event.currentTarget;
+    if (element.scrollTop + element.clientHeight >= element.scrollHeight - 200) {
+      setRenderCount((current) => Math.min(filtered.length, current + LIST_RENDER_BATCH));
+    }
+  }
 
   const handleFormError = useCallback((message: string) => {
     if (!message) {
@@ -323,11 +454,20 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
   }, [formMode, selected]);
 
   function mergeOrder(order: SalesOrder) {
+    const bounds = vietnamMonthBounds(monthKey);
+    const belongs = periodMode === 'history'
+      ? true
+      : periodMode === 'month'
+        ? order.createdAt >= bounds.dateFrom && order.createdAt < bounds.dateTo
+        : order.createdAt < bounds.dateFrom && !['completed', 'cancelled'].includes(orderWorkStage(order));
     setOrders((current) => {
-      const next = current.some((item) => item.id === order.id)
-        ? current.map((item) => item.id === order.id ? order : item)
-        : [order, ...current];
-      return sortOrdersByCreatedAt(next);
+      const without = current.filter((item) => item.id !== order.id);
+      const next = belongs ? [order, ...without] : without;
+      const sorted = sortOrdersByCreatedAt(next);
+      if (periodMode !== 'history' && periodLoaded) {
+        monthCacheRef.current.set(`${periodMode}:${monthKey}`, sorted);
+      }
+      return sorted;
     });
     setSelected(order);
   }
@@ -454,7 +594,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
         )}
 
         <section className={styles.summaryGrid} aria-label="Tổng hợp đơn bán hàng">
-          <article><strong>{summary?.total ?? '—'}</strong><span>{search.trim() || source !== 'all' || lane !== 'all' ? 'Tổng số đơn phù hợp' : 'Tổng số đơn'}</span></article>
+          <article><strong>{allStageCounts?.all ?? '—'}</strong><span>{periodMode === 'history' ? 'Đơn trong kết quả tìm' : periodMode === 'pending' ? 'Đơn tồn từ trước' : 'Đơn trong tháng'}</span></article>
           <article><strong>{allStageCounts?.active ?? '—'}</strong><span>Đang xử lý</span></article>
           <article><strong>{allStageCounts?.waiting_delivery ?? '—'}</strong><span>Chờ giao</span></article>
           <article><strong>{allStageCounts?.completed ?? '—'}</strong><span>Đã hoàn thành</span></article>
@@ -504,16 +644,41 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
         </section>
 
         <div className={styles.toolbar}>
-          <label><span>Tìm đơn</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Số đơn, khách hoặc kênh bán" /></label>
+          <label><span>Thời gian</span>
+            <select value={periodMode === 'history' ? 'history' : periodMode === 'pending' ? 'pending' : periodChoice}
+              onChange={(event) => {
+                const value = event.target.value;
+                setPeriodChoice(value);
+                if (value === 'history') setPeriodMode('history');
+                else if (value === 'pending') setPeriodMode('pending');
+                else { setPeriodMode('month'); if (value === 'current') setMonthKey(initialBootstrap.currentMonth); if (value === 'previous') setMonthKey(previousVietnamMonth(initialBootstrap.currentMonth)); }
+              }}>
+              <option value="current">Tháng này</option>
+              <option value="previous">Tháng trước</option>
+              <option value="custom">Chọn tháng/năm</option>
+              <option value="pending">Đơn chưa hoàn thành</option>
+              <option value="history">Tìm toàn bộ lịch sử</option>
+            </select>
+          </label>
+          {periodMode === 'month' && <label><span>Tháng/năm</span><input type="month" value={monthKey} max={initialBootstrap.currentMonth}
+            onChange={(event) => { if (event.target.value) { setMonthKey(event.target.value); setPeriodChoice('custom'); } }} /></label>}
+          <label className={styles.orderSearchField}><span>Tìm đơn</span><input value={search} onChange={(event) => {
+              const next = event.target.value;
+              setSearch(next);
+              if (periodMode === 'history' && !next.trim()) {
+                setPeriodMode('month');
+                setPeriodChoice(monthKey === initialBootstrap.currentMonth ? 'current' : 'custom');
+              }
+            }} placeholder="Mã đơn hoặc tên khách hàng" /></label>
           <label><span>Nguồn</span><select value={source} onChange={(event) => setSource(event.target.value as OrderSourceFilter)}><option value="all">Tất cả</option><option value="internal">Công Ty</option><option value="mcp">Nhân viên thị trường</option><option value="customer">Khách hàng</option></select></label>
           <button type="button" onClick={() => void refreshOrders(true)} disabled={refreshing}>{refreshing ? 'Đang làm mới…' : 'Làm mới'}</button>
         </div>
 
         <div className={styles.contentGrid}>
           <section className={styles.listPanel} aria-label="Danh sách đơn bán hàng">
-            <header className={styles.panelHeading}><div><h2>Danh sách đơn</h2><p>Đang hiển thị {filtered.length} đơn{totalForCurrentStage === undefined ? ' · Tổng số đang cập nhật' : ` / ${totalForCurrentStage} đơn phù hợp`}{summaryUnavailable ? ' · Chưa tải được thống kê, danh sách vẫn sử dụng được' : ''}</p></div></header>
-            <div className={styles.orderList}>
-              {filtered.map((order, rowIndex) => (
+            <header className={styles.panelHeading}><div><h2>Danh sách đơn</h2><p>Đang hiển thị {Math.min(renderCount, filtered.length)} / {totalForCurrentStage ?? '—'} đơn{refreshing && periodMode !== 'history' ? ' · Đang tải đủ đơn trong phạm vi' : ''}{summaryUnavailable ? ' · Chưa tải được thống kê, danh sách vẫn sử dụng được' : ''}</p></div></header>
+            <div className={styles.orderList} ref={listElementRef} onScroll={handleListScroll}>
+              {visibleOrders.map((order, rowIndex) => (
                 <button
                   type="button"
                   key={order.id}
@@ -542,7 +707,8 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
                   </div>
                 </button>
               ))}
-              {filtered.length === 0 && !refreshing && !error && <p className={styles.empty}>Chưa có đơn phù hợp trong nhóm này.</p>}
+              {filtered.length === 0 && !refreshing && !error && <p className={styles.empty}>{periodMode === 'history' && !search.trim() ? 'Nhập mã đơn hoặc tên khách hàng để tìm trong toàn bộ lịch sử.' : 'Chưa có đơn phù hợp trong phạm vi này.'}</p>}
+              {visibleOrders.length < filtered.length && <button type="button" onClick={() => setRenderCount((count) => count + LIST_RENDER_BATCH)}>Hiện thêm trong danh sách</button>}
               {canLoadMore && <button type="button" disabled={refreshing} onClick={() => void refreshOrders(false, true)}>{refreshing ? 'Đang tải…' : 'Xem thêm đơn cũ'}</button>}
             </div>
           </section>

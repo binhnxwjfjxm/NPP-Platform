@@ -42,3 +42,9 @@
 @media(min-width:1181px){.unitCell>span,.quantityCell>span,.priceCell>span,.discountCell>span{display:none}}
 @media(max-width:780px){.quantityStepper button{height:34px;min-height:34px!important}.quantityStepper input,.directPriceInput,.discountControls input,.discountControls select{min-height:34px!important}}
 @media(max-width:520px){.discountCell{grid-column:1/-1}.unitCell,.quantityCell,.priceCell,.discountCell{justify-content:flex-start}.discountControls{max-width:250px}}
+
+/* Search remains the primary control when a period selector is present. */
+.toolbar label:first-child{flex:0 1 175px}
+.toolbar .orderSearchField{flex:1;min-width:205px}
+.toolbar input[type='month']{max-width:185px}
+@media(max-width:780px){.toolbar label:first-child,.toolbar .orderSearchField{min-width:0;flex:initial}.toolbar input[type='month']{max-width:none}}

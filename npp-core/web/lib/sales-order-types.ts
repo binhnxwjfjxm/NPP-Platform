@@ -225,6 +225,11 @@ export type SalesOrder = {
 };
 
 export type ListSalesOrdersParams = {
+  scope?: 'month' | 'pending' | 'history';
+  dateFrom?: string;
+  dateTo?: string;
+  beforeDate?: string;
+  compact?: boolean;
   limit?: number;
   offset?: number;
   status?: SalesOrderStatus | 'all';

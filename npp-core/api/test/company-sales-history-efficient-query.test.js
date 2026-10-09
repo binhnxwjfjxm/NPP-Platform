@@ -28,6 +28,25 @@ test('phân trang và lọc quyền trước khi tải thông tin giao hàng/thu
   assert.equal(params.at(-1), 100);
 });
 
+test('tháng Việt Nam và đơn tồn đọng được lọc tại SQL sau giới hạn quyền', async () => {
+  const calls = [];
+  const client = { async query(query, values) { calls.push({query, values}); return {rows: []}; } };
+  const dateFrom = '2026-09-30T17:00:00.000Z';
+  const dateTo = '2026-10-31T17:00:00.000Z';
+  await listSalesOrders(client, { ...scope, scope: 'month', dateFrom, dateTo, limit: 1000, offset: 1000 });
+  assert.match(calls[0].query, /so\.created_at >= \$\d+::timestamptz AND so\.created_at < \$\d+::timestamptz/);
+  assert.match(calls[0].query, /so\.warehouse_id = ANY/);
+  assert.match(calls[0].query, /so\.source_employee_id/);
+  assert.ok(calls[0].values.includes(dateFrom));
+  assert.ok(calls[0].values.includes(dateTo));
+  assert.deepEqual(calls[0].values.slice(-2), [1000, 1000]);
+
+  await listSalesOrders(client, { ...scope, scope: 'pending', beforeDate: dateFrom, limit: 1000 });
+  assert.match(calls[1].query, /work_stage NOT IN \('completed','cancelled'\)/);
+  assert.match(calls[1].query, /so\.created_at < \$\d+::timestamptz/);
+  assert.ok(calls[1].values.includes(dateFrom));
+});
+
 test('đếm toàn bộ đơn hợp quyền, không thực hiện truy vấn chi tiết từng đơn', async () => {
   let sql = '';
   const client = {async query(query) {

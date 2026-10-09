@@ -159,6 +159,7 @@ const SALES_ORDER_WORK_STAGE = `CASE
 function salesOrderListQuery({
  installationId, warehouseIds, employeeId = null, actorId = null, allowAllEmployees = false,
  status, customerId, warehouseId, deliveryMode, search, source = 'all', lane = 'all',
+ scope = 'history', dateFrom = null, dateTo = null, beforeDate = null,
 }) {
  const params = [installationId];
  // Filter and count with narrow rows. Expensive delivery/receivable projections
@@ -174,6 +175,14 @@ function salesOrderListQuery({
  WHERE so.installation_id = $1`;
  ({query}=appendWarehouseScope(query,params,warehouseIds));
  ({query}=appendEmployeeScope(query,params,{employeeId,actorId,allowAllEmployees}));
+ if (scope === 'month') {
+   params.push(dateFrom, dateTo);
+   query += ` AND so.created_at >= $${params.length-1}::timestamptz AND so.created_at < $${params.length}::timestamptz`;
+ }
+ if (scope === 'pending') {
+   params.push(beforeDate);
+   query += ` AND so.created_at < $${params.length}::timestamptz`;
+ }
  if(status){params.push(status);query+=` AND so.status = $${params.length}`;}
  if(customerId){params.push(customerId);query+=` AND so.customer_id = $${params.length}`;}
  if(warehouseId){params.push(warehouseId);query+=` AND so.warehouse_id = $${params.length}`;}
@@ -211,17 +220,18 @@ function stagedSalesOrderQuery(input){
   staged_orders AS (SELECT id, installation_id, created_at, ${SALES_ORDER_WORK_STAGE} AS work_stage FROM matching_orders)`,params};
 }
 
-export async function listSalesOrders(client,{limit=100,offset=0,stage='all',...input}){
- const {query,params}=stagedSalesOrderQuery(input);
- let where='';
- if(stage&&stage!=='all'){params.push(stage);where=` WHERE work_stage = $${params.length}`;}
+export async function listSalesOrders(client,{limit=100,offset=0,stage='all',scope='history',...input}){
+ const {query,params}=stagedSalesOrderQuery({...input,scope});
+ let where=scope === 'pending' ? " WHERE work_stage NOT IN ('completed','cancelled')" : '';
+ if(stage&&stage!=='all'){params.push(stage);where+=`${where ? ' AND' : ' WHERE'} work_stage = $${params.length}`;}
  params.push(limit,offset);
  return (await client.query(`${query},
   selected_page AS (
     SELECT id, installation_id, created_at FROM staged_orders${where}
     ORDER BY created_at DESC,id DESC LIMIT $${params.length-1} OFFSET $${params.length}
   )
-  SELECT ${ORDER_COLUMNS}
+  SELECT ${ORDER_COLUMNS}, current_version.total AS total,
+    current_version.delivery_execution_mode AS delivery_execution_mode
   FROM selected_page
   JOIN sales.sales_orders so
     ON so.installation_id = selected_page.installation_id AND so.id = selected_page.id
@@ -229,6 +239,10 @@ export async function listSalesOrders(client,{limit=100,offset=0,stage='all',...
     ON c.installation_id = so.installation_id AND c.id = so.customer_id
   JOIN shared.warehouses w
     ON w.installation_id = so.installation_id AND w.id = so.warehouse_id
+  LEFT JOIN sales.sales_order_versions current_version
+    ON current_version.installation_id = so.installation_id
+   AND current_version.sales_order_id = so.id
+   AND current_version.version_number = so.current_version_number
   ORDER BY selected_page.created_at DESC,selected_page.id DESC`,params)).rows;
 }
 

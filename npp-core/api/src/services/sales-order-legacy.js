@@ -369,6 +369,29 @@ async function loadOrderDetail(client, { requestContext, id, forUpdate = false }
   return { ok: true, salesOrder: mapOrder(loaded.order, Object.freeze(mapped)) };
 }
 
+function validOrderTime(value) {
+  return typeof value === 'string'
+    && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)
+    && Number.isFinite(Date.parse(value))
+    && new Date(value).toISOString() === value;
+}
+
+function mapOrderList(row) {
+  const mapped = mapOrder(row);
+  return Object.freeze({
+    id: mapped.id, number: mapped.number, status: mapped.status,
+    sourceType: mapped.sourceType, sourceId: mapped.sourceId,
+    customerId: mapped.customerId, customerCode: mapped.customerCode,
+    customerName: mapped.customerName, warehouseId: mapped.warehouseId,
+    deliveryMode: mapped.deliveryMode,
+    deliveryExecutionMode: row.delivery_execution_mode ?? null,
+    fulfillmentStatus: mapped.fulfillmentStatus,
+    deliveryStatus: mapped.deliveryStatus,
+    createdAt: mapped.createdAt, updatedAt: mapped.updatedAt,
+    total: String(row.total ?? '0'),
+  });
+}
+
 function validateList(input) {
   const deliveryMode = input.deliveryMode ? String(input.deliveryMode).trim().toUpperCase() : null;
   if (input.status && !STATUSES.has(input.status)) return failure('INVALID_STATUS', 'Sales order status is invalid');
@@ -377,6 +400,14 @@ function validateList(input) {
   if (input.warehouseId && (!isUuid(input.warehouseId) || !warehouseAllowed(input.requestContext, input.warehouseId))) {
     return failure('WAREHOUSE_SCOPE_DENIED', 'Warehouse is outside the authorized scope');
   }
+  const scope = String(input.scope ?? 'history').toLowerCase();
+  if (!['history', 'month', 'pending'].includes(scope)) return failure('INVALID_ORDER_SCOPE', 'Phạm vi xem đơn không hợp lệ');
+  if (scope === 'month' && (!validOrderTime(input.dateFrom) || !validOrderTime(input.dateTo)
+    || Date.parse(input.dateTo) <= Date.parse(input.dateFrom)
+    || Date.parse(input.dateTo) - Date.parse(input.dateFrom) > 32 * 86400000)) {
+    return failure('INVALID_ORDER_PERIOD', 'Tháng cần xem không hợp lệ');
+  }
+  if (scope === 'pending' && !validOrderTime(input.beforeDate)) return failure('INVALID_ORDER_PERIOD', 'Thời gian xem đơn chưa hoàn thành không hợp lệ');
   const search = text(input.search, 256, false);
   if (input.search && search === null) return failure('INVALID_SEARCH', 'Search must not exceed 256 characters');
   const source = String(input.source ?? 'all').toLowerCase();
@@ -385,7 +416,7 @@ function validateList(input) {
   if (!['all', 'internal', 'mcp', 'customer'].includes(source)) return failure('INVALID_SOURCE_FILTER', 'Nguồn đơn không hợp lệ');
   if (!['all', 'counter', 'manual', 'trip'].includes(lane)) return failure('INVALID_LANE_FILTER', 'Hình thức giao không hợp lệ');
   if (!['all', 'active', 'preparing', 'waiting_delivery', 'completed', 'cancelled'].includes(stage)) return failure('INVALID_STAGE_FILTER', 'Trạng thái đơn không hợp lệ');
-  return { ok: true, search, deliveryMode, source, lane, stage };
+  return { ok: true, search, deliveryMode, source, lane, stage, scope };
 }
 
 export async function listSalesOrders(client, input) {
@@ -403,10 +434,12 @@ export async function listSalesOrders(client, input) {
     source: validation.source,
     lane: validation.lane,
     stage: validation.stage,
+    scope: validation.scope,
+    dateFrom: input.dateFrom, dateTo: input.dateTo, beforeDate: input.beforeDate,
     limit: Math.max(1, Math.min(1000, Number(input.limit) || 100)),
     offset: Math.max(0, Number(input.offset) || 0),
   });
-  return Object.freeze({ ok: true, salesOrders: Object.freeze(rows.map((row) => mapOrder(row))) });
+  return Object.freeze({ ok: true, salesOrders: Object.freeze(rows.map((row) => input.compact === true ? mapOrderList(row) : mapOrder(row))) });
 }
 
 export async function summarizeSalesOrders(client, input) {

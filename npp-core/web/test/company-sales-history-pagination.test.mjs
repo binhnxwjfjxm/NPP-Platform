@@ -8,6 +8,12 @@ const route = readFileSync(new URL('../app/api/sales-orders/summary/route.ts', i
 
 test('lịch sử đơn tìm qua backend, phân trang, không giới hạn tìm kiếm trong 1000 đơn', () => {
  assert.match(workspace, /SALES_PAGE_SIZE = 50/);
+ assert.match(workspace, /MONTH_BATCH_SIZE = 1000/);
+ assert.match(workspace, /while \(continuePaging\)/);
+ assert.match(workspace, /monthCacheRef\.current\.set\(cacheKey, complete\)/);
+ assert.match(workspace, /matchesSalesOrderSearch\(order, search\)/);
+ assert.match(workspace, /Tìm toàn bộ lịch sử/);
+ assert.match(workspace, /Đơn chưa hoàn thành/);
  assert.match(workspace, /search\.trim\(\)/);
  assert.match(workspace, /stage: workStage/);
  assert.match(workspace, /offsetRef\.current/);
@@ -21,4 +27,5 @@ test('số đơn và các trạng thái lấy từ cùng bộ lọc máy chủ',
  assert.match(gateway, /summarizeSalesOrders/);
  assert.match(route, /salesOrderErrorResponse/);
  assert.match(workspace, /summary\.total/);
+ assert.match(workspace, /periodMode === 'history'/);
 });
