@@ -6,7 +6,7 @@ import { BusinessSequenceNumber } from '../../components/business-table-sequence
 import type { SalesOrderBootstrap } from '../../../lib/sales-order-bootstrap';
 import type { SalesOrder, SalesOrderVersion } from '../../../lib/sales-order-types';
 import { SALES_ORDER_PERMISSION_KEYS } from '../../../lib/sales-order-permissions';
-import { vietnamMonthBounds, previousVietnamMonth } from '../../../lib/sales-order-period';
+import { vietnamMonthBounds, vietnamDateRangeBounds, getVietnamDateKey, previousVietnamMonth } from '../../../lib/sales-order-period';
 import { matchesSalesOrderSearch, matchesSalesOrderSource, matchesSalesOrderLane } from '../../../lib/sales-order-list-filter';
 import SalesOrderDetail from './SalesOrderDetail';
 import SalesOrderForm, { type SalesOrderFormMode } from './SalesOrderForm';
@@ -37,7 +37,7 @@ type SalesOrderSummary = Readonly<{ total: number; active: number; preparing: nu
 const SALES_PAGE_SIZE = 50;
 const MONTH_BATCH_SIZE = 1000;
 const LIST_RENDER_BATCH = 80;
-type OrderPeriodMode = 'month' | 'pending' | 'history';
+type OrderPeriodMode = 'month' | 'range' | 'pending' | 'history';
 
 const WORK_STAGE_OPTIONS: ReadonlyArray<Readonly<{ value: OrderWorkStage; label: string }>> = [
   { value: 'all', label: 'Tất cả trạng thái' },
@@ -159,7 +159,18 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
   const [search, setSearch] = useState(initialBootstrap.initialSearch);
   const [periodMode, setPeriodMode] = useState<OrderPeriodMode>(initialBootstrap.initialSearch ? 'history' : 'month');
   const [monthKey, setMonthKey] = useState(initialBootstrap.currentMonth);
-  const [periodChoice, setPeriodChoice] = useState('current');
+  const [periodChoice, setPeriodChoice] = useState<'current' | 'previous' | 'custom' | 'history'>(
+    initialBootstrap.initialSearch ? 'history' : 'current',
+  );
+  const [rangeFrom, setRangeFrom] = useState(`${initialBootstrap.currentMonth}-01`);
+  const [rangeTo, setRangeTo] = useState(() => getVietnamDateKey(new Date()));
+  const customRangeError = useMemo(() => {
+    if (periodMode !== 'range') return null;
+    try { vietnamDateRangeBounds(rangeFrom, rangeTo); return null; }
+    catch (error) { return error instanceof Error ? error.message : 'Khoảng thời gian không hợp lệ'; }
+  }, [periodMode, rangeFrom, rangeTo]);
+  const periodKey = periodMode === 'range' ? `${rangeFrom}|${rangeTo}`
+    : periodMode === 'pending' ? initialBootstrap.currentMonth : monthKey;
   const [periodLoaded, setPeriodLoaded] = useState(false);
   const [renderCount, setRenderCount] = useState(LIST_RENDER_BATCH);
   const monthCacheRef = useRef(new Map<string, SalesOrder[]>());
@@ -241,7 +252,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
 
   // A month is loaded in bounded server pages, but never capped at one page.
   // Only a completed snapshot is cached, so an interrupted request cannot hide orders.
-  async function loadPeriod(kind: 'month' | 'pending', key: string, force = false) {
+  async function loadPeriod(kind: 'month' | 'range' | 'pending', key: string, force = false) {
     const cacheKey = `${kind}:${key}`;
     const cached = !force ? monthCacheRef.current.get(cacheKey) : undefined;
     const run = ++listRequestRef.current;
@@ -265,7 +276,9 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
     setSummary(null);
     setSummaryUnavailable(false);
     setHasMore(false);
-    const { dateFrom, dateTo } = vietnamMonthBounds(key);
+    const { dateFrom, dateTo } = kind === 'range'
+      ? vietnamDateRangeBounds(...(key.split('|') as [string, string]))
+      : vietnamMonthBounds(key);
     const results = [...seed];
     const seen = new Set(results.map((order) => order.id));
     let cursorId = seed.length ? seed[seed.length - 1].id : null;
@@ -276,7 +289,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
           scope: kind, compact: '1', limit: String(MONTH_BATCH_SIZE),
         });
         if (cursorId) params.set('cursorId', cursorId);
-        if (kind === 'month') {
+        if (kind === 'month' || kind === 'range') {
           params.set('dateFrom', dateFrom);
           params.set('dateTo', dateTo);
         } else {
@@ -370,21 +383,30 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
       setNotice(null);
       setError(null);
       setOperationError(null);
-      if (periodMode !== 'history') monthCacheRef.current.delete(`${periodMode}:${monthKey}`);
+      if (periodMode !== 'history') monthCacheRef.current.delete(`${periodMode}:${periodKey}`);
     }
     if (periodMode === 'history') return loadHistory(append);
-    return loadPeriod(periodMode, monthKey, showNotice);
+    if (customRangeError) return Promise.resolve();
+    return loadPeriod(periodMode, periodKey, showNotice);
   }
 
   // Changing filters in a loaded month never re-requests its server data.
   useEffect(() => {
     if (periodMode === 'history') return;
+    if (customRangeError) {
+      requestAbortRef.current?.abort();
+      listRequestRef.current += 1;
+      setOrders([]);
+      setPeriodLoaded(false);
+      setRefreshing(false);
+      return;
+    }
     void refreshOrders(false);
     return () => {
       requestAbortRef.current?.abort();
       listRequestRef.current += 1;
     };
-  }, [periodMode, monthKey]);
+  }, [periodMode, periodKey, customRangeError]);
 
   useEffect(() => {
     if (periodMode !== 'history') return;
@@ -426,7 +448,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
   useEffect(() => {
     setRenderCount(LIST_RENDER_BATCH);
     if (listElementRef.current) listElementRef.current.scrollTop = 0;
-  }, [periodMode, monthKey, search, source, lane, workStage]);
+  }, [periodMode, periodKey, search, source, lane, workStage]);
 
   function handleListScroll(event: React.UIEvent<HTMLDivElement>) {
     const element = event.currentTarget;
@@ -455,18 +477,21 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
   }, [formMode, selected]);
 
   function mergeOrder(order: SalesOrder) {
-    const bounds = vietnamMonthBounds(monthKey);
+    const bounds = periodMode === 'range'
+      ? (customRangeError ? null : vietnamDateRangeBounds(rangeFrom, rangeTo))
+      : vietnamMonthBounds(periodMode === 'pending' ? initialBootstrap.currentMonth : monthKey);
     const belongs = periodMode === 'history'
       ? true
-      : periodMode === 'month'
-        ? order.createdAt >= bounds.dateFrom && order.createdAt < bounds.dateTo
-        : order.createdAt < bounds.dateFrom && !['completed', 'cancelled'].includes(orderWorkStage(order));
+      : !bounds ? false
+        : periodMode === 'pending'
+          ? order.createdAt < bounds.dateFrom && !['completed', 'cancelled'].includes(orderWorkStage(order))
+          : order.createdAt >= bounds.dateFrom && order.createdAt < bounds.dateTo;
     setOrders((current) => {
       const without = current.filter((item) => item.id !== order.id);
       const next = belongs ? [order, ...without] : without;
       const sorted = sortOrdersByCreatedAt(next);
       if (periodMode !== 'history' && periodLoaded) {
-        monthCacheRef.current.set(`${periodMode}:${monthKey}`, sorted);
+        monthCacheRef.current.set(`${periodMode}:${periodKey}`, sorted);
       }
       return sorted;
     });
@@ -595,7 +620,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
         )}
 
         <section className={styles.summaryGrid} aria-label="Tổng hợp đơn bán hàng">
-          <article><strong>{allStageCounts?.all ?? '—'}</strong><span>{periodMode === 'history' ? 'Đơn trong kết quả tìm' : periodMode === 'pending' ? 'Đơn tồn từ trước' : 'Đơn trong tháng'}</span></article>
+          <article><strong>{allStageCounts?.all ?? '—'}</strong><span>{periodMode === 'history' ? 'Đơn trong kết quả tìm' : periodMode === 'pending' ? 'Đơn tồn từ trước' : periodMode === 'range' ? 'Đơn trong khoảng đã chọn' : 'Đơn trong tháng'}</span></article>
           <article><strong>{allStageCounts?.active ?? '—'}</strong><span>Đang xử lý</span></article>
           <article><strong>{allStageCounts?.waiting_delivery ?? '—'}</strong><span>Chờ giao</span></article>
           <article><strong>{allStageCounts?.completed ?? '—'}</strong><span>Đã hoàn thành</span></article>
@@ -642,35 +667,60 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
               </div>
             </div>
           </div>
+          <div className={styles.pendingFilterRow}>
+            <span className={styles.filterLabel}>Công việc</span>
+            <button
+              type="button"
+              aria-pressed={periodMode === 'pending'}
+              className={periodMode === 'pending' ? styles.segmentActive : styles.segment}
+              onClick={() => {
+                setWorkStage('all');
+                setPeriodMode(periodMode === 'pending'
+                  ? periodChoice === 'history' ? 'history' : periodChoice === 'custom' ? 'range' : 'month'
+                  : 'pending');
+              }}
+            >Đơn chưa hoàn thành</button>
+            {periodMode === 'pending' && <span className={styles.pendingHint}>Các đơn từ trước tháng này vẫn cần xử lý</span>}
+          </div>
         </section>
 
         <div className={styles.toolbar}>
-          <label><span>Thời gian</span>
-            <select value={periodMode === 'history' ? 'history' : periodMode === 'pending' ? 'pending' : periodChoice}
-              onChange={(event) => {
-                const value = event.target.value;
-                if (periodMode === 'history' && value !== 'history') setSearch('');
-                if (value !== 'custom') setWorkStage('all');
-                setPeriodChoice(value);
-                if (value === 'history') setPeriodMode('history');
-                else if (value === 'pending') setPeriodMode('pending');
-                else { setPeriodMode('month'); if (value === 'current') setMonthKey(initialBootstrap.currentMonth); if (value === 'previous') setMonthKey(previousVietnamMonth(initialBootstrap.currentMonth)); }
-              }}>
-              <option value="current">Tháng này</option>
-              <option value="previous">Tháng trước</option>
-              <option value="custom">Chọn tháng/năm</option>
-              <option value="pending">Đơn chưa hoàn thành</option>
-              <option value="history">Tìm toàn bộ lịch sử</option>
-            </select>
-          </label>
-          {periodMode === 'month' && <label><span>Tháng/năm</span><input type="month" value={monthKey} max={initialBootstrap.currentMonth}
-            onChange={(event) => { if (event.target.value) { setMonthKey(event.target.value); setPeriodChoice('custom'); } }} /></label>}
+          {periodMode === 'pending'
+            ? <div className={styles.pendingScopeLabel}><span>Phạm vi đang xem</span><strong>Đơn tồn đọng từ trước tháng này</strong></div>
+            : <label><span>Thời gian</span>
+                <select value={periodChoice} onChange={(event) => {
+                  const value = event.target.value as 'current' | 'previous' | 'custom' | 'history';
+                  if (periodMode === 'history' && value !== 'history') setSearch('');
+                  if (value !== 'custom') setWorkStage('all');
+                  setPeriodChoice(value);
+                  if (value === 'history') setPeriodMode('history');
+                  else if (value === 'custom') setPeriodMode('range');
+                  else {
+                    setPeriodMode('month');
+                    setMonthKey(value === 'current'
+                      ? initialBootstrap.currentMonth
+                      : previousVietnamMonth(initialBootstrap.currentMonth));
+                  }
+                }}>
+                  <option value="current">Tháng này</option>
+                  <option value="previous">Tháng trước</option>
+                  <option value="custom">Tùy chọn khoảng thời gian</option>
+                  <option value="history">Tìm toàn bộ lịch sử</option>
+                </select>
+              </label>}
+          {periodMode === 'range' && <div className={styles.rangeFields}>
+            <label><span>Từ ngày</span><input aria-label="Từ ngày" type="date" value={rangeFrom}
+              onChange={(event) => setRangeFrom(event.target.value)} /></label>
+            <label><span>Đến ngày</span><input aria-label="Đến ngày" type="date" value={rangeTo}
+              onChange={(event) => setRangeTo(event.target.value)} /></label>
+            {customRangeError && <span className={styles.rangeError} role="status">{customRangeError}</span>}
+          </div>}
           <label className={styles.orderSearchField}><span>Tìm đơn</span><input value={search} onChange={(event) => {
               const next = event.target.value;
               setSearch(next);
               if (periodMode === 'history' && !next.trim()) {
                 setPeriodMode('month');
-                setPeriodChoice(monthKey === initialBootstrap.currentMonth ? 'current' : 'custom');
+                setPeriodChoice(monthKey === previousVietnamMonth(initialBootstrap.currentMonth) ? 'previous' : 'current');
               }
             }} placeholder="Mã đơn hoặc tên khách hàng" /></label>
           <label><span>Nguồn</span><select value={source} onChange={(event) => setSource(event.target.value as OrderSourceFilter)}><option value="all">Tất cả</option><option value="internal">Công Ty</option><option value="mcp">Nhân viên thị trường</option><option value="customer">Khách hàng</option></select></label>

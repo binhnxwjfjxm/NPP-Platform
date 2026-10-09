@@ -75,3 +75,17 @@ test('đếm toàn bộ đơn hợp quyền, không thực hiện truy vấn chi
   assert.match(sql, /so\.warehouse_id = ANY/);
   assert.match(sql, /so\.source_employee_id/);
 });
+
+test('khoảng ngày tùy chọn lọc tại SQL trước phân trang, giữ quyền nhân viên và kho', async () => {
+  let sql = '';
+  let values = [];
+  const client = { async query(query, params) { sql = query; values = params; return { rows: [] }; } };
+  const dateFrom = '2026-09-30T17:00:00.000Z';
+  const dateTo = '2026-10-09T17:00:00.000Z';
+  await listSalesOrders(client, {...scope, scope: 'range', dateFrom, dateTo, compact: true, limit: 1000 });
+  assert.match(sql, /so\.created_at >= \$\d+::timestamptz AND so\.created_at < \$\d+::timestamptz/);
+  assert.match(sql, /so\.warehouse_id = ANY/);
+  assert.match(sql, /so\.source_employee_id/);
+  assert.ok(values.includes(dateFrom));
+  assert.ok(values.includes(dateTo));
+});

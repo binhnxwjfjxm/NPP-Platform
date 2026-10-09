@@ -399,14 +399,19 @@ function validateList(input) {
     return failure('WAREHOUSE_SCOPE_DENIED', 'Warehouse is outside the authorized scope');
   }
   const scope = String(input.scope ?? 'history').toLowerCase();
-  if (!['history', 'month', 'pending'].includes(scope)) return failure('INVALID_ORDER_SCOPE', 'Phạm vi xem đơn không hợp lệ');
+  if (!['history', 'month', 'range', 'pending'].includes(scope)) return failure('INVALID_ORDER_SCOPE', 'Phạm vi xem đơn không hợp lệ');
   if (scope === 'month' && (!validOrderTime(input.dateFrom) || !validOrderTime(input.dateTo)
     || Date.parse(input.dateTo) <= Date.parse(input.dateFrom)
     || Date.parse(input.dateTo) - Date.parse(input.dateFrom) > 32 * 86400000)) {
     return failure('INVALID_ORDER_PERIOD', 'Tháng cần xem không hợp lệ');
   }
+  if (scope === 'range' && (!validOrderTime(input.dateFrom) || !validOrderTime(input.dateTo)
+    || Date.parse(input.dateTo) <= Date.parse(input.dateFrom)
+    || Date.parse(input.dateTo) - Date.parse(input.dateFrom) > 366 * 86400000)) {
+    return failure('INVALID_ORDER_PERIOD', 'Khoảng thời gian tối đa 12 tháng');
+  }
   if (scope === 'pending' && !validOrderTime(input.beforeDate)) return failure('INVALID_ORDER_PERIOD', 'Thời gian xem đơn chưa hoàn thành không hợp lệ');
-  if (input.cursorId && (!isUuid(input.cursorId) || !['month', 'pending'].includes(scope))) {
+  if (input.cursorId && (!isUuid(input.cursorId) || !['month', 'range', 'pending'].includes(scope))) {
     return failure('INVALID_ORDER_CURSOR', 'Trang danh sách đơn không hợp lệ');
   }
   const search = text(input.search, 256, false);

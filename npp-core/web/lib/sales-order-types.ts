@@ -225,7 +225,7 @@ export type SalesOrder = {
 };
 
 export type ListSalesOrdersParams = {
-  scope?: 'month' | 'pending' | 'history';
+  scope?: 'month' | 'range' | 'pending' | 'history';
   dateFrom?: string;
   dateTo?: string;
   beforeDate?: string;

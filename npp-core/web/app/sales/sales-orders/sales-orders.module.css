@@ -46,5 +46,12 @@
 /* Search remains the primary control when a period selector is present. */
 .toolbar label:first-child{flex:0 1 175px}
 .toolbar .orderSearchField{flex:1;min-width:205px}
-.toolbar input[type='month']{max-width:185px}
-@media(max-width:780px){.toolbar label:first-child,.toolbar .orderSearchField{min-width:0;flex:initial}.toolbar input[type='month']{max-width:none}}
+.pendingFilterRow{display:flex;align-items:center;flex-wrap:wrap;gap:.55rem;padding:.55rem .1rem 0;border-top:1px solid #edf0ee}
+.pendingHint{font-size:.79rem;color:#596a60}
+.pendingScopeLabel{display:grid;gap:.35rem;min-width:185px;font-size:.83rem}
+.pendingScopeLabel>span{font-weight:700;color:#4e5865}
+.rangeFields{display:flex;flex-wrap:wrap;gap:.5rem;align-items:flex-end}
+.rangeFields label{display:grid;gap:.35rem;min-width:150px}
+.rangeFields input[type='date']{width:100%;min-width:0}
+.rangeError{flex-basis:100%;font-size:.8rem;color:#a23a32}
+@media(max-width:780px){.toolbar label:first-child,.toolbar .orderSearchField{min-width:0;flex:initial}.rangeFields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.5rem}.rangeFields label{min-width:0}.rangeError{grid-column:1/-1}}

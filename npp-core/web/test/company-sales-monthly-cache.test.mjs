@@ -69,11 +69,42 @@ test('danh sách tháng không yêu cầu máy chủ sau mỗi lần đổi từ
   assert.match(source, /while \(continuePaging\)/);
   assert.match(source, /params\.set\('cursorId', cursorId\)/);
   assert.match(source, /cursorId = next\[next\.length - 1\]\.id/);
-  assert.match(source, /\[periodMode, monthKey\]/);
+  assert.match(source, /\[periodMode, periodKey, customRangeError\]/);
   assert.match(source, /matchesSalesOrderSearch\(order, search\)/);
   assert.match(source, /visibleOrders\.map/);
   assert.match(source, /listRequestRef\.current/);
   assert.match(source, /controller\.signal\.aborted/);
   assert.match(source, /setPeriodMode\('month'\)/);
   assert.match(source, /scope: 'history', compact: '1'/);
+});
+
+test('Thời gian tùy chọn dùng Từ ngày - Đến ngày, công việc tồn đọng tách riêng', () => {
+  const source = readFileSync(new URL('../app/sales/sales-orders/SalesOrderWorkspace.tsx', import.meta.url), 'utf8');
+  assert.match(source, /Tùy chọn khoảng thời gian/);
+  assert.match(source, /type="date" value=\{rangeFrom\}/);
+  assert.match(source, /type="date" value=\{rangeTo\}/);
+  assert.doesNotMatch(source, /type="month"/);
+  assert.match(source, /className=\{styles\.pendingFilterRow\}/);
+  assert.match(source, /aria-pressed=\{periodMode === 'pending'\}/);
+  const start = source.indexOf('<select value={periodChoice}');
+  const select = source.slice(start, source.indexOf('</select>', start));
+  assert.ok(start > 0);
+  assert.doesNotMatch(select, /Đơn chưa hoàn thành/);
+  assert.match(source, /scope: 'history', compact: '1'/);
+});
+
+test('Ngày bao gồm cả ngày kết thúc theo giờ Việt Nam, chặn khoảng ngày sai', () => {
+  assert.deepEqual(period.vietnamDateRangeBounds('2026-10-01', '2026-10-09'), {
+    dateFrom: '2026-09-30T17:00:00.000Z',
+    dateTo: '2026-10-09T17:00:00.000Z',
+  });
+  assert.deepEqual(period.vietnamDateRangeBounds('2024-02-29', '2024-02-29'), {
+    dateFrom: '2024-02-28T17:00:00.000Z',
+    dateTo: '2024-02-29T17:00:00.000Z',
+  });
+  assert.equal(period.getVietnamDateKey(new Date('2026-10-09T17:00:00.000Z')), '2026-10-10');
+  for (const [from, to] of [
+    ['2026-02-30','2026-03-01'], ['2026-10-10','2026-10-01'],
+    ['','2026-10-01'], ['2024-01-01','2026-01-01'],
+  ]) assert.throws(() => period.vietnamDateRangeBounds(from, to));
 });
