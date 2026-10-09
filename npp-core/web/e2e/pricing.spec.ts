@@ -90,8 +90,8 @@ test.describe('Giá bán', () => {
     await page.getByTestId('resolver-quantity-input').fill('2');
     await page.getByTestId('resolver-channel-select').selectOption({ label: `${channelCode} — Kênh quán ${suffix}` });
     await page.getByTestId('resolve-price-button').click();
-    await expect(page.getByTestId('resolved-unit-price')).toContainText('9.000');
-    await expect(page.getByTestId('resolved-line-total')).toContainText('18.000');
+    await expect(page.getByTestId('resolved-unit-price')).toContainText('10.000');
+    await expect(page.getByTestId('resolved-line-total')).toContainText('20.000');
     await expect(page.getByTestId('pricing-step-base')).toBeVisible();
     await expect(page.getByTestId('pricing-step-rule')).toBeVisible();
 

@@ -231,6 +231,9 @@ export type ListSalesOrdersParams = {
   customerId?: string;
   warehouseId?: string;
   search?: string;
+  source?: 'all' | 'internal' | 'mcp' | 'customer';
+  lane?: 'all' | 'counter' | 'manual' | 'trip';
+  stage?: 'all' | 'active' | 'preparing' | 'waiting_delivery' | 'completed' | 'cancelled';
 };
 
 export type SalesOrderSkuEligibility = {

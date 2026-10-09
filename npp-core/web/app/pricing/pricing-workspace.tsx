@@ -23,7 +23,7 @@ import styles from './pricing.module.css';
 export type PricingWorkspaceTab = 'channels' | 'lists' | 'items' | 'resolver';
 type EditorModal = 'channel' | 'list' | 'item' | null;
 
-type ChannelForm = { code: string; name: string; description: string; isActive: boolean };
+type ChannelForm = { code: string; name: string; description: string; customerGroupIds: string[]; isActive: boolean };
 type ListForm = {
   code: string;
   name: string;
@@ -54,7 +54,7 @@ type ItemForm = {
   isActive: boolean;
 };
 
-const EMPTY_CHANNEL: ChannelForm = { code: '', name: '', description: '', isActive: true };
+const EMPTY_CHANNEL: ChannelForm = { code: '', name: '', description: '', customerGroupIds: [], isActive: true };
 const EMPTY_LIST: ListForm = {
   code: '', name: '', listType: 'BASE', priority: '100', stackingMode: 'EXCLUSIVE', stopProcessing: false,
   channelId: '', customerGroupId: '', customerId: '', effectiveFrom: '', effectiveTo: '', description: '', isActive: true,
@@ -223,7 +223,7 @@ export default function PricingWorkspace({ initialTab = 'channels' }: { initialT
 
   function editChannel(channel: SalesChannel) {
     setEditingChannel(channel);
-    setChannelForm({ code: channel.code, name: channel.name, description: channel.description ?? '', isActive: channel.is_active });
+    setChannelForm({ code: channel.code, name: channel.name, description: channel.description ?? '', customerGroupIds: channel.customer_group_ids ?? [], isActive: channel.is_active });
     setMessage(null);
     setEditorModal('channel');
   }
@@ -515,12 +515,13 @@ export default function PricingWorkspace({ initialTab = 'channels' }: { initialT
             </div>
             <div className={styles.tableWrapper}>
               <table className={styles.table}>
-                <thead><tr><th>Mã</th><th>Tên</th><th>Trạng thái</th><th></th></tr></thead>
+                <thead><tr><th>Mã</th><th>Tên</th><th>Nhóm khách được hưởng giá</th><th>Trạng thái</th><th></th></tr></thead>
                 <tbody>
                   {channels.map((channel) => (
                     <tr key={channel.id} data-testid={`channel-row-${channel.code}`}>
                       <td><strong>{channel.code}</strong></td>
                       <td>{channel.name}</td>
+                      <td>{groups.filter((group) => channel.customer_group_ids?.includes(group.id)).map((group) => group.name).join(', ') || 'Chưa có nhóm'}</td>
                       <td>{channel.is_active ? 'Hoạt động' : 'Ngừng'}</td>
                       <td className={styles.actions}>
                         <button type="button" onClick={() => editChannel(channel)}>Sửa</button>
@@ -528,7 +529,7 @@ export default function PricingWorkspace({ initialTab = 'channels' }: { initialT
                       </td>
                     </tr>
                   ))}
-                  {channels.length === 0 ? <tr><td colSpan={4} className={styles.empty}>Chưa có kênh bán</td></tr> : null}
+                  {channels.length === 0 ? <tr><td colSpan={5} className={styles.empty}>Chưa có kênh bán</td></tr> : null}
                 </tbody>
               </table>
             </div>
@@ -673,6 +674,20 @@ export default function PricingWorkspace({ initialTab = 'channels' }: { initialT
             <label>Mã<input disabled={Boolean(editingChannel)} value={channelForm.code} onChange={(event) => setChannelForm({ ...channelForm, code: event.target.value })} data-testid="channel-code-input" /></label>
             <label>Tên<input value={channelForm.name} onChange={(event) => setChannelForm({ ...channelForm, name: event.target.value })} data-testid="channel-name-input" /></label>
             <label className={styles.wide}>Mô tả<input value={channelForm.description} onChange={(event) => setChannelForm({ ...channelForm, description: event.target.value })} /></label>
+            <fieldset className={styles.wide}>
+              <legend>Nhóm khách được hưởng giá theo kênh</legend>
+              {groups.filter((group) => group.is_active).map((group) => (
+                <label key={group.id} className={styles.check}>
+                  <input type="checkbox" checked={channelForm.customerGroupIds.includes(group.id)}
+                    onChange={(event) => setChannelForm((current) => ({
+                      ...current,
+                      customerGroupIds: event.target.checked ? [...current.customerGroupIds, group.id]
+                        : current.customerGroupIds.filter((id) => id !== group.id),
+                    }))} /> {group.name}
+                </label>
+              ))}
+              <small>Khách ngoài nhóm được chọn dùng giá nền; nếu chưa có giá nền thì mặc định 0đ.</small>
+            </fieldset>
           </div>
           <label className={styles.check}><input type="checkbox" checked={channelForm.isActive} onChange={(event) => setChannelForm({ ...channelForm, isActive: event.target.checked })} /> Hoạt động</label>
         </Modal>
