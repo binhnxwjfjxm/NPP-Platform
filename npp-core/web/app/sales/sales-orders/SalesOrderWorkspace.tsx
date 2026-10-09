@@ -31,6 +31,8 @@ type OrderOperationError = Readonly<{
 }>;
 type StockIssueKeyState = Readonly<{ orderId: string; stateKey: string; key: string }>;
 type SalesOrderListValue = SalesOrder & Readonly<{ total?: string }>;
+type SalesOrderSummary = Readonly<{ total: number; active: number; preparing: number; waiting_delivery: number; completed: number; cancelled: number }>;
+const SALES_PAGE_SIZE = 50;
 
 const WORK_STAGE_OPTIONS: ReadonlyArray<Readonly<{ value: OrderWorkStage; label: string }>> = [
   { value: 'all', label: 'Tất cả trạng thái' },
@@ -55,12 +57,6 @@ const WORK_STAGE_LABELS: Readonly<Record<ResolvedOrderWorkStage, string>> = Obje
   completed: 'Đã hoàn thành',
   cancelled: 'Hủy',
 });
-
-function sourceBucket(order: SalesOrder): Exclude<OrderSourceFilter, 'all'> {
-  if (order.sourceType === 'MCP') return 'mcp';
-  if (order.sourceType === 'API' && order.sourceId?.startsWith('CUSTOMER_PORTAL:')) return 'customer';
-  return 'internal';
-}
 
 function orderLane(order: SalesOrder): Exclude<OrderLaneFilter, 'all'> {
   if (order.deliveryMode === 'PICKUP') return 'counter';
@@ -134,20 +130,6 @@ export function compactOrderNumber(value: string | null | undefined): string {
   return match ? `SO${match[1]}` : normalized;
 }
 
-function matchesSearch(order: SalesOrder, term: string): boolean {
-  if (!term) return true;
-  return [
-    order.number,
-    order.customerCode,
-    order.customerName,
-    order.warehouseCode,
-    order.salesChannelCode,
-    order.salesChannelName,
-  ]
-    .filter(Boolean)
-    .some((value) => String(value).toLocaleLowerCase('vi').includes(term));
-}
-
 function stageCountsFor(orders: SalesOrder[]) {
   const counts: Record<OrderWorkStage, number> = {
     all: orders.length,
@@ -183,6 +165,10 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
   const [error, setError] = useState<string | null>(initialBootstrap.errors.orders);
   const [operationError, setOperationError] = useState<OrderOperationError | null>(null);
   const [search, setSearch] = useState('');
+  const [hasMore, setHasMore] = useState(true);
+  const [summary, setSummary] = useState<SalesOrderSummary | null>(null);
+  const offsetRef = useRef(0);
+  const listRequestRef = useRef(0);
   const [workStage, setWorkStage] = useState<OrderWorkStage>('all');
   const [lane, setLane] = useState<OrderLaneFilter>('all');
   const [source, setSource] = useState<OrderSourceFilter>('all');
@@ -251,7 +237,8 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
     }
   }, [operationError, selected]);
 
-  const refreshOrders = useCallback(async (showNotice: boolean) => {
+  const refreshOrders = useCallback(async (showNotice: boolean, append = false) => {
+    const run = ++listRequestRef.current;
     setRefreshing(true);
     if (showNotice) {
       setError(null);
@@ -259,41 +246,47 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
       setNotice(null);
     }
     try {
-      const next = await apiRequest<SalesOrder[]>('/api/sales-orders?limit=1000');
-      const sorted = sortOrdersByCreatedAt(next);
-      setOrders(sorted);
-      setSelected((current) => current ? sorted.find((item) => item.id === current.id) ?? null : null);
+      const params = new URLSearchParams({
+        limit: String(SALES_PAGE_SIZE),
+        offset: String(append ? offsetRef.current : 0),
+        source,
+        lane,
+        stage: workStage,
+      });
+      if (search.trim()) params.set('search', search.trim());
+      const summaryParams = new URLSearchParams({ source, lane });
+      if (search.trim()) summaryParams.set('search', search.trim());
+      const [next, nextSummary] = await Promise.all([
+        apiRequest<SalesOrder[]>(`/api/sales-orders?${params}`),
+        append ? Promise.resolve(null) : apiRequest<SalesOrderSummary>(`/api/sales-orders/summary?${summaryParams}`),
+      ]);
+      if (run !== listRequestRef.current) return;
+      offsetRef.current = (append ? offsetRef.current : 0) + next.length;
+      setOrders((current) => append
+        ? sortOrdersByCreatedAt([...current, ...next.filter((item) => !current.some((row) => row.id === item.id))])
+        : sortOrdersByCreatedAt(next));
+      setHasMore(next.length === SALES_PAGE_SIZE);
+      if (nextSummary) setSummary(nextSummary);
       setError(null);
       if (showNotice) setNotice('Danh sách đơn bán hàng đã được làm mới.');
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Không tải được danh sách đơn bán hàng');
+      if (run === listRequestRef.current) setError(caught instanceof Error ? caught.message : 'Không tải được danh sách đơn bán hàng');
     } finally {
-      setRefreshing(false);
+      if (run === listRequestRef.current) setRefreshing(false);
     }
-  }, []);
+  }, [search, source, lane, workStage]);
 
   useEffect(() => {
-    void refreshOrders(false);
+    const timer = window.setTimeout(() => { void refreshOrders(false); }, search.trim() ? 250 : 0);
+    return () => { window.clearTimeout(timer); listRequestRef.current += 1; };
   }, [refreshOrders]);
 
-  const scopedOrders = useMemo(() => {
-    const term = search.trim().toLocaleLowerCase('vi');
-    return orders.filter((order) => {
-      if (source !== 'all' && sourceBucket(order) !== source) return false;
-      if (lane !== 'all' && orderLane(order) !== lane) return false;
-      return matchesSearch(order, term);
-    });
-  }, [orders, search, source, lane]);
-
-  const stageCounts = useMemo(() => stageCountsFor(scopedOrders), [scopedOrders]);
-  const allStageCounts = useMemo(() => stageCountsFor(orders), [orders]);
-
-  const filtered = useMemo(
-    () => workStage === 'all'
-      ? scopedOrders
-      : scopedOrders.filter((order) => orderWorkStage(order) === workStage),
-    [scopedOrders, workStage],
-  );
+  const filtered = orders;
+  const stageCounts: Record<OrderWorkStage, number> = summary
+    ? { all: summary.total, active: summary.active, preparing: summary.preparing,
+        waiting_delivery: summary.waiting_delivery, completed: summary.completed, cancelled: summary.cancelled }
+    : stageCountsFor(orders);
+  const allStageCounts = stageCounts;
 
   const handleFormError = useCallback((message: string) => {
     if (!message) {
@@ -443,7 +436,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
         )}
 
         <section className={styles.summaryGrid} aria-label="Tổng hợp đơn bán hàng">
-          <article><strong>{orders.length}</strong><span>Tổng số đơn</span></article>
+          <article><strong>{summary?.total ?? orders.length}</strong><span>Tổng số đơn phù hợp</span></article>
           <article><strong>{allStageCounts.active}</strong><span>Đang xử lý</span></article>
           <article><strong>{allStageCounts.waiting_delivery}</strong><span>Chờ giao</span></article>
           <article><strong>{allStageCounts.completed}</strong><span>Đã hoàn thành</span></article>
@@ -500,7 +493,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
 
         <div className={styles.contentGrid}>
           <section className={styles.listPanel} aria-label="Danh sách đơn bán hàng">
-            <header className={styles.panelHeading}><div><h2>Danh sách đơn</h2><p>{filtered.length} kết quả</p></div></header>
+            <header className={styles.panelHeading}><div><h2>Danh sách đơn</h2><p>Đang hiển thị {filtered.length} đơn · {workStage === 'all' ? stageCounts.all : stageCounts[workStage]} đơn phù hợp</p></div></header>
             <div className={styles.orderList}>
               {filtered.map((order, rowIndex) => (
                 <button
@@ -532,6 +525,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
                 </button>
               ))}
               {filtered.length === 0 && <p className={styles.empty}>Chưa có đơn phù hợp trong nhóm này.</p>}
+              {hasMore && <button type="button" disabled={refreshing} onClick={() => void refreshOrders(false, true)}>{refreshing ? 'Đang tải…' : 'Xem thêm đơn cũ'}</button>}
             </div>
           </section>
 

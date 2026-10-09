@@ -516,7 +516,7 @@ export async function handleSalesOrderRoutes(req, res, options) {
         priceSelectionMode: url.searchParams.get('priceSelectionMode'),
         pricingAt: url.searchParams.get('pricingAt'),
         limit: parseInteger(url.searchParams.get('limit'), 20, 50),
-        offset: parseInteger(url.searchParams.get('offset'), 0, 100000),
+        offset: parseInteger(url.searchParams.get('offset'), 0, 2000000000),
       });
       if (!result.ok) sendServiceError(res, result, options);
       else sendSuccess(res, result.skuOptions, options.requestId, options.receivedAt);
@@ -563,6 +563,28 @@ export async function handleSalesOrderRoutes(req, res, options) {
     return true;
   }
 
+  if (pathname === '/api/sales-orders/summary' && method === 'GET') {
+    const context = await authenticateAndAuthorize(req, res, options, options.PERMISSIONS.coreSalesOrderRead);
+    if (!context) return true;
+    const url = new URL(`http://localhost${req.url}`);
+    try {
+      const result = await service.summarizeSalesOrders(options.getPool(), {
+        requestContext: context,
+        search: url.searchParams.get('search'),
+        status: !url.searchParams.get('status') || url.searchParams.get('status') === 'all' ? null : url.searchParams.get('status'),
+        customerId: url.searchParams.get('customerId'),
+        warehouseId: url.searchParams.get('warehouseId'),
+        source: url.searchParams.get('source'),
+        lane: url.searchParams.get('lane'),
+      });
+      if (!result.ok) sendServiceError(res, result, options);
+      else sendSuccess(res, result.summary, options.requestId, options.receivedAt);
+    } catch (error) {
+      sendError(res, apiError(error.code, error.publicMessage, {}, false, error.statusCode), options.requestId, options.receivedAt);
+    }
+    return true;
+  }
+
   if (pathname === '/api/sales-orders' && method === 'GET') {
     const context = await authenticateAndAuthorize(
       req,
@@ -581,8 +603,11 @@ export async function handleSalesOrderRoutes(req, res, options) {
         warehouseId: url.searchParams.get('warehouseId'),
         deliveryMode: url.searchParams.get('deliveryMode'),
         search: url.searchParams.get('search'),
+        source: url.searchParams.get('source'),
+        lane: url.searchParams.get('lane'),
+        stage: url.searchParams.get('stage'),
         limit: parseInteger(url.searchParams.get('limit'), 100, 1000),
-        offset: parseInteger(url.searchParams.get('offset'), 0, 100000),
+        offset: parseInteger(url.searchParams.get('offset'), 0, 2000000000),
       });
       if (!result.ok) sendServiceError(res, result, options);
       else sendSuccess(res, result.salesOrders, options.requestId, options.receivedAt);
