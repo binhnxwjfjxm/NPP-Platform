@@ -8,6 +8,7 @@ const MCP_PROTECTED_TABLES = new Set(['mcp_report_setting_groups', 'mcp_report_s
 const OPERATIONS_PRESERVED_TABLES = new Set(['inventory.product_tracking_policies']);
 const BUSINESS_SHARED_TABLES = new Set([
   'customer_groups',
+  'sales_channel_customer_groups',
   'customers',
   'customer_addresses',
   'customer_media',
@@ -27,7 +28,9 @@ const BUSINESS_SHARED_TABLES = new Set([
   'document_number_counters',
   'document_number_allocations',
 ]);
-const CUSTOMER_SHARED_ROOTS = new Set(['customer_groups', 'customers', 'customer_addresses', 'customer_media']);
+const CUSTOMER_SHARED_ROOTS = new Set([
+  'customer_groups', 'customers', 'customer_addresses', 'customer_media', 'sales_channel_customer_groups',
+]);
 const SUPPLIER_SHARED_ROOTS = new Set(['suppliers', 'supplier_contacts', 'supplier_addresses', 'supplier_payment_terms']);
 const PRODUCT_SHARED_ROOTS = new Set([
   'product_categories', 'product_brands', 'products', 'product_variants', 'product_barcodes', 'price_lists', 'price_list_items',
