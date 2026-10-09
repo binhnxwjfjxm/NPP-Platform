@@ -66,8 +66,9 @@ test('keeps genuinely competing or condition-dependent rules visible for review'
 test('screen and both exported summaries share the same effective-price calculation', () => {
   const overview = readFileSync(new URL('../app/pricing/pricing-overview.tsx', import.meta.url), 'utf8');
   assert.match(overview, /summarizeCurrentPriceRules\(rules, priceAt\)/);
-  assert.match(overview, /summarizeRules\(indexes\.baseBySku\.get\(sku\.sku\.toUpperCase\(\)\) \?\? \[\], priceAt\)/);
-  assert.match(overview, /summarizeRules\(indexes\.byListSku\.get\(ruleKey\(list\.code, sku\.sku\)\) \?\? \[\], priceAt\)/);
+  assert.match(overview, /function exportSummaryValue\(rules: RuleView\[\], at: number\): ExportCell \{\s*const summary = summarizeCurrentPriceRules\(rules, at\)/);
+  assert.match(overview, /exportSummaryValue\(indexes\.baseBySku\.get\(sku\.sku\.toUpperCase\(\)\) \?\? \[\], priceAt\)/);
+  assert.match(overview, /exportSummaryValue\(indexes\.byListSku\.get\(ruleKey\(list\.code, sku\.sku\)\) \?\? \[\], priceAt\)/);
   assert.match(overview, /summarizeRules\(ruleIndexes\.baseBySku\.get\(row\.sku\.toUpperCase\(\)\) \?\? \[\], displayPriceAt\)/);
   assert.match(overview, /listEffectiveFrom: list\.effective_from/);
   assert.match(overview, /listEffectiveFrom: list\?\.effective_from/);

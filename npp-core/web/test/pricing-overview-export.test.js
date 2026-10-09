@@ -30,6 +30,38 @@ test('pricing workbook keeps summary and detailed conditions in separate sheets'
   assert.equal(details[1][4], '5%');
 });
 
+test('pricing export writes money, quantities and percentages as numeric Excel cells', () => {
+  const workbook = createTabularWorkbookXlsx([
+    { sheetName: 'Bảng giá tổng hợp', headers: ['SKU', 'Giá nền', 'Giá bán', 'Ghi chú'],
+      rows: [
+        ['000123', { value: 32000, format: 'currency' }, { value: 31000, format: 'currency' }, ''],
+        ['000124', { value: 0, format: 'currency' }, 'Nhiều mức giá', ''],
+      ] },
+    { sheetName: 'Điều kiện áp dụng', headers: ['SKU', 'Giá trị', 'SL từ', 'SL đến'],
+      rows: [
+        ['000123', { value: 0.05, format: 'percent' }, 10, 49],
+        ['000124', { value: 600000, format: 'currency' }, 0, ''],
+      ] },
+  ]);
+  const xml = workbook.toString('utf8');
+  assert.ok(xml.includes('<c r="B2" s="2"><v>32000</v></c>'));
+  assert.ok(xml.includes('<c r="C2" s="2"><v>31000</v></c>'));
+  assert.ok(xml.includes('<c r="B3" s="2"><v>0</v></c>'));
+  assert.ok(xml.includes('<c r="B2" s="3"><v>0.05</v></c>'));
+  assert.ok(xml.includes('<c r="C2"><v>10</v></c>'));
+  assert.ok(xml.includes('numFmtId="164"'));
+  assert.ok(xml.includes('numFmtId="165"'));
+  const limits = { ...TABULAR_XLSX_LIMITS, maxRows: 12001, maxColumns: 200 };
+  const summary = parseTabularXlsx(workbook, limits, ['SKU', 'Giá nền']);
+  const details = parseTabularXlsx(workbook, limits, ['SKU', 'Giá trị']);
+  assert.deepEqual(summary[1], ['000123', '32000', '31000', '']);
+  assert.equal(summary[2][2], 'Nhiều mức giá');
+  assert.deepEqual(details[1], ['000123', '0.05', '10', '49']);
+  assert.throws(() => createTabularWorkbookXlsx([
+    { headers: ['Giá'], rows: [[{ value: Infinity, format: 'currency' }]] },
+  ]), /WORKBOOK_CELL_INVALID/);
+});
+
 test('multi-sheet operational workbook trims redundant decimal scale', () => {
   const workbook = createTabularWorkbookXlsx([
     {
@@ -69,6 +101,10 @@ test('pricing overview uses one business navigation level and filters price-list
   assert.match(overview, /Điều kiện áp dụng/);
   assert.match(overview, /Nhiều mức giá/);
   assert.match(overview, /refreshAdjustedPriceList/);
+  assert.match(overview, /function exportSummaryValue/);
+  assert.match(overview, /function exportRuleValue/);
+  assert.match(overview, /exportMoney\(summary\.amountMinor\)/);
+  assert.match(overview, /exportQuantity\(decimalKey\(rule\.minQuantity/);
   assert.doesNotMatch(overview, /sourceKey/);
 });
 

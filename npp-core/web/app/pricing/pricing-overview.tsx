@@ -105,6 +105,42 @@ function summarizeRules(rules: RuleView[], priceAt: number) {
   return '—';
 }
 
+// File Excel stores numeric facts, whereas the website renders formatted text.
+function exportMoney(value: string | null | undefined): ExportCell {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  if (!/^(?:0|[1-9]\d{0,18})$/.test(raw)) return raw;
+  const numeric = Number(raw);
+  // Never silently round a very large monetary amount into a different price.
+  return Number.isSafeInteger(numeric) ? { value: numeric, format: 'currency' } : raw;
+}
+
+function exportSummaryValue(rules: RuleView[], at: number): ExportCell {
+  const summary = summarizeCurrentPriceRules(rules, at);
+  if (summary.kind === 'FIXED') return exportMoney(summary.amountMinor);
+  if (summary.kind === 'MULTIPLE') return 'Nhiều mức giá';
+  if (summary.kind === 'CONDITIONAL') return 'Theo điều kiện';
+  return '';
+}
+
+function exportRuleValue(rule: RuleView): ExportCell {
+  if (['PERCENT_DISCOUNT', 'PERCENT_MARKUP'].includes(rule.adjustmentType)) {
+    const raw = String(rule.rateBps ?? '').trim();
+    if (!/^-?\d+(?:\.\d+)?$/.test(raw)) return raw;
+    const bps = Number(raw);
+    return Number.isFinite(bps) ? { value: bps / 10000, format: 'percent' } : raw;
+  }
+  return exportMoney(rule.amountMinor);
+}
+
+function exportQuantity(value: string): ExportCell {
+  if (!value) return '';
+  if (!/^-?(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value)) return value;
+  const numeric = Number(value);
+  const significantDigits = value.replace(/[^0-9]/g, '').replace(/^0+/, '').length;
+  return Number.isFinite(numeric) && significantDigits <= 15 ? numeric : value;
+}
+
 function activeValue(value: unknown) {
   return value === true || String(value ?? '').toLowerCase() === 'true';
 }
@@ -240,7 +276,10 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(href);
 }
 
-async function downloadWorkbook(filename: string, sheets: Array<{ sheetName: string; headers: string[]; rows: string[][] }>) {
+type ExportCell = string | number | Readonly<{ value: number; format: 'currency' | 'percent' }>;
+type ExportSheet = { sheetName: string; headers: string[]; rows: ExportCell[][] };
+
+async function downloadWorkbook(filename: string, sheets: ExportSheet[]) {
   const response = await fetch('/api/data-exchange/workbook-xlsx', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -257,7 +296,7 @@ function detailHeaders() {
   return ['Mã bảng giá', 'Tên bảng giá', 'Loại', 'Kênh bán', 'Nhóm khách', 'Khách hàng', 'Ưu tiên', 'Cách kết hợp', 'Không xét tiếp', 'Mã SP', 'Tên SP', 'SKU', 'Quy cách', 'ĐVT', 'Cách áp dụng', 'Giá trị', 'SL từ', 'SL đến', 'Hiệu lực từ', 'Hiệu lực đến', 'Mã tham chiếu', 'Ghi chú', 'Trạng thái'];
 }
 
-function detailRows(rules: RuleView[], listByCode: Map<string, PriceList>, skuByCode: Map<string, SkuView>) {
+function detailRows(rules: RuleView[], listByCode: Map<string, PriceList>, skuByCode: Map<string, SkuView>): ExportCell[][] {
   return rules
     .slice()
     .sort((a, b) => a.priceListCode.localeCompare(b.priceListCode) || a.sku.localeCompare(b.sku) || Number(a.minQuantity || 0) - Number(b.minQuantity || 0))
@@ -271,7 +310,7 @@ function detailRows(rules: RuleView[], listByCode: Map<string, PriceList>, skuBy
         list?.channel_name ?? '',
         list?.customer_group_name ?? '',
         list?.customer_name ?? '',
-        list ? String(list.priority) : '',
+        list ? list.priority : '',
         list?.stacking_mode === 'STACKABLE' ? 'Có thể kết hợp' : 'Chỉ áp dụng một mức',
         list?.stop_processing ? 'Có' : 'Không',
         sku?.productCode ?? '',
@@ -280,9 +319,9 @@ function detailRows(rules: RuleView[], listByCode: Map<string, PriceList>, skuBy
         sku?.variantName ?? '',
         sku?.unitName ?? '',
         ADJUSTMENT_LABELS[rule.adjustmentType] ?? rule.adjustmentType,
-        ruleValue(rule),
-        decimalKey(rule.minQuantity || '0'),
-        decimalKey(rule.maxQuantity),
+        exportRuleValue(rule),
+        exportQuantity(decimalKey(rule.minQuantity || '0')),
+        exportQuantity(decimalKey(rule.maxQuantity)),
         dateText(rule.effectiveFrom),
         dateText(rule.effectiveTo),
         rule.externalRuleCode,
@@ -461,7 +500,7 @@ export default function PricingOverview() {
     return result.rows.map((row) => fromOfficial(row, listByCode));
   }
 
-  function summarySheet(sourceRules: RuleView[]) {
+  function summarySheet(sourceRules: RuleView[]): ExportSheet {
     const priceAt = Date.now();
     const indexes = indexRules(sourceRules);
     const headers = ['Mã SP', 'Tên SP', 'SKU', 'Quy cách', 'ĐVT', 'Giá nền', ...listColumns.map((list) => `${list.code} · ${list.name}${list.is_active ? '' : ' (Ngừng)'}`)];
@@ -471,13 +510,13 @@ export default function PricingOverview() {
       sku.sku,
       sku.variantName,
       sku.unitName,
-      summarizeRules(indexes.baseBySku.get(sku.sku.toUpperCase()) ?? [], priceAt),
-      ...listColumns.map((list) => summarizeRules(indexes.byListSku.get(ruleKey(list.code, sku.sku)) ?? [], priceAt)),
+      exportSummaryValue(indexes.baseBySku.get(sku.sku.toUpperCase()) ?? [], priceAt),
+      ...listColumns.map((list) => exportSummaryValue(indexes.byListSku.get(ruleKey(list.code, sku.sku)) ?? [], priceAt)),
     ]);
     return { sheetName: 'Bảng giá tổng hợp', headers, rows };
   }
 
-  function selectedListSummarySheet(list: PriceList, sourceRules: RuleView[]) {
+  function selectedListSummarySheet(list: PriceList, sourceRules: RuleView[]): ExportSheet {
     const priceAt = Date.now();
     const indexes = indexRules(sourceRules);
     const headers = ['Mã SP', 'Tên SP', 'SKU', 'Quy cách', 'ĐVT', 'Giá nền', `${list.code} · ${list.name}${list.is_active ? '' : ' (Ngừng)'}`];
@@ -487,8 +526,8 @@ export default function PricingOverview() {
       sku.sku,
       sku.variantName,
       sku.unitName,
-      summarizeRules(indexes.baseBySku.get(sku.sku.toUpperCase()) ?? [], priceAt),
-      summarizeRules(indexes.byListSku.get(ruleKey(list.code, sku.sku)) ?? [], priceAt),
+      exportSummaryValue(indexes.baseBySku.get(sku.sku.toUpperCase()) ?? [], priceAt),
+      exportSummaryValue(indexes.byListSku.get(ruleKey(list.code, sku.sku)) ?? [], priceAt),
     ]);
     return { sheetName: `Tổng hợp ${list.code}`, headers, rows };
   }

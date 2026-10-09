@@ -82,6 +82,26 @@ function inlineCell(ref, value, style = 0) {
   return `<c r="${ref}" t="inlineStr"${style ? ` s="${style}"` : ''}><is><t xml:space="preserve">${xmlEscape(value)}</t></is></c>`;
 }
 
+function numberCell(ref, cell) {
+  const style = cell.format === 'currency' ? 2 : cell.format === 'percent' ? 3 : 0;
+  return '<c r="' + ref + '"' + (style ? ' s="' + style + '"' : '') + '><v>' + cell.value + '</v></c>';
+}
+
+function normalizeCell(value) {
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) throw new Error('WORKBOOK_CELL_INVALID');
+    return { type: 'number', value, format: null };
+  }
+  if (value !== null && typeof value === 'object') {
+    if (Array.isArray(value) || typeof value.value !== 'number'
+      || !Number.isFinite(value.value) || !['currency', 'percent'].includes(value.format)) {
+      throw new Error('WORKBOOK_CELL_INVALID');
+    }
+    return { type: 'number', value: value.value, format: value.format };
+  }
+  return { type: 'text', value: formatOfficeExportValue(value), format: null };
+}
+
 function sanitizeSheetName(value) {
   const normalized = String(value ?? 'Dữ liệu').replace(/[\\/*?:\[\]]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 31);
   return normalized || 'Dữ liệu';
@@ -113,7 +133,7 @@ function normalizeSheets(input, limits) {
     if (new Set(headers.map((value) => value.toLocaleLowerCase('vi'))).size !== headers.length) throw new Error('WORKBOOK_HEADER_DUPLICATE');
     const rows = sheet.rows.map((row) => {
       if (!Array.isArray(row) || row.length > headers.length) throw new Error('WORKBOOK_COLUMN_LIMIT');
-      return headers.map((_, columnIndex) => formatOfficeExportValue(row[columnIndex]));
+      return headers.map((_, columnIndex) => normalizeCell(row[columnIndex]));
     });
     cellCount += headers.length * Math.max(1, rows.length + 1);
     if (cellCount > limits.maxCells) throw new Error('WORKBOOK_CELL_LIMIT');
@@ -132,21 +152,28 @@ function worksheetXml(table) {
   const headerCells = table.headers.map((value, index) => inlineCell(`${columnName(index)}1`, value, 1)).join('');
   const dataRows = table.rows.map((row, rowIndex) => {
     const rowNumber = rowIndex + 2;
-    const cells = row.map((value, columnIndex) => inlineCell(`${columnName(columnIndex)}${rowNumber}`, value)).join('');
+    const cells = row.map((cell, columnIndex) => {
+      const address = columnName(columnIndex) + rowNumber;
+      return cell.type === 'number' ? numberCell(address, cell) : inlineCell(address, cell.value);
+    }).join('');
     return `<row r="${rowNumber}">${cells}</row>`;
   }).join('');
   const emptyRow = table.rows.length === 0
     ? `<row r="2">${table.headers.map((_, index) => inlineCell(`${columnName(index)}2`, '')).join('')}</row>`
     : '';
   const widths = table.headers.map((header, index) => {
-    const dataWidth = table.rows.reduce((max, row) => Math.max(max, String(row[index] ?? '').length), 0);
+    const dataWidth = table.rows.reduce((max, row) => {
+      const cell = row[index];
+      const suffix = cell.format === 'currency' ? ' ₫' : cell.format === 'percent' ? '%' : '';
+      return Math.max(max, String(cell.value ?? '').length + suffix.length);
+    }, 0);
     const width = Math.min(52, Math.max(12, header.length + 2, dataWidth + 2));
     return `<col min="${index + 1}" max="${index + 1}" width="${width}" customWidth="1"/>`;
   }).join('');
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols>${widths}</cols><sheetData><row r="1">${headerCells}</row>${dataRows}${emptyRow}</sheetData><autoFilter ref="${ref}"/></worksheet>`;
 }
 
-const STYLES_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF1F4E78"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
+const STYLES_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="2"><numFmt numFmtId="164" formatCode="#,##0&quot; ₫&quot;"/><numFmt numFmtId="165" formatCode="0.##%"/></numFmts><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><patternFill patternType="gray125"/></fill><patternFill patternType="solid"><fgColor rgb="FF1F4E78"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="165" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
 
 export function createTabularWorkbookXlsx(input, limits = TABULAR_WORKBOOK_XLSX_LIMITS) {
   const sheets = normalizeSheets(input, limits);
@@ -177,6 +204,7 @@ export function workbookXlsxErrorMessage(error) {
     WORKBOOK_CELL_LIMIT: 'Tệp Excel có quá nhiều ô dữ liệu.',
     WORKBOOK_HEADER_INVALID: 'Tiêu đề cột Excel không hợp lệ.',
     WORKBOOK_HEADER_DUPLICATE: 'Tiêu đề cột Excel bị trùng.',
+    WORKBOOK_CELL_INVALID: 'Ô dữ liệu Excel không hợp lệ.',
     WORKBOOK_OUTPUT_LIMIT: 'Tệp Excel vượt giới hạn dung lượng cho phép.',
   };
   return messages[code] ?? 'Không tạo được tệp Excel.';
