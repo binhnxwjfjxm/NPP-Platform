@@ -183,7 +183,7 @@ function salesOrderListQuery({
  WHERE so.installation_id = $1`;
  ({query}=appendWarehouseScope(query,params,warehouseIds));
  ({query}=appendEmployeeScope(query,params,{employeeId,actorId,allowAllEmployees}));
- if (scope === 'month') {
+ if (scope === 'month' || scope === 'range') {
    params.push(dateFrom, dateTo);
    query += ` AND so.created_at >= $${params.length-1}::timestamptz AND so.created_at < $${params.length}::timestamptz`;
  }
