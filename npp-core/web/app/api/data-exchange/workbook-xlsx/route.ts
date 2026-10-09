@@ -4,6 +4,7 @@ import {
   createTabularWorkbookXlsx,
   workbookXlsxErrorMessage,
 } from '../../../../lib/tabular-workbook-xlsx.js';
+import type { WorkbookSheetInput } from '../../../../lib/tabular-workbook-xlsx.js';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,7 +21,7 @@ export async function POST(request: NextRequest) {
       return {
         sheetName: value.sheetName === undefined ? undefined : String(value.sheetName ?? ''),
         headers: value.headers.map((item) => String(item ?? '')),
-        rows: value.rows as Array<Array<string | number | boolean | null | undefined>>,
+        rows: value.rows as WorkbookSheetInput['rows'],
       };
     });
     const workbook = createTabularWorkbookXlsx(sheets);
