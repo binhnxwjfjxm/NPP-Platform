@@ -41,7 +41,7 @@ export async function loadSalesOrderBootstrap(
   const normalizedRequestId = resolveSalesOrderRequestId(requestId);
   const [orders, customers, organization, products, permissions] = await Promise.allSettled([
     listSalesOrders<SalesOrder>(normalizedRequestId, {
-      limit: 100,
+      limit: 1000,
       ...(options.search?.trim() ? { search: options.search.trim().slice(0, 256) } : {}),
     }),
     listAllCustomers<Customer>(normalizedRequestId, new URLSearchParams({ active: 'true', limit: '1000' })),

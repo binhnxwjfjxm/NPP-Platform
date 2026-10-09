@@ -15,7 +15,7 @@ test('danh sách đơn giữ thứ tự ngày tạo khi đơn cũ thay đổi tr
   const source = await readFile(workspacePath, 'utf8');
   assert.match(source, /function sortOrdersByCreatedAt/);
   assert.match(source, /right\.createdAt\.localeCompare\(left\.createdAt\)/);
-  assert.match(source, /sortOrdersByCreatedAt\(next\)/);
+  assert.match(source, /const sorted = sortOrdersByCreatedAt\(next\)/);
   assert.match(source, /return sortOrdersByCreatedAt\(next\)/);
   assert.doesNotMatch(source, /right\.updatedAt\.localeCompare\(left\.updatedAt\)/);
 });

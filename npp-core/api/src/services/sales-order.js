@@ -620,10 +620,6 @@ async function applySnapshotAndReload(client, {
   return enrichResult(client, requestContext, reloaded);
 }
 
-export async function summarizeSalesOrders(client,input){
- return legacy.summarizeSalesOrders(client,input);
-}
-
 export async function listSalesOrders(client, input) {
   const result = await legacy.listSalesOrders(client, input);
   if (!result?.ok || !Array.isArray(result.salesOrders) || result.salesOrders.length === 0) return result;

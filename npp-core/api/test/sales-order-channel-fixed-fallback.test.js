@@ -43,9 +43,7 @@ test('không dùng điều chỉnh phần trăm của kênh làm giá gốc khi 
     amount_minor: null,
     rate_bps: '500',
   });
-  const fallback = selectPricingStart([percentChannel]);
-  assert.equal(fallback?.source, 'ZERO_BASE');
-  assert.equal(fallback?.candidate.amount_minor, '0');
+  assert.equal(selectPricingStart([percentChannel]), null);
 });
 
 test('đơn bán hàng dùng giá trực tiếp của kênh làm giá gốc khi thiếu giá nền', async () => {

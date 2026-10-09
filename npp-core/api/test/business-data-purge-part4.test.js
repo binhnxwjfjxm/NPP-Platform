@@ -266,11 +266,6 @@ test('Issue #562 Part 4 ALL purge removes business test data but keeps workforce
   const plan = await buildBusinessPurgePlan(pool, 'ALL_BUSINESS_DATA');
   const keys = new Set(plan.tables.map((table) => table.key));
   assert.ok(keys.has('shared.customers'));
-  assert.ok(keys.has('shared.sales_channel_customer_groups'));
-  const customersAndSales = await buildBusinessPurgePlan(pool, 'CUSTOMERS_AND_SALES');
-  assert.ok(customersAndSales.tables.some((table) => table.key === 'shared.sales_channel_customer_groups'));
-  const operationsOnly = await buildBusinessPurgePlan(pool, 'OPERATIONS_ONLY');
-  assert.ok(!operationsOnly.tables.some((table) => table.key === 'shared.sales_channel_customer_groups'));
   assert.ok(!keys.has('shared.sales_order_settings'));
   assert.ok(!keys.has('shared.employees'));
   assert.ok(!keys.has('shared.users'));

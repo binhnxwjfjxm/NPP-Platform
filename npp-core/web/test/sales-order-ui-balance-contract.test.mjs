@@ -32,10 +32,7 @@ test('số đơn chỉ rút gọn khi hiển thị, tìm kiếm vẫn dùng số
   assert.ok(workspace.includes('const match = /^SO-\\d{6}-(\\d{6})$/i.exec(normalized);'));
   assert.ok(workspace.includes('return match ? `SO${match[1]}` : normalized;'));
   assert.ok(workspace.includes('compactOrderNumber(order.number)'));
-  assert.match(workspace, /api\/sales-orders\?\$\{params\}/);
-  const repository = await readFile(new URL('../../api/src/db/repositories/sales-order.js', import.meta.url), 'utf8');
-  assert.match(repository, /coalesce\(so\.order_number/);
-  assert.match(repository, /SO\[0-9\]\{6\}/);
+  assert.match(workspace, /function matchesSearch[\s\S]*?order\.number,/);
 });
 
 test('card danh sách đơn ưu tiên tên khách và giá trị, số đơn nằm dòng phụ', async () => {

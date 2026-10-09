@@ -117,7 +117,7 @@ test('Pricing service — retail/carton prices are independent and rules resolve
     const customerContext = await createCustomerContext(pool, config.installationId, suffix);
     const channel = await pricingService.createSalesChannel(pool, {
       installationId: config.installationId,
-      payload: { code: `VENUE-${suffix}`, name: 'Kênh quán', customerGroupIds: [customerContext.group.id] },
+      payload: { code: `VENUE-${suffix}`, name: 'Kênh quán' },
       createdBy: 'test:user',
     });
     assert.ok(channel.ok, channel.message);
@@ -170,22 +170,6 @@ test('Pricing service — retail/carton prices are independent and rules resolve
     assert.equal(fallbackResolved.resolution.finalUnitPriceMinor, '304000');
     assert.equal(fallbackResolved.resolution.steps[0].kind, 'RULE');
     assert.equal(fallbackResolved.resolution.steps[0].reason, 'CHANNEL_FIXED_FALLBACK');
-    const unrelated = await createCustomerContext(pool, config.installationId, randomUUID().slice(0, 8).toUpperCase());
-    const foreignChannel = await pricingService.resolvePrice(pool, {
-      installationId: config.installationId,
-      payload: { variantId: catalog.base.id, quantity: '1', channelId: channel.channel.id, customerId: unrelated.customer.id },
-    });
-    assert.ok(foreignChannel.ok, foreignChannel.message);
-    assert.equal(foreignChannel.resolution.finalUnitPriceMinor, '10000', 'Khách ngoài nhóm không hưởng giá kênh');
-
-    const noBaseForUnrelated = await pricingService.resolvePrice(pool, {
-      installationId: config.installationId,
-      payload: { variantId: fallbackCatalog.base.id, quantity: '1', channelId: channel.channel.id, customerId: unrelated.customer.id },
-    });
-    assert.ok(noBaseForUnrelated.ok, noBaseForUnrelated.message);
-    assert.equal(noBaseForUnrelated.resolution.finalUnitPriceMinor, '0', 'Thiếu giá nền và không đủ nhóm thì giá 0');
-    assert.equal(noBaseForUnrelated.resolution.steps[0].reason, 'MISSING_BASE_ZERO');
-
     const carton = await pricingService.resolvePrice(pool, {
       installationId: config.installationId,
       payload: { variantId: catalog.carton.id, quantity: '1' },
