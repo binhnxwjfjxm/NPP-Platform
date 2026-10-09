@@ -13,7 +13,8 @@ test('lịch sử đơn tìm qua backend, phân trang, không giới hạn tìm 
  assert.match(workspace, /monthCacheRef\.current\.set\(cacheKey, complete\)/);
  assert.match(workspace, /matchesSalesOrderSearch\(order, search\)/);
  assert.match(workspace, /Tìm toàn bộ lịch sử/);
- assert.match(workspace, /Đơn chưa hoàn thành/);
+ assert.doesNotMatch(workspace, /pendingFilterRow/);
+ assert.match(workspace, /<div className=\{styles\.periodControls\}/);
  assert.match(workspace, /search\.trim\(\)/);
  assert.match(workspace, /stage: workStage/);
  assert.match(workspace, /offsetRef\.current/);

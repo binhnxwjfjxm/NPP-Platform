@@ -34,10 +34,15 @@ type OrderOperationError = Readonly<{
 type StockIssueKeyState = Readonly<{ orderId: string; stateKey: string; key: string }>;
 type SalesOrderListValue = SalesOrder & Readonly<{ total?: string }>;
 type SalesOrderSummary = Readonly<{ total: number; active: number; preparing: number; waiting_delivery: number; completed: number; cancelled: number }>;
+function lastDayOfVietnamMonth(key: string): string {
+  const [year, month] = key.split('-').map(Number);
+  return new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+}
+
 const SALES_PAGE_SIZE = 50;
 const MONTH_BATCH_SIZE = 1000;
 const LIST_RENDER_BATCH = 80;
-type OrderPeriodMode = 'month' | 'range' | 'pending' | 'history';
+type OrderPeriodMode = 'month' | 'range' | 'history';
 
 const WORK_STAGE_OPTIONS: ReadonlyArray<Readonly<{ value: OrderWorkStage; label: string }>> = [
   { value: 'all', label: 'Tất cả trạng thái' },
@@ -169,8 +174,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
     try { vietnamDateRangeBounds(rangeFrom, rangeTo); return null; }
     catch (error) { return error instanceof Error ? error.message : 'Khoảng thời gian không hợp lệ'; }
   }, [periodMode, rangeFrom, rangeTo]);
-  const periodKey = periodMode === 'range' ? `${rangeFrom}|${rangeTo}`
-    : periodMode === 'pending' ? initialBootstrap.currentMonth : monthKey;
+  const periodKey = periodMode === 'range' ? `${rangeFrom}|${rangeTo}` : monthKey;
   const [periodLoaded, setPeriodLoaded] = useState(false);
   const [renderCount, setRenderCount] = useState(LIST_RENDER_BATCH);
   const monthCacheRef = useRef(new Map<string, SalesOrder[]>());
@@ -252,7 +256,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
 
   // A month is loaded in bounded server pages, but never capped at one page.
   // Only a completed snapshot is cached, so an interrupted request cannot hide orders.
-  async function loadPeriod(kind: 'month' | 'range' | 'pending', key: string, force = false) {
+  async function loadPeriod(kind: 'month' | 'range', key: string, force = false) {
     const cacheKey = `${kind}:${key}`;
     const cached = !force ? monthCacheRef.current.get(cacheKey) : undefined;
     const run = ++listRequestRef.current;
@@ -289,12 +293,8 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
           scope: kind, compact: '1', limit: String(MONTH_BATCH_SIZE),
         });
         if (cursorId) params.set('cursorId', cursorId);
-        if (kind === 'month' || kind === 'range') {
-          params.set('dateFrom', dateFrom);
-          params.set('dateTo', dateTo);
-        } else {
-          params.set('beforeDate', dateFrom);
-        }
+        params.set('dateFrom', dateFrom);
+        params.set('dateTo', dateTo);
         const next = await apiRequest<SalesOrder[]>(`/api/sales-orders?${params}`, { signal: controller.signal });
         if (run !== listRequestRef.current || controller.signal.aborted) return;
         for (const item of next) {
@@ -479,13 +479,9 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
   function mergeOrder(order: SalesOrder) {
     const bounds = periodMode === 'range'
       ? (customRangeError ? null : vietnamDateRangeBounds(rangeFrom, rangeTo))
-      : vietnamMonthBounds(periodMode === 'pending' ? initialBootstrap.currentMonth : monthKey);
-    const belongs = periodMode === 'history'
-      ? true
-      : !bounds ? false
-        : periodMode === 'pending'
-          ? order.createdAt < bounds.dateFrom && !['completed', 'cancelled'].includes(orderWorkStage(order))
-          : order.createdAt >= bounds.dateFrom && order.createdAt < bounds.dateTo;
+      : vietnamMonthBounds(monthKey);
+    const belongs = periodMode === 'history' ? true
+      : bounds !== null && order.createdAt >= bounds.dateFrom && order.createdAt < bounds.dateTo;
     setOrders((current) => {
       const without = current.filter((item) => item.id !== order.id);
       const next = belongs ? [order, ...without] : without;
@@ -620,7 +616,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
         )}
 
         <section className={styles.summaryGrid} aria-label="Tổng hợp đơn bán hàng">
-          <article><strong>{allStageCounts?.all ?? '—'}</strong><span>{periodMode === 'history' ? 'Đơn trong kết quả tìm' : periodMode === 'pending' ? 'Đơn tồn từ trước' : periodMode === 'range' ? 'Đơn trong khoảng đã chọn' : 'Đơn trong tháng'}</span></article>
+          <article><strong>{allStageCounts?.all ?? '—'}</strong><span>{periodMode === 'history' ? 'Đơn trong kết quả tìm' : periodMode === 'range' ? 'Đơn trong khoảng đã chọn' : 'Đơn trong tháng'}</span></article>
           <article><strong>{allStageCounts?.active ?? '—'}</strong><span>Đang xử lý</span></article>
           <article><strong>{allStageCounts?.waiting_delivery ?? '—'}</strong><span>Chờ giao</span></article>
           <article><strong>{allStageCounts?.completed ?? '—'}</strong><span>Đã hoàn thành</span></article>
@@ -667,54 +663,50 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
               </div>
             </div>
           </div>
-          <div className={styles.pendingFilterRow}>
-            <span className={styles.filterLabel}>Công việc</span>
-            <button
-              type="button"
-              aria-pressed={periodMode === 'pending'}
-              className={periodMode === 'pending' ? styles.segmentActive : styles.segment}
-              onClick={() => {
-                setWorkStage('all');
-                setPeriodMode(periodMode === 'pending'
-                  ? periodChoice === 'history' ? 'history' : periodChoice === 'custom' ? 'range' : 'month'
-                  : 'pending');
-              }}
-            >Đơn chưa hoàn thành</button>
-            {periodMode === 'pending' && <span className={styles.pendingHint}>Các đơn từ trước tháng này vẫn cần xử lý</span>}
-          </div>
         </section>
 
         <div className={styles.toolbar}>
-          {periodMode === 'pending'
-            ? <div className={styles.pendingScopeLabel}><span>Phạm vi đang xem</span><strong>Đơn tồn đọng từ trước tháng này</strong></div>
-            : <label><span>Thời gian</span>
-                <select value={periodChoice} onChange={(event) => {
-                  const value = event.target.value as 'current' | 'previous' | 'custom' | 'history';
-                  if (periodMode === 'history' && value !== 'history') setSearch('');
-                  if (value !== 'custom') setWorkStage('all');
-                  setPeriodChoice(value);
-                  if (value === 'history') setPeriodMode('history');
-                  else if (value === 'custom') setPeriodMode('range');
-                  else {
-                    setPeriodMode('month');
-                    setMonthKey(value === 'current'
-                      ? initialBootstrap.currentMonth
-                      : previousVietnamMonth(initialBootstrap.currentMonth));
-                  }
-                }}>
-                  <option value="current">Tháng này</option>
-                  <option value="previous">Tháng trước</option>
-                  <option value="custom">Tùy chọn khoảng thời gian</option>
-                  <option value="history">Tìm toàn bộ lịch sử</option>
-                </select>
-              </label>}
-          {periodMode === 'range' && <div className={styles.rangeFields}>
-            <label><span>Từ ngày</span><input aria-label="Từ ngày" type="date" value={rangeFrom}
-              onChange={(event) => setRangeFrom(event.target.value)} /></label>
-            <label><span>Đến ngày</span><input aria-label="Đến ngày" type="date" value={rangeTo}
-              onChange={(event) => setRangeTo(event.target.value)} /></label>
-            {customRangeError && <span className={styles.rangeError} role="status">{customRangeError}</span>}
-          </div>}
+          <div className={styles.periodControls} aria-label="Lọc theo thời gian">
+            <label><span>Thời gian</span>
+              <select value={periodChoice} onChange={(event) => {
+                const value = event.target.value as 'current' | 'previous' | 'custom' | 'history';
+                if (periodMode === 'history' && value !== 'history') setSearch('');
+                if (value !== 'custom') setWorkStage('all');
+                setPeriodChoice(value);
+                if (value === 'history') {
+                  setPeriodMode('history');
+                } else if (value === 'custom') {
+                  setPeriodMode('range');
+                } else {
+                  const month = value === 'current'
+                    ? initialBootstrap.currentMonth : previousVietnamMonth(initialBootstrap.currentMonth);
+                  setMonthKey(month);
+                  setRangeFrom(`${month}-01`);
+                  setRangeTo(value === 'current' ? getVietnamDateKey(new Date()) : lastDayOfVietnamMonth(month));
+                  setPeriodMode('month');
+                }
+              }}>
+                <option value="current">Tháng này</option>
+                <option value="previous">Tháng trước</option>
+                <option value="custom">Theo khoảng ngày</option>
+                <option value="history">Tìm toàn bộ lịch sử</option>
+              </select>
+            </label>
+            <label><span>Từ ngày</span>
+              <input aria-label="Từ ngày" type="date" value={rangeFrom} onChange={(event) => {
+                setRangeFrom(event.target.value);
+                setPeriodChoice('custom');
+                setPeriodMode('range');
+              }} />
+            </label>
+            <label><span>Đến ngày</span>
+              <input aria-label="Đến ngày" type="date" value={rangeTo} onChange={(event) => {
+                setRangeTo(event.target.value);
+                setPeriodChoice('custom');
+                setPeriodMode('range');
+              }} />
+            </label>
+          </div>
           <label className={styles.orderSearchField}><span>Tìm đơn</span><input value={search} onChange={(event) => {
               const next = event.target.value;
               setSearch(next);
@@ -723,9 +715,10 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
                 setPeriodChoice(monthKey === previousVietnamMonth(initialBootstrap.currentMonth) ? 'previous' : 'current');
               }
             }} placeholder="Mã đơn hoặc tên khách hàng" /></label>
-          <label><span>Nguồn</span><select value={source} onChange={(event) => setSource(event.target.value as OrderSourceFilter)}><option value="all">Tất cả</option><option value="internal">Công Ty</option><option value="mcp">Nhân viên thị trường</option><option value="customer">Khách hàng</option></select></label>
-          <button type="button" onClick={() => void refreshOrders(true)} disabled={refreshing}>{refreshing ? 'Đang làm mới…' : 'Làm mới'}</button>
+          <label className={styles.sourceFilterField}><span>Nguồn</span><select value={source} onChange={(event) => setSource(event.target.value as OrderSourceFilter)}><option value="all">Tất cả</option><option value="internal">Công Ty</option><option value="mcp">Nhân viên thị trường</option><option value="customer">Khách hàng</option></select></label>
+          <button className={styles.refreshOrdersButton} type="button" onClick={() => void refreshOrders(true)} disabled={refreshing}>{refreshing ? 'Đang làm mới…' : 'Làm mới'}</button>
         </div>
+        {customRangeError && <p className={styles.rangeError} role="status">{customRangeError}</p>}
 
         <div className={styles.contentGrid}>
           <section className={styles.listPanel} aria-label="Danh sách đơn bán hàng">

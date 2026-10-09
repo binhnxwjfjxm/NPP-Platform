@@ -43,15 +43,26 @@
 @media(max-width:780px){.quantityStepper button{height:34px;min-height:34px!important}.quantityStepper input,.directPriceInput,.discountControls input,.discountControls select{min-height:34px!important}}
 @media(max-width:520px){.discountCell{grid-column:1/-1}.unitCell,.quantityCell,.priceCell,.discountCell{justify-content:flex-start}.discountControls{max-width:250px}}
 
-/* Search remains the primary control when a period selector is present. */
-.toolbar label:first-child{flex:0 1 175px}
-.toolbar .orderSearchField{flex:1;min-width:205px}
-.pendingFilterRow{display:flex;align-items:center;flex-wrap:wrap;gap:.55rem;padding:.55rem .1rem 0;border-top:1px solid #edf0ee}
-.pendingHint{font-size:.79rem;color:#596a60}
-.pendingScopeLabel{display:grid;gap:.35rem;min-width:185px;font-size:.83rem}
-.pendingScopeLabel>span{font-weight:700;color:#4e5865}
-.rangeFields{display:flex;flex-wrap:wrap;gap:.5rem;align-items:flex-end}
-.rangeFields label{display:grid;gap:.35rem;min-width:150px}
-.rangeFields input[type='date']{width:100%;min-width:0}
-.rangeError{flex-basis:100%;font-size:.8rem;color:#a23a32}
-@media(max-width:780px){.toolbar label:first-child,.toolbar .orderSearchField{min-width:0;flex:initial}.rangeFields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.5rem}.rangeFields label{min-width:0}.rangeError{grid-column:1/-1}}
+/* Keep preset + both dates in one permanent, non-wrapping control group. */
+.toolbar{display:flex;align-items:flex-end;flex-wrap:wrap;column-gap:.62rem;row-gap:.5rem;min-width:0}
+.toolbar>label{min-width:0}
+.toolbar .periodControls{display:grid;grid-template-columns:minmax(185px,1.35fr) repeat(2,minmax(138px,1fr));align-items:end;gap:.5rem;flex:0 0 492px;min-width:0;max-width:100%}
+.toolbar .periodControls label{display:grid;gap:.35rem;min-width:0}
+.toolbar .periodControls label:first-child{flex:none}
+.toolbar .periodControls input,.toolbar .periodControls select{width:100%;min-width:0}
+.toolbar .orderSearchField{flex:1 1 195px;min-width:170px}
+.toolbar .orderSearchField input{width:100%;min-width:0}
+.toolbar .sourceFilterField{flex:0 1 145px;min-width:125px}
+.toolbar .sourceFilterField select{width:100%;min-width:0}
+.toolbar .refreshOrdersButton{flex:0 0 auto;white-space:nowrap}
+.rangeError{margin:-.25rem 0 0;color:#a23a32;font-size:.8rem}
+@media(max-width:780px){
+  .toolbar{display:flex;flex-wrap:wrap;align-items:flex-end}
+  .toolbar .periodControls{flex:1 1 100%;width:100%;grid-template-columns:minmax(166px,1.35fr) repeat(2,minmax(126px,1fr))}
+  .toolbar .orderSearchField{flex:1 1 220px;min-width:0}
+  .toolbar .sourceFilterField{flex:0 1 132px;min-width:0}
+}
+@media(max-width:465px){
+  .toolbar .periodControls{display:grid;grid-template-columns:154px 132px 132px;overflow-x:auto;padding-bottom:.22rem}
+  .toolbar .orderSearchField{flex-basis:100%}
+}
