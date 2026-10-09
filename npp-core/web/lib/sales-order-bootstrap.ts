@@ -13,6 +13,7 @@ import {
   resolveSalesOrderRequestId,
 } from './sales-order-gateway';
 import { loadSalesOrderPermissionKeys } from './sales-order-context';
+import { getVietnamMonthKey, vietnamMonthBounds } from './sales-order-period';
 
 export type SalesOrderBootstrap = {
   salesOrders: SalesOrder[];
@@ -28,6 +29,8 @@ export type SalesOrderBootstrap = {
     permissions: string | null;
   };
   checkedAt: string;
+  currentMonth: string;
+  initialSearch: string;
 };
 
 export type SalesOrderBootstrapOptions = Readonly<{
@@ -39,10 +42,13 @@ export async function loadSalesOrderBootstrap(
   options: SalesOrderBootstrapOptions = {},
 ): Promise<SalesOrderBootstrap> {
   const normalizedRequestId = resolveSalesOrderRequestId(requestId);
+  const currentMonth = getVietnamMonthKey(new Date());
+  const bounds = vietnamMonthBounds(currentMonth);
   const [orders, customers, organization, products, permissions] = await Promise.allSettled([
     listSalesOrders<SalesOrder>(normalizedRequestId, {
-      limit: 50,
-      ...(options.search?.trim() ? { search: options.search.trim().slice(0, 256) } : {}),
+      limit: 1000,
+      scope: 'month', compact: true,
+      dateFrom: bounds.dateFrom, dateTo: bounds.dateTo,
     }),
     listAllCustomers<Customer>(normalizedRequestId, new URLSearchParams({ active: 'true', limit: '1000' })),
     loadOrganizationSnapshot(),
@@ -68,5 +74,7 @@ export async function loadSalesOrderBootstrap(
       permissions: permissions.status === 'rejected' ? 'Không tải được quyền bán hàng' : null,
     },
     checkedAt: new Date().toISOString(),
+    currentMonth,
+    initialSearch: options.search?.trim() ?? '',
   };
 }

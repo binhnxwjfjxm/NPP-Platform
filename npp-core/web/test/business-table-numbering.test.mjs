@@ -133,7 +133,7 @@ test('sales order and inventory operations keep their visible sequence on the sh
   const fulfillment = read('app/inventory/fulfillment/fulfillment-workspace.tsx');
   const transfers = read('app/inventory/transfers/transfer-workspace.tsx');
 
-  assert.match(salesOrders, /filtered\.map\(\(order, rowIndex\)/);
+  assert.match(salesOrders, /visibleOrders\.map\(\(order, rowIndex\)/);
   assert.match(salesOrders, /BusinessSequenceNumber rowIndex=\{rowIndex\}/);
   assert.match(salesOrderDetail, /fulfillment\.lines\.map\(\(line, rowIndex\)/);
   assert.match(salesOrderDetail, /\(current\.lines \?\? \[\]\)\.map\(\(line, rowIndex\)/);

@@ -25,6 +25,12 @@ export async function GET(request: NextRequest) {
       source: (request.nextUrl.searchParams.get('source') || 'all') as 'all' | 'internal' | 'mcp' | 'customer',
       lane: (request.nextUrl.searchParams.get('lane') || 'all') as 'all' | 'counter' | 'manual' | 'trip',
       stage: (request.nextUrl.searchParams.get('stage') || 'all') as 'all' | 'active' | 'preparing' | 'waiting_delivery' | 'completed' | 'cancelled',
+      scope: (request.nextUrl.searchParams.get('scope') || 'history') as 'month' | 'pending' | 'history',
+      dateFrom: request.nextUrl.searchParams.get('dateFrom') || undefined,
+      dateTo: request.nextUrl.searchParams.get('dateTo') || undefined,
+      beforeDate: request.nextUrl.searchParams.get('beforeDate') || undefined,
+      cursorId: request.nextUrl.searchParams.get('cursorId') || undefined,
+      compact: request.nextUrl.searchParams.get('compact') === '1',
     });
     return salesOrderResponse(data, requestId);
   } catch (error) {

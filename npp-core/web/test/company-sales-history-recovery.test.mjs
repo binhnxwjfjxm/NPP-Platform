@@ -15,9 +15,10 @@ test('lỗi thống kê độc lập với danh sách và thay đổi bộ lọc
 });
 
 test('không giả tổng đơn bằng 50 đơn trên trang và không giữ banner lỗi cũ', () => {
-  assert.match(source, /summary\?\.total \?\? '—'/);
+  assert.match(source, /allStageCounts\?\.all \?\? '—'/);
+  assert.match(source, /summary\.total/);
   assert.doesNotMatch(source, /summary\?\.total \?\? orders\.length/);
-  assert.match(source, /Tổng số đang cập nhật/);
+  assert.match(source, /Đang tải đủ đơn trong phạm vi/);
   assert.match(source, /name !== 'orders'/);
   assert.match(source, /canLoadMore/);
 });

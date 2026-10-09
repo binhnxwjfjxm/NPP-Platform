@@ -13,7 +13,10 @@ test('8.1 Sales drill-down search reaches the canonical server-side list query',
   assert.match(page, /searchParams/);
   assert.match(page, /loadSalesOrderBootstrap\(requestId, \{ search \}\)/);
   assert.match(bootstrap, /listSalesOrders<.*>\(normalizedRequestId, \{/s);
-  assert.match(bootstrap, /search: options\.search\.trim\(\)\.slice\(0, 256\)/);
+  assert.match(bootstrap, /initialSearch: options\.search\?\.trim\(\) \?\? ''/);
+  const workspace = source('../app/sales/sales-orders/SalesOrderWorkspace.tsx');
+  assert.match(workspace, /useState\(initialBootstrap\.initialSearch\)/);
+  assert.match(workspace, /scope: 'history', compact: '1'/);
   assert.match(gateway, /ALLOWED_QUERY_KEYS.*'search'/);
   assert.match(gateway, boundedSearch);
 });

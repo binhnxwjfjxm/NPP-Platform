@@ -606,6 +606,12 @@ export async function handleSalesOrderRoutes(req, res, options) {
         source: url.searchParams.get('source'),
         lane: url.searchParams.get('lane'),
         stage: url.searchParams.get('stage'),
+        scope: url.searchParams.get('scope'),
+        dateFrom: url.searchParams.get('dateFrom'),
+        dateTo: url.searchParams.get('dateTo'),
+        beforeDate: url.searchParams.get('beforeDate'),
+        cursorId: url.searchParams.get('cursorId'),
+        compact: url.searchParams.get('compact') === '1',
         limit: parseInteger(url.searchParams.get('limit'), 100, 1000),
         offset: parseInteger(url.searchParams.get('offset'), 0, 2000000000),
       });

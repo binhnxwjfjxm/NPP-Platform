@@ -369,6 +369,27 @@ async function loadOrderDetail(client, { requestContext, id, forUpdate = false }
   return { ok: true, salesOrder: mapOrder(loaded.order, Object.freeze(mapped)) };
 }
 
+function validOrderTime(value) {
+  return typeof value === 'string'
+    && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)
+    && Number.isFinite(Date.parse(value))
+    && new Date(value).toISOString() === value;
+}
+
+function mapOrderList(row) {
+  return Object.freeze({
+    id: row.id, number: row.order_number ?? null, status: row.status,
+    sourceType: row.source_type, sourceId: row.source_id ?? null,
+    customerId: row.customer_id, customerCode: row.customer_code,
+    customerName: row.walk_in_display_name ?? row.customer_name,
+    warehouseId: row.warehouse_id, deliveryMode: row.delivery_mode,
+    deliveryExecutionMode: row.delivery_execution_mode ?? null,
+    fulfillmentStatus: row.fulfillment_status, deliveryStatus: row.delivery_status,
+    createdAt: row.created_at, updatedAt: row.updated_at,
+    total: String(row.total ?? '0'),
+  });
+}
+
 function validateList(input) {
   const deliveryMode = input.deliveryMode ? String(input.deliveryMode).trim().toUpperCase() : null;
   if (input.status && !STATUSES.has(input.status)) return failure('INVALID_STATUS', 'Sales order status is invalid');
@@ -376,6 +397,17 @@ function validateList(input) {
   if (input.customerId && !isUuid(input.customerId)) return failure('INVALID_CUSTOMER_ID', 'Customer ID is invalid');
   if (input.warehouseId && (!isUuid(input.warehouseId) || !warehouseAllowed(input.requestContext, input.warehouseId))) {
     return failure('WAREHOUSE_SCOPE_DENIED', 'Warehouse is outside the authorized scope');
+  }
+  const scope = String(input.scope ?? 'history').toLowerCase();
+  if (!['history', 'month', 'pending'].includes(scope)) return failure('INVALID_ORDER_SCOPE', 'Phạm vi xem đơn không hợp lệ');
+  if (scope === 'month' && (!validOrderTime(input.dateFrom) || !validOrderTime(input.dateTo)
+    || Date.parse(input.dateTo) <= Date.parse(input.dateFrom)
+    || Date.parse(input.dateTo) - Date.parse(input.dateFrom) > 32 * 86400000)) {
+    return failure('INVALID_ORDER_PERIOD', 'Tháng cần xem không hợp lệ');
+  }
+  if (scope === 'pending' && !validOrderTime(input.beforeDate)) return failure('INVALID_ORDER_PERIOD', 'Thời gian xem đơn chưa hoàn thành không hợp lệ');
+  if (input.cursorId && (!isUuid(input.cursorId) || !['month', 'pending'].includes(scope))) {
+    return failure('INVALID_ORDER_CURSOR', 'Trang danh sách đơn không hợp lệ');
   }
   const search = text(input.search, 256, false);
   if (input.search && search === null) return failure('INVALID_SEARCH', 'Search must not exceed 256 characters');
@@ -385,7 +417,7 @@ function validateList(input) {
   if (!['all', 'internal', 'mcp', 'customer'].includes(source)) return failure('INVALID_SOURCE_FILTER', 'Nguồn đơn không hợp lệ');
   if (!['all', 'counter', 'manual', 'trip'].includes(lane)) return failure('INVALID_LANE_FILTER', 'Hình thức giao không hợp lệ');
   if (!['all', 'active', 'preparing', 'waiting_delivery', 'completed', 'cancelled'].includes(stage)) return failure('INVALID_STAGE_FILTER', 'Trạng thái đơn không hợp lệ');
-  return { ok: true, search, deliveryMode, source, lane, stage };
+  return { ok: true, search, deliveryMode, source, lane, stage, scope };
 }
 
 export async function listSalesOrders(client, input) {
@@ -403,10 +435,13 @@ export async function listSalesOrders(client, input) {
     source: validation.source,
     lane: validation.lane,
     stage: validation.stage,
+    scope: validation.scope, compact: input.compact === true,
+    dateFrom: input.dateFrom, dateTo: input.dateTo, beforeDate: input.beforeDate,
+    cursorId: input.cursorId ?? null,
     limit: Math.max(1, Math.min(1000, Number(input.limit) || 100)),
     offset: Math.max(0, Number(input.offset) || 0),
   });
-  return Object.freeze({ ok: true, salesOrders: Object.freeze(rows.map((row) => mapOrder(row))) });
+  return Object.freeze({ ok: true, salesOrders: Object.freeze(rows.map((row) => input.compact === true ? mapOrderList(row) : mapOrder(row))) });
 }
 
 export async function summarizeSalesOrders(client, input) {
