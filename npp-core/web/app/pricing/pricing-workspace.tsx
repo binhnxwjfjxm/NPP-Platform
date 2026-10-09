@@ -132,6 +132,7 @@ function adjustmentValue(item: PriceListItem) {
 export default function PricingWorkspace({ initialTab = 'channels' }: { initialTab?: PricingWorkspaceTab }) {
   const router = useRouter();
   const [tab, setTab] = useState<PricingWorkspaceTab>(initialTab);
+  const [showStopped, setShowStopped] = useState(false);
   const [editorModal, setEditorModal] = useState<EditorModal>(null);
   const [channels, setChannels] = useState<SalesChannel[]>([]);
   const [lists, setLists] = useState<PriceList[]>([]);
@@ -153,7 +154,16 @@ export default function PricingWorkspace({ initialTab = 'channels' }: { initialT
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
+  // Giữ nguyên dữ liệu các mục đã ngừng; chỉ lọc ở danh sách quản lý.
+  const visibleChannels = channels.filter((channel) => showStopped || channel.is_active);
+  const visibleLists = lists.filter((list) => showStopped || list.is_active);
+  const visibleItems = items.filter((item) => showStopped || item.is_active);
   const selectedList = lists.find((item) => item.id === selectedListId) ?? null;
+  const stoppedCounts = {
+    channels: channels.filter((channel) => !channel.is_active).length,
+    lists: lists.filter((list) => !list.is_active).length,
+    items: items.filter((item) => !item.is_active).length,
+  };
   const usesAmount = ['FIXED_PRICE', 'AMOUNT_DISCOUNT', 'AMOUNT_MARKUP'].includes(itemForm.adjustmentType);
 
   async function loadCoreData() {
@@ -169,7 +179,7 @@ export default function PricingWorkspace({ initialTab = 'channels' }: { initialT
     setProducts(nextProducts);
     setGroups(nextGroups);
     setCustomers(nextCustomers);
-    if (!selectedListId && nextLists.length > 0) setSelectedListId(nextLists[0].id);
+    if (!selectedListId && nextLists.length > 0) setSelectedListId(nextLists.find((list) => list.is_active)?.id ?? '');
   }
 
   useEffect(() => {
@@ -178,6 +188,13 @@ export default function PricingWorkspace({ initialTab = 'channels' }: { initialT
       .catch((error) => setMessage(error instanceof Error ? error.message : 'Không thể tải dữ liệu giá'))
       .finally(() => setBusy(false));
   }, []);
+
+  useEffect(() => {
+    // Khi ẩn mục đã ngừng, không để bảng giá đang chọn nằm ngoài danh sách.
+    if (!showStopped && selectedListId && lists.some((list) => list.id === selectedListId && !list.is_active)) {
+      setSelectedListId(lists.find((list) => list.is_active)?.id ?? '');
+    }
+  }, [lists, selectedListId, showStopped]);
 
   useEffect(() => {
     if (!selectedListId) {
@@ -511,13 +528,18 @@ export default function PricingWorkspace({ initialTab = 'channels' }: { initialT
           <section>
             <div className={styles.sectionHeader}>
               <div><h2>Kênh bán</h2><p>Phân nhóm hình thức bán hàng để áp dụng bảng giá phù hợp.</p></div>
-              <button className={styles.secondaryButton} type="button" onClick={openChannelCreate} data-testid="add-sales-channel-button">Tạo mới</button>
+              <div className={styles.actions}>
+                <button type="button" className={styles.secondaryButton} onClick={() => setShowStopped((current) => !current)} data-testid="pricing-channels-show-stopped">
+                  {showStopped ? 'Ẩn đã ngừng' : `Xem đã ngừng (${stoppedCounts.channels})`}
+                </button>
+                <button className={styles.secondaryButton} type="button" onClick={openChannelCreate} data-testid="add-sales-channel-button">Tạo mới</button>
+              </div>
             </div>
             <div className={styles.tableWrapper}>
               <table className={styles.table}>
                 <thead><tr><th>Mã</th><th>Tên</th><th>Trạng thái</th><th></th></tr></thead>
                 <tbody>
-                  {channels.map((channel) => (
+                  {visibleChannels.map((channel) => (
                     <tr key={channel.id} data-testid={`channel-row-${channel.code}`}>
                       <td><strong>{channel.code}</strong></td>
                       <td>{channel.name}</td>
@@ -528,7 +550,7 @@ export default function PricingWorkspace({ initialTab = 'channels' }: { initialT
                       </td>
                     </tr>
                   ))}
-                  {channels.length === 0 ? <tr><td colSpan={4} className={styles.empty}>Chưa có kênh bán</td></tr> : null}
+                  {visibleChannels.length === 0 ? <tr><td colSpan={4} className={styles.empty}>{channels.length ? 'Không có kênh đang hoạt động. Chọn Xem đã ngừng để xem lại.' : 'Chưa có kênh bán'}</td></tr> : null}
                 </tbody>
               </table>
             </div>
@@ -539,13 +561,18 @@ export default function PricingWorkspace({ initialTab = 'channels' }: { initialT
           <section>
             <div className={styles.sectionHeader}>
               <div><h2>Danh mục giá</h2><p>Tạo và quản lý bảng giá, chương trình, phạm vi và thứ tự áp dụng.</p></div>
-              <button className={styles.secondaryButton} type="button" onClick={() => openListCreate()} data-testid="add-price-list-button">Tạo mới</button>
+              <div className={styles.actions}>
+                <button type="button" className={styles.secondaryButton} onClick={() => setShowStopped((current) => !current)} data-testid="pricing-lists-show-stopped">
+                  {showStopped ? 'Ẩn đã ngừng' : `Xem đã ngừng (${stoppedCounts.lists})`}
+                </button>
+                <button className={styles.secondaryButton} type="button" onClick={() => openListCreate()} data-testid="add-price-list-button">Tạo mới</button>
+              </div>
             </div>
             <div className={styles.tableWrapper}>
               <table className={styles.table}>
                 <thead><tr><th>Mã</th><th>Loại</th><th>Phạm vi</th><th>Thứ tự ưu tiên</th><th>Cách áp dụng</th><th>Trạng thái</th><th></th></tr></thead>
                 <tbody>
-                  {lists.map((list) => (
+                  {visibleLists.map((list) => (
                     <tr key={list.id} data-testid={`price-list-row-${list.code}`}>
                       <td><strong>{list.code}</strong><br />{list.name}</td>
                       <td>{LIST_LABELS[list.list_type]}</td>
@@ -560,7 +587,7 @@ export default function PricingWorkspace({ initialTab = 'channels' }: { initialT
                       </td>
                     </tr>
                   ))}
-                  {lists.length === 0 ? <tr><td colSpan={7} className={styles.empty}>Chưa có bảng giá</td></tr> : null}
+                  {visibleLists.length === 0 ? <tr><td colSpan={7} className={styles.empty}>{lists.length ? 'Không có bảng giá đang hoạt động. Chọn Xem đã ngừng để xem lại.' : 'Chưa có bảng giá'}</td></tr> : null}
                 </tbody>
               </table>
             </div>
@@ -571,7 +598,12 @@ export default function PricingWorkspace({ initialTab = 'channels' }: { initialT
           <section>
             <div className={styles.sectionHeader}>
               <div><h2>Giá sản phẩm</h2><p>Thiết lập mức giá và điều kiện áp dụng cho từng SKU.</p></div>
-              <button className={styles.secondaryButton} type="button" disabled={!selectedList} onClick={openItemCreate} data-testid="add-price-item-button">Tạo mới</button>
+              <div className={styles.actions}>
+                <button type="button" className={styles.secondaryButton} onClick={() => setShowStopped((current) => !current)} data-testid="pricing-items-show-stopped">
+                  {showStopped ? 'Ẩn đã ngừng' : `Xem đã ngừng (${stoppedCounts.items})`}
+                </button>
+                <button className={styles.secondaryButton} type="button" disabled={!selectedList} onClick={openItemCreate} data-testid="add-price-item-button">Tạo mới</button>
+              </div>
             </div>
             <label className={styles.listPicker}>
               Bảng giá
@@ -585,7 +617,7 @@ export default function PricingWorkspace({ initialTab = 'channels' }: { initialT
                 data-testid="item-price-list-select"
               >
                 <option value="">Chọn bảng giá</option>
-                {lists.map((list) => <option key={list.id} value={list.id}>{list.code} — {list.name}</option>)}
+                {visibleLists.map((list) => <option key={list.id} value={list.id}>{list.code} — {list.name}{list.is_active ? '' : ' · Ngừng'}</option>)}
               </select>
             </label>
             {!selectedList ? <p className={styles.empty}>Chọn bảng giá để quản lý giá sản phẩm.</p> : null}
@@ -593,7 +625,7 @@ export default function PricingWorkspace({ initialTab = 'channels' }: { initialT
               <table className={styles.table}>
                 <thead><tr><th>SKU</th><th>Cách áp dụng</th><th>Giá trị</th><th>Khoảng số lượng</th><th>Nguồn thiết lập</th><th>Trạng thái</th><th></th></tr></thead>
                 <tbody>
-                  {items.map((item) => (
+                  {visibleItems.map((item) => (
                     <tr key={item.id} data-testid={`price-item-row-${item.sku}`}>
                       <td><strong>{item.sku}</strong><br />{item.product_name}</td>
                       <td>{ADJUSTMENT_LABELS[item.adjustment_type]}</td>
@@ -607,7 +639,7 @@ export default function PricingWorkspace({ initialTab = 'channels' }: { initialT
                       </td>
                     </tr>
                   ))}
-                  {items.length === 0 ? <tr><td colSpan={7} className={styles.empty}>Chưa có giá hoặc điều kiện áp dụng trong bảng này</td></tr> : null}
+                  {visibleItems.length === 0 ? <tr><td colSpan={7} className={styles.empty}>{items.length ? 'Không có giá sản phẩm đang hoạt động. Chọn Xem đã ngừng để xem lại.' : 'Chưa có giá hoặc điều kiện áp dụng trong bảng này'}</td></tr> : null}
                 </tbody>
               </table>
             </div>
