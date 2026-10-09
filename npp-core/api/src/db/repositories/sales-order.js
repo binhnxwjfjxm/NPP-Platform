@@ -146,85 +146,45 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-const SALES_ORDER_WORK_STAGE = `CASE
- WHEN status = 'cancelled' OR delivery_status = 'cancelled' THEN 'cancelled'
- WHEN status = 'closed' OR delivery_status = 'delivered' THEN 'completed'
- WHEN delivery_status = 'returned' THEN 'active'
- WHEN delivery_status IN ('ready_to_dispatch','dispatched','partially_delivered','failed','rescheduled')
-      OR fulfillment_status = 'issued' THEN 'waiting_delivery'
- WHEN status = 'confirmed' AND fulfillment_status IN ('reserved','partially_allocated','allocated','partially_fulfilled','fulfilled')
-      THEN 'preparing'
- ELSE 'active' END`;
-
-function salesOrderListQuery({
- installationId, warehouseIds, employeeId = null, actorId = null, allowAllEmployees = false,
- status, customerId, warehouseId, deliveryMode, search, source = 'all', lane = 'all',
+export async function listSalesOrders(client, {
+  installationId, warehouseIds, employeeId = null, actorId = null, allowAllEmployees = false,
+  status, customerId, warehouseId, deliveryMode, search, limit = 100, offset = 0,
 }) {
- const params = [installationId];
- let query = `SELECT ${ORDER_COLUMNS}
- FROM sales.sales_orders so
- JOIN shared.customers c ON c.installation_id = so.installation_id AND c.id = so.customer_id
- JOIN shared.warehouses w ON w.installation_id = so.installation_id AND w.id = so.warehouse_id
- LEFT JOIN sales.sales_order_versions current_version
-   ON current_version.installation_id = so.installation_id AND current_version.sales_order_id = so.id
-   AND current_version.version_number = so.current_version_number
- WHERE so.installation_id = $1`;
- ({query}=appendWarehouseScope(query,params,warehouseIds));
- ({query}=appendEmployeeScope(query,params,{employeeId,actorId,allowAllEmployees}));
- if(status){params.push(status);query+=` AND so.status = $${params.length}`;}
- if(customerId){params.push(customerId);query+=` AND so.customer_id = $${params.length}`;}
- if(warehouseId){params.push(warehouseId);query+=` AND so.warehouse_id = $${params.length}`;}
- if(deliveryMode){params.push(deliveryMode);query+=` AND so.delivery_mode = $${params.length}`;}
- if(search){
-   params.push('%'+search+'%');
-   const like = '$'+params.length;
-   query += " AND (COALESCE(so.order_number, '') ILIKE " + like +
-     ' OR c.code ILIKE ' + like + ' OR c.name ILIKE ' + like +
-     " OR concat_ws(' ', c.code, c.name) ILIKE " + like +
-     " OR COALESCE(so.walk_in_display_name, '') ILIKE " + like +
-     " OR COALESCE(so.walk_in_phone, '') ILIKE " + like +
-     " OR COALESCE(so.source_id, '') ILIKE " + like;
-   if(/^SO[0-9]{6}$/i.test(search)){
-     params.push(search.slice(2));
-     query += " OR right(coalesce(so.order_number, ''), 6) = $"+params.length;
-   }
-   query += ')';
- }
- if(source==='mcp')query+=" AND so.source_type = 'MCP'";
- if(source==='customer')query+=" AND so.source_type = 'API' AND so.source_id LIKE 'CUSTOMER_PORTAL:%'";
- if(source==='internal')query+=" AND NOT (so.source_type = 'MCP' OR (so.source_type = 'API' AND so.source_id LIKE 'CUSTOMER_PORTAL:%'))";
- if(lane==='counter')query+=" AND so.delivery_mode = 'PICKUP'";
- if(lane==='manual')query+=" AND so.delivery_mode <> 'PICKUP' AND current_version.delivery_execution_mode = 'MANUAL'";
- if(lane==='trip')query+=" AND so.delivery_mode <> 'PICKUP' AND current_version.delivery_execution_mode IS DISTINCT FROM 'MANUAL'";
- return {query,params};
-}
-
-function stagedSalesOrderQuery(input){
- const {query,params}=salesOrderListQuery(input);
- return {query:`WITH matching_orders AS (${query}),
-  staged_orders AS (SELECT *,${SALES_ORDER_WORK_STAGE} AS work_stage FROM matching_orders)`,params};
-}
-
-export async function listSalesOrders(client,{limit=100,offset=0,stage='all',...input}){
- const {query,params}=stagedSalesOrderQuery(input);
- let where='';
- if(stage&&stage!=='all'){params.push(stage);where=` WHERE work_stage = $${params.length}`;}
- params.push(limit,offset);
- return (await client.query(`${query} SELECT * FROM staged_orders${where}
-  ORDER BY created_at DESC,id DESC LIMIT $${params.length-1} OFFSET $${params.length}`,params)).rows;
-}
-
-export async function summarizeSalesOrders(client,input){
- const {query,params}=stagedSalesOrderQuery(input);
- const result=await client.query(`${query} SELECT
-  count(*)::int AS total,
-  count(*) FILTER (WHERE work_stage='active')::int AS active,
-  count(*) FILTER (WHERE work_stage='preparing')::int AS preparing,
-  count(*) FILTER (WHERE work_stage='waiting_delivery')::int AS waiting_delivery,
-  count(*) FILTER (WHERE work_stage='completed')::int AS completed,
-  count(*) FILTER (WHERE work_stage='cancelled')::int AS cancelled
- FROM staged_orders`,params);
- return result.rows[0];
+  const params = [installationId];
+  let query = `SELECT ${ORDER_COLUMNS}
+    FROM sales.sales_orders so
+    JOIN shared.customers c ON c.installation_id = so.installation_id AND c.id = so.customer_id
+    JOIN shared.warehouses w ON w.installation_id = so.installation_id AND w.id = so.warehouse_id
+    WHERE so.installation_id = $1`;
+  ({ query } = appendWarehouseScope(query, params, warehouseIds));
+  ({ query } = appendEmployeeScope(query, params, { employeeId, actorId, allowAllEmployees }));
+  if (status) {
+    params.push(status);
+    query += ` AND so.status = $${params.length}`;
+  }
+  if (customerId) {
+    params.push(customerId);
+    query += ` AND so.customer_id = $${params.length}`;
+  }
+  if (warehouseId) {
+    params.push(warehouseId);
+    query += ` AND so.warehouse_id = $${params.length}`;
+  }
+  if (deliveryMode) {
+    params.push(deliveryMode);
+    query += ` AND so.delivery_mode = $${params.length}`;
+  }
+  if (search) {
+    params.push(`%${search}%`);
+    query += ` AND (COALESCE(so.order_number, '') ILIKE $${params.length}
+      OR c.code ILIKE $${params.length} OR c.name ILIKE $${params.length}
+      OR COALESCE(so.walk_in_display_name, '') ILIKE $${params.length}
+      OR COALESCE(so.walk_in_phone, '') ILIKE $${params.length}
+      OR COALESCE(so.source_id, '') ILIKE $${params.length})`;
+  }
+  params.push(limit, offset);
+  query += ` ORDER BY so.created_at DESC, so.id DESC LIMIT $${params.length - 1} OFFSET $${params.length}`;
+  return (await client.query(query, params)).rows;
 }
 
 export async function getSalesOrderById(client, {

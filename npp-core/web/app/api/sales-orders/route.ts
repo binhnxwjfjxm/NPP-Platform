@@ -22,9 +22,6 @@ export async function GET(request: NextRequest) {
       customerId: request.nextUrl.searchParams.get('customerId') || undefined,
       warehouseId: request.nextUrl.searchParams.get('warehouseId') || undefined,
       search: request.nextUrl.searchParams.get('search') || undefined,
-      source: (request.nextUrl.searchParams.get('source') || 'all') as 'all' | 'internal' | 'mcp' | 'customer',
-      lane: (request.nextUrl.searchParams.get('lane') || 'all') as 'all' | 'counter' | 'manual' | 'trip',
-      stage: (request.nextUrl.searchParams.get('stage') || 'all') as 'all' | 'active' | 'preparing' | 'waiting_delivery' | 'completed' | 'cancelled',
     });
     return salesOrderResponse(data, requestId);
   } catch (error) {

@@ -1,10 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-const CHANNEL_COLUMNS = `id, installation_id, code, name, description, is_active, created_at, updated_at, created_by, updated_by,
-  COALESCE((SELECT array_agg(mapping.customer_group_id ORDER BY mapping.customer_group_id)
-    FROM shared.sales_channel_customer_groups mapping
-    WHERE mapping.installation_id = shared.sales_channels.installation_id
-      AND mapping.channel_id = shared.sales_channels.id), ARRAY[]::uuid[]) AS customer_group_ids`;
+const CHANNEL_COLUMNS = 'id, installation_id, code, name, description, is_active, created_at, updated_at, created_by, updated_by';
 const LIST_COLUMNS = `pl.id, pl.installation_id, pl.code, pl.name, pl.list_type, pl.currency_code,
   pl.channel_id, pl.customer_group_id, pl.customer_id, pl.priority, pl.stacking_mode,
   pl.stop_processing, pl.effective_from, pl.effective_to, pl.description, pl.is_active,
@@ -81,17 +77,6 @@ export async function updateSalesChannel(client, { installationId, id, name, des
     [name, description, Boolean(isActive), updatedBy, installationId, id, expectedUpdatedAt],
   );
   return result.rows[0] ?? null;
-}
-
-export async function replaceSalesChannelGroups(client, { installationId, channelId, customerGroupIds }) {
-  await client.query('DELETE FROM shared.sales_channel_customer_groups WHERE installation_id = $1 AND channel_id = $2', [installationId, channelId]);
-  if (customerGroupIds.length) {
-    await client.query(
-      `INSERT INTO shared.sales_channel_customer_groups (installation_id, channel_id, customer_group_id)
-       SELECT $1, $2::uuid, member_id FROM unnest($3::uuid[]) AS ids(member_id)`,
-      [installationId, channelId, customerGroupIds],
-    );
-  }
 }
 
 export async function countActivePriceListsForChannel(client, { installationId, channelId }) {
@@ -351,12 +336,7 @@ export async function getResolutionCandidates(client, {
        AND (
          pl.list_type = 'BASE'
          OR (
-           (pl.channel_id IS NULL OR (pl.channel_id = $6 AND EXISTS (
-             SELECT 1 FROM shared.sales_channel_customer_groups eligibility
-             WHERE eligibility.installation_id = pl.installation_id
-               AND eligibility.channel_id = pl.channel_id
-               AND eligibility.customer_group_id = $7
-           )))
+           (pl.channel_id IS NULL OR pl.channel_id = $6)
            AND (pl.customer_group_id IS NULL OR pl.customer_group_id = $7)
            AND (pl.customer_id IS NULL OR pl.customer_id = $8)
          )

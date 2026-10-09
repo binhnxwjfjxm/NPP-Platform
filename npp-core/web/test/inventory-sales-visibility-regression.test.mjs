@@ -35,8 +35,8 @@ test('inventory history is warehouse-scoped, paginated and opens document detail
 });
 
 test('sales order list refreshes canonical data and keeps backordered confirmed orders visible', () => {
-  assert.match(salesWorkspace, /apiRequest<SalesOrder\[\]>\(\`\/api\/sales-orders\?\$\{params\}\`\)/);
-  assert.match(salesWorkspace, /void refreshOrders\(false\)/);
+  assert.match(salesWorkspace, /apiRequest<SalesOrder\[]>\('\/api\/sales-orders\?limit=1000'\)/);
+  assert.match(salesWorkspace, /useEffect\(\(\) => \{\s*void refreshOrders\(false\)/s);
   assert.match(salesWorkspace, /order\.status === 'confirmed'/);
   assert.match(salesWorkspace, /order\.fulfillmentStatus === 'backordered'/);
   assert.match(salesWorkspace, /Đã xác nhận/);

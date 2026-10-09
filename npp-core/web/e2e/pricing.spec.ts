@@ -34,13 +34,6 @@ test.describe('Giá bán', () => {
   test('quản trị giá nền, giá kênh, kiểm tra giá và điều chỉnh thủ công', async ({ page, request }) => {
     const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`.toUpperCase();
     const fixture = await createFixture(request, suffix);
-    const groupName = `Nhóm ưu đãi ${suffix}`;
-    const groupResponse = await request.post('/api/customer-groups', {
-      headers: { 'Idempotency-Key': createIdempotencyKey('pricing-e2e-customer-group') },
-      data: { code: `GROUP-${suffix}`, name: groupName },
-    });
-    expect(groupResponse.status()).toBe(201);
-    const group = (await groupResponse.json()).data;
     const channelCode = `VENUE-${suffix}`;
     const baseCode = `BASE-${suffix}`;
     const channelListCode = `CHANNEL-${suffix}`;
@@ -53,9 +46,8 @@ test.describe('Giá bán', () => {
     await expect(page.getByTestId('pricing-channel-modal')).toBeVisible();
     await page.getByTestId('channel-code-input').fill(channelCode.toLowerCase());
     await page.getByTestId('channel-name-input').fill(`Kênh quán ${suffix}`);
-    await page.getByRole('checkbox', { name: groupName }).check();
     await page.getByTestId('save-channel-button').click();
-    await expect(page.getByTestId(`channel-row-${channelCode}`)).toContainText(groupName);
+    await expect(page.getByTestId(`channel-row-${channelCode}`)).toBeVisible();
 
     await page.getByTestId('pricing-lists-tab').click();
     await page.getByTestId('add-price-list-button').click();
@@ -98,16 +90,9 @@ test.describe('Giá bán', () => {
     await page.getByTestId('resolver-quantity-input').fill('2');
     await page.getByTestId('resolver-channel-select').selectOption({ label: `${channelCode} — Kênh quán ${suffix}` });
     await page.getByTestId('resolve-price-button').click();
-    await expect(page.getByTestId('resolved-unit-price')).toContainText('10.000');
-    await expect(page.getByTestId('resolved-line-total')).toContainText('20.000');
-    await expect(page.getByTestId('pricing-step-base')).toBeVisible();
-    await expect(page.getByTestId('pricing-step-rule')).toHaveCount(0);
-
-    // A channel alone must not grant its special price; the allowed customer group must match.
-    await page.getByTestId('resolver-customer-group-select').selectOption(group.id);
-    await page.getByTestId('resolve-price-button').click();
     await expect(page.getByTestId('resolved-unit-price')).toContainText('9.000');
     await expect(page.getByTestId('resolved-line-total')).toContainText('18.000');
+    await expect(page.getByTestId('pricing-step-base')).toBeVisible();
     await expect(page.getByTestId('pricing-step-rule')).toBeVisible();
 
     await page.getByLabel('Giá điều chỉnh thủ công (₫)').fill('7777');

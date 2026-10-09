@@ -103,13 +103,7 @@ function validateChannelInput(payload, { codeRequired = true, defaults = {} } = 
   if (!description.ok) return description;
   const active = booleanField(payload, 'isActive', defaults.isActive ?? true);
   if (!active.ok) return active;
-  const customerGroupIds = payload.customerGroupIds ?? defaults.customerGroupIds ?? [];
-  if (!Array.isArray(customerGroupIds) || customerGroupIds.length > 100
-    || customerGroupIds.some((id) => !validUuid(id))
-    || new Set(customerGroupIds).size !== customerGroupIds.length) {
-    return invalid('INVALID_CHANNEL_CUSTOMER_GROUPS', 'Danh sách nhóm khách được hưởng giá không hợp lệ');
-  }
-  return { ok: true, normalized: { code, name, description: description.value, isActive: active.value, customerGroupIds } };
+  return { ok: true, normalized: { code, name, description: description.value, isActive: active.value } };
 }
 
 function validatePriceListInput(payload, { codeRequired = true, defaults = {} } = {}) {
@@ -226,13 +220,6 @@ async function validatePriceableVariant(client, { installationId, variantId }) {
   return { ok: true, variant };
 }
 
-async function validateChannelGroups(client, { installationId, customerGroupIds }) {
-  for (const customerGroupId of customerGroupIds) {
-    const group = await repo.getCustomerGroupForPricing(client, { installationId, customerGroupId });
-    if (!group?.is_active) return invalid('CUSTOMER_GROUP_NOT_FOUND', 'Nhóm khách được hưởng giá không tồn tại hoặc ngừng hoạt động');
-  }
-  return { ok: true };
-}
 export async function listSalesChannels(client, args) {
   const search = text(args.search);
   if (search.length > 256) return invalid('INVALID_SEARCH', 'Search must not exceed 256 characters');
@@ -246,13 +233,9 @@ export async function getSalesChannel(client, { installationId, id }) {
 export async function createSalesChannel(client, { installationId, payload, createdBy }) {
   const validation = validateChannelInput(payload);
   if (!validation.ok) return validation;
-  const groups = await validateChannelGroups(client, { installationId, customerGroupIds: validation.normalized.customerGroupIds });
-  if (!groups.ok) return groups;
   if (await repo.getSalesChannelByCode(client, { installationId, code: validation.normalized.code })) return conflict('Channel code already exists', 'DUPLICATE_CODE');
   const channel = await repo.insertSalesChannel(client, { installationId, ...validation.normalized, createdBy });
-  if (!channel) return conflict('Channel code already exists', 'DUPLICATE_CODE');
-  await repo.replaceSalesChannelGroups(client, { installationId, channelId: channel.id, customerGroupIds: validation.normalized.customerGroupIds });
-  return { ok: true, channel: await repo.getSalesChannelById(client, { installationId, id: channel.id }) };
+  return channel ? { ok: true, channel } : conflict('Channel code already exists', 'DUPLICATE_CODE');
 }
 export async function updateSalesChannel(client, { installationId, id, payload, updatedBy }) {
   if (!validUuid(id)) return invalid('INVALID_ID', 'Sales channel ID is invalid');
@@ -264,19 +247,14 @@ export async function updateSalesChannel(client, { installationId, id, payload, 
   if (!sameTimestamp(existing.updated_at, expected.value)) return conflict('Sales channel update conflict');
   const validation = validateChannelInput(payload ?? {}, { codeRequired: false, defaults: {
     code: existing.code, name: existing.name, description: existing.description, isActive: existing.is_active,
-    customerGroupIds: existing.customer_group_ids ?? [],
   } });
   if (!validation.ok) return validation;
-  const groups = await validateChannelGroups(client, { installationId, customerGroupIds: validation.normalized.customerGroupIds });
-  if (!groups.ok) return groups;
   if (!validation.normalized.isActive && existing.is_active) {
     const dependencies = await repo.countActivePriceListsForChannel(client, { installationId, channelId: id });
     if (dependencies > 0) return conflict('Cannot deactivate a channel used by active price lists', 'CHANNEL_IN_USE');
   }
   const channel = await repo.updateSalesChannel(client, { installationId, id, ...validation.normalized, expectedUpdatedAt: expected.value, updatedBy });
-  if (!channel) return conflict('Sales channel update conflict');
-  await repo.replaceSalesChannelGroups(client, { installationId, channelId: id, customerGroupIds: validation.normalized.customerGroupIds });
-  return { ok: true, channel: await repo.getSalesChannelById(client, { installationId, id }), beforeData: existing, action: channel.is_active === existing.is_active ? 'update' : (channel.is_active ? 'activate' : 'deactivate') };
+  return channel ? { ok: true, channel, beforeData: existing, action: channel.is_active === existing.is_active ? 'update' : (channel.is_active ? 'activate' : 'deactivate') } : conflict('Sales channel update conflict');
 }
 
 export async function listPriceLists(client, args) {
@@ -449,9 +427,9 @@ export async function resolvePrice(client, { installationId, payload }) {
     } };
   }
   let exclusiveApplied = false;
-  for (const candidate of start.source === 'ZERO_BASE' ? [] : candidates) {
+  for (const candidate of candidates) {
     if (candidate.item_id === base.item_id) {
-      if (start.source === 'CHANNEL_FIXED_FALLBACK' || start.source === 'SCOPED_FIXED_FALLBACK') {
+      if (start.source === 'CHANNEL_FIXED_FALLBACK') {
         if (candidate.stacking_mode === 'EXCLUSIVE') exclusiveApplied = true;
         if (candidate.stop_processing) break;
       }
