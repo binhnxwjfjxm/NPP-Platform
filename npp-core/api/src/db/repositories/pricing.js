@@ -13,6 +13,14 @@ const LIST_COLUMNS = `pl.id, pl.installation_id, pl.code, pl.name, pl.list_type,
   ARRAY(SELECT scope.customer_group_id FROM shared.price_list_customer_groups scope
         WHERE scope.installation_id = pl.installation_id AND scope.price_list_id = pl.id
         ORDER BY scope.customer_group_id) AS customer_group_ids,
+  ARRAY(SELECT ch.name FROM shared.price_list_channels scope
+        JOIN shared.sales_channels ch ON ch.installation_id = scope.installation_id AND ch.id = scope.channel_id
+        WHERE scope.installation_id = pl.installation_id AND scope.price_list_id = pl.id
+        ORDER BY ch.name) AS channel_names,
+  ARRAY(SELECT grp.name FROM shared.price_list_customer_groups scope
+        JOIN shared.customer_groups grp ON grp.installation_id = scope.installation_id AND grp.id = scope.customer_group_id
+        WHERE scope.installation_id = pl.installation_id AND scope.price_list_id = pl.id
+        ORDER BY grp.name) AS customer_group_names,
   c.code AS customer_code, c.name AS customer_name`;
 const ITEM_COLUMNS = `pi.id, pi.installation_id, pi.price_list_id, pi.variant_id, pi.adjustment_type,
   pi.amount_minor, pi.rate_bps, pi.min_quantity, pi.max_quantity,
