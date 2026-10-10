@@ -35,8 +35,16 @@ export async function listSalesOrderSearchPriceCandidates(client, {
        AND (
          pl.list_type = 'BASE'
          OR (
-           (pl.channel_id IS NULL OR pl.channel_id = $6)
-           AND (pl.customer_group_id IS NULL OR pl.customer_group_id = $7)
+           (pl.channel_id IS NULL OR EXISTS (
+             SELECT 1 FROM shared.price_list_channels scoped
+             WHERE scoped.installation_id = pl.installation_id
+               AND scoped.price_list_id = pl.id AND scoped.channel_id = $6
+           ))
+           AND (pl.customer_group_id IS NULL OR EXISTS (
+             SELECT 1 FROM shared.price_list_customer_groups scoped
+             WHERE scoped.installation_id = pl.installation_id
+               AND scoped.price_list_id = pl.id AND scoped.customer_group_id = $7
+           ))
            AND (pl.customer_id IS NULL OR pl.customer_id = $8)
          )
        )
