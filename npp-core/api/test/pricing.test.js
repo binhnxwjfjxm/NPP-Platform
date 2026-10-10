@@ -353,6 +353,31 @@ test('Một bảng giá áp dụng được nhiều nhóm và kênh, nhưng khô
     assert.equal(await price(a.customer.id, channels[1].id), '10000');
     assert.equal(await price(b.customer.id, channels[1].id), '9000');
     assert.equal(await price(b.customer.id, channels[0].id), '10000');
+    await createItem(pool, config.installationId, base.id, {
+      variantId: catalog.carton.id, adjustmentType: 'FIXED_PRICE', amountMinor: '10000',
+    });
+    const channelList = await createList(pool, config.installationId, {
+      code: `MULTI-${suffix}`, name: 'Giá nhiều kênh', listType: 'CHANNEL',
+      channelIds: [channels[0].id, channels[1].id],
+    });
+    assert.equal(channelList.channel_ids.length, 2);
+    await createItem(pool, config.installationId, channelList.id, {
+      variantId: catalog.carton.id, adjustmentType: 'FIXED_PRICE', amountMinor: '9500',
+    });
+    for (const channel of channels.slice(0, 2)) {
+      const result = await pricingService.resolvePrice(pool, {
+        installationId: config.installationId,
+        payload: { variantId: catalog.carton.id, quantity: '1', channelId: channel.id, customerId: x.customer.id },
+      });
+      assert.equal(result.ok, true, result.message);
+      assert.equal(result.resolution.finalUnitPriceMinor, '9500');
+    }
+    const outside = await pricingService.resolvePrice(pool, {
+      installationId: config.installationId,
+      payload: { variantId: catalog.carton.id, quantity: '1', channelId: channels[2].id, customerId: x.customer.id },
+    });
+    assert.equal(outside.ok, true, outside.message);
+    assert.equal(outside.resolution.finalUnitPriceMinor, '10000');
   } finally {
     await closePool(pool);
   }
