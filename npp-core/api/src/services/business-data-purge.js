@@ -24,6 +24,8 @@ const BUSINESS_SHARED_TABLES = new Set([
   'product_barcodes',
   'price_lists',
   'price_list_items',
+  'price_list_channels',
+  'price_list_customer_groups',
   'document_number_counters',
   'document_number_allocations',
 ]);
@@ -31,6 +33,7 @@ const CUSTOMER_SHARED_ROOTS = new Set(['customer_groups', 'customers', 'customer
 const SUPPLIER_SHARED_ROOTS = new Set(['suppliers', 'supplier_contacts', 'supplier_addresses', 'supplier_payment_terms']);
 const PRODUCT_SHARED_ROOTS = new Set([
   'product_categories', 'product_brands', 'products', 'product_variants', 'product_barcodes', 'price_lists', 'price_list_items',
+  'price_list_channels', 'price_list_customer_groups',
 ]);
 const OPERATION_SHARED_ROOTS = new Set(['document_number_counters', 'document_number_allocations']);
 const WALK_IN_SETTINGS_KEY = 'shared.sales_order_settings';
