@@ -147,9 +147,9 @@ sudo -n -u postgres dropdb --if-exists "$rehearsal"
 sudo -n -u postgres createdb --template=template0 "$rehearsal"
 sudo -n -u postgres pg_restore --exit-on-error --no-owner --no-privileges --dbname="$rehearsal" "$backup_file"
 
+# Reconcile using a single restored snapshot; the live production database may
+# legitimately change while backup/restore and verification are running.
 rehearsal_rows_before="$(protected_row_count "$rehearsal")"
-production_rows_before="$(protected_row_count "$db")"
-test "$rehearsal_rows_before" = "$production_rows_before"
 apply_migration "$rehearsal"
 verify_target "$rehearsal"
 test "$(protected_row_count "$rehearsal")" = "$rehearsal_rows_before"
@@ -158,14 +158,12 @@ verify_target "$rehearsal"
 test "$(protected_row_count "$rehearsal")" = "$rehearsal_rows_before"
 sudo -n -u postgres dropdb "$rehearsal"
 
-test "$(protected_row_count "$db")" = "$production_rows_before"
+# The live database is validated by schema registry, FKs, indexes and complete
+# coverage of every pre-existing channel/group selection, not volatile row counts.
 apply_migration "$db"
 verify_target "$db"
-test "$(protected_row_count "$db")" = "$production_rows_before"
-
 apply_migration "$db"
 verify_target "$db"
-test "$(protected_row_count "$db")" = "$production_rows_before"
 
 echo "MIGRATION=164"
 echo "SOURCE_SHA=$source_sha"
@@ -173,7 +171,7 @@ echo "BACKUP_BYTES=$backup_bytes"
 echo "BACKUP_SHA256=$backup_sha256"
 echo "BACKUP_LOCATION=DB_VPS_LOCAL"
 echo "RESTORE_REHEARSAL=PASS"
-echo "BUSINESS_ROWS_UNCHANGED=PASS"
+echo "RESTORED_SNAPSHOT_BUSINESS_ROWS_UNCHANGED=PASS"
 echo "RUNTIME_PRIVILEGES=PASS"
 echo "PRODUCTION_MIGRATION=APPLIED"
 echo "PRODUCTION_RERUN_NOOP=PASS"
