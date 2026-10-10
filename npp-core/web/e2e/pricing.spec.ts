@@ -102,4 +102,32 @@ test.describe('Giá bán', () => {
     await expect(page.getByTestId('resolved-line-total')).toContainText('15.554');
     await expect(page.getByTestId('pricing-step-manual_override')).toBeVisible();
   });
+  test('chỉ hiển thị chọn khách cụ thể ở loại bảng giá có hỗ trợ', async ({ page }) => {
+    await page.goto('/pricing');
+    await expect(page.getByTestId('pricing-page')).toBeVisible();
+    await page.getByTestId('pricing-lists-tab').click();
+    await page.getByTestId('add-price-list-button').click();
+    const modal = page.getByTestId('pricing-list-modal');
+    const type = modal.getByTestId('price-list-type-select');
+    const customer = modal.getByTestId('price-list-customer-select');
+
+    await expect(customer).toHaveCount(0);
+    await type.selectOption('CHANNEL');
+    await expect(modal.getByTestId('price-list-channel-multi-select')).toBeVisible();
+    await expect(customer).toHaveCount(0);
+    await type.selectOption('CUSTOMER_GROUP');
+    await expect(modal.getByTestId('price-list-group-multi-select')).toBeVisible();
+    await expect(modal.getByTestId('price-list-channel-multi-select')).toBeVisible();
+    await expect(customer).toHaveCount(0);
+
+    // Các loại được phép chỉ định khách riêng vẫn giữ khả năng này.
+    for (const kind of ['CUSTOMER', 'PROMOTION', 'CUSTOM']) {
+      await type.selectOption(kind);
+      await expect(customer).toBeVisible();
+      await expect(customer).toBeEnabled();
+    }
+    await type.selectOption('BASE');
+    await expect(customer).toHaveCount(0);
+  });
+
 });
