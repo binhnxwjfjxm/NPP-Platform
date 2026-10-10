@@ -780,7 +780,15 @@ export default function PricingWorkspace({ initialTab = 'channels' }: { initialT
                   : listForm.listType === 'CUSTOMER_GROUP' ? 'Phải chọn ít nhất một nhóm' : 'Không chọn: áp dụng tất cả nhóm'}</p>
               </fieldset>
             ) : null}
-            <label>Khách hàng<select disabled={!['CUSTOMER', 'PROMOTION', 'CUSTOM'].includes(listForm.listType)} value={listForm.customerId} onChange={(event) => setListForm({ ...listForm, customerId: event.target.value })}><option value="">Tất cả/không áp dụng</option>{customers.filter((row) => row.is_active).map((row) => <option key={row.id} value={row.id}>{row.code} — {row.name}</option>)}</select></label>
+            {['CUSTOMER', 'PROMOTION', 'CUSTOM'].includes(listForm.listType) ? (
+              <label>
+                Khách hàng
+                <select data-testid="price-list-customer-select" value={listForm.customerId} onChange={(event) => setListForm({ ...listForm, customerId: event.target.value })}>
+                  <option value="">Tất cả/không áp dụng</option>
+                  {customers.filter((row) => row.is_active).map((row) => <option key={row.id} value={row.id}>{row.code} — {row.name}</option>)}
+                </select>
+              </label>
+            ) : null}
             <label>Hiệu lực từ<input type="datetime-local" value={listForm.effectiveFrom} onChange={(event) => setListForm({ ...listForm, effectiveFrom: event.target.value })} /></label>
             <label>Hiệu lực đến<input type="datetime-local" value={listForm.effectiveTo} onChange={(event) => setListForm({ ...listForm, effectiveTo: event.target.value })} /></label>
             <label className={styles.wide}>Mô tả<input value={listForm.description} onChange={(event) => setListForm({ ...listForm, description: event.target.value })} /></label>
