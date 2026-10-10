@@ -7,6 +7,12 @@ const LIST_COLUMNS = `pl.id, pl.installation_id, pl.code, pl.name, pl.list_type,
   pl.created_at, pl.updated_at, pl.created_by, pl.updated_by,
   sc.code AS channel_code, sc.name AS channel_name,
   cg.code AS customer_group_code, cg.name AS customer_group_name,
+  ARRAY(SELECT scope.channel_id FROM shared.price_list_channels scope
+        WHERE scope.installation_id = pl.installation_id AND scope.price_list_id = pl.id
+        ORDER BY scope.channel_id) AS channel_ids,
+  ARRAY(SELECT scope.customer_group_id FROM shared.price_list_customer_groups scope
+        WHERE scope.installation_id = pl.installation_id AND scope.price_list_id = pl.id
+        ORDER BY scope.customer_group_id) AS customer_group_ids,
   c.code AS customer_code, c.name AS customer_name`;
 const ITEM_COLUMNS = `pi.id, pi.installation_id, pi.price_list_id, pi.variant_id, pi.adjustment_type,
   pi.amount_minor, pi.rate_bps, pi.min_quantity, pi.max_quantity,
@@ -82,7 +88,12 @@ export async function updateSalesChannel(client, { installationId, id, name, des
 export async function countActivePriceListsForChannel(client, { installationId, channelId }) {
   const result = await client.query(
     `SELECT count(*)::int AS count FROM shared.price_lists
-     WHERE installation_id = $1 AND channel_id = $2 AND is_active = true`,
+     WHERE installation_id = $1 AND is_active = true
+       AND (channel_id = $2 OR EXISTS (
+         SELECT 1 FROM shared.price_list_channels scoped
+         WHERE scoped.installation_id = shared.price_lists.installation_id
+           AND scoped.price_list_id = shared.price_lists.id AND scoped.channel_id = $2
+       ))`,
     [installationId, channelId],
   );
   return result.rows[0]?.count ?? 0;
@@ -137,6 +148,21 @@ export async function getPriceListByCode(client, { installationId, code, forUpda
   return result.rows[0] ?? null;
 }
 
+async function replacePriceListScopes(client, { installationId, priceListId, channelIds, customerGroupIds }) {
+  await client.query('DELETE FROM shared.price_list_channels WHERE installation_id = $1 AND price_list_id = $2', [installationId, priceListId]);
+  await client.query(
+    `INSERT INTO shared.price_list_channels (installation_id, price_list_id, channel_id)
+     SELECT $1, $2, selected FROM unnest($3::uuid[]) selected`,
+    [installationId, priceListId, channelIds],
+  );
+  await client.query('DELETE FROM shared.price_list_customer_groups WHERE installation_id = $1 AND price_list_id = $2', [installationId, priceListId]);
+  await client.query(
+    `INSERT INTO shared.price_list_customer_groups (installation_id, price_list_id, customer_group_id)
+     SELECT $1, $2, selected FROM unnest($3::uuid[]) selected`,
+    [installationId, priceListId, customerGroupIds],
+  );
+}
+
 export async function insertPriceList(client, data) {
   const id = randomUUID();
   const now = nowMilliseconds();
@@ -152,7 +178,10 @@ export async function insertPriceList(client, data) {
       data.stopProcessing, data.effectiveFrom, data.effectiveTo, data.description,
       data.isActive, now, data.createdBy],
   );
-  return result.rows[0] ? getPriceListById(client, { installationId: data.installationId, id }) : null;
+  if (!result.rows[0]) return null;
+  await replacePriceListScopes(client, { installationId: data.installationId, priceListId: id,
+    channelIds: data.channelIds, customerGroupIds: data.customerGroupIds });
+  return getPriceListById(client, { installationId: data.installationId, id });
 }
 
 export async function updatePriceList(client, data) {
@@ -171,7 +200,10 @@ export async function updatePriceList(client, data) {
       data.description, data.isActive, data.updatedBy, data.installationId, data.id,
       data.expectedUpdatedAt],
   );
-  return result.rows[0] ? getPriceListById(client, { installationId: data.installationId, id: data.id }) : null;
+  if (!result.rows[0]) return null;
+  await replacePriceListScopes(client, { installationId: data.installationId, priceListId: data.id,
+    channelIds: data.channelIds, customerGroupIds: data.customerGroupIds });
+  return getPriceListById(client, { installationId: data.installationId, id: data.id });
 }
 
 export async function listPriceListItems(client, { installationId, priceListId, variantId, active, limit = 500, offset = 0 }) {
@@ -336,8 +368,16 @@ export async function getResolutionCandidates(client, {
        AND (
          pl.list_type = 'BASE'
          OR (
-           (pl.channel_id IS NULL OR pl.channel_id = $6)
-           AND (pl.customer_group_id IS NULL OR pl.customer_group_id = $7)
+           (pl.channel_id IS NULL OR EXISTS (
+              SELECT 1 FROM shared.price_list_channels scoped
+              WHERE scoped.installation_id = pl.installation_id
+                AND scoped.price_list_id = pl.id AND scoped.channel_id = $6
+            ))
+            AND (pl.customer_group_id IS NULL OR EXISTS (
+              SELECT 1 FROM shared.price_list_customer_groups scoped
+              WHERE scoped.installation_id = pl.installation_id
+                AND scoped.price_list_id = pl.id AND scoped.customer_group_id = $7
+            ))
            AND (pl.customer_id IS NULL OR pl.customer_id = $8)
          )
        )
