@@ -116,15 +116,24 @@ function validatePriceListInput(payload, { codeRequired = true, defaults = {} } 
   if (!LIST_TYPES.has(listType)) return invalid('INVALID_LIST_TYPE', 'listType is invalid');
   const currencyCode = upper(payload.currencyCode ?? defaults.currencyCode ?? 'VND');
   if (!CURRENCY_PATTERN.test(currencyCode)) return invalid('INVALID_CURRENCY', 'currencyCode must contain 3 uppercase letters');
-  const channelId = text(Object.prototype.hasOwnProperty.call(payload, 'channelId') ? payload.channelId : defaults.channelId) || null;
-  const customerGroupId = text(Object.prototype.hasOwnProperty.call(payload, 'customerGroupId') ? payload.customerGroupId : defaults.customerGroupId) || null;
-  const customerId = text(Object.prototype.hasOwnProperty.call(payload, 'customerId') ? payload.customerId : defaults.customerId) || null;
-  for (const [field, value] of [['channelId', channelId], ['customerGroupId', customerGroupId], ['customerId', customerId]]) {
-    if (value && !validUuid(value)) return invalid('INVALID_SCOPE_ID', `${field} must be a valid UUID`);
-  }
-  if (listType === 'BASE' && (channelId || customerGroupId || customerId)) return invalid('INVALID_SCOPE', 'BASE lists cannot have channel or customer scope');
-  if (listType === 'CHANNEL' && (!channelId || customerGroupId || customerId)) return invalid('INVALID_SCOPE', 'CHANNEL lists require only channelId');
-  if (listType === 'CUSTOMER_GROUP' && (!customerGroupId || customerId)) return invalid('INVALID_SCOPE', 'CUSTOMER_GROUP lists require customerGroupId and cannot target customerId');
+  const has = (key) => Object.prototype.hasOwnProperty.call(payload, key);
+  const selected = (plural, singular, previous, old) => {
+    const ids = has(plural) ? payload[plural]
+      : has(singular) ? (payload[singular] ? [payload[singular]] : [])
+        : previous ?? (old ? [old] : []);
+    return Array.isArray(ids) && ids.length <= 100
+      && ids.every((id) => validUuid(id)) && new Set(ids).size === ids.length ? ids : null;
+  };
+  const channelIds = selected('channelIds', 'channelId', defaults.channelIds, defaults.channelId);
+  const customerGroupIds = selected('customerGroupIds', 'customerGroupId', defaults.customerGroupIds, defaults.customerGroupId);
+  if (!channelIds || !customerGroupIds) return invalid('INVALID_SCOPE_ID', 'Kênh bán hoặc nhóm khách không hợp lệ');
+  const channelId = channelIds[0] ?? null;
+  const customerGroupId = customerGroupIds[0] ?? null;
+  const customerId = text(has('customerId') ? payload.customerId : defaults.customerId) || null;
+  if (customerId && !validUuid(customerId)) return invalid('INVALID_SCOPE_ID', 'Mã khách hàng không hợp lệ');
+  if (listType === 'BASE' && (channelIds.length || customerGroupIds.length || customerId)) return invalid('INVALID_SCOPE', 'BASE lists cannot have channel or customer scope');
+  if (listType === 'CHANNEL' && (!channelIds.length || customerGroupIds.length || customerId)) return invalid('INVALID_SCOPE', 'CHANNEL lists require only channelId');
+  if (listType === 'CUSTOMER_GROUP' && (!customerGroupIds.length || customerId)) return invalid('INVALID_SCOPE', 'CUSTOMER_GROUP lists require customerGroupId and cannot target customerId');
   if (listType === 'CUSTOMER' && !customerId) return invalid('INVALID_SCOPE', 'CUSTOMER lists require customerId');
   const priority = integer(payload.priority ?? defaults.priority, { min: 0, max: 1_000_000, field: 'priority', fallback: DEFAULT_PRIORITY[listType] });
   if (!priority.ok) return priority;
@@ -142,7 +151,7 @@ function validatePriceListInput(payload, { codeRequired = true, defaults = {} } 
   const active = booleanField(payload, 'isActive', defaults.isActive ?? true);
   if (!active.ok) return active;
   return { ok: true, normalized: {
-    code, name, listType, currencyCode, channelId, customerGroupId, customerId,
+    code, name, listType, currencyCode, channelId, customerGroupId, channelIds, customerGroupIds, customerId,
     priority: priority.value, stackingMode, stopProcessing: stop.value,
     effectiveFrom: from.value, effectiveTo: to.value, description: description.value, isActive: active.value,
   } };
@@ -193,13 +202,13 @@ function validatePriceItemInput(payload, { defaults = {} } = {}) {
 }
 
 async function validateScopeReferences(client, { installationId, data }) {
-  if (data.channelId) {
-    const channel = await repo.getSalesChannelById(client, { installationId, id: data.channelId });
+  for (const channelId of data.channelIds) {
+    const channel = await repo.getSalesChannelById(client, { installationId, id: channelId });
     if (!channel) return invalid('CHANNEL_NOT_FOUND', 'Sales channel not found');
     if (data.isActive && !channel.is_active) return conflict('Sales channel is inactive', 'CHANNEL_INACTIVE');
   }
-  if (data.customerGroupId) {
-    const group = await repo.getCustomerGroupForPricing(client, { installationId, customerGroupId: data.customerGroupId });
+  for (const customerGroupId of data.customerGroupIds) {
+    const group = await repo.getCustomerGroupForPricing(client, { installationId, customerGroupId });
     if (!group) return invalid('CUSTOMER_GROUP_NOT_FOUND', 'Customer group not found');
     if (data.isActive && !group.is_active) return conflict('Customer group is inactive', 'CUSTOMER_GROUP_INACTIVE');
   }
@@ -207,7 +216,7 @@ async function validateScopeReferences(client, { installationId, data }) {
     const customer = await repo.getCustomerForPricing(client, { installationId, customerId: data.customerId });
     if (!customer) return invalid('CUSTOMER_NOT_FOUND', 'Customer not found');
     if (data.isActive && !customer.is_active) return conflict('Customer is inactive', 'CUSTOMER_INACTIVE');
-    if (data.customerGroupId && customer.group_id !== data.customerGroupId) return conflict('Customer does not belong to the selected customer group', 'CUSTOMER_GROUP_MISMATCH');
+    if (data.customerGroupIds.length && !data.customerGroupIds.includes(customer.group_id)) return conflict('Customer does not belong to the selected customer group', 'CUSTOMER_GROUP_MISMATCH');
   }
   return { ok: true };
 }
@@ -292,7 +301,8 @@ export async function updatePriceList(client, { installationId, id, payload, upd
   if (!sameTimestamp(existing.updated_at, expected.value)) return conflict('Price-list update conflict');
   const validation = validatePriceListInput(payload ?? {}, { codeRequired: false, defaults: {
     code: existing.code, name: existing.name, listType: existing.list_type, currencyCode: existing.currency_code,
-    channelId: existing.channel_id, customerGroupId: existing.customer_group_id, customerId: existing.customer_id,
+    channelId: existing.channel_id, customerGroupId: existing.customer_group_id,
+    channelIds: existing.channel_ids, customerGroupIds: existing.customer_group_ids, customerId: existing.customer_id,
     priority: existing.priority, stackingMode: existing.stacking_mode, stopProcessing: existing.stop_processing,
     effectiveFrom: existing.effective_from, effectiveTo: existing.effective_to,
     description: existing.description, isActive: existing.is_active,
