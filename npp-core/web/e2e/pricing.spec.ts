@@ -72,7 +72,7 @@ test.describe('Giá bán', () => {
     await page.getByTestId('price-list-code-input').fill(channelListCode.toLowerCase());
     await page.getByTestId('price-list-name-input').fill(`Giá kênh ${suffix}`);
     await page.getByTestId('price-list-priority-input').fill('200');
-    await page.getByTestId('price-list-channel-select').selectOption({ label: `${channelCode} — Kênh quán ${suffix}` });
+    await page.getByTestId('price-list-channel-multi-select').getByRole('checkbox', { name: `Kênh quán ${suffix}` }).check();
     await page.getByTestId('save-price-list-button').click();
     await expect(page.getByTestId(`price-list-row-${channelListCode}`)).toBeVisible();
 

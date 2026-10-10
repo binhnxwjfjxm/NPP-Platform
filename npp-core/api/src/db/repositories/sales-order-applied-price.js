@@ -174,18 +174,22 @@ export async function getStandardPriceResolutionContext(client, {
               AND (
                 price_list.list_type = 'BASE'
                 OR (
-                  (price_list.channel_id IS NULL OR price_list.channel_id = $6)
+                  (price_list.channel_id IS NULL OR EXISTS (
+                    SELECT 1 FROM shared.price_list_channels scoped
+                    WHERE scoped.installation_id = price_list.installation_id
+                      AND scoped.price_list_id = price_list.id AND scoped.channel_id = $6
+                  ))
                   AND (
                     price_list.customer_group_id IS NULL
-                    OR price_list.customer_group_id = COALESCE(
-                      (
-                        SELECT customer.group_id
-                          FROM shared.customers AS customer
-                         WHERE customer.installation_id = $1
-                           AND customer.id = $8
-                         LIMIT 1
-                      ),
-                      $7::uuid
+                    OR EXISTS (
+                      SELECT 1 FROM shared.price_list_customer_groups scoped
+                      WHERE scoped.installation_id = price_list.installation_id
+                        AND scoped.price_list_id = price_list.id
+                        AND scoped.customer_group_id = COALESCE(
+                          (SELECT customer.group_id FROM shared.customers customer
+                           WHERE customer.installation_id = $1 AND customer.id = $8 LIMIT 1),
+                          $7::uuid
+                        )
                     )
                   )
                   AND (price_list.customer_id IS NULL OR price_list.customer_id = $8)

@@ -31,8 +31,8 @@ type ListForm = {
   priority: string;
   stackingMode: PriceStackingMode;
   stopProcessing: boolean;
-  channelId: string;
-  customerGroupId: string;
+  channelIds: string[];
+  customerGroupIds: string[];
   customerId: string;
   effectiveFrom: string;
   effectiveTo: string;
@@ -57,7 +57,7 @@ type ItemForm = {
 const EMPTY_CHANNEL: ChannelForm = { code: '', name: '', description: '', isActive: true };
 const EMPTY_LIST: ListForm = {
   code: '', name: '', listType: 'BASE', priority: '100', stackingMode: 'EXCLUSIVE', stopProcessing: false,
-  channelId: '', customerGroupId: '', customerId: '', effectiveFrom: '', effectiveTo: '', description: '', isActive: true,
+  channelIds: [], customerGroupIds: [], customerId: '', effectiveFrom: '', effectiveTo: '', description: '', isActive: true,
 };
 const EMPTY_ITEM: ItemForm = {
   productId: '', variantId: '', adjustmentType: 'FIXED_PRICE', amount: '', percent: '',
@@ -303,8 +303,8 @@ export default function PricingWorkspace({ initialTab = 'channels' }: { initialT
       priority: String(list.priority),
       stackingMode: list.stacking_mode,
       stopProcessing: list.stop_processing,
-      channelId: list.channel_id ?? '',
-      customerGroupId: list.customer_group_id ?? '',
+      channelIds: list.channel_ids?.length ? list.channel_ids : (list.channel_id ? [list.channel_id] : []),
+      customerGroupIds: list.customer_group_ids?.length ? list.customer_group_ids : (list.customer_group_id ? [list.customer_group_id] : []),
       customerId: list.customer_id ?? '',
       effectiveFrom: inputDate(list.effective_from),
       effectiveTo: inputDate(list.effective_to),
@@ -320,8 +320,8 @@ export default function PricingWorkspace({ initialTab = 'channels' }: { initialT
       ...current,
       listType: type,
       priority: String(LIST_PRIORITIES[type]),
-      channelId: type === 'BASE' ? '' : current.channelId,
-      customerGroupId: ['BASE', 'CHANNEL'].includes(type) ? '' : current.customerGroupId,
+      channelIds: type === 'BASE' ? [] : current.channelIds,
+      customerGroupIds: ['BASE', 'CHANNEL'].includes(type) ? [] : current.customerGroupIds,
       customerId: ['BASE', 'CHANNEL', 'CUSTOMER_GROUP'].includes(type) ? '' : current.customerId,
     }));
   }
@@ -333,8 +333,8 @@ export default function PricingWorkspace({ initialTab = 'channels' }: { initialT
       const body = {
         ...listForm,
         priority: Number(listForm.priority),
-        channelId: listForm.channelId || null,
-        customerGroupId: listForm.customerGroupId || null,
+        channelId: listForm.channelIds[0] ?? null,
+        customerGroupId: listForm.customerGroupIds[0] ?? null,
         customerId: listForm.customerId || null,
         effectiveFrom: apiDate(listForm.effectiveFrom),
         effectiveTo: apiDate(listForm.effectiveTo),
@@ -503,8 +503,8 @@ export default function PricingWorkspace({ initialTab = 'channels' }: { initialT
 
   const scopeDescription = useMemo(() => {
     if (listForm.listType === 'BASE') return 'Giá mặc định của đúng SKU; giá lẻ và thùng độc lập.';
-    if (listForm.listType === 'CHANNEL') return 'Chọn một kênh bán.';
-    if (listForm.listType === 'CUSTOMER_GROUP') return 'Chọn nhóm khách; có thể giới hạn thêm theo kênh.';
+    if (listForm.listType === 'CHANNEL') return 'Chọn một hoặc nhiều kênh bán.';
+    if (listForm.listType === 'CUSTOMER_GROUP') return 'Chọn nhiều nhóm khách; có thể giới hạn thêm theo nhiều kênh.';
     if (listForm.listType === 'CUSTOMER') return 'Chọn khách cụ thể; có thể giới hạn thêm theo kênh.';
     return 'Có thể giới hạn theo kênh, nhóm khách hoặc khách cụ thể.';
   }, [listForm.listType]);
@@ -576,7 +576,15 @@ export default function PricingWorkspace({ initialTab = 'channels' }: { initialT
                     <tr key={list.id} data-testid={`price-list-row-${list.code}`}>
                       <td><strong>{list.code}</strong><br />{list.name}</td>
                       <td>{LIST_LABELS[list.list_type]}</td>
-                      <td>{list.customer_name || list.customer_group_name || list.channel_name || 'Mặc định'}</td>
+                      <td>{[
+                        list.customer_name,
+                        ...(list.customer_group_ids?.length
+                          ? groups.filter((group) => list.customer_group_ids.includes(group.id)).map((group) => group.name)
+                          : list.customer_group_name ? [list.customer_group_name] : []),
+                        ...(list.channel_ids?.length
+                          ? channels.filter((channel) => list.channel_ids.includes(channel.id)).map((channel) => channel.name)
+                          : list.channel_name ? [list.channel_name] : []),
+                      ].filter(Boolean).join(' · ') || 'Mặc định'}</td>
                       <td>{list.priority}</td>
                       <td>{list.stacking_mode === 'STACKABLE' ? 'Có thể kết hợp' : 'Chỉ áp dụng một mức'}{list.stop_processing ? ' · Không xét tiếp' : ''}</td>
                       <td>{list.is_active ? 'Hoạt động' : 'Ngừng'}</td>
@@ -719,7 +727,7 @@ export default function PricingWorkspace({ initialTab = 'channels' }: { initialT
           footer={(
             <>
               <button type="button" className={styles.secondaryButton} disabled={busy} onClick={() => setEditorModal(null)}>Hủy</button>
-              <button type="button" className={styles.primaryButton} disabled={busy || !listForm.code.trim() || !listForm.name.trim()} onClick={() => void saveList()} data-testid="save-price-list-button">
+              <button type="button" className={styles.primaryButton} disabled={busy || !listForm.code.trim() || !listForm.name.trim() || (listForm.listType === 'CHANNEL' && !listForm.channelIds.length) || (listForm.listType === 'CUSTOMER_GROUP' && !listForm.customerGroupIds.length)} onClick={() => void saveList()} data-testid="save-price-list-button">
                 {editingList ? 'Cập nhật bảng giá' : 'Tạo bảng giá'}
               </button>
             </>
@@ -732,8 +740,46 @@ export default function PricingWorkspace({ initialTab = 'channels' }: { initialT
             <label>Loại<select disabled={Boolean(editingList)} value={listForm.listType} onChange={(event) => changeListType(event.target.value as PriceListType)} data-testid="price-list-type-select">{Object.entries(LIST_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
             <label>Thứ tự ưu tiên<input type="number" min="0" value={listForm.priority} onChange={(event) => setListForm({ ...listForm, priority: event.target.value })} data-testid="price-list-priority-input" /></label>
             <label>Cách áp dụng<select value={listForm.stackingMode} onChange={(event) => setListForm({ ...listForm, stackingMode: event.target.value as PriceStackingMode })}><option value="EXCLUSIVE">Chỉ áp dụng một mức</option><option value="STACKABLE">Có thể kết hợp</option></select></label>
-            <label>Kênh<select disabled={listForm.listType === 'BASE'} value={listForm.channelId} onChange={(event) => setListForm({ ...listForm, channelId: event.target.value })} data-testid="price-list-channel-select"><option value="">Tất cả/không áp dụng</option>{channels.filter((row) => row.is_active).map((row) => <option key={row.id} value={row.id}>{row.code} — {row.name}</option>)}</select></label>
-            <label>Nhóm khách<select disabled={['BASE', 'CHANNEL'].includes(listForm.listType)} value={listForm.customerGroupId} onChange={(event) => setListForm({ ...listForm, customerGroupId: event.target.value })}><option value="">Tất cả/không áp dụng</option>{groups.filter((row) => row.is_active).map((row) => <option key={row.id} value={row.id}>{row.code} — {row.name}</option>)}</select></label>
+            {listForm.listType !== 'BASE' ? (
+              <fieldset className={styles.scopeField} data-testid="price-list-channel-multi-select">
+                <legend>Kênh bán áp dụng (chọn nhiều)</legend>
+                <div className={styles.scopeOptions}>
+                  {channels.filter((row) => row.is_active || listForm.channelIds.includes(row.id)).map((channel) => (
+                    <label key={channel.id}>
+                      <input type="checkbox" checked={listForm.channelIds.includes(channel.id)} disabled={!channel.is_active && !listForm.channelIds.includes(channel.id)}
+                        onChange={(event) => setListForm((current) => ({
+                          ...current,
+                          channelIds: event.target.checked ? [...current.channelIds, channel.id] : current.channelIds.filter((id) => id !== channel.id),
+                        }))} />
+                      {channel.name}
+                    </label>
+                  ))}
+                </div>
+                <p className={styles.scopeHelp}>{listForm.channelIds.length
+                  ? `Đã chọn ${listForm.channelIds.length} kênh`
+                  : listForm.listType === 'CHANNEL' ? 'Phải chọn ít nhất một kênh' : 'Không chọn: áp dụng tất cả kênh'}</p>
+              </fieldset>
+            ) : null}
+            {!['BASE', 'CHANNEL'].includes(listForm.listType) ? (
+              <fieldset className={styles.scopeField} data-testid="price-list-group-multi-select">
+                <legend>Nhóm khách hàng áp dụng (chọn nhiều)</legend>
+                <div className={styles.scopeOptions}>
+                  {groups.filter((row) => row.is_active || listForm.customerGroupIds.includes(row.id)).map((group) => (
+                    <label key={group.id}>
+                      <input type="checkbox" checked={listForm.customerGroupIds.includes(group.id)} disabled={!group.is_active && !listForm.customerGroupIds.includes(group.id)}
+                        onChange={(event) => setListForm((current) => ({
+                          ...current,
+                          customerGroupIds: event.target.checked ? [...current.customerGroupIds, group.id] : current.customerGroupIds.filter((id) => id !== group.id),
+                        }))} />
+                      {group.name}
+                    </label>
+                  ))}
+                </div>
+                <p className={styles.scopeHelp}>{listForm.customerGroupIds.length
+                  ? `Đã chọn ${listForm.customerGroupIds.length} nhóm`
+                  : listForm.listType === 'CUSTOMER_GROUP' ? 'Phải chọn ít nhất một nhóm' : 'Không chọn: áp dụng tất cả nhóm'}</p>
+              </fieldset>
+            ) : null}
             <label>Khách hàng<select disabled={!['CUSTOMER', 'PROMOTION', 'CUSTOM'].includes(listForm.listType)} value={listForm.customerId} onChange={(event) => setListForm({ ...listForm, customerId: event.target.value })}><option value="">Tất cả/không áp dụng</option>{customers.filter((row) => row.is_active).map((row) => <option key={row.id} value={row.id}>{row.code} — {row.name}</option>)}</select></label>
             <label>Hiệu lực từ<input type="datetime-local" value={listForm.effectiveFrom} onChange={(event) => setListForm({ ...listForm, effectiveFrom: event.target.value })} /></label>
             <label>Hiệu lực đến<input type="datetime-local" value={listForm.effectiveTo} onChange={(event) => setListForm({ ...listForm, effectiveTo: event.target.value })} /></label>
