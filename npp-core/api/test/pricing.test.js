@@ -299,3 +299,61 @@ test('Pricing API — authentication, idempotency, resolution and audit are enfo
     await closePool();
   }
 });
+
+test('Một bảng giá áp dụng được nhiều nhóm và kênh, nhưng không rò rỉ giá ra ngoài phạm vi', async () => {
+  const config = loadConfig(testEnv());
+  const pool = getPool(config);
+  try {
+    const suffix = randomUUID().slice(0, 8).toUpperCase();
+    const catalog = await createCatalog(pool, config.installationId, suffix);
+    const a = await createCustomerContext(pool, config.installationId, `A${suffix}`);
+    const b = await createCustomerContext(pool, config.installationId, `B${suffix}`);
+    const x = await createCustomerContext(pool, config.installationId, `X${suffix}`);
+    const channels = [];
+    for (const code of ['A', 'B', 'X']) {
+      const result = await pricingService.createSalesChannel(pool, {
+        installationId: config.installationId,
+        payload: { code: `CH${code}-${suffix}`, name: `Kênh ${code}` },
+        createdBy: 'test:user',
+      });
+      assert.equal(result.ok, true, result.message);
+      channels.push(result.channel);
+    }
+    const base = await createList(pool, config.installationId, { code: `BASE-${suffix}`, name: 'Giá nền', listType: 'BASE' });
+    await createItem(pool, config.installationId, base.id, { variantId: catalog.base.id, adjustmentType: 'FIXED_PRICE', amountMinor: '10000' });
+    const list = await createList(pool, config.installationId, {
+      code: `GT01-${suffix}`, name: 'Giá đại lý', listType: 'CUSTOMER_GROUP',
+      channelIds: [channels[0].id, channels[1].id],
+      customerGroupIds: [a.group.id, b.group.id], priority: 300,
+    });
+    assert.deepEqual(new Set(list.channel_ids), new Set([channels[0].id, channels[1].id]));
+    assert.deepEqual(new Set(list.customer_group_ids), new Set([a.group.id, b.group.id]));
+    await createItem(pool, config.installationId, list.id, { variantId: catalog.base.id, adjustmentType: 'FIXED_PRICE', amountMinor: '9000' });
+    async function price(customerId, channelId) {
+      const value = await pricingService.resolvePrice(pool, {
+        installationId: config.installationId,
+        payload: { variantId: catalog.base.id, quantity: '1', customerId, channelId },
+      });
+      assert.equal(value.ok, true, value.message);
+      return value.resolution.finalUnitPriceMinor;
+    }
+    for (const customer of [a.customer, b.customer]) {
+      assert.equal(await price(customer.id, channels[0].id), '9000');
+      assert.equal(await price(customer.id, channels[1].id), '9000');
+      assert.equal(await price(customer.id, channels[2].id), '10000');
+    }
+    assert.equal(await price(x.customer.id, channels[0].id), '10000');
+    const updated = await pricingService.updatePriceList(pool, {
+      installationId: config.installationId, id: list.id, updatedBy: 'test:user',
+      payload: { channelIds: [channels[1].id], customerGroupIds: [b.group.id], expectedUpdatedAt: list.updated_at },
+    });
+    assert.equal(updated.ok, true, updated.message);
+    assert.deepEqual(updated.priceList.channel_ids, [channels[1].id]);
+    assert.deepEqual(updated.priceList.customer_group_ids, [b.group.id]);
+    assert.equal(await price(a.customer.id, channels[1].id), '10000');
+    assert.equal(await price(b.customer.id, channels[1].id), '9000');
+    assert.equal(await price(b.customer.id, channels[0].id), '10000');
+  } finally {
+    await closePool(pool);
+  }
+});
