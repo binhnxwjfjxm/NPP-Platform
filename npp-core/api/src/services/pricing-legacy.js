@@ -121,8 +121,9 @@ function validatePriceListInput(payload, { codeRequired = true, defaults = {} } 
     const ids = has(plural) ? payload[plural]
       : has(singular) ? (payload[singular] ? [payload[singular]] : [])
         : previous ?? (old ? [old] : []);
-    return Array.isArray(ids) && ids.length <= 100
-      && ids.every((id) => validUuid(id)) && new Set(ids).size === ids.length ? ids : null;
+    if (!Array.isArray(ids) || ids.length > 100 || !ids.every((id) => validUuid(id))) return null;
+    const normalized = ids.map((id) => id.toLowerCase());
+    return new Set(normalized).size === normalized.length ? normalized : null;
   };
   const channelIds = selected('channelIds', 'channelId', defaults.channelIds, defaults.channelId);
   const customerGroupIds = selected('customerGroupIds', 'customerGroupId', defaults.customerGroupIds, defaults.customerGroupId);
