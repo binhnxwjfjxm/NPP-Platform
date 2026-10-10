@@ -38,3 +38,10 @@
 .trace li span { display: block; color: #475569; margin-top: .2rem; }
 @media (max-width: 900px) { .formGrid, .resultGrid { grid-template-columns: 1fr; } .wide { grid-column: auto; } }
 @media (max-width: 640px) { .sectionHeader { align-items: stretch; flex-direction: column; } .tabs { display: grid; grid-template-columns: 1fr; } }
+
+.scopeField { grid-column: 1 / -1; min-width: 0; border: 1px solid #cbd5e1; border-radius: .7rem; padding: .7rem .9rem; }
+.scopeField legend { padding: 0 .3rem; color: #334155; font-size: .9rem; font-weight: 600; }
+.scopeOptions { display: flex; flex-wrap: wrap; gap: .5rem 1rem; max-height: 10rem; overflow-y: auto; margin-top: .3rem; }
+.scopeOptions label { display: inline-flex; align-items: center; gap: .4rem; font-weight: 500; }
+.scopeOptions input { width: auto; }
+.scopeHelp { margin: .4rem 0 0; font-size: .8rem; color: #64748b; }
