@@ -20,6 +20,8 @@ export type PriceList = {
   currency_code: string;
   channel_id: string | null;
   customer_group_id: string | null;
+  channel_ids: string[];
+  customer_group_ids: string[];
   customer_id: string | null;
   priority: number;
   stacking_mode: PriceStackingMode;
