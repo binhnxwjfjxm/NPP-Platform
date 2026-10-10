@@ -727,7 +727,7 @@ export default function PricingWorkspace({ initialTab = 'channels' }: { initialT
           footer={(
             <>
               <button type="button" className={styles.secondaryButton} disabled={busy} onClick={() => setEditorModal(null)}>Hủy</button>
-              <button type="button" className={styles.primaryButton} disabled={busy || !listForm.code.trim() || !listForm.name.trim()} onClick={() => void saveList()} data-testid="save-price-list-button">
+              <button type="button" className={styles.primaryButton} disabled={busy || !listForm.code.trim() || !listForm.name.trim() || (listForm.listType === 'CHANNEL' && !listForm.channelIds.length) || (listForm.listType === 'CUSTOMER_GROUP' && !listForm.customerGroupIds.length)} onClick={() => void saveList()} data-testid="save-price-list-button">
                 {editingList ? 'Cập nhật bảng giá' : 'Tạo bảng giá'}
               </button>
             </>
@@ -746,7 +746,7 @@ export default function PricingWorkspace({ initialTab = 'channels' }: { initialT
                 <div className={styles.scopeOptions}>
                   {channels.filter((row) => row.is_active || listForm.channelIds.includes(row.id)).map((channel) => (
                     <label key={channel.id}>
-                      <input type="checkbox" checked={listForm.channelIds.includes(channel.id)} disabled={!channel.is_active}
+                      <input type="checkbox" checked={listForm.channelIds.includes(channel.id)} disabled={!channel.is_active && !listForm.channelIds.includes(channel.id)}
                         onChange={(event) => setListForm((current) => ({
                           ...current,
                           channelIds: event.target.checked ? [...current.channelIds, channel.id] : current.channelIds.filter((id) => id !== channel.id),
@@ -766,7 +766,7 @@ export default function PricingWorkspace({ initialTab = 'channels' }: { initialT
                 <div className={styles.scopeOptions}>
                   {groups.filter((row) => row.is_active || listForm.customerGroupIds.includes(row.id)).map((group) => (
                     <label key={group.id}>
-                      <input type="checkbox" checked={listForm.customerGroupIds.includes(group.id)} disabled={!group.is_active}
+                      <input type="checkbox" checked={listForm.customerGroupIds.includes(group.id)} disabled={!group.is_active && !listForm.customerGroupIds.includes(group.id)}
                         onChange={(event) => setListForm((current) => ({
                           ...current,
                           customerGroupIds: event.target.checked ? [...current.customerGroupIds, group.id] : current.customerGroupIds.filter((id) => id !== group.id),
