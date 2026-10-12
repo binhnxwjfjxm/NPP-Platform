@@ -530,18 +530,22 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
                         <td className={styles.mono}>{balance.lot_code ?? '—'}</td>
                         <td>{formatDate(balance.expiry_date)}</td>
                         <td><InventoryQuantity balance={balance} value={balance.on_hand_quantity} /></td>
-                        {firstInGroup ? (
-                          <td rowSpan={group.rows.length}>
-                            <InventoryQuantity balance={balance} value={businessHeld} />
-                            <div className={styles.subtle}>Theo kho</div>
-                          </td>
-                        ) : null}
-                        {firstInGroup ? (
-                          <td rowSpan={group.rows.length}>
-                            <InventoryQuantity balance={balance} value={businessAvailable} />
-                            <div className={styles.subtle}>Theo kho</div>
-                          </td>
-                        ) : null}
+                        <td>
+                          {firstInGroup ? (
+                            <>
+                              <InventoryQuantity balance={balance} value={businessHeld} />
+                              <div className={styles.subtle}>Theo kho</div>
+                            </>
+                          ) : <span className={styles.subtle}>—</span>}
+                        </td>
+                        <td>
+                          {firstInGroup ? (
+                            <>
+                              <InventoryQuantity balance={balance} value={businessAvailable} />
+                              <div className={styles.subtle}>Theo kho</div>
+                            </>
+                          ) : <span className={styles.subtle}>—</span>}
+                        </td>
                         <td>
                           <button
                             type="button"
