@@ -29,7 +29,10 @@ test('inventory lookup shows warehouse business holds once per warehouse and bas
   assert.match(inventoryTypes, /business_available_quantity\?: string \| null;/);
   assert.match(workspace, /groupBalancesByWarehouseSku/);
   assert.match(workspace, /businessHoldKey\(balance\)/);
-  assert.match(workspace, /rowSpan=\{group\.rows\.length\}/);
+  assert.match(workspace, /const firstInGroup = groupRowIndex === 0/);
+  assert.doesNotMatch(workspace, /rowSpan=\{group\.rows\.length\}/);
+  assert.equal((workspace.match(/value=\{businessHeld\}/g) ?? []).length, 1);
+  assert.equal((workspace.match(/value=\{businessAvailable\}/g) ?? []).length, 1);
   assert.match(workspace, /balance\.business_held_quantity/);
   assert.match(workspace, /balance\.business_available_quantity/);
   assert.match(workspace, />Theo kho</);
