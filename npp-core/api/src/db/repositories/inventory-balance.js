@@ -195,6 +195,7 @@ export async function listInventoryBalances(client, {
             AND catalog_product.id = base.product_id
           WHERE warehouse.installation_id = $1
             AND warehouse.id = ANY($7::uuid[])
+            AND warehouse.is_active = true
             AND catalog_product.is_inventory_managed = true
             AND NOT EXISTS (
               SELECT 1 FROM inventory.inventory_balances recorded
@@ -204,6 +205,9 @@ export async function listInventoryBalances(client, {
             )
         ) balance`
     : 'inventory.inventory_balances balance';
+  // Only the inventory lookup/export opt-in hides inactive warehouses.
+  // Other inventory operations and movement history keep their existing scope.
+  const activeWarehousePredicate = includeCatalog ? 'AND warehouse.is_active = true' : '';
   const result = await client.query(
     `SELECT balance.installation_id,
             balance.warehouse_id,
@@ -243,6 +247,7 @@ export async function listInventoryBalances(client, {
        JOIN shared.warehouses warehouse
          ON warehouse.installation_id = balance.installation_id
         AND warehouse.id = balance.warehouse_id
+        ${activeWarehousePredicate}
        LEFT JOIN shared.warehouse_locations location
          ON location.installation_id = balance.installation_id
         AND location.warehouse_id = balance.warehouse_id

@@ -38,3 +38,10 @@ test('Lịch sử kho keeps the Sapo-style table, 50 rows per page and inline do
   assert.ok(inventory.includes('<span>Đơn bán hàng</span>'));
   assert.ok(inventory.includes('<span>Khách hàng</span>'));
 });
+
+test('Tồn kho không còn ô gộp vượt dòng gây sai nền và lệch cột', () => {
+  assert.doesNotMatch(inventory, /rowSpan=\{group\.rows\.length\}/);
+  assert.match(inventory, /<td>\s*\{firstInGroup \? \(\s*<>\s*<InventoryQuantity balance=\{balance\} value=\{businessHeld\}/);
+  assert.match(inventory, /<td>\s*\{firstInGroup \? \(\s*<>\s*<InventoryQuantity balance=\{balance\} value=\{businessAvailable\}/);
+  assert.match(inventory, /\) : <span className=\{styles\.subtle\}>—<\/span>\}/);
+});

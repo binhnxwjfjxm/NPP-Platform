@@ -77,6 +77,8 @@ test('inventory catalog read includes zero-stock base SKU per allowed warehouse 
   assert.match(queries[0].sql, /catalog_product\.is_inventory_managed = true/);
   assert.match(queries[0].sql, /base\.is_inventory_base = true/);
   assert.match(queries[0].sql, /UNION ALL/);
+  assert.match(queries[0].sql, /AND warehouse\.id = ANY\(\$7::uuid\[\]\)\s+AND warehouse\.is_active = true/);
+  assert.match(queries[0].sql, /AND warehouse\.id = balance\.warehouse_id\s+AND warehouse\.is_active = true/);
   assert.match(queries[0].sql, /NOT EXISTS \(/);
   assert.match(queries[0].sql, /existing\.warehouse_id = ANY\(\$7::uuid\[\]\)/);
   assert.match(queries[0].sql, /warehouse\.id = ANY\(\$7::uuid\[\]\)/);
@@ -85,5 +87,6 @@ test('inventory catalog read includes zero-stock base SKU per allowed warehouse 
   queries.length = 0;
   await listInventoryBalances(client, { installationId: 'installation-1', limit: 100, offset: 0 });
   assert.doesNotMatch(queries[0].sql, /UNION ALL/);
+  assert.doesNotMatch(queries[0].sql, /warehouse\.is_active = true/);
   assert.equal(queries[0].params.length, 6);
 });
