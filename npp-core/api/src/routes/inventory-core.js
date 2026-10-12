@@ -294,6 +294,8 @@ async function handleBalances(req, res, options, pathname, method) {
 
     const warehouseId = url.searchParams.get('warehouseId') || null;
     const baseVariantId = url.searchParams.get('baseVariantId') || null;
+    const includeCatalog = pathname === '/api/inventory/balances'
+      && url.searchParams.get('includeCatalog') === 'true';
     const rows = await balanceRepository.listInventoryBalances(options.getPool(), {
       installationId: scopedRequestContext.installationId,
       warehouseId,
@@ -301,6 +303,8 @@ async function handleBalances(req, res, options, pathname, method) {
       lotId: url.searchParams.get('lotId') || null,
       limit: parseInteger(url.searchParams.get('limit'), 500, 1000),
       offset: parseOffset(url.searchParams.get('offset')),
+      includeCatalog,
+      warehouseIds: scopedRequestContext.scopes?.warehouseIds ?? [],
     });
     const pageBaseVariantIds = [...new Set(rows.map((row) => row.base_variant_id))];
     const holds = rows.length > 0
