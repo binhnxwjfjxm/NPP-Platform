@@ -202,17 +202,34 @@ export async function listInventoryBalances(client, {
                WHERE recorded.installation_id = warehouse.installation_id
                  AND recorded.warehouse_id = warehouse.id
                  AND recorded.base_variant_id = base.id
+                 -- An empty located projection in a warehouse with shared stock
+                 -- must not suppress the catalog zero row.
+                 AND (warehouse.location_management_mode IS DISTINCT FROM 'UNMANAGED'
+                      OR recorded.location_id IS NULL
+                      OR recorded.on_hand_quantity <> 0
+                      OR recorded.reserved_quantity <> 0
+                      OR recorded.available_quantity <> 0)
             )
         ) balance`
     : 'inventory.inventory_balances balance';
   // Only the inventory lookup/export opt-in hides inactive warehouses.
   // Other inventory operations and movement history keep their existing scope.
   const activeWarehousePredicate = includeCatalog ? 'AND warehouse.is_active = true' : '';
+  // Only hide stale, empty location projections from the operator lookup.
+  // Keep non-zero or reserved legacy scopes visible for reconciliation.
+  const emptyUnmanagedLocationPredicate = includeCatalog
+    ? `AND NOT (warehouse.location_management_mode = 'UNMANAGED'
+                AND balance.location_id IS NOT NULL
+                AND balance.on_hand_quantity = 0
+                AND balance.reserved_quantity = 0
+                AND balance.available_quantity = 0)`
+    : '';
   const result = await client.query(
     `SELECT balance.installation_id,
             balance.warehouse_id,
             warehouse.code AS warehouse_code,
             warehouse.name AS warehouse_name,
+            warehouse.location_management_mode AS warehouse_location_management_mode,
             balance.location_id,
             location.code AS location_code,
             location.name AS location_name,
@@ -292,6 +309,7 @@ export async function listInventoryBalances(client, {
         AND ($2::uuid IS NULL OR balance.warehouse_id = $2)
         AND ($3::uuid IS NULL OR balance.base_variant_id = $3)
         AND ($4::uuid IS NULL OR balance.lot_id IS NOT DISTINCT FROM $4)
+        ${emptyUnmanagedLocationPredicate}
       ORDER BY balance.warehouse_id, balance.location_id NULLS FIRST, balance.base_variant_id, balance.lot_id NULLS FIRST
       LIMIT $5 OFFSET $6`,
     [installationId, warehouseId, baseVariantId, lotId, limit, offset, ...(includeCatalog ? [warehouseIds] : [])],

@@ -518,7 +518,9 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
                         <BusinessTableSequenceCell rowIndex={group.startIndex + groupRowIndex} />
                         <td>
                           <div>{balance.warehouse_code} · {balance.warehouse_name}</div>
-                          <div className={styles.subtle}>{joinValues(balance.location_code, balance.location_name) || 'Không vị trí'}</div>
+                          {balance.warehouse_location_management_mode === 'UNMANAGED' && !balance.location_id ? null : (
+                            <div className={styles.subtle}>{joinValues(balance.location_code, balance.location_name) || 'Không vị trí'}</div>
+                          )}
                         </td>
                         <td>
                           <div><strong>{balance.product_name}</strong></div>

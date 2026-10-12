@@ -45,3 +45,10 @@ test('Tồn kho không còn ô gộp vượt dòng gây sai nền và lệch c�
   assert.match(inventory, /<td>\s*\{firstInGroup \? \(\s*<>\s*<InventoryQuantity balance=\{balance\} value=\{businessAvailable\}/);
   assert.match(inventory, /\) : <span className=\{styles\.subtle\}>—<\/span>\}/);
 });
+
+test('Tồn kho chỉ hiển thị dòng vị trí khi kho quản lý vị trí hoặc còn dữ liệu cũ cần đối soát', () => {
+  assert.match(inventory, /balance\.warehouse_location_management_mode === 'UNMANAGED' && !balance\.location_id \? null/);
+  assert.match(inventory, /joinValues\(balance\.location_code, balance\.location_name\) \|\| 'Không vị trí'/);
+  assert.match(inventory, /<InventoryQuantity balance=\{balance\} value=\{balance\.on_hand_quantity\}/);
+  assert.match(inventory, /loadWarehouseHistory\(balance, 0, balance\.base_sku\)/);
+});

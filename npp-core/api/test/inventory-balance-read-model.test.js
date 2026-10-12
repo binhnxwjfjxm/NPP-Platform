@@ -79,6 +79,17 @@ test('inventory catalog read includes zero-stock base SKU per allowed warehouse 
   assert.match(queries[0].sql, /UNION ALL/);
   assert.match(queries[0].sql, /AND warehouse\.id = ANY\(\$7::uuid\[\]\)\s+AND warehouse\.is_active = true/);
   assert.match(queries[0].sql, /AND warehouse\.id = balance\.warehouse_id\s+AND warehouse\.is_active = true/);
+  assert.match(queries[0].sql, /warehouse\.location_management_mode AS warehouse_location_management_mode/);
+  assert.match(queries[0].sql, /warehouse\.location_management_mode = 'UNMANAGED'/);
+  assert.match(queries[0].sql, /balance\.location_id IS NOT NULL/);
+  assert.match(queries[0].sql, /balance\.on_hand_quantity = 0/);
+  assert.match(queries[0].sql, /balance\.reserved_quantity = 0/);
+  assert.match(queries[0].sql, /balance\.available_quantity = 0/);
+  assert.match(queries[0].sql, /warehouse\.location_management_mode IS DISTINCT FROM 'UNMANAGED'/);
+  assert.match(queries[0].sql, /recorded\.location_id IS NULL/);
+  assert.match(queries[0].sql, /recorded\.on_hand_quantity <> 0/);
+  assert.match(queries[0].sql, /recorded\.reserved_quantity <> 0/);
+  assert.match(queries[0].sql, /recorded\.available_quantity <> 0/);
   assert.match(queries[0].sql, /NOT EXISTS \(/);
   assert.match(queries[0].sql, /existing\.warehouse_id = ANY\(\$7::uuid\[\]\)/);
   assert.match(queries[0].sql, /warehouse\.id = ANY\(\$7::uuid\[\]\)/);
@@ -88,5 +99,6 @@ test('inventory catalog read includes zero-stock base SKU per allowed warehouse 
   await listInventoryBalances(client, { installationId: 'installation-1', limit: 100, offset: 0 });
   assert.doesNotMatch(queries[0].sql, /UNION ALL/);
   assert.doesNotMatch(queries[0].sql, /warehouse\.is_active = true/);
+  assert.doesNotMatch(queries[0].sql, /AND NOT \(warehouse\.location_management_mode = 'UNMANAGED'/);
   assert.equal(queries[0].params.length, 6);
 });

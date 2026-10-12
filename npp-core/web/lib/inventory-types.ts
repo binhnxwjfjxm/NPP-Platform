@@ -44,6 +44,7 @@ export type InventoryBalance = {
   warehouse_id: string;
   warehouse_code: string;
   warehouse_name: string;
+  warehouse_location_management_mode?: 'MANAGED' | 'UNMANAGED' | null;
   location_id: string | null;
   location_code: string | null;
   location_name: string | null;
