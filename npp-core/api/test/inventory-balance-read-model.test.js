@@ -46,3 +46,44 @@ test('inventory balance list exposes product name and canonical packaging metada
   assertOperatorIdentity(listBalances);
   assertProductAndPackagingReadContract(listBalances);
 });
+
+test('inventory catalog read includes zero-stock base SKU per allowed warehouse without creating stock', async () => {
+  const { listInventoryBalances } = await import('../src/db/repositories/inventory-balance.js');
+  const queries = [];
+  const row = {
+    installation_id: 'installation-1',
+    warehouse_id: 'warehouse-1',
+    base_variant_id: 'variant-1',
+    base_sku: 'NEW-SKU',
+    product_name: 'Hàng mới chưa nhập',
+    on_hand_quantity: '0.000000000000',
+    reserved_quantity: '0.000000000000',
+    available_quantity: '0.000000000000',
+    expiry_date: null,
+  };
+  const client = { query: async (sql, params) => {
+    queries.push({ sql, params });
+    return { rows: [row] };
+  } };
+  const result = await listInventoryBalances(client, {
+    installationId: 'installation-1',
+    warehouseIds: ['warehouse-1'],
+    includeCatalog: true,
+    limit: 100,
+    offset: 0,
+  });
+  assert.equal(result.length, 1);
+  assert.equal(result[0].on_hand_quantity, '0.000000000000');
+  assert.match(queries[0].sql, /catalog_product\.is_inventory_managed = true/);
+  assert.match(queries[0].sql, /base\.is_inventory_base = true/);
+  assert.match(queries[0].sql, /UNION ALL/);
+  assert.match(queries[0].sql, /NOT EXISTS \(/);
+  assert.match(queries[0].sql, /existing\.warehouse_id = ANY\(\$7::uuid\[\]\)/);
+  assert.match(queries[0].sql, /warehouse\.id = ANY\(\$7::uuid\[\]\)/);
+  assert.deepEqual(queries[0].params[6], ['warehouse-1']);
+  assert.doesNotMatch(queries[0].sql, /INSERT INTO|UPDATE inventory\.|DELETE FROM/i);
+  queries.length = 0;
+  await listInventoryBalances(client, { installationId: 'installation-1', limit: 100, offset: 0 });
+  assert.doesNotMatch(queries[0].sql, /UNION ALL/);
+  assert.equal(queries[0].params.length, 6);
+});

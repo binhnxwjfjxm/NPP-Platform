@@ -25,6 +25,7 @@ async function listAllInventoryBalances(requestId: string): Promise<InventorySna
       new URLSearchParams({
         limit: String(INVENTORY_BALANCE_BATCH_SIZE),
         offset: String(offset),
+        includeCatalog: 'true',
       }),
     ),
   });

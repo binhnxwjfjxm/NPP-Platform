@@ -170,7 +170,40 @@ export async function listInventoryBalances(client, {
   lotId = null,
   limit = 500,
   offset = 0,
+  includeCatalog = false,
+  warehouseIds = [],
 }) {
+  // Zero rows are read-only catalog projections, not stock ledger postings.
+  const balanceSource = includeCatalog
+    ? `(SELECT existing.installation_id, existing.warehouse_id, existing.location_id,
+               existing.base_variant_id, existing.lot_id, existing.on_hand_quantity,
+               existing.reserved_quantity, existing.available_quantity,
+               existing.projected_through, existing.updated_at
+          FROM inventory.inventory_balances existing
+         WHERE existing.installation_id = $1
+           AND existing.warehouse_id = ANY($7::uuid[])
+         UNION ALL
+         SELECT warehouse.installation_id, warehouse.id, NULL::uuid, base.id, NULL::uuid,
+                0::numeric(30,12), 0::numeric(30,12), 0::numeric(30,12),
+                NULL, NULL
+           FROM shared.warehouses warehouse
+           JOIN shared.product_variants base
+             ON base.installation_id = warehouse.installation_id
+            AND base.is_inventory_base = true
+           JOIN shared.products catalog_product
+             ON catalog_product.installation_id = base.installation_id
+            AND catalog_product.id = base.product_id
+          WHERE warehouse.installation_id = $1
+            AND warehouse.id = ANY($7::uuid[])
+            AND catalog_product.is_inventory_managed = true
+            AND NOT EXISTS (
+              SELECT 1 FROM inventory.inventory_balances recorded
+               WHERE recorded.installation_id = warehouse.installation_id
+                 AND recorded.warehouse_id = warehouse.id
+                 AND recorded.base_variant_id = base.id
+            )
+        ) balance`
+    : 'inventory.inventory_balances balance';
   const result = await client.query(
     `SELECT balance.installation_id,
             balance.warehouse_id,
@@ -206,7 +239,7 @@ export async function listInventoryBalances(client, {
             balance.available_quantity,
             balance.projected_through,
             balance.updated_at
-       FROM inventory.inventory_balances balance
+       FROM ${balanceSource}
        JOIN shared.warehouses warehouse
          ON warehouse.installation_id = balance.installation_id
         AND warehouse.id = balance.warehouse_id
@@ -256,7 +289,7 @@ export async function listInventoryBalances(client, {
         AND ($4::uuid IS NULL OR balance.lot_id IS NOT DISTINCT FROM $4)
       ORDER BY balance.warehouse_id, balance.location_id NULLS FIRST, balance.base_variant_id, balance.lot_id NULLS FIRST
       LIMIT $5 OFFSET $6`,
-    [installationId, warehouseId, baseVariantId, lotId, limit, offset],
+    [installationId, warehouseId, baseVariantId, lotId, limit, offset, ...(includeCatalog ? [warehouseIds] : [])],
   );
   return (result.rows ?? []).map(presentInventoryBalance);
 }

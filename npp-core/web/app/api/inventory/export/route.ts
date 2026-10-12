@@ -16,7 +16,6 @@ import {
   inventoryExportHeaders,
   inventoryLotExportRow,
   inventoryPolicyExportRow,
-  isDisplayableInventoryBalance,
   isInventoryExportColumn,
   isInventoryExportScope,
   matchesInventoryBalanceExport,
@@ -97,8 +96,7 @@ function ensureRowLimit(rowCount: number) {
 
 async function loadRows(scope: InventoryExportScope, requestId: string, search: string, columns: readonly string[]): Promise<string[][]> {
   if (scope === 'balances') {
-    const rows = (await listAllInventoryBalances(requestId))
-      .filter(isDisplayableInventoryBalance)
+    const rows = (await listAllInventoryBalances(requestId, new URLSearchParams({ includeCatalog: 'true' })))
       .filter((row) => matchesInventoryBalanceExport(row, search));
     ensureRowLimit(rows.length);
     return rows.map((row) => inventoryBalanceExportRow(row, columns));
