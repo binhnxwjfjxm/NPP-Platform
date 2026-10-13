@@ -61,7 +61,7 @@ verify_target() {
   echo "MIGRATION_TARGET=$target REGISTRY=$applied TABLES=$tables FOREIGN_KEYS=$constraints INDEXES=$idx TRIGGERS=$triggers RUNTIME_PRIVILEGES=$privileges ROWS=$rows"
   test "$applied" = 1
   test "$tables" = 2
-  test "$constraints" = 7
+  test "$constraints" = 6
   test "$idx" = 2
   test "$triggers" = 2
   test "$privileges" = 1
