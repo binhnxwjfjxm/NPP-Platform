@@ -51,6 +51,9 @@ DECLARE
   receipt_row record;
   already_returned numeric(30,12);
 BEGIN
+  IF TG_OP = 'DELETE' AND shared.business_purge_delete_allowed(OLD.installation_id) THEN
+    RETURN OLD;
+  END IF;
   IF TG_OP <> 'INSERT' THEN
     RAISE EXCEPTION 'manual_delivery_return_immutable';
   END IF;
