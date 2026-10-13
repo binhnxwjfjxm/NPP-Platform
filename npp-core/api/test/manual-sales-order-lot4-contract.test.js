@@ -12,9 +12,12 @@ const receivableRepository = readFileSync(new URL('../src/db/repositories/custom
 
 test('Giao thủ công ghi nhận doanh số khi Hoàn thành đơn, độc lập với tiền thu', () => {
   assert.match(service, /export async function completeManualSalesOrder/);
-  assert.match(service, /postReceivable\(client, \{ requestContext, source, contract \}\)/);
+  assert.match(service, /postReceivable\(client, \{ requestContext, source, contract, completionFacts \}\)/);
+  assert.match(service, /resolveCompletionFacts/);
+  assert.match(service, /originalAmount: completionFacts\.total/);
   assert.match(service, /SET status = 'closed'/);
-  assert.match(service, /const deliveryStatus = contract\.deliveryMode === 'PICKUP' \? 'not_required' : 'delivered'/);
+  assert.match(service, /const deliveryStatus = contract\.deliveryMode === 'PICKUP' \? 'not_required'/);
+  assert.match(service, /completionFacts\.hasReturns \? 'partially_delivered' : 'delivered'/);
   assert.match(service, /delivery_status = \$5/);
   assert.match(service, /\['issued', 'fulfilled'\]/);
   assert.doesNotMatch(service, /postServerOwnedSalesMovement/);
@@ -24,7 +27,8 @@ test('Giao thủ công ghi nhận doanh số khi Hoàn thành đơn, độc lậ
 test('Giao tại quầy Hoàn thành giữ delivery_status đúng constraint của PICKUP', () => {
   assert.match(service, /PICKUP: Object\.freeze\(\{/);
   assert.match(service, /deliveryMode: 'PICKUP'/);
-  assert.match(service, /const deliveryStatus = contract\.deliveryMode === 'PICKUP' \? 'not_required' : 'delivered'/);
+  assert.match(service, /const deliveryStatus = contract\.deliveryMode === 'PICKUP' \? 'not_required'/);
+  assert.match(service, /completionFacts\.hasReturns \? 'partially_delivered' : 'delivered'/);
   assert.match(service, /\[requestContext\.installationId, id, requestContext\.actorId, total === 0n, deliveryStatus\]/);
 });
 
