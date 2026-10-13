@@ -16,6 +16,7 @@ const MOVEMENT_LABELS: Readonly<Record<string, string>> = Object.freeze({
   SALES_DELIVERY_ISSUE: 'Xuất giao hàng',
   DELIVERY_RETURN: 'Nhập hàng giao trả về',
   LOGISTICS_TRIP_RETURN: 'Nhập hàng giao trả về',
+  SALES_MANUAL_UNDELIVERED_RETURN: 'Nhập trả hàng giao thủ công',
   CUSTOMER_RETURN: 'Khách trả hàng',
   PICKUP_ISSUE: 'Khách nhận tại kho',
   MANUAL_ISSUE: 'Xuất kho thủ công',

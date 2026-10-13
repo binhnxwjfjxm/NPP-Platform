@@ -209,6 +209,7 @@ function movementLabel(row: InventoryMovementHistoryRow): string {
     STOCKTAKE_ADJUSTMENT: 'Cân bằng sau kiểm kê',
     STOCKTAKE_ADJUSTMENT_REVERSAL: 'Hoàn tác cân bằng kiểm kê',
     LOGISTICS_TRIP_RETURN: 'Nhập hàng hoàn',
+    SALES_MANUAL_UNDELIVERED_RETURN: 'Nhập trả hàng giao thủ công',
     REVERSAL: 'Hoàn tác giao dịch kho',
   };
   if (labels[row.movement_type]) return labels[row.movement_type];

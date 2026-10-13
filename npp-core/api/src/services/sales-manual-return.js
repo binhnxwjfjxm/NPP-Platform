@@ -206,7 +206,7 @@ export async function receiveManualOrderReturn(client, {
         baseUnitId: source.base_unit_id, baseUnitCode: source.base_unit_code,
         lotId: source.lot_id, lotCode: source.lot_code, expiryDate: source.expiry_date,
         quantity: formatManualReturnQuantity(quantity),
-        metadata: { salesOrderLineId: source.sales_line_id, originalIssueLineId: source.issue_line_id },
+        metadata: { salesOrderLineId: source.sales_line_id, originalIssueLineId: source.issue_line_id, originalInventoryMovementLineId: source.issue_line_id },
       })),
     },
   });
