@@ -128,7 +128,7 @@ async function loadLines(client, { installationId, salesOrderVersionId }) {
 // Financial amounts come from the immutable confirmed order snapshot. A warehouse return
 // reduces accepted quantities BEFORE receivables are posted; it is not an accounting credit.
 function parseBaseQuantity(value) {
-  const match = /^(0|[1-9][0-9]*)(?:\\.([0-9]{1,12}))?$/.exec(String(value ?? ''));
+  const match = /^(0|[1-9][0-9]*)(?:\.([0-9]{1,12}))?$/.exec(String(value ?? ''));
   if (!match) return null;
   return BigInt(match[1]) * 1000000000000n + BigInt((match[2] ?? '').padEnd(12, '0'));
 }
