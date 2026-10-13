@@ -14,6 +14,7 @@ import * as entryService from '../services/sales-order-entry.js';
 import * as appliedPriceService from '../services/sales-order-applied-price.js';
 import * as searchPreviewService from '../services/sales-order-search-preview.js';
 import * as manualStockIssueService from '../services/sales-manual-stock-issue.js';
+import * as manualReturnService from '../services/sales-manual-return.js';
 import * as pickupStockIssueService from '../services/sales-pickup-stock-issue.js';
 
 function apiError(code, message, details = {}, retryable = false, statusCode = 500) {
@@ -166,6 +167,7 @@ function eventTypeFor(action) {
     manual_quick_edit: 'sales.sales_order.manual_quick_edited',
     pickup_quick_edit: 'sales.sales_order.pickup_quick_edited',
     manual_stock_issue: 'sales.sales_order.manual_stock_issued',
+    manual_return_received: 'sales.sales_order.manual_return_received',
     pickup_stock_issue: 'sales.sales_order.pickup_stock_issued',
     cancel: 'sales.sales_order.cancelled',
     close_execution: 'sales.sales_order.execution_closed',
@@ -728,7 +730,7 @@ export async function handleSalesOrderRoutes(req, res, options) {
   }
 
   const itemMatch = pathname.match(
-    /^\/api\/sales-orders\/([^/]+)(?:\/(draft|confirm|amendments|manual-edit|pickup-edit|issue-stock|cancel|close-execution))?$/,
+    /^\/api\/sales-orders\/([^/]+)(?:\/(draft|confirm|amendments|manual-edit|pickup-edit|issue-stock|manual-return|cancel|close-execution))?$/,
   );
   if (!itemMatch) {
     sendError(
@@ -756,6 +758,27 @@ export async function handleSalesOrderRoutes(req, res, options) {
     });
     if (!result.ok) sendServiceError(res, result, options);
     else sendSuccess(res, result.salesOrder, options.requestId, options.receivedAt);
+    return true;
+  }
+
+  if (action === 'manual-return' && method === 'GET') {
+    const context = await authenticateAndAuthorize(req, res, options, options.PERMISSIONS.coreSalesOrderRead);
+    if (!context) return true;
+    try {
+      const result = await manualReturnService.getManualReturnEligibility(options.getPool(), {
+        requestContext: context, id,
+      });
+      if (!result.ok) sendServiceError(res, result, options);
+      else sendSuccess(res, {
+        orderRevision: result.orderRevision,
+        canReceive: result.canReceive,
+        canReturnAll: result.canReturnAll,
+        lines: result.lines,
+      }, options.requestId, options.receivedAt);
+    } catch (error) {
+      console.error(JSON.stringify(sanitizedUnexpectedError(error, { requestId: options.requestId, action: 'manual_return_read', resourceId: id })));
+      sendError(res, apiError('MANUAL_RETURN_UNAVAILABLE', 'Không tải được số lượng có thể nhập trả', {}, true, 503), options.requestId, options.receivedAt);
+    }
     return true;
   }
 
@@ -943,6 +966,26 @@ export async function handleSalesOrderRoutes(req, res, options) {
         expectedRevision: payload.expectedRevision,
         idempotencyKey: key,
         })),
+    });
+    return true;
+  }
+
+  if (action === 'manual-return' && method === 'POST') {
+    const context = await authenticateAndAuthorize(
+      req, res, options, options.PERMISSIONS.coreDeliveryOrderIssueInventory,
+    );
+    if (!context) return true;
+    const payload = await readPayload(req, res, options);
+    if (payload === null) return true;
+    await executeIdempotentMutation(req, res, options, {
+      requestContext: context,
+      route: `/api/sales-orders/${id}/manual-return`,
+      payload: { ...payload, id },
+      action: 'manual_return_received',
+      resourceId: id,
+      mutate: (client, key) => manualReturnService.receiveManualOrderReturn(client, {
+        requestContext: context, id, payload, expectedRevision: payload.expectedRevision, idempotencyKey: key,
+      }),
     });
     return true;
   }
