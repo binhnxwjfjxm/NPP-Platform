@@ -23,7 +23,7 @@ type ReturnEligibility = {
   lines: ReturnLine[];
 };
 type StableRequest = { fingerprint: string; key: string };
-const DECIMAL = /^(0|[1-9][0-9]*)(?:\.([0-9]{1,6}))?$/;
+const DECIMAL = /^(0|[1-9][0-9]*)(?:\.([0-9]{1,12}))?$/;
 const SCALE = 1000000000000n;
 
 function quantity(value: string): bigint | null {
