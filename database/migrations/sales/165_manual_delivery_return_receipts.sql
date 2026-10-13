@@ -77,7 +77,7 @@ BEGIN
      FOR UPDATE OF lines;
     IF receipt_row IS NULL OR source_row IS NULL
        OR source_row.reason_code IS DISTINCT FROM 'MANUAL_SALES_ORDER_STOCK_ISSUE'
-       OR source_row.sales_order_id IS DISTINCT FROM receipt_row.sales_order_id
+       OR source_row.sales_order_id IS DISTINCT FROM receipt_row.sales_order_id::text
        OR source_row.sales_order_line_id IS DISTINCT FROM NEW.sales_order_line_id::text
        OR source_row.warehouse_id IS DISTINCT FROM receipt_row.warehouse_id THEN
       RAISE EXCEPTION 'manual_delivery_return_invalid_origin';
