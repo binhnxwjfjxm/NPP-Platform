@@ -8,3 +8,5 @@ export function getSalesOrderEntrySettings<T>(requestId:string):Promise<T>{retur
 export function quickEditManualSalesOrder<T>(id:string,r:string,b:unknown,k:string):Promise<T>{return req<T>({method:'PUT',path:`${path(id)}/manual-edit`,requestId:r,body:b,idempotencyKey:key(k)});}
 export function issueManualSalesOrderStock<T>(id:string,r:string,b:unknown,k:string):Promise<T>{return req<T>({method:'POST',path:`${path(id)}/issue-stock`,requestId:r,body:b,idempotencyKey:key(k)});}
 export function closeSalesOrderAfterExecution<T>(id:string,r:string,b:unknown,k:string):Promise<T>{return req<T>({method:'POST',path:`${path(id)}/close-execution`,requestId:r,body:b,idempotencyKey:key(k)});}
+export function getManualSalesOrderReturn<T>(id:string,r:string):Promise<T>{return req<T>({method:'GET',path:`${path(id)}/manual-return`,requestId:r});}
+export function receiveManualSalesOrderReturn<T>(id:string,r:string,b:unknown,k:string):Promise<T>{return req<T>({method:'POST',path:`${path(id)}/manual-return`,requestId:r,body:b,idempotencyKey:key(k)});}
