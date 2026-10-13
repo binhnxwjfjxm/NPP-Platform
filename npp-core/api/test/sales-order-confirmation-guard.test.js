@@ -30,7 +30,7 @@ test('Every Sales Order mutation is idempotent and returns its outbox event to t
 test('closing the unexecuted remainder is accepted by the Sales Order route before lifecycle validation', () => {
   assert.match(
     routes,
-    /draft\|confirm\|amendments\|manual-edit\|pickup-edit\|issue-stock\|cancel\|close-execution/,
+    /draft\|confirm\|amendments\|manual-edit\|pickup-edit\|issue-stock\|manual-return\|cancel\|close-execution/,
   );
   assert.match(routes, /action === 'close-execution' && method === 'POST'/);
   assert.match(routes, /route: `\/api\/sales-orders\/\$\{id\}\/close-execution`/);
