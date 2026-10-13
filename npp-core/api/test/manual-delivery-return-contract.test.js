@@ -46,7 +46,7 @@ test('nhập trả có xuất nguồn, warehouse scope, khóa đơn và movement
   assert.match(src, /source\.issue_line_id/);
   assert.match(src, /SALES_MANUAL_UNDELIVERED_RETURN/);
   assert.match(src, /postServerOwnedSalesMovement/);
-  assert.match(src, /requestContext\.scopes\?\.warehouseIds/);
+  assert.ok(src.includes('context.scopes?.warehouseIds'));
   assert.match(src, /MANUAL_RETURN_EXCEEDS_ISSUED/);
   assert.match(src, /order\.status !== 'confirmed'/);
   assert.match(ledger, /SALES_MANUAL_UNDELIVERED_RETURN/);
