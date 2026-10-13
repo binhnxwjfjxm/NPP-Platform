@@ -124,6 +124,72 @@ async function loadLines(client, { installationId, salesOrderVersionId }) {
   return result.rows ?? [];
 }
 
+
+// Financial amounts come from the immutable confirmed order snapshot. A warehouse return
+// reduces accepted quantities BEFORE receivables are posted; it is not an accounting credit.
+function parseBaseQuantity(value) {
+  const match = /^(0|[1-9][0-9]*)(?:\\.([0-9]{1,12}))?$/.exec(String(value ?? ''));
+  if (!match) return null;
+  return BigInt(match[1]) * 1000000000000n + BigInt((match[2] ?? '').padEnd(12, '0'));
+}
+function moneyFromScaled(value) {
+  return String(value / 1000000n) + '.' + String(value % 1000000n).padStart(6, '0');
+}
+function proportionalMoney(value, numerator, denominator) {
+  const parsed = customerPaymentService.customerPaymentInternals.decimalToScaled(value, { allowZero: true });
+  if (parsed === null || numerator < 0n || denominator <= 0n || numerator > denominator) return null;
+  return (parsed * numerator + denominator / 2n) / denominator;
+}
+async function resolveCompletionFacts(client, { requestContext, source, contract }) {
+  const original = await loadLines(client, {
+    installationId: requestContext.installationId,
+    salesOrderVersionId: source.sales_order_version_id,
+  });
+  if (contract.key !== 'MANUAL') {
+    return Object.freeze({ ok: true, lines: original, total: String(source.total), hasReturns: false });
+  }
+  const returned = await client.query([
+    "SELECT lines.sales_order_line_id, SUM(lines.returned_base_quantity)::text AS returned",
+    "FROM sales.manual_delivery_return_lines lines",
+    "JOIN sales.manual_delivery_return_receipts receipt",
+    "ON receipt.installation_id = lines.installation_id AND receipt.id = lines.receipt_id",
+    "WHERE receipt.installation_id = $1 AND receipt.sales_order_id = $2::uuid",
+    "GROUP BY lines.sales_order_line_id",
+  ].join(' '), [requestContext.installationId, source.id]);
+  if (!returned.rows.length) {
+    return Object.freeze({ ok: true, lines: original, total: String(source.total), hasReturns: false });
+  }
+  const byLine = new Map(returned.rows.map(row => [row.sales_order_line_id, parseBaseQuantity(row.returned)]));
+  const lines = [];
+  let total = 0n;
+  for (const line of original) {
+    const issued = parseBaseQuantity(line.base_quantity);
+    const returnedQuantity = byLine.get(line.id) ?? 0n;
+    if (issued === null || issued <= 0n || returnedQuantity === null || returnedQuantity > issued) {
+      return directFailure(contract, 'RETURN_QUANTITY_CONFLICT', 'Hàng trả và số lượng đơn không khớp');
+    }
+    const accepted = issued - returnedQuantity;
+    if (accepted === 0n) continue;
+    const gross = proportionalMoney(String(line.line_subtotal), accepted, issued);
+    const discount = proportionalMoney(String(line.discount_amount), accepted, issued);
+    const tax = proportionalMoney(String(line.tax_amount), accepted, issued);
+    if (gross === null || discount === null || tax === null || gross + tax < discount) {
+      return directFailure(contract, 'RETURN_PRICE_CONFLICT', 'Số tiền hàng giao sau trả không hợp lệ');
+    }
+    const amount = gross - discount + tax;
+    total += amount;
+    lines.push({
+      ...line,
+      accepted_base_quantity: String(accepted / 1000000000000n) + '.' + String(accepted % 1000000000000n).padStart(12, '0'),
+      line_subtotal: moneyFromScaled(gross),
+      discount_amount: moneyFromScaled(discount),
+      tax_amount: moneyFromScaled(tax),
+      line_total: moneyFromScaled(amount),
+    });
+  }
+  return Object.freeze({ ok: true, lines, total: moneyFromScaled(total), hasReturns: true });
+}
+
 async function loadDirectReceivable(client, { installationId, salesOrderId, sourceDocumentType }) {
   const result = await client.query(
     `SELECT id,
@@ -253,7 +319,7 @@ async function writePaymentAuditOutbox(client, { requestContext, customerPayment
   }));
 }
 
-async function postReceivable(client, { requestContext, source, contract }) {
+async function postReceivable(client, { requestContext, source, contract, completionFacts }) {
   const sourceDocumentType = contract.sourceDocumentType;
   await receivableRepository.lockReceivableSource(client, {
     installationId: requestContext.installationId,
@@ -274,11 +340,8 @@ async function postReceivable(client, { requestContext, source, contract }) {
     });
   }
 
-  const lines = await loadLines(client, {
-    installationId: requestContext.installationId,
-    salesOrderVersionId: source.sales_order_version_id,
-  });
-  if (!lines.length) return directFailure(contract, 'NO_LINES', 'Đơn không có dòng hàng để ghi nhận doanh số');
+  const lines = completionFacts.lines;
+  if (!lines.length) return directFailure(contract, 'NO_LINES', 'Đơn không có hàng thực giao để ghi nhận doanh số');
 
   await receivableRepository.lockSalesOrderLines(client, {
     installationId: requestContext.installationId,
@@ -309,7 +372,7 @@ async function postReceivable(client, { requestContext, source, contract }) {
     warehouseNameSnapshot: source.warehouse_name_snapshot,
     collectionPolicy: source.collection_policy,
     currencyCode: source.currency_code,
-    originalAmount: String(source.total),
+    originalAmount: completionFacts.total,
     sourceRevision: String(source.revision),
     postedAt,
     actorId: requestContext.actorId,
@@ -325,7 +388,7 @@ async function postReceivable(client, { requestContext, source, contract }) {
       deliveryOrderLineId: null,
       deliveryAttemptLineId: null,
       inventoryIssueLineId: null,
-      acceptedBaseQuantity: String(line.base_quantity),
+      acceptedBaseQuantity: String(line.accepted_base_quantity ?? line.base_quantity),
       salesLineBaseQuantitySnapshot: String(line.base_quantity),
       skuSnapshot: line.sku_snapshot,
       itemNameSnapshot: line.item_name_snapshot,
@@ -345,7 +408,7 @@ async function postReceivable(client, { requestContext, source, contract }) {
     receivableDocumentId: receivable.id,
     customerId: source.customer_id,
     currencyCode: source.currency_code,
-    amount: String(source.total),
+    amount: completionFacts.total,
     sourceDocumentType,
     sourceDocumentId: source.id,
     sourceDocumentNumber: source.order_number,
@@ -388,8 +451,10 @@ export async function completeDirectSalesOrder(client, {
   const conflict = checkRevision(source, expectedRevision, contract);
   if (conflict) return conflict;
 
+  const completionFacts = await resolveCompletionFacts(client, { requestContext, source, contract });
+  if (!completionFacts.ok) return completionFacts;
   const { decimalToScaled } = customerPaymentService.customerPaymentInternals;
-  const total = decimalToScaled(source.total, { allowZero: true });
+  const total = decimalToScaled(completionFacts.total, { allowZero: true });
   if (total === null) return directFailure(contract, 'TOTAL_INVALID', 'Tổng tiền đơn không hợp lệ');
 
   let receivable = null;
@@ -401,13 +466,15 @@ export async function completeDirectSalesOrder(client, {
       requestContext,
       source: accountingSource.source,
       contract,
+      completionFacts,
     });
     if (!posted.ok) return posted;
     receivable = posted.receivable;
     if (!posted.replayed) accountingEffect = auditOutboxEffect(1, 1);
   }
 
-  const deliveryStatus = contract.deliveryMode === 'PICKUP' ? 'not_required' : 'delivered';
+  const deliveryStatus = contract.deliveryMode === 'PICKUP' ? 'not_required'
+    : completionFacts.hasReturns ? 'partially_delivered' : 'delivered';
   const updated = await client.query(
     `UPDATE sales.sales_orders
         SET status = 'closed',
