@@ -230,10 +230,10 @@ export async function movementResolution({
         metadata: { originalCostFactId: historical.id },
       };
     }
-    if (row.movement_type === 'SALES_CUSTOMER_RETURN') {
+    if (['SALES_CUSTOMER_RETURN', 'SALES_MANUAL_UNDELIVERED_RETURN'].includes(row.movement_type)) {
       return failure(
-        'CUSTOMER_RETURN_ORIGINAL_COST_MISSING',
-        'Customer return requires exact historical issue cost lineage',
+        row.movement_type === 'SALES_MANUAL_UNDELIVERED_RETURN' ? 'MANUAL_RETURN_ORIGINAL_COST_MISSING' : 'CUSTOMER_RETURN_ORIGINAL_COST_MISSING',
+        'Hàng nhập trả phải lấy đúng giá vốn từ phiếu xuất gốc',
       );
     }
     const explicit = explicitUnitCost(row);

@@ -14,6 +14,7 @@ const SCALE = 1_000_000_000_000n;
 const DOMAIN_MOVEMENT_RULES = new Map([
   ['SALES_DELIVERY_ISSUE', Object.freeze({ sourceDomain: 'SALES', direction: 'OUT' })],
   ['SALES_CUSTOMER_RETURN', Object.freeze({ sourceDomain: 'SALES', direction: 'IN' })],
+  ['SALES_MANUAL_UNDELIVERED_RETURN', Object.freeze({ sourceDomain: 'SALES', direction: 'IN' })],
   ['LOGISTICS_TRIP_RETURN', Object.freeze({ sourceDomain: 'LOGISTICS', direction: 'IN' })],
 ]);
 
@@ -375,7 +376,7 @@ export async function postServerOwnedDomainMovement(client, {
 
 export async function postServerOwnedSalesMovement(client, args) {
   const payload = { ...(args.payload ?? {}), sourceDomain: 'SALES' };
-  if (!['SALES_DELIVERY_ISSUE', 'SALES_CUSTOMER_RETURN'].includes(String(payload.movementType ?? '').toUpperCase())) {
+  if (!['SALES_DELIVERY_ISSUE', 'SALES_CUSTOMER_RETURN', 'SALES_MANUAL_UNDELIVERED_RETURN'].includes(String(payload.movementType ?? '').toUpperCase())) {
     return failure('SALES_MOVEMENT_TYPE_NOT_ALLOWED', 'Sales movement type is not allowed');
   }
   return postServerOwnedDomainMovement(client, { ...args, payload });

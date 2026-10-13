@@ -564,7 +564,7 @@ export async function rebuildCosting(client, {
       const historical = resolveOriginalFact(row, factsByLineId, factsByMovementLine);
       const explicit = explicitUnitCost(row);
       const average = currentAverage(state);
-      const exactHistoricalRequired = row.movement_type === 'SALES_CUSTOMER_RETURN';
+      const exactHistoricalRequired = ['SALES_CUSTOMER_RETURN', 'SALES_MANUAL_UNDELIVERED_RETURN'].includes(row.movement_type);
       if (historical?.status === 'COSTED' && historical.unitCost !== null) {
         resolution = {
           ok: true,
@@ -574,8 +574,8 @@ export async function rebuildCosting(client, {
         };
       } else if (exactHistoricalRequired) {
         resolution = failure(
-          'CUSTOMER_RETURN_ORIGINAL_COST_MISSING',
-          'Customer return requires exact historical issue cost lineage',
+          row.movement_type === 'SALES_MANUAL_UNDELIVERED_RETURN' ? 'MANUAL_RETURN_ORIGINAL_COST_MISSING' : 'CUSTOMER_RETURN_ORIGINAL_COST_MISSING',
+          'Hàng nhập trả phải lấy đúng giá vốn từ phiếu xuất gốc',
         );
       } else if (explicit !== null && explicitCurrency(row) === CURRENCY_CODE) {
         resolution = explicit === 0n && !zeroCostApproved(row)

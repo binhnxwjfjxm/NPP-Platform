@@ -4,6 +4,7 @@ import type { SalesOrder, SalesOrderFulfillmentLine } from '../../../lib/sales-o
 import { StockHoldBreakdown } from '../../components/stock-hold-breakdown';
 import { BusinessSequenceNumber } from '../../components/business-table-sequence';
 import ManualSalesOrderSettlement from './ManualSalesOrderSettlement';
+import ManualSalesOrderReturns from './ManualSalesOrderReturns';
 import SalesOrderPrintSheet from './SalesOrderPrintSheet';
 import { confirmSingleStockIssue } from './sales-order-stock-issue-confirm';
 import {
@@ -260,7 +261,20 @@ export default function SalesOrderDetail(props: Props) {
             {props.canConfirm && <button type="button" className={styles.primaryButton} disabled={props.busy} onClick={props.onConfirm}>Xác nhận &amp; cấp số</button>}
           </div>
         )}
-        {isManual && hasIssued && ['confirmed', 'closed'].includes(order.status) && (
+        {isManual && hasIssued && order.status === 'confirmed' && (
+          <ManualSalesOrderReturns
+            order={order}
+            canReceive={props.canIssueStock}
+            onUpdated={props.onManualOrderUpdated}
+          />
+        )}
+        {isManual && hasIssued && order.deliveryStatus === 'returned' && (
+          <div className={styles.banner + ' ' + styles.bannerSuccess}>
+            Đã nhập trả nguyên đơn về kho. Đơn đã kết thúc, không phát sinh doanh số và công nợ.
+          </div>
+        )}
+        {isManual && hasIssued && ['confirmed', 'closed'].includes(order.status)
+          && order.deliveryStatus !== 'returned' && (
           <ManualSalesOrderSettlement
             order={order}
             canComplete={props.canConfirm}
