@@ -24,9 +24,11 @@ test('Tên ảnh phiếu bám theo số đơn, không chứa ký tự phá tên 
 test('Chụp nguyên phiếu đang hiển thị, không dựng lại mẫu in thứ hai', () => {
   assert.match(workspace, /ref=\{receiptDocumentRef\} className="print-document"/);
   assert.match(workspace, /captureReceiptPng\(element\)/);
-  assert.match(source, /toBlob\(documentElement,/);
+  assert.match(source, /html2canvas\(documentElement,/);
+  assert.match(source, /canvas\.toBlob\(resolve, 'image\/png'\)/);
   assert.match(source, /backgroundColor: '#ffffff'/);
-  assert.match(source, /width,\s*height,\s*pixelRatio/);
+  assert.match(source, /width,\s*height,\s*scale: pixelRatio/);
+  assert.match(source, /foreignObjectRendering: false/);
 });
 
 test('Một nút chia sẻ ở màn xem trước; in hiện có và 2 điểm vào giữ nguyên', () => {
