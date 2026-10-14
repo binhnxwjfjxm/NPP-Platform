@@ -17,7 +17,11 @@ test('Retail order history is pickup-only at the server boundary', () => {
 });
 
 test('Retail order history is newest-first and can page through older pickup orders', () => {
-  assert.match(repository, /ORDER BY so\.created_at DESC, so\.id DESC LIMIT/);
+  // The repository pages IDs first and then resolves detail rows. Both stages
+  // retain newest-first stable ordering; the old so.* alias belongs to pre-CTE SQL.
+  assert.match(repository, /selected_page AS \(/);
+  assert.match(repository, /ORDER BY created_at DESC,id DESC LIMIT/);
+  assert.match(repository, /ORDER BY selected_page\.created_at DESC,selected_page\.id DESC/);
   assert.match(workspace, /const ORDER_VISIBLE_STEP = 30/);
   assert.match(workspace, /const ORDER_BATCH_SIZE = 100/);
   assert.match(workspace, /offset=\$\{orders\.length\}/);
