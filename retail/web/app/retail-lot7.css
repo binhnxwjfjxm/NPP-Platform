@@ -75,6 +75,11 @@
 .print-screen { position: fixed; z-index: 40; inset: 0; overflow: auto; padding: max(14px,env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom)); background: #edf1ee; }
 .print-toolbar { position: sticky; z-index: 2; top: 0; display: grid; grid-template-columns: 52px 1fr auto; align-items: center; gap: 12px; width: min(100%,920px); margin: 0 auto 12px; border-radius: 18px; padding: 10px 12px; background: rgba(255,255,255,.97); box-shadow: 0 10px 30px rgba(10,45,23,.12); }
 .print-toolbar > div { text-align: center; }
+.print-toolbar .print-toolbar-actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; text-align: right; }
+.receipt-share-action { display: grid; place-items: center; width: 44px; height: 44px; flex: none; padding: 0; border: 1px solid #c5ddcd; border-radius: 13px; background: #fff; color: var(--green-dark); cursor: pointer; }
+.receipt-share-action:focus-visible { outline: 3px solid var(--green); outline-offset: 2px; }
+.receipt-share-action:disabled { opacity: .45; cursor: progress; }
+.receipt-share-error { width: min(100%, 920px); margin: 0 auto 12px; color: #b42318; font-size: 13px; }
 .print-toolbar h2 { margin: 0; font-size: 20px; }
 .print-toolbar small { color: var(--muted); }
 .print-paper-picker { display: flex; width: min(100%,920px); align-items: end; justify-content: space-between; gap: 12px; margin: 0 auto 14px; }

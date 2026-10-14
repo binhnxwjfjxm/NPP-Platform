@@ -2,6 +2,7 @@
 import { createIdempotencyKey } from '@npp/contracts';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { PrinterSettingsPanel } from './printer-settings-panel';
+import { captureReceiptPng, shareReceiptPng } from '../lib/retail-receipt-image';
 import { RetailPrintTemplatePreview } from './retail-print-template-preview';
 import { requestRetailPwaInstall } from './pwa-registration';
 import {
@@ -437,6 +438,10 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
     const [printTemplates, setPrintTemplates] = useState<PrintTemplate[]>([]);
     const [printTemplate, setPrintTemplate] = useState<PrintTemplate | null>(null);
     const [printOpen, setPrintOpen] = useState(false);
+    const receiptDocumentRef = useRef<HTMLElement | null>(null);
+    const [receiptImage, setReceiptImage] = useState<{ key: string; blob: Blob } | null>(null);
+    const [receiptImagePending, setReceiptImagePending] = useState(false);
+    const [receiptImageError, setReceiptImageError] = useState<string | null>(null);
     const [printPaper, setPrintPaper] = useState<PrintPaper>('A4');
     const [draftPrintPaper, setDraftPrintPaper] = useState<PrintPaper>('A4');
     const [printerSettings, setPrinterSettings] = useState<PrinterSettings>(DEFAULT_PRINTER_SETTINGS);
@@ -984,6 +989,53 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
     const showPrintLineTable = SALES_ORDER_PRINT_LINE_FIELDS.some((key) => visiblePrintFields.has(key));
     const showPrintProductColumn = visiblePrintFields.has('line_item') || visiblePrintFields.has('line_sku');
     const printOrder = printSourceOrder ?? order;
+    // Both order details and order history already use this single print preview.
+    // Capture the existing document once, ahead of the user's gesture, so iOS
+    // can open its native file Share Sheet immediately when the icon is tapped.
+    const receiptImageKey = JSON.stringify({
+        orderId: printOrder?.id,
+        revision: printOrder?.revision,
+        paper: printPaper,
+        template: printTemplate,
+    });
+    useEffect(() => {
+        if (!printOpen || !printOrder || !receiptDocumentRef.current) {
+            setReceiptImage(null);
+            setReceiptImageError(null);
+            setReceiptImagePending(false);
+            return;
+        }
+        let active = true;
+        const element = receiptDocumentRef.current;
+        setReceiptImage(null);
+        setReceiptImageError(null);
+        setReceiptImagePending(true);
+        void captureReceiptPng(element).then((blob) => {
+            if (active) setReceiptImage({ key: receiptImageKey, blob });
+        }).catch(() => {
+            if (active) setReceiptImageError('Không thể tạo phiếu dạng ảnh trên thiết bị này.');
+        }).finally(() => {
+            if (active) setReceiptImagePending(false);
+        });
+        return () => { active = false; };
+    }, [printOpen, receiptImageKey]);
+    async function sharePrintReceipt() {
+        if (!printOrder) return;
+        const image = receiptImage?.key === receiptImageKey ? receiptImage : null;
+        if (!image) {
+            setReceiptImageError('Phiếu chưa sẵn sàng để chia sẻ. Hãy thử mở lại xem trước phiếu.');
+            return;
+        }
+        setReceiptImageError(null);
+        try {
+            const result = await shareReceiptPng(image.blob, printOrder.number);
+            if (result === 'downloaded') {
+                setNotice('Thiết bị không hỗ trợ chia sẻ tệp trực tiếp. Phiếu PNG đã được tải về.');
+            }
+        } catch {
+            setReceiptImageError('Không thể chia sẻ phiếu. Anh/chị vui lòng thử lại.');
+        }
+    }
     const canCancelCurrentOrder = Boolean(
         order
         && canCancel
@@ -1826,7 +1878,7 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
     </section> : null}
     {scannerOpen ? <section className="dialog-backdrop" role="dialog" aria-modal="true"><div className="scanner-dialog sheet-enter"><header><div><p className="section-kicker">QUÉT MÃ</p><h2>Đưa mã vào khung hình</h2></div><button className="text-action" type="button" onClick={() => setScannerOpen(false)}>Đóng</button></header>{scannerMessage ? <p className="notice error">{scannerMessage}</p> : <video className="scanner-video" ref={videoRef} autoPlay muted playsInline/>}</div></section> : null}
     {payment ? <section className="dialog-backdrop payment-screen" role="dialog" aria-modal="true"><div className="payment-dialog sheet-enter lot7-payment"><header><button className="round-icon" type="button" onClick={() => setPayment(false)}>‹</button><div><p className="section-kicker">THANH TOÁN</p><h2>Thu tiền / Nợ</h2></div><span /></header><div className="payment-summary"><span>Tổng thanh toán</span><strong>{money.format(Number(order?.receivableRemainingAmount ?? total))}</strong><div className="payment-balance"><span>Đã thu</span><b>{money.format(Math.max(0, total - Number(order?.receivableRemainingAmount ?? total)))}</b><span>Còn lại</span><b>{money.format(Number(order?.receivableRemainingAmount ?? total))}</b></div></div><div className="payment-methods"><button type="button" className={paymentMethod === 'CASH' ? 'active' : ''} onClick={() => setPaymentMethod('CASH')}>Tiền mặt</button><button type="button" className={paymentMethod === 'BANK_TRANSFER' ? 'active' : ''} onClick={() => setPaymentMethod('BANK_TRANSFER')}>Chuyển khoản</button></div><label>Nhập số tiền nhận<input inputMode="numeric" value={paid} onChange={(event) => setPaid(normalizeVndInput(event.target.value))}/></label><div className="payment-footer"><button className="secondary-action" type="button" disabled={busy === 'settlement'} onClick={() => void settle('0')}>Ghi nợ</button><button className="primary-action" type="button" disabled={busy === 'settlement' || !paid.trim()} onClick={() => void settle()}>{busy === 'settlement' ? 'Đang ghi nhận…' : 'Hoàn tất thu tiền'}</button></div></div></section> : null}
-    {printOpen && printOrder ? <section className={`print-screen paper-${printPaperClass(printPaper)}`} role="dialog" aria-modal="true"><div className="print-toolbar"><button className="round-icon" type="button" onClick={() => { setPrintOpen(false); setPrintSourceOrder(null); }}>‹</button><div><h2>Xem trước phiếu</h2><small>{printTemplate?.name ?? 'Mẫu phiếu'}</small></div><button className="primary-action" type="button" onClick={() => void printNow()}>In</button></div><div className="print-paper-picker"><label>Khổ in<select value={printPaper} onChange={(event) => changePaper(event.target.value as PrintPaper)}><option value="A4">A4</option><option value="A5">A5</option><option value="80mm">80 mm</option><option value="58mm">58 mm</option></select></label><p>{printerSettings.method === 'DIRECT_WIFI' && printerSettings.profile ? `Máy mặc định: ${printerSettings.profile.name}.` : 'Khi bấm In, chọn máy in trong giao diện in của điện thoại.'}</p></div><article className="print-document" style={{ '--retail-print-font-scale': String(normalizePrintFontSizePercent(printTemplate?.fontSizePercent) / 100) } as CSSProperties}><header>{printTemplate?.heading ? <p>{printTemplate.heading}</p> : null}<h1>{printTemplate?.title ?? printTemplate?.name ?? 'Đơn bán hàng'}</h1>{printTemplate?.subtitle ? <p>{printTemplate.subtitle}</p> : null}<small>{printOrder.number ?? 'Đơn bán hàng'}</small></header><div className="print-meta">{visiblePrintFields.has('customer') ? <p><span>Khách hàng</span><strong>{printOrder.customerName}</strong></p> : null}{visiblePrintFields.has('warehouse') ? <p><span>Kho bán</span><strong>{printOrder.warehouseName}</strong></p> : null}{visiblePrintFields.has('document_date') ? <p><span>Ngày</span><strong>{dateLabel(printOrder.updatedAt)}</strong></p> : null}</div>{showPrintLineTable ? <table><thead><tr>{visiblePrintFields.has('line_no') ? <th>STT</th> : null}{showPrintProductColumn ? <th>{visiblePrintFields.has('line_item') ? 'Sản phẩm' : 'SKU'}</th> : null}{visiblePrintFields.has('line_quantity') ? <th>SL</th> : null}{visiblePrintFields.has('line_unit') ? <th>ĐVT</th> : null}{visiblePrintFields.has('line_unit_price') ? <th>Đơn giá</th> : null}{visiblePrintFields.has('line_total') ? <th>Thành tiền</th> : null}</tr></thead><tbody>{linesOf(printOrder).map((line, index) => <tr key={line.id}>{visiblePrintFields.has('line_no') ? <td>{index + 1}</td> : null}{showPrintProductColumn ? <td>{visiblePrintFields.has('line_item') ? <strong>{line.itemName}</strong> : null}{visiblePrintFields.has('line_sku') ? <small>{line.sku}</small> : null}</td> : null}{visiblePrintFields.has('line_quantity') ? <td>{formatQuantity(line.quantity)}</td> : null}{visiblePrintFields.has('line_unit') ? <td>{displayUnit(line.unitName, line.unitCode)}</td> : null}{visiblePrintFields.has('line_unit_price') ? <td>{money.format(Number(line.unitPrice))}</td> : null}{visiblePrintFields.has('line_total') ? <td className="print-money-value">{money.format(Number(line.lineTotal))}</td> : null}</tr>)}</tbody></table> : null}<footer>{visiblePrintFields.has('total_total') ? <p className="print-grand-total"><span>Tổng cộng</span><strong>{money.format(Number(printOrder.total))}</strong></p> : null}{visiblePrintFields.has('note') ? <p className="print-note"><span>Ghi chú</span><strong>{printOrder.note?.trim() || '—'}</strong></p> : null}{visiblePrintFields.has('signatures') ? <div className="print-signatures"><span>Người lập</span><span>Khách hàng</span></div> : null}</footer></article></section> : null}
+    {printOpen && printOrder ? <section className={`print-screen paper-${printPaperClass(printPaper)}`} role="dialog" aria-modal="true"><div className="print-toolbar"><button className="round-icon" type="button" onClick={() => { setPrintOpen(false); setPrintSourceOrder(null); }}>‹</button><div><h2>Xem trước phiếu</h2><small>{printTemplate?.name ?? 'Mẫu phiếu'}</small></div><div className="print-toolbar-actions"><button className="receipt-share-action" type="button" aria-label="Chia sẻ phiếu dưới dạng ảnh" title={receiptImageError ?? (receiptImagePending ? 'Đang chuẩn bị phiếu dạng ảnh' : 'Chia sẻ phiếu')} disabled={receiptImagePending} onClick={() => void sharePrintReceipt()}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="5" y="8" width="14" height="13" rx="2"/><path d="M12 16V3m-4 4 4-4 4 4"/></svg></button><button className="primary-action" type="button" onClick={() => void printNow()}>In</button></div></div>{receiptImageError ? <p className="receipt-share-error" role="alert">{receiptImageError}</p> : null}<div className="print-paper-picker"><label>Khổ in<select value={printPaper} onChange={(event) => changePaper(event.target.value as PrintPaper)}><option value="A4">A4</option><option value="A5">A5</option><option value="80mm">80 mm</option><option value="58mm">58 mm</option></select></label><p>{printerSettings.method === 'DIRECT_WIFI' && printerSettings.profile ? `Máy mặc định: ${printerSettings.profile.name}.` : 'Khi bấm In, chọn máy in trong giao diện in của điện thoại.'}</p></div><article ref={receiptDocumentRef} className="print-document" style={{ '--retail-print-font-scale': String(normalizePrintFontSizePercent(printTemplate?.fontSizePercent) / 100) } as CSSProperties}><header>{printTemplate?.heading ? <p>{printTemplate.heading}</p> : null}<h1>{printTemplate?.title ?? printTemplate?.name ?? 'Đơn bán hàng'}</h1>{printTemplate?.subtitle ? <p>{printTemplate.subtitle}</p> : null}<small>{printOrder.number ?? 'Đơn bán hàng'}</small></header><div className="print-meta">{visiblePrintFields.has('customer') ? <p><span>Khách hàng</span><strong>{printOrder.customerName}</strong></p> : null}{visiblePrintFields.has('warehouse') ? <p><span>Kho bán</span><strong>{printOrder.warehouseName}</strong></p> : null}{visiblePrintFields.has('document_date') ? <p><span>Ngày</span><strong>{dateLabel(printOrder.updatedAt)}</strong></p> : null}</div>{showPrintLineTable ? <table><thead><tr>{visiblePrintFields.has('line_no') ? <th>STT</th> : null}{showPrintProductColumn ? <th>{visiblePrintFields.has('line_item') ? 'Sản phẩm' : 'SKU'}</th> : null}{visiblePrintFields.has('line_quantity') ? <th>SL</th> : null}{visiblePrintFields.has('line_unit') ? <th>ĐVT</th> : null}{visiblePrintFields.has('line_unit_price') ? <th>Đơn giá</th> : null}{visiblePrintFields.has('line_total') ? <th>Thành tiền</th> : null}</tr></thead><tbody>{linesOf(printOrder).map((line, index) => <tr key={line.id}>{visiblePrintFields.has('line_no') ? <td>{index + 1}</td> : null}{showPrintProductColumn ? <td>{visiblePrintFields.has('line_item') ? <strong>{line.itemName}</strong> : null}{visiblePrintFields.has('line_sku') ? <small>{line.sku}</small> : null}</td> : null}{visiblePrintFields.has('line_quantity') ? <td>{formatQuantity(line.quantity)}</td> : null}{visiblePrintFields.has('line_unit') ? <td>{displayUnit(line.unitName, line.unitCode)}</td> : null}{visiblePrintFields.has('line_unit_price') ? <td>{money.format(Number(line.unitPrice))}</td> : null}{visiblePrintFields.has('line_total') ? <td className="print-money-value">{money.format(Number(line.lineTotal))}</td> : null}</tr>)}</tbody></table> : null}<footer>{visiblePrintFields.has('total_total') ? <p className="print-grand-total"><span>Tổng cộng</span><strong>{money.format(Number(printOrder.total))}</strong></p> : null}{visiblePrintFields.has('note') ? <p className="print-note"><span>Ghi chú</span><strong>{printOrder.note?.trim() || '—'}</strong></p> : null}{visiblePrintFields.has('signatures') ? <div className="print-signatures"><span>Người lập</span><span>Khách hàng</span></div> : null}</footer></article></section> : null}
   </main>
   </>;
 }
