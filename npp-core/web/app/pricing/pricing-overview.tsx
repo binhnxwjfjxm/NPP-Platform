@@ -622,14 +622,13 @@ export default function PricingOverview() {
         {!loading && visibleRows.length ? (
           <div className={styles.tableWrap}>
             <table className={styles.table}>
-              <thead><tr><th>Mã SP</th><th>Tên SP</th><th>SKU</th><th>Quy cách</th><th>ĐVT</th><th>Giá nền</th>{visibleListColumns.map((list) => <th key={list.id}>{list.code}<small>{list.name}{list.is_active ? '' : ' · Ngừng'}</small></th>)}</tr></thead>
+              <thead><tr><th>Mã SP</th><th>Tên SP</th><th className={styles.skuColumn}>SKU</th><th className={styles.unitColumn}>ĐVT</th><th>Giá nền</th>{visibleListColumns.map((list) => <th key={list.id}>{list.code}<small>{list.name}{list.is_active ? '' : ' · Ngừng'}</small></th>)}</tr></thead>
               <tbody>{visibleRows.map((row) => (
                 <tr key={row.sku}>
                   <td><strong>{row.productCode}</strong></td>
                   <td>{row.productName}</td>
-                  <td><strong>{row.sku}</strong></td>
-                  <td>{row.variantName}</td>
-                  <td>{row.unitName || '—'}</td>
+                  <td className={styles.skuColumn}><strong>{row.sku}</strong></td>
+                  <td className={styles.unitColumn}>{row.unitName || '—'}</td>
                   <td>{summarizeRules(ruleIndexes.baseBySku.get(row.sku.toUpperCase()) ?? [], displayPriceAt)}</td>
                   {visibleListColumns.map((list) => <td key={`${row.sku}:${list.id}`}>{summarizeRules(ruleIndexes.byListSku.get(ruleKey(list.code, row.sku)) ?? [], displayPriceAt)}</td>)}
                 </tr>
