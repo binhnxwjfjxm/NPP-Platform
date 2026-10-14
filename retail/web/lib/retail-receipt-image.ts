@@ -17,14 +17,18 @@ export async function captureReceiptPng(documentElement: HTMLElement): Promise<B
   // Bound PNG canvas dimensions on mobile; preserve the full receipt height.
   const pixelRatio = Math.min(2, 8192 / Math.max(width, height));
   if (pixelRatio < 0.5) throw new Error('RECEIPT_TOO_LONG');
-  const { toBlob } = await import('html-to-image');
-  const blob = await toBlob(documentElement, {
+  // Canvas painting avoids SVG foreignObject, which may export blank images on iOS.
+  const { default: html2canvas } = await import('html2canvas');
+  const canvas = await html2canvas(documentElement, {
     backgroundColor: '#ffffff',
     width,
     height,
-    pixelRatio,
-    cacheBust: true,
+    scale: pixelRatio,
+    useCORS: true,
+    foreignObjectRendering: false,
+    logging: false,
   });
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
   if (!blob || blob.size < 100) throw new Error('RECEIPT_IMAGE_FAILED');
   return blob;
 }
