@@ -108,6 +108,21 @@ test('pricing overview uses one business navigation level and filters price-list
   assert.doesNotMatch(overview, /sourceKey/);
 });
 
+test('pricing overview hides the specification column and keeps SKU/unit compact on screen', () => {
+  const overview = read('app/pricing/pricing-overview.tsx');
+  const styles = read('app/pricing/pricing-overview.module.css');
+  const table = overview.split('<table className={styles.table}>')[1]?.split('</table>')[0];
+  assert.ok(table, 'pricing overview table should be present');
+  assert.doesNotMatch(table, /<th[^>]*>Quy cách<\/th>|<td>\{row\.variantName\}<\/td>/);
+  assert.match(table, /<th className=\{styles\.skuColumn\}>SKU<\/th><th className=\{styles\.unitColumn\}>ĐVT<\/th>/);
+  assert.match(table, /<td className=\{styles\.skuColumn\}><strong>\{row\.sku\}<\/strong><\/td>/);
+  assert.match(table, /<td className=\{styles\.unitColumn\}>\{row\.unitName \|\| '—'\}<\/td>/);
+  assert.match(styles, /\.table \.skuColumn \{ min-width: 6\.5rem; width: 1%; \}/);
+  assert.match(styles, /\.table \.unitColumn \{ min-width: 4\.5rem; width: 1%; \}/);
+  assert.match(overview, /sku\.variantName,/);
+  assert.match(overview, /'Quy cách'/);
+});
+
 test('pricing overview lazy-loads price lists and defaults to base price', () => {
   const overview = read('app/pricing/pricing-overview.tsx');
   assert.match(overview, /const BASE_ONLY = '__BASE__'/);
