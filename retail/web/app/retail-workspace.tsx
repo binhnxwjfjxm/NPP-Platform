@@ -392,8 +392,8 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
         product: Product;
         quantity: string;
     }>>(new Map());
-    const [multiSelect, setMultiSelect] = useState(false);
-    const multiSelectRef = useRef(false);
+    const [multiSelect, setMultiSelect] = useState(true);
+    const multiSelectRef = useRef(true);
     const [customerPickerOpen, setCustomerPickerOpen] = useState(false);
     const [customerSearch, setCustomerSearch] = useState('');
     const [customerResults, setCustomerResults] = useState<Customer[]>([]);
@@ -1761,7 +1761,7 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
         {order ? <div className="order-identity"><span className="order-document">▤</span><div><p className="section-kicker">ĐƠN BÁN HÀNG</p><h2>{order.number ?? 'Đơn đang lập'}</h2><p>{orderLabel(order)} · {dateLabel(order.updatedAt)}</p></div><div className="order-badges"><span className="mode-pill">{order.salesChannelName ?? order.salesChannelCode ?? 'Retail'}</span><span className="mode-pill">Giao tại quầy</span></div></div> : null}
         {order && order.status !== 'cancelled' ? <ol className="order-timeline">{['Lên đơn', 'Đã chốt', 'Xuất kho', 'Hoàn thành'].map((step, index) => <li className={index <= stage ? 'complete' : ''} key={step}><span>{index < stage ? '✓' : index + 1}</span><strong>{step}</strong></li>)}</ol> : null}
         {editable ? <>
-          <button className="pos-product-search-trigger" type="button" onClick={() => { setSelected(new Map()); setMultiSelectMode(false); setSearch(''); setOpen(true); }}>
+          <button className="pos-product-search-trigger" type="button" onClick={() => { setSelected(new Map()); setMultiSelectMode(true); setSearch(''); setOpen(true); }}>
             <span aria-hidden="true">⌕</span><strong>Tìm và thêm sản phẩm vào đơn</strong><b aria-hidden="true">▦</b>
           </button>
           <div className="pos-option-list">
