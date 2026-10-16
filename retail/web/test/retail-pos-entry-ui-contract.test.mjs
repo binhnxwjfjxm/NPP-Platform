@@ -30,17 +30,17 @@ test('Retail Lên đơn dùng POS popup, chọn một/chọn nhiều và không 
 
 test('Retail mở bộ chọn sản phẩm ở Chọn nhiều, vẫn cho phép gạt về chọn đơn', async () => {
   const workspace = await read('app/retail-workspace.tsx');
-  assert.match(workspace, /const \\[multiSelect, setMultiSelect\\] = useState\\(true\\)/);
-  assert.match(workspace, /const multiSelectRef = useRef\\(true\\)/);
+  assert.match(workspace, /const \[multiSelect, setMultiSelect\] = useState\(true\)/);
+  assert.match(workspace, /const multiSelectRef = useRef\(true\)/);
   const trigger = workspace.split('className="pos-product-search-trigger"')[1]?.split('</button>')[0];
   assert.ok(trigger, 'phải có nút mở bộ chọn sản phẩm');
-  assert.match(trigger, /setSelected\\(new Map\\(\\)\\); setMultiSelectMode\\(true\\); setSearch\\(''\\); setOpen\\(true\\)/);
-  assert.doesNotMatch(trigger, /setMultiSelectMode\\(false\\)/);
-  assert.match(workspace, /checked=\\{multiSelect\\} onChange=\\{\\(event\\) => setMultiSelectMode\\(event\\.target\\.checked\\)\\}/);
+  assert.match(trigger, /setSelected\(new Map\(\)\); setMultiSelectMode\(true\); setSearch\(''\); setOpen\(true\)/);
+  assert.doesNotMatch(trigger, /setMultiSelectMode\(false\)/);
+  assert.match(workspace, /checked=\{multiSelect\} onChange=\{\(event\) => setMultiSelectMode\(event\.target\.checked\)\}/);
   const mode = workspace.split('function setMultiSelectMode(enabled: boolean)')[1]?.split('function toggleProduct(')[0];
   assert.ok(mode, 'phải có xử lý công tắc');
-  assert.match(mode, /multiSelectRef\\.current = enabled/);
-  assert.match(mode, /if \\(!enabled\\)\\s*setSelected\\(\\(current\\) => new Map\\(\\[\\.\\.\\.current\\.entries\\(\\)\\]\\.slice\\(0, 1\\)\\)\\)/);
+  assert.match(mode, /multiSelectRef\.current = enabled/);
+  assert.match(mode, /if \(!enabled\)\s*setSelected\(\(current\) => new Map\(\[\.\.\.current\.entries\(\)\]\.slice\(0, 1\)\)\)/);
 });
 
 test('Khách lẻ là mặc định; khách Công Ty chỉ hiện theo quyền, dùng gần đây và tìm kiếm theo nhu cầu', async () => {
