@@ -7,6 +7,7 @@ const routeSource = readFileSync(new URL('../src/routes/inventory-adjustments.js
 const bulkSource = readFileSync(new URL('../src/services/inventory-adjustment-bulk.js', import.meta.url), 'utf8');
 const adjustmentSource = readFileSync(new URL('../src/services/inventory-adjustment.js', import.meta.url), 'utf8');
 const migration143 = readFileSync(new URL('../../../database/migrations/inventory/143_inventory_adjustment_reconciliation_batch.sql', import.meta.url), 'utf8');
+const migration166 = readFileSync(new URL('../../../database/migrations/inventory/166_inventory_adjustment_signed_system_snapshot.sql', import.meta.url), 'utf8');
 
 const warehouseId = '11111111-1111-4111-8111-111111111111';
 
@@ -171,4 +172,41 @@ test('migration 143 stores reconciliation batch and printable stock snapshots', 
   assert.match(migration143, /system_base_quantity_snapshot/);
   assert.match(migration143, /counted_base_quantity_snapshot/);
   assert.match(migration143, /source_location_code_snapshot/);
+});
+
+test('bulk preview treats signed on-hand as a valid system snapshot for a positive count', () => {
+  const source = {
+    source_variant_id: 'sales-variant',
+    base_variant_id: 'base-variant',
+    source_unit_code: 'CAI',
+    base_unit_code: 'CAI',
+    base_unit_id: 'base-unit',
+    conversion_to_base: '1',
+  };
+  const input = {
+    ...row({ actualQuantity: '4', locationCode: null }),
+    actualScaled6: 4_000_000n,
+    errors: [],
+    locationRequired: false,
+  };
+  const result = inventoryAdjustmentBulkInternals.previewRow(
+    input,
+    source,
+    { location_id: null, lot_id: null },
+    -2_000_000_000_000n,
+  );
+  assert.equal(result.status, 'READY');
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.currentBaseQuantity, '-2');
+  assert.equal(result.actualBaseQuantity, '4');
+  assert.equal(result.deltaBaseQuantity, '6');
+  assert.equal(result.direction, 'IN');
+  assert.equal(result.canonicalQuantity, '6');
+});
+
+test('migration 166 permits signed system snapshots without changing counted-stock rules', () => {
+  assert.match(migration166, /DROP CONSTRAINT IF EXISTS inventory_adjustment_lines_system_quantity_snapshot_ck/);
+  assert.match(migration166, /COMMENT ON COLUMN inventory\.inventory_adjustment_lines\.system_base_quantity_snapshot/);
+  assert.doesNotMatch(migration166, /DROP CONSTRAINT[^;]*inventory_adjustment_lines_counted_quantity_snapshot_ck/);
+  assert.doesNotMatch(migration166, /UPDATE\s+inventory\./i);
 });
