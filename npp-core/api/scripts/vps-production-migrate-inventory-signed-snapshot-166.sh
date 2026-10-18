@@ -49,13 +49,18 @@ verify_target() {
   system_check="$(scalar "$target" "SELECT count(*) FROM pg_constraint WHERE conrelid='inventory.inventory_adjustment_lines'::regclass AND conname='${system_constraint}'")"
   counted_check="$(scalar "$target" "SELECT count(*) FROM pg_constraint WHERE conrelid='inventory.inventory_adjustment_lines'::regclass AND conname='${counted_constraint}'")"
   invalid_counts="$(scalar "$target" "SELECT count(*) FROM inventory.inventory_adjustment_lines WHERE counted_base_quantity_snapshot < 0")"
-  role_check="$(scalar "$target" "SELECT CASE WHEN has_table_privilege('${runtime_role}', 'inventory.inventory_adjustment_lines', 'SELECT,INSERT') THEN 1 ELSE 0 END")"
+  # The rehearsal copy is restored with --no-privileges, so only validate the
+  # real runtime role on production; restored data and constraints are verified on both.
+  role_check="REHEARSAL_NO_GRANTS"
+  if [ "$target" = "$db" ]; then
+    role_check="$(scalar "$target" "SELECT CASE WHEN has_table_privilege('${runtime_role}', 'inventory.inventory_adjustment_lines', 'SELECT,INSERT') THEN 1 ELSE 0 END")"
+    test "$role_check" = 1
+  fi
   echo "MIGRATION_TARGET=$target REGISTRY=$applied REMOVED_SYSTEM_CHECK=$system_check COUNTED_CHECK=$counted_check INVALID_COUNTS=$invalid_counts RUNTIME_PRIVILEGES=$role_check"
   test "$applied" = 1
   test "$system_check" = 0
   test "$counted_check" = 1
   test "$invalid_counts" = 0
-  test "$role_check" = 1
 }
 apply_migration() {
   local target="$1"
