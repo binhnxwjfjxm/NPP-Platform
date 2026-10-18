@@ -881,4 +881,5 @@ export const inventoryAdjustmentBulkInternals = Object.freeze({
   candidateLocationCode,
   resolveScopeSelection,
   canonicalQuantityForDelta,
+  previewRow,
 });
