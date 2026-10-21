@@ -45,3 +45,17 @@ test('package breakdown derives from the canonical conversion instead of a secon
   assert.match(workspace, /InventoryQuantity balance=\{balance\} value=\{balance\.on_hand_quantity\}/);
   assert.doesNotMatch(workspace, /package_on_hand|case_on_hand|carton_on_hand/i);
 });
+
+test('inventory balance lookup offers the shared held-order eye for each warehouse/SKU group', () => {
+  assert.match(workspace, /import \{ StockHoldBreakdown \} from '\.\.\/\.\.\/components\/stock-hold-breakdown';/);
+  assert.equal((workspace.match(/<StockHoldBreakdown\b/g) ?? []).length, 1);
+  const firstGroupCell = workspace.slice(
+    workspace.indexOf('{firstInGroup ? ('),
+    workspace.indexOf(') : <span className={styles.subtle}>—</span>}', workspace.indexOf('{firstInGroup ? (')),
+  );
+  assert.match(firstGroupCell, /<InventoryQuantity balance=\{balance\} value=\{businessHeld\} \/>/);
+  assert.match(firstGroupCell, /<StockHoldBreakdown[\s\S]*?warehouseId=\{balance\.warehouse_id\}[\s\S]*?baseVariantId=\{balance\.base_variant_id\}/);
+  assert.match(firstGroupCell, /displayedHeldQuantity=\{businessHeld\}/);
+  assert.match(firstGroupCell, /title="Xem các đơn đang giữ hàng"/);
+  assert.doesNotMatch(firstGroupCell, /excludeSalesOrderId=/);
+});
