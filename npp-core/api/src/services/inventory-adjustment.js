@@ -3,7 +3,7 @@ import { createIdempotencyKey, IDEMPOTENCY_KEY_PATTERN, INVENTORY_ADJUSTMENT_BUL
 import { PERMISSIONS } from '../access/permissions.js';
 import * as repository from '../db/repositories/inventory-adjustment.js';
 import * as ledgerRepository from '../db/repositories/inventory-ledger.js';
-import { replenishAfterPostedMovement } from './sales-fulfillment-replenishment.js';
+import { replenishAfterPostedMovement, lockPostedStockScopes } from './sales-fulfillment-replenishment.js';
 import * as warehouseLocationModeRepository from '../db/repositories/warehouse-location-mode.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -562,6 +562,13 @@ async function insertMovement(client, {
     }
   }
 
+  await lockPostedStockScopes(client, {
+    installationId: adjustment.installation_id,
+    lines: movementLines.map((item) => ({
+      warehouseId: adjustment.warehouse_id,
+      baseVariantId: item.line.base_variant_id,
+    })),
+  });
   const movementId = randomUUID();
   const now = new Date();
   const hash = payloadHash({
@@ -691,6 +698,10 @@ async function insertReversalMovement(client, {
     if (!availability.ok) return availability;
   }
 
+  await lockPostedStockScopes(client, {
+    installationId: adjustment.installation_id,
+    lines: originalLines,
+  });
   const movementId = randomUUID();
   const now = new Date();
   const hash = payloadHash({

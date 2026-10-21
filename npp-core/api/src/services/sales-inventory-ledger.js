@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { IDEMPOTENCY_KEY_PATTERN } from '@npp/contracts';
 import * as inventoryRepository from '../db/repositories/inventory-ledger.js';
-import { replenishAfterPostedMovement } from './sales-fulfillment-replenishment.js';
+import { replenishAfterPostedMovement, lockPostedStockScopes } from './sales-fulfillment-replenishment.js';
 import { withTransactionLocalSetting } from '../db/transaction-local-setting.js';
 import {
   readControlledNegativeStockEvidence,
@@ -299,6 +299,10 @@ export async function postServerOwnedDomainMovement(client, {
   });
   if (!negativeValidation.ok) return negativeValidation;
 
+  await lockPostedStockScopes(client, {
+    installationId: requestContext.installationId,
+    lines: normalized.value.lines,
+  });
   for (const line of normalized.value.lines) {
     await inventoryRepository.lockInventoryBalanceScope(client, {
       installationId: requestContext.installationId,

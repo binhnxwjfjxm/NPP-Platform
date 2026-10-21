@@ -9,7 +9,7 @@ import {
 } from '../audit-outbox.js';
 import * as lotRepository from '../db/repositories/inventory-lots.js';
 import * as repository from '../db/repositories/inventory-ledger.js';
-import { replenishAfterPostedMovement } from './sales-fulfillment-replenishment.js';
+import { replenishAfterPostedMovement, lockPostedStockScopes } from './sales-fulfillment-replenishment.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DECIMAL_PATTERN = /^(?:0|[1-9]\d{0,13})(?:\.\d{1,6})?$/;
@@ -438,6 +438,10 @@ export async function postInventoryMovement(client, { requestContext, idempotenc
     if (!resolved.ok) return resolved;
     resolvedLines.push(resolved.value);
   }
+  await lockPostedStockScopes(client, {
+    installationId: requestContext.installationId,
+    lines: resolvedLines,
+  });
   const movement = await repository.insertMovement(client, {
     id: randomUUID(),
     installationId: requestContext.installationId,
@@ -531,6 +535,10 @@ export async function reverseInventoryMovement(client, {
   if (allowedWarehouses.size === 0 || originalLines.some((line) => !allowedWarehouses.has(line.warehouse_id))) {
     return failure('WAREHOUSE_SCOPE_DENIED', 'Movement contains a warehouse outside the server-owned request scope');
   }
+  await lockPostedStockScopes(client, {
+    installationId: requestContext.installationId,
+    lines: originalLines,
+  });
   const movement = await repository.insertMovement(client, {
     id: randomUUID(),
     installationId: requestContext.installationId,

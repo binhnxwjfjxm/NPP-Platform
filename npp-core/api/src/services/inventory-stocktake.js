@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { isValidIdempotencyKey } from '@npp/contracts';
 import * as repository from '../db/repositories/inventory-stocktake.js';
 import * as ledgerRepository from '../db/repositories/inventory-ledger.js';
-import { replenishAfterPostedMovement } from './sales-fulfillment-replenishment.js';
+import { replenishAfterPostedMovement, lockPostedStockScopes } from './sales-fulfillment-replenishment.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DECIMAL_PATTERN = /^(0|[1-9]\d{0,13})(?:\.(\d{1,12}))?$/;
@@ -930,6 +930,10 @@ async function insertAdjustmentMovement(client, {
     }
   }
 
+  await lockPostedStockScopes(client, {
+    installationId: stocktake.installation_id,
+    lines: adjustmentLines,
+  });
   const movementId = randomUUID();
   const now = new Date();
   const documentDate = now.toISOString().slice(0, 10);

@@ -1,6 +1,6 @@
 import * as repository from '../db/repositories/sales-fulfillment.js';
 import { loadDemandHoldAvailability } from './sales-fulfillment-hold.js';
-import { replenishPendingHoldScopes } from './sales-fulfillment-replenishment.js';
+import { replenishPendingHoldScopes, lockOrderStockScopes } from './sales-fulfillment-replenishment.js';
 
 const QUANTITY_PATTERN = /^(0|[1-9]\d{0,17})(?:\.(\d{1,12}))?$/;
 const SCALE = 1_000_000_000_000n;
@@ -242,6 +242,11 @@ export async function replaceSalesOrderFulfillmentDemand(client, {
   });
   const normalized = normalizeInputRows(rows, requestContext);
   if (!normalized.ok) return normalized;
+  await lockOrderStockScopes(client, {
+    installationId: requestContext.installationId,
+    salesOrderId,
+    versionNumber,
+  });
   await lockActiveSalesOrderDemands(client, requestContext.installationId, salesOrderId);
   if (await repository.hasActiveAllocationFacts(client, {
     installationId: requestContext.installationId,
@@ -420,6 +425,10 @@ export async function cancelSalesOrderFulfillmentDemand(client, {
   requestContext,
   salesOrderId,
 }) {
+  await lockOrderStockScopes(client, {
+    installationId: requestContext.installationId,
+    salesOrderId,
+  });
   const releasedScopes = await client.query(
     `SELECT DISTINCT warehouse_id, base_variant_id
        FROM sales.sales_order_fulfillment_demands

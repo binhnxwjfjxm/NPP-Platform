@@ -165,3 +165,28 @@ test('every inbound posting path and new order confirmation reuse the same queue
   assert.match(sources[6], /reconcileDemandHold\(client/);
   assert.match(sources[6], /orders\.status = 'confirmed'/);
 });
+
+test('concurrent stock replenishment shares one warehouse/SKU lock order with confirmation and cancellation', async () => {
+  const [hold, queue, sale, fulfillment, operation, inbound, salesLedger, transfer, adjust, stocktake] = await Promise.all([
+    read('src/services/sales-fulfillment-hold.js'),
+    read('src/services/sales-fulfillment-replenishment.js'),
+    read('src/services/sales-order.js'),
+    read('src/services/sales-fulfillment.js'),
+    read('src/services/sales-fulfillment-operations.js'),
+    read('src/services/inventory-ledger-core.js'),
+    read('src/services/sales-inventory-ledger.js'),
+    read('src/services/inventory-transfer-receipt.js'),
+    read('src/services/inventory-adjustment.js'),
+    read('src/services/inventory-stocktake.js'),
+  ]);
+  assert.ok(hold.indexOf('const scopeResult') < hold.indexOf("FOR UPDATE OF demand"));
+  assert.match(queue, /lockOrderStockScopes/);
+  assert.match(queue, /lockPostedStockScopes/);
+  assert.match(queue, /version\.version_number = \$3/);
+  assert.match(sale, /await lockOrderStockScopes\(client/);
+  assert.ok(fulfillment.indexOf('await lockOrderStockScopes') < fulfillment.indexOf('await lockActiveSalesOrderDemands'));
+  assert.ok(operation.indexOf('const scopeResult = await client.query(') < operation.indexOf('const demand = await repository.getActiveDemandForUpdate'));
+  for (const source of [inbound, salesLedger, transfer, adjust, stocktake]) {
+    assert.match(source, /await lockPostedStockScopes\(client/);
+  }
+});

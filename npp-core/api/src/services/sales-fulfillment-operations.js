@@ -231,6 +231,21 @@ export async function listFulfillmentWorkQueue(client, {
 async function loadDemandAndCandidates(client, { requestContext, demandId, forUpdate = false }) {
   const identityError = validateIdentity(demandId, 'demandId');
   if (identityError) return identityError;
+  if (forUpdate) {
+    const scopeResult = await client.query(
+      `SELECT warehouse_id, base_variant_id
+         FROM sales.sales_order_fulfillment_demands
+        WHERE installation_id = $1 AND id = $2 AND state = 'ACTIVE'`,
+      [requestContext.installationId, demandId],
+    );
+    const scope = scopeResult.rows?.[0];
+    if (!scope) return failure('FULFILLMENT_DEMAND_NOT_FOUND', 'Active confirmed fulfillment demand was not found');
+    await repository.lockFulfillmentScope(client, {
+      installationId: requestContext.installationId,
+      warehouseId: scope.warehouse_id,
+      baseVariantId: scope.base_variant_id,
+    });
+  }
   const demand = await repository.getActiveDemandForUpdate(client, {
     installationId: requestContext.installationId,
     demandId,
@@ -240,13 +255,6 @@ async function loadDemandAndCandidates(client, { requestContext, demandId, forUp
   }
   if (!warehouseAllowed(requestContext, demand.warehouse_id)) {
     return failure('WAREHOUSE_SCOPE_DENIED', 'Fulfillment demand is outside the authorized warehouse scope');
-  }
-  if (forUpdate) {
-    await repository.lockFulfillmentScope(client, {
-      installationId: requestContext.installationId,
-      warehouseId: demand.warehouse_id,
-      baseVariantId: demand.base_variant_id,
-    });
   }
   const rows = await repository.listAllocationCandidates(client, {
     installationId: requestContext.installationId,

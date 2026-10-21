@@ -20,20 +20,83 @@ export function inboundScopesFromMovementLines(lines) {
     a.baseVariantId.localeCompare(b.baseVariantId));
 }
 
+// Every warehouse/SKU lock must be acquired before demand and order row locks.
+// Reentrant advisory transaction locks are safe if a caller already holds them.
+export async function lockWarehouseStockScopes(client, { installationId, scopes }) {
+  const canonical = [...new Map((scopes ?? [])
+    .filter((scope) => scope?.warehouseId && scope?.baseVariantId)
+    .map((scope) => [`${scope.warehouseId}:${scope.baseVariantId}`, scope])).values()]
+    .sort((a, b) => a.warehouseId.localeCompare(b.warehouseId)
+      || a.baseVariantId.localeCompare(b.baseVariantId));
+  for (const scope of canonical) {
+    await fulfillmentRepository.lockFulfillmentScope(client, {
+      installationId, warehouseId: scope.warehouseId, baseVariantId: scope.baseVariantId,
+    });
+  }
+  return canonical;
+}
+
+export async function lockOrderStockScopes(client, {
+  installationId, salesOrderId, versionNumber = null,
+}) {
+  const result = await client.query(
+    `WITH active_scopes AS (
+       SELECT warehouse_id, base_variant_id
+         FROM sales.sales_order_fulfillment_demands
+        WHERE installation_id = $1 AND sales_order_id = $2
+          AND state = 'ACTIVE'
+     ), requested_scopes AS (
+       SELECT version.warehouse_id, base_variant.id AS base_variant_id
+         FROM sales.sales_order_versions version
+         JOIN sales.sales_order_version_lines line
+           ON line.installation_id = version.installation_id
+          AND line.sales_order_version_id = version.id
+         JOIN shared.product_variants sales_variant
+           ON sales_variant.installation_id = line.installation_id
+          AND sales_variant.id = line.variant_id
+         JOIN shared.products product
+           ON product.installation_id = sales_variant.installation_id
+          AND product.id = sales_variant.product_id
+         JOIN shared.product_variants base_variant
+           ON base_variant.installation_id = sales_variant.installation_id
+          AND base_variant.product_id = sales_variant.product_id
+          AND base_variant.is_inventory_base = true
+          AND base_variant.is_active = true
+        WHERE version.installation_id = $1
+          AND version.sales_order_id = $2
+          AND version.version_number = $3
+          AND product.is_inventory_managed = true
+     )
+     SELECT warehouse_id, base_variant_id FROM active_scopes
+     UNION
+     SELECT warehouse_id, base_variant_id FROM requested_scopes`,
+    [installationId, salesOrderId, versionNumber],
+  );
+  return lockWarehouseStockScopes(client, {
+    installationId,
+    scopes: result.rows.map((row) => ({
+      warehouseId: row.warehouse_id, baseVariantId: row.base_variant_id,
+    })),
+  });
+}
+
+export async function lockPostedStockScopes(client, { installationId, lines }) {
+  return lockWarehouseStockScopes(client, {
+    installationId,
+    scopes: (lines ?? []).map((line) => ({
+      warehouseId: line?.warehouse_id ?? line?.warehouseId,
+      baseVariantId: line?.base_variant_id ?? line?.baseVariantId,
+    })),
+  });
+}
+
 export async function replenishPendingHoldScopes(client, {
   installationId, actorId, scopes,
 }) {
-  const orderedScopes = [...new Map((scopes ?? []).map((scope) => [
-    `${scope.warehouseId}:${scope.baseVariantId}`, scope,
-  ])).values()].sort((a, b) =>
-    a.warehouseId.localeCompare(b.warehouseId) ||
-    a.baseVariantId.localeCompare(b.baseVariantId));
+  const orderedScopes = await lockWarehouseStockScopes(client, { installationId, scopes });
 
   let updatedLines = 0;
   for (const { warehouseId, baseVariantId } of orderedScopes) {
-    await fulfillmentRepository.lockFulfillmentScope(client, {
-      installationId, warehouseId, baseVariantId,
-    });
     // Oldest confirmed demand first. Never take existing holds away from another order.
     const pending = await client.query(
       `SELECT demand.id
