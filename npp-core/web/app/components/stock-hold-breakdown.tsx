@@ -17,6 +17,8 @@ type HoldOrder = Readonly<{
   deliveryExecutionMode: string | null;
   fulfillmentStatus: string | null;
   heldBaseQuantity: string;
+  waitingBaseQuantity?: string;
+  orderedBaseQuantity?: string;
 }>;
 
 type HoldBreakdown = Readonly<{
@@ -146,6 +148,8 @@ export function StockHoldBreakdown({
                 <strong>{title}</strong>
                 <div style={{ marginTop: 4, fontSize: 13, opacity: .75 }}>
                   Tổng đang giữ: {formatQuantity(data?.heldBaseQuantity ?? displayedHeldQuantity)}{unit ? ` ${unit}` : ''}
+                  {data?.orders.some((order) => order.waitingBaseQuantity && !/^0(?:\.0+)?$/.test(order.waitingBaseQuantity))
+                    ? ' · Có đơn đang chờ hàng bên dưới' : ''}
                 </div>
               </div>
               <button type="button" onClick={() => setOpen(false)} aria-label="Đóng">Đóng</button>
@@ -163,9 +167,15 @@ export function StockHoldBreakdown({
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                         <strong><BusinessSequenceNumber rowIndex={index} /> {order.orderNumber}</strong>
-                        <strong>{formatQuantity(order.heldBaseQuantity)} {order.baseUnitName || order.baseUnitCode || unit}</strong>
+                        <strong>Đã giữ: {formatQuantity(order.heldBaseQuantity)} {order.baseUnitName || order.baseUnitCode || unit}</strong>
                       </div>
                       <div style={{ marginTop: 4 }}>{order.customerName || 'Khách hàng'}</div>
+                      {order.waitingBaseQuantity && !/^0(?:\.0+)?$/.test(order.waitingBaseQuantity) ? (
+                        <div style={{ marginTop: 4, fontWeight: 600 }}>
+                          Còn chờ hàng: {formatQuantity(order.waitingBaseQuantity)} {order.baseUnitName || order.baseUnitCode || unit}
+                          {order.orderedBaseQuantity ? ` · Khách đặt: ${formatQuantity(order.orderedBaseQuantity)}` : ''}
+                        </div>
+                      ) : null}
                       <div style={{ marginTop: 4, fontSize: 13, opacity: .76 }}>
                         Mã hàng: {order.salesSku}{order.baseSku !== order.salesSku ? ` → ${order.baseSku}` : ''}
                         {' · '}Kho: {order.warehouseCode || order.warehouseName || '—'}
@@ -174,7 +184,7 @@ export function StockHoldBreakdown({
                     </article>
                   ))}
                 </div>
-              ) : <p style={{ marginTop: 12 }}>Không có đơn khác đang giữ hàng.</p>
+              ) : <p style={{ marginTop: 12 }}>Không có đơn nào đang giữ hoặc chờ hàng.</p>
             ) : null}
           </section>
         </div>

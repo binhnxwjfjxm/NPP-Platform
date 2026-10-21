@@ -56,6 +56,13 @@ test('inventory balance lookup offers the shared held-order eye for each warehou
   assert.match(firstGroupCell, /<InventoryQuantity balance=\{balance\} value=\{businessHeld\} \/>/);
   assert.match(firstGroupCell, /<StockHoldBreakdown[\s\S]*?warehouseId=\{balance\.warehouse_id\}[\s\S]*?baseVariantId=\{balance\.base_variant_id\}/);
   assert.match(firstGroupCell, /displayedHeldQuantity=\{businessHeld\}/);
-  assert.match(firstGroupCell, /title="Xem các đơn đang giữ hàng"/);
+  assert.match(firstGroupCell, /title="Xem đơn đã giữ và đang chờ hàng"/);
   assert.doesNotMatch(firstGroupCell, /excludeSalesOrderId=/);
+});
+
+test('inventory eye distinguishes actually-held units from confirmed waiting demand', () => {
+  const breakdown = fs.readFileSync(path.resolve(currentDir, '../app/components/stock-hold-breakdown.tsx'), 'utf8');
+  assert.match(breakdown, /Còn chờ hàng:/);
+  assert.match(breakdown, /Đã giữ:/);
+  assert.match(breakdown, /data\?\.heldBaseQuantity \?\? displayedHeldQuantity/);
 });

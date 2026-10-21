@@ -95,3 +95,12 @@ test('manual delivery remains outside preparation queue', () => {
   assert.match(repository, /version\.delivery_mode = 'DELIVERY'/);
   assert.match(repository, /COALESCE\(version\.delivery_execution_mode, 'TRIP'\) = 'MANUAL'/);
 });
+
+test('hold breakdown shows waiting orders without adding waiting units into held quantity', async () => {
+  const source = await read('src/services/inventory-business-holds.js');
+  assert.match(source, /demand\.backordered_base_quantity/);
+  assert.match(source, /waitingBaseQuantity: String\(row\.backordered_base_quantity\)/);
+  assert.match(source, /orders\.status = 'confirmed'/);
+  assert.match(source, /orders\.confirmed_at ASC NULLS LAST/);
+  assert.match(source, /held_quantity[\s\S]*?available_quantity/);
+});
