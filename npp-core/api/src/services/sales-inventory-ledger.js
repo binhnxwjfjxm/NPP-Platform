@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { IDEMPOTENCY_KEY_PATTERN } from '@npp/contracts';
 import * as inventoryRepository from '../db/repositories/inventory-ledger.js';
+import { replenishAfterPostedMovement } from './sales-fulfillment-replenishment.js';
 import { withTransactionLocalSetting } from '../db/transaction-local-setting.js';
 import {
   readControlledNegativeStockEvidence,
@@ -371,6 +372,11 @@ export async function postServerOwnedDomainMovement(client, {
       return postedLines;
     },
   );
+  await replenishAfterPostedMovement(client, {
+    installationId: requestContext.installationId,
+    actorId: requestContext.actorId,
+    lines,
+  });
   return Object.freeze({ ok: true, movement, lines: Object.freeze(lines), replayed: false });
 }
 

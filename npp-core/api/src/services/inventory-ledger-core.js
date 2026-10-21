@@ -9,6 +9,7 @@ import {
 } from '../audit-outbox.js';
 import * as lotRepository from '../db/repositories/inventory-lots.js';
 import * as repository from '../db/repositories/inventory-ledger.js';
+import { replenishAfterPostedMovement } from './sales-fulfillment-replenishment.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DECIMAL_PATTERN = /^(?:0|[1-9]\d{0,13})(?:\.\d{1,6})?$/;
@@ -467,6 +468,11 @@ export async function postInventoryMovement(client, { requestContext, idempotenc
       ...line,
     }));
   }
+  await replenishAfterPostedMovement(client, {
+    installationId: requestContext.installationId,
+    actorId: requestContext.actorId,
+    lines,
+  });
   return Object.freeze({ ok: true, movement, lines: Object.freeze(lines), replayed: false });
 }
 
@@ -574,6 +580,11 @@ export async function reverseInventoryMovement(client, {
       metadata: { ...(originalLine.metadata ?? {}), reversedFromLineId: originalLine.id },
     }));
   }
+  await replenishAfterPostedMovement(client, {
+    installationId: requestContext.installationId,
+    actorId: requestContext.actorId,
+    lines,
+  });
   return Object.freeze({ ok: true, movement, lines: Object.freeze(lines), replayed: false });
 }
 

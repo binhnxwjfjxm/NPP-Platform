@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { loadConfig } from '../src/config.js';
 import { getPool, closePool } from '../src/db/pool.js';
 import { startServer } from '../src/server.js';
+import { replenishPendingHoldScopes } from '../src/services/sales-fulfillment-replenishment.js';
 
 function closeServer(server) {
   return new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
@@ -284,6 +285,84 @@ test('confirmed orders reserve warehouse demand, prevent oversell and release on
     assert.equal(releasedConfirm.response.status, 200, JSON.stringify(releasedConfirm.body));
     assert.equal(releasedConfirm.body.data.fulfillmentStatus, 'reserved');
     assert.equal(releasedConfirm.body.data.fulfillment.totals.reservedBaseQuantity, '4.000000000000');
+  } finally {
+    if (server) await closeServer(server);
+    await closePool();
+  }
+});
+
+test('existing waiting orders receive a later stock increase in confirmation order without changing physical stock', async () => {
+  const config = loadConfig({
+    NODE_ENV: 'test', HOST: '127.0.0.1', PORT: '3074',
+    INSTALLATION_ID: `sales-replenishment-test-${randomUUID()}`,
+    DATABASE_URL: process.env.TEST_DATABASE_URL || process.env.DATABASE_URL || 'postgresql://user:password@127.0.0.1:5432/npp_platform',
+    DATABASE_SSL_MODE: 'disable',
+    BACKEND_API_TOKEN: 'test-token-0123456789abcdef',
+    CORE_BOOTSTRAP_ACTOR_ID: 'test:fulfillment-bootstrap',
+    CORS_ORIGINS: 'http://127.0.0.1:3003',
+  });
+  const pool = getPool(config);
+  let server;
+  try {
+    const fixture = await createFixture(pool, config.installationId);
+    server = await startServer({ config });
+    const baseUrl = `http://${config.host}:${config.port}`;
+    const first = await createOrder(baseUrl, config, fixture, 10);
+    const firstConfirm = await confirmOrder(baseUrl, config, first.id);
+    assert.equal(firstConfirm.response.status, 200, JSON.stringify(firstConfirm.body));
+    assert.equal(firstConfirm.body.data.fulfillment.totals.backorderedBaseQuantity, '5.000000000000');
+    const second = await createOrder(baseUrl, config, fixture, 4);
+    const secondConfirm = await confirmOrder(baseUrl, config, second.id);
+    assert.equal(secondConfirm.response.status, 200, JSON.stringify(secondConfirm.body));
+    assert.equal(secondConfirm.body.data.fulfillment.totals.reservedBaseQuantity, '0.000000000000');
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query("SELECT set_config('npp.inventory_balance_write_context', 'rebuild', true)");
+      await client.query(
+        `UPDATE inventory.inventory_balances
+            SET on_hand_quantity = 12, updated_at = now()
+          WHERE installation_id=$1 AND warehouse_id=$2 AND base_variant_id=$3`,
+        [config.installationId, fixture.warehouseId, fixture.variantId],
+      );
+      const args = {
+        installationId: config.installationId, actorId: 'test:replenishment',
+        scopes: [{ warehouseId: fixture.warehouseId, baseVariantId: fixture.variantId }],
+      };
+      assert.equal((await replenishPendingHoldScopes(client, args)).updatedLines, 2);
+      assert.equal((await replenishPendingHoldScopes(client, args)).updatedLines, 0);
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    const rows = await pool.query(
+      `SELECT sales_order_id, reserved_base_quantity::text AS held,
+              backordered_base_quantity::text AS waiting
+         FROM sales.sales_order_fulfillment_demands
+        WHERE installation_id=$1 AND sales_order_id=ANY($2::uuid[])
+        ORDER BY sales_order_id`,
+      [config.installationId, [first.id, second.id]],
+    );
+    const byOrder = new Map(rows.rows.map((row) => [row.sales_order_id, row]));
+    assert.equal(byOrder.get(first.id)?.held, '10.000000000000');
+    assert.equal(byOrder.get(first.id)?.waiting, '0.000000000000');
+    assert.equal(byOrder.get(second.id)?.held, '2.000000000000');
+    assert.equal(byOrder.get(second.id)?.waiting, '2.000000000000');
+    const onHand = await pool.query(
+      `SELECT on_hand_quantity::text AS qty FROM inventory.inventory_balances
+         WHERE installation_id=$1 AND warehouse_id=$2 AND base_variant_id=$3`,
+      [config.installationId, fixture.warehouseId, fixture.variantId],
+    );
+    assert.equal(onHand.rows[0]?.qty, '12.000000000000');
+    const later = await createOrder(baseUrl, config, fixture, 1);
+    const laterConfirm = await confirmOrder(baseUrl, config, later.id);
+    assert.equal(laterConfirm.response.status, 200, JSON.stringify(laterConfirm.body));
+    assert.equal(laterConfirm.body.data.fulfillment.totals.reservedBaseQuantity, '0.000000000000');
   } finally {
     if (server) await closeServer(server);
     await closePool();

@@ -1,5 +1,6 @@
 import * as repository from '../db/repositories/sales-fulfillment.js';
 import { loadDemandHoldAvailability } from './sales-fulfillment-hold.js';
+import { replenishPendingHoldScopes } from './sales-fulfillment-replenishment.js';
 
 const QUANTITY_PATTERN = /^(0|[1-9]\d{0,17})(?:\.(\d{1,12}))?$/;
 const SCALE = 1_000_000_000_000n;
@@ -289,6 +290,17 @@ export async function replaceSalesOrderFulfillmentDemand(client, {
       false,
     );
   }
+
+  // Existing confirmed waiting orders claim newly free stock before the
+  // just-confirmed order; also repairs historic waiting demand on next confirm.
+  await replenishPendingHoldScopes(client, {
+    installationId: requestContext.installationId,
+    actorId: requestContext.actorId,
+    scopes: orderedGroups.map(([, lines]) => ({
+      warehouseId: lines[0].warehouseId,
+      baseVariantId: lines[0].baseVariantId,
+    })),
+  });
 
   const allAllocations = [];
   for (const [, lines] of orderedGroups) {

@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import * as receiptRepository from '../db/repositories/inventory-transfer-receipt.js';
 import * as ledgerRepository from '../db/repositories/inventory-ledger.js';
+import { replenishAfterPostedMovement } from './sales-fulfillment-replenishment.js';
 import { reverseInventoryMovement } from './inventory-ledger-core.js';
 import { getInventoryTransfer } from './inventory-transfer.js';
 
@@ -372,6 +373,11 @@ async function postReceiptMovement(client, {
       },
     }));
   }
+  await replenishAfterPostedMovement(client, {
+    installationId: requestContext.installationId,
+    actorId: requestContext.actorId,
+    lines: movementLines,
+  });
   return Object.freeze({ ok: true, movement, lines: Object.freeze(movementLines), replayed: false });
 }
 
