@@ -41,7 +41,7 @@ test('Lịch sử kho keeps the Sapo-style table, 50 rows per page and inline do
 
 test('Tồn kho không còn ô gộp vượt dòng gây sai nền và lệch cột', () => {
   assert.doesNotMatch(inventory, /rowSpan=\{group\.rows\.length\}/);
-  assert.match(inventory, /<td>\s*\{firstInGroup \? \(\s*<>\s*<InventoryQuantity balance=\{balance\} value=\{businessHeld\}/);
+  assert.match(inventory, /<td>\s*\{firstInGroup \? \(\s*<>\s*<div className=\{styles\.holdQuantityCell\}>\s*<InventoryQuantity balance=\{balance\} value=\{businessHeld\}/);
   assert.match(inventory, /<td>\s*\{firstInGroup \? \(\s*<>\s*<InventoryQuantity balance=\{balance\} value=\{businessAvailable\}/);
   assert.match(inventory, /\) : <span className=\{styles\.subtle\}>—<\/span>\}/);
 });
