@@ -254,6 +254,12 @@ export async function replaceSalesOrderFulfillmentDemand(client, {
     );
   }
 
+  const previousDemands = await client.query(
+    `SELECT DISTINCT warehouse_id, base_variant_id
+       FROM sales.sales_order_fulfillment_demands
+      WHERE installation_id = $1 AND sales_order_id = $2 AND state = 'ACTIVE'`,
+    [requestContext.installationId, salesOrderId],
+  );
   const settings = await repository.getFulfillmentSettings(client, {
     installationId: requestContext.installationId,
   });
@@ -267,11 +273,23 @@ export async function replaceSalesOrderFulfillmentDemand(client, {
   }
 
   const orderedGroups = [...groups.entries()].sort(([left], [right]) => left.localeCompare(right));
-  for (const [, lines] of orderedGroups) {
+  // On amendment, scopes removed from the new version can release available
+  // stock too. Lock both old and new scopes in the same deterministic order.
+  const relevantScopes = [...new Map([
+    ...previousDemands.rows.map((row) => ({
+      warehouseId: row.warehouse_id, baseVariantId: row.base_variant_id,
+    })),
+    ...orderedGroups.map(([, lines]) => ({
+      warehouseId: lines[0].warehouseId, baseVariantId: lines[0].baseVariantId,
+    })),
+  ].map((scope) => [`${scope.warehouseId}:${scope.baseVariantId}`, scope])).values()]
+    .sort((left, right) => left.warehouseId.localeCompare(right.warehouseId)
+      || left.baseVariantId.localeCompare(right.baseVariantId));
+  for (const scope of relevantScopes) {
     await repository.lockFulfillmentScope(client, {
       installationId: requestContext.installationId,
-      warehouseId: lines[0].warehouseId,
-      baseVariantId: lines[0].baseVariantId,
+      warehouseId: scope.warehouseId,
+      baseVariantId: scope.baseVariantId,
     });
   }
 
@@ -293,14 +311,16 @@ export async function replaceSalesOrderFulfillmentDemand(client, {
 
   // Existing confirmed waiting orders claim newly free stock before the
   // just-confirmed order; also repairs historic waiting demand on next confirm.
-  await replenishPendingHoldScopes(client, {
-    installationId: requestContext.installationId,
-    actorId: requestContext.actorId,
-    scopes: orderedGroups.map(([, lines]) => ({
-      warehouseId: lines[0].warehouseId,
-      baseVariantId: lines[0].baseVariantId,
-    })),
-  });
+  // New orders must wait behind older unheld demand. An amendment first keeps
+  // the original order's existing hold, then offers only released stock to
+  // other waiting orders; editing a note must not steal a customer's hold.
+  if (previousDemands.rows.length === 0) {
+    await replenishPendingHoldScopes(client, {
+      installationId: requestContext.installationId,
+      actorId: requestContext.actorId,
+      scopes: relevantScopes,
+    });
+  }
 
   const allAllocations = [];
   for (const [, lines] of orderedGroups) {
@@ -379,6 +399,13 @@ export async function replaceSalesOrderFulfillmentDemand(client, {
       true,
     );
   }
+  if (previousDemands.rows.length > 0) {
+    await replenishPendingHoldScopes(client, {
+      installationId: requestContext.installationId,
+      actorId: requestContext.actorId,
+      scopes: relevantScopes,
+    });
+  }
 
   return Object.freeze({
     ok: true,
@@ -393,11 +420,24 @@ export async function cancelSalesOrderFulfillmentDemand(client, {
   requestContext,
   salesOrderId,
 }) {
+  const releasedScopes = await client.query(
+    `SELECT DISTINCT warehouse_id, base_variant_id
+       FROM sales.sales_order_fulfillment_demands
+      WHERE installation_id = $1 AND sales_order_id = $2 AND state = 'ACTIVE'`,
+    [requestContext.installationId, salesOrderId],
+  );
   await repository.setFulfillmentWriteContext(client);
   await repository.cancelActiveDemands(client, {
     installationId: requestContext.installationId,
     salesOrderId,
     actorId: requestContext.actorId,
+  });
+  await replenishPendingHoldScopes(client, {
+    installationId: requestContext.installationId,
+    actorId: requestContext.actorId,
+    scopes: releasedScopes.rows.map((row) => ({
+      warehouseId: row.warehouse_id, baseVariantId: row.base_variant_id,
+    })),
   });
   return Object.freeze({
     ok: true,

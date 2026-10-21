@@ -280,11 +280,20 @@ test('confirmed orders reserve warehouse demand, prevent oversell and release on
     assert.equal(firstDemand?.state, 'CANCELLED');
     assert.equal(secondDemand?.state, 'ACTIVE');
 
+    // Cancel releases to the oldest waiting order before a fresh confirmation.
+    const waitingAfterCancel = await pool.query(
+      `SELECT reserved_base_quantity::text AS held, backordered_base_quantity::text AS waiting
+         FROM sales.sales_order_fulfillment_demands
+        WHERE installation_id=$1 AND sales_order_id=$2 AND state='ACTIVE'`,
+      [config.installationId, second.id],
+    );
+    assert.deepEqual(waitingAfterCancel.rows[0], {
+      held: '3.000000000000', waiting: '0.000000000000',
+    });
     const released = await createOrder(baseUrl, config, fixture, 4);
     const releasedConfirm = await confirmOrder(baseUrl, config, released.id);
-    assert.equal(releasedConfirm.response.status, 200, JSON.stringify(releasedConfirm.body));
-    assert.equal(releasedConfirm.body.data.fulfillmentStatus, 'reserved');
-    assert.equal(releasedConfirm.body.data.fulfillment.totals.reservedBaseQuantity, '4.000000000000');
+    assert.equal(releasedConfirm.response.status, 400);
+    assert.equal(releasedConfirm.body.error.code, 'SALES_ORDER_INSUFFICIENT_STOCK');
   } finally {
     if (server) await closeServer(server);
     await closePool();
