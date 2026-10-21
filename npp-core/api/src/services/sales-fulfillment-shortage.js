@@ -9,6 +9,7 @@ import {
 import * as fulfillmentRepository from '../db/repositories/sales-fulfillment-operations.js';
 import * as repository from '../db/repositories/sales-fulfillment-shortage.js';
 import { fulfillmentOperationInternals } from './sales-fulfillment-operations.js';
+import { lockOrderStockScopes, lockAllocationStockScope } from './sales-fulfillment-replenishment.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const {
@@ -185,6 +186,12 @@ async function loadCloseInputs(client, {
   salesOrderId,
   forUpdate,
 }) {
+  if (forUpdate) {
+    await lockOrderStockScopes(client, {
+      installationId: requestContext.installationId,
+      salesOrderId,
+    });
+  }
   const demands = await repository.listOrderPickingDemands(client, {
     installationId: requestContext.installationId,
     salesOrderId,
@@ -193,19 +200,6 @@ async function loadCloseInputs(client, {
   if (demands.length === 0) return failure('FULFILLMENT_ORDER_NOT_FOUND', 'Confirmed fulfillment order was not found');
   if (demands.some((demand) => !warehouseAllowed(requestContext, demand.warehouse_id))) {
     return failure('WAREHOUSE_SCOPE_DENIED', 'Fulfillment order is outside the authorized warehouse scope');
-  }
-  if (forUpdate) {
-    const scopes = new Set();
-    for (const demand of demands) {
-      const scopeKey = `${demand.warehouse_id}:${demand.base_variant_id}`;
-      if (scopes.has(scopeKey)) continue;
-      scopes.add(scopeKey);
-      await fulfillmentRepository.lockFulfillmentScope(client, {
-        installationId: requestContext.installationId,
-        warehouseId: demand.warehouse_id,
-        baseVariantId: demand.base_variant_id,
-      });
-    }
   }
   const openAllocations = await repository.listOrderOpenAllocations(client, {
     installationId: requestContext.installationId,
@@ -307,6 +301,10 @@ export async function executeRecordFulfillmentShortage({
         });
       }
 
+      await lockAllocationStockScope(client, {
+        installationId: requestContext.installationId,
+        allocationId,
+      });
       const allocation = await fulfillmentRepository.getAllocationForUpdate(client, {
         installationId: requestContext.installationId,
         allocationId,
@@ -315,11 +313,6 @@ export async function executeRecordFulfillmentShortage({
       if (!warehouseAllowed(requestContext, allocation.warehouse_id)) {
         return { failed: failure('WAREHOUSE_SCOPE_DENIED', 'Allocation is outside the authorized warehouse scope') };
       }
-      await fulfillmentRepository.lockFulfillmentScope(client, {
-        installationId: requestContext.installationId,
-        warehouseId: allocation.warehouse_id,
-        baseVariantId: allocation.base_variant_id,
-      });
       await fulfillmentRepository.lockExactInventoryScope(client, {
         installationId: requestContext.installationId,
         warehouseId: allocation.warehouse_id,

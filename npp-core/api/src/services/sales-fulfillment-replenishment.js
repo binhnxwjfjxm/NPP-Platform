@@ -80,6 +80,27 @@ export async function lockOrderStockScopes(client, {
   });
 }
 
+export async function lockAllocationStockScope(client, { installationId, allocationId }) {
+  // Read the immutable warehouse/SKU without a row lock, then acquire the
+  // canonical advisory lock before any allocation FOR UPDATE.
+  const result = await client.query(
+    `SELECT warehouse_id, base_variant_id
+       FROM sales.sales_order_fulfillment_allocations
+      WHERE installation_id = $1 AND id = $2`,
+    [installationId, allocationId],
+  );
+  const scope = result.rows?.[0] ?? null;
+  if (!scope) return null;
+  await lockWarehouseStockScopes(client, {
+    installationId,
+    scopes: [{
+      warehouseId: scope.warehouse_id,
+      baseVariantId: scope.base_variant_id,
+    }],
+  });
+  return scope;
+}
+
 export async function lockPostedStockScopes(client, { installationId, lines }) {
   return lockWarehouseStockScopes(client, {
     installationId,

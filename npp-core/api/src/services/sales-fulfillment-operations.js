@@ -8,6 +8,7 @@ import {
   withAuditOutboxTransaction,
 } from '../audit-outbox.js';
 import * as repository from '../db/repositories/sales-fulfillment-operations.js';
+import { lockAllocationStockScope } from './sales-fulfillment-replenishment.js';
 import {
   formatHoldQuantity,
   loadDemandHoldAvailability,
@@ -738,6 +739,10 @@ async function executeProgress({
         return Object.freeze({ ok: true, replayed: true, allocation: mapAllocation(replayAllocation) });
       }
 
+      await lockAllocationStockScope(client, {
+        installationId: requestContext.installationId,
+        allocationId,
+      });
       const allocation = await repository.getAllocationForUpdate(client, {
         installationId: requestContext.installationId,
         allocationId,
@@ -746,11 +751,6 @@ async function executeProgress({
       if (!warehouseAllowed(requestContext, allocation.warehouse_id)) {
         return { failed: failure('WAREHOUSE_SCOPE_DENIED', 'Allocation is outside the authorized warehouse scope') };
       }
-      await repository.lockFulfillmentScope(client, {
-        installationId: requestContext.installationId,
-        warehouseId: allocation.warehouse_id,
-        baseVariantId: allocation.base_variant_id,
-      });
       const updated = await repository.incrementAllocationProgress(client, {
         installationId: requestContext.installationId,
         allocationId,

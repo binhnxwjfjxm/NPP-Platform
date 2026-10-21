@@ -190,3 +190,18 @@ test('concurrent stock replenishment shares one warehouse/SKU lock order with co
     assert.match(source, /await lockPostedStockScopes\(client/);
   }
 });
+
+test('picking and shortage changes take the canonical stock lock before row locks', async () => {
+  const [shortage, operations, queue] = await Promise.all([
+    read('src/services/sales-fulfillment-shortage.js'),
+    read('src/services/sales-fulfillment-operations.js'),
+    read('src/services/sales-fulfillment-replenishment.js'),
+  ]);
+  assert.match(queue, /export async function lockAllocationStockScope/);
+  assert.ok(queue.indexOf('await lockWarehouseStockScopes(client', queue.indexOf('export async function lockAllocationStockScope'))
+    < queue.indexOf('export async function lockPostedStockScopes'));
+  const shortageLoad = shortage.slice(shortage.indexOf('async function loadCloseInputs'));
+  assert.ok(shortageLoad.indexOf('await lockOrderStockScopes(client') < shortageLoad.indexOf('await repository.listOrderPickingDemands(client'));
+  assert.ok(shortage.indexOf('await lockAllocationStockScope(client') < shortage.indexOf('const allocation = await fulfillmentRepository.getAllocationForUpdate(client'));
+  assert.ok(operations.indexOf('await lockAllocationStockScope(client') < operations.indexOf('const allocation = await repository.getAllocationForUpdate(client'));
+});
