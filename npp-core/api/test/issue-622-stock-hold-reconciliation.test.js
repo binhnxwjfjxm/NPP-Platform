@@ -97,7 +97,7 @@ test('manual delivery remains outside preparation queue', () => {
 });
 
 test('hold breakdown shows waiting orders without adding waiting units into held quantity', async () => {
-  const source = await read('src/services/inventory-business-holds.js');
+  const source = read('../src/services/inventory-business-holds.js');
   assert.match(source, /demand\.backordered_base_quantity/);
   assert.match(source, /waitingBaseQuantity: String\(row\.backordered_base_quantity\)/);
   assert.match(source, /orders\.status = 'confirmed'/);
