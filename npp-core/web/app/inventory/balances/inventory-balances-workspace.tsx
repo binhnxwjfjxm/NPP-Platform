@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { AppShell } from '../../components/app-shell';
+import { StockHoldBreakdown } from '../../components/stock-hold-breakdown';
 import {
   BusinessTableSequenceCell,
   BusinessTableSequenceHeader,
@@ -536,7 +537,17 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
                         <td>
                           {firstInGroup ? (
                             <>
-                              <InventoryQuantity balance={balance} value={businessHeld} />
+                              <div className={styles.holdQuantityCell}>
+                                <InventoryQuantity balance={balance} value={businessHeld} />
+                                <StockHoldBreakdown
+                                  warehouseId={balance.warehouse_id}
+                                  baseVariantId={balance.base_variant_id}
+                                  displayedHeldQuantity={businessHeld}
+                                  baseUnitCode={balance.base_unit_code}
+                                  baseUnitName={balance.base_unit_name}
+                                  title="Xem các đơn đang giữ hàng"
+                                />
+                              </div>
                               <div className={styles.subtle}>Theo kho</div>
                             </>
                           ) : <span className={styles.subtle}>—</span>}

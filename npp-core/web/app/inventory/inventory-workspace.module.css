@@ -118,6 +118,7 @@
 .balanceSection { display: grid; gap: 14px; }
 .balanceLayout { display: grid; gap: 14px; }
 .balanceTableWrap { border-radius: 14px; background: #fff; }
+.holdQuantityCell { display: inline-flex; align-items: flex-start; gap: 6px; white-space: nowrap; }
 .balanceDetailPanel { padding: 14px; border-radius: 14px; }
 .gridTwo { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.9fr); gap: 14px; }
 .panel { display: grid; align-content: start; gap: 12px; padding: 16px; border: 1px solid rgba(52, 32, 24, 0.08); border-radius: 18px; background: #fffdfb; }
