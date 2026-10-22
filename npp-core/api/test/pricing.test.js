@@ -197,6 +197,57 @@ test('Pricing service — retail/carton prices are independent and rules resolve
   }
 });
 
+
+test('GT01: thiếu giá nền vẫn dùng giá cố định 800000 nếu khách thuộc nhóm và kênh hợp lệ', async () => {
+  const config = loadConfig(testEnv());
+  const pool = getPool(config);
+  try {
+    const suffix = randomUUID().slice(0, 8).toUpperCase();
+    const catalog = await createCatalog(pool, config.installationId, suffix);
+    const eligible = await createCustomerContext(pool, config.installationId, `A${suffix}`);
+    const excluded = await createCustomerContext(pool, config.installationId, `B${suffix}`);
+    const channel = await pricingService.createSalesChannel(pool, {
+      installationId: config.installationId,
+      payload: { code: `GT-${suffix}`, name: 'Kênh Đại Lý' },
+      createdBy: 'test:user',
+    });
+    assert.ok(channel.ok, channel.message);
+    const list = await createList(pool, config.installationId, {
+      code: `GT01-${suffix}`, name: 'Bảng Giá Đại Lý',
+      listType: 'CUSTOMER_GROUP',
+      channelIds: [channel.channel.id],
+      customerGroupIds: [eligible.group.id],
+      priority: 300,
+    });
+    await createItem(pool, config.installationId, list.id, {
+      variantId: catalog.carton.id,
+      adjustmentType: 'FIXED_PRICE',
+      amountMinor: '800000',
+    });
+    const lookup = (customerId, channelId) => pricingService.resolvePrice(pool, {
+      installationId: config.installationId,
+      payload: { variantId: catalog.carton.id, quantity: '1', customerId, channelId },
+    });
+    const accepted = await lookup(eligible.customer.id, channel.channel.id);
+    assert.ok(accepted.ok, accepted.message);
+    assert.equal(accepted.resolution.finalUnitPriceMinor, '800000');
+    assert.equal(accepted.resolution.steps[0].priceListCode, list.code);
+
+    const denied = await lookup(excluded.customer.id, channel.channel.id);
+    assert.equal(denied.ok, false);
+    assert.equal(denied.code, 'BASE_PRICE_NOT_FOUND');
+
+    const noCustomer = await pricingService.resolvePrice(pool, {
+      installationId: config.installationId,
+      payload: { variantId: catalog.carton.id, quantity: '1', channelId: channel.channel.id },
+    });
+    assert.equal(noCustomer.ok, false);
+    assert.equal(noCustomer.code, 'BASE_PRICE_NOT_FOUND');
+  } finally {
+    await closePool();
+  }
+});
+
 test('Pricing import — source keys replay without duplicate rows', async () => {
   const config = loadConfig(testEnv());
   const pool = getPool(config);

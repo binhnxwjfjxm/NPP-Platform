@@ -162,3 +162,42 @@ test('sales order search dùng giá trực tiếp của đúng kênh làm giá g
   assert.equal(result.get(VARIANT_B)?.resolution?.systemUnitPriceMinor, '304000');
   assert.equal(result.get(VARIANT_B)?.resolution?.finalUnitPriceMinor, '304000');
 });
+
+
+test('tìm hàng cho khách đủ điều kiện GT01 hiển thị giá 800000 dù không có giá nền', async () => {
+  const rows = [
+    candidate(VARIANT_B, {
+      item_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1',
+      price_list_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbc1',
+      price_list_code: 'GT01',
+      list_type: 'CUSTOMER_GROUP',
+      adjustment_type: 'FIXED_PRICE',
+      amount_minor: '800000',
+      priority: 300,
+      stacking_mode: 'STACKABLE',
+      customer_group_id: CUSTOMER_GROUP_ID,
+      channel_id: CHANNEL_ID,
+    }),
+    candidate(VARIANT_B, {
+      item_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2',
+      price_list_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbc2',
+      price_list_code: 'CHANNEL',
+      list_type: 'CHANNEL',
+      amount_minor: '750000',
+      priority: 200,
+      stacking_mode: 'STACKABLE',
+      channel_id: CHANNEL_ID,
+    }),
+  ];
+  const client = { async query() { return { rows }; } };
+  const result = await resolveSalesOrderSearchPrices(client, {
+    installationId: 'installation-test',
+    variantIds: [VARIANT_B],
+    priceAt: '2026-10-22T08:00:00.000Z',
+    channelId: CHANNEL_ID,
+    customerGroupId: CUSTOMER_GROUP_ID,
+    customerId: CUSTOMER_ID,
+  });
+  assert.equal(result.get(VARIANT_B)?.resolution?.systemUnitPriceMinor, '800000');
+  assert.equal(result.get(VARIANT_B)?.resolution?.finalUnitPriceMinor, '800000');
+});

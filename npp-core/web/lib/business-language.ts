@@ -15,6 +15,7 @@ const PRICING_RESOLUTION_REASON_LABELS: Readonly<Record<string, string>> = Objec
   CUSTOMER_NOT_ELIGIBLE: 'Khách hàng chưa thuộc phạm vi áp dụng',
   CHANNEL_NOT_ELIGIBLE: 'Kênh bán chưa thuộc phạm vi áp dụng',
   CHANNEL_FIXED_FALLBACK: 'Dùng làm giá gốc vì SKU chưa có Giá nền',
+  SCOPED_FIXED_FALLBACK: 'Dùng giá cố định đủ điều kiện vì SKU chưa có Giá nền',
 });
 
 export function pricingResolutionReasonLabel(reason?: string | null): string {

@@ -109,3 +109,70 @@ test('đơn bán hàng dùng giá trực tiếp của kênh làm giá gốc khi 
   assert.equal(result.resolution.steps[0].kind, 'RULE');
   assert.equal(result.resolution.steps[0].reason, 'CHANNEL_FIXED_FALLBACK');
 });
+
+
+test('GT01 không cần giá nền: giá cố định theo nhóm khách thắng giá kênh ưu tiên thấp', async () => {
+  const candidates = [
+    row({
+      item_id: 'gt01-fixed',
+      price_list_id: 'gt01-list',
+      price_list_code: 'GT01',
+      list_type: 'CUSTOMER_GROUP',
+      priority: 300,
+      stacking_mode: 'STACKABLE',
+      amount_minor: '800000',
+    }),
+    row({
+      item_id: 'channel-fixed-low',
+      price_list_id: 'channel-list',
+      price_list_code: 'CHANNEL',
+      list_type: 'CHANNEL',
+      priority: 200,
+      stacking_mode: 'STACKABLE',
+      amount_minor: '750000',
+    }),
+  ];
+  const start = selectPricingStart(candidates);
+  assert.equal(start?.source, 'SCOPED_FIXED_FALLBACK');
+  assert.equal(start?.candidate.price_list_code, 'GT01');
+  const client = {
+    async query() {
+      return { rows: [{
+        variant: {
+          id: VARIANT_ID, is_active: true, is_sellable: true,
+          unit_id: 'unit-1', conversion_to_base: '1',
+        },
+        channel: { id: CHANNEL_ID, is_active: true },
+        customer: { id: '66666666-6666-4666-8666-666666666666', group_id: GROUP_ID, is_active: true },
+        customer_group: { id: GROUP_ID, is_active: true },
+        candidates,
+      }] };
+    },
+  };
+  const result = await salesOrderAppliedPriceInternals.resolveStandardAppliedPrice(client, {
+    installationId: 'installation-test',
+    payload: {
+      variantId: VARIANT_ID, quantity: '1', channelId: CHANNEL_ID,
+      customerId: '66666666-6666-4666-8666-666666666666',
+      currencyCode: 'VND', priceAt: '2026-10-22T08:00:00.000Z',
+    },
+  });
+  assert.equal(result.ok, true, result.message);
+  assert.equal(result.resolution.finalUnitPriceMinor, '800000');
+  assert.equal(result.resolution.steps[0].priceListCode, 'GT01');
+  assert.equal(result.resolution.steps[0].reason, 'SCOPED_FIXED_FALLBACK');
+  assert.equal(result.resolution.steps.length, 1);
+});
+
+test('không có giá cố định hợp lệ không đổi thành giá 0 tự động', () => {
+  assert.equal(selectPricingStart([]), null);
+  assert.equal(selectPricingStart([
+    row({ item_id: 'group-discount', list_type: 'CUSTOMER_GROUP', adjustment_type: 'PERCENT_DISCOUNT', rate_bps: '500', amount_minor: null }),
+  ]), null);
+  for (const list_type of ['CUSTOM', 'CUSTOMER', 'CUSTOMER_GROUP', 'PROMOTION', 'CHANNEL']) {
+    const selected = selectPricingStart([
+      row({ item_id: list_type, list_type, amount_minor: '0' }),
+    ]);
+    assert.equal(selected?.candidate.amount_minor, '0', list_type);
+  }
+});

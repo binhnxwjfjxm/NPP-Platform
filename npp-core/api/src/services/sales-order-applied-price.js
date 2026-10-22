@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import * as searchPricingService from './sales-order-search-pricing.js';
-import { pricingStartStep, selectPricingStart } from './pricing-start.js';
+import { isCompetingFallbackFixedPrice, pricingStartStep, selectPricingStart } from './pricing-start.js';
 import * as historyRepository from '../db/repositories/sales-order-applied-price.js';
 import * as commercialRepository from '../db/repositories/sales-order-commercial.js';
 import * as salesOrderRepository from '../db/repositories/sales-order.js';
@@ -188,7 +188,7 @@ async function resolveStandardAppliedPrice(client, { installationId, payload }) 
   const candidates = Array.isArray(context?.candidates) ? context.candidates : [];
   const start = selectPricingStart(candidates);
   if (!start) {
-    return failure('BASE_PRICE_NOT_FOUND', 'No active base or direct channel price is available for this SKU and currency');
+    return failure('BASE_PRICE_NOT_FOUND', 'No active base or applicable fixed price is available for this SKU and currency');
   }
 
   const base = start.candidate;
@@ -197,13 +197,14 @@ async function resolveStandardAppliedPrice(client, { installationId, payload }) 
   let exclusiveApplied = false;
   for (const candidate of candidates) {
     if (candidate.item_id === base.item_id) {
-      if (start.source === 'CHANNEL_FIXED_FALLBACK') {
+      if (start.source !== 'BASE') {
         if (candidate.stacking_mode === 'EXCLUSIVE') exclusiveApplied = true;
         if (candidate.stop_processing) break;
       }
       continue;
     }
     if (candidate.list_type === 'BASE') continue;
+    if (isCompetingFallbackFixedPrice(start, candidate)) continue;
     if (candidate.stacking_mode === 'EXCLUSIVE' && exclusiveApplied) {
       steps.push({
         kind: 'SKIPPED',
