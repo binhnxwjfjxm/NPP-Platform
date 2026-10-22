@@ -1031,6 +1031,11 @@ export async function postAdjustment(client, {
       { cause: locationValidation.code },
     );
   }
+  // Match stock posting: lock warehouse/SKU before the scope-version rows.
+  await lockPostedStockScopes(client, {
+    installationId: row.installation_id,
+    lines,
+  });
   const watermark = shouldVerifySnapshotAtPost(row.document_kind)
     ? await verifySnapshotWatermarks(client, row, lines, { lock: true })
     : await loadCurrentScopeState(client, row, lines, { lock: true });
@@ -1146,6 +1151,11 @@ export async function reverseAdjustment(client, {
     base_variant_id: scope.base_variant_id,
     lot_id: scope.lot_id,
   }));
+  // Match stock posting: lock warehouse/SKU before the scope-version rows.
+  await lockPostedStockScopes(client, {
+    installationId: row.installation_id,
+    lines,
+  });
   const current = await repository.currentScopeVersions(client, {
     installationId: row.installation_id,
     warehouseId: row.warehouse_id,

@@ -1021,6 +1021,11 @@ export async function postStocktake(client, { requestContext, stocktakeId, paylo
     roundNumber: Number(row.current_round),
     forUpdate: true,
   });
+  // Match inventory posting: lock warehouse/SKU before the scope-version rows.
+  await lockPostedStockScopes(client, {
+    installationId: row.installation_id,
+    lines,
+  });
   const watermark = await verifyWatermarks(client, row, lines, { lock: true });
   if (!watermark.ok) return watermark;
   const posted = await insertAdjustmentMovement(client, {
@@ -1109,6 +1114,11 @@ export async function reverseStocktake(client, { requestContext, stocktakeId, pa
     stocktakeId: row.id,
     roundNumber: Number(row.current_round),
     forUpdate: true,
+  });
+  // Match inventory posting: lock warehouse/SKU before the scope-version rows.
+  await lockPostedStockScopes(client, {
+    installationId: row.installation_id,
+    lines,
   });
   const current = await repository.currentScopeVersions(client, {
     installationId: row.installation_id,
