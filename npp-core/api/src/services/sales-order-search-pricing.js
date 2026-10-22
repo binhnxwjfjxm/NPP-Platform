@@ -1,5 +1,5 @@
 import * as repository from '../db/repositories/sales-order-search-pricing.js';
-import { selectPricingStart } from './pricing-start.js';
+import { isCompetingFallbackFixedPrice, selectPricingStart } from './pricing-start.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_PREVIEW_VARIANTS = 50;
@@ -38,13 +38,14 @@ function resolveCandidatePrice(candidates) {
   let exclusiveApplied = false;
   for (const candidate of candidates) {
     if (candidate.item_id === base.item_id) {
-      if (start.source === 'CHANNEL_FIXED_FALLBACK') {
+      if (start.source !== 'BASE') {
         if (candidate.stacking_mode === 'EXCLUSIVE') exclusiveApplied = true;
         if (candidate.stop_processing) break;
       }
       continue;
     }
     if (candidate.list_type === 'BASE') continue;
+    if (isCompetingFallbackFixedPrice(start, candidate)) continue;
     if (candidate.stacking_mode === 'EXCLUSIVE' && exclusiveApplied) continue;
     current = applyAdjustment(current, candidate);
     if (candidate.stacking_mode === 'EXCLUSIVE') exclusiveApplied = true;
