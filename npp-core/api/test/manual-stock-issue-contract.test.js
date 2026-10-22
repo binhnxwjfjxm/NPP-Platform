@@ -54,3 +54,14 @@ test('route Giao thủ công cũ giữ nguyên endpoint, permission và idempote
   assert.match(source, /executeIdempotentMutation\(req, res, options/);
   assert.match(source, /manualStockIssueService\.issueManualSalesOrderStock/);
 });
+
+test('direct issue locks canonical stock scopes before order and demand rows', async () => {
+  const source = await readFile(enginePath, 'utf8');
+  const operation = source.slice(source.indexOf('export async function issueDirectSalesOrderStock('));
+  const scopeLock = operation.indexOf('await lockOrderStockScopes(client, {');
+  const rowLock = operation.indexOf('const source = await lockSource(client, {');
+  const demands = operation.indexOf('let demands = await lockDemands(client, {');
+  const hold = operation.indexOf('const hold = await reconcileDemandHold(client, {');
+  assert.ok(scopeLock >= 0 && rowLock > scopeLock && demands > rowLock && hold > demands,
+    'Giao thủ công/nhận tại quầy must take warehouse/SKU lock before database row locks');
+});
