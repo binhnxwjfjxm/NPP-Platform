@@ -31,24 +31,32 @@ export async function loadDemandHoldAvailability(client, {
   demandId,
   forUpdate = false,
 }) {
-  const lock = forUpdate ? ' FOR UPDATE OF demand' : '';
+  // Never hold a demand row lock while waiting for the warehouse/SKU lock.
+  // Those same locks are taken by inbound posting and order cancellation.
+  if (forUpdate) {
+    const scopeResult = await client.query(
+      `SELECT warehouse_id, base_variant_id
+         FROM sales.sales_order_fulfillment_demands
+        WHERE installation_id = $1 AND id = $2 AND state = 'ACTIVE'`,
+      [installationId, demandId],
+    );
+    const scope = scopeResult.rows?.[0];
+    if (!scope) return null;
+    await client.query(
+      'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+      [`sales-fulfillment-scope:${installationId}:${scope.warehouse_id}:${scope.base_variant_id}`],
+    );
+  }
   const demandResult = await client.query(
     `SELECT demand.*
        FROM sales.sales_order_fulfillment_demands demand
       WHERE demand.installation_id = $1
         AND demand.id = $2
-        AND demand.state = 'ACTIVE'${lock}`,
+        AND demand.state = 'ACTIVE'${forUpdate ? ' FOR UPDATE OF demand' : ''}`,
     [installationId, demandId],
   );
   const demand = demandResult.rows?.[0] ?? null;
   if (!demand) return null;
-
-  if (forUpdate) {
-    await client.query(
-      'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
-      [`sales-fulfillment-scope:${installationId}:${demand.warehouse_id}:${demand.base_variant_id}`],
-    );
-  }
 
   const availabilityResult = await client.query(
     `WITH inventory_scope AS (

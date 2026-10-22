@@ -2,6 +2,7 @@ import { IDEMPOTENCY_KEY_PATTERN } from '@npp/contracts';
 import * as legacy from './sales-order-legacy.js';
 import * as appliedPriceService from './sales-order-applied-price.js';
 import * as fulfillmentService from './sales-fulfillment.js';
+import { lockOrderStockScopes } from './sales-fulfillment-replenishment.js';
 import * as manualEditReleaseService from './sales-fulfillment-allocation-release.js';
 import * as salesOrderRepository from '../db/repositories/sales-order.js';
 import * as commercialRepository from '../db/repositories/sales-order-commercial.js';
@@ -1016,6 +1017,14 @@ export async function confirmSalesOrder(client, {
   });
   if (!verified.ok) return verified;
 
+  // Lock all affected warehouse/SKU scopes before legacy confirmation takes
+  // FOR UPDATE on the Sales Order row or releases exact allocations.
+  await lockOrderStockScopes(client, {
+    installationId: requestContext.installationId,
+    salesOrderId: id,
+    versionNumber: resolvedVersion,
+  });
+
   const replacingConfirmedVersion = existing.salesOrder.status === 'confirmed'
     && Number(existing.salesOrder.currentVersionNumber) !== resolvedVersion;
   if (replacingConfirmedVersion) {
@@ -1063,6 +1072,10 @@ export async function cancelSalesOrder(client, input) {
   }
 
   if (before.salesOrder.status === 'confirmed') {
+    await lockOrderStockScopes(client, {
+      installationId: input.requestContext.installationId,
+      salesOrderId: input.id,
+    });
     const released = await manualEditReleaseService.releasePreExecutionAllocations(client, {
       requestContext: input.requestContext,
       salesOrderId: input.id,
@@ -1114,6 +1127,10 @@ export async function closeSalesOrderAfterExecution(client, input) {
   if (Number(facts.open_trips) > 0) {
     return failure('SALES_ORDER_EXECUTION_CLOSE_BLOCKED', 'Còn chuyến chưa được Công Ty đối soát và đóng.');
   }
+  await lockOrderStockScopes(client, {
+    installationId: input.requestContext.installationId,
+    salesOrderId: input.id,
+  });
   const released = await manualEditReleaseService.releaseUnexecutedAllocations(client, {
     requestContext: input.requestContext,
     salesOrderId: input.id,

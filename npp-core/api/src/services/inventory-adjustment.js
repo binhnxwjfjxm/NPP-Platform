@@ -3,6 +3,7 @@ import { createIdempotencyKey, IDEMPOTENCY_KEY_PATTERN, INVENTORY_ADJUSTMENT_BUL
 import { PERMISSIONS } from '../access/permissions.js';
 import * as repository from '../db/repositories/inventory-adjustment.js';
 import * as ledgerRepository from '../db/repositories/inventory-ledger.js';
+import { replenishAfterPostedMovement, lockPostedStockScopes } from './sales-fulfillment-replenishment.js';
 import * as warehouseLocationModeRepository from '../db/repositories/warehouse-location-mode.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -561,6 +562,13 @@ async function insertMovement(client, {
     }
   }
 
+  await lockPostedStockScopes(client, {
+    installationId: adjustment.installation_id,
+    lines: movementLines.map((item) => ({
+      warehouseId: adjustment.warehouse_id,
+      baseVariantId: item.line.base_variant_id,
+    })),
+  });
   const movementId = randomUUID();
   const now = new Date();
   const hash = payloadHash({
@@ -635,6 +643,16 @@ async function insertMovement(client, {
       },
     });
   }
+  await replenishAfterPostedMovement(client, {
+    installationId: adjustment.installation_id,
+    actorId: actorId(requestContext),
+    lines: movementLines.map((item) => ({
+      direction: item.direction,
+      warehouseId: adjustment.warehouse_id,
+      baseVariantId: item.line.base_variant_id,
+      baseQuantityDelta: item.line.base_quantity,
+    })),
+  });
   return Object.freeze({ ok: true, movement, replayed: false });
 }
 
@@ -680,6 +698,10 @@ async function insertReversalMovement(client, {
     if (!availability.ok) return availability;
   }
 
+  await lockPostedStockScopes(client, {
+    installationId: adjustment.installation_id,
+    lines: originalLines,
+  });
   const movementId = randomUUID();
   const now = new Date();
   const hash = payloadHash({
@@ -745,6 +767,16 @@ async function insertReversalMovement(client, {
       },
     });
   }
+  await replenishAfterPostedMovement(client, {
+    installationId: adjustment.installation_id,
+    actorId: actorId(requestContext),
+    lines: originalLines.map((line) => ({
+      direction: line.direction === 'OUT' ? 'IN' : 'OUT',
+      warehouseId: line.warehouse_id,
+      baseVariantId: line.base_variant_id,
+      baseQuantityDelta: line.direction === 'OUT' ? String(line.base_quantity_delta).replace(/^-/, '') : '0',
+    })),
+  });
   return Object.freeze({ ok: true, movement, replayed: false });
 }
 
@@ -999,6 +1031,11 @@ export async function postAdjustment(client, {
       { cause: locationValidation.code },
     );
   }
+  // Match stock posting: lock warehouse/SKU before the scope-version rows.
+  await lockPostedStockScopes(client, {
+    installationId: row.installation_id,
+    lines,
+  });
   const watermark = shouldVerifySnapshotAtPost(row.document_kind)
     ? await verifySnapshotWatermarks(client, row, lines, { lock: true })
     : await loadCurrentScopeState(client, row, lines, { lock: true });
@@ -1114,6 +1151,11 @@ export async function reverseAdjustment(client, {
     base_variant_id: scope.base_variant_id,
     lot_id: scope.lot_id,
   }));
+  // Match stock posting: lock warehouse/SKU before the scope-version rows.
+  await lockPostedStockScopes(client, {
+    installationId: row.installation_id,
+    lines,
+  });
   const current = await repository.currentScopeVersions(client, {
     installationId: row.installation_id,
     warehouseId: row.warehouse_id,

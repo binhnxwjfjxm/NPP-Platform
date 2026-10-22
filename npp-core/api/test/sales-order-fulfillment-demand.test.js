@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { salesFulfillmentInternals } from '../src/services/sales-fulfillment.js';
+import { inboundScopesFromMovementLines } from '../src/services/sales-fulfillment-replenishment.js';
 
 const root = new URL('../', import.meta.url);
 const read = (path) => readFile(new URL(path, root), 'utf8');
@@ -130,4 +131,77 @@ test('confirmation, amendment replacement and cancellation stay in the Sales Ord
   assert.doesNotMatch(fulfillmentRepository, /revision = revision \+ 1/);
   assert.match(reservationRepository, /sales-fulfillment-scope/);
   assert.match(migrations, /042_sales_fulfillment_reservation_demand/);
+});
+
+test('posted inbound deduplicates warehouse/SKU scopes and never treats outbound as replenishment', () => {
+  const incoming = inboundScopesFromMovementLines([
+    { direction: 'IN', warehouse_id: 'warehouse-b', base_variant_id: 'sku-2', base_quantity_delta: '5.000000000000' },
+    { direction: 'IN', warehouseId: 'warehouse-b', baseVariantId: 'sku-2', baseQuantityDelta: '1' },
+    { direction: 'OUT', warehouseId: 'warehouse-a', baseVariantId: 'sku-1', baseQuantityDelta: '-7' },
+    { direction: 'IN', warehouseId: 'warehouse-a', baseVariantId: 'sku-1', baseQuantityDelta: '3' },
+  ]);
+  assert.deepEqual(incoming, [
+    { warehouseId: 'warehouse-a', baseVariantId: 'sku-1' },
+    { warehouseId: 'warehouse-b', baseVariantId: 'sku-2' },
+  ]);
+});
+
+test('every inbound posting path and new order confirmation reuse the same queue', async () => {
+  const sources = await Promise.all([
+    read('src/services/sales-fulfillment.js'),
+    read('src/services/inventory-ledger-core.js'),
+    read('src/services/sales-inventory-ledger.js'),
+    read('src/services/inventory-transfer-receipt.js'),
+    read('src/services/inventory-stocktake.js'),
+    read('src/services/inventory-adjustment.js'),
+    read('src/services/sales-fulfillment-replenishment.js'),
+  ]);
+  assert.match(sources[0], /await replenishPendingHoldScopes\(client/);
+  for (const source of sources.slice(1, 6)) {
+    assert.match(source, /await replenishAfterPostedMovement\(client/);
+  }
+  assert.match(sources[6], /orders\.confirmed_at ASC NULLS LAST/);
+  assert.match(sources[6], /demand\.backordered_base_quantity > 0/);
+  assert.match(sources[6], /reconcileDemandHold\(client/);
+  assert.match(sources[6], /orders\.status = 'confirmed'/);
+});
+
+test('concurrent stock replenishment shares one warehouse/SKU lock order with confirmation and cancellation', async () => {
+  const [hold, queue, sale, fulfillment, operation, inbound, salesLedger, transfer, adjust, stocktake] = await Promise.all([
+    read('src/services/sales-fulfillment-hold.js'),
+    read('src/services/sales-fulfillment-replenishment.js'),
+    read('src/services/sales-order.js'),
+    read('src/services/sales-fulfillment.js'),
+    read('src/services/sales-fulfillment-operations.js'),
+    read('src/services/inventory-ledger-core.js'),
+    read('src/services/sales-inventory-ledger.js'),
+    read('src/services/inventory-transfer-receipt.js'),
+    read('src/services/inventory-adjustment.js'),
+    read('src/services/inventory-stocktake.js'),
+  ]);
+  assert.ok(hold.indexOf('const scopeResult') < hold.indexOf("FOR UPDATE OF demand"));
+  assert.match(queue, /lockOrderStockScopes/);
+  assert.match(queue, /lockPostedStockScopes/);
+  assert.match(queue, /version\.version_number = \$3/);
+  assert.match(sale, /await lockOrderStockScopes\(client/);
+  assert.ok(fulfillment.indexOf('await lockOrderStockScopes') < fulfillment.indexOf('await lockActiveSalesOrderDemands'));
+  assert.ok(operation.indexOf('const scopeResult = await client.query(') < operation.indexOf('const demand = await repository.getActiveDemandForUpdate'));
+  for (const source of [inbound, salesLedger, transfer, adjust, stocktake]) {
+    assert.match(source, /await lockPostedStockScopes\(client/);
+  }
+});
+
+test('picking and shortage changes take the canonical stock lock before row locks', async () => {
+  const [shortage, operations, queue] = await Promise.all([
+    read('src/services/sales-fulfillment-shortage.js'),
+    read('src/services/sales-fulfillment-operations.js'),
+    read('src/services/sales-fulfillment-replenishment.js'),
+  ]);
+  assert.match(queue, /export async function lockAllocationStockScope/);
+  assert.ok(queue.indexOf('await lockWarehouseStockScopes(client', queue.indexOf('export async function lockAllocationStockScope'))
+    < queue.indexOf('export async function lockPostedStockScopes'));
+  const shortageLoad = shortage.slice(shortage.indexOf('async function loadCloseInputs'));
+  assert.ok(shortageLoad.indexOf('await lockOrderStockScopes(client') < shortageLoad.indexOf('await repository.listOrderPickingDemands(client'));
+  assert.ok(shortage.indexOf('await lockAllocationStockScope(client') < shortage.indexOf('const allocation = await fulfillmentRepository.getAllocationForUpdate(client'));
+  assert.ok(operations.indexOf('await lockAllocationStockScope(client') < operations.indexOf('const allocation = await repository.getAllocationForUpdate(client'));
 });

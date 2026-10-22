@@ -545,7 +545,7 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
                                   displayedHeldQuantity={businessHeld}
                                   baseUnitCode={balance.base_unit_code}
                                   baseUnitName={balance.base_unit_name}
-                                  title="Xem các đơn đang giữ hàng"
+                                  title="Xem đơn đã giữ và đang chờ hàng"
                                 />
                               </div>
                               <div className={styles.subtle}>Theo kho</div>

@@ -3,6 +3,7 @@ import { createIdempotencyKey, IDEMPOTENCY_KEY_PATTERN } from '@npp/contracts';
 import { postServerOwnedSalesMovement } from './sales-inventory-ledger.js';
 import { getSalesOrder } from './sales-order.js';
 import { reconcileDemandHold } from './sales-fulfillment-hold.js';
+import { lockOrderStockScopes } from './sales-fulfillment-replenishment.js';
 import {
   authorizeControlledNegativeStock,
   negativeStockScopeSupported,
@@ -315,6 +316,12 @@ export async function issueDirectSalesOrderStock(client, {
   const visible = await getSalesOrder(client, { requestContext, id });
   if (!visible.ok) return visible;
 
+  // Inbound replenishment locks warehouse/SKU before updating an order's demand.
+  // Lock the same scopes first here, before locking the order/version/demand rows.
+  await lockOrderStockScopes(client, {
+    installationId: requestContext.installationId,
+    salesOrderId: id,
+  });
   const source = await lockSource(client, {
     installationId: requestContext.installationId,
     salesOrderId: id,

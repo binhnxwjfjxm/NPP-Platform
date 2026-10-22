@@ -20,6 +20,8 @@ function mapBreakdownRow(row) {
     fulfillmentStatus: row.fulfillment_status,
     demandState: row.demand_state,
     heldBaseQuantity: String(row.held_base_quantity),
+    waitingBaseQuantity: String(row.backordered_base_quantity),
+    orderedBaseQuantity: String(row.ordered_base_quantity),
     exactHeldBaseQuantity: String(row.exact_held_base_quantity),
     demandHeldBaseQuantity: String(row.demand_held_base_quantity),
   });
@@ -236,6 +238,8 @@ export async function loadWarehouseBusinessHoldBreakdown(client, {
          base_unit.code AS base_unit_code,
          base_unit.name AS base_unit_name,
          demand.state AS demand_state,
+         demand.ordered_base_quantity,
+         demand.backordered_base_quantity,
          COALESCE(exact_by_demand.exact_held_quantity, 0)::numeric(30,12) AS exact_held_base_quantity,
          greatest(
            demand.reserved_base_quantity - demand.allocated_base_quantity,
@@ -269,13 +273,19 @@ export async function loadWarehouseBusinessHoldBreakdown(client, {
         AND demand.state = 'ACTIVE'
         AND ($4::uuid IS NULL OR demand.sales_order_id <> $4::uuid)
         AND (
-          COALESCE(exact_by_demand.exact_held_quantity, 0)
-          + greatest(
-              demand.reserved_base_quantity - demand.allocated_base_quantity,
-              0::numeric
-            )
-        ) > 0
-      ORDER BY orders.order_number, demand.line_number`,
+          (
+            COALESCE(exact_by_demand.exact_held_quantity, 0)
+            + greatest(
+                demand.reserved_base_quantity - demand.allocated_base_quantity,
+                0::numeric
+              )
+          ) > 0
+          OR (
+            orders.status = 'confirmed'
+            AND demand.backordered_base_quantity > 0
+          )
+        )
+      ORDER BY orders.confirmed_at ASC NULLS LAST, orders.order_number, demand.line_number`,
       [installationId, warehouseId, baseVariantId, excludeSalesOrderId],
     ),
   ]);

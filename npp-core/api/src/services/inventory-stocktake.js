@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { isValidIdempotencyKey } from '@npp/contracts';
 import * as repository from '../db/repositories/inventory-stocktake.js';
 import * as ledgerRepository from '../db/repositories/inventory-ledger.js';
+import { replenishAfterPostedMovement, lockPostedStockScopes } from './sales-fulfillment-replenishment.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DECIMAL_PATTERN = /^(0|[1-9]\d{0,13})(?:\.(\d{1,12}))?$/;
@@ -929,6 +930,10 @@ async function insertAdjustmentMovement(client, {
     }
   }
 
+  await lockPostedStockScopes(client, {
+    installationId: stocktake.installation_id,
+    lines: adjustmentLines,
+  });
   const movementId = randomUUID();
   const now = new Date();
   const documentDate = now.toISOString().slice(0, 10);
@@ -996,6 +1001,11 @@ async function insertAdjustmentMovement(client, {
   if (insertedMovementLines.length !== adjustmentLines.length) {
     return failure('STOCKTAKE_MOVEMENT_LINE_INSERT_CONFLICT', 'Stocktake movement lines changed while posting', true);
   }
+  await replenishAfterPostedMovement(client, {
+    installationId: stocktake.installation_id,
+    actorId: actorId(requestContext),
+    lines: adjustmentLines,
+  });
   return Object.freeze({ ok: true, movement, lines: adjustmentLines, replayed: false });
 }
 
@@ -1010,6 +1020,11 @@ export async function postStocktake(client, { requestContext, stocktakeId, paylo
     stocktakeId: row.id,
     roundNumber: Number(row.current_round),
     forUpdate: true,
+  });
+  // Match inventory posting: lock warehouse/SKU before the scope-version rows.
+  await lockPostedStockScopes(client, {
+    installationId: row.installation_id,
+    lines,
   });
   const watermark = await verifyWatermarks(client, row, lines, { lock: true });
   if (!watermark.ok) return watermark;
@@ -1099,6 +1114,11 @@ export async function reverseStocktake(client, { requestContext, stocktakeId, pa
     stocktakeId: row.id,
     roundNumber: Number(row.current_round),
     forUpdate: true,
+  });
+  // Match inventory posting: lock warehouse/SKU before the scope-version rows.
+  await lockPostedStockScopes(client, {
+    installationId: row.installation_id,
+    lines,
   });
   const current = await repository.currentScopeVersions(client, {
     installationId: row.installation_id,

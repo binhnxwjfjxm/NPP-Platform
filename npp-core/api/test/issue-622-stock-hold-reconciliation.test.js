@@ -95,3 +95,40 @@ test('manual delivery remains outside preparation queue', () => {
   assert.match(repository, /version\.delivery_mode = 'DELIVERY'/);
   assert.match(repository, /COALESCE\(version\.delivery_execution_mode, 'TRIP'\) = 'MANUAL'/);
 });
+
+test('hold breakdown shows waiting orders without adding waiting units into held quantity', async () => {
+  const source = read('../src/services/inventory-business-holds.js');
+  assert.match(source, /demand\.backordered_base_quantity/);
+  assert.match(source, /waitingBaseQuantity: String\(row\.backordered_base_quantity\)/);
+  assert.match(source, /orders\.status = 'confirmed'/);
+  assert.match(source, /orders\.confirmed_at ASC NULLS LAST/);
+  assert.match(source, /held_quantity[\s\S]*?available_quantity/);
+});
+
+test('stocktake and inventory adjustments lock warehouse/SKU before scope-version rows', () => {
+  const stocktake = read('../src/services/inventory-stocktake.js');
+  const adjustment = read('../src/services/inventory-adjustment.js');
+
+  function operationSection(source, name) {
+    const start = source.indexOf(`export async function ${name}(`);
+    assert.ok(start >= 0, `${name}: operation must exist`);
+    const next = source.indexOf('\nexport ', start + 1);
+    return source.slice(start, next < 0 ? source.length : next);
+  }
+
+  for (const [source, name, watermark] of [
+    [stocktake, 'postStocktake', 'await verifyWatermarks(client, row, lines, { lock: true })'],
+    [stocktake, 'reverseStocktake', 'await repository.currentScopeVersions(client, {'],
+    [adjustment, 'postAdjustment', 'await loadCurrentScopeState(client, row, lines, { lock: true })'],
+    [adjustment, 'reverseAdjustment', 'await repository.currentScopeVersions(client, {'],
+  ]) {
+    const body = operationSection(source, name);
+    const scopeLock = body.indexOf('await lockPostedStockScopes(client, {');
+    const versionLock = body.indexOf(watermark);
+    // postAdjustment selects verifySnapshotWatermarks OR loadCurrentScopeState
+    // depending on the document kind; both branches are after the scope lock.
+    assert.ok(scopeLock >= 0, `${name}: missing canonical scope lock`);
+    assert.ok(versionLock >= 0, `${name}: missing version read/lock`);
+    assert.ok(scopeLock < versionLock, `${name}: lock-order inversion with inventory posting`);
+  }
+});
