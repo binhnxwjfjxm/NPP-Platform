@@ -110,8 +110,8 @@ export function GrossMarginReportingWorkspace() {
   const actions = (
     <div className={styles.headerActions}>
       <GrossMarginReportingExportDialog initialDimension={exportDimension} filters={appliedFilters} disabled={busy || !report} />
-      <Link className={styles.linkButton} href="/sales/sales-orders">Đơn bán hàng</Link>
-      <Link className={styles.linkButton} href="/inventory/costing">Giá vốn</Link>
+      <Link prefetch={false} className={styles.linkButton} href="/sales/sales-orders">Đơn bán hàng</Link>
+      <Link prefetch={false} className={styles.linkButton} href="/inventory/costing">Giá vốn</Link>
     </div>
   );
 
@@ -155,7 +155,7 @@ export function GrossMarginReportingWorkspace() {
 
           <WorkspaceTabPanel tabId="skus" activeTab={activeTab} idPrefix={GROSS_MARGIN_TAB_PREFIX}>
             <section className={styles.section} data-testid="gross-margin-skus-panel">
-              <div className={styles.sectionHeader}><div><h2>Theo SKU</h2><p>Nhóm theo mã SKU chuẩn để không tách sai khi tên hàng thay đổi.</p></div><Link className={styles.linkButton} href="/inventory/costing">Mở giá vốn</Link></div>
+              <div className={styles.sectionHeader}><div><h2>Theo SKU</h2><p>Nhóm theo mã SKU chuẩn để không tách sai khi tên hàng thay đổi.</p></div><Link prefetch={false} className={styles.linkButton} href="/inventory/costing">Mở giá vốn</Link></div>
               <div className={styles.tableWrap}><table className={styles.table}><thead><tr><BusinessTableSequenceHeader /><th>SKU</th><th className={styles.numeric}>Doanh thu</th><th className={styles.numeric}>Giá vốn hàng bán</th><th className={styles.numeric}>Lãi gộp</th><th className={styles.numeric}>Biên</th></tr></thead><tbody>{report.topSkus.map((row, rowIndex) => <tr key={row.variantId}><BusinessTableSequenceCell rowIndex={rowIndex} /><td><strong>{row.sku}</strong></td><td className={styles.numeric}>{money(row.netRevenueVnd)}</td><td className={styles.numeric}>{money(row.cogsVnd)}</td><td className={styles.numeric}>{money(row.grossMarginVnd)}</td><td className={styles.numeric}>{percent(row.grossMarginPercent)}</td></tr>)}{!report.topSkus.length ? <tr><td className={styles.empty} colSpan={6}>Chưa có dữ liệu.</td></tr> : null}</tbody></table></div>
             </section>
           </WorkspaceTabPanel>

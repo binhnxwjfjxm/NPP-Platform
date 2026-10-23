@@ -305,24 +305,25 @@ export function SalesReportingWorkspace() {
         includeZeroProducts: next.filters.includeZeroProducts === true,
       });
       setReport(next);
+      // The report already contains the authorized warehouse scope. Avoid a second concurrent DB request.
+      setScopeWarehouses(next.scopeWarehouses);
+      setScopeError('');
       setApplied(canonical);
       if (initialize) setDraft(canonical);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Không tải được báo cáo bán hàng.');
+      // Keep the independent selector as a fallback only when the initial report fails.
+      if (initialize) {
+        void requestScopeWarehouses()
+          .then((rows) => { setScopeWarehouses(rows); setScopeError(''); })
+          .catch(() => setScopeError('Chưa tải được danh sách kho.'));
+      }
     } finally {
       setBusy(false);
     }
   }, []);
 
-  // Load the lightweight warehouse selector before the heavyweight report.
-  useEffect(() => {
-    let active = true;
-    void requestScopeWarehouses()
-      .then((rows) => { if (active) { setScopeWarehouses(rows); setScopeError(''); } })
-      .catch(() => { if (active) setScopeError('Chưa tải được danh sách kho.'); });
-    return () => { active = false; };
-  }, []);
-
+  // One initial report request supplies both the report and its scoped warehouses.
   useEffect(() => {
     void load(EMPTY_FILTERS, true);
   }, [load]);
@@ -422,8 +423,8 @@ export function SalesReportingWorkspace() {
         filters={applied}
         disabled={busy || !report}
       />
-      <Link className={styles.headerLink} href="/sales/sales-orders">Mở đơn bán hàng</Link>
-      <Link className={styles.headerLink} href="/sales/gross-margin">Xem báo cáo lãi gộp</Link>
+      <Link prefetch={false} className={styles.headerLink} href="/sales/sales-orders">Mở đơn bán hàng</Link>
+      <Link prefetch={false} className={styles.headerLink} href="/sales/gross-margin">Xem báo cáo lãi gộp</Link>
     </div>
   );
 
