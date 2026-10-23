@@ -29,3 +29,12 @@ test('Báo cáo bán hàng ưu tiên tải kho và giới hạn thời gian ch�
   assert.match(gateway, /SALES_REQUEST_TIMEOUT_MS=25_000/);
   assert.match(gateway, /family==='sales'\?SALES_REQUEST_TIMEOUT_MS:REQUEST_TIMEOUT_MS/);
 });
+
+// Lock the exact backend route; a synthetic family identifier is not a URL path.
+test('Danh sách kho gọi đúng API Công Ty, không dùng đường dẫn sales-warehouses không tồn tại', () => {
+  const gateway = source('lib/reporting-dashboard-gateway.ts');
+  const backend = source('../api/src/routes/reporting-sales-purchasing.js');
+  assert.match(gateway, /family==='sales-warehouses'\?'\/api\/reporting\/sales\/warehouses'/);
+  assert.match(backend, /pathname === '\/api\/reporting\/sales\/warehouses'/);
+  assert.doesNotMatch(gateway, /fetch\(\x60\$\{baseUrl\(\)\}\/api\/reporting\/\$\{family\}/);
+});
