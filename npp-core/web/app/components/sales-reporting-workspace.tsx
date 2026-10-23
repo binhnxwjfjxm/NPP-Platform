@@ -13,12 +13,17 @@ import type {
   SalesBreakdownRow,
   SalesReportingDashboard,
   SalesReportingTrendRow,
+  SalesScopeWarehouse,
 } from '../../lib/sales-reporting-types';
 import styles from './sales-reporting-workspace.module.css';
 
 type ApiEnvelope<T> = Readonly<{
   data?: T;
-  error?: { message?: string };
+  error?: {
+    code?: string;
+    message?: string;
+    details?: { mismatchCount?: number; mismatches?: { orderNumber?: string; currencyCode?: string; versionTotal?: string; lineTotal?: string }[] };
+  };
 }>;
 
 type Filters = Readonly<{
@@ -238,6 +243,20 @@ function TrendChart({ currencyCode, rows }: Readonly<{ currencyCode: string; row
   );
 }
 
+function reportingFailureMessage(error?: ApiEnvelope<unknown>['error']) {
+  if (error?.code !== 'SALES_REPORT_RECONCILIATION_FAILED') return error?.message || 'Không tải được báo cáo bán hàng.';
+  const examples = (error.details?.mismatches ?? []).slice(0, 3).map((item) =>
+    `Đơn ${item.orderNumber ?? 'chưa rõ'}: tổng đơn ${item.versionTotal ?? '?'} ${item.currencyCode ?? 'VND'}, cộng dòng ${item.lineTotal ?? '?'} ${item.currencyCode ?? 'VND'}`);
+  return [error.message || 'Có đơn bán hàng không khớp tổng tiền.', ...examples].join(' · ');
+}
+
+async function requestScopeWarehouses(): Promise<readonly SalesScopeWarehouse[]> {
+  const response = await fetch('/api/reporting/sales/warehouses', { method: 'GET', cache: 'no-store' });
+  const payload = await response.json().catch(() => null) as ApiEnvelope<readonly SalesScopeWarehouse[]> | null;
+  if (!response.ok || !Array.isArray(payload?.data)) throw new Error('Danh sách kho chưa tải được.');
+  return payload.data;
+}
+
 async function requestReport(filters: Filters): Promise<SalesReportingDashboard> {
   const query = new URLSearchParams();
   if (filters.from) query.set('from', filters.from);
@@ -253,7 +272,7 @@ async function requestReport(filters: Filters): Promise<SalesReportingDashboard>
     cache: 'no-store',
   });
   const envelope = await response.json().catch(() => ({})) as ApiEnvelope<SalesReportingDashboard>;
-  if (!response.ok || !envelope.data) throw new Error(envelope.error?.message || 'Không tải được báo cáo bán hàng.');
+  if (!response.ok || !envelope.data) throw new Error(reportingFailureMessage(envelope.error));
   return envelope.data;
 }
 
@@ -261,6 +280,8 @@ export function SalesReportingWorkspace() {
   const [draft, setDraft] = useState<Filters>(EMPTY_FILTERS);
   const [applied, setApplied] = useState<Filters>(EMPTY_FILTERS);
   const [report, setReport] = useState<SalesReportingDashboard | null>(null);
+  const [scopeWarehouses, setScopeWarehouses] = useState<readonly SalesScopeWarehouse[] | null>(null);
+  const [scopeError, setScopeError] = useState('');
   const [activeDimension, setActiveDimension] = useState<SalesBreakdownKey>('customers');
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
@@ -296,6 +317,14 @@ export function SalesReportingWorkspace() {
   useEffect(() => {
     void load(EMPTY_FILTERS, true);
   }, [load]);
+
+  useEffect(() => {
+    let active = true;
+    void requestScopeWarehouses()
+      .then((rows) => { if (active) setScopeWarehouses(rows); })
+      .catch(() => { if (active) setScopeError('Chưa tải được danh sách kho.'); });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     try {
@@ -354,7 +383,7 @@ export function SalesReportingWorkspace() {
   const selectedDimension = DIMENSIONS.find((item) => item.key === activeDimension) ?? DIMENSIONS[0];
   const rows = report?.breakdowns[activeDimension] ?? [];
   const revenueRows = report?.summary.revenues ?? [];
-  const warehouses = report?.scopeWarehouses ?? [];
+  const warehouses = scopeWarehouses ?? report?.scopeWarehouses ?? [];
   const previousPeriod = report?.comparison.previous;
   const warnings = report?.dataQuality.warnings ?? [];
   const productGroupOptions = report?.classification.options.productGroups ?? [];
@@ -457,6 +486,7 @@ export function SalesReportingWorkspace() {
                   </option>
                 ))}
               </select>
+              {scopeError && warehouses.length === 0 ? <small role="status">{scopeError}</small> : null}
             </label>
 
             <label className={`${styles.filterControl} ${styles.dimensionControl}`}>
