@@ -277,18 +277,23 @@ function compatibilityCustomers(rows) {
   return Object.freeze([...grouped.values()].sort((a, b) => a.revenueValue > b.revenueValue ? -1 : a.revenueValue < b.revenueValue ? 1 : 0).slice(0, 100).map((row) => Object.freeze({ currencyCode: row.currencyCode, customerId: row.id, customerCode: row.code, customerName: row.name, totalValue: decimalText(row.revenueValue) })));
 }
 
-export async function salesReport(adapter, requestContext, filters, warehouseIds) {
-  const previous = previousPeriod(filters);
-  const factParams = [requestContext.installationId, warehouseIds, filters.fromInstant, filters.toExclusiveInstant, filters.warehouseId, previous.fromInstant];
-  const currentParams = [requestContext.installationId, warehouseIds, filters.fromInstant, filters.toExclusiveInstant, filters.warehouseId];
-  const [scopeWarehouses, summaryResult, factResult, documentsResult, productGroupsResult, productBrandsResult, customerGroupsResult, catalogProductsResult] = await Promise.all([
-    adapter.query(`SELECT warehouse.id AS warehouse_id,
+// One authorized warehouse lookup shared by the independent selector and report.
+export function salesScopeWarehouses(adapter, requestContext, warehouseIds) {
+  return adapter.query(`SELECT warehouse.id AS warehouse_id,
               warehouse.code AS warehouse_code,
               warehouse.name AS warehouse_name
          FROM shared.warehouses warehouse
         WHERE warehouse.installation_id = $1
           AND warehouse.id = ANY($2::uuid[])
-        ORDER BY warehouse.code, warehouse.id`, [requestContext.installationId, warehouseIds]),
+        ORDER BY warehouse.code, warehouse.id`, [requestContext.installationId, warehouseIds]);
+}
+
+export async function salesReport(adapter, requestContext, filters, warehouseIds) {
+  const previous = previousPeriod(filters);
+  const factParams = [requestContext.installationId, warehouseIds, filters.fromInstant, filters.toExclusiveInstant, filters.warehouseId, previous.fromInstant];
+  const currentParams = [requestContext.installationId, warehouseIds, filters.fromInstant, filters.toExclusiveInstant, filters.warehouseId];
+  const [scopeWarehouses, summaryResult, factResult, documentsResult, productGroupsResult, productBrandsResult, customerGroupsResult, catalogProductsResult] = await Promise.all([
+    salesScopeWarehouses(adapter, requestContext, warehouseIds),
     adapter.query(`SELECT count(*)::text AS all_order_count,
               count(*) FILTER (WHERE so.status IN ('confirmed','closed'))::text AS effective_order_count,
               count(*) FILTER (WHERE so.status = 'cancelled')::text AS cancelled_order_count,
@@ -398,6 +403,8 @@ export async function salesReport(adapter, requestContext, filters, warehouseIds
   ]);
 
   const allFacts = mapRows(factResult.rows);
+  // Reject mismatched documents before the expensive six-dimension aggregation.
+  const reportReconciliation = reconciliation(allFacts);
   const current = currentFacts(allFacts);
   const customerFacts = filterSalesFactsForDimension(allFacts, filters, 'customers');
   const productFacts = filterSalesFactsForDimension(allFacts, filters, 'products');
@@ -431,7 +438,6 @@ export async function salesReport(adapter, requestContext, filters, warehouseIds
     productGroups: breakdownTotals(allFacts, 'productGroups'),
     employees: breakdownTotals(allFacts, 'employees'),
   });
-  const reportReconciliation = reconciliation(allFacts);
   const dataQuality = quality(allFacts);
   const trend = dailyTrend(allFacts, previous.dayCount);
   const compatibilityCustomerRows = compatibilityCustomers(baseCustomerBreakdown);

@@ -7,7 +7,7 @@ import {
   reportingInternals,
   validateScope,
 } from './reporting-common.js';
-import { salesReport } from './reporting-sales.js';
+import { salesReport, salesScopeWarehouses } from './reporting-sales.js';
 import { normalizeSalesClassificationFilters } from './reporting-sales-classification.js';
 import { purchasingReport } from './reporting-purchasing.js';
 import { inventoryReport, normalizeSlowDays } from './reporting-inventory-safe.js';
@@ -82,6 +82,7 @@ async function authenticateAndAuthorize(req, res, options, permission, warehouse
 
 function reportingFamily(pathname) {
   if (pathname === '/api/reporting/sales') return 'sales';
+  if (pathname === '/api/reporting/sales/warehouses') return 'sales-warehouses';
   if (pathname === '/api/reporting/purchasing') return 'purchasing';
   if (pathname === '/api/reporting/inventory') return 'inventory';
   if (pathname === '/api/reporting/aging') return 'aging';
@@ -101,7 +102,7 @@ function reportingFamily(pathname) {
 }
 
 function reportingPermission(options, family) {
-  if (family === 'sales') return options.PERMISSIONS.coreReportingSalesRead;
+  if (family === 'sales' || family === 'sales-warehouses') return options.PERMISSIONS.coreReportingSalesRead;
   if (family === 'purchasing') return options.PERMISSIONS.coreReportingPurchasingRead;
   if (family === 'inventory') return options.PERMISSIONS.coreReportingInventoryRead;
   if (family === 'aging') return options.PERMISSIONS.coreReportingAgingRead;
@@ -123,6 +124,32 @@ function sendNormalizedError(res, normalized, options) {
     options.requestId,
     options.receivedAt,
   );
+}
+
+// A financial mismatch is a business-data conflict, not a service outage.
+export function normalizeReportingFailure(error, family) {
+  if (family === 'sales' && error?.code === 'SALES_REPORT_RECONCILIATION_FAILED') {
+    const original = error.details ?? {};
+    const mismatches = Array.isArray(original.mismatches)
+      ? original.mismatches.slice(0, 20).map((row) => ({
+          salesOrderId: String(row.salesOrderId ?? ''),
+          orderNumber: String(row.orderNumber ?? ''),
+          currencyCode: String(row.currencyCode ?? 'VND'),
+          versionTotal: String(row.versionTotal ?? ''),
+          lineTotal: String(row.lineTotal ?? ''),
+        }))
+      : [];
+    const mismatchCount = Number.isSafeInteger(original.mismatchCount) && original.mismatchCount > 0
+      ? original.mismatchCount : mismatches.length;
+    return apiError(
+      'SALES_REPORT_RECONCILIATION_FAILED',
+      `Có ${mismatchCount} đơn hàng không khớp tổng tiền. Vui lòng kiểm tra các đơn được liệt kê.`,
+      { mismatchCount, mismatches },
+      false,
+      409,
+    );
+  }
+  return apiError('REPORTING_QUERY_FAILED', 'Không tải được báo cáo vận hành', {}, true, 503);
 }
 
 function isMcpFamily(family) {
@@ -494,6 +521,22 @@ export async function handleReportingRoutes(req, res, options) {
     }
   }
 
+  if (family === 'sales-warehouses') {
+    try {
+      const warehouses = await salesScopeWarehouses(options.getPool(), requestContext, warehouseScope.warehouseIds);
+      res.setHeader('Cache-Control', 'no-store');
+      sendSuccess(res, reportingInternals.mapRow ? warehouses.rows.map(reportingInternals.mapRow) : warehouses.rows, options.requestId, options.receivedAt);
+    } catch (error) {
+      console.error(JSON.stringify({
+        event: 'reporting_warehouses_failed',
+        requestId: options.requestId,
+        errorCode: typeof error?.code === 'string' ? error.code : null,
+      }));
+      sendError(res, apiError('REPORTING_WAREHOUSES_FAILED', 'Không tải được danh sách kho', {}, true, 503), options.requestId, options.receivedAt);
+    }
+    return true;
+  }
+
   if (family === 'sales-export') {
     const selection = normalizeSalesReportingExportSelection({
       dimension: url.searchParams.get('dimension'),
@@ -557,6 +600,7 @@ export async function handleReportingRoutes(req, res, options) {
     return true;
   }
 
+  const startedAt = Date.now();
   try {
     let report;
     if (family === 'sales') {
@@ -582,17 +626,25 @@ export async function handleReportingRoutes(req, res, options) {
     } else {
       report = await employeeMcpReport(options.getPool(), requestContext, normalized, fieldScope);
     }
+    const elapsedMs = Date.now() - startedAt;
+    if (family === 'sales' && elapsedMs >= 2000) {
+      console.warn(JSON.stringify({ event: 'reporting_slow_query', requestId: options.requestId, family, elapsedMs }));
+    }
     res.setHeader('Cache-Control', 'no-store');
     sendSuccess(res, report, options.requestId, options.receivedAt);
   } catch (error) {
+    const normalized = normalizeReportingFailure(error, family);
     console.error(JSON.stringify({
       event: 'reporting_query_failed',
       requestId: options.requestId,
       family,
+      elapsedMs: Date.now() - startedAt,
       errorName: error?.name ?? null,
       errorCode: typeof error?.code === 'string' ? error.code : null,
+      mismatchCount: normalized.code === 'SALES_REPORT_RECONCILIATION_FAILED' ? normalized.details.mismatchCount : undefined,
+      mismatchOrders: normalized.code === 'SALES_REPORT_RECONCILIATION_FAILED' ? normalized.details.mismatches.map((row) => row.orderNumber) : undefined,
     }));
-    sendError(res, apiError('REPORTING_QUERY_FAILED', 'Không tải được báo cáo vận hành', {}, false, 503), options.requestId, options.receivedAt);
+    sendError(res, normalized, options.requestId, options.receivedAt);
   }
   return true;
 }
