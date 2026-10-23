@@ -108,6 +108,7 @@ jobs:
           out="$RUNNER_TEMP/vps-production-migration-168.txt"
           set +e
           ssh -i "$SSH_KEY" -o BatchMode=yes -o ConnectTimeout=10 -o ConnectionAttempts=1 \
+            -o ServerAliveInterval=15 -o ServerAliveCountMax=40 -o TCPKeepAlive=yes \
             -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN_HOSTS" \
             "$VPS_SSH_USER@$VPS_DB_HOST" \
             "chmod 0700 /tmp/npp-migrate-sales-reporting-index-168-$SOURCE_SHA.sh && /tmp/npp-migrate-sales-reporting-index-168-$SOURCE_SHA.sh '$SOURCE_SHA' '$GITHUB_RUN_ID'; status=\$?; rm -f /tmp/npp-migrate-sales-reporting-index-168-$SOURCE_SHA.sh; exit \$status" \
