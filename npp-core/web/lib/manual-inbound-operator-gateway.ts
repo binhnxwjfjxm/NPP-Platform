@@ -171,12 +171,18 @@ export function searchManualInboundOperatorProducts<T>({
 export function searchManualInboundOperatorHistory<T>({
   inboundType,
   referenceNumber,
+  beforeDocumentDate,
+  beforeCreatedAt,
+  beforeId,
   limit = 100,
   offset = 0,
   requestId,
 }: {
   inboundType?: string | null;
   referenceNumber?: string | null;
+  beforeDocumentDate?: string | null;
+  beforeCreatedAt?: string | null;
+  beforeId?: string | null;
   limit?: number;
   offset?: number;
   requestId: string;
@@ -186,6 +192,11 @@ export function searchManualInboundOperatorHistory<T>({
   const reference = String(referenceNumber ?? '').trim();
   if (type) query.set('inboundType', type);
   if (reference) query.set('referenceNumber', reference);
+  if (beforeDocumentDate && beforeCreatedAt && beforeId) {
+    query.set('beforeDocumentDate', beforeDocumentDate);
+    query.set('beforeCreatedAt', beforeCreatedAt);
+    query.set('beforeId', beforeId);
+  }
   query.set('limit', String(limit));
   query.set('offset', String(offset));
   return requestCore<T>({

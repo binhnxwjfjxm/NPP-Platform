@@ -10,6 +10,8 @@ import {
 import { PERMISSIONS } from '../access/permissions.js';
 import { postInventoryMovement, reverseInventoryMovement } from './inventory-ledger.js';
 import * as repository from '../db/repositories/manual-inbound.js';
+import * as numberRepository from '../db/repositories/document-numbering.js';
+import { allocateDocumentNumber, createDocumentNumberSeries } from './document-numbering.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const COST_PATTERN = /^(?:0|[1-9]\d{0,17})(?:\.\d{1,12})?$/;
@@ -281,6 +283,44 @@ export async function postManualInbound({ adapter, requestContext, idempotencyKe
         return { ok: true, replayed: true, document: mappedDocument(existing, existingLines), movement: movementResult.movement };
       }
 
+      let series = await numberRepository.getActiveDocumentNumberSeriesByType(client, {
+        installationId: requestContext.installationId,
+        documentType: 'MANUAL_INBOUND',
+      });
+      if (!series) {
+        const created = await createDocumentNumberSeries(client, {
+          installationId: requestContext.installationId,
+          createdBy: requestContext.actorId,
+          payload: {
+            documentType: 'MANUAL_INBOUND',
+            name: 'Phiếu nhập kho thủ công',
+            prefix: 'NKT-',
+            numberTemplate: '{PREFIX}{SEQ}',
+            resetPolicy: 'NONE',
+            sequenceWidth: 8,
+            startCounter: 1,
+          },
+        });
+        if (!created.ok && created.code !== 'ACTIVE_SERIES_EXISTS') {
+          return { failed: created, skipAudit: true };
+        }
+        series = await numberRepository.getActiveDocumentNumberSeriesByType(client, {
+          installationId: requestContext.installationId,
+          documentType: 'MANUAL_INBOUND',
+        });
+      }
+      if (!series) return { failed: failure('MANUAL_INBOUND_NUMBER_SERIES_MISSING', 'Chưa thiết lập số phiếu nhập kho.'), skipAudit: true };
+      const allocated = await allocateDocumentNumber(client, {
+        installationId: requestContext.installationId,
+        seriesId: series.id,
+        idempotencyKey: `manual-inbound-number-${documentId}`,
+        payload: { documentDate: normalized.value.documentDate, metadata: { manualInboundDocumentId: documentId } },
+        actorId: requestContext.actorId,
+        requestId: requestContext.requestId,
+        sourceApp: requestContext.sourceApp || 'npp-company-api',
+      });
+      if (!allocated.ok) return { failed: allocated, skipAudit: true };
+
       const document = await repository.insertManualInboundDocument(client, {
         id: documentId,
         installationId: requestContext.installationId,
@@ -295,6 +335,12 @@ export async function postManualInbound({ adapter, requestContext, idempotencyKe
         requestId: requestContext.requestId,
         metadata: normalized.value.metadata,
       });
+      const allocatedNumber = await repository.insertManualInboundDocumentNumber(client, {
+        installationId: requestContext.installationId,
+        documentId,
+        allocation: allocated.allocation,
+      });
+      if (!allocatedNumber) return { failed: failure('MANUAL_INBOUND_NUMBER_NOT_SAVED', 'Không ghi được số phiếu nhập kho.'), skipAudit: true };
       const lines = await repository.insertManualInboundDocumentLines(client, movementResult.lines.map((line, index) => ({
         id: randomUUID(),
         installationId: requestContext.installationId,
@@ -319,7 +365,7 @@ export async function postManualInbound({ adapter, requestContext, idempotencyKe
         sourceLineReference: line.source_line_reference,
         metadata: line.metadata ?? {},
       })));
-      const domainDocument = mappedDocument(document, lines);
+      const domainDocument = mappedDocument({ ...document, document_number: allocatedNumber }, lines);
       const audit = buildAuditRecord({
         requestContext,
         action: 'inventory.manual_inbound.post',

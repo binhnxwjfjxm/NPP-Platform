@@ -7,6 +7,7 @@ export type ManualInboundExportDocument = Readonly<{
   warehouseName: string;
   documentDate: string;
   referenceNumber: string | null;
+  documentNumber: string | null;
   note: string | null;
   createdAt: string;
   status: ManualInboundExportStatus;
@@ -28,6 +29,7 @@ export const MANUAL_INBOUND_STATUS_LABELS: Readonly<Record<ManualInboundExportSt
 
 export const MANUAL_INBOUND_EXPORT_COLUMN_LABELS = Object.freeze({
   documentDate: 'Ngày chứng từ',
+  documentNumber: 'Số phiếu',
   referenceNumber: 'Số chứng từ tham chiếu',
   inboundType: 'Loại nhập',
   warehouseCode: 'Mã kho',
@@ -50,6 +52,7 @@ export const MANUAL_INBOUND_EXPORT_COLUMN_OPTIONS = Object.freeze(
 
 export const MANUAL_INBOUND_EXPORT_DEFAULT_COLUMNS: readonly ManualInboundExportColumnKey[] = Object.freeze([
   'documentDate',
+  'documentNumber',
   'referenceNumber',
   'inboundType',
   'warehouseCode',
@@ -96,6 +99,7 @@ function formatDateTime(value: string | null | undefined): string {
 function valueFor(document: ManualInboundExportDocument, key: ManualInboundExportColumnKey): string {
   if (key === 'documentDate') return formatDate(document.documentDate);
   if (key === 'referenceNumber') return document.referenceNumber ?? '';
+  if (key === 'documentNumber') return document.documentNumber ?? '';
   if (key === 'inboundType') return MANUAL_INBOUND_TYPE_LABELS[document.inboundType] ?? document.inboundType;
   if (key === 'warehouseCode') return document.warehouseCode ?? '';
   if (key === 'warehouseName') return document.warehouseName ?? '';

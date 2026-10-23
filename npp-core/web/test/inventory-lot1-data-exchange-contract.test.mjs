@@ -32,7 +32,7 @@ test('Nhập kho thủ công gắn xuất dữ liệu theo đúng bộ lọc l�
   assert.match(workspace, /referenceNumber=\{historyReference\}/);
   assert.match(dialog, /query\.set\('inboundType', inboundType\)/);
   assert.match(dialog, /query\.set\('referenceNumber', referenceNumber\.trim\(\)\)/);
-  assert.match(dialog, /không phụ thuộc 12 dòng đang hiển thị/);
+  assert.match(dialog, /không phụ thuộc số dòng đã tải trên màn hình/);
 });
 
 test('Xuất lịch sử nhập kho hỗ trợ Excel, CSV, chọn cột và không lộ ID nội bộ', () => {

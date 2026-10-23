@@ -71,6 +71,9 @@ export async function GET(
       return success(await searchManualInboundOperatorHistory({
         inboundType: request.nextUrl.searchParams.get('inboundType'),
         referenceNumber: request.nextUrl.searchParams.get('referenceNumber'),
+      beforeDocumentDate: request.nextUrl.searchParams.get('beforeDocumentDate'),
+      beforeCreatedAt: request.nextUrl.searchParams.get('beforeCreatedAt'),
+      beforeId: request.nextUrl.searchParams.get('beforeId'),
         requestId,
       }), requestId);
     }

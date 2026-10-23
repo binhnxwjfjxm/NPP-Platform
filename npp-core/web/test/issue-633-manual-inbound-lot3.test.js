@@ -33,7 +33,7 @@ test('XÁC NHẬN NHẬP dùng shared canonical Idempotency-Key và retry giữ 
 
 test('Lô 3 có lịch sử lọc nghiệp vụ và đảo chứng từ append-only', () => {
   assert.match(workspace, /Lịch sử nhập kho thủ công/);
-  assert.match(workspace, /Số chứng từ tham chiếu/);
+  assert.match(workspace, /Số phiếu hoặc tham chiếu/);
   assert.match(workspace, /Đảo chứng từ/);
   assert.match(workspace, /createIdempotencyKey\('manual-inbound-reverse'\)/);
   assert.match(gateway, /MANUAL_INBOUND_CORRECTION/);

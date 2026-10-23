@@ -137,6 +137,9 @@ export async function handleManualInboundRoutes(req, res, options) {
         requestContext,
         inboundType: url.searchParams.get('inboundType'),
         referenceNumber: url.searchParams.get('referenceNumber'),
+        beforeDocumentDate: url.searchParams.get('beforeDocumentDate'),
+        beforeCreatedAt: url.searchParams.get('beforeCreatedAt'),
+        beforeId: url.searchParams.get('beforeId'),
         limit: url.searchParams.get('limit') ?? 100,
         offset: url.searchParams.get('offset') ?? 0,
       });
