@@ -314,17 +314,18 @@ export function SalesReportingWorkspace() {
     }
   }, []);
 
-  useEffect(() => {
-    void load(EMPTY_FILTERS, true);
-  }, [load]);
-
+  // Load the lightweight warehouse selector before the heavyweight report.
   useEffect(() => {
     let active = true;
     void requestScopeWarehouses()
-      .then((rows) => { if (active) setScopeWarehouses(rows); })
+      .then((rows) => { if (active) { setScopeWarehouses(rows); setScopeError(''); } })
       .catch(() => { if (active) setScopeError('Chưa tải được danh sách kho.'); });
     return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    void load(EMPTY_FILTERS, true);
+  }, [load]);
 
   useEffect(() => {
     try {
