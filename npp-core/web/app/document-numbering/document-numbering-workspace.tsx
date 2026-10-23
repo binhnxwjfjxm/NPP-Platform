@@ -16,6 +16,7 @@ const DOCUMENT_TYPES = [
   { value: 'SALES_ORDER', label: 'Đơn bán hàng' },
   { value: 'PURCHASE_ORDER', label: 'Đơn mua hàng' },
   { value: 'GOODS_RECEIPT', label: 'Phiếu nhập kho' },
+  { value: 'MANUAL_INBOUND', label: 'Phiếu nhập kho thủ công' },
   { value: 'GOODS_ISSUE', label: 'Phiếu xuất kho' },
   { value: 'DELIVERY_ORDER', label: 'Phiếu giao hàng' },
   { value: 'INVENTORY_TRANSFER', label: 'Phiếu chuyển kho' },

@@ -1,3 +1,14 @@
+export async function insertManualInboundDocumentNumber(client, { installationId, documentId, allocation }) {
+  const result = await client.query(
+    `INSERT INTO inventory.manual_inbound_document_numbers (
+        installation_id, document_id, number_allocation_id, document_number
+      ) VALUES ($1, $2, $3, $4)
+      RETURNING document_number`,
+    [installationId, documentId, allocation.id, allocation.document_number],
+  );
+  return result.rows?.[0]?.document_number ?? null;
+}
+
 export async function insertManualInboundDocument(client, document) {
   const result = await client.query(
     `INSERT INTO inventory.manual_inbound_documents (
@@ -69,12 +80,15 @@ export async function insertManualInboundDocumentLines(client, rows) {
 export async function getManualInboundDocumentById(client, { installationId, id, forUpdate = false }) {
   const lock = forUpdate ? ' FOR UPDATE OF document' : '';
   const result = await client.query(
-    `SELECT document.*,
+    `SELECT document.*, numbers.document_number,
             reversal.id AS reversal_movement_id,
             reversal.document_date AS reversal_document_date,
             reversal.reason_code AS reversal_reason_code,
             reversal.reason_note AS reversal_reason_note
        FROM inventory.manual_inbound_documents document
+       LEFT JOIN inventory.manual_inbound_document_numbers numbers
+         ON numbers.installation_id = document.installation_id
+        AND numbers.document_id = document.id
        LEFT JOIN inventory.inventory_movements reversal
          ON reversal.installation_id = document.installation_id
         AND reversal.reversal_of_movement_id = document.movement_id
@@ -87,12 +101,15 @@ export async function getManualInboundDocumentById(client, { installationId, id,
 
 export async function getManualInboundDocumentByMovementId(client, { installationId, movementId }) {
   const result = await client.query(
-    `SELECT document.*,
+    `SELECT document.*, numbers.document_number,
             reversal.id AS reversal_movement_id,
             reversal.document_date AS reversal_document_date,
             reversal.reason_code AS reversal_reason_code,
             reversal.reason_note AS reversal_reason_note
        FROM inventory.manual_inbound_documents document
+       LEFT JOIN inventory.manual_inbound_document_numbers numbers
+         ON numbers.installation_id = document.installation_id
+        AND numbers.document_id = document.id
        LEFT JOIN inventory.inventory_movements reversal
          ON reversal.installation_id = document.installation_id
         AND reversal.reversal_of_movement_id = document.movement_id
@@ -122,12 +139,15 @@ export async function listManualInboundDocuments(client, {
   offset = 0,
 }) {
   const result = await client.query(
-    `SELECT document.*,
+    `SELECT document.*, numbers.document_number,
             reversal.id AS reversal_movement_id,
             reversal.document_date AS reversal_document_date,
             reversal.reason_code AS reversal_reason_code,
             reversal.reason_note AS reversal_reason_note
        FROM inventory.manual_inbound_documents document
+       LEFT JOIN inventory.manual_inbound_document_numbers numbers
+         ON numbers.installation_id = document.installation_id
+        AND numbers.document_id = document.id
        LEFT JOIN inventory.inventory_movements reversal
          ON reversal.installation_id = document.installation_id
         AND reversal.reversal_of_movement_id = document.movement_id

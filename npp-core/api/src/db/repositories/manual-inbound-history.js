@@ -3,6 +3,9 @@ export async function searchManualInboundDocuments(client, {
   warehouseIds,
   inboundType = null,
   referenceNumber = null,
+  beforeDocumentDate = null,
+  beforeCreatedAt = null,
+  beforeId = null,
   limit = 100,
   offset = 0,
 }) {
@@ -14,6 +17,7 @@ export async function searchManualInboundDocuments(client, {
             warehouse.name AS warehouse_name,
             to_char(document.document_date, 'YYYY-MM-DD') AS document_date,
             document.reference_number,
+            numbers.document_number,
             document.note,
             document.created_at,
             reversal.id AS reversal_movement_id,
@@ -23,16 +27,25 @@ export async function searchManualInboundDocuments(client, {
        JOIN shared.warehouses warehouse
          ON warehouse.installation_id = document.installation_id
         AND warehouse.id = document.warehouse_id
+       LEFT JOIN inventory.manual_inbound_document_numbers numbers
+         ON numbers.installation_id = document.installation_id
+        AND numbers.document_id = document.id
        LEFT JOIN inventory.inventory_movements reversal
          ON reversal.installation_id = document.installation_id
         AND reversal.reversal_of_movement_id = document.movement_id
       WHERE document.installation_id = $1
         AND document.warehouse_id = ANY($2::uuid[])
         AND ($3::text IS NULL OR document.inbound_type = $3)
-        AND ($4::text IS NULL OR document.reference_number ILIKE '%' || $4 || '%')
+        AND ($4::text IS NULL
+          OR document.reference_number ILIKE '%' || $4 || '%'
+          OR numbers.document_number ILIKE '%' || $4 || '%')
+        AND ($7::date IS NULL
+          OR (document.document_date, document.created_at, document.id)
+             < ($7::date, $8::timestamptz, $9::uuid))
       ORDER BY document.document_date DESC, document.created_at DESC, document.id DESC
       LIMIT $5 OFFSET $6`,
-    [installationId, warehouseIds, inboundType, referenceNumber, limit, offset],
+    [installationId, warehouseIds, inboundType, referenceNumber, limit, offset,
+      beforeDocumentDate, beforeCreatedAt, beforeId],
   );
   return result.rows ?? [];
 }
@@ -50,12 +63,16 @@ export async function getManualInboundHistoryDetail(client, {
               warehouse.name AS warehouse_name,
               document.document_date,
               document.reference_number,
+              numbers.document_number,
               document.movement_id,
               movement.posted_at
          FROM inventory.manual_inbound_documents document
          JOIN shared.warehouses warehouse
            ON warehouse.installation_id = document.installation_id
           AND warehouse.id = document.warehouse_id
+         LEFT JOIN inventory.manual_inbound_document_numbers numbers
+           ON numbers.installation_id = document.installation_id
+          AND numbers.document_id = document.id
          JOIN inventory.inventory_movements movement
            ON movement.installation_id = document.installation_id
           AND movement.id = document.movement_id
@@ -92,6 +109,7 @@ export async function getManualInboundHistoryDetail(client, {
      SELECT target.id AS document_id,
             to_char(target.document_date, 'YYYY-MM-DD') AS document_date,
             target.reference_number,
+            target.document_number,
             target.warehouse_code,
             target.warehouse_name,
             target_line.base_variant_id,

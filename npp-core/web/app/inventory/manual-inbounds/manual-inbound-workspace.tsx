@@ -97,6 +97,7 @@ type HistoryDocument = {
   warehouseName: string;
   documentDate: string;
   referenceNumber: string | null;
+  documentNumber: string | null;
   note: string | null;
   createdAt: string;
   status: 'POSTED' | 'REVERSED';
@@ -107,6 +108,7 @@ type HistoryMovementDetail = {
   documentId: string;
   documentDate: string;
   referenceNumber: string | null;
+  documentNumber: string | null;
   warehouseCode: string;
   warehouseName: string;
   lines: Array<{
@@ -272,6 +274,7 @@ export default function ManualInboundWorkspace() {
   const [busy, setBusy] = useState<'warehouses' | 'locations' | 'file' | 'preview' | 'confirm' | null>(null);
   const [message, setMessage] = useState<{ kind: 'error' | 'info'; text: string } | null>(null);
   const [history, setHistory] = useState<HistoryDocument[]>([]);
+  const [historyHasMore, setHistoryHasMore] = useState(false);
   const [historyType, setHistoryType] = useState<'' | InboundType>('');
   const [historyReference, setHistoryReference] = useState('');
   const [historyBusy, setHistoryBusy] = useState(false);
@@ -289,6 +292,7 @@ export default function ManualInboundWorkspace() {
   const pendingConfirm = useRef<PendingMutation | null>(null);
   const pendingReverse = useRef<PendingMutation | null>(null);
   const productSearchRun = useRef(0);
+  const historyRequestRun = useRef(0);
 
   const selectedWarehouse = warehouses.find((warehouse) => warehouse.id === warehouseId) ?? null;
   const errorsByLine = useMemo(() => {
@@ -426,19 +430,37 @@ export default function ManualInboundWorkspace() {
     }, 0);
   }
 
-  async function loadHistory(type = historyType, reference = historyReference) {
+  async function loadHistory(type = historyType, reference = historyReference, append = false) {
+    const requestRun = ++historyRequestRun.current;
     setHistoryBusy(true);
     setHistoryMessage('');
+    if (!append) {
+      setHistory([]);
+      setHistoryHasMore(false);
+    }
     try {
-      const query = new URLSearchParams();
+      const query = new URLSearchParams({ limit: '21' });
       if (type) query.set('inboundType', type);
       if (reference.trim()) query.set('referenceNumber', reference.trim());
+      const last = append ? history[history.length - 1] : null;
+      if (last) {
+        query.set('beforeDocumentDate', last.documentDate);
+        query.set('beforeCreatedAt', last.createdAt);
+        query.set('beforeId', last.id);
+      }
       const data = await requestJson<HistoryDocument[]>(`/api/inventory/manual-inbounds/operator/history?${query.toString()}`);
-      setHistory(data);
+      if (requestRun !== historyRequestRun.current) return;
+      const page = data.slice(0, 20);
+      setHistory((current) => append
+        ? [...current, ...page.filter((doc) => !current.some((row) => row.id === doc.id))]
+        : page);
+      setHistoryHasMore(data.length > 20);
     } catch (error) {
-      setHistoryMessage(error instanceof Error ? error.message : 'Không tải được lịch sử nhập kho.');
+      if (requestRun === historyRequestRun.current) {
+        setHistoryMessage(error instanceof Error ? error.message : 'Không tải được lịch sử nhập kho.');
+      }
     } finally {
-      setHistoryBusy(false);
+      if (requestRun === historyRequestRun.current) setHistoryBusy(false);
     }
   }
 
@@ -722,7 +744,7 @@ export default function ManualInboundWorkspace() {
     pendingReverse.current = null;
     setReverseDraft({
       documentId: document.id,
-      label: document.referenceNumber || `${inboundTypeLabel(document.inboundType)} · ${displayDate(document.documentDate)}`,
+      label: document.documentNumber || `${inboundTypeLabel(document.inboundType)} · ${displayDate(document.documentDate)}`,
       documentDate: '',
       reasonNote: '',
     });
@@ -927,18 +949,19 @@ export default function ManualInboundWorkspace() {
         <section className={`${styles.card} ${styles.historyCard}`}>
           <div className={styles.sectionHeading}><div><h2>Lịch sử nhập kho thủ công</h2><p>Tra cứu nhanh các chứng từ đã ghi sổ.</p></div><ManualInboundExportDialog inboundType={historyType} referenceNumber={historyReference} /></div>
           <div className={styles.historyFilters}>
-            <label><span>Loại nhập</span><select value={historyType} onChange={(event) => setHistoryType(event.target.value as '' | InboundType)}><option value="">Tất cả</option>{INBOUND_TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
-            <label><span>Số chứng từ tham chiếu</span><input value={historyReference} maxLength={160} onChange={(event) => setHistoryReference(event.target.value)} placeholder="Nhập số cần tìm" /></label>
+            <label><span>Loại nhập</span><select value={historyType} onChange={(event) => { setHistoryType(event.target.value as '' | InboundType); setHistoryHasMore(false); }}><option value="">Tất cả</option>{INBOUND_TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
+            <label><span>Số phiếu hoặc tham chiếu</span><input value={historyReference} maxLength={160} onChange={(event) => { setHistoryReference(event.target.value); setHistoryHasMore(false); }} placeholder="Nhập số phiếu để tìm" /></label>
             <button type="button" className={styles.primary} onClick={() => void loadHistory()} disabled={historyBusy}>{historyBusy ? 'Đang tìm…' : 'Tìm'}</button>
           </div>
           {historyMessage ? <p className={styles.historyMessage}>{historyMessage}</p> : null}
           <div className={styles.historyList}>
-            {history.length ? history.slice(0, 12).map((document) => <article key={document.id} className={styles.historyItem}>
-              <div className={styles.historyItemHead}><strong>{document.referenceNumber || inboundTypeLabel(document.inboundType)}</strong><span className={document.status === 'POSTED' ? styles.readyBadge : styles.reversedBadge}>{document.status === 'POSTED' ? 'Đã nhập' : 'Đã đảo'}</span></div>
-              <div className={styles.historyMeta}><span>{displayDate(document.documentDate)}</span><span>{inboundTypeLabel(document.inboundType)}</span><span>{document.warehouseCode} — {document.warehouseName}</span></div>
+            {history.length ? history.map((document) => <article key={document.id} className={styles.historyItem}>
+              <div className={styles.historyItemHead}><strong>{document.documentNumber || inboundTypeLabel(document.inboundType)}</strong><span className={document.status === 'POSTED' ? styles.readyBadge : styles.reversedBadge}>{document.status === 'POSTED' ? 'Đã nhập' : 'Đã đảo'}</span></div>
+              <div className={styles.historyMeta}><span>{displayDate(document.documentDate)}</span><span>{inboundTypeLabel(document.inboundType)}</span><span>{document.warehouseCode} — {document.warehouseName}</span>{document.referenceNumber ? <span>Tham chiếu: {document.referenceNumber}</span> : null}</div>
               <div className={styles.historyActions}><button type="button" className={styles.textButton} onClick={() => void openHistoryDetail(document)}>Xem biến động</button>{document.status === 'POSTED' ? <button type="button" className={styles.textButton} onClick={() => openReverse(document)}>Đảo chứng từ</button> : null}</div>
             </article>) : <p className={styles.emptyState}>{historyBusy ? 'Đang tải…' : 'Chưa có chứng từ phù hợp.'}</p>}
           </div>
+          {historyHasMore ? <button type="button" className={styles.secondary} disabled={historyBusy} onClick={() => void loadHistory(historyType, historyReference, true)}>{historyBusy ? 'Đang tải…' : 'Xem thêm 20 phiếu'}</button> : null}
           {reverseDraft ? <div className={styles.reversePanel}>
             <div><strong>Đảo chứng từ: {reverseDraft.label}</strong><p>Hệ thống ghi bút toán đảo và giữ nguyên lịch sử.</p></div>
             <label><span>Ngày đảo *</span><input type="date" value={reverseDraft.documentDate} onChange={(event) => { pendingReverse.current = null; setReverseDraft((current) => current ? { ...current, documentDate: event.target.value } : current); }} /></label>
@@ -951,7 +974,7 @@ export default function ManualInboundWorkspace() {
 
     {(historyDetailBusy || historyDetail || historyDetailError) ? <div role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) { setHistoryDetail(null); setHistoryDetailError(''); } }} className={styles.dialogBackdrop}>
       <section role="dialog" aria-modal="true" aria-labelledby="manual-inbound-movement-title" className={styles.dialogCard}>
-        <div className={styles.sectionHeading}><div><h2 id="manual-inbound-movement-title">Biến động tồn theo chứng từ</h2><p>{historyDetail ? `${historyDetail.warehouseCode} — ${historyDetail.warehouseName} · ${displayDate(historyDetail.documentDate)}${historyDetail.referenceNumber ? ` · ${historyDetail.referenceNumber}` : ''}` : 'Chỉ hiển thị các mã hàng có trên chứng từ này.'}</p></div><ManualInboundPrintDock document={historyDetailDocument} detail={historyDetail} /><button type="button" className={styles.secondary} onClick={() => { setHistoryDetail(null); setHistoryDetailDocument(null); setHistoryDetailError(''); }}>Đóng</button></div>
+        <div className={styles.sectionHeading}><div><h2 id="manual-inbound-movement-title">Biến động tồn theo chứng từ</h2><p>{historyDetail ? `${historyDetail.documentNumber || ''} · ${historyDetail.warehouseCode} — ${historyDetail.warehouseName} · ${displayDate(historyDetail.documentDate)}${historyDetail.referenceNumber ? ` · Tham chiếu: ${historyDetail.referenceNumber}` : ''}` : 'Chỉ hiển thị các mã hàng có trên chứng từ này.'}</p></div><ManualInboundPrintDock document={historyDetailDocument} detail={historyDetail} /><button type="button" className={styles.secondary} onClick={() => { setHistoryDetail(null); setHistoryDetailDocument(null); setHistoryDetailError(''); }}>Đóng</button></div>
         {historyDetailBusy ? <p className={styles.historyMessage}>Đang tải biến động tồn…</p> : null}
         {historyDetailError ? <p className={styles.historyMessage}>{historyDetailError}</p> : null}
         {historyDetail ? <div className={styles.historyTableWrap}><table className={styles.historyTable}><thead><tr><BusinessTableSequenceHeader /><th>Sản phẩm / SKU</th><th>ĐVT</th><th>Tồn trước</th><th>Biến động</th><th>Tồn sau</th></tr></thead><tbody>{historyDetail.lines.map((line, rowIndex) => <tr key={line.baseVariantId}><BusinessTableSequenceCell rowIndex={rowIndex} /><td><strong>{line.productName || line.sku}</strong><small>{line.sku}</small></td><td>{line.baseUnitCode || '—'}</td><td>{formatQuantity(line.quantityBefore)}</td><td><strong>+{formatQuantity(line.quantityDelta)}</strong></td><td><strong>{formatQuantity(line.quantityAfter)}</strong></td></tr>)}</tbody></table></div> : null}

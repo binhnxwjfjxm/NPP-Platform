@@ -108,7 +108,7 @@ export default function ManualInboundExportDialog({ inboundType, referenceNumber
             </div>
 
             <p className={styles.description}>
-              Xuất toàn bộ chứng từ phù hợp với loại nhập và số chứng từ tham chiếu đang áp dụng, không phụ thuộc 12 dòng đang hiển thị trên màn hình.
+              Xuất các chứng từ phù hợp với loại nhập, số phiếu hoặc số tham chiếu đang áp dụng, không phụ thuộc số dòng đã tải trên màn hình.
             </p>
 
             <fieldset className={styles.formatGroup}>

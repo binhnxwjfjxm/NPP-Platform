@@ -31,6 +31,9 @@ export async function searchManualInboundHistory(client, {
   requestContext,
   inboundType,
   referenceNumber,
+  beforeDocumentDate,
+  beforeCreatedAt,
+  beforeId,
   limit = 100,
   offset = 0,
 }) {
@@ -47,11 +50,22 @@ export async function searchManualInboundHistory(client, {
   const normalizedReference = optionalText(referenceNumber, 160);
   if (!normalizedReference.ok) return normalizedReference;
 
+  const cursorValues = [beforeDocumentDate, beforeCreatedAt, beforeId];
+  const hasCursor = cursorValues.some((value) => value !== null && value !== undefined && String(value).trim());
+  if (hasCursor && (
+    !/^\d{4}-\d{2}-\d{2}$/.test(String(beforeDocumentDate ?? ''))
+    || Number.isNaN(Date.parse(String(beforeCreatedAt ?? '')))
+    || !UUID_PATTERN.test(String(beforeId ?? ''))
+  )) return failure('INVALID_CURSOR', 'Vị trí tải thêm lịch sử không hợp lệ.');
+
   const documents = await searchManualInboundDocuments(client, {
     installationId: requestContext.installationId,
     warehouseIds,
     inboundType: normalizedType,
     referenceNumber: normalizedReference.value,
+    beforeDocumentDate: hasCursor ? beforeDocumentDate : null,
+    beforeCreatedAt: hasCursor ? beforeCreatedAt : null,
+    beforeId: hasCursor ? beforeId : null,
     limit: Math.min(Math.max(Number(limit) || 100, 1), 200),
     offset: Math.max(Number(offset) || 0, 0),
   });
@@ -65,6 +79,7 @@ export async function searchManualInboundHistory(client, {
       warehouseName: document.warehouse_name,
       documentDate: String(document.document_date).slice(0, 10),
       referenceNumber: document.reference_number,
+      documentNumber: document.document_number ?? null,
       note: document.note,
       createdAt: document.created_at,
       status: document.reversal_movement_id ? 'REVERSED' : 'POSTED',
@@ -98,6 +113,7 @@ export async function readManualInboundHistoryDetail(client, { requestContext, d
       documentId: first.document_id,
       documentDate: String(first.document_date).slice(0, 10),
       referenceNumber: first.reference_number ?? null,
+      documentNumber: first.document_number ?? null,
       warehouseCode: first.warehouse_code,
       warehouseName: first.warehouse_name,
       lines: Object.freeze(rows.map((row) => Object.freeze({

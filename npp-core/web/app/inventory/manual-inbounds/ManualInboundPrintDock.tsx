@@ -10,6 +10,7 @@ type HistoryDocument = {
   warehouseName: string;
   documentDate: string;
   referenceNumber: string | null;
+  documentNumber: string | null;
   note: string | null;
   status: 'POSTED' | 'REVERSED';
   reversalNote: string | null;
@@ -18,6 +19,7 @@ type Detail = {
   documentId: string;
   documentDate: string;
   referenceNumber: string | null;
+  documentNumber: string | null;
   warehouseCode: string;
   warehouseName: string;
   lines: Array<{
@@ -52,13 +54,14 @@ export default function ManualInboundPrintDock({ document, detail }: { document:
     actionLabel="In / PDF"
     title="PHIẾU NHẬP KHO"
     subtitle="Chứng từ nhập kho thủ công"
-    showNumber={Boolean(document.referenceNumber)}
-    number={document.referenceNumber || '—'}
+    showNumber={Boolean(document.documentNumber)}
+    number={document.documentNumber || '—'}
     status={document.status === 'POSTED' ? 'Đã nhập kho' : 'Đã đảo'}
     meta={[
       { key: 'inbound_type', label: 'Loại nhập', value: TYPE_LABELS[document.inboundType] },
       { key: 'warehouse', label: 'Kho nhập', value: `${document.warehouseCode} — ${document.warehouseName}` },
       { key: 'document_date', label: 'Ngày chứng từ', value: dateText(document.documentDate) },
+      { key: 'reference_number', label: 'Số tham chiếu', value: document.referenceNumber || '—' },
     ]}
     columns={[
       { key: 'no', fieldKey: 'line_no', label: 'STT', align: 'center' },

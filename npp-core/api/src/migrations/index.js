@@ -148,6 +148,7 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   migration('164_price_list_multi_scope', 'shared/164_price_list_multi_scope.sql'),
   migration('165_manual_delivery_return_receipts', 'sales/165_manual_delivery_return_receipts.sql'),
   migration('166_inventory_adjustment_signed_system_snapshot', 'inventory/166_inventory_adjustment_signed_system_snapshot.sql'),
+  migration('167_manual_inbound_document_numbers', 'inventory/167_manual_inbound_document_numbers.sql'),
 ]);
 
 export { runMigrations };
