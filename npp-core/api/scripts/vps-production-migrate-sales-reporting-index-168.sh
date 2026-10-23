@@ -62,6 +62,14 @@ SQL
 }
 test "$(scalar postgres "SELECT count(*) FROM pg_database WHERE datname='npp_production'")" = 1
 test "$(scalar "$db" "SELECT count(*) FROM shared.schema_migrations WHERE id='167_manual_inbound_document_numbers'")" = 1
+# A disconnected GitHub runner must not start another restore while the old
+# rehearsal is still using the database. Print only counts, not SQL or secrets.
+active_rehearsals="$(scalar postgres "SELECT count(*) FROM pg_stat_activity WHERE datname LIKE 'npp_migration_rehearsal_%' AND pid <> pg_backend_pid()")"
+echo "ACTIVE_REHEARSAL_SESSIONS=$active_rehearsals"
+test "$active_rehearsals" = 0
+existing_rehearsals="$(scalar postgres "SELECT count(*) FROM pg_database WHERE datname LIKE 'npp_migration_rehearsal_%'")"
+echo "EXISTING_REHEARSAL_DATABASES=$existing_rehearsals"
+echo "DATABASE_READONLY_PREFLIGHT=PASS"
 applied="$(scalar "$db" "SELECT count(*) FROM shared.schema_migrations WHERE id='$migration'")"
 if [ "$applied" = 1 ]; then
   verify "$db"
