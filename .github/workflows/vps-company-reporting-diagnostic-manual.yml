@@ -1,0 +1,108 @@
+name: Company reporting production read-only diagnostic
+on:
+  workflow_dispatch:
+  issue_comment:
+    types: [created]
+permissions:
+  contents: read
+  issues: write
+concurrency:
+  group: company-reporting-production-diagnostic
+  cancel-in-progress: false
+jobs:
+  diagnose:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issue_comment' &&
+      github.event.issue.number == 5 &&
+      github.event.comment.body == '/diagnose-vps-company-reporting' &&
+      contains(fromJSON('["binhnxwjfjxm","khuongbinhinfo-a11y","gustavjung01"]'), github.actor))
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      VPS_COMPANY_HOST: ${{ vars.VPS_COMPANY_HOST }}
+      VPS_SSH_USER: ${{ vars.VPS_SSH_USER }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact main SHA
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+      - name: Audit reporting errors and connectivity without secrets
+        shell: bash
+        env:
+          VPS_COMPANY_SSH_KEY: ${{ secrets.VPS_COMPANY_SSH_KEY }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test -n "$VPS_COMPANY_HOST" && test -n "$VPS_SSH_USER" && test -n "$VPS_COMPANY_SSH_KEY"
+          umask 077
+          printf '%s\n' "$VPS_COMPANY_SSH_KEY" > "$RUNNER_TEMP/key"
+          chmod 600 "$RUNNER_TEMP/key"
+          ssh-keygen -y -f "$RUNNER_TEMP/key" >/dev/null
+          ssh-keyscan -T 10 -H "$VPS_COMPANY_HOST" > "$RUNNER_TEMP/hosts" 2>/dev/null
+          test -s "$RUNNER_TEMP/hosts"
+          ssh -i "$RUNNER_TEMP/key" -o BatchMode=yes -o ConnectTimeout=10 \
+            -o ServerAliveInterval=15 -o ServerAliveCountMax=4 \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$RUNNER_TEMP/hosts" \
+            "$VPS_SSH_USER@$VPS_COMPANY_HOST" 'bash -s' > "$RUNNER_TEMP/report.txt" <<'REMOTE'
+          set -euo pipefail
+          echo "SERVICE_STATE=$(systemctl is-active npp-company-api.service || true)"
+          echo "SERVICE_RESTARTS=$(systemctl show npp-company-api.service -p NRestarts --value)"
+          echo "NGINX_STATE=$(systemctl is-active nginx || true)"
+          echo "LOAD=$(awk '{print $1,$2,$3}' /proc/loadavg)"
+          echo "MEMORY_AVAILABLE_MB=$(awk '/MemAvailable:/ {printf "%.0f", $2/1024}' /proc/meminfo)"
+          port="$(sudo -n awk -F= '/^PORT=/{gsub(/"/,"",$2);print $2;exit}' /etc/npp/company.env)"
+          if [[ "$port" =~ ^[0-9]{4,5}$ ]]; then
+            for path in /health/live /health/ready; do
+              curl -sS --connect-timeout 3 --max-time 8 -o /dev/null \
+                -w "LOCAL_HEALTH_$path=%{http_code} seconds=%{time_total}\n" \
+                "http://127.0.0.1:$port$path" || true
+            done
+          fi
+          echo 'REPORTING_EVENT_SAMPLE_BEGIN'
+          sudo -n journalctl -u npp-company-api.service --since '2026-10-23 11:55:00 UTC' \
+            --no-pager -o cat 2>/dev/null | node -e '
+              let raw="";process.stdin.on("data",c=>raw+=c.toString());
+              process.stdin.on("end",()=>{
+                const counts={};let shown=0;
+                for(const line of raw.split("\n")){
+                  let j;try{j=JSON.parse(line)}catch{continue}
+                  const event=String(j?.event||"");
+                  if(!/^reporting_|connection|pool|timeout|query_failed|db_error/i.test(event))continue;
+                  counts[event]=(counts[event]||0)+1;
+                  if(shown++>=80)continue;
+                  const out={};
+                  for(const k of ["event","family","errorCode","errorName","elapsedMs","statusCode","requestId"]){
+                    if(["string","number"].includes(typeof j[k]))out[k]=String(j[k]).slice(0,130);
+                  }
+                  console.log(JSON.stringify(out));
+                }
+                console.log("EVENT_COUNTS="+JSON.stringify(counts));
+              });'
+          echo 'REPORTING_EVENT_SAMPLE_END'
+          echo 'NGINX_STATUS_COUNTS'
+          if sudo -n test -r /var/log/nginx/access.log; then
+            sudo -n tail -n 7000 /var/log/nginx/access.log | awk '
+              /\/api\/reporting\/sales|\/api\/customers/ {
+                status=$9;if(status ~ /^[0-9][0-9][0-9]$/) count[status]++
+              } END {for(status in count)print "http_"status"="count[status]}'
+          fi
+          REMOTE
+          cat "$RUNNER_TEMP/report.txt" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo '## Công Ty production reporting read-only diagnostic'
+            echo
+            echo 'Sanitized service and reporting events only; no credentials, SQL parameters, or personal records.'
+            echo
+            echo '~~~text'
+            cat "$RUNNER_TEMP/report.txt"
+            echo '~~~'
+          } > "$RUNNER_TEMP/evidence.md"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/958/comments" \
+            -f body="$(cat "$RUNNER_TEMP/evidence.md")" >/dev/null
