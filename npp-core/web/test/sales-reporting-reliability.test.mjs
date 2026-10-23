@@ -21,3 +21,11 @@ test('Báo cáo phân biệt quá thời hạn chờ với lỗi đối soát ng
   assert.match(ui, /tổng đơn/);
   assert.match(ui, /cộng dòng/);
 });
+
+test('Báo cáo bán hàng ưu tiên tải kho và giới hạn thời gian chờ chỉ cho báo cáo nặng', () => {
+  const ui = source('app/components/sales-reporting-workspace.tsx');
+  const gateway = source('lib/reporting-dashboard-gateway.ts');
+  assert.ok(ui.indexOf('void requestScopeWarehouses()') < ui.indexOf('void load(EMPTY_FILTERS, true)'));
+  assert.match(gateway, /SALES_REQUEST_TIMEOUT_MS=25_000/);
+  assert.match(gateway, /family==='sales'\?SALES_REQUEST_TIMEOUT_MS:REQUEST_TIMEOUT_MS/);
+});

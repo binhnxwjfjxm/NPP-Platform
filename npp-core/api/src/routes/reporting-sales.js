@@ -277,6 +277,49 @@ function compatibilityCustomers(rows) {
   return Object.freeze([...grouped.values()].sort((a, b) => a.revenueValue > b.revenueValue ? -1 : a.revenueValue < b.revenueValue ? 1 : 0).slice(0, 100).map((row) => Object.freeze({ currencyCode: row.currencyCode, customerId: row.id, customerCode: row.code, customerName: row.name, totalValue: decimalText(row.revenueValue) })));
 }
 
+// Shared query budget across concurrent sales reports. Reporting never takes
+// more than four connections from the application pool, reserving capacity
+// for customer, inventory and the independent warehouse selector requests.
+// Queries execute against current PostgreSQL data; no stale report cache.
+const MAX_SALES_QUERY_CONNECTIONS = 4;
+let activeSalesQueries = 0;
+const queuedSalesQueries = [];
+
+function drainSalesQueryQueue() {
+  while (activeSalesQueries < MAX_SALES_QUERY_CONNECTIONS && queuedSalesQueries.length) {
+    const task = queuedSalesQueries.shift();
+    activeSalesQueries += 1;
+    const queueMs = Date.now() - task.queuedAt;
+    const startedAt = Date.now();
+    Promise.resolve()
+      .then(() => task.adapter.query(task.statement, task.values))
+      .then(task.resolve, task.reject)
+      .finally(() => {
+        activeSalesQueries -= 1;
+        const executionMs = Date.now() - startedAt;
+        if (queueMs >= 1000 || executionMs >= 2000) {
+          console.warn(JSON.stringify({
+            event: 'sales_reporting_query_stage_slow',
+            queryNumber: task.queryNumber,
+            queueMs,
+            executionMs,
+          }));
+        }
+        drainSalesQueryQueue();
+      });
+  }
+}
+
+export function runSalesQueryWithBudget(adapter, queryNumber, statement, values) {
+  return new Promise((resolve, reject) => {
+    queuedSalesQueries.push({
+      adapter, queryNumber, statement, values,
+      queuedAt: Date.now(), resolve, reject,
+    });
+    drainSalesQueryQueue();
+  });
+}
+
 // One authorized warehouse lookup shared by the independent selector and report.
 export function salesScopeWarehouses(adapter, requestContext, warehouseIds) {
   return adapter.query(`SELECT warehouse.id AS warehouse_id,
@@ -289,12 +332,16 @@ export function salesScopeWarehouses(adapter, requestContext, warehouseIds) {
 }
 
 export async function salesReport(adapter, requestContext, filters, warehouseIds) {
+  let queryNumber = 0;
+  const boundedAdapter = {
+    query: (statement, values) => runSalesQueryWithBudget(adapter, ++queryNumber, statement, values),
+  };
   const previous = previousPeriod(filters);
   const factParams = [requestContext.installationId, warehouseIds, filters.fromInstant, filters.toExclusiveInstant, filters.warehouseId, previous.fromInstant];
   const currentParams = [requestContext.installationId, warehouseIds, filters.fromInstant, filters.toExclusiveInstant, filters.warehouseId];
   const [scopeWarehouses, summaryResult, factResult, documentsResult, productGroupsResult, productBrandsResult, customerGroupsResult, catalogProductsResult] = await Promise.all([
-    salesScopeWarehouses(adapter, requestContext, warehouseIds),
-    adapter.query(`SELECT count(*)::text AS all_order_count,
+    salesScopeWarehouses(boundedAdapter, requestContext, warehouseIds),
+    boundedAdapter.query(`SELECT count(*)::text AS all_order_count,
               count(*) FILTER (WHERE so.status IN ('confirmed','closed'))::text AS effective_order_count,
               count(*) FILTER (WHERE so.status = 'cancelled')::text AS cancelled_order_count,
               count(DISTINCT so.customer_id) FILTER (WHERE so.status IN ('confirmed','closed'))::text AS buyer_count
@@ -302,7 +349,7 @@ export async function salesReport(adapter, requestContext, filters, warehouseIds
         WHERE so.installation_id = $1 AND so.warehouse_id = ANY($2::uuid[])
           AND so.confirmed_at >= $3::timestamptz AND so.confirmed_at < $4::timestamptz
           AND ($5::uuid IS NULL OR so.warehouse_id = $5::uuid)`, currentParams),
-    adapter.query(`SELECT CASE WHEN so.confirmed_at >= $3::timestamptz THEN 'current' ELSE 'previous' END AS period,
+    boundedAdapter.query(`SELECT CASE WHEN so.confirmed_at >= $3::timestamptz THEN 'current' ELSE 'previous' END AS period,
               (so.confirmed_at AT TIME ZONE '${BUSINESS_TIMEZONE}')::date::text AS business_date,
               so.id AS sales_order_id, so.order_number, so.source_employee_id, so.created_by,
               sov.id AS sales_order_version_id, sov.currency_code, sov.total::text AS version_total,
@@ -348,7 +395,7 @@ export async function salesReport(adapter, requestContext, filters, warehouseIds
           AND so.confirmed_at >= $6::timestamptz AND so.confirmed_at < $4::timestamptz
           AND ($5::uuid IS NULL OR so.warehouse_id = $5::uuid) AND so.status IN ('confirmed','closed')
         ORDER BY so.confirmed_at, so.id, line.line_number`, factParams),
-    adapter.query(`SELECT so.id AS sales_order_id, so.order_number, so.status, so.fulfillment_status, so.delivery_status, so.settlement_status, so.confirmed_at, so.warehouse_id,
+    boundedAdapter.query(`SELECT so.id AS sales_order_id, so.order_number, so.status, so.fulfillment_status, so.delivery_status, so.settlement_status, so.confirmed_at, so.warehouse_id,
               sov.currency_code, sov.total::text AS total_value, sov.customer_id, sov.customer_code_snapshot AS customer_code, sov.customer_name_snapshot AS customer_name
          FROM sales.sales_orders so
          JOIN LATERAL (SELECT version.* FROM sales.sales_order_versions version WHERE version.installation_id = so.installation_id AND version.sales_order_id = so.id AND version.version_status IN ('confirmed','superseded') ORDER BY version.version_number DESC LIMIT 1) sov ON true
@@ -356,20 +403,20 @@ export async function salesReport(adapter, requestContext, filters, warehouseIds
           AND so.confirmed_at >= $3::timestamptz AND so.confirmed_at < $4::timestamptz
           AND ($5::uuid IS NULL OR so.warehouse_id = $5::uuid) AND so.status IN ('confirmed','closed')
         ORDER BY so.confirmed_at DESC, so.id DESC LIMIT 200`, currentParams),
-    adapter.query(`SELECT category.id, category.code, category.name, category.parent_category_id
+    boundedAdapter.query(`SELECT category.id, category.code, category.name, category.parent_category_id
          FROM shared.product_categories category
         WHERE category.installation_id = $1 AND category.is_active = true
         ORDER BY category.sort_order, category.code, category.id`, [requestContext.installationId]),
-    adapter.query(`SELECT brand.id, brand.code, brand.name
+    boundedAdapter.query(`SELECT brand.id, brand.code, brand.name
          FROM shared.product_brands brand
         WHERE brand.installation_id = $1 AND brand.is_active = true
         ORDER BY brand.code, brand.id`, [requestContext.installationId]),
-    adapter.query(`SELECT customer_group.id, customer_group.code, customer_group.name
+    boundedAdapter.query(`SELECT customer_group.id, customer_group.code, customer_group.name
          FROM shared.customer_groups customer_group
         WHERE customer_group.installation_id = $1 AND customer_group.is_active = true
         ORDER BY customer_group.code, customer_group.id`, [requestContext.installationId]),
     filters.includeZeroProducts
-      ? adapter.query(`SELECT variant.id AS variant_id, variant.sku, variant.name AS item_name,
+      ? boundedAdapter.query(`SELECT variant.id AS variant_id, variant.sku, variant.name AS item_name,
                 product.category_id AS product_group_id,
                 category.code AS product_group_code,
                 category.name AS product_group_name,
