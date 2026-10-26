@@ -102,6 +102,69 @@ function manualQuickEditGuard(order) {
   return Object.freeze({ ok: true });
 }
 
+
+function guardManualEditStoredPrices(before, updated, payload, versionNumber) {
+  const original = before.versions?.find(
+    (version) => String(version.versionNumber) === String(before.currentVersionNumber),
+  );
+  const revised = updated.versions?.find(
+    (version) => String(version.versionNumber) === String(versionNumber),
+  );
+  if (!original || !revised || !Array.isArray(revised.lines)) {
+    return failure('SALES_ORDER_DRAFT_NOT_FOUND', 'Không kiểm tra được phiên bản đơn sau khi sửa.', true);
+  }
+
+  // Changing the price context intentionally requests fresh automatic pricing.
+  if (original.customerMode !== revised.customerMode
+    || original.customerId !== revised.customerId
+    || original.salesChannelId !== revised.salesChannelId
+    || original.priceSelectionMode !== revised.priceSelectionMode) {
+    return { ok: true };
+  }
+
+  const originalById = new Map((original.lines ?? []).map((line) => [line.id, line]));
+  const revisedByNumber = new Map(revised.lines.map((line) => [Number(line.lineNumber), line]));
+  for (const [index, input] of (payload.lines ?? []).entries()) {
+    const sourceId = String(input?.sourceLineId ?? '').trim();
+    const previous = sourceId
+      ? originalById.get(sourceId)
+      : original.lines?.[index]; // Older API clients can still use ordinal identity.
+    if (sourceId && !previous) {
+      return failure('REVISION_CONFLICT', 'Dòng hàng đã thay đổi. Hãy tải lại đơn trước khi sửa.', true);
+    }
+    const next = revisedByNumber.get(index + 1);
+    if (!previous || !next || previous.variantId !== next.variantId
+      || parseScaledDecimal(previous.quantity, { allowZero: false })
+        !== parseScaledDecimal(next.quantity, { allowZero: false })
+      || previous.priceSource === 'MANUAL_OVERRIDE'
+      || next.priceSource === 'MANUAL_OVERRIDE') {
+      continue;
+    }
+    const previousPrice = parseScaledDecimal(previous.unitPrice, { allowZero: true });
+    const nextPrice = parseScaledDecimal(next.unitPrice, { allowZero: true });
+    if (previousPrice === null || nextPrice === null || previousPrice === nextPrice) continue;
+
+    // An explicit second Save after reviewing the new preview can accept the change.
+    if (payload.priceChangeAcknowledged === true
+      && input.expectedSystemUnitPriceMinor !== undefined
+      && parseScaledDecimal(input.expectedSystemUnitPriceMinor, { allowZero: true })
+        === parseScaledDecimal(next.systemUnitPrice ?? next.unitPrice, { allowZero: true })) {
+      continue;
+    }
+    return failure(
+      'SALES_PRICE_CHANGED',
+      'Giá hệ thống của dòng hàng đã đổi. Hãy kiểm tra giá mới trước khi lưu lại.',
+      false,
+      {
+        line: index + 1, variantId: next.variantId,
+        previousUnitPriceMinor: String(previous.unitPrice),
+        currentUnitPriceMinor: String(next.unitPrice),
+      },
+    );
+  }
+  return { ok: true };
+}
+
 function pickupQuickEditGuard(order) {
   if (!order || order.status !== 'confirmed') {
     return failure('INVALID_STATUS_TRANSITION', 'Chỉ đơn đã Chốt mới được sửa trực tiếp.');
@@ -814,8 +877,16 @@ export async function quickEditManualSalesOrder(client, {
   payload,
   idempotencyKey,
 }) {
-  const before = await getSalesOrder(client, { requestContext, id });
+  // Hold the canonical order lock through the amendment and confirmation.
+  const before = await getSalesOrder(client, { requestContext, id, forUpdate: true });
   if (!before.ok) return before;
+  const expectedOrderRevision = String(payload?.expectedOrderRevision ?? '').trim();
+  if (!/^\d+$/.test(expectedOrderRevision)) {
+    return failure('EXPECTED_REVISION_REQUIRED', 'Cần phiên bản hiện tại của đơn để sửa.');
+  }
+  if (String(before.salesOrder.revision) !== expectedOrderRevision) {
+    return failure('REVISION_CONFLICT', 'Đơn đã thay đổi. Hãy tải lại trước khi lưu.', true);
+  }
   const guard = manualQuickEditGuard(before.salesOrder);
   if (!guard.ok) return guard;
 
@@ -840,6 +911,12 @@ export async function quickEditManualSalesOrder(client, {
     },
   });
   if (!updated.ok) return updated;
+  // Read the actual saved draft before confirming; the outer transaction rolls
+  // back the draft, snapshots and allocations if an old price was replaced.
+  const priceReview = guardManualEditStoredPrices(
+    before.salesOrder, updated.salesOrder, payload, draft.versionNumber,
+  );
+  if (!priceReview.ok) return priceReview;
 
   return confirmSalesOrder(client, {
     requestContext,
@@ -1156,6 +1233,7 @@ export const salesOrderDeliveryExecutionInternals = Object.freeze({
   fallbackExecutionMode,
   mergeDetailedOrder,
   manualQuickEditGuard,
+  guardManualEditStoredPrices,
   pickupQuickEditGuard,
   deliveryExecutionLane,
   deliveryExecutionTransitionGuard,

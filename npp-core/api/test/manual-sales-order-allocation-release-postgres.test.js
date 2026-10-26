@@ -594,9 +594,10 @@ test('Giao thủ công giải phóng phân bổ chưa xử lý rồi cho bớt S
     const edited = await quickEditManualSalesOrder(client, {
       requestContext: { ...requestContext, requestId: `req-${randomUUID()}` },
       id: created.salesOrder.id,
-      payload: orderPayload(fixture, [
-        { variantId: fixture.secondVariantId, quantity: '3' },
-      ]),
+      payload: {
+        ...orderPayload(fixture, [{ variantId: fixture.secondVariantId, quantity: '3' }]),
+        expectedOrderRevision: confirmed.salesOrder.revision,
+      },
       idempotencyKey: `manual-edit.${randomUUID()}`,
     });
     assert.equal(edited.ok, true, JSON.stringify(edited));

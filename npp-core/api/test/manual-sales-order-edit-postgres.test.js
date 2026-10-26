@@ -311,10 +311,13 @@ test('Giao thủ công sửa SKU, Xuất kho và Hoàn thành đơn giữ nguồ
       const added = await quickEditManualSalesOrder(client, {
         requestContext: { ...context, requestId: `req-${randomUUID()}` },
         id: created.salesOrder.id,
-        payload: payload(fixture, [
-          { variantId: fixture.firstVariantId, quantity: '2' },
-          { variantId: fixture.secondVariantId, quantity: '3' },
-        ]),
+        payload: {
+          ...payload(fixture, [
+            { variantId: fixture.firstVariantId, quantity: '2' },
+            { variantId: fixture.secondVariantId, quantity: '3' },
+          ]),
+          expectedOrderRevision: confirmed.salesOrder.revision,
+        },
         idempotencyKey: `manual-edit-add.${randomUUID()}`,
       });
       assert.equal(added.ok, true, JSON.stringify(added));
@@ -328,6 +331,19 @@ test('Giao thủ công sửa SKU, Xuất kho và Hoàn thành đơn giữ nguồ
         [fixture.firstVariantId, fixture.secondVariantId].sort(),
       );
 
+      const stale = await quickEditManualSalesOrder(client, {
+        requestContext: { ...context, requestId: `req-${randomUUID()}` },
+        id: created.salesOrder.id,
+        payload: {
+          ...payload(fixture, [{ variantId: fixture.firstVariantId, quantity: '2' }]),
+          expectedOrderRevision: confirmed.salesOrder.revision,
+        },
+        idempotencyKey: `manual-edit-stale.${randomUUID()}`,
+      });
+      assert.equal(stale.code, 'REVISION_CONFLICT');
+      const afterStale = await getSalesOrder(client, { requestContext: context, id: created.salesOrder.id });
+      assert.equal(afterStale.salesOrder.currentVersionNumber, added.salesOrder.currentVersionNumber);
+
       const afterAdd = await demandRows(client, config.installationId, created.salesOrder.id);
       const activeAfterAdd = afterAdd.filter((row) => row.state === 'ACTIVE');
       assert.equal(activeAfterAdd.length, 2);
@@ -336,9 +352,10 @@ test('Giao thủ công sửa SKU, Xuất kho và Hoàn thành đơn giữ nguồ
       const removed = await quickEditManualSalesOrder(client, {
         requestContext: { ...context, requestId: `req-${randomUUID()}` },
         id: created.salesOrder.id,
-        payload: payload(fixture, [
-          { variantId: fixture.secondVariantId, quantity: '3' },
-        ]),
+        payload: {
+          ...payload(fixture, [{ variantId: fixture.secondVariantId, quantity: '3' }]),
+          expectedOrderRevision: added.salesOrder.revision,
+        },
         idempotencyKey: `manual-edit-remove.${randomUUID()}`,
       });
       assert.equal(removed.ok, true, JSON.stringify(removed));
