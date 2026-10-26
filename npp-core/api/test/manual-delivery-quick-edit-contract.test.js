@@ -138,7 +138,11 @@ test('manual edit rejects silent repricing of a saved zero and accepts only revi
   assert.equal(guardManualEditStoredPrices(original, revised, {
     lines: [{ sourceLineId: 'no-match', variantId: 'sku-a', quantity: '1' }],
   }, 2).code, 'REVISION_CONFLICT');
-  assert.equal(guardManualEditStoredPrices(original, revised, {
+  const changedQuantity = { versions: [{
+    ...revised.versions[0],
+    lines: [{ ...revised.versions[0].lines[0], quantity: '2' }, revised.versions[0].lines[1]],
+  }] };
+  assert.equal(guardManualEditStoredPrices(original, changedQuantity, {
     lines: [{ sourceLineId: 'old-1', variantId: 'sku-a', quantity: '2' }],
   }, 2).ok, true);
 });

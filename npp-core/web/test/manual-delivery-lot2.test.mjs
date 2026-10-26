@@ -43,6 +43,10 @@ test('confirmed manual order uses one direct Sửa đơn action without exposing
   assert.match(form, /'Lưu thay đổi'/);
   assert.match(workspace, /onEditManual=\{\(\) => openForm\('manual-edit', activeVersion\(selected\)\)\}/);
   assert.match(workspace, /savedMode === 'manual-edit'/);
+  assert.match(workspace, /orderRevision=\{selected\?\.revision\}/);
+  assert.match(form, /expectedOrderRevision: props\.orderRevision/);
+  assert.match(form, /sourceLineId: line\.clientLineId/);
+  assert.match(form, /priceChangeAcknowledged/);
   assert.match(detail, />Sửa đơn<\/button>/);
   assert.match(detail, /!isManual && order\.versions/);
   assert.match(detail, /!isManual && amendment/);
