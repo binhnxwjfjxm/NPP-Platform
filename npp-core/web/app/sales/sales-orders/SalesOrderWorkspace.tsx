@@ -791,6 +791,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
         <SalesOrderForm
           mode={formMode}
           orderId={selected?.id}
+          orderRevision={selected?.revision}
           version={formVersion}
           customers={initialBootstrap.customers}
           warehouses={initialBootstrap.warehouses}

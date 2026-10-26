@@ -83,6 +83,7 @@ type QuickCustomerDraft = {
 type Props = {
   mode: SalesOrderFormMode;
   orderId?: string;
+  orderRevision?: string;
   version?: SalesOrderVersion | null;
   customers: Customer[];
   warehouses: Warehouse[];
@@ -601,6 +602,7 @@ export default function SalesOrderCommercialForm(props: Props) {
   const [documentDiscountValue, setDocumentDiscountValue] = useState(version?.documentDiscountValue ?? '0');
   const [documentDiscountReason, setDocumentDiscountReason] = useState(version?.documentDiscountReason ?? '');
   const [pricingMismatch, setPricingMismatch] = useState<string | null>(null);
+  const [priceChangeAcknowledged, setPriceChangeAcknowledged] = useState(false);
   const [busy, setBusy] = useState(false);
   const [dirty, setDirty] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -609,6 +611,7 @@ export default function SalesOrderCommercialForm(props: Props) {
   const variantRefs = useRef(new Map<string, HTMLSelectElement>());
   const pricingContextRef = useRef('');
   const preserveSavedPricingOnInitialOpenRef = useRef(props.mode !== 'create' && Boolean(version?.lines?.length));
+  const savedLineIds = useMemo(() => new Set((version?.lines ?? []).map((line) => line.id)), [version]);
   const quantitySnapshotRef = useRef(new Map(lines.map((line) => [line.clientLineId, line.quantity])));
   const quantityRepricePendingRef = useRef(new Set<string>());
   const pricingGenerationRef = useRef(new Map<string, number>());
@@ -1369,7 +1372,8 @@ export default function SalesOrderCommercialForm(props: Props) {
     if (lines.some((line) => !parseScaled(line.quantity, false))) return 'Số lượng hàng hóa chưa hợp lệ';
     if (lines.some((line) => line.resolvingPrice)) return 'Hệ thống đang tính giá, hãy đợi hoàn tất';
     if (lines.some((line) => {
-      if (line.pricingFingerprint && !line.priceError) return false;
+      if (!line.priceError && (line.pricingFingerprint
+        || (props.mode === 'manual-edit' && savedLineIds.has(line.clientLineId)))) return false;
       return line.pricingErrorCode !== 'BASE_PRICE_NOT_FOUND' || !hasValidManualPrice(line);
     })) return 'Có dòng hàng chưa có giá bán hợp lệ';
     if (lines.some((line) => line.manualUnitPriceMinor && (!canPriceOverride || !hasValidManualPrice(line)))) {
@@ -1424,6 +1428,10 @@ export default function SalesOrderCommercialForm(props: Props) {
       ...(requestedDeliveryDate ? { requestedDeliveryDate } : {}),
       ...(noteValue ? { note: noteValue } : {}),
       ...(props.mode === 'create' ? {} : { expectedRevision: version?.revision }),
+      ...(props.mode === 'manual-edit' ? {
+        expectedOrderRevision: props.orderRevision,
+        priceChangeAcknowledged,
+      } : {}),
       documentDiscountMode,
       documentDiscountValue: documentDiscountMode === 'NONE' ? '0' : documentDiscountValue,
       ...(estimate.discount > 0n ? { documentDiscountReason: documentDiscountReason.trim() } : {}),
@@ -1434,9 +1442,11 @@ export default function SalesOrderCommercialForm(props: Props) {
         taxRate: line.taxRate,
         discountMode: line.discountMode,
         discountValue: line.discountValue || '0',
-        ...(line.pricingFingerprint ? {
+        ...(props.mode === 'manual-edit' && savedLineIds.has(line.clientLineId)
+          ? { sourceLineId: line.clientLineId } : {}),
+        ...(line.pricingFingerprint || (props.mode === 'manual-edit' && savedLineIds.has(line.clientLineId)) ? {
           expectedSystemUnitPriceMinor: line.systemUnitPriceMinor,
-          expectedPricingFingerprint: line.pricingFingerprint,
+          ...(line.pricingFingerprint ? { expectedPricingFingerprint: line.pricingFingerprint } : {}),
         } : {}),
         ...(line.manualUnitPriceMinor ? {
           manualUnitPriceMinor: line.manualUnitPriceMinor,
@@ -1534,6 +1544,7 @@ export default function SalesOrderCommercialForm(props: Props) {
         const effectiveAt = new Date().toISOString();
         setPricingAt(effectiveAt);
         if (props.mode === 'manual-edit') {
+          setPriceChangeAcknowledged(true);
           setSaveKey(mutationKey('sales-manual-edit-save'));
         } else {
           setConfirmKey(mutationKey(`sales-${props.mode}-confirm`));
@@ -1809,7 +1820,7 @@ export default function SalesOrderCommercialForm(props: Props) {
                       className={styles.directPriceInput}
                       aria-label={`Đơn giá ${line.sku}`}
                       inputMode="numeric"
-                      value={formatVndInput(line.manualUnitPriceMinor || (line.pricingFingerprint ? line.systemUnitPriceMinor : ''))}
+                      value={formatVndInput(line.manualUnitPriceMinor || (line.pricingFingerprint || savedLineIds.has(line.clientLineId) ? line.systemUnitPriceMinor : ''))}
                       placeholder={line.pricingErrorCode === 'BASE_PRICE_NOT_FOUND' ? 'Nhập giá' : undefined}
                       onFocus={(event) => event.currentTarget.select()}
                       onClick={(event) => event.currentTarget.select()}

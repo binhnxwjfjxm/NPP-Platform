@@ -320,6 +320,7 @@ export type SalesOrderLineDraft = {
   discountValue?: string;
   expectedSystemUnitPriceMinor?: string;
   expectedPricingFingerprint?: string;
+  sourceLineId?: string;
   note?: string;
 };
 
@@ -362,6 +363,8 @@ export type SalesOrderDraftPayload = {
   requestedDeliveryDate?: string;
   note?: string;
   expectedRevision?: string;
+  expectedOrderRevision?: string;
+  priceChangeAcknowledged?: boolean;
   creditOverrideReason?: string;
   documentDiscountMode?: SalesOrderDocumentDiscountMode;
   documentDiscountValue?: string;
