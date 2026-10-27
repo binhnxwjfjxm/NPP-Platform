@@ -299,10 +299,23 @@ test('Giao thủ công sửa SKU, Xuất kho và Hoàn thành đơn giữ nguồ
       });
       assert.equal(created.ok, true, JSON.stringify(created));
 
+      const staleConfirmation = await confirmSalesOrder(client, {
+        requestContext: context,
+        id: created.salesOrder.id,
+        versionNumber: 1,
+        expectedRevision: String(Number(created.salesOrder.revision) + 1),
+        idempotencyKey: `stale-confirm.${randomUUID()}`,
+      });
+      assert.equal(staleConfirmation.code, 'REVISION_CONFLICT');
+      const stillDraft = await getSalesOrder(client, { requestContext: context, id: created.salesOrder.id });
+      assert.equal(stillDraft.salesOrder.status, 'draft');
+      assert.equal(stillDraft.salesOrder.versions.find((v) => Number(v.versionNumber) === 1).lines.length, 1);
+
       const confirmed = await confirmSalesOrder(client, {
         requestContext: context,
         id: created.salesOrder.id,
         versionNumber: 1,
+        expectedRevision: created.salesOrder.revision,
         idempotencyKey: `confirm.${randomUUID()}`,
       });
       assert.equal(confirmed.ok, true, JSON.stringify(confirmed));

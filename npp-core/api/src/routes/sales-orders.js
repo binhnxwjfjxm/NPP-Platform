@@ -837,6 +837,7 @@ export async function handleSalesOrderRoutes(req, res, options) {
         id,
         versionNumber: 1,
         idempotencyKey: key,
+        expectedRevision: payload.expectedRevision ?? null,
       }),
     });
     return true;

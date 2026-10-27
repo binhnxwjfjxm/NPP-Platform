@@ -1,0 +1,43 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { checkoutLinesMatch, draftMatchesRetailContext } from '../lib/retail-order-consistency.mjs';
+
+const a = { variantId: 'a', quantity: '1.000000', taxMode: 'EXCLUSIVE', taxRate: '0.000000', priceSource: 'PRICE_ENGINE', unitPrice: '10000.000000' };
+const b = { variantId: 'b', quantity: '2.000000', taxMode: 'EXCLUSIVE', taxRate: '0', priceSource: 'PRICE_ENGINE', unitPrice: '3000' };
+const c = { variantId: 'c', quantity: '1', taxMode: 'EXCLUSIVE', taxRate: '0', priceSource: 'MANUAL_OVERRIDE', unitPrice: '0.000000' };
+const cart = [a, b, c].map(({ variantId: id, quantity, taxMode, taxRate }) => ({ id, quantity, taxMode, taxRate }));
+
+test('three different products must all exist in saved draft before checkout or print', () => {
+  assert.equal(checkoutLinesMatch([a, b, c], cart, { c: '0' }), true);
+  assert.equal(checkoutLinesMatch([a, b], cart, { c: '0' }), false);
+  assert.equal(checkoutLinesMatch([a, b, b], cart, { c: '0' }), false);
+  assert.equal(checkoutLinesMatch([a, b, { ...c, variantId: 'unknown' }], cart, { c: '0' }), false);
+  assert.equal(checkoutLinesMatch([a, { ...b, quantity: '1' }, c], cart, { c: '0' }), false);
+  assert.equal(checkoutLinesMatch([a, b, { ...c, unitPrice: '10000', priceSource: 'PRICE_ENGINE' }], cart, { c: '0' }), false);
+  assert.equal(checkoutLinesMatch([a, b, c], cart.map((line) => ({ ...line, quantity: line.id === 'a' ? '2' : line.quantity })), { c: '0' }), false);
+  assert.equal(checkoutLinesMatch([a, b, c], cart.map((line) => ({ ...line, taxRate: line.id === 'b' ? '8' : line.taxRate })), { c: '0' }), false);
+  assert.equal(checkoutLinesMatch([c, a, b], cart, { c: '0' }), true);
+});
+test('checkout draft is not trusted if customer, warehouse or discount context moved', () => {
+  const context = { status: 'draft', warehouseId: 'w', customerMode: 'WALK_IN', customerId: 'walk-in', documentDiscountMode: 'NONE', documentDiscountValue: '0' };
+  assert.equal(draftMatchesRetailContext(context, context), true);
+  assert.equal(draftMatchesRetailContext({ ...context, warehouseId: 'other' }, context), false);
+  assert.equal(draftMatchesRetailContext({ ...context, status: 'confirmed' }, context), false);
+  assert.equal(draftMatchesRetailContext({ ...context, customerId: 'other' }, context), false);
+  assert.equal(draftMatchesRetailContext({ ...context, documentDiscountMode: 'PERCENT', documentDiscountValue: '5' }, context), false);
+  const changed = { ...context, documentDiscountMode: 'PERCENT', documentDiscountValue: '5' };
+  assert.equal(draftMatchesRetailContext(changed, changed), true);
+  assert.equal(draftMatchesRetailContext({ ...changed, documentDiscountValue: '10' }, changed), false);
+});
+test('Retail only posts a saved revision under canonical confirmation lock', async () => {
+  const [route, gateway, legacy] = await Promise.all([
+    readFile(new URL('../app/api/retail/[...segments]/route.ts', import.meta.url), 'utf8'),
+    readFile(new URL('../../../npp-core/api/src/routes/sales-orders.js', import.meta.url), 'utf8'),
+    readFile(new URL('../../../npp-core/api/src/services/sales-order-legacy.js', import.meta.url), 'utf8'),
+  ]);
+  assert.match(route, /confirm: \{ path: .*body: payload \}/);
+  assert.match(gateway, /expectedRevision: payload.expectedRevision \?\? null/);
+  assert.match(legacy, /String\(loaded.order.revision\) !== expected/);
+  assert.match(legacy, /forUpdate: true/);
+});

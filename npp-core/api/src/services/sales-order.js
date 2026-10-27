@@ -1068,6 +1068,7 @@ export async function confirmSalesOrder(client, {
   id,
   versionNumber,
   idempotencyKey,
+  expectedRevision = null,
   preExecutionReleaseIntent = 'amendment',
 }) {
   const existing = await getSalesOrder(client, { requestContext, id });
@@ -1119,6 +1120,7 @@ export async function confirmSalesOrder(client, {
     id,
     versionNumber: resolvedVersion,
     idempotencyKey,
+    expectedRevision,
   });
   if (!result.ok) return result;
   const fulfillment = await fulfillmentService.replaceSalesOrderFulfillmentDemand(client, {

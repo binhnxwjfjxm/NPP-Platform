@@ -973,10 +973,19 @@ async function ensureSalesOrderSeries(client, { installationId, actorId }) {
   return series ?? documentNumberRepository.getDocumentNumberSeriesByCode(client, { installationId, code: SALES_ORDER_SERIES_CODE });
 }
 
-export async function confirmSalesOrder(client, { requestContext, id, versionNumber, idempotencyKey }) {
+export async function confirmSalesOrder(client, { requestContext, id, versionNumber, idempotencyKey, expectedRevision = null }) {
   if (!isUuid(id)) return failure('SALES_ORDER_NOT_FOUND', 'Sales order not found');
   const loaded = await loadOrder(client, { requestContext, id, forUpdate: true });
   if (!loaded.ok) return loaded;
+  // Optional for existing clients. Retail supplies the revision observed after
+  // its final draft read. Checking under FOR UPDATE closes the GET/confirm race.
+  if (expectedRevision !== null && expectedRevision !== undefined) {
+    const expected = String(expectedRevision).trim();
+    if (!/^\d+$/.test(expected)) return failure('EXPECTED_REVISION_REQUIRED', 'expectedRevision is invalid');
+    if (String(loaded.order.revision) !== expected) {
+      return failure('REVISION_CONFLICT', 'Đơn đã thay đổi. Hãy tải lại trước khi chốt.', true);
+    }
+  }
   if (!['draft', 'confirmed'].includes(loaded.order.status)) return failure('INVALID_STATUS_TRANSITION', 'Sales Order cannot be confirmed from its current status');
   const number = Number(versionNumber ?? (loaded.order.status === 'draft' ? 1 : Number(loaded.order.current_version_number) + 1));
   const version = await repository.getSalesOrderVersion(client, {
