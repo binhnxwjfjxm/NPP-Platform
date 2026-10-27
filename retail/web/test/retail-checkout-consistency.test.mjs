@@ -109,3 +109,12 @@ test('Retail does not automatically overwrite a canonical draft when a save or c
   assert.match(workspace, /if \(latest.status === 'draft' && !isSavedCartCurrent\(latest\)\)/);
   assert.match(workspace, /setDraftSaveError\('Dữ liệu đơn đã thay đổi/);
 });
+
+test('Retail product picker treats transport failures as retryable, not as missing Company base price', async () => {
+  const page = await readFile(new URL('../app/retail-workspace.tsx', import.meta.url), 'utf8');
+  assert.match(page, /pickerPricePreviewFailed/);
+  assert.match(page, /priceFailure.code !== 'PRICE_PREVIEW_FAILED'/);
+  assert.match(page, /Thử lại giá sản phẩm/);
+  assert.match(page, /Không tải được giá/);
+  assert.match(page, /setAvailabilityError\(null\)/);
+});
