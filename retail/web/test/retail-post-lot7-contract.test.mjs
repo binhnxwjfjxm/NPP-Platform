@@ -84,7 +84,8 @@ test('giỏ đang sửa rỗng không giữ tiền cũ và không cho Thanh toá
   assert.match(page, /const totalLabel = editingDraft[\s\S]*?money\.format\(cart\.length \? \(syncedDraft \? total : projectedGrandTotal\) : 0\)/);
   assert.match(page, /const subtotalLabel = editingDraft[\s\S]*?money\.format\(cart\.length \? \(syncedDraft \? Number\(order\?\.subtotal \?\? total\) : cartTotal\) : 0\)/);
   assert.match(page, /const discountDisplayLabel = editingDraft && !cart\.length[\s\S]*?money\.format\(0\)/);
-  assert.match(page, /\(editingDraft && !cart\.length\) \|\| \(order\.status === 'draft' && !syncedDraft\)/);
+  assert.match(page, /\(editingDraft && !cart\.length\)/);
+  assert.match(page, /order\.status === 'draft' && \(!syncedDraft \|\| Boolean\(draftSaveError\)\)/);
   assert.match(page, /stockBlocked \|\| stockGatePending \|\| stockGateError/);
 });
 
