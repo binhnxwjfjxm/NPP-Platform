@@ -44,6 +44,7 @@ test('thiếu Khả dụng được cảnh báo và chặn Chốt hoặc Xuất 
   assert.match(page, /const shortageRows = stockRows\.filter/);
   assert.match(page, /Chưa đủ Khả dụng/);
   assert.match(page, /stockBlocked \|\| stockGatePending/);
+  assert.match(page, /stockGateError/);
   assert.match(page, /assertStockGate\(kind === 'confirm' \? 'Chốt đơn' : 'Xuất kho'\)/);
   assert.match(page, /quantityNumber\.format/);
   assert.doesNotMatch(page, /return row\?\.availableQuantity \?\?/);
@@ -83,7 +84,8 @@ test('giỏ đang sửa rỗng không giữ tiền cũ và không cho Thanh toá
   assert.match(page, /const totalLabel = editingDraft[\s\S]*?money\.format\(cart\.length \? \(syncedDraft \? total : cartTotal\) : 0\)/);
   assert.match(page, /const subtotalLabel = editingDraft[\s\S]*?money\.format\(cart\.length \? \(syncedDraft \? Number\(order\?\.subtotal \?\? total\) : cartTotal\) : 0\)/);
   assert.match(page, /const discountDisplayLabel = editingDraft && !cart\.length[\s\S]*?money\.format\(0\)/);
-  assert.match(page, /\(editingDraft && !cart\.length\) \|\| stockBlocked \|\| stockGatePending/);
+  assert.match(page, /\(editingDraft && !cart\.length\) \|\| \(order\.status === 'draft' && !syncedDraft\)/);
+  assert.match(page, /stockBlocked \|\| stockGatePending \|\| stockGateError/);
 });
 
 test('card sản phẩm mobile giữ kích thước gọn và ô số lượng không kích hoạt zoom iPhone', async () => {

@@ -1,5 +1,6 @@
 'use client';
 import { createIdempotencyKey } from '@npp/contracts';
+import { checkoutLinesMatch, draftMatchesRetailContext } from '../lib/retail-order-consistency.mjs';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { PrinterSettingsPanel } from './printer-settings-panel';
 import { captureReceiptPng, shareReceiptPng } from '../lib/retail-receipt-image';
@@ -380,6 +381,8 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
     const [quantityInputs, setQuantityInputs] = useState<Record<string, string>>({});
     const [available, setAvailable] = useState<Availability[]>([]);
     const [availabilityLoading, setAvailabilityLoading] = useState(false);
+    const [availabilityError, setAvailabilityError] = useState<string | null>(null);
+    const [availabilityRetryEpoch, setAvailabilityRetryEpoch] = useState(0);
     const [open, setOpen] = useState(false);
     const [search, setSearch] = useState('');
     const [categoryId, setCategoryId] = useState('');
@@ -431,6 +434,9 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
     const [editPickup, setEditPickup] = useState(false);
     const [prices, setPrices] = useState<Record<string, CachedPricePreview>>({});
     const [priceFailures, setPriceFailures] = useState<Record<string, CachedPriceFailure>>({});
+    const [priceRetryEpoch, setPriceRetryEpoch] = useState(0);
+    const [draftSaveError, setDraftSaveError] = useState<string | null>(null);
+    const [checkoutStage, setCheckoutStage] = useState<string | null>(null);
     const [manualPrices, setManualPrices] = useState<Record<string, string>>({});
     const [lineImages, setLineImages] = useState<Record<string, string>>({});
     const [scannerOpen, setScannerOpen] = useState(false);
@@ -460,6 +466,8 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
     const lastDraftFingerprint = useRef('');
     const draftSyncInFlight = useRef<string | null>(null);
     const draftSyncPending = useRef(false);
+    const entrySessionRef = useRef(0);
+    const checkoutLockRef = useRef(false);
     const videoRef = useRef<HTMLVideoElement>(null);
     const keyFor = useCallback((action: string, fingerprint = '') => {
         const slot = `${action}:${order?.id ?? 'new'}:${order?.revision ?? 'draft'}:${fingerprint}`;
@@ -603,6 +611,42 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
             }),
         };
     }
+    function draftInputFingerprint() {
+        return JSON.stringify({
+            customerMode,
+            customerId: customerMode === 'EXISTING' ? customerId : '',
+            warehouseId,
+            policy,
+            note,
+            documentDiscountMode,
+            documentDiscountValue,
+            documentDiscountReason,
+            lines: cart.map((line) => [line.id, line.quantity, prices[line.id]?.finalUnitPriceMinor ?? '', manualPriceFor(line.id)]),
+        });
+    }
+    const currentDraftFingerprint = draftInputFingerprint();
+    const retailContext = { customerMode, customerId, warehouseId, documentDiscountMode, documentDiscountValue };
+    function isSavedCartCurrent(saved: Order) {
+        return draftMatchesRetailContext(saved, retailContext)
+            && checkoutLinesMatch(linesOf(saved), cart, manualPrices);
+    }
+    function retryPriceChecks() {
+        setPriceFailures((current) => Object.fromEntries(
+            Object.entries(current).filter(([, failure]) => failure.code !== 'PRICE_PREVIEW_FAILED'),
+        ));
+        setPriceRetryEpoch((value) => value + 1);
+        setError(null);
+    }
+    function retryAvailability() {
+        setAvailabilityError(null);
+        setAvailabilityRetryEpoch((value) => value + 1);
+        setError(null);
+    }
+    function retryDraftSave() {
+        setDraftSaveError(null);
+        lastDraftFingerprint.current = '';
+        setDraftSyncEpoch((value) => value + 1);
+    }
     useEffect(() => {
         const loadedPrinterSettings = loadPrinterSettings();
         const legacyPaper = safePaper(window.localStorage.getItem(PRINT_PAPER_STORAGE_KEY));
@@ -723,8 +767,7 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
             const byVariant = new Map(results.map((result) => [result.variantId, result]));
             const missing = pending.find((item) => !byVariant.has(item.variantId));
             if (missing) {
-                setError('Kết quả tính giá chưa đầy đủ. Vui lòng tải lại danh sách sản phẩm.');
-                return;
+                throw new Error('Kết quả tính giá chưa đầy đủ.');
             }
             setPrices((current) => {
                 const next = { ...current };
@@ -762,12 +805,23 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
                 return next;
             });
         }).catch((reason: unknown) => {
-            setError(errorMessage(reason, 'Chưa thể tính giá sản phẩm.'));
+            setPriceFailures((current) => {
+                const next = { ...current };
+                for (const item of pending) {
+                    next[item.variantId] = {
+                        inputKey: item.inputKey,
+                        code: 'PRICE_PREVIEW_FAILED',
+                        message: errorMessage(reason, 'Không thể tải giá sản phẩm.'),
+                    };
+                }
+                return next;
+            });
+            setError('Không thể cập nhật giá bán. Hãy bấm Thử lại; sản phẩm chưa có giá không được tự động tính thành 0đ.');
         }).finally(() => {
             for (const item of pending)
                 priceRequests.current.delete(item.inputKey);
         });
-    }, [cart, customerId, customerMode, open, priceFailures, prices, products, selected]);
+    }, [cart, customerId, customerMode, open, priceFailures, prices, products, selected, priceRetryEpoch]);
     useEffect(() => {
         if (!cart.length || !warehouseId || editPickup || (order && order.status !== 'draft'))
             return;
@@ -778,17 +832,7 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
         });
         if (!pricingReady)
             return;
-        const fingerprint = JSON.stringify({
-            customerMode,
-            customerId: customerMode === 'EXISTING' ? customerId : '',
-            warehouseId,
-            policy,
-            note,
-            documentDiscountMode,
-            documentDiscountValue,
-            documentDiscountReason,
-            lines: cart.map((line) => [line.id, line.quantity, prices[line.id]?.finalUnitPriceMinor ?? '', manualPriceFor(line.id)]),
-        });
+        const fingerprint = currentDraftFingerprint;
         if (lastDraftFingerprint.current === fingerprint)
             return;
         if (draftSyncInFlight.current !== null) {
@@ -804,6 +848,7 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
             }
             draftSyncInFlight.current = fingerprint;
             draftSyncPending.current = false;
+            const entrySession = entrySessionRef.current;
             setBusy('draft-sync');
             setError(null);
             const currentOrder = order;
@@ -811,9 +856,21 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
                 ? api<Order>(`/api/retail/orders/${currentOrder.id}/draft`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': keyFor('draft-sync', fingerprint) }, body: JSON.stringify(orderPayload(currentOrder.revision)) })
                 : api<Order>('/api/retail/orders', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': keyFor('create-draft', fingerprint) }, body: JSON.stringify(orderPayload(undefined)) });
             void request.then((next) => {
-                lastDraftFingerprint.current = fingerprint;
+                if (entrySessionRef.current !== entrySession) return;
                 setOrder(next);
-            }).catch((reason: Error) => setError(reason.message)).finally(() => {
+                if (!isSavedCartCurrent(next)) {
+                    // Never advertise that a partial server response is saved.
+                    lastDraftFingerprint.current = '';
+                    setDraftSaveError('Đơn đã nhận phản hồi lưu nhưng danh sách hàng chưa khớp. Hãy bấm Thử lưu lại.');
+                    return;
+                }
+                lastDraftFingerprint.current = fingerprint;
+                setDraftSaveError(null);
+            }).catch((reason: Error) => {
+                if (entrySessionRef.current !== entrySession) return;
+                setDraftSaveError(errorMessage(reason, 'Không thể lưu đơn nháp.'));
+                setError('Lưu nháp chưa thành công. Các sản phẩm đang chọn vẫn giữ trên màn hình; hãy bấm Thử lưu lại.');
+            }).finally(() => {
                 draftSyncInFlight.current = null;
                 setBusy((value) => value === 'draft-sync' ? null : value);
                 if (draftSyncPending.current) {
@@ -823,29 +880,35 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
             });
         }, 360);
         return () => window.clearTimeout(timer);
-    }, [cart, canPriceOverride, customerId, customerMode, documentDiscountMode, documentDiscountReason, documentDiscountValue, draftSyncEpoch, editPickup, keyFor, manualPrices, note, order, policy, prices, warehouseId]);
+    }, [cart, canPriceOverride, customerId, customerMode, documentDiscountMode, documentDiscountReason, documentDiscountValue, draftSyncEpoch, editPickup, keyFor, manualPrices, note, order, policy, prices, warehouseId, currentDraftFingerprint]);
     useEffect(() => {
         if (!order?.id || order.status !== 'confirmed' || editPickup)
             return;
         const controller = new AbortController();
         setAvailabilityLoading(true);
+        setAvailabilityError(null);
         void api<Availability[]>(`/api/retail/orders/${order.id}/availability`, { signal: controller.signal }).then((rows) => {
-            if (!controller.signal.aborted)
-                setAvailable(rows);
+            if (controller.signal.aborted) return;
+            const expected = new Set(linesOf(order).map((line) => line.variantId));
+            if (!Array.isArray(rows) || [...expected].some((id) => !rows.some((row) => row.variantId === id))) {
+                throw new Error('Kết quả kiểm tra tồn chưa đầy đủ.');
+            }
+            setAvailable(rows);
         }).catch((reason: unknown) => {
             if (!controller.signal.aborted)
-                setError(errorMessage(reason, 'Chưa thể tính Khả dụng.'));
+                setAvailabilityError(errorMessage(reason, 'Không kiểm tra được Khả dụng.'));
         }).finally(() => {
             if (!controller.signal.aborted)
                 setAvailabilityLoading(false);
         });
         return () => controller.abort();
-    }, [editPickup, order?.id, order?.status]);
+    }, [editPickup, order?.id, order?.status, availabilityRetryEpoch]);
     useEffect(() => {
         if (!cart.length || !warehouseId || (order && order.status !== 'draft' && !editPickup))
             return;
         const controller = new AbortController();
         setAvailabilityLoading(true);
+        setAvailabilityError(null);
         setAvailable([]);
         const timer = window.setTimeout(() => {
             const variantIds = cart.map((line) => line.id);
@@ -856,11 +919,14 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ ...(salesOrderId ? { salesOrderId } : {}), warehouseId, variantIds }),
             }).then((rows) => {
-                if (!controller.signal.aborted)
-                    setAvailable(rows);
+                if (controller.signal.aborted) return;
+                if (!Array.isArray(rows) || variantIds.some((id) => !rows.some((row) => row.variantId === id))) {
+                    throw new Error('Kết quả kiểm tra tồn chưa đầy đủ.');
+                }
+                setAvailable(rows);
             }).catch((reason: unknown) => {
                 if (!controller.signal.aborted)
-                    setError(errorMessage(reason, 'Chưa thể tính Khả dụng.'));
+                    setAvailabilityError(errorMessage(reason, 'Không kiểm tra được Khả dụng.'));
             }).finally(() => {
                 if (!controller.signal.aborted)
                     setAvailabilityLoading(false);
@@ -870,7 +936,7 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
             controller.abort();
             window.clearTimeout(timer);
         };
-    }, [cart, editPickup, order?.id, order?.status, order?.warehouseId, warehouseId]);
+    }, [cart, editPickup, order?.id, order?.status, order?.warehouseId, warehouseId, availabilityRetryEpoch]);
     useEffect(() => {
         const lines = linesOf(order);
         if (!lines.length)
@@ -931,7 +997,12 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
     const editingDraft = editable && (!order || order.status === 'draft' || editPickup);
     const total = order ? Number(order.total || 0) : 0;
     const cartTotal = cart.reduce((sum, line) => sum + effectiveLineTotal(line), 0);
-    const syncedDraft = Boolean(order?.status === 'draft' && lastDraftFingerprint.current);
+    const syncedDraft = Boolean(order?.status === 'draft'
+        && lastDraftFingerprint.current
+        && lastDraftFingerprint.current === currentDraftFingerprint
+        && draftSyncInFlight.current === null
+        && !draftSyncPending.current
+        && isSavedCartCurrent(order));
     const totalLabel = editingDraft
         ? money.format(cart.length ? (syncedDraft ? total : cartTotal) : 0)
         : money.format(total);
@@ -978,7 +1049,12 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
     const recentOrders = [...orders].sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt)).slice(0, 4);
     const stockRows = editingDraft ? cart.map((line) => ({ variantId: line.id, quantity: line.quantity, name: line.productName })) : lineItems.map((line) => ({ variantId: line.variantId, quantity: line.quantity, name: line.itemName }));
     const shortageRows = stockRows.filter((line) => isShortage(byVariant.get(line.variantId), line.quantity));
-    const stockGatePending = Boolean(order && !['closed', 'cancelled'].includes(order.status) && (availabilityLoading || stockRows.some((line) => !byVariant.has(line.variantId))));
+    const stockGatePending = Boolean(order && !['closed', 'cancelled'].includes(order.status)
+        && (availabilityLoading || (!availabilityError && stockRows.some((line) => !byVariant.has(line.variantId))));
+    const stockGateError = Boolean(order && !['closed', 'cancelled'].includes(order.status) && availabilityError);
+    const pricePreviewFailed = cart.some((line) =>
+        priceFailures[line.id]?.inputKey === priceInputKey(line.id, line.quantity)
+        && priceFailures[line.id]?.code === 'PRICE_PREVIEW_FAILED');
     const stockBlocked = shortageRows.length > 0 && !canNegativeStockIssue;
     const stockGateText = shortageRows.length > 0
         ? canNegativeStockIssue
@@ -1052,6 +1128,7 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
         });
     }
     function removeCartLine(id: string) {
+        if (checkoutLockRef.current) return;
         lastDraftFingerprint.current = '';
         clearQuantityInput(id);
         setSelected((current) => { const next = new Map(current); next.delete(id); return next; });
@@ -1060,6 +1137,7 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
         setCart((rows) => rows.filter((row) => row.id !== id));
     }
     function updateCartQuantity(id: string, value: string, fractional: boolean | null) {
+        if (checkoutLockRef.current) return;
         const raw = String(value ?? '').trim().replace(',', '.');
         setQuantityInputs((current) => ({ ...current, [id]: raw }));
         if (!raw)
@@ -1071,6 +1149,7 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
         setCart((rows) => rows.map((row) => row.id === id ? { ...row, quantity: normalized } : row));
     }
     function stepCartQuantity(id: string, value: string, fractional: boolean | null) {
+        if (checkoutLockRef.current) return;
         const normalized = normalizedQuantity(value, fractional);
         clearQuantityInput(id);
         if (normalized === '0')
@@ -1079,12 +1158,14 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
         setCart((rows) => rows.map((row) => row.id === id ? { ...row, quantity: normalized } : row));
     }
     function setMultiSelectMode(enabled: boolean) {
+        if (checkoutLockRef.current) return;
         multiSelectRef.current = enabled;
         setMultiSelect(enabled);
         if (!enabled)
             setSelected((current) => new Map([...current.entries()].slice(0, 1)));
     }
     function toggleProduct(product: Product) {
+        if (checkoutLockRef.current) return;
         setSelected((current) => {
             const row = current.get(product.id);
             if (multiSelectRef.current) {
@@ -1103,7 +1184,7 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
             return new Map([[product.id, { product, quantity: '1' }]]);
         });
     }
-    function adjustSelected(product: Product, direction: -1 | 1) { setSelected((current) => { const next = new Map(current); const row = next.get(product.id); if (!row && direction > 0)
+    function adjustSelected(product: Product, direction: -1 | 1) { if (checkoutLockRef.current) return; setSelected((current) => { const next = new Map(current); const row = next.get(product.id); if (!row && direction > 0)
         next.set(product.id, { product, quantity: '1' });
     else if (row) {
         const value = Number(row.quantity) + direction;
@@ -1113,6 +1194,7 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
             next.set(product.id, { ...row, quantity: normalizedQuantity(String(value), product.allowsFractional) });
     } return next; }); }
     function addSelected() {
+        if (checkoutLockRef.current) return;
         lastDraftFingerprint.current = '';
         setCart((current) => {
             const next = new Map(current.map((line) => [line.id, line]));
@@ -1129,6 +1211,7 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
         setNotice('Đã thêm sản phẩm vào đơn. Khả dụng sẽ cập nhật theo kho đang chọn.');
     }
     function chooseWalkInCustomer() {
+        if (checkoutLockRef.current) return;
         lastDraftFingerprint.current = '';
         setCustomerMode('WALK_IN');
         setCustomerId('');
@@ -1139,6 +1222,7 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
         setCustomerPickerOpen(false);
     }
     function chooseCompanyCustomer(customer: Customer) {
+        if (checkoutLockRef.current) return;
         lastDraftFingerprint.current = '';
         setCustomerMode('EXISTING');
         setCustomerId(customer.id);
@@ -1182,6 +1266,10 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
         setNoteOpen(false);
     }
     function assertStockGate(actionLabel: string) {
+        if (stockGateError) {
+            setError(`${availabilityError} Hãy bấm Thử lại tồn kho trước khi ${actionLabel.toLowerCase()}.`);
+            return false;
+        }
         if (stockGatePending) {
             setError(`Chưa thể ${actionLabel.toLowerCase()}. Hệ thống đang kiểm tra Khả dụng.`);
             return false;
@@ -1311,7 +1399,7 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
         }
     }
     async function settle(amount = paid) {
-        if (!order)
+        if (!order || checkoutLockRef.current)
             return;
         setBusy('settlement');
         setError(null);
@@ -1328,13 +1416,24 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
         }
         catch (reason) {
             setError(errorMessage(reason, 'Chưa thể ghi nhận thanh toán.'));
+            void api<Order>(`/api/retail/orders/${order.id}`).then((next) => {
+                setOrder(next);
+                if (next.settlementStatus === 'paid') {
+                    setPayment(false);
+                    setNotice('Đã xác minh tiền thu đã được ghi nhận trên Công Ty.');
+                }
+            }).catch(() => setNotice('Chưa xác minh được tiền thu; hãy mở lại đơn trước khi bấm thanh toán tiếp.'));
         }
         finally {
             setBusy(null);
         }
     }
     async function checkout() {
-        if (!order) return;
+        if (!order || checkoutLockRef.current || busy !== null) return;
+        if (order.status === 'draft' && (!syncedDraft || draftSaveError)) {
+            setError('Đơn chưa lưu xong mọi sản phẩm. Hãy lưu nháp thành công trước khi thanh toán.');
+            return;
+        }
         if ((order.status === 'draft' || order.status === 'confirmed') && !assertStockGate('Thanh toán')) return;
         if (order.status === 'closed') {
             if (order.settlementStatus !== 'paid') {
@@ -1344,24 +1443,37 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
             return;
         }
         if (order.status === 'cancelled') return;
+        checkoutLockRef.current = true;
         setBusy('checkout');
         setError(null);
         try {
             let current = order;
             if (current.status === 'draft') {
+                setCheckoutStage('Đang kiểm tra đơn đã lưu…');
+                // Persisted lines, not the in-memory cart, are the only source
+                // we allow through canonical confirmation.
+                const latest = await api<Order>(`/api/retail/orders/${current.id}`);
+                if (!syncedDraft || latest.status !== 'draft'
+                    || latest.revision !== current.revision || !isSavedCartCurrent(latest)) {
+                    throw new Error('Đơn đã thay đổi hoặc chưa lưu đủ SKU/số lượng/giá. Chưa chốt đơn; hãy kiểm tra và lưu lại.');
+                }
+                current = latest;
+                setCheckoutStage('Đang chốt đơn…');
                 const intent = 'current-order';
                 current = await api<Order>(`/api/retail/orders/${current.id}/confirm`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Idempotency-Key': operationKeyFor('checkout-confirm', intent) },
-                    body: JSON.stringify({}),
+                    body: JSON.stringify({ expectedRevision: latest.revision }),
                 });
                 forgetOperationKey('checkout-confirm', intent);
                 setOrder(current);
                 setCart([]);
+                setQuantityInputs({});
                 setManualPrices({});
             }
             if (current.status === 'confirmed' && !STOCK_ISSUED_FULFILLMENT_STATUSES.has(current.fulfillmentStatus)) {
                 const intent = 'current-order';
+                setCheckoutStage('Đang xuất kho…');
                 const latest = await api<Order>(`/api/retail/orders/${current.id}`);
                 current = await api<Order>(`/api/retail/orders/${latest.id}/issue-stock`, {
                     method: 'POST',
@@ -1373,6 +1485,7 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
             }
             if (current.status === 'confirmed' && STOCK_ISSUED_FULFILLMENT_STATUSES.has(current.fulfillmentStatus)) {
                 const intent = 'current-order';
+                setCheckoutStage('Đang hoàn thành đơn…');
                 current = await api<Order>(`/api/retail/orders/${current.id}/complete`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Idempotency-Key': operationKeyFor('checkout-complete', intent) },
@@ -1387,18 +1500,32 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
                 setPayment(true);
             }
         } catch (reason) {
-            if (isRevisionConflict(reason) && order?.id) {
-                void api<Order>(`/api/retail/orders/${order.id}`).then((next) => {
-                    setOrder(next);
-                    setNotice('Đơn vừa thay đổi. Đã nạp dữ liệu mới nhất để kiểm tra lại.');
-                }).catch(() => undefined);
-            }
             setError(errorMessage(reason, 'Chưa thể chuyển sang thanh toán.'));
+            // A timed-out mutation may have committed. Read the server once;
+            // never repeat stock, settlement, or completion blindly.
+            try {
+                const latest = await api<Order>(`/api/retail/orders/${order.id}`);
+                setOrder(latest);
+                if (latest.status !== 'draft') {
+                    setCart([]);
+                    setQuantityInputs({});
+                    setManualPrices({});
+                }
+                if (latest.status !== order.status || isRevisionConflict(reason)) {
+                    setNotice('Đã tải trạng thái đơn thực tế từ Công Ty. Hãy kiểm tra trước khi bấm tiếp.');
+                }
+            } catch {
+                setNotice('Chưa xác minh được trạng thái sau lỗi kết nối. Hãy mở lại đơn trong danh sách trước khi thao tác tiếp.');
+            }
         } finally {
+            checkoutLockRef.current = false;
+            setCheckoutStage(null);
             setBusy(null);
         }
     }
     async function openOrder(id: string, options: { resetScroll?: boolean } = {}) {
+        if (checkoutLockRef.current) return;
+        entrySessionRef.current += 1;
         setError(null);
         try {
             const next = await api<Order>(`/api/retail/orders/${id}`);
@@ -1431,9 +1558,9 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
     function openNotificationOrder(id: string) {
         return openOrder(id, { resetScroll: true });
     }
-    function beginPickupEdit() { if (!order)
-        return; setCart(cartFromOrder(order)); setQuantityInputs({}); setManualPrices(manualPricesFromOrder(order)); setCustomerMode(order.customerMode); setCustomerId(order.customerId); setCustomerName(order.customerMode === 'EXISTING' ? order.customerName : 'Khách lẻ'); setWarehouseId(order.warehouseId); setPolicy(order.collectionPolicy); setNote(order.note ?? ''); setDocumentDiscountMode(order.documentDiscountMode ?? 'NONE'); setDocumentDiscountValue(order.documentDiscountValue ?? '0'); setDocumentDiscountReason(order.documentDiscountReason ?? ''); setEditPickup(true); setNotice('Có thể sửa đơn đến trước khi xuất kho.'); }
-    function resetEntry() { setOrder(null); setCart([]); setQuantityInputs({}); setPrices({}); setPriceFailures({}); setManualPrices({}); setEditPickup(false); setAvailable([]); setCustomerMode('WALK_IN'); setCustomerId(''); setCustomerName('Khách lẻ'); setNote(''); setDocumentDiscountMode('NONE'); setDocumentDiscountValue('0'); setDocumentDiscountReason(''); setNotice(null); setError(null); setActiveTab('entry'); lastDraftFingerprint.current = ''; }
+    function beginPickupEdit() { if (!order || checkoutLockRef.current)
+        return; entrySessionRef.current += 1; setCart(cartFromOrder(order)); setQuantityInputs({}); setManualPrices(manualPricesFromOrder(order)); setCustomerMode(order.customerMode); setCustomerId(order.customerId); setCustomerName(order.customerMode === 'EXISTING' ? order.customerName : 'Khách lẻ'); setWarehouseId(order.warehouseId); setPolicy(order.collectionPolicy); setNote(order.note ?? ''); setDocumentDiscountMode(order.documentDiscountMode ?? 'NONE'); setDocumentDiscountValue(order.documentDiscountValue ?? '0'); setDocumentDiscountReason(order.documentDiscountReason ?? ''); setEditPickup(true); setNotice('Có thể sửa đơn đến trước khi xuất kho.'); }
+    function resetEntry() { if (checkoutLockRef.current) return; entrySessionRef.current += 1; setDraftSaveError(null); setAvailabilityError(null); setOrder(null); setCart([]); setQuantityInputs({}); setPrices({}); setPriceFailures({}); setManualPrices({}); setEditPickup(false); setAvailable([]); setCustomerMode('WALK_IN'); setCustomerId(''); setCustomerName('Khách lẻ'); setNote(''); setDocumentDiscountMode('NONE'); setDocumentDiscountValue('0'); setDocumentDiscountReason(''); setNotice(null); setError(null); setActiveTab('entry'); lastDraftFingerprint.current = ''; }
     function applyTemplate(template: PrintTemplate) {
         setPrintTemplate(template);
         setTemplateHeading(template.heading ?? '');
@@ -1552,9 +1679,24 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
         }
     }
     async function openPrintPreview() {
-        if (!order)
+        if (!order || checkoutLockRef.current) return;
+        if (order.status === 'draft' && !syncedDraft) {
+            setError('Đơn chưa lưu đủ sản phẩm. Hãy kiểm tra việc lưu nháp trước khi in phiếu.');
             return;
-        await prepareOrderPrint(order);
+        }
+        setBusy('print-current');
+        setError(null);
+        try {
+            const latest = await api<Order>(`/api/retail/orders/${order.id}`);
+            if (latest.status === 'draft' && (!isSavedCartCurrent(latest) || latest.revision !== order.revision)) {
+                throw new Error('Phiếu chưa khớp danh sách hàng đã lưu. Hãy thử lưu nháp và mở in lại.');
+            }
+            await prepareOrderPrint(latest);
+        } catch (reason) {
+            setError(errorMessage(reason, 'Không tải được đơn đã lưu để in.'));
+        } finally {
+            setBusy((current) => current === 'print-current' ? null : current);
+        }
     }
     async function printOrderFromHistory(id: string) {
         const busyKey = `list-print:${id}`;
@@ -1761,29 +1903,34 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
         {order ? <div className="order-identity"><span className="order-document">▤</span><div><p className="section-kicker">ĐƠN BÁN HÀNG</p><h2>{order.number ?? 'Đơn đang lập'}</h2><p>{orderLabel(order)} · {dateLabel(order.updatedAt)}</p></div><div className="order-badges"><span className="mode-pill">{order.salesChannelName ?? order.salesChannelCode ?? 'Retail'}</span><span className="mode-pill">Giao tại quầy</span></div></div> : null}
         {order && order.status !== 'cancelled' ? <ol className="order-timeline">{['Lên đơn', 'Đã chốt', 'Xuất kho', 'Hoàn thành'].map((step, index) => <li className={index <= stage ? 'complete' : ''} key={step}><span>{index < stage ? '✓' : index + 1}</span><strong>{step}</strong></li>)}</ol> : null}
         {editable ? <>
-          <button className="pos-product-search-trigger" type="button" onClick={() => { setSelected(new Map()); setMultiSelectMode(true); setSearch(''); setOpen(true); }}>
+          <button className="pos-product-search-trigger" type="button" disabled={busy === 'checkout'} onClick={() => { setSelected(new Map()); setMultiSelectMode(true); setSearch(''); setOpen(true); }}>
             <span aria-hidden="true">⌕</span><strong>Tìm và thêm sản phẩm vào đơn</strong><b aria-hidden="true">▦</b>
           </button>
           <div className="pos-option-list">
-            <button className="pos-option-row" type="button" disabled={!boot?.canBrowseCompanyCustomers} onClick={() => { setCustomerSearch(''); setCustomerResults([]); setCustomerPickerOpen(true); }}>
+            <button className="pos-option-row" type="button" disabled={!boot?.canBrowseCompanyCustomers || busy === 'checkout'} onClick={() => { setCustomerSearch(''); setCustomerResults([]); setCustomerPickerOpen(true); }}>
               <span className="pos-option-icon" aria-hidden="true">♙</span><span><small>Khách hàng</small><strong>{currentCustomerName}</strong></span>{boot?.canBrowseCompanyCustomers ? <b aria-hidden="true">›</b> : <em>Khách lẻ</em>}
             </button>
-            {(boot?.warehouses.length ?? 0) > 1 ? <button className="pos-option-row" type="button" onClick={() => setWarehousePickerOpen(true)}>
+            {(boot?.warehouses.length ?? 0) > 1 ? <button className="pos-option-row" type="button" disabled={busy === 'checkout'} onClick={() => setWarehousePickerOpen(true)}>
               <span className="pos-option-icon" aria-hidden="true">⌂</span><span><small>Kho bán</small><strong>{selectedWarehouseName}</strong></span><b aria-hidden="true">›</b>
             </button> : null}
             <button className="pos-option-row" type="button" disabled={!cart.length} onClick={() => setPriceDetailsOpen(true)}>
               <span className="pos-option-icon" aria-hidden="true">◇</span><span><small>Giá bán</small><strong>{customerMode === 'EXISTING' ? 'Theo khách hàng' : 'Giá bán lẻ'}</strong></span><b aria-hidden="true">›</b>
             </button>
-            <button className="pos-option-row" type="button" disabled={!canDiscountOverride} onClick={() => { setDiscountDraftMode(documentDiscountMode === 'NONE' ? 'TOTAL_AMOUNT' : documentDiscountMode); setDiscountDraftValue(documentDiscountMode === 'NONE' ? '' : documentDiscountValue); setDiscountDraftReason(documentDiscountReason); setDiscountOpen(true); }}>
+            <button className="pos-option-row" type="button" disabled={!canDiscountOverride || busy === 'checkout'} onClick={() => { setDiscountDraftMode(documentDiscountMode === 'NONE' ? 'TOTAL_AMOUNT' : documentDiscountMode); setDiscountDraftValue(documentDiscountMode === 'NONE' ? '' : documentDiscountValue); setDiscountDraftReason(documentDiscountReason); setDiscountOpen(true); }}>
               <span className="pos-option-icon" aria-hidden="true">%</span><span><small>Chiết khấu</small><strong>{discountDisplayLabel}</strong></span>{canDiscountOverride ? <b aria-hidden="true">›</b> : <em>Chỉ xem</em>}
             </button>
-            <button className="pos-option-row" type="button" onClick={() => { setNoteDraft(note); setNoteOpen(true); }}>
+            <button className="pos-option-row" type="button" disabled={busy === 'checkout'} onClick={() => { setNoteDraft(note); setNoteOpen(true); }}>
               <span className="pos-option-icon" aria-hidden="true">✎</span><span><small>Ghi chú</small><strong>{note || 'Thêm ghi chú'}</strong></span><b aria-hidden="true">›</b>
             </button>
           </div>
         </> : <div className="order-facts"><span>Khách hàng <strong>{order?.customerName}</strong></span><span>Kho bán <strong>{order?.warehouseName}</strong></span>{order?.note ? <span>Ghi chú <strong>{order.note}</strong></span> : null}</div>}
         {editPickup ? <p className="edit-hint">Đơn đang được điều chỉnh. Lưu thay đổi sẽ giữ trạng thái Đã chốt.</p> : null}
         {stockGateText ? <p className={`stock-gate ${stockBlocked ? 'blocked' : ''}`} role={stockBlocked ? 'alert' : 'status'}>{stockGateText}</p> : null}
+        {stockGateError ? <p className="stock-gate blocked" role="alert">{availabilityError} <button type="button" onClick={retryAvailability}>Thử lại tồn kho</button></p> : null}
+        {pricePreviewFailed ? <p className="stock-gate blocked" role="alert">Không tải được giá bán. <button type="button" onClick={retryPriceChecks}>Thử lại giá bán</button></p> : null}
+        {draftSaveError && editingDraft ? <p className="stock-gate blocked" role="alert">{draftSaveError} <button type="button" onClick={retryDraftSave}>Thử lưu lại</button></p> : null}
+        {checkoutStage ? <p className="stock-gate" role="status">{checkoutStage}</p> : null}
+        {order?.status === 'draft' && cart.length && !syncedDraft && !draftSaveError ? <p className="stock-gate" role="status">Đơn đang cập nhật; chưa thể thanh toán hoặc in cho tới khi lưu đủ sản phẩm.</p> : null}
         <div className="cart-list" aria-live="polite">
           {order && !editingDraft ? lineItems.map((line) => {
                 const availability = byVariant.get(line.variantId);
@@ -1794,7 +1941,7 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
                 const preview = prices[line.id]?.inputKey === inputKey ? prices[line.id] : null;
                 const priceFailure = priceFailures[line.id]?.inputKey === inputKey ? priceFailures[line.id] : null;
                 const manualPrice = manualPriceFor(line.id);
-                return <article className={`cart-row editable compact-product-card ${isShortage(availability, line.quantity) ? 'stock-shortage' : ''}`} key={line.id}>{productPicture(line.imageKey ?? line.productCode, line.productName)}<div className="line-main"><strong>{line.productName}</strong><span>SKU: {line.sku}</span><em>{displayUnit(line.unitName, line.unitCode)}</em><small>Khả dụng {order ? availabilityLabel(availability, availabilityLoading) : 'Đang chuẩn bị'}</small>{isShortage(availability, line.quantity) ? <small className="shortage-text">Cần {formatQuantity(line.quantity)} · hiện có {availabilityLabel(availability)}</small> : null}</div><div className="quantity-stepper"><button type="button" aria-label={`Giảm ${line.productName}`} onClick={() => stepCartQuantity(line.id, String(Number(line.quantity) - 1), line.allowsFractional)}>−</button><input inputMode="decimal" aria-label={`Nhập số lượng ${line.productName}`} value={quantityInputs[line.id] ?? line.quantity} onFocus={(event) => event.currentTarget.select()} onChange={(event) => updateCartQuantity(line.id, event.target.value, line.allowsFractional)} onBlur={() => clearQuantityInput(line.id)}/><button type="button" aria-label={`Tăng ${line.productName}`} onClick={() => stepCartQuantity(line.id, String(Number(line.quantity) + 1), line.allowsFractional)}>+</button></div><dl><div><dt>Đơn giá</dt><dd>{canPriceOverride ? <><input inputMode="numeric" aria-label={`Đơn giá ${line.sku}`} value={manualPrice || preview?.finalUnitPriceMinor || ''} placeholder={priceFailure ? 'Nhập giá' : 'Nhập giá'} onFocus={(event) => event.currentTarget.select()} onChange={(event) => { lastDraftFingerprint.current = ''; setManualPrices((current) => ({ ...current, [line.id]: normalizeVndInput(event.target.value) })); }}/>{manualPrice ? <small>Giá đã sửa</small> : priceFailure ? <small>Chưa có giá Công Ty</small> : null}</> : preview ? money.format(Number(preview.finalUnitPriceMinor)) : priceFailure ? 'Chưa có giá' : 'Đang tính'}</dd></div><div><dt>Thành tiền</dt><dd>{preview || manualPrice ? money.format(effectiveLineTotal(line)) : '—'}</dd></div></dl><button className="remove-line" type="button" aria-label={`Xóa ${line.productName} khỏi đơn`} onClick={() => removeCartLine(line.id)}>Xóa</button></article>;
+                return <article className={`cart-row editable compact-product-card ${isShortage(availability, line.quantity) ? 'stock-shortage' : ''}`} key={line.id}>{productPicture(line.imageKey ?? line.productCode, line.productName)}<div className="line-main"><strong>{line.productName}</strong><span>SKU: {line.sku}</span><em>{displayUnit(line.unitName, line.unitCode)}</em><small>Khả dụng {order ? availabilityLabel(availability, availabilityLoading) : 'Đang chuẩn bị'}</small>{isShortage(availability, line.quantity) ? <small className="shortage-text">Cần {formatQuantity(line.quantity)} · hiện có {availabilityLabel(availability)}</small> : null}</div><div className="quantity-stepper"><button type="button" aria-label={`Giảm ${line.productName}`} onClick={() => stepCartQuantity(line.id, String(Number(line.quantity) - 1), line.allowsFractional)}>−</button><input inputMode="decimal" disabled={busy === 'checkout'} aria-label={`Nhập số lượng ${line.productName}`} value={quantityInputs[line.id] ?? line.quantity} onFocus={(event) => event.currentTarget.select()} onChange={(event) => updateCartQuantity(line.id, event.target.value, line.allowsFractional)} onBlur={() => clearQuantityInput(line.id)}/><button type="button" aria-label={`Tăng ${line.productName}`} onClick={() => stepCartQuantity(line.id, String(Number(line.quantity) + 1), line.allowsFractional)}>+</button></div><dl><div><dt>Đơn giá</dt><dd>{canPriceOverride ? <><input inputMode="numeric" disabled={busy === 'checkout'} aria-label={`Đơn giá ${line.sku}`} value={manualPrice || preview?.finalUnitPriceMinor || ''} placeholder={priceFailure ? 'Nhập giá' : 'Nhập giá'} onFocus={(event) => event.currentTarget.select()} onChange={(event) => { if (checkoutLockRef.current) return; lastDraftFingerprint.current = ''; setManualPrices((current) => ({ ...current, [line.id]: normalizeVndInput(event.target.value) })); }}/>{manualPrice ? <small>Giá đã sửa</small> : priceFailure ? <small>Chưa có giá Công Ty</small> : null}</> : preview ? money.format(Number(preview.finalUnitPriceMinor)) : priceFailure ? 'Chưa có giá' : 'Đang tính'}</dd></div><div><dt>Thành tiền</dt><dd>{preview || manualPrice ? money.format(effectiveLineTotal(line)) : '—'}</dd></div></dl><button className="remove-line" type="button" disabled={busy === 'checkout'} aria-label={`Xóa ${line.productName} khỏi đơn`} onClick={() => removeCartLine(line.id)}>Xóa</button></article>;
             })}
           {editingDraft && !cart.length ? <p className="empty-cart">Chưa có sản phẩm. Chọn sản phẩm để tiếp tục.</p> : null}
         </div>
@@ -1806,12 +1953,12 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
         </footer>
       </section>
       <section className="order-action-bar pos-checkout-bar" aria-label="Thao tác đơn">
-        {editPickup ? <button className="primary-action" type="button" disabled={busy !== null || stockBlocked || stockGatePending || !cart.length} onClick={() => void savePickupEdit()}>{busy === 'save' ? 'Đang lưu…' : 'Lưu thay đổi'}</button> : order ? <>
+        {editPickup ? <button className="primary-action" type="button" disabled={busy !== null || stockBlocked || stockGatePending || stockGateError || !cart.length} onClick={() => void savePickupEdit()}>{busy === 'save' ? 'Đang lưu…' : 'Lưu thay đổi'}</button> : order ? <>
           {canEditPickup ? <button className="secondary-action" type="button" disabled={busy !== null} onClick={beginPickupEdit}>Sửa đơn</button> : null}
           {canCancelCurrentOrder ? <button className="retail-cancel-action" type="button" disabled={busy !== null} onClick={openCancelDialog}>Hủy đơn</button> : null}
-          <button className="secondary-action" type="button" onClick={() => void openPrintPreview()}>In phiếu</button>
-          <button className="primary-action pos-checkout-action" type="button" disabled={busy !== null || order.status === 'cancelled' || (order.status === 'closed' && order.settlementStatus === 'paid') || (editingDraft && !cart.length) || stockBlocked || stockGatePending} onClick={() => void checkout()}>{busy === 'checkout' ? 'Đang xử lý…' : order.status === 'cancelled' ? 'Đơn đã hủy' : order.status === 'closed' && order.settlementStatus === 'paid' ? 'Đã thanh toán' : 'Thanh toán'}</button>
-        </> : cart.length ? <button className="primary-action pos-checkout-action" type="button" disabled>Đang chuẩn bị đơn…</button> : <button className="primary-action pos-checkout-action" type="button" disabled>Thanh toán</button>}
+          <button className="secondary-action" type="button" disabled={busy !== null || (order.status === 'draft' && !syncedDraft)} onClick={() => void openPrintPreview()}>{busy === 'print-current' ? 'Đang tải phiếu…' : 'In phiếu'}</button>
+          <button className="primary-action pos-checkout-action" type="button" disabled={busy !== null || order.status === 'cancelled' || (order.status === 'closed' && order.settlementStatus === 'paid') || (editingDraft && !cart.length) || (order.status === 'draft' && !syncedDraft) || Boolean(draftSaveError) || stockBlocked || stockGatePending || stockGateError || pricePreviewFailed} onClick={() => void checkout()}>{busy === 'checkout' ? 'Đang xử lý…' : order.status === 'draft' && !syncedDraft ? 'Đang lưu đơn…' : order.status === 'cancelled' ? 'Đơn đã hủy' : order.status === 'closed' && order.settlementStatus === 'paid' ? 'Đã thanh toán' : 'Thanh toán'}</button>
+        </> : cart.length ? <button className="primary-action pos-checkout-action" type="button" disabled>{pricePreviewFailed ? 'Chưa tải được giá' : 'Đang chuẩn bị đơn…'}</button> : <button className="primary-action pos-checkout-action" type="button" disabled>Thanh toán</button>}
       </section>
     </> : null}
 

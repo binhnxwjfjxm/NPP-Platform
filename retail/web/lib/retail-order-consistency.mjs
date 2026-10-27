@@ -37,7 +37,8 @@ export function draftMatchesRetailContext(order, context) {
   if (!order || order.status !== 'draft'
     || order.warehouseId !== context.warehouseId
     || order.customerMode !== context.customerMode
-    || String(order.customerId ?? '') !== String(context.customerId ?? '')) return false;
+    || (context.customerMode === 'EXISTING'
+      && String(order.customerId ?? '') !== String(context.customerId ?? ''))) return false;
   const mode = context.documentDiscountMode || 'NONE';
   if (String(order.documentDiscountMode ?? 'NONE') !== mode) return false;
   if (mode !== 'NONE' && decimal(order.documentDiscountValue ?? '0')

@@ -24,7 +24,12 @@ test('checkout draft is not trusted if customer, warehouse or discount context m
   assert.equal(draftMatchesRetailContext(context, context), true);
   assert.equal(draftMatchesRetailContext({ ...context, warehouseId: 'other' }, context), false);
   assert.equal(draftMatchesRetailContext({ ...context, status: 'confirmed' }, context), false);
-  assert.equal(draftMatchesRetailContext({ ...context, customerId: 'other' }, context), false);
+  // Walk-in orders use the canonical Company walk-in customer, not the UI's
+  // intentionally empty customerId. Only named customers match by ID.
+  assert.equal(draftMatchesRetailContext({ ...context, customerId: 'other' }, context), true);
+  const named = { ...context, customerMode: 'EXISTING', customerId: 'c1' };
+  assert.equal(draftMatchesRetailContext(named, named), true);
+  assert.equal(draftMatchesRetailContext({ ...named, customerId: 'c2' }, named), false);
   assert.equal(draftMatchesRetailContext({ ...context, documentDiscountMode: 'PERCENT', documentDiscountValue: '5' }, context), false);
   const changed = { ...context, documentDiscountMode: 'PERCENT', documentDiscountValue: '5' };
   assert.equal(draftMatchesRetailContext(changed, changed), true);
@@ -40,4 +45,30 @@ test('Retail only posts a saved revision under canonical confirmation lock', asy
   assert.match(gateway, /expectedRevision: payload.expectedRevision \?\? null/);
   assert.match(legacy, /String\(loaded.order.revision\) !== expected/);
   assert.match(legacy, /forUpdate: true/);
+});
+
+test('Retail coalesces stale autosaves, checks all saved lines and never confirms old drafts', async () => {
+  const workspace = await readFile(new URL('../app/retail-workspace.tsx', import.meta.url), 'utf8');
+  assert.match(workspace, /lastDraftFingerprint.current === currentDraftFingerprint/);
+  assert.match(workspace, /draftSyncInFlight.current === null/);
+  assert.match(workspace, /isSavedCartCurrent\(order\)/);
+  assert.match(workspace, /if \(!isSavedCartCurrent\(next\)\)/);
+  assert.match(workspace, /entrySessionRef.current !== entrySession/);
+  assert.match(workspace, /latest.revision !== current.revision \|\| !isSavedCartCurrent\(latest\)/);
+  assert.match(workspace, /body: JSON.stringify\(\{ expectedRevision: latest.revision \}\)/);
+  assert.match(workspace, /checkoutLockRef.current = true/);
+  assert.match(workspace, /checkoutLockRef.current = false/);
+  assert.match(workspace, /setCheckoutStage\('Đang xuất kho…'\)/);
+  assert.match(workspace, /setDraftSaveError/);
+});
+test('Retail has bounded errors, explicit retries, and canonical print before opening receipt', async () => {
+  const workspace = await readFile(new URL('../app/retail-workspace.tsx', import.meta.url), 'utf8');
+  assert.match(workspace, /setAvailabilityError\(errorMessage\(/);
+  assert.match(workspace, /availabilityRetryEpoch/);
+  assert.match(workspace, /priceRetryEpoch/);
+  assert.match(workspace, /Thử lại tồn kho/);
+  assert.match(workspace, /Thử lại giá bán/);
+  assert.match(workspace, /Thử lưu lại/);
+  assert.match(workspace, /const latest = await api<Order>\(`\/api\/retail\/orders\/\$\{order.id\}`\);/);
+  assert.match(workspace, /await prepareOrderPrint\(latest\)/);
 });
