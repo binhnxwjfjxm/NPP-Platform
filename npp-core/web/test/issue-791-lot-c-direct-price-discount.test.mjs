@@ -32,3 +32,11 @@ test('Issue #791 Lô C keeps line discount independent from whole-order reason',
   assert.match(form, /estimate\.documentDiscountTotal > 0n && \(!canDiscountOverride \|\| !documentDiscountReason\.trim\(\)\)/);
   assert.doesNotMatch(form, /estimate\.discount > 0n && \(!canDiscountOverride \|\| !documentDiscountReason\.trim\(\)\)/);
 });
+
+test('Issue #791 reports precise invalid SKU rows rather than blocking a valid manual zero', async () => {
+  const form = await readFile(formPath, 'utf8');
+  assert.match(form, /line\.pricingErrorCode === 'BASE_PRICE_NOT_FOUND' && hasValidManualPrice\(line\)/);
+  assert.match(form, /focusLinePrice\(unresolvedPrices\[0\]\.line\.clientLineId\)/);
+  assert.match(form, /STT \$\{lines\.length - index\} \(SKU \$\{line\.sku\}\)/);
+  assert.match(form, /Đã nhận giá nhập tay/);
+});

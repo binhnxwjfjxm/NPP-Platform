@@ -1371,11 +1371,25 @@ export default function SalesOrderCommercialForm(props: Props) {
     if (lines.length === 0) return 'Đơn bán hàng phải có ít nhất một SKU';
     if (lines.some((line) => !parseScaled(line.quantity, false))) return 'Số lượng hàng hóa chưa hợp lệ';
     if (lines.some((line) => line.resolvingPrice)) return 'Hệ thống đang tính giá, hãy đợi hoàn tất';
-    if (lines.some((line) => {
+    // Price 0 explicitly entered by an authorized user is valid. A product
+    // without any price is not: identify the exact blocking rows, especially
+    // when the order contains many SKUs and its footer is sticky.
+    const unresolvedPrices = lines.flatMap((line, index) => {
       if (!line.priceError && (line.pricingFingerprint
-        || (props.mode === 'manual-edit' && savedLineIds.has(line.clientLineId)))) return false;
-      return line.pricingErrorCode !== 'BASE_PRICE_NOT_FOUND' || !hasValidManualPrice(line);
-    })) return 'Có dòng hàng chưa có giá bán hợp lệ';
+        || (props.mode === 'manual-edit' && savedLineIds.has(line.clientLineId)))) return [];
+      if (line.pricingErrorCode === 'BASE_PRICE_NOT_FOUND' && hasValidManualPrice(line)) return [];
+      return [{ line, index }];
+    });
+    if (unresolvedPrices.length > 0) {
+      if (canPriceOverride) focusLinePrice(unresolvedPrices[0].line.clientLineId);
+      const sample = unresolvedPrices.slice(0, 3)
+        .map(({ line, index }) => `STT ${lines.length - index} (SKU ${line.sku})`)
+        .join(', ');
+      const remainder = unresolvedPrices.length > 3
+        ? ` và ${unresolvedPrices.length - 3} dòng khác`
+        : '';
+      return `Chưa có giá bán hợp lệ tại ${sample}${remainder}. Hãy nhập giá cho từng dòng; giá 0đ nhập tay vẫn được chấp nhận nếu có quyền sửa giá.`;
+    }
     if (lines.some((line) => line.manualUnitPriceMinor && (!canPriceOverride || !hasValidManualPrice(line)))) {
       return 'Đơn giá sửa trực tiếp cần đúng quyền và là số tiền VND hợp lệ';
     }
@@ -1745,7 +1759,9 @@ export default function SalesOrderCommercialForm(props: Props) {
                   </div>
                   {line.priceError && (
                     <small className={line.pricingErrorCode === 'BASE_PRICE_NOT_FOUND' ? styles.priceNotice : styles.ineligible}>
-                      {line.priceError}{line.pricingErrorCode === 'BASE_PRICE_NOT_FOUND' && hasValidManualPrice(line) ? ' Đang dùng giá nhập tay.' : ''}
+                      {line.pricingErrorCode === 'BASE_PRICE_NOT_FOUND' && hasValidManualPrice(line)
+                        ? `Đã nhận giá nhập tay ${vnd(line.manualUnitPriceMinor)}.`
+                        : line.priceError}
                     </small>
                   )}
                 </div>

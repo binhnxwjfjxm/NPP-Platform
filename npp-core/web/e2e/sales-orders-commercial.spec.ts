@@ -257,6 +257,61 @@ async function mockCommercialApis(page: Page) {
 }
 
 test.describe('Sales Order commercial controls', () => {
+  test('accepts an explicit zero when the base price is missing and identifies other unpriced SKUs', async ({ page, request }) => {
+    const warehouse = await createWarehouse(request, suffix());
+    await mockCommercialApis(page);
+    await page.route('**/api/sales-orders/price-preview', async (route) => {
+      const body = route.request().postDataJSON() as { variantId: string };
+      if (body.variantId !== variantId(1) && body.variantId !== variantId(2)) {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 422,
+        json: {
+          error: { code: 'BASE_PRICE_NOT_FOUND', message: 'Chưa có giá Công Ty', retryable: false },
+          requestId: 'e2e-missing-base-price',
+        },
+      });
+    });
+
+    await page.goto('/sales/sales-orders');
+    await page.getByRole('button', { name: 'Tạo đơn bán hàng', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Biểu mẫu đơn bán hàng' });
+    await dialog.getByRole('button', { name: 'Khách vãng lai', exact: true }).click();
+    await dialog.getByTestId('sales-channel-select').selectOption('11111111-1111-4111-8111-111111111111');
+    await dialog.getByLabel('Kho xuất *').selectOption(warehouse.id);
+
+    const search = dialog.getByPlaceholder('Tên sản phẩm, mã hàng, SKU hoặc barcode');
+    for (const sku of ['SKU-1', 'SKU-2']) {
+      await search.fill(sku);
+      await dialog.getByRole('listbox').locator('button').filter({ hasText: sku }).first().click();
+    }
+    const secondLine = dialog.getByTestId('sales-order-line-1');
+    const secondPrice = secondLine.getByLabel('Đơn giá SKU-2', { exact: true });
+    await expect(secondLine.getByText('Chưa có giá Công Ty', { exact: false })).toBeVisible();
+    await secondPrice.fill('0');
+    await expect(secondPrice).toHaveValue('0');
+    await expect(secondLine.getByText('Đã nhận giá nhập tay 0 đ.')).toBeVisible();
+
+    await dialog.getByRole('button', { name: 'Lưu nháp', exact: true }).click();
+    await expect(dialog.getByText(/Chưa có giá bán hợp lệ tại STT 1 \(SKU SKU-1\)/)).toBeVisible();
+    const firstPrice = dialog.getByLabel('Đơn giá SKU-1', { exact: true });
+    await expect(firstPrice).toBeFocused();
+    await firstPrice.fill('0');
+    await expect(dialog.getByTestId('sales-order-line-2').getByText('Đã nhận giá nhập tay 0 đ.')).toBeVisible();
+
+    const [saveRequest] = await Promise.all([
+      page.waitForRequest((req) => req.method() === 'POST' && new URL(req.url()).pathname === '/api/sales-orders'),
+      dialog.getByRole('button', { name: 'Lưu nháp', exact: true }).click(),
+    ]);
+    const saved = saveRequest.postDataJSON() as { lines: Array<{ variantId: string; manualUnitPriceMinor?: string }> };
+    expect(saved.lines).toHaveLength(2);
+    expect(saved.lines.every((line) => line.manualUnitPriceMinor === '0')).toBe(true);
+    expect(new Set(saved.lines.map((line) => line.variantId))).toEqual(new Set([variantId(1), variantId(2)]));
+    await expect(dialog).toBeHidden();
+  });
+
   test('scrolls the real modal body and completes permissioned save/confirm at 1366x768', async ({ page, request }) => {
     await page.setViewportSize({ width: 1366, height: 768 });
     const warehouse = await createWarehouse(request, suffix());
