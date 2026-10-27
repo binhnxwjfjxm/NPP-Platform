@@ -292,14 +292,14 @@ test.describe('Sales Order commercial controls', () => {
     await expect(secondLine.getByText('Chưa có giá Công Ty', { exact: false })).toBeVisible();
     await secondPrice.fill('0');
     await expect(secondPrice).toHaveValue('0');
-    await expect(secondLine.getByText('Đã nhận giá nhập tay 0 đ.')).toBeVisible();
+    await expect(secondLine.getByText('Đã nhận giá nhập tay 0 ₫.')).toBeVisible();
 
     await dialog.getByRole('button', { name: 'Lưu nháp', exact: true }).click();
     await expect(dialog.getByText(/Chưa có giá bán hợp lệ tại STT 1 \(SKU SKU-1\)/)).toBeVisible();
     const firstPrice = dialog.getByLabel('Đơn giá SKU-1', { exact: true });
     await expect(firstPrice).toBeFocused();
     await firstPrice.fill('0');
-    await expect(dialog.getByTestId('sales-order-line-2').getByText('Đã nhận giá nhập tay 0 đ.')).toBeVisible();
+    await expect(dialog.getByTestId('sales-order-line-2').getByText('Đã nhận giá nhập tay 0 ₫.')).toBeVisible();
 
     const [saveRequest] = await Promise.all([
       page.waitForRequest((req) => req.method() === 'POST' && new URL(req.url()).pathname === '/api/sales-orders'),

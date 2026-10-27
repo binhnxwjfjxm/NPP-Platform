@@ -41,7 +41,7 @@ test('Issue #736 makes missing Công Ty price a preview business state while pre
   assert.match(ui, /allowMissingBasePrice: true/);
   assert.match(ui, /resolutionStatus === 'MANUAL_PRICE_REQUIRED'/);
   assert.match(ui, /previewState\.code \?\? 'BASE_PRICE_NOT_FOUND'/);
-  assert.match(form, /line\.pricingErrorCode !== 'BASE_PRICE_NOT_FOUND' \|\| !hasValidManualPrice\(line\)/);
+  assert.match(form, /line\.pricingErrorCode === 'BASE_PRICE_NOT_FOUND' && hasValidManualPrice\(line\)/);
   assert.match(form, /!canPriceOverride \|\| !hasValidManualPrice\(line\)/);
   assert.match(form, /expectedSystemUnitPriceMinor: line\.systemUnitPriceMinor/);
   assert.match(form, /expectedPricingFingerprint: line\.pricingFingerprint/);
