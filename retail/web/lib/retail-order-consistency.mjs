@@ -33,6 +33,15 @@ export function checkoutLinesMatch(savedLines, cartLines, manualPrices = {}) {
   return true;
 }
 
+export function projectedRetailDraftTotal(subtotal, discountMode, discountValue) {
+  const base = Math.max(0, Number(subtotal) || 0);
+  const requested = Math.max(0, Number(discountValue) || 0);
+  const discount = discountMode === 'PERCENT'
+    ? Math.round(base * Math.min(100, requested) / 100)
+    : discountMode === 'TOTAL_AMOUNT' ? Math.round(requested) : 0;
+  return Math.max(0, base - Math.min(base, discount));
+}
+
 export function draftMatchesRetailContext(order, context) {
   if (!order || order.status !== 'draft'
     || order.warehouseId !== context.warehouseId

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { checkoutLinesMatch, draftMatchesRetailContext } from '../lib/retail-order-consistency.mjs';
+import { checkoutLinesMatch, draftMatchesRetailContext, projectedRetailDraftTotal } from '../lib/retail-order-consistency.mjs';
 
 const a = { variantId: 'a', quantity: '1.000000', taxMode: 'EXCLUSIVE', taxRate: '0.000000', priceSource: 'PRICE_ENGINE', unitPrice: '10000.000000' };
 const b = { variantId: 'b', quantity: '2.000000', taxMode: 'EXCLUSIVE', taxRate: '0', priceSource: 'PRICE_ENGINE', unitPrice: '3000' };
@@ -34,6 +34,19 @@ test('checkout draft is not trusted if customer, warehouse or discount context m
   const changed = { ...context, documentDiscountMode: 'PERCENT', documentDiscountValue: '5' };
   assert.equal(draftMatchesRetailContext(changed, changed), true);
   assert.equal(draftMatchesRetailContext({ ...changed, documentDiscountValue: '10' }, changed), false);
+});
+test('preview total reflects document discount while autosave is pending', () => {
+  assert.equal(projectedRetailDraftTotal(120000, 'NONE', '0'), 120000);
+  assert.equal(projectedRetailDraftTotal(120000, 'PERCENT', '10'), 108000);
+  assert.equal(projectedRetailDraftTotal(120000, 'TOTAL_AMOUNT', '10000'), 110000);
+  assert.equal(projectedRetailDraftTotal(120000, 'TOTAL_AMOUNT', '99999999'), 0);
+  assert.equal(projectedRetailDraftTotal(120000, 'PERCENT', '999'), 0);
+});
+test('Retail gateway restores discount from the canonical current version', async () => {
+  const gateway = await readFile(new URL('../app/api/retail/[...segments]/route.ts', import.meta.url), 'utf8');
+  assert.match(gateway, /documentDiscountMode: String\(current.documentDiscountMode/);
+  assert.match(gateway, /documentDiscountValue: String\(current.documentDiscountValue/);
+  assert.match(gateway, /documentDiscountReason: current.documentDiscountReason/);
 });
 test('Retail only posts a saved revision under canonical confirmation lock', async () => {
   const [route, gateway, legacy] = await Promise.all([

@@ -1,6 +1,6 @@
 'use client';
 import { createIdempotencyKey } from '@npp/contracts';
-import { checkoutLinesMatch, draftMatchesRetailContext } from '../lib/retail-order-consistency.mjs';
+import { checkoutLinesMatch, draftMatchesRetailContext, projectedRetailDraftTotal } from '../lib/retail-order-consistency.mjs';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { PrinterSettingsPanel } from './printer-settings-panel';
 import { captureReceiptPng, shareReceiptPng } from '../lib/retail-receipt-image';
@@ -997,6 +997,7 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
     const editingDraft = editable && (!order || order.status === 'draft' || editPickup);
     const total = order ? Number(order.total || 0) : 0;
     const cartTotal = cart.reduce((sum, line) => sum + effectiveLineTotal(line), 0);
+    const projectedGrandTotal = projectedRetailDraftTotal(cartTotal, documentDiscountMode, documentDiscountValue);
     const syncedDraft = Boolean(order?.status === 'draft'
         && lastDraftFingerprint.current
         && lastDraftFingerprint.current === currentDraftFingerprint
@@ -1004,7 +1005,7 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
         && !draftSyncPending.current
         && isSavedCartCurrent(order));
     const totalLabel = editingDraft
-        ? money.format(cart.length ? (syncedDraft ? total : cartTotal) : 0)
+        ? money.format(cart.length ? (syncedDraft ? total : projectedGrandTotal) : 0)
         : money.format(total);
     const subtotalLabel = editingDraft
         ? money.format(cart.length ? (syncedDraft ? Number(order?.subtotal ?? total) : cartTotal) : 0)
@@ -1050,7 +1051,7 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
     const stockRows = editingDraft ? cart.map((line) => ({ variantId: line.id, quantity: line.quantity, name: line.productName })) : lineItems.map((line) => ({ variantId: line.variantId, quantity: line.quantity, name: line.itemName }));
     const shortageRows = stockRows.filter((line) => isShortage(byVariant.get(line.variantId), line.quantity));
     const stockGatePending = Boolean(order && !['closed', 'cancelled'].includes(order.status)
-        && (availabilityLoading || (!availabilityError && stockRows.some((line) => !byVariant.has(line.variantId))));
+        && (availabilityLoading || (!availabilityError && stockRows.some((line) => !byVariant.has(line.variantId)))));
     const stockGateError = Boolean(order && !['closed', 'cancelled'].includes(order.status) && availabilityError);
     const pricePreviewFailed = cart.some((line) =>
         priceFailures[line.id]?.inputKey === priceInputKey(line.id, line.quantity)

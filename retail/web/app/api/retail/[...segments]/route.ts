@@ -19,6 +19,9 @@ type OrderVersionAmounts = {
   discountTotal?: unknown;
   taxTotal?: unknown;
   total?: unknown;
+  documentDiscountMode?: unknown;
+  documentDiscountValue?: unknown;
+  documentDiscountReason?: unknown;
   lines?: OrderLineShape[];
 };
 type OrderWithVersions = {
@@ -116,6 +119,11 @@ function normalizeOrderAmounts(data: unknown) {
     discountTotal: String(current.discountTotal ?? order.discountTotal ?? '0'),
     taxTotal: String(current.taxTotal ?? order.taxTotal ?? '0'),
     total: String(current.total ?? order.total ?? '0'),
+    // These fields belong to the active commercial version, not the aggregate
+    // order row. Loading from the wrong source resets Retail discount inputs.
+    documentDiscountMode: String(current.documentDiscountMode ?? order.documentDiscountMode ?? 'NONE'),
+    documentDiscountValue: String(current.documentDiscountValue ?? order.documentDiscountValue ?? '0'),
+    documentDiscountReason: current.documentDiscountReason ?? order.documentDiscountReason ?? null,
   };
 }
 function presentationOrderNumber(value: unknown) {

@@ -25,6 +25,11 @@ export declare function checkoutLinesMatch(
   cartLines: RetailCartLine[],
   manualPrices?: Record<string, string>,
 ): boolean;
+export declare function projectedRetailDraftTotal(
+  subtotal: number,
+  discountMode: 'NONE' | 'TOTAL_AMOUNT' | 'PERCENT',
+  discountValue: string,
+): number;
 export declare function draftMatchesRetailContext(
   order: RetailSavedOrderContext | null | undefined,
   context: {
