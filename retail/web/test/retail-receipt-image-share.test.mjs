@@ -34,7 +34,7 @@ test('Chụp nguyên phiếu đang hiển thị, không dựng lại mẫu in th
 test('Một nút chia sẻ ở màn xem trước; in hiện có và 2 điểm vào giữ nguyên', () => {
   assert.equal((workspace.match(/aria-label="Chia sẻ phiếu dưới dạng ảnh"/g) ?? []).length, 1);
   assert.match(workspace, /onClick=\{\(\) => void printNow\(\)\}>In<\/button>/);
-  assert.match(workspace, /onClick=\{\(\) => void openPrintPreview\(\)\}>In phiếu<\/button>/);
+  assert.match(workspace, /onClick=\{\(\) => void openPrintPreview\(\)\}>\{busy === 'print-current' \? 'Đang tải phiếu…' : 'In phiếu'\}<\/button>/);
   assert.match(workspace, /onClick=\{\(\) => void printOrderFromHistory\(item.id\)\}/);
   assert.match(workspace, /prepareOrderPrint\(sourceOrder\)/);
   assert.match(styles, /\.print-toolbar \.print-toolbar-actions/);

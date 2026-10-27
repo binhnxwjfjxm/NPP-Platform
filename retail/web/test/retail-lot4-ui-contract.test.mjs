@@ -67,6 +67,6 @@ test('autosave nháp Retail single-flight và coalesce thay đổi mới thay v�
 test('Khả dụng giỏ hàng tách khỏi revision autosave và ảnh không tải lại theo mỗi revision', async () => {
   const page = await readWorkspace();
   assert.match(page, /body: JSON\.stringify\(\{ \.\.\.\(salesOrderId \? \{ salesOrderId \} : \{\}\), warehouseId, variantIds \}\)/);
-  assert.match(page, /\}, \[cart, editPickup, order\?\.id, order\?\.status, order\?\.warehouseId, warehouseId\]\);/);
+  assert.match(page, /\}, \[cart, editPickup, order\?\.id, order\?\.status, order\?\.warehouseId, warehouseId, availabilityRetryEpoch\]\);/);
   assert.match(page, /\}, \[order\?\.id\]\);/);
 });

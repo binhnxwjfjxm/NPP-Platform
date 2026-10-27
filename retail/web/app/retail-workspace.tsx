@@ -1055,7 +1055,8 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
     const stockGateError = Boolean(order && !['closed', 'cancelled'].includes(order.status) && availabilityError);
     const pricePreviewFailed = cart.some((line) =>
         priceFailures[line.id]?.inputKey === priceInputKey(line.id, line.quantity)
-        && priceFailures[line.id]?.code === 'PRICE_PREVIEW_FAILED');
+        && priceFailures[line.id]?.code === 'PRICE_PREVIEW_FAILED'
+        && !/^\d+$/.test(canPriceOverride ? manualPriceFor(line.id) : ''));
     const stockBlocked = shortageRows.length > 0 && !canNegativeStockIssue;
     const stockGateText = shortageRows.length > 0
         ? canNegativeStockIssue
@@ -1649,6 +1650,12 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
         }
     }
     async function prepareOrderPrint(sourceOrder: Order) {
+        const currentVersion = sourceOrder.versions?.find(
+            (version) => String(version.versionNumber) === String(sourceOrder.currentVersionNumber),
+        );
+        if (!currentVersion || !Array.isArray(currentVersion.lines) || currentVersion.lines.length === 0) {
+            throw new Error('Không có dòng hàng của phiên bản đơn đã lưu; chưa thể in phiếu.');
+        }
         setError(null);
         setPrintSourceOrder(sourceOrder);
         try {

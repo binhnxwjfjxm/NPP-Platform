@@ -85,3 +85,13 @@ test('Retail has bounded errors, explicit retries, and canonical print before op
   assert.match(workspace, /const latest = await api<Order>\(`\/api\/retail\/orders\/\$\{order.id\}`\);/);
   assert.match(workspace, /await prepareOrderPrint\(latest\)/);
 });
+
+test('price preview outage does not block a valid authorized manual zero', async () => {
+  const workspace = await readFile(new URL('../app/retail-workspace.tsx', import.meta.url), 'utf8');
+  assert.match(workspace, /priceFailures\[line.id\]\?\.code === 'PRICE_PREVIEW_FAILED'[\s\S]*?!\/\^\\d\+\$\/\.test\(canPriceOverride \? manualPriceFor/);
+});
+test('receipt refuses a missing current version instead of silently printing an old version', async () => {
+  const workspace = await readFile(new URL('../app/retail-workspace.tsx', import.meta.url), 'utf8');
+  assert.match(workspace, /currentVersion = sourceOrder.versions\?\.find/);
+  assert.match(workspace, /Không có dòng hàng của phiên bản đơn đã lưu/);
+});
