@@ -28,7 +28,7 @@ test('gateway Retail lấy tổng tiền từ phiên bản hiện tại và tả
   assert.match(route, /function normalizeOrderAmounts/);
   assert.match(route, /version\.versionNumber/);
   assert.match(route, /order\.currentVersionNumber/);
-  assert.match(route, /total: String\(current\.total \?\? order\.total \?\? '0'\)/);
+  assert.match(route, /total: String\(current\.total \?\? order\.total \?\? '0'\)/); assert.match(route, /documentDiscountMode: String\(current.documentDiscountMode/);
   assert.match(route, /if \(action === 'complete'\)/);
   assert.match(route, /const reloaded = await companyRequest<unknown>\(\{ path: `\/api\/sales-orders\/\$\{orderId\}`/);
   assert.match(route, /return json\(await enrichRetailProductNames\(reloaded\.data, reloaded\.requestId\), reloaded\.requestId\)/);
@@ -67,6 +67,6 @@ test('autosave nháp Retail single-flight và coalesce thay đổi mới thay v�
 test('Khả dụng giỏ hàng tách khỏi revision autosave và ảnh không tải lại theo mỗi revision', async () => {
   const page = await readWorkspace();
   assert.match(page, /body: JSON\.stringify\(\{ \.\.\.\(salesOrderId \? \{ salesOrderId \} : \{\}\), warehouseId, variantIds \}\)/);
-  assert.match(page, /\}, \[cart, editPickup, order\?\.id, order\?\.status, order\?\.warehouseId, warehouseId\]\);/);
+  assert.match(page, /\}, \[cart, editPickup, order\?\.id, order\?\.status, order\?\.warehouseId, warehouseId, availabilityRetryEpoch\]\);/);
   assert.match(page, /\}, \[order\?\.id\]\);/);
 });
