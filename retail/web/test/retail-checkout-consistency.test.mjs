@@ -95,3 +95,17 @@ test('receipt refuses a missing current version instead of silently printing an 
   assert.match(workspace, /currentVersion = sourceOrder.versions\?\.find/);
   assert.match(workspace, /Không có dòng hàng của phiên bản đơn đã lưu/);
 });
+
+test('Retail preserves identical idempotency key on settlement retry after an uncertain timeout', async () => {
+  const workspace = await readFile(new URL('../app/retail-workspace.tsx', import.meta.url), 'utf8');
+  assert.match(workspace, /operationKeyFor\('settlement', paymentIntent\)/);
+  assert.match(workspace, /forgetOperationKey\('settlement', paymentIntent\)/);
+  assert.match(workspace, /afterRemaining < beforeRemaining/);
+  assert.doesNotMatch(workspace, /keyFor\('settlement',/);
+});
+test('Retail does not automatically overwrite a canonical draft when a save or checkout conflicts', async () => {
+  const workspace = await readFile(new URL('../app/retail-workspace.tsx', import.meta.url), 'utf8');
+  assert.match(workspace, /if \(!cart.length \|\| !warehouseId \|\| editPickup \|\| draftSaveError/);
+  assert.match(workspace, /if \(latest.status === 'draft' && !isSavedCartCurrent\(latest\)\)/);
+  assert.match(workspace, /setDraftSaveError\('Dữ liệu đơn đã thay đổi/);
+});

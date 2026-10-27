@@ -823,7 +823,7 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
         });
     }, [cart, customerId, customerMode, open, priceFailures, prices, products, selected, priceRetryEpoch]);
     useEffect(() => {
-        if (!cart.length || !warehouseId || editPickup || (order && order.status !== 'draft'))
+        if (!cart.length || !warehouseId || editPickup || draftSaveError || (order && order.status !== 'draft'))
             return;
         const pricingReady = cart.every((line) => {
             const manualPrice = canPriceOverride ? manualPriceFor(line.id) : '';
@@ -880,7 +880,7 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
             });
         }, 360);
         return () => window.clearTimeout(timer);
-    }, [cart, canPriceOverride, customerId, customerMode, documentDiscountMode, documentDiscountReason, documentDiscountValue, draftSyncEpoch, editPickup, keyFor, manualPrices, note, order, policy, prices, warehouseId, currentDraftFingerprint]);
+    }, [cart, canPriceOverride, customerId, customerMode, documentDiscountMode, documentDiscountReason, documentDiscountValue, draftSyncEpoch, draftSaveError, editPickup, keyFor, manualPrices, note, order, policy, prices, warehouseId, currentDraftFingerprint]);
     useEffect(() => {
         if (!order?.id || order.status !== 'confirmed' || editPickup)
             return;
@@ -1410,7 +1410,9 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
             if (!normalizedAmount)
                 throw new Error('Hãy nhập số tiền nhận.');
             const debtOnly = normalizedAmount === '0';
-            const next = await api<Order>(`/api/retail/orders/${order.id}/settlement`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': keyFor('settlement', `${normalizedAmount}-${paymentMethod}`) }, body: JSON.stringify({ expectedRevision: order.revision, paidAmount: normalizedAmount, ...(debtOnly ? {} : { paymentMethod }) }) });
+            const paymentIntent = `${normalizedAmount}-${paymentMethod}`;
+            const next = await api<Order>(`/api/retail/orders/${order.id}/settlement`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': operationKeyFor('settlement', paymentIntent) }, body: JSON.stringify({ expectedRevision: order.revision, paidAmount: normalizedAmount, ...(debtOnly ? {} : { paymentMethod }) }) });
+            forgetOperationKey('settlement', paymentIntent);
             setOrder(next);
             setPayment(false);
             setNotice(debtOnly ? 'Đã ghi nhận nợ.' : 'Đã ghi nhận tiền thu và cập nhật công nợ.');
@@ -1420,9 +1422,12 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
             setError(errorMessage(reason, 'Chưa thể ghi nhận thanh toán.'));
             void api<Order>(`/api/retail/orders/${order.id}`).then((next) => {
                 setOrder(next);
-                if (next.settlementStatus === 'paid') {
+                const beforeRemaining = Number(order.receivableRemainingAmount ?? order.total);
+                const afterRemaining = Number(next.receivableRemainingAmount ?? next.total);
+                if (next.settlementStatus === 'paid' || (Number.isFinite(beforeRemaining) && Number.isFinite(afterRemaining)
+                    && afterRemaining < beforeRemaining)) {
                     setPayment(false);
-                    setNotice('Đã xác minh tiền thu đã được ghi nhận trên Công Ty.');
+                    setNotice('Đã xác minh tiền thu/công nợ đã được cập nhật ở Công Ty. Không tự ghi nhận lần hai.');
                 }
             }).catch(() => setNotice('Chưa xác minh được tiền thu; hãy mở lại đơn trước khi bấm thanh toán tiếp.'));
         }
@@ -1508,6 +1513,9 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
             try {
                 const latest = await api<Order>(`/api/retail/orders/${order.id}`);
                 setOrder(latest);
+                if (latest.status === 'draft' && !isSavedCartCurrent(latest)) {
+                    setDraftSaveError('Dữ liệu đơn đã thay đổi. Giỏ hàng đang được giữ để kiểm tra; nếu muốn lưu lại danh sách đang chọn, bấm Thử lưu lại.');
+                }
                 if (latest.status !== 'draft') {
                     setCart([]);
                     setQuantityInputs({});
