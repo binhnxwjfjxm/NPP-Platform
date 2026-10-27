@@ -129,3 +129,15 @@ test('a definitive checkout confirmation conflict rotates its old revision-bound
   assert.match(workspace, /forgetOperationKey\('checkout-confirm', 'current-order'\)/);
   assert.match(workspace, /order.status === 'draft' && \(!syncedDraft \|\| Boolean\(draftSaveError\)\)/);
 });
+
+test('Retail bounds browser requests and propagates caller cancellation without treating it as a connection failure', async () => {
+  const workspace = await readFile(new URL('../app/retail-workspace.tsx', import.meta.url), 'utf8');
+  assert.match(workspace, /const controller = new AbortController\(\)/);
+  assert.match(workspace, /externalSignal\?\.addEventListener\('abort', abort/);
+  assert.match(workspace, /signal: controller.signal/);
+  assert.match(workspace, /window.setTimeout\(abort, 20_000\)/);
+  assert.match(workspace, /controller.signal.aborted && !externalSignal\?\.aborted/);
+  assert.match(workspace, /RETAIL_CLIENT_TIMEOUT/);
+  assert.match(workspace, /RETAIL_CONNECTION_UNAVAILABLE/);
+  assert.match(workspace, /window.clearTimeout\(timeout\)/);
+});

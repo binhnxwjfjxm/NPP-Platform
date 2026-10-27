@@ -258,14 +258,39 @@ function normalizeQuantityInput(value: string | number | null | undefined) {
 const cartFromOrder = (order: Order): CartLine[] => linesOf(order).map((line) => ({ id: line.variantId, productCode: line.sku, imageKey: null, productName: line.itemName, sku: line.sku, unitCode: line.unitCode, unitName: line.unitName, allowsFractional: line.allowsFractional ?? null, quantity: normalizeQuantityInput(line.quantity), taxMode: line.taxMode, taxRate: line.taxRate }));
 const manualPricesFromOrder = (order: Order): Record<string, string> => Object.fromEntries(linesOf(order).filter((line) => line.priceSource === 'MANUAL_OVERRIDE').map((line) => [line.variantId, normalizeVndInput(line.unitPrice)]));
 async function api<T>(path: string, init?: RequestInit) {
-    const response = await fetch(path, { cache: 'no-store', ...init, headers: { Accept: 'application/json', ...(init?.headers ?? {}) } });
-    const payload = await response.json().catch(() => null) as {
-        data?: T;
-        error?: ApiErrorShape;
-    } | null;
-    if (!response.ok || payload?.error)
-        throw new RetailApiError(payload?.error, response.status);
-    return payload?.data as T;
+    // The Company gateway has a 15-second upstream limit, but a disconnected
+    // browser can hang before reaching it. Bound the entire client request and
+    // preserve callers' AbortSignal so unmounted searches do not report errors.
+    const controller = new AbortController();
+    const externalSignal = init?.signal;
+    const abort = () => controller.abort();
+    if (externalSignal?.aborted) abort();
+    else externalSignal?.addEventListener('abort', abort, { once: true });
+    const timeout = window.setTimeout(abort, 20_000);
+    try {
+        const response = await fetch(path, {
+            cache: 'no-store', ...init, signal: controller.signal,
+            headers: { Accept: 'application/json', ...(init?.headers ?? {}) },
+        });
+        const payload = await response.json().catch(() => null) as {
+            data?: T;
+            error?: ApiErrorShape;
+        } | null;
+        if (!response.ok || payload?.error)
+            throw new RetailApiError(payload?.error, response.status);
+        return payload?.data as T;
+    } catch (reason) {
+        if (controller.signal.aborted && !externalSignal?.aborted) {
+            throw new RetailApiError({ code: 'RETAIL_CLIENT_TIMEOUT', message: 'Kết nối quá lâu, chưa xác minh được kết quả. Hãy kiểm tra trạng thái đơn và thử lại.', retryable: true }, 504);
+        }
+        if (reason instanceof TypeError) {
+            throw new RetailApiError({ code: 'RETAIL_CONNECTION_UNAVAILABLE', message: 'Không kết nối được hệ thống Công Ty. Dữ liệu đang chọn chưa được xác nhận lưu.', retryable: true }, 503);
+        }
+        throw reason;
+    } finally {
+        window.clearTimeout(timeout);
+        externalSignal?.removeEventListener('abort', abort);
+    }
 }
 function normalizedQuantity(value: string, fractional: boolean | null) {
     const n = Number(value);
