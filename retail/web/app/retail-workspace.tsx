@@ -1456,6 +1456,7 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
         checkoutLockRef.current = true;
         setBusy('checkout');
         setError(null);
+        let confirmationInFlight = false;
         try {
             let current = order;
             if (current.status === 'draft') {
@@ -1470,11 +1471,13 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
                 current = latest;
                 setCheckoutStage('Đang chốt đơn…');
                 const intent = 'current-order';
+                confirmationInFlight = true;
                 current = await api<Order>(`/api/retail/orders/${current.id}/confirm`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Idempotency-Key': operationKeyFor('checkout-confirm', intent) },
                     body: JSON.stringify({ expectedRevision: latest.revision }),
                 });
+                confirmationInFlight = false;
                 forgetOperationKey('checkout-confirm', intent);
                 setOrder(current);
                 setCart([]);
@@ -1510,6 +1513,14 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
                 setPayment(true);
             }
         } catch (reason) {
+            // A definitive rejection ends that confirmation attempt: the next
+            // checked draft revision must not reuse a key bound to old payload.
+            // Retain the key on transport/5xx ambiguity for safe identical retries.
+            if (confirmationInFlight && (isRevisionConflict(reason)
+                || (reason instanceof RetailApiError && !reason.retryable
+                    && reason.status >= 400 && reason.status < 500))) {
+                forgetOperationKey('checkout-confirm', 'current-order');
+            }
             setError(errorMessage(reason, 'Chưa thể chuyển sang thanh toán.'));
             // A timed-out mutation may have committed. Read the server once;
             // never repeat stock, settlement, or completion blindly.
@@ -1979,7 +1990,7 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
           {canEditPickup ? <button className="secondary-action" type="button" disabled={busy !== null} onClick={beginPickupEdit}>Sửa đơn</button> : null}
           {canCancelCurrentOrder ? <button className="retail-cancel-action" type="button" disabled={busy !== null} onClick={openCancelDialog}>Hủy đơn</button> : null}
           <button className="secondary-action" type="button" disabled={busy !== null || (order.status === 'draft' && !syncedDraft)} onClick={() => void openPrintPreview()}>{busy === 'print-current' ? 'Đang tải phiếu…' : 'In phiếu'}</button>
-          <button className="primary-action pos-checkout-action" type="button" disabled={busy !== null || order.status === 'cancelled' || (order.status === 'closed' && order.settlementStatus === 'paid') || (editingDraft && !cart.length) || (order.status === 'draft' && !syncedDraft) || Boolean(draftSaveError) || stockBlocked || stockGatePending || stockGateError || pricePreviewFailed} onClick={() => void checkout()}>{busy === 'checkout' ? 'Đang xử lý…' : order.status === 'draft' && !syncedDraft ? 'Đang lưu đơn…' : order.status === 'cancelled' ? 'Đơn đã hủy' : order.status === 'closed' && order.settlementStatus === 'paid' ? 'Đã thanh toán' : 'Thanh toán'}</button>
+          <button className="primary-action pos-checkout-action" type="button" disabled={busy !== null || order.status === 'cancelled' || (order.status === 'closed' && order.settlementStatus === 'paid') || (editingDraft && !cart.length) || (order.status === 'draft' && (!syncedDraft || Boolean(draftSaveError))) || stockBlocked || stockGatePending || stockGateError || pricePreviewFailed} onClick={() => void checkout()}>{busy === 'checkout' ? 'Đang xử lý…' : order.status === 'draft' && !syncedDraft ? 'Đang lưu đơn…' : order.status === 'cancelled' ? 'Đơn đã hủy' : order.status === 'closed' && order.settlementStatus === 'paid' ? 'Đã thanh toán' : 'Thanh toán'}</button>
         </> : cart.length ? <button className="primary-action pos-checkout-action" type="button" disabled>{pricePreviewFailed ? 'Chưa tải được giá' : 'Đang chuẩn bị đơn…'}</button> : <button className="primary-action pos-checkout-action" type="button" disabled>Thanh toán</button>}
       </section>
     </> : null}

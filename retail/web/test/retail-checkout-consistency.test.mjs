@@ -118,3 +118,14 @@ test('Retail product picker treats transport failures as retryable, not as missi
   assert.match(page, /Không tải được giá/);
   assert.match(page, /setAvailabilityError\(null\)/);
 });
+
+test('a definitive checkout confirmation conflict rotates its old revision-bound key; ambiguous timeout does not', async () => {
+  const workspace = await readFile(new URL('../app/retail-workspace.tsx', import.meta.url), 'utf8');
+  assert.match(workspace, /let confirmationInFlight = false/);
+  assert.match(workspace, /confirmationInFlight = true/);
+  assert.match(workspace, /confirmationInFlight = false/);
+  assert.match(workspace, /if \(confirmationInFlight && \(isRevisionConflict\(reason\)/);
+  assert.match(workspace, /reason\.status >= 400 && reason\.status < 500/);
+  assert.match(workspace, /forgetOperationKey\('checkout-confirm', 'current-order'\)/);
+  assert.match(workspace, /order.status === 'draft' && \(!syncedDraft \|\| Boolean\(draftSaveError\)\)/);
+});
