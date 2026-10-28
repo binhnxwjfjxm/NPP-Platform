@@ -41,3 +41,33 @@ test('Lô 3 có lịch sử lọc nghiệp vụ và đảo chứng từ append-o
   assert.match(proxy, /params\.action === 'history'/);
   assert.match(proxy, /reverseManualInboundOperator/);
 });
+
+test('Mất phản hồi xác nhận: đối chiếu cùng khóa, không tạo phiếu mới hay che lỗi lịch sử', () => {
+  assert.match(workspace, /confirmationRecovery === 'unresolved'/);
+  assert.match(workspace, /getManualInboundConfirmationStatus|checkConfirmationStatus/);
+  assert.match(workspace, /idempotencyKey:|\x27Idempotency-Key\x27: pending\.key/);
+  assert.match(workspace, /finishInboundConfirmation\(status\.document\)/);
+  assert.match(workspace, /if \(confirmingRef\.current/);
+  assert.match(workspace, /Không tạo phiếu khác cho lần nhập này/);
+  assert.doesNotMatch(workspace, /if \(!append\) \{\s*setHistory\(\[\]\)/);
+  assert.match(workspace, /historyMessage \? null : <p className=\{styles\.emptyState\}>Chưa có chứng từ phù hợp/);
+  assert.match(workspace, /loadHistory\(\x27\x27, \x27\x27\)/);
+  assert.match(gateway, /operator\/confirmation-status/);
+  assert.match(proxy, /params\.action === 'confirmation-status'/);
+});
+
+test('Reload during uncertain post restores the original key and payload within one browser tab', () => {
+  assert.match(workspace, /sessionStorage\.setItem\(PENDING_CONFIRM_STORAGE_KEY/);
+  assert.match(workspace, /sessionStorage\.getItem\(PENDING_CONFIRM_STORAGE_KEY/);
+  assert.match(workspace, /pendingConfirm\.current = previousConfirmation/);
+  assert.match(workspace, /void checkConfirmationStatus\(\)/);
+  assert.match(workspace, /if \(!pendingConfirm\.current && \(!preview\?\.ready/);
+  assert.match(workspace, /clearPendingConfirmation\(\)/);
+});
+
+test('Warehouse initialization and preview validation cannot discard an unresolved idempotency key', () => {
+  assert.match(workspace, /function invalidate\(\) \{[\s\S]*?if \(pendingConfirm\.current\) return/);
+  assert.match(workspace, /if \(!pendingConfirm\.current\) \{\s*setPreview\(null\);\s*setPreviewDirty\(false\);\s*setMessage\(null\)/);
+  assert.match(workspace, /async function checkData\(\) \{\s*if \(pendingConfirm\.current \|\| confirmingRef\.current\)/);
+  assert.match(workspace, /confirmationRecovery \|\| busy === 'confirm'/);
+});

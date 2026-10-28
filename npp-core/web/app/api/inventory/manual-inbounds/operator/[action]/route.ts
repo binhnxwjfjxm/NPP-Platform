@@ -6,6 +6,7 @@ import {
   listManualInboundOperatorWarehouses,
   normalizeManualInboundOperatorGatewayError,
   previewManualInboundOperator,
+  readManualInboundOperatorConfirmationStatus,
   readManualInboundOperatorHistoryDetail,
   resolveManualInboundOperatorRequestId,
   reverseManualInboundOperator,
@@ -66,6 +67,12 @@ export async function GET(
         search: request.nextUrl.searchParams.get('search') ?? '',
         requestId,
       }), requestId);
+    }
+    if (params.action === 'confirmation-status') {
+      return success(
+        await readManualInboundOperatorConfirmationStatus(requestId, request.headers.get('Idempotency-Key') ?? ''),
+        requestId,
+      );
     }
     if (params.action === 'history') {
       return success(await searchManualInboundOperatorHistory({

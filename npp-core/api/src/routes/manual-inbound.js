@@ -3,6 +3,7 @@ import { sendError, sendJson } from '../http-utils.js';
 import { normalizeIdempotencyKey, readJsonBody } from '../idempotency.js';
 import {
   getManualInbound,
+  getManualInboundConfirmationStatus,
   listManualInbounds,
   postManualInbound,
   reverseManualInbound,
@@ -129,6 +130,24 @@ export async function handleManualInboundRoutes(req, res, options) {
         return true;
       }
       writeSuccess(res, result.products, options);
+      return true;
+    }
+
+    if (url.pathname === '/api/inventory/manual-inbounds/operator/confirmation-status' && method === 'GET') {
+      const idempotencyKey = readIdempotencyKey(req);
+      if (!idempotencyKey) {
+        sendError(res, apiError('INVALID_IDEMPOTENCY_KEY', 'Idempotency-Key không hợp lệ.', {}, false, 400), options.requestId, options.receivedAt);
+        return true;
+      }
+      const result = await getManualInboundConfirmationStatus(options.getPool(), {
+        requestContext,
+        idempotencyKey,
+      });
+      if (!result.ok) {
+        sendError(res, apiError(result.code, result.message, result.details ?? {}, result.retryable, statusFor(result)), options.requestId, options.receivedAt);
+        return true;
+      }
+      writeSuccess(res, { posted: result.posted, document: result.document }, options);
       return true;
     }
 
@@ -282,6 +301,9 @@ export async function handleManualInboundRoutes(req, res, options) {
   } catch (error) {
     console.error(JSON.stringify({
       event: 'manual_inbound_route_failed',
+      route: url.pathname.startsWith('/api/inventory/manual-inbounds/operator/')
+        ? url.pathname : '/api/inventory/manual-inbounds',
+      method,
       requestId: options.requestId,
       errorName: error?.name ?? null,
       errorCode: typeof error?.code === 'string' ? error.code : null,
