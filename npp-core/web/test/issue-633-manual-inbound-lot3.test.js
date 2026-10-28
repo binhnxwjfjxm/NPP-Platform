@@ -55,3 +55,12 @@ test('Mất phản hồi xác nhận: đối chiếu cùng khóa, không tạo p
   assert.match(gateway, /operator\/confirmation-status/);
   assert.match(proxy, /params\.action === 'confirmation-status'/);
 });
+
+test('Reload during uncertain post restores the original key and payload within one browser tab', () => {
+  assert.match(workspace, /sessionStorage\.setItem\(PENDING_CONFIRM_STORAGE_KEY/);
+  assert.match(workspace, /sessionStorage\.getItem\(PENDING_CONFIRM_STORAGE_KEY/);
+  assert.match(workspace, /pendingConfirm\.current = previousConfirmation/);
+  assert.match(workspace, /void checkConfirmationStatus\(\)/);
+  assert.match(workspace, /if \(!pendingConfirm\.current && \(!preview\?\.ready/);
+  assert.match(workspace, /clearPendingConfirmation\(\)/);
+});

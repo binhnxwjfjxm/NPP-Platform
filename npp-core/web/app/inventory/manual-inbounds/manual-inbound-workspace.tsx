@@ -135,6 +135,33 @@ type ManualInboundRequestError = Error & { status?: number };
 type InboundType = 'MANUAL_RECEIPT' | 'OFF_DOCUMENT_CUSTOMER_RETURN' | 'RECOVERY' | 'OTHER';
 
 const SEARCH_DELAY_MS = 120;
+const PENDING_CONFIRM_STORAGE_KEY = 'npp.manual-inbound.pending-confirm.v1';
+
+// Keep one retry intent only for the current browser tab. A refresh must not
+// silently create a different Idempotency-Key while the first POST may have committed.
+function savePendingConfirmation(pending: PendingMutation) {
+  try { window.sessionStorage.setItem(PENDING_CONFIRM_STORAGE_KEY, JSON.stringify(pending)); } catch { /* Storage may be unavailable. */ }
+}
+function clearPendingConfirmation() {
+  try { window.sessionStorage.removeItem(PENDING_CONFIRM_STORAGE_KEY); } catch { /* Storage may be unavailable. */ }
+}
+function restorePendingConfirmation(): PendingMutation | null {
+  try {
+    const raw = window.sessionStorage.getItem(PENDING_CONFIRM_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && 'key' in parsed && 'body' in parsed
+      && typeof parsed.key === 'string' && /^[-A-Za-z0-9._]{1,128}$/.test(parsed.key)
+      && typeof parsed.body === 'string' && parsed.body.length < 300_000
+      && Array.isArray((JSON.parse(parsed.body) as { rows?: unknown }).rows)) {
+      return { key: parsed.key, body: parsed.body };
+    }
+    clearPendingConfirmation();
+  } catch {
+    clearPendingConfirmation();
+  }
+  return null;
+}
 const ADMIN_CONFIGURATION_CODES = new Set([
   'INVENTORY_POLICY_UNAVAILABLE',
   'SKU_AMBIGUOUS',
@@ -500,6 +527,11 @@ export default function ManualInboundWorkspace() {
       .then((data) => { if (active) setSuppliers(data); })
       .catch((error) => { if (active) setMessage({ kind: 'error', text: error instanceof Error ? error.message : 'Không tải được danh sách nhà cung cấp.' }); });
     void loadHistory('', '');
+    const previousConfirmation = restorePendingConfirmation();
+    if (previousConfirmation) {
+      pendingConfirm.current = previousConfirmation;
+      void checkConfirmationStatus();
+    }
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -708,6 +740,7 @@ export default function ManualInboundWorkspace() {
 
   function finishInboundConfirmation(document: ConfirmedInbound) {
     pendingConfirm.current = null;
+    clearPendingConfirmation();
     setConfirmationRecovery(null);
     setRows([emptyRow()]);
     setResolvedItems({});
@@ -751,7 +784,7 @@ export default function ManualInboundWorkspace() {
 
   async function confirmInbound() {
     if (confirmingRef.current || confirmationRecovery === 'checking') return;
-    if (!preview?.ready || previewDirty) {
+    if (!pendingConfirm.current && (!preview?.ready || previewDirty)) {
       setMessage({ kind: 'error', text: 'Hãy kiểm tra lại để tất cả dòng ở trạng thái Sẵn sàng trước khi xác nhận nhập.' });
       return;
     }
@@ -763,6 +796,7 @@ export default function ManualInboundWorkspace() {
         body: JSON.stringify(operatorPayload()),
       };
       pendingConfirm.current = pending;
+      savePendingConfirmation(pending);
     }
     confirmingRef.current = true;
     setBusy('confirm');
@@ -783,6 +817,7 @@ export default function ManualInboundWorkspace() {
       // A timeout, 409 or transport failure MUST retain the original key/body.
       if (!wasUnresolved && status && status >= 400 && status < 500 && status !== 408 && status !== 409) {
         pendingConfirm.current = null;
+        clearPendingConfirmation();
         setMessage({ kind: 'error', text: error instanceof Error ? error.message : 'Không xác nhận được nhập kho.' });
       } else {
         await checkConfirmationStatus();
