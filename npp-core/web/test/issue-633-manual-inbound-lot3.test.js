@@ -41,3 +41,17 @@ test('Lô 3 có lịch sử lọc nghiệp vụ và đảo chứng từ append-o
   assert.match(proxy, /params\.action === 'history'/);
   assert.match(proxy, /reverseManualInboundOperator/);
 });
+
+test('Mất phản hồi xác nhận: đối chiếu cùng khóa, không tạo phiếu mới hay che lỗi lịch sử', () => {
+  assert.match(workspace, /confirmationRecovery === 'unresolved'/);
+  assert.match(workspace, /getManualInboundConfirmationStatus|checkConfirmationStatus/);
+  assert.match(workspace, /idempotencyKey:|\x27Idempotency-Key\x27: pending\.key/);
+  assert.match(workspace, /finishInboundConfirmation\(status\.document\)/);
+  assert.match(workspace, /if \(confirmingRef\.current/);
+  assert.match(workspace, /Không tạo phiếu khác cho lần nhập này/);
+  assert.doesNotMatch(workspace, /if \(!append\) \{\s*setHistory\(\[\]\)/);
+  assert.match(workspace, /historyMessage \? null : <p className=\{styles\.emptyState\}>Chưa có chứng từ phù hợp/);
+  assert.match(workspace, /loadHistory\(\x27\x27, \x27\x27\)/);
+  assert.match(gateway, /operator\/confirmation-status/);
+  assert.match(proxy, /params\.action === 'confirmation-status'/);
+});

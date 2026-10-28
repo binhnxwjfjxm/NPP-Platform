@@ -129,6 +129,9 @@ type ResolvedItem = {
   unitCost?: string | null;
 };
 type PendingMutation = { key: string; body: string };
+type ConfirmedInbound = { id: string; documentNumber?: string | null; document_number?: string | null };
+type ConfirmationStatus = { posted: boolean; document: ConfirmedInbound | null };
+type ManualInboundRequestError = Error & { status?: number };
 type InboundType = 'MANUAL_RECEIPT' | 'OFF_DOCUMENT_CUSTOMER_RETURN' | 'RECOVERY' | 'OTHER';
 
 const SEARCH_DELAY_MS = 120;
@@ -187,7 +190,9 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   });
   const payload = await response.json().catch(() => ({})) as Envelope<T>;
   if (!response.ok || payload.data === undefined) {
-    throw new Error(payload.error?.message || payload.error?.code || 'Yêu cầu không thành công');
+    const error: ManualInboundRequestError = new Error(payload.error?.message || payload.error?.code || 'Yêu cầu không thành công');
+    error.status = response.status;
+    throw error;
   }
   return payload.data;
 }
@@ -290,6 +295,8 @@ export default function ManualInboundWorkspace() {
   const productResultsRef = useRef<HTMLDivElement>(null);
   const quantityRefs = useRef(new Map<number, HTMLInputElement>());
   const pendingConfirm = useRef<PendingMutation | null>(null);
+  const confirmingRef = useRef(false);
+  const [confirmationRecovery, setConfirmationRecovery] = useState<'checking' | 'unresolved' | null>(null);
   const pendingReverse = useRef<PendingMutation | null>(null);
   const productSearchRun = useRef(0);
   const historyRequestRun = useRef(0);
@@ -434,10 +441,8 @@ export default function ManualInboundWorkspace() {
     const requestRun = ++historyRequestRun.current;
     setHistoryBusy(true);
     setHistoryMessage('');
-    if (!append) {
-      setHistory([]);
-      setHistoryHasMore(false);
-    }
+    // Keep the last known history until the replacement has loaded successfully.
+    // Otherwise a failed request falsely looks like an empty document list.
     try {
       const query = new URLSearchParams({ limit: '21' });
       if (type) query.set('inboundType', type);
@@ -701,11 +706,56 @@ export default function ManualInboundWorkspace() {
     }
   }
 
+  function finishInboundConfirmation(document: ConfirmedInbound) {
+    pendingConfirm.current = null;
+    setConfirmationRecovery(null);
+    setRows([emptyRow()]);
+    setResolvedItems({});
+    setFilename('');
+    setSupplierId('');
+    setReferenceNumber('');
+    setNote('');
+    setPreview(null);
+    setPreviewDirty(false);
+    setHistoryType('');
+    setHistoryReference('');
+    const number = document.documentNumber || document.document_number;
+    setMessage({
+      kind: 'info',
+      text: number
+        ? `Đã nhập kho thành công. Số phiếu: ${number}. Tồn kho đã được cập nhật.`
+        : 'Đã nhập kho thành công. Tồn kho đã được cập nhật.',
+    });
+    void loadHistory('', '');
+  }
+
+  async function checkConfirmationStatus() {
+    const pending = pendingConfirm.current;
+    if (!pending) return;
+    setConfirmationRecovery('checking');
+    try {
+      const status = await requestJson<ConfirmationStatus>(
+        '/api/inventory/manual-inbounds/operator/confirmation-status',
+        { headers: { 'Idempotency-Key': pending.key } },
+      );
+      if (status.posted && status.document?.id) {
+        finishInboundConfirmation(status.document);
+        return;
+      }
+      setMessage({ kind: 'error', text: 'Chưa tìm thấy phiếu đã ghi sổ. Chỉ thử lại cùng yêu cầu để tránh cộng tồn trùng.' });
+    } catch {
+      setMessage({ kind: 'error', text: 'Chưa xác minh được trạng thái phiếu nhập. Không tạo phiếu khác cho lần nhập này.' });
+    }
+    setConfirmationRecovery('unresolved');
+  }
+
   async function confirmInbound() {
+    if (confirmingRef.current || confirmationRecovery === 'checking') return;
     if (!preview?.ready || previewDirty) {
       setMessage({ kind: 'error', text: 'Hãy kiểm tra lại để tất cả dòng ở trạng thái Sẵn sàng trước khi xác nhận nhập.' });
       return;
     }
+    const wasUnresolved = confirmationRecovery === 'unresolved';
     let pending = pendingConfirm.current;
     if (!pending) {
       pending = {
@@ -714,28 +764,31 @@ export default function ManualInboundWorkspace() {
       };
       pendingConfirm.current = pending;
     }
+    confirmingRef.current = true;
     setBusy('confirm');
     setMessage(null);
     try {
-      await requestJson('/api/inventory/manual-inbounds/operator/confirm', {
+      const result = await requestJson<{ document: ConfirmedInbound }>('/api/inventory/manual-inbounds/operator/confirm', {
         method: 'POST',
         headers: { 'Idempotency-Key': pending.key },
         body: pending.body,
       });
-      pendingConfirm.current = null;
-      setRows([emptyRow()]);
-      setResolvedItems({});
-      setFilename('');
-      setSupplierId('');
-      setReferenceNumber('');
-      setNote('');
-      setPreview(null);
-      setPreviewDirty(false);
-      setMessage({ kind: 'info', text: 'Đã xác nhận nhập kho. Tồn kho đã được cập nhật theo sổ kho.' });
-      await loadHistory();
+      if (!result.document?.id) {
+        throw new Error('Phản hồi xác nhận nhập không có chứng từ.');
+      }
+      finishInboundConfirmation(result.document);
     } catch (error) {
-      setMessage({ kind: 'error', text: error instanceof Error ? error.message : 'Không xác nhận được nhập kho.' });
+      const status = (error as ManualInboundRequestError)?.status;
+      // Definitive client rejections before an uncertain attempt are editable.
+      // A timeout, 409 or transport failure MUST retain the original key/body.
+      if (!wasUnresolved && status && status >= 400 && status < 500 && status !== 408 && status !== 409) {
+        pendingConfirm.current = null;
+        setMessage({ kind: 'error', text: error instanceof Error ? error.message : 'Không xác nhận được nhập kho.' });
+      } else {
+        await checkConfirmationStatus();
+      }
     } finally {
+      confirmingRef.current = false;
       setBusy(null);
     }
   }
@@ -959,7 +1012,7 @@ export default function ManualInboundWorkspace() {
               <div className={styles.historyItemHead}><strong>{document.documentNumber || inboundTypeLabel(document.inboundType)}</strong><span className={document.status === 'POSTED' ? styles.readyBadge : styles.reversedBadge}>{document.status === 'POSTED' ? 'Đã nhập' : 'Đã đảo'}</span></div>
               <div className={styles.historyMeta}><span>{displayDate(document.documentDate)}</span><span>{inboundTypeLabel(document.inboundType)}</span><span>{document.warehouseCode} — {document.warehouseName}</span>{document.referenceNumber ? <span>Tham chiếu: {document.referenceNumber}</span> : null}</div>
               <div className={styles.historyActions}><button type="button" className={styles.textButton} onClick={() => void openHistoryDetail(document)}>Xem biến động</button>{document.status === 'POSTED' ? <button type="button" className={styles.textButton} onClick={() => openReverse(document)}>Đảo chứng từ</button> : null}</div>
-            </article>) : <p className={styles.emptyState}>{historyBusy ? 'Đang tải…' : 'Chưa có chứng từ phù hợp.'}</p>}
+            </article>) : historyBusy ? <p className={styles.emptyState}>Đang tải…</p> : historyMessage ? null : <p className={styles.emptyState}>Chưa có chứng từ phù hợp.</p>}
           </div>
           {historyHasMore ? <button type="button" className={styles.secondary} disabled={historyBusy} onClick={() => void loadHistory(historyType, historyReference, true)}>{historyBusy ? 'Đang tải…' : 'Xem thêm 20 phiếu'}</button> : null}
           {reverseDraft ? <div className={styles.reversePanel}>
@@ -971,6 +1024,19 @@ export default function ManualInboundWorkspace() {
         </section>
       </aside>
     </div>
+
+    {confirmationRecovery ? <div className={styles.dialogBackdrop}>
+      <section role="alertdialog" aria-modal="true" aria-labelledby="manual-inbound-confirm-recovery" className={styles.dialogCard}>
+        <h2 id="manual-inbound-confirm-recovery">Đang đối chiếu phiếu nhập</h2>
+        <p>{confirmationRecovery === 'checking'
+          ? 'Đang kiểm tra phiếu đã được ghi sổ hay chưa…'
+          : 'Chưa xác định được lần nhập vừa rồi. Giữ nguyên dữ liệu và khóa chống trùng, không lập phiếu mới.'}</p>
+        <div className={styles.actions}>
+          <button type="button" className={styles.secondary} disabled={confirmationRecovery === 'checking' || busy === 'confirm'} onClick={() => void checkConfirmationStatus()}>Kiểm tra trạng thái</button>
+          <button type="button" className={styles.primary} disabled={confirmationRecovery === 'checking' || busy === 'confirm'} onClick={() => void confirmInbound()}>Thử lại cùng yêu cầu</button>
+        </div>
+      </section>
+    </div> : null}
 
     {(historyDetailBusy || historyDetail || historyDetailError) ? <div role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) { setHistoryDetail(null); setHistoryDetailError(''); } }} className={styles.dialogBackdrop}>
       <section role="dialog" aria-modal="true" aria-labelledby="manual-inbound-movement-title" className={styles.dialogCard}>

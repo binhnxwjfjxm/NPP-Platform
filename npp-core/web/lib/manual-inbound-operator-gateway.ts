@@ -168,6 +168,15 @@ export function searchManualInboundOperatorProducts<T>({
   });
 }
 
+export function readManualInboundOperatorConfirmationStatus<T>(requestId: string, idempotencyKey: string): Promise<T> {
+  return requestCore<T>({
+    path: '/api/inventory/manual-inbounds/operator/confirmation-status',
+    method: 'GET',
+    requestId,
+    idempotencyKey: requireMutationKey(idempotencyKey),
+  });
+}
+
 export function searchManualInboundOperatorHistory<T>({
   inboundType,
   referenceNumber,

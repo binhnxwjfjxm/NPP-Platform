@@ -191,6 +191,40 @@ export async function getManualInbound(client, { requestContext, id }) {
   return Object.freeze({ ok: true, document: mappedDocument(document, lines) });
 }
 
+// Read-only lookup for an uncertain confirmation. The document ID is derived from
+// the original idempotency key, not from client-supplied document identifiers.
+export async function getManualInboundConfirmationStatus(client, { requestContext, idempotencyKey }) {
+  if (!hasPermission(requestContext, PERMISSIONS.coreInventoryManualInboundPost)) {
+    return failure('PERMISSION_DENIED', 'Không có quyền xác nhận Nhập kho thủ công.');
+  }
+  if (!IDEMPOTENCY_KEY_PATTERN.test(String(idempotencyKey ?? ''))) {
+    return failure('INVALID_IDEMPOTENCY_KEY', 'Idempotency-Key không hợp lệ.');
+  }
+  const warehouseIds = allowedWarehouseIds(requestContext);
+  if (warehouseIds.length === 0) {
+    return failure('WAREHOUSE_SCOPE_DENIED', 'Chưa được cấp phạm vi kho.');
+  }
+  const id = deterministicDocumentId(requestContext.installationId, idempotencyKey);
+  const document = await repository.getManualInboundDocumentById(client, {
+    installationId: requestContext.installationId,
+    id,
+  });
+  if (!document) {
+    return Object.freeze({ ok: true, posted: false, document: null });
+  }
+  if (!warehouseIds.includes(document.warehouse_id)) {
+    return failure('WAREHOUSE_SCOPE_DENIED', 'Chứng từ nằm ngoài phạm vi kho được cấp.');
+  }
+  return Object.freeze({
+    ok: true,
+    posted: true,
+    document: Object.freeze({
+      id: document.id,
+      documentNumber: document.document_number ?? null,
+    }),
+  });
+}
+
 export async function listManualInbounds(client, { requestContext, limit = 100, offset = 0 }) {
   if (!hasPermission(requestContext, PERMISSIONS.coreInventoryManualInboundRead)) {
     return failure('PERMISSION_DENIED', 'Không có quyền xem Nhập kho thủ công.');
