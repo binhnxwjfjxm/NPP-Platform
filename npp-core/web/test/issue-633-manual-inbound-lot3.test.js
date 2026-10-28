@@ -64,3 +64,10 @@ test('Reload during uncertain post restores the original key and payload within 
   assert.match(workspace, /if \(!pendingConfirm\.current && \(!preview\?\.ready/);
   assert.match(workspace, /clearPendingConfirmation\(\)/);
 });
+
+test('Warehouse initialization and preview validation cannot discard an unresolved idempotency key', () => {
+  assert.match(workspace, /function invalidate\(\) \{[\s\S]*?if \(pendingConfirm\.current\) return/);
+  assert.match(workspace, /if \(!pendingConfirm\.current\) \{\s*setPreview\(null\);\s*setPreviewDirty\(false\);\s*setMessage\(null\)/);
+  assert.match(workspace, /async function checkData\(\) \{\s*if \(pendingConfirm\.current \|\| confirmingRef\.current\)/);
+  assert.match(workspace, /confirmationRecovery \|\| busy === 'confirm'/);
+});

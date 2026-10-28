@@ -360,9 +360,10 @@ export default function ManualInboundWorkspace() {
   }
 
   function invalidate() {
+    // An in-flight/uncertain confirmation keeps its original retry identity.
+    if (pendingConfirm.current) return;
     setPreview(null);
     setPreviewDirty(false);
-    pendingConfirm.current = null;
     setMessage(null);
   }
 
@@ -400,8 +401,9 @@ export default function ManualInboundWorkspace() {
       rows: current.rows.map((row) => row.sourceLineNumbers.some((line) => lineNumbers.includes(line)) ? { ...row, ...patch } : row),
     } : current);
     setPreviewDirty(true);
-    pendingConfirm.current = null;
-    setMessage({ kind: 'info', text: 'Đã bổ sung thông tin. Bấm “Kiểm tra dữ liệu” lại trước khi xác nhận nhập.' });
+    if (!pendingConfirm.current) {
+      setMessage({ kind: 'info', text: 'Đã bổ sung thông tin. Bấm “Kiểm tra dữ liệu” lại trước khi xác nhận nhập.' });
+    }
   }
 
   function addProduct(option: ManualInboundProductOption) {
@@ -546,10 +548,11 @@ export default function ManualInboundWorkspace() {
       (Object.entries(current) as Array<[string, ResolvedItem]>).forEach(([key, item]) => { next[Number(key)] = { ...item, unitCost: undefined }; });
       return next;
     });
-    setPreview(null);
-    setPreviewDirty(false);
-    pendingConfirm.current = null;
-    setMessage(null);
+    if (!pendingConfirm.current) {
+      setPreview(null);
+      setPreviewDirty(false);
+      setMessage(null);
+    }
     if (!warehouseId) return () => { active = false; };
     setBusy('locations');
     requestJson<{ warehouse: WarehouseOption; locations: LocationOption[] }>(`/api/inventory/manual-inbounds/operator/locations?warehouseId=${encodeURIComponent(warehouseId)}`)
@@ -692,6 +695,10 @@ export default function ManualInboundWorkspace() {
   }
 
   async function checkData() {
+    if (pendingConfirm.current || confirmingRef.current) {
+      setMessage({ kind: 'error', text: 'Phiếu trước đang được xác minh. Không kiểm tra lại để tạo phiếu mới.' });
+      return;
+    }
     if (!warehouseId) { setMessage({ kind: 'error', text: 'Chọn kho nhập trước khi kiểm tra.' }); return; }
     if (!documentDate) { setMessage({ kind: 'error', text: 'Nhập ngày chứng từ trước khi kiểm tra.' }); return; }
     if (inboundType === 'OTHER' && !note.trim()) { setMessage({ kind: 'error', text: 'Loại “Khác” cần có ghi chú.' }); return; }
@@ -1060,16 +1067,16 @@ export default function ManualInboundWorkspace() {
       </aside>
     </div>
 
-    {confirmationRecovery ? <div className={styles.dialogBackdrop}>
+    {(confirmationRecovery || busy === 'confirm') ? <div className={styles.dialogBackdrop}>
       <section role="alertdialog" aria-modal="true" aria-labelledby="manual-inbound-confirm-recovery" className={styles.dialogCard}>
-        <h2 id="manual-inbound-confirm-recovery">Đang đối chiếu phiếu nhập</h2>
-        <p>{confirmationRecovery === 'checking'
-          ? 'Đang kiểm tra phiếu đã được ghi sổ hay chưa…'
+        <h2 id="manual-inbound-confirm-recovery">{confirmationRecovery ? 'Đang đối chiếu phiếu nhập' : 'Đang xác nhận nhập kho'}</h2>
+        <p>{confirmationRecovery === 'checking' || (!confirmationRecovery && busy === 'confirm')
+          ? 'Đang kiểm tra và ghi nhận phiếu. Không thao tác nhập lại…'
           : 'Chưa xác định được lần nhập vừa rồi. Giữ nguyên dữ liệu và khóa chống trùng, không lập phiếu mới.'}</p>
-        <div className={styles.actions}>
+        {confirmationRecovery ? <div className={styles.actions}>
           <button type="button" className={styles.secondary} disabled={confirmationRecovery === 'checking' || busy === 'confirm'} onClick={() => void checkConfirmationStatus()}>Kiểm tra trạng thái</button>
           <button type="button" className={styles.primary} disabled={confirmationRecovery === 'checking' || busy === 'confirm'} onClick={() => void confirmInbound()}>Thử lại cùng yêu cầu</button>
-        </div>
+        </div> : null}
       </section>
     </div> : null}
 
