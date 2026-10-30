@@ -80,3 +80,20 @@ test('multi-SKU pricing previews conflicts and persists one SKU-keyed idempotent
   assert.match(overlay, /testId="bulk-pricing-modal" size="workspace"/);
   assert.match(fileAdjustment, /testId="pricing-file-adjustment-modal" size="workspace"/);
 });
+
+test('direct pricing conflict displays all rows and cannot submit without explicit confirmation', async () => {
+  const [overlay, backendRoute] = await Promise.all([
+    readSource('../app/pricing/pricing-bulk-overlay.tsx'),
+    readSource('../../api/src/routes/pricing.js'),
+  ]);
+  assert.match(overlay, /const conflicts = simultaneouslyEffective\.length > 1/);
+  assert.match(overlay, /confirmedConflictSkus/);
+  assert.match(overlay, /hasUnconfirmedConflicts/);
+  assert.match(overlay, /disabled=\{busy \|\| loading \|\| loadFailed \|\| !selectedSkus\.size \|\| hasUnconfirmedConflicts\}/);
+  assert.match(overlay, /resolveConflicts: preview\.find/);
+  assert.match(overlay, /expectedUpdatedAt: item\.updated_at/);
+  assert.match(overlay, /Các mức giá đang cùng hiệu lực/);
+  assert.match(overlay, /Tôi đã kiểm tra và đồng ý kết thúc/);
+  assert.match(overlay, /setConfirmedConflictSkus\(new Set\(\)\)/);
+  assert.match(backendRoute, /details: tx\.failed\.details \?\? \{\}/);
+});
