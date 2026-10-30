@@ -525,6 +525,16 @@ test('Đại lý: chặn giá trùng đúng thời điểm, thay thế có xác 
       variantId: catalog.carton.id, adjustmentType: 'FIXED_PRICE',
       amountMinor: '525000', effectiveFrom: '2026-10-09T13:46:52.000Z', effectiveTo: null,
     });
+    // Force non-zero milliseconds. PostgreSQL returns Date objects while
+    // HTTP JSON confirmations arrive as strings. String(Date) discards ".789".
+    const oldRevision = '2026-10-30T14:13:03.789Z';
+    const octoberRevision = '2026-10-30T14:13:04.456Z';
+    await pool.query(
+      'UPDATE shared.price_list_items SET updated_at = CASE WHEN id = $2 THEN $4::timestamptz ELSE $5::timestamptz END WHERE installation_id = $1 AND id IN ($2, $3)',
+      [config.installationId, legacyRule.id, octoberRule.id, oldRevision, octoberRevision],
+    );
+    legacyRule.updated_at = new Date(oldRevision);
+    octoberRule.updated_at = new Date(octoberRevision);
     const immediateAt = '2026-10-30T14:33:00.000Z';
     const cartonPayload = {
       matchBySku: true, replaceFrom: true, applyAt: immediateAt,
@@ -540,7 +550,8 @@ test('Đại lý: chặn giá trùng đúng thời điểm, thay thế có xác 
     };
     await client.query('BEGIN');
     const octoberChange = await pricingService.importPricing(client, {
-      installationId: config.installationId, payload: cartonPayload, createdBy: 'test:price-adjust',
+      installationId: config.installationId,
+      payload: JSON.parse(JSON.stringify(cartonPayload)), createdBy: 'test:price-adjust',
     });
     assert.equal(octoberChange.ok, true, octoberChange.message);
     assert.equal(octoberChange.import.itemsUpdated, 2);
