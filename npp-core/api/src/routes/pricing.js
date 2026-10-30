@@ -86,7 +86,7 @@ async function idempotentMutation(req, res, context, { route, body, mutate, reso
         if (tx.failed) {
           return {
             statusCode: statusFor(tx.failed), contentType: 'application/json', requestId: context.requestId,
-            body: { error: { code: tx.failed.code, message: tx.failed.message, retryable: Boolean(tx.failed.retryable), details: {} }, requestId: context.requestId, receivedAt: context.receivedAt },
+            body: { error: { code: tx.failed.code, message: tx.failed.message, retryable: Boolean(tx.failed.retryable), details: tx.failed.details ?? {} }, requestId: context.requestId, receivedAt: context.receivedAt },
           };
         }
         return { statusCode: 201, contentType: 'application/json', requestId: context.requestId, body: createSuccessEnvelope(tx.entity, context.requestId, context.receivedAt) };
