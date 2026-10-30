@@ -164,7 +164,7 @@ test.describe('Giá bán', () => {
     await expect(page.getByTestId('open-bulk-pricing')).toBeVisible();
     await page.getByTestId('open-bulk-pricing').click();
     const modal = page.getByTestId('bulk-pricing-modal');
-    await modal.getByLabel('Bảng giá').selectOption(list.id);
+    await modal.getByRole('combobox', { name: /^Bảng giá/ }).selectOption(list.id);
     await expect(modal.getByText('Đang tải dữ liệu…')).toHaveCount(0);
     await modal.getByLabel('Nhập / dán SKU').fill(sku);
     await modal.getByRole('button', { name: 'Thêm SKU' }).click();
