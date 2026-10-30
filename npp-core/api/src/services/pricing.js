@@ -32,6 +32,13 @@ function decimalKey(value) {
 }
 
 function dateKey(value) {
+  if (value === undefined || value === null || value === '') return '';
+  // PostgreSQL rows contain Date objects; String(Date) DROPS milliseconds.
+  // The HTTP client sends the same revision as an ISO string WITH milliseconds.
+  // Stringifying first makes valid acknowledgements compare as stale.
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? '' : value.toISOString();
+  }
   const normalized = text(value);
   if (!normalized) return '';
   const parsed = new Date(normalized);
