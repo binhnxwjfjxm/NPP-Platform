@@ -433,3 +433,90 @@ test('Một bảng giá áp dụng được nhiều nhóm và kênh, nhưng khô
     await closePool(pool);
   }
 });
+
+test('Đại lý: chặn giá trùng đúng thời điểm, thay thế có xác nhận, giữ lịch sử và mức số lượng khác', async () => {
+  const config = loadConfig(testEnv());
+  const pool = getPool(config);
+  let client;
+  try {
+    const suffix = randomUUID().slice(0, 8).toUpperCase();
+    const catalog = await createCatalog(pool, config.installationId, suffix);
+    const list = await createList(pool, config.installationId, {
+      code: `DAILY-${suffix}`, name: 'Giá đại lý', listType: 'CUSTOM',
+    });
+    const appliedAt = '2026-11-15T00:00:00.000Z';
+    const old = await createItem(pool, config.installationId, list.id, {
+      variantId: catalog.base.id, adjustmentType: 'FIXED_PRICE',
+      amountMinor: '9000', effectiveFrom: '2026-01-01T00:00:00.000Z',
+    });
+    const sameStart = await createItem(pool, config.installationId, list.id, {
+      variantId: catalog.base.id, adjustmentType: 'FIXED_PRICE',
+      amountMinor: '8500', effectiveFrom: appliedAt,
+    });
+    const tier = await createItem(pool, config.installationId, list.id, {
+      variantId: catalog.base.id, adjustmentType: 'FIXED_PRICE',
+      amountMinor: '8000', minQuantity: '10', effectiveFrom: '2026-01-01T00:00:00.000Z',
+    });
+    const payload = {
+      matchBySku: true, replaceFrom: true, applyAt: appliedAt,
+      items: [{ priceListCode: list.code, sku: catalog.base.sku, adjustmentType: 'FIXED_PRICE',
+        amountMinor: '8100', minQuantity: '0', sourceKind: 'ADMIN' }],
+    };
+    client = await pool.connect();
+    await client.query('BEGIN');
+    const blocked = await pricingService.importPricing(client, {
+      installationId: config.installationId, payload, createdBy: 'test:price-adjust',
+    });
+    assert.equal(blocked.ok, false);
+    assert.equal(blocked.code, 'IMPORT_IDENTITY_CONFLICT');
+    assert.equal(blocked.details.conflictingItems.length, 2);
+    assert.deepEqual(new Set(blocked.details.conflictingItems.map((item) => item.id)), new Set([old.id, sameStart.id]));
+    await client.query('ROLLBACK');
+
+    // A stale or incomplete acknowledgement cannot alter any rule.
+    await client.query('BEGIN');
+    const stale = await pricingService.importPricing(client, {
+      installationId: config.installationId,
+      payload: { ...payload, items: [{ ...payload.items[0], resolveConflicts: [
+        { id: old.id, expectedUpdatedAt: '2025-01-01T00:00:00.000Z' },
+        { id: sameStart.id, expectedUpdatedAt: sameStart.updated_at },
+      ] }] },
+      createdBy: 'test:price-adjust',
+    });
+    assert.equal(stale.ok, false);
+    assert.equal(stale.code, 'IMPORT_IDENTITY_CONFLICT');
+    await client.query('ROLLBACK');
+
+    await client.query('BEGIN');
+    const confirmed = await pricingService.importPricing(client, {
+      installationId: config.installationId,
+      payload: { ...payload, items: [{ ...payload.items[0], resolveConflicts: [
+        { id: old.id, expectedUpdatedAt: old.updated_at },
+        { id: sameStart.id, expectedUpdatedAt: sameStart.updated_at },
+      ] }] },
+      createdBy: 'test:price-adjust',
+    });
+    assert.equal(confirmed.ok, true, confirmed.message);
+    assert.equal(confirmed.import.itemsReplaced, 1);
+    assert.equal(confirmed.import.itemsUpdated, 2);
+    assert.equal(confirmed.import.itemsCreated, 1);
+    await client.query('COMMIT');
+
+    const records = (await pool.query(
+      'SELECT id, is_active, effective_from, effective_to, amount_minor, min_quantity, source_metadata FROM shared.price_list_items WHERE installation_id = $1 AND price_list_id = $2 AND variant_id = $3 ORDER BY created_at, id',
+      [config.installationId, list.id, catalog.base.id],
+    )).rows;
+    assert.equal(records.length, 4);
+    assert.equal(new Date(records.find((item) => item.id === old.id).effective_to).toISOString(), appliedAt);
+    assert.equal(records.find((item) => item.id === sameStart.id).is_active, false);
+    assert.equal(records.find((item) => item.id === tier.id).is_active, true);
+    assert.equal(records.find((item) => item.id === tier.id).amount_minor, '8000');
+    const updated = records.find((item) => item.amount_minor === '8100');
+    assert.equal(updated.is_active, true);
+    assert.equal(new Date(updated.effective_from).toISOString(), appliedAt);
+    assert.deepEqual(new Set(updated.source_metadata.replacesPriceItemIds), new Set([old.id, sameStart.id]));
+  } finally {
+    if (client) { await client.query('ROLLBACK').catch(() => {}); client.release(); }
+    await closePool();
+  }
+});
