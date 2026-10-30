@@ -12,8 +12,8 @@ const MONEY_PATTERN = /^(?:0|[1-9]\d{0,18})$/;
 const SCALE = 1_000_000n;
 const MAX_SKU_MATCH_IMPORT_ROWS = 2000;
 
-function invalid(code, message, retryable = false) {
-  return { ok: false, code, message, retryable };
+function invalid(code, message, retryable = false, details = {}) {
+  return { ok: false, code, message, retryable, details };
 }
 
 function text(value) {
@@ -87,6 +87,15 @@ function earlierBoundary(left, right) {
   return new Date(left).getTime() <= new Date(right).getTime() ? left : right;
 }
 
+function priceConflictDetails(sku, priceListCode, items) {
+  return { sku, priceListCode, conflictingItems: items.map((item) => ({
+    id: item.id, updatedAt: dateKey(item.updated_at), adjustmentType: item.adjustment_type,
+    amountMinor: item.amount_minor, rateBps: item.rate_bps,
+    minQuantity: item.min_quantity, maxQuantity: item.max_quantity,
+    effectiveFrom: item.effective_from, effectiveTo: item.effective_to,
+  })) };
+}
+
 async function importPricingBySku(client, { installationId, payload, createdBy }) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
     return invalid('INVALID_INPUT', 'Pricing import payload is required');
@@ -151,10 +160,45 @@ async function importPricingBySku(client, { installationId, payload, createdBy }
     if (replaceFrom) {
       const scoped = allVariantItems.filter((item) => item.is_active && matchesSkuScope(item, row));
       const exactStart = scoped.filter((item) => dateKey(item.effective_from) === dateKey(applyAt));
-      if (exactStart.length > 1) {
-        return invalid('IMPORT_IDENTITY_CONFLICT', `SKU ${sku} có nhiều mức giá bắt đầu cùng thời điểm trong ${priceListCode}; cần xử lý trùng trước`);
+      const overlapping = scoped.filter((item) => intervalContains(item, applyAt));
+      // An exact-start row may coexist with another active overlapping row.
+      // Never update it before checking the entire scope at the replacement time.
+      const conflicts = [...new Map([...exactStart, ...overlapping].map((item) => [item.id, item])).values()];
+      const selections = Array.isArray(row.resolveConflicts) ? row.resolveConflicts : [];
+      const resolvingConflicts = conflicts.length > 1;
+      if (resolvingConflicts) {
+        const selected = new Map(selections.map((entry) => [text(entry?.id), dateKey(entry?.expectedUpdatedAt)]));
+        if (selections.length !== conflicts.length || selected.size !== conflicts.length
+          || !conflicts.every((item) => selected.get(item.id) === dateKey(item.updated_at))) {
+          return invalid('IMPORT_IDENTITY_CONFLICT',
+            `SKU ${sku} có ${conflicts.length} mức giá trùng hiệu lực trong ${priceListCode}; cần xác nhận thay thế từng dòng.`,
+            false, priceConflictDetails(sku, priceListCode, conflicts));
+        }
+        // User acknowledged every exact row and revision. Keep historical periods;
+        // an exact-start row is deactivated instead of making a zero-length interval.
+        for (const item of conflicts) {
+          const startsAt = dateKey(item.effective_from) === dateKey(applyAt);
+          const closed = await legacy.updatePriceListItem(client, {
+            installationId, priceListId: list.id, itemId: item.id, updatedBy: createdBy,
+            payload: {
+              adjustmentType: item.adjustment_type, amountMinor: item.amount_minor, rateBps: item.rate_bps,
+              minQuantity: item.min_quantity, maxQuantity: item.max_quantity,
+              effectiveFrom: item.effective_from, effectiveTo: startsAt ? item.effective_to : applyAt,
+              sourceKind: item.source_kind, externalRuleCode: item.external_rule_code,
+              note: item.note, sourceMetadata: item.source_metadata ?? {},
+              isActive: !startsAt, expectedUpdatedAt: item.updated_at,
+            },
+          });
+          if (!closed.ok) return closed;
+          itemsUpdated += 1;
+        }
       }
-      if (exactStart.length === 1) {
+      if (!resolvingConflicts && selections.length) {
+        return invalid('IMPORT_IDENTITY_CONFLICT',
+          `Giá SKU ${sku} đã đổi sau khi xem trước; tải lại các mức giá trước khi xác nhận.`,
+          false, priceConflictDetails(sku, priceListCode, conflicts));
+      }
+      if (!resolvingConflicts && exactStart.length === 1) {
         const existing = exactStart[0];
         const updated = await legacy.updatePriceListItem(client, {
           installationId, priceListId: list.id, itemId: existing.id, updatedBy: createdBy,
@@ -173,15 +217,11 @@ async function importPricingBySku(client, { installationId, payload, createdBy }
         continue;
       }
 
-      const overlapping = scoped.filter((item) => intervalContains(item, applyAt));
-      if (overlapping.length > 1) {
-        return invalid('IMPORT_IDENTITY_CONFLICT', `SKU ${sku} đang có nhiều mức giá chồng thời gian trong ${priceListCode}; cần xử lý trùng trước`);
-      }
       const applyAtMillis = new Date(applyAt).getTime();
       const future = scoped
         .filter((item) => item.effective_from && new Date(item.effective_from).getTime() > applyAtMillis)
         .sort((a, b) => new Date(a.effective_from).getTime() - new Date(b.effective_from).getTime())[0] ?? null;
-      const current = overlapping[0] ?? null;
+      const current = resolvingConflicts ? null : overlapping[0] ?? null;
       const replacementEnd = earlierBoundary(current?.effective_to ?? null, future?.effective_from ?? null);
 
       if (current) {
@@ -209,7 +249,8 @@ async function importPricingBySku(client, { installationId, payload, createdBy }
           effectiveFrom: applyAt, effectiveTo: replacementEnd,
           sourceKind: row.sourceKind ?? 'IMPORT', sourceKey: row.sourceKey ?? null,
           externalRuleCode: row.externalRuleCode ?? null, note: row.note ?? null,
-          sourceMetadata: { ...(row.sourceMetadata ?? {}), replacesPriceItemId: current?.id ?? null },
+          sourceMetadata: { ...(row.sourceMetadata ?? {}), replacesPriceItemId: current?.id ?? null,
+            ...(resolvingConflicts ? { replacesPriceItemIds: conflicts.map((item) => item.id) } : {}) },
           isActive: row.isActive === undefined ? true : row.isActive,
         },
       });

@@ -37,8 +37,25 @@ export function summarizeCurrentPriceRules(rules: readonly CurrentPriceRule[], a
     && effectiveAt(rule.listEffectiveFrom, rule.listEffectiveTo, at)
     && effectiveAt(rule.effectiveFrom, rule.effectiveTo, at));
   if (current.length === 0) return { kind: 'NONE' };
-  // Do not silently choose a price when overlapping rules can both apply.
-  if (current.length > 1) return { kind: 'MULTIPLE' };
+  // Distinguish valid tiers/adjustments from competing simultaneous rules.
+  // Never choose a single price when more than one rule can affect a SKU.
+  if (current.length > 1) {
+    const overlapsQuantity = (a: CurrentPriceRule, b: CurrentPriceRule) => {
+      const startA = Number(a.minQuantity || '0');
+      const startB = Number(b.minQuantity || '0');
+      const endA = a.maxQuantity ? Number(a.maxQuantity) : Infinity;
+      const endB = b.maxQuantity ? Number(b.maxQuantity) : Infinity;
+      if ([startA, startB, endA, endB].some(Number.isNaN)) return true;
+      return startA <= endB && startB <= endA;
+    };
+    for (let i = 0; i < current.length; i += 1) {
+      for (let j = i + 1; j < current.length; j += 1) {
+        if (current[i].adjustmentType === current[j].adjustmentType
+          && overlapsQuantity(current[i], current[j])) return { kind: 'MULTIPLE' };
+      }
+    }
+    return { kind: 'CONDITIONAL' };
+  }
   const rule = current[0];
   if (rule.adjustmentType !== 'FIXED_PRICE'
     || decimalKey(rule.minQuantity || '0') !== '0'

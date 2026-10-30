@@ -7,7 +7,7 @@ import type { PriceAdjustmentType, PriceList, PriceListItem } from '../../lib/pr
 import styles from './pricing-bulk-overlay.module.css';
 
 type ApplyMode = 'NOW' | 'SCHEDULED';
-type PreviewRow = { sku: string; status: 'CREATE' | 'UPDATE'; reason: string };
+type PreviewRow = { sku: string; status: 'CREATE' | 'UPDATE'; reason: string; conflicts: PriceListItem[] };
 type ImportResult = { itemsCreated: number; itemsUpdated: number; itemsReplaced?: number; totalItems: number };
 type ApiEnvelope<T> = { data?: T; error?: { code?: string; message?: string; retryable?: boolean; details?: unknown } };
 type Props = {
@@ -73,6 +73,8 @@ export default function PricingBulkOverlay({ priceLists, defaultPriceListId = ''
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [confirmedConflictSkus, setConfirmedConflictSkus] = useState<Set<string>>(new Set());
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [items, setItems] = useState<PriceListItem[]>([]);
@@ -113,13 +115,13 @@ export default function PricingBulkOverlay({ priceLists, defaultPriceListId = ''
   const usesAmount = ['FIXED_PRICE', 'AMOUNT_DISCOUNT', 'AMOUNT_MARKUP'].includes(adjustmentType);
 
   useEffect(() => {
-    setItems([]); setSelectedSkus(new Set()); setFixedPrices({}); setMessage(null); setError(null);
+    setItems([]); setSelectedSkus(new Set()); setFixedPrices({}); setMessage(null); setError(null); setLoadFailed(false);
     if (!open || !selectedListId) return;
     const controller = new AbortController();
     setLoading(true);
     listAllPriceListItems(selectedListId, controller.signal)
       .then(setItems)
-      .catch((cause) => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'Không tải được giá hiện tại.'); })
+      .catch((cause) => { if (!controller.signal.aborted) { setLoadFailed(true); setError(cause instanceof Error ? cause.message : 'Không tải được giá hiện tại.'); } })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [open, selectedListId]);
@@ -128,17 +130,30 @@ export default function PricingBulkOverlay({ priceLists, defaultPriceListId = ''
     if (selectedList?.list_type === 'BASE' && adjustmentType !== 'FIXED_PRICE') setAdjustmentType('FIXED_PRICE');
   }, [selectedList, adjustmentType]);
 
-  useEffect(() => { operationKeyRef.current = null; }, [selectedListId, selectedSkuList, adjustmentType, sharedValue, fixedPrices, minQuantity, maxQuantity, note, applyMode, applyAt]);
+  useEffect(() => { operationKeyRef.current = null; }, [selectedListId, selectedSkuList, adjustmentType, sharedValue, fixedPrices, minQuantity, maxQuantity, note, applyMode, applyAt, confirmedConflictSkus]);
+  useEffect(() => { setConfirmedConflictSkus(new Set()); }, [selectedListId, selectedSkuList, adjustmentType, minQuantity, maxQuantity, applyMode, applyAt, items]);
 
   const preview = useMemo<PreviewRow[]>(() => selectedSkuList.map((sku) => {
     const scoped = (itemsBySku.get(sku) ?? []).filter((item) => item.is_active
       && item.adjustment_type === adjustmentType
       && decimalKey(item.min_quantity) === decimalKey(minQuantity || '0')
       && decimalKey(item.max_quantity) === decimalKey(maxQuantity));
-    return scoped.length
-      ? { sku, status: 'UPDATE', reason: applyMode === 'NOW' ? 'Kết thúc mức giá hiện tại và áp dụng giá mới ngay.' : 'Giữ giá hiện tại đến ngày áp dụng rồi tự chuyển giá mới.' }
-      : { sku, status: 'CREATE', reason: 'Chưa có mức giá cùng phạm vi; sẽ tạo mức giá mới.' };
-  }), [adjustmentType, applyMode, itemsBySku, maxQuantity, minQuantity, selectedSkuList]);
+    const at = applyMode === 'SCHEDULED' ? new Date(applyAt).getTime() : Date.now();
+    const overlaps = scoped.filter((item) => Number.isFinite(at)
+      && (!item.effective_from || new Date(item.effective_from).getTime() <= at)
+      && (!item.effective_to || new Date(item.effective_to).getTime() > at));
+    const exactStart = scoped.filter((item) => Number.isFinite(at) && item.effective_from
+      && new Date(item.effective_from).getTime() === at);
+    const simultaneouslyEffective = [...new Map([...exactStart, ...overlaps].map((item): [string, PriceListItem] => [item.id, item])).values()];
+    const conflicts = simultaneouslyEffective.length > 1 ? simultaneouslyEffective : [];
+    return {
+      sku, conflicts, status: scoped.length ? 'UPDATE' : 'CREATE',
+      reason: conflicts.length ? `Có ${conflicts.length} mức giá trùng thời điểm và điều kiện. Xem và xác nhận thay thế ở dưới.`
+        : scoped.length ? (applyMode === 'NOW' ? 'Kết thúc mức giá hiện tại và áp dụng giá mới ngay.' : 'Giữ giá hiện tại đến ngày áp dụng rồi tự chuyển giá mới.')
+          : 'Chưa có mức giá cùng phạm vi; sẽ tạo mức giá mới.',
+    };
+  }), [adjustmentType, applyMode, applyAt, itemsBySku, maxQuantity, minQuantity, selectedSkuList]);
+  const hasUnconfirmedConflicts = preview.some((row) => row.conflicts.length && !confirmedConflictSkus.has(row.sku));
 
   function openDialog() {
     const preferred = lists.some((list) => list.id === defaultPriceListId) ? defaultPriceListId : lists.find((list) => list.list_type === 'BASE')?.id ?? lists[0]?.id ?? '';
@@ -157,6 +172,8 @@ export default function PricingBulkOverlay({ priceLists, defaultPriceListId = ''
   function close() { if (!busy) setOpen(false); }
   function validate(): string | null {
     if (!selectedList) return 'Chọn bảng giá cần điều chỉnh.';
+    if (loading || loadFailed) return 'Chưa tải đủ dữ liệu giá để điều chỉnh an toàn.';
+    if (hasUnconfirmedConflicts) return 'Kiểm tra và xác nhận các mức giá trùng trước khi lưu.';
     if (!selectedSkus.size) return 'Chọn ít nhất một SKU.';
     if (selectedList.list_type === 'BASE' && adjustmentType !== 'FIXED_PRICE') return 'Bảng giá nền chỉ nhận giá trực tiếp.';
     if (applyMode === 'SCHEDULED' && !applyAt) return 'Chọn ngày áp dụng giá mới.';
@@ -193,6 +210,10 @@ export default function PricingBulkOverlay({ priceLists, defaultPriceListId = ''
             amountMinor: usesAmount ? (adjustmentType === 'FIXED_PRICE' ? fixedPrices[sku] : sharedValue) : null,
             rateBps, minQuantity: minQuantity || '0', maxQuantity: maxQuantity || null,
             sourceKind: 'ADMIN', externalRuleCode: 'PRICE_ADJUSTMENT', note: note.trim() || null, isActive: true,
+            ...(confirmedConflictSkus.has(sku) && preview.find((row) => row.sku === sku)?.conflicts.length
+              ? { resolveConflicts: preview.find((row) => row.sku === sku)!.conflicts.map((item) => ({
+                id: item.id, expectedUpdatedAt: item.updated_at,
+              })) } : {}),
           })),
         }),
       });
@@ -202,14 +223,20 @@ export default function PricingBulkOverlay({ priceLists, defaultPriceListId = ''
       setMessage(`Đã điều chỉnh ${result.totalItems} SKU${applyMode === 'NOW' ? ' và áp dụng ngay.' : ' theo ngày đã chọn.'}`);
       await onApplied?.(list.id);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Không điều chỉnh được giá.');
+      const err = cause as Error & { code?: string };
+      setError(err instanceof Error ? err.message : 'Không điều chỉnh được giá.');
+      if (err?.code === 'IMPORT_IDENTITY_CONFLICT') {
+        setConfirmedConflictSkus(new Set());
+        try { setItems(await listAllPriceListItems(list.id)); }
+        catch { setLoadFailed(true); }
+      }
     } finally { setBusy(false); }
   }
 
   return <>
     <button type="button" className={styles.launchButton} onClick={openDialog} data-testid="open-bulk-pricing">Điều chỉnh trực tiếp</button>
     <Modal open={open} title="Điều chỉnh giá trực tiếp" description="Chỉ SKU được chọn mới thay đổi. Giá cũ được giữ trong lịch sử và tự kết thúc tại thời điểm áp dụng giá mới." onClose={close} testId="bulk-pricing-modal" size="workspace"
-      footer={<><button type="button" className={styles.secondaryButton} onClick={close} disabled={busy}>Đóng</button><button type="button" className={styles.primaryButton} onClick={() => void applyBulk()} disabled={busy || loading || !selectedSkus.size} data-testid="apply-bulk-pricing">{busy ? 'Đang áp dụng…' : `Xác nhận ${selectedSkus.size || ''} SKU`}</button></>}>
+      footer={<><button type="button" className={styles.secondaryButton} onClick={close} disabled={busy}>Đóng</button><button type="button" className={styles.primaryButton} onClick={() => void applyBulk()} disabled={busy || loading || loadFailed || !selectedSkus.size || hasUnconfirmedConflicts} data-testid="apply-bulk-pricing">{busy ? 'Đang áp dụng…' : `Xác nhận ${selectedSkus.size || ''} SKU`}</button></>}>
       {error ? <div className={styles.errorNotice} role="alert">{error}</div> : null}
       {message ? <div className={styles.notice} role="status">{message}</div> : null}
       <div className={styles.scopeGrid}>
@@ -221,10 +248,23 @@ export default function PricingBulkOverlay({ priceLists, defaultPriceListId = ''
       <div className={styles.skuEntry}><label>Nhập / dán SKU<input value={skuInput} onChange={(event) => setSkuInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addTypedSkus(); } }} placeholder="VD: SKU001, SKU002" /></label><button type="button" className={styles.primaryButton} onClick={addTypedSkus} disabled={!parseSkuInput(skuInput).length}>Thêm SKU</button><span>{selectedSkus.size} SKU đã chọn</span></div>
       <div className={styles.selectionHeader}><label className={styles.searchLabel}>Tìm trong bảng giá<input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="SKU, tên sản phẩm hoặc quy cách" /></label><button type="button" className={styles.secondaryButton} onClick={() => setSelectedSkus((current) => new Set([...current, ...visibleExistingSkus]))} disabled={!visibleExistingSkus.length}>Chọn kết quả</button><button type="button" className={styles.secondaryButton} onClick={() => setSelectedSkus(new Set())} disabled={!selectedSkus.size}>Bỏ chọn</button></div>
       <div className={styles.existingSkuList}>{loading ? <p>Đang tải dữ liệu…</p> : visibleExistingSkus.map((sku) => { const item = currentItem(itemsBySku.get(sku) ?? []) ?? itemsBySku.get(sku)?.[0]; return <label key={sku}><input type="checkbox" checked={selectedSkus.has(sku)} onChange={(event) => toggleSku(sku, event.target.checked)} /><span><strong>{sku}</strong><small>{item?.product_name ?? '—'} · {item?.variant_name ?? '—'}</small></span></label>; })}</div>
-      {selectedSkuList.length ? <div className={styles.variantList}>{selectedSkuList.map((sku) => { const current = currentItem(itemsBySku.get(sku) ?? []); return <div key={sku} className={styles.variantRow}><button type="button" className={styles.removeSku} onClick={() => toggleSku(sku, false)} aria-label={`Bỏ SKU ${sku}`}>×</button><span><strong>{sku}</strong><small>{current ? `${current.product_name} · ${current.variant_name}` : 'SKU sẽ được tra cứu khi áp dụng'}</small></span><span>{current?.amount_minor ? `Hiện tại ${new Intl.NumberFormat('vi-VN').format(BigInt(current.amount_minor))} ₫` : 'Chưa có giá hiện tại'}</span>{adjustmentType === 'FIXED_PRICE' ? <input aria-label={`Giá mới SKU ${sku}`} inputMode="numeric" placeholder="Giá mới" value={fixedPrices[sku] ?? ''} onChange={(event) => setFixedPrices((currentValues) => ({ ...currentValues, [sku]: event.target.value.replace(/\D/g, '') }))} /> : null}</div>; })}</div> : null}
+      {selectedSkuList.length ? <div className={styles.variantList}>{selectedSkuList.map((sku) => { const current = currentItem(itemsBySku.get(sku) ?? []); const collision = preview.find((row) => row.sku === sku)?.conflicts.length; return <div key={sku} className={styles.variantRow}><button type="button" className={styles.removeSku} onClick={() => toggleSku(sku, false)} aria-label={`Bỏ SKU ${sku}`}>×</button><span><strong>{sku}</strong><small>{current ? `${current.product_name} · ${current.variant_name}` : 'SKU sẽ được tra cứu khi áp dụng'}</small></span><span>{collision ? 'Nhiều mức giá — xem bên dưới' : current?.amount_minor != null ? `Hiện tại ${new Intl.NumberFormat('vi-VN').format(BigInt(current.amount_minor))} ₫` : 'Chưa có giá hiện tại'}</span>{adjustmentType === 'FIXED_PRICE' ? <input aria-label={`Giá mới SKU ${sku}`} inputMode="numeric" placeholder="Giá mới" value={fixedPrices[sku] ?? ''} onChange={(event) => setFixedPrices((currentValues) => ({ ...currentValues, [sku]: event.target.value.replace(/\D/g, '') }))} /> : null}</div>; })}</div> : null}
       {adjustmentType !== 'FIXED_PRICE' ? <div className={styles.valuePanel}><label>{usesAmount ? 'Giá trị tiền (₫)' : 'Phần trăm (%)'}<input value={sharedValue} inputMode={usesAmount ? 'numeric' : 'decimal'} onChange={(event) => setSharedValue(usesAmount ? event.target.value.replace(/\D/g, '') : event.target.value)} /></label></div> : null}
       <details className={styles.advanced}><summary>Điều kiện nâng cao</summary><div className={styles.scopeGrid}><label>Số lượng từ<input value={minQuantity} inputMode="decimal" onChange={(event) => setMinQuantity(event.target.value)} /></label><label>Số lượng đến<input value={maxQuantity} inputMode="decimal" placeholder="Không giới hạn" onChange={(event) => setMaxQuantity(event.target.value)} /></label><label className={styles.wide}>Ghi chú<input value={note} maxLength={2000} onChange={(event) => setNote(event.target.value)} /></label></div></details>
-      <section className={styles.preview}><div className={styles.previewHeader}><h3>Xem trước</h3><span>{preview.length} SKU</span></div>{preview.length === 0 ? <p>Chọn SKU để xem trước.</p> : preview.map((row) => <div key={row.sku} className={styles.previewRow}><strong>{row.sku}</strong><span className={row.status === 'UPDATE' ? styles.update : styles.create}>{row.status === 'UPDATE' ? 'Điều chỉnh' : 'Tạo mới'}</span><span>{row.reason}</span></div>)}</section>
+      <section className={styles.preview}><div className={styles.previewHeader}><h3>Xem trước</h3><span>{preview.length} SKU</span></div>{preview.length === 0 ? <p>Chọn SKU để xem trước.</p> : preview.map((row) => <div key={row.sku}>
+          <div className={styles.previewRow}><strong>{row.sku}</strong><span className={row.status === 'UPDATE' ? styles.update : styles.create}>{row.status === 'UPDATE' ? 'Điều chỉnh' : 'Tạo mới'}</span><span>{row.reason}</span></div>
+          {row.conflicts.length ? <div className={styles.conflictPanel} data-testid={`pricing-conflict-${row.sku}`}>
+            <strong>Các mức giá đang cùng hiệu lực:</strong>
+            {row.conflicts.map((item) => <div key={item.id} className={styles.conflictRule}>
+              <span>{item.amount_minor != null ? `${new Intl.NumberFormat('vi-VN').format(BigInt(item.amount_minor))} ₫` : item.rate_bps != null ? `${Number(item.rate_bps) / 100}%` : '—'}</span>
+              <span>SL: {item.min_quantity} → {item.max_quantity ?? 'Không giới hạn'}</span>
+              <span>Từ {item.effective_from ? new Date(item.effective_from).toLocaleString('vi-VN') : 'trước đây'} · đến {item.effective_to ? new Date(item.effective_to).toLocaleString('vi-VN') : 'không giới hạn'}</span>
+            </div>)}
+            <label className={styles.conflictAck}><input type="checkbox" checked={confirmedConflictSkus.has(row.sku)} onChange={(event) => setConfirmedConflictSkus((value) => { const next = new Set(value); if (event.target.checked) next.add(row.sku); else next.delete(row.sku); return next; })} />
+              Tôi đã kiểm tra và đồng ý kết thúc các mức giá trùng trên để áp dụng giá mới cho {row.sku}.
+            </label>
+          </div> : null}
+        </div>)}</section>
     </Modal>
   </>;
 }
