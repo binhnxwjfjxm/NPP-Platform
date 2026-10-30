@@ -130,4 +130,76 @@ test.describe('Giá bán', () => {
     await expect(customer).toHaveCount(0);
   });
 
+  test('điều chỉnh trực tiếp giá trùng: checkbox gửi đủ 2 ID và thời điểm cập nhật, lưu thành công', async ({ page, request }) => {
+    const suffix = `CF-${Date.now().toString(36).toUpperCase()}`;
+    const fixture = await createFixture(request, suffix);
+    const sku = fixture.variant.sku;
+    const listCode = `DEAL-${suffix}`;
+    const newList = await request.post('/api/price-lists', {
+      headers: { 'Idempotency-Key': createIdempotencyKey('pricing-conflict-list') },
+      data: { code: listCode, name: 'Giá đại lý thử nghiệm', listType: 'CUSTOM' },
+    });
+    expect(newList.status(), await newList.text()).toBe(201);
+    const list = (await newList.json()).data;
+
+    const priceRows = [
+      { amountMinor: '565000', effectiveFrom: null },
+      { amountMinor: '525000', effectiveFrom: '2026-10-09T13:46:52.000Z' },
+    ];
+    const seeded = [];
+    for (const price of priceRows) {
+      const response = await request.post(`/api/price-lists/${list.id}/items`, {
+        headers: { 'Idempotency-Key': createIdempotencyKey('pricing-conflict-seed') },
+        data: {
+          variantId: fixture.variant.id, adjustmentType: 'FIXED_PRICE',
+          amountMinor: price.amountMinor, minQuantity: '0',
+          effectiveFrom: price.effectiveFrom, effectiveTo: null, isActive: true,
+        },
+      });
+      expect(response.status(), await response.text()).toBe(201);
+      seeded.push((await response.json()).data);
+    }
+
+    await page.goto('/pricing?view=all');
+    await expect(page.getByTestId('open-bulk-pricing')).toBeVisible();
+    await page.getByTestId('open-bulk-pricing').click();
+    const modal = page.getByTestId('bulk-pricing-modal');
+    await modal.getByLabel('Bảng giá').selectOption(list.id);
+    await expect(modal.getByText('Đang tải dữ liệu…')).toHaveCount(0);
+    await modal.getByLabel('Nhập / dán SKU').fill(sku);
+    await modal.getByRole('button', { name: 'Thêm SKU' }).click();
+    await modal.getByLabel(`Giá mới SKU ${sku}`).fill('530000');
+    const collision = modal.getByTestId(`pricing-conflict-${sku}`);
+    await expect(collision).toContainText('525.000');
+    await expect(collision).toContainText('565.000');
+    await expect(modal.getByTestId('apply-bulk-pricing')).toBeDisabled();
+    await collision.getByRole('checkbox').check();
+    await expect(modal.getByTestId('apply-bulk-pricing')).toBeEnabled();
+
+    const post = page.waitForRequest((req) => req.url().endsWith('/api/pricing/import') && req.method() === 'POST');
+    await modal.getByTestId('apply-bulk-pricing').click();
+    const sent = (await post).postDataJSON();
+    const actualConfirmed = sent.items[0].resolveConflicts;
+    expect(actualConfirmed).toHaveLength(2);
+    expect(new Set(actualConfirmed.map((entry: { id: string }) => entry.id)))
+      .toEqual(new Set(seeded.map((entry) => entry.id)));
+    for (const item of seeded) {
+      expect(actualConfirmed.find((entry: { id: string }) => entry.id === item.id).expectedUpdatedAt)
+        .toBe(item.updated_at);
+    }
+
+    await expect(modal).toContainText('Đã lưu 1 SKU', { timeout: 25_000 });
+    await expect(modal.getByTestId('apply-bulk-pricing')).toBeDisabled();
+    const result = await request.get(`/api/price-lists/${list.id}/items?limit=50`);
+    expect(result.status()).toBe(200);
+    const after = (await result.json()).data;
+    const now = Date.now();
+    const activeNow = after.filter((row: { is_active: boolean; effective_from: string | null; effective_to: string | null }) =>
+      row.is_active
+      && (!row.effective_from || new Date(row.effective_from).getTime() <= now)
+      && (!row.effective_to || new Date(row.effective_to).getTime() > now));
+    expect(activeNow).toHaveLength(1);
+    expect(activeNow[0].amount_minor).toBe('530000');
+  });
+
 });
