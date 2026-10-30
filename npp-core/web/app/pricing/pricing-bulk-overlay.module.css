@@ -8,3 +8,10 @@
 .conflictRule span:first-child{font-weight:750}
 .conflictAck{display:flex;align-items:flex-start;gap:8px;padding:9px 4px 2px;font-weight:650;cursor:pointer}
 .conflictAck input{width:16px;height:16px;margin:0;flex:none}
+
+.saveFooter{display:grid;width:100%;gap:7px;min-width:0}
+.footerActions{display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap}
+.footerError,.footerMessage{font-size:.78rem;line-height:1.4;overflow-wrap:anywhere}
+.footerError{color:#922a22;font-weight:700}
+.footerMessage{color:#175b40;font-weight:700}
+@media(max-width:720px){.footerActions{display:grid;grid-template-columns:minmax(0,1fr)}.footerActions button{width:100%}}
