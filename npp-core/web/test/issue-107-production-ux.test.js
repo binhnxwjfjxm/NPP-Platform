@@ -87,14 +87,14 @@ test('direct pricing conflict displays all rows and cannot submit without explic
     readSource('../../api/src/routes/pricing.js'),
   ]);
   assert.match(overlay, /const conflicts = simultaneouslyEffective\.length > 1/);
-  assert.match(overlay, /confirmedConflictSkus/);
+  assert.match(overlay, /confirmedConflicts/);
   assert.match(overlay, /hasUnconfirmedConflicts/);
   assert.match(overlay, /disabled=\{busy \|\| loading \|\| loadFailed \|\| !selectedSkus\.size \|\| hasUnconfirmedConflicts \|\| savePhase !== 'idle'\}/);
-  assert.match(overlay, /resolveConflicts: preview\.find/);
+  assert.match(overlay, /resolveConflicts: confirmedConflicts\[sku\]/);
   assert.match(overlay, /expectedUpdatedAt: item\.updated_at/);
   assert.match(overlay, /Các mức giá đang cùng hiệu lực/);
   assert.match(overlay, /Tôi đã kiểm tra và đồng ý kết thúc/);
-  assert.match(overlay, /setConfirmedConflictSkus\(new Set\(\)\)/);
+  assert.match(overlay, /setConfirmedConflicts\(\{\}\)/);
   assert.match(backendRoute, /details: tx\.failed\.details \?\? \{\}/);
 });
 
@@ -112,4 +112,14 @@ test('price adjustment distinguishes mutation success from a failed refresh and 
   assert.match(overlay, /className=\{styles\.footerError\} role="alert"/);
   assert.match(service, /verifySkuReplacement\(client,/);
   assert.match(service, /PRICING_REPLACEMENT_INCOMPLETE/);
+});
+
+test('price confirmation snapshots exact row revisions on checkbox click, not on submit', async () => {
+  const overlay = await readSource('../app/pricing/pricing-bulk-overlay.tsx');
+  assert.match(overlay, /function ruleSnapshot\(rows: PriceListItem\[\]\)/);
+  assert.match(overlay, /const checked = event\.currentTarget\.checked/);
+  assert.match(overlay, /const snapshot = checked \? ruleSnapshot\(row\.conflicts\) : null/);
+  assert.match(overlay, /approvalMatches\(row\.conflicts, confirmedConflicts\[row\.sku\]\)/);
+  assert.match(overlay, /resolveConflicts: confirmedConflicts\[sku\]/);
+  assert.doesNotMatch(overlay, /resolveConflicts: preview\.find/);
 });
