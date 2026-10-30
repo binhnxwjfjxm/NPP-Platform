@@ -89,11 +89,27 @@ test('direct pricing conflict displays all rows and cannot submit without explic
   assert.match(overlay, /const conflicts = simultaneouslyEffective\.length > 1/);
   assert.match(overlay, /confirmedConflictSkus/);
   assert.match(overlay, /hasUnconfirmedConflicts/);
-  assert.match(overlay, /disabled=\{busy \|\| loading \|\| loadFailed \|\| !selectedSkus\.size \|\| hasUnconfirmedConflicts\}/);
+  assert.match(overlay, /disabled=\{busy \|\| loading \|\| loadFailed \|\| !selectedSkus\.size \|\| hasUnconfirmedConflicts \|\| savePhase !== 'idle'\}/);
   assert.match(overlay, /resolveConflicts: preview\.find/);
   assert.match(overlay, /expectedUpdatedAt: item\.updated_at/);
   assert.match(overlay, /Các mức giá đang cùng hiệu lực/);
   assert.match(overlay, /Tôi đã kiểm tra và đồng ý kết thúc/);
   assert.match(overlay, /setConfirmedConflictSkus\(new Set\(\)\)/);
   assert.match(backendRoute, /details: tx\.failed\.details \?\? \{\}/);
+});
+
+test('price adjustment distinguishes mutation success from a failed refresh and prevents duplicate writes', async () => {
+  const [overlay, service] = await Promise.all([
+    readSource('../app/pricing/pricing-bulk-overlay.tsx'),
+    readSource('../../api/src/services/pricing.js'),
+  ]);
+  assert.match(overlay, /setSavedReceipt\(\{ priceListId: list\.id, totalItems: result\.totalItems \}\)/);
+  assert.match(overlay, /await verifySavedPrice\(list\.id, result\.totalItems\)/);
+  assert.match(overlay, /savePhase !== 'idle'/);
+  assert.match(overlay, /setSavePhase\('verified'\)/);
+  assert.match(overlay, /Kiểm tra lại kết quả/);
+  assert.match(overlay, /Không bấm lưu thêm/);
+  assert.match(overlay, /className=\{styles\.footerError\} role="alert"/);
+  assert.match(service, /verifySkuReplacement\(client,/);
+  assert.match(service, /PRICING_REPLACEMENT_INCOMPLETE/);
 });
