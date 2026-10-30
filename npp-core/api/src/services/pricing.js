@@ -96,6 +96,24 @@ function priceConflictDetails(sku, priceListCode, items) {
   })) };
 }
 
+async function verifySkuReplacement(client, { installationId, list, variant, row, applyAt }) {
+  // The write and the verification share one database transaction: no success
+  // is returned while an overlapping rule can still apply to the same scope.
+  const rows = await repo.listPriceListItems(client, {
+    installationId, priceListId: list.id, variantId: variant.id,
+    active: undefined, limit: 2000, offset: 0,
+  });
+  const effective = rows.filter((item) => item.is_active
+    && matchesSkuScope(item, row) && intervalContains(item, applyAt));
+  if (effective.length !== 1
+    || text(effective[0].amount_minor) !== text(row.amountMinor)
+    || text(effective[0].rate_bps) !== text(row.rateBps)) {
+    return invalid('PRICING_REPLACEMENT_INCOMPLETE',
+      `Không thể xác nhận giá mới của SKU ${upper(row.sku)} đã thay thế toàn bộ mức giá trùng. Dữ liệu chưa được ghi; hãy tải lại và kiểm tra.`);
+  }
+  return { ok: true };
+}
+
 async function importPricingBySku(client, { installationId, payload, createdBy }) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
     return invalid('INVALID_INPUT', 'Pricing import payload is required');
@@ -213,6 +231,8 @@ async function importPricingBySku(client, { installationId, payload, createdBy }
           },
         });
         if (!updated.ok) return updated;
+        const verified = await verifySkuReplacement(client, { installationId, list, variant, row, applyAt });
+        if (!verified.ok) return verified;
         itemsUpdated += 1; itemsReplaced += 1;
         continue;
       }
@@ -255,6 +275,8 @@ async function importPricingBySku(client, { installationId, payload, createdBy }
         },
       });
       if (!created.ok) return created;
+      const verified = await verifySkuReplacement(client, { installationId, list, variant, row, applyAt });
+      if (!verified.ok) return verified;
       itemsCreated += 1; itemsReplaced += 1;
       continue;
     }
