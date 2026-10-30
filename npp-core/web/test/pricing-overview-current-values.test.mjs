@@ -61,6 +61,18 @@ test('keeps genuinely competing or condition-dependent rules visible for review'
   assert.deepEqual(summarizeCurrentPriceRules([price({ minQuantity: '10' })], at), { kind: 'CONDITIONAL' });
   assert.deepEqual(summarizeCurrentPriceRules([price({ maxQuantity: '20' })], at), { kind: 'CONDITIONAL' });
   assert.deepEqual(summarizeCurrentPriceRules([price({ adjustmentType: 'PERCENT_DISCOUNT' })], at), { kind: 'CONDITIONAL' });
+  assert.deepEqual(summarizeCurrentPriceRules([
+    price({ minQuantity: '0', maxQuantity: '9', amountMinor: '740000' }),
+    price({ minQuantity: '10', maxQuantity: '', amountMinor: '690000' }),
+  ], at), { kind: 'CONDITIONAL' });
+  assert.deepEqual(summarizeCurrentPriceRules([
+    price({ minQuantity: '0', maxQuantity: '', amountMinor: '740000' }),
+    price({ minQuantity: '10', maxQuantity: '', amountMinor: '690000' }),
+  ], at), { kind: 'MULTIPLE' });
+  assert.deepEqual(summarizeCurrentPriceRules([
+    price({ adjustmentType: 'FIXED_PRICE' }),
+    price({ adjustmentType: 'AMOUNT_DISCOUNT', amountMinor: '1000' }),
+  ], at), { kind: 'CONDITIONAL' });
 });
 
 test('screen and both exported summaries share the same effective-price calculation', () => {
