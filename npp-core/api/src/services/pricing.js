@@ -192,7 +192,6 @@ async function importPricingBySku(client, { installationId, payload, createdBy }
           if (!closed.ok) return closed;
           itemsUpdated += 1;
         }
-
       }
       if (!resolvingConflicts && selections.length) {
         return invalid('IMPORT_IDENTITY_CONFLICT',
