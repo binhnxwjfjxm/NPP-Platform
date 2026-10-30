@@ -144,7 +144,7 @@ export default function PricingBulkOverlay({ priceLists, defaultPriceListId = ''
       && (!item.effective_to || new Date(item.effective_to).getTime() > at));
     const exactStart = scoped.filter((item) => Number.isFinite(at) && item.effective_from
       && new Date(item.effective_from).getTime() === at);
-    const simultaneouslyEffective = [...new Map([...exactStart, ...overlaps].map((item) => [item.id, item])).values()];
+    const simultaneouslyEffective = [...new Map([...exactStart, ...overlaps].map((item): [string, PriceListItem] => [item.id, item])).values()];
     const conflicts = simultaneouslyEffective.length > 1 ? simultaneouslyEffective : [];
     return {
       sku, conflicts, status: scoped.length ? 'UPDATE' : 'CREATE',
