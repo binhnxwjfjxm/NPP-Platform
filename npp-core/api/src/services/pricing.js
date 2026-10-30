@@ -165,7 +165,8 @@ async function importPricingBySku(client, { installationId, payload, createdBy }
       // Never update it before checking the entire scope at the replacement time.
       const conflicts = [...new Map([...exactStart, ...overlapping].map((item) => [item.id, item])).values()];
       const selections = Array.isArray(row.resolveConflicts) ? row.resolveConflicts : [];
-      if (conflicts.length > 1) {
+      const resolvingConflicts = conflicts.length > 1;
+      if (resolvingConflicts) {
         const selected = new Map(selections.map((entry) => [text(entry?.id), dateKey(entry?.expectedUpdatedAt)]));
         if (selections.length !== conflicts.length || selected.size !== conflicts.length
           || !conflicts.every((item) => selected.get(item.id) === dateKey(item.updated_at))) {
@@ -191,32 +192,14 @@ async function importPricingBySku(client, { installationId, payload, createdBy }
           if (!closed.ok) return closed;
           itemsUpdated += 1;
         }
-        const nextFuture = scoped
-          .filter((item) => item.effective_from && new Date(item.effective_from).getTime() > new Date(applyAt).getTime())
-          .sort((a, b) => new Date(a.effective_from).getTime() - new Date(b.effective_from).getTime())[0] ?? null;
-      const created = await legacy.createPriceListItem(client, {
-        installationId, priceListId: list.id, createdBy,
-        payload: {
-          variantId: variant.id, adjustmentType: upper(row.adjustmentType),
-          amountMinor: row.amountMinor ?? null, rateBps: row.rateBps ?? null,
-          minQuantity: row.minQuantity ?? '0', maxQuantity: row.maxQuantity ?? null,
-          effectiveFrom: applyAt, effectiveTo: nextFuture?.effective_from ?? null,
-          sourceKind: row.sourceKind ?? 'IMPORT', sourceKey: row.sourceKey ?? null,
-          externalRuleCode: row.externalRuleCode ?? null, note: row.note ?? null,
-          sourceMetadata: { ...(row.sourceMetadata ?? {}), replacesPriceItemIds: conflicts.map((item) => item.id) },
-          isActive: row.isActive === undefined ? true : row.isActive,
-        },
-      });
-      if (!created.ok) return created;
-      itemsCreated += 1; itemsReplaced += 1;
-      continue;
+
       }
-      if (selections.length) {
+      if (!resolvingConflicts && selections.length) {
         return invalid('IMPORT_IDENTITY_CONFLICT',
           `Giá SKU ${sku} đã đổi sau khi xem trước; tải lại các mức giá trước khi xác nhận.`,
           false, priceConflictDetails(sku, priceListCode, conflicts));
       }
-      if (exactStart.length === 1) {
+      if (!resolvingConflicts && exactStart.length === 1) {
         const existing = exactStart[0];
         const updated = await legacy.updatePriceListItem(client, {
           installationId, priceListId: list.id, itemId: existing.id, updatedBy: createdBy,
@@ -239,7 +222,7 @@ async function importPricingBySku(client, { installationId, payload, createdBy }
       const future = scoped
         .filter((item) => item.effective_from && new Date(item.effective_from).getTime() > applyAtMillis)
         .sort((a, b) => new Date(a.effective_from).getTime() - new Date(b.effective_from).getTime())[0] ?? null;
-      const current = overlapping[0] ?? null;
+      const current = resolvingConflicts ? null : overlapping[0] ?? null;
       const replacementEnd = earlierBoundary(current?.effective_to ?? null, future?.effective_from ?? null);
 
       if (current) {
@@ -267,7 +250,8 @@ async function importPricingBySku(client, { installationId, payload, createdBy }
           effectiveFrom: applyAt, effectiveTo: replacementEnd,
           sourceKind: row.sourceKind ?? 'IMPORT', sourceKey: row.sourceKey ?? null,
           externalRuleCode: row.externalRuleCode ?? null, note: row.note ?? null,
-          sourceMetadata: { ...(row.sourceMetadata ?? {}), replacesPriceItemId: current?.id ?? null },
+          sourceMetadata: { ...(row.sourceMetadata ?? {}), replacesPriceItemId: current?.id ?? null,
+            ...(resolvingConflicts ? { replacesPriceItemIds: conflicts.map((item) => item.id) } : {}) },
           isActive: row.isActive === undefined ? true : row.isActive,
         },
       });
