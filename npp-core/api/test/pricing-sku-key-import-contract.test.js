@@ -31,3 +31,16 @@ test('SKU-keyed price adjustment preserves history and supports now or scheduled
   assert.match(pricing, /replacesPriceItemId/);
   assert.match(pricing, /itemsReplaced/);
 });
+
+test('direct price collision examines exact-start and overlapping rows before writes, then validates every revision', () => {
+  const guard = pricing.indexOf('const conflicts =');
+  const update = pricing.indexOf('if (exactStart.length === 1)');
+  assert.ok(guard > -1 && guard < update, 'collision check must precede exact-start updates');
+  assert.match(pricing, /\.\.\.exactStart, \.\.\.overlapping/);
+  assert.match(pricing, /selections\.length !== conflicts\.length/);
+  assert.match(pricing, /selected\.size !== conflicts\.length/);
+  assert.match(pricing, /selected\.get\(item\.id\) === dateKey\(item\.updated_at\)/);
+  assert.match(pricing, /isActive: !startsAt/);
+  assert.match(pricing, /replacesPriceItemIds: conflicts\.map/);
+  assert.match(pricing, /priceConflictDetails\(sku, priceListCode, conflicts\)/);
+});
