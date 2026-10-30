@@ -34,7 +34,7 @@ test('SKU-keyed price adjustment preserves history and supports now or scheduled
 
 test('direct price collision examines exact-start and overlapping rows before writes, then validates every revision', () => {
   const guard = pricing.indexOf('const conflicts =');
-  const update = pricing.indexOf('if (exactStart.length === 1)');
+  const update = pricing.indexOf('if (!resolvingConflicts && exactStart.length === 1)');
   assert.ok(guard > -1 && guard < update, 'collision check must precede exact-start updates');
   assert.match(pricing, /\.\.\.exactStart, \.\.\.overlapping/);
   assert.match(pricing, /selections\.length !== conflicts\.length/);
