@@ -515,6 +515,49 @@ test('Đại lý: chặn giá trùng đúng thời điểm, thay thế có xác 
     assert.equal(updated.is_active, true);
     assert.equal(new Date(updated.effective_from).toISOString(), appliedAt);
     assert.deepEqual(new Set(updated.source_metadata.replacesPriceItemIds), new Set([old.id, sameStart.id]));
+    // Exact customer shape: an open-ended rule without a start and another
+    // rule from 09/10/2026, both with the same quantity scope and active now.
+    const legacyRule = await createItem(pool, config.installationId, list.id, {
+      variantId: catalog.carton.id, adjustmentType: 'FIXED_PRICE',
+      amountMinor: '565000', effectiveFrom: null, effectiveTo: null,
+    });
+    const octoberRule = await createItem(pool, config.installationId, list.id, {
+      variantId: catalog.carton.id, adjustmentType: 'FIXED_PRICE',
+      amountMinor: '525000', effectiveFrom: '2026-10-09T13:46:52.000Z', effectiveTo: null,
+    });
+    const immediateAt = '2026-10-30T14:33:00.000Z';
+    const cartonPayload = {
+      matchBySku: true, replaceFrom: true, applyAt: immediateAt,
+      items: [{
+        priceListCode: list.code, sku: catalog.carton.sku,
+        adjustmentType: 'FIXED_PRICE', amountMinor: '530000', minQuantity: '0',
+        sourceKind: 'ADMIN',
+        resolveConflicts: [
+          { id: legacyRule.id, expectedUpdatedAt: legacyRule.updated_at },
+          { id: octoberRule.id, expectedUpdatedAt: octoberRule.updated_at },
+        ],
+      }],
+    };
+    await client.query('BEGIN');
+    const octoberChange = await pricingService.importPricing(client, {
+      installationId: config.installationId, payload: cartonPayload, createdBy: 'test:price-adjust',
+    });
+    assert.equal(octoberChange.ok, true, octoberChange.message);
+    assert.equal(octoberChange.import.itemsUpdated, 2);
+    assert.equal(octoberChange.import.itemsCreated, 1);
+    await client.query('COMMIT');
+    const cartonRows = (await pool.query(
+      'SELECT id, is_active, effective_from, effective_to, amount_minor FROM shared.price_list_items WHERE installation_id = $1 AND price_list_id = $2 AND variant_id = $3',
+      [config.installationId, list.id, catalog.carton.id],
+    )).rows;
+    assert.equal(cartonRows.length, 3);
+    assert.equal(cartonRows.filter((item) => item.is_active && (!item.effective_to || new Date(item.effective_to).getTime() > Date.parse(immediateAt))).length, 1);
+    for (const prior of [legacyRule, octoberRule]) {
+      const closed = cartonRows.find((item) => item.id === prior.id);
+      assert.equal(new Date(closed.effective_to).toISOString(), immediateAt);
+    }
+    assert.equal(cartonRows.find((item) => item.amount_minor === '530000').is_active, true);
+
   } finally {
     if (client) { await client.query('ROLLBACK').catch(() => {}); client.release(); }
     await closePool();
