@@ -74,6 +74,10 @@ export default function PricingBulkOverlay({ priceLists, defaultPriceListId = ''
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
+  // Keep the authoritative write receipt until the follow-up GET is confirmed.
+  // A failed refresh must NEVER make the operator submit another price mutation.
+  const [savePhase, setSavePhase] = useState<'idle' | 'checking' | 'verified'>('idle');
+  const [savedReceipt, setSavedReceipt] = useState<{ priceListId: string; totalItems: number } | null>(null);
   const [confirmedConflictSkus, setConfirmedConflictSkus] = useState<Set<string>>(new Set());
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -158,7 +162,9 @@ export default function PricingBulkOverlay({ priceLists, defaultPriceListId = ''
   function openDialog() {
     const preferred = lists.some((list) => list.id === defaultPriceListId) ? defaultPriceListId : lists.find((list) => list.list_type === 'BASE')?.id ?? lists[0]?.id ?? '';
     setSelectedListId(preferred);
-    setApplyMode('NOW'); setApplyAt(''); setError(null); setMessage(null); setOpen(true);
+    setApplyMode('NOW'); setApplyAt(''); setError(null); setMessage(null);
+    setSavePhase('idle'); setSavedReceipt(null); operationKeyRef.current = null;
+    setOpen(true);
   }
   function addTypedSkus() {
     const nextSkus = parseSkuInput(skuInput);
@@ -171,6 +177,7 @@ export default function PricingBulkOverlay({ priceLists, defaultPriceListId = ''
   }
   function close() { if (!busy) setOpen(false); }
   function validate(): string | null {
+    if (savePhase !== 'idle') return 'Giá đã được gửi; chỉ kiểm tra kết quả, không gửi lại.';
     if (!selectedList) return 'Chọn bảng giá cần điều chỉnh.';
     if (loading || loadFailed) return 'Chưa tải đủ dữ liệu giá để điều chỉnh an toàn.';
     if (hasUnconfirmedConflicts) return 'Kiểm tra và xác nhận các mức giá trùng trước khi lưu.';
@@ -186,6 +193,37 @@ export default function PricingBulkOverlay({ priceLists, defaultPriceListId = ''
     } else if (percentToBps(sharedValue) === null) return 'Phần trăm chỉ nhận tối đa 2 chữ số thập phân.';
     if (maxQuantity && Number(maxQuantity) <= Number(minQuantity || '0')) return 'Số lượng đến phải lớn hơn số lượng từ.';
     return null;
+  }
+
+  async function verifySavedPrice(priceListId: string, totalItems: number) {
+    try {
+      const latest = await listAllPriceListItems(priceListId);
+      setItems(latest);
+      operationKeyRef.current = null;
+      setSavePhase('verified');
+      setError(null);
+      setMessage(`Đã lưu ${totalItems} SKU và tải lại dữ liệu giá thành công. Anh có thể đóng cửa sổ để kiểm tra.`);
+      // This refresh is presentation only. It may not rewrite the outcome of
+      // the already-committed price mutation.
+      try {
+        await onApplied?.(priceListId);
+      } catch {
+        setMessage(`Đã lưu ${totalItems} SKU. Bảng tổng hợp chưa tải lại được; hãy tải lại trang để kiểm tra.`);
+      }
+    } catch {
+      setSavePhase('checking');
+      setError(`Hệ thống đã xác nhận lưu ${totalItems} SKU, nhưng chưa tải lại được giá. Không bấm lưu thêm. Chọn “Kiểm tra lại kết quả” để chỉ đọc dữ liệu.`);
+    }
+  }
+
+  async function retryVerification() {
+    if (!savedReceipt || busy) return;
+    setBusy(true);
+    try {
+      await verifySavedPrice(savedReceipt.priceListId, savedReceipt.totalItems);
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function applyBulk() {
@@ -217,14 +255,15 @@ export default function PricingBulkOverlay({ priceLists, defaultPriceListId = ''
           })),
         }),
       });
-      operationKeyRef.current = null;
-      setItems(await listAllPriceListItems(list.id));
-      setSelectedSkus(new Set()); setFixedPrices({});
-      setMessage(`Đã điều chỉnh ${result.totalItems} SKU${applyMode === 'NOW' ? ' và áp dụng ngay.' : ' theo ngày đã chọn.'}`);
-      await onApplied?.(list.id);
+      // HTTP 201 is the write receipt. A subsequent read error is not a
+      // failed write and must never invite a fresh Idempotency-Key retry.
+      setSavedReceipt({ priceListId: list.id, totalItems: result.totalItems });
+      setSavePhase('checking');
+      await verifySavedPrice(list.id, result.totalItems);
     } catch (cause) {
       const err = cause as Error & { code?: string };
       setError(err instanceof Error ? err.message : 'Không điều chỉnh được giá.');
+      setMessage(null);
       if (err?.code === 'IMPORT_IDENTITY_CONFLICT') {
         setConfirmedConflictSkus(new Set());
         try { setItems(await listAllPriceListItems(list.id)); }
@@ -236,7 +275,15 @@ export default function PricingBulkOverlay({ priceLists, defaultPriceListId = ''
   return <>
     <button type="button" className={styles.launchButton} onClick={openDialog} data-testid="open-bulk-pricing">Điều chỉnh trực tiếp</button>
     <Modal open={open} title="Điều chỉnh giá trực tiếp" description="Chỉ SKU được chọn mới thay đổi. Giá cũ được giữ trong lịch sử và tự kết thúc tại thời điểm áp dụng giá mới." onClose={close} testId="bulk-pricing-modal" size="workspace"
-      footer={<><button type="button" className={styles.secondaryButton} onClick={close} disabled={busy}>Đóng</button><button type="button" className={styles.primaryButton} onClick={() => void applyBulk()} disabled={busy || loading || loadFailed || !selectedSkus.size || hasUnconfirmedConflicts} data-testid="apply-bulk-pricing">{busy ? 'Đang áp dụng…' : `Xác nhận ${selectedSkus.size || ''} SKU`}</button></>}>
+      footer={<div className={styles.saveFooter}>
+        {error ? <div className={styles.footerError} role="alert">{error}</div> : null}
+        {message ? <div className={styles.footerMessage} role="status">{message}</div> : null}
+        <div className={styles.footerActions}>
+          <button type="button" className={styles.secondaryButton} onClick={close} disabled={busy}>Đóng</button>
+          {savePhase === 'checking' ? <button type="button" className={styles.secondaryButton} onClick={() => void retryVerification()} disabled={busy}>Kiểm tra lại kết quả</button> : null}
+          <button type="button" className={styles.primaryButton} onClick={() => void applyBulk()} disabled={busy || loading || loadFailed || !selectedSkus.size || hasUnconfirmedConflicts || savePhase !== 'idle'} data-testid="apply-bulk-pricing">{busy ? 'Đang xử lý…' : savePhase === 'verified' ? 'Đã lưu thành công' : savePhase === 'checking' ? 'Đã gửi giá' : `Xác nhận ${selectedSkus.size || ''} SKU`}</button>
+        </div>
+      </div>}>
       {error ? <div className={styles.errorNotice} role="alert">{error}</div> : null}
       {message ? <div className={styles.notice} role="status">{message}</div> : null}
       <div className={styles.scopeGrid}>
