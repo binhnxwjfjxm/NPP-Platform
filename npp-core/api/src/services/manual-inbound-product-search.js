@@ -68,6 +68,7 @@ export async function searchManualInboundProducts(client, {
   const result = await client.query(
     `SELECT
        pv.id,
+       pv.unit_id,
        pv.product_id,
        pv.sku,
        pv.name AS variant_name,
@@ -159,6 +160,41 @@ export async function searchManualInboundProducts(client, {
     [requestContext.installationId, normalizedWarehouseId, pattern, normalizedExact, normalizedLimit],
   );
 
+  // Look up explicit prices in existing immutable inbound receipts, not average cost.
+  const variantIds = [...new Set(result.rows.map((row) => row.id))];
+  const lastEnteredCostByVariantAndUnit = new Map();
+  if (variantIds.length > 0) {
+    const recent = await client.query(
+      `SELECT DISTINCT ON (line.source_variant_id, line.source_unit_id)
+              line.source_variant_id, line.source_unit_id, line.entered_unit_cost
+         FROM inventory.manual_inbound_document_lines line
+         JOIN inventory.manual_inbound_documents receipt
+           ON receipt.installation_id = line.installation_id
+          AND receipt.id = line.document_id
+        WHERE line.installation_id = $1
+          AND line.warehouse_id = $2
+          AND line.source_variant_id = ANY($3::uuid[])
+          AND line.entered_unit_cost > 0
+          AND line.currency_code = 'VND'
+          AND (line.metadata ->> 'manualInboundCostSource') IS DISTINCT FROM 'CURRENT'
+          AND NOT EXISTS (
+            SELECT 1 FROM inventory.inventory_movements reversal
+             WHERE reversal.installation_id = receipt.installation_id
+               AND reversal.reversal_of_movement_id = receipt.movement_id
+          )
+        ORDER BY line.source_variant_id, line.source_unit_id,
+                 receipt.created_at DESC, receipt.id DESC,
+                 line.line_number DESC, line.id DESC`,
+      [requestContext.installationId, normalizedWarehouseId, variantIds],
+    );
+    for (const row of recent.rows) {
+      lastEnteredCostByVariantAndUnit.set(
+        `${row.source_variant_id}:${row.source_unit_id}`,
+        String(row.entered_unit_cost),
+      );
+    }
+  }
+
   return Object.freeze({
     ok: true,
     products: Object.freeze(result.rows.map((row) => Object.freeze({
@@ -180,6 +216,7 @@ export async function searchManualInboundProducts(client, {
       unitCost: row.average_unit_cost === null || row.average_unit_cost === undefined
         ? null
         : String(row.average_unit_cost),
+      lastEnteredUnitCost: lastEnteredCostByVariantAndUnit.get(`${row.id}:${row.unit_id}`) ?? null,
       locationManagementMode: warehouse.location_management_mode,
       locationRequired: warehouse.location_management_mode === 'MANAGED',
     }))),
