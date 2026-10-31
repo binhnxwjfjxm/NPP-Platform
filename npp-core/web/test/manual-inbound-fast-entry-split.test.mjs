@@ -28,5 +28,5 @@ test('Tách dòng tạo hai định danh độc lập và giữ số lượng d�
   assert.match(source, /splitIdentity: row\.splitIdentity \|\| sourceSplitIdentity/);
   assert.match(source, /splitIdentity: newSplitIdentity, sourceQuantity: '1'/);
   assert.match(source, />↳ Tách dòng<\/button>/);
-  assert.match(source, /key === 'splitIdentity' \|\| !String\(value \?\? ''\)\.trim\(\)/);
+  assert.match(source, /\['splitIdentity', 'autoCostWarehouseId', 'autoCostValue'\]\.includes\(key\) \|\| !String\(value \?\? ''\)\.trim\(\)/);
 });
