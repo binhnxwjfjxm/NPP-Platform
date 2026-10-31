@@ -30,6 +30,8 @@ type DraftRow = {
   sku: string;
   sourceQuantity: string;
   unitCost: string;
+  autoCostWarehouseId?: string;
+  autoCostValue?: string;
   locationCode: string;
   lotCode: string;
   manufacturedDate: string;
@@ -52,6 +54,7 @@ type ManualInboundProductOption = {
   expiryTrackingMode: 'NONE' | 'OPTIONAL' | 'REQUIRED' | null;
   primaryBarcode: string | null;
   unitCost: string | null;
+  lastEnteredUnitCost?: string | null;
   locationManagementMode: LocationManagementMode;
   locationRequired: boolean;
 };
@@ -127,6 +130,7 @@ type ResolvedItem = {
   productName?: string;
   sourceUnitCode?: string;
   unitCost?: string | null;
+  lastEnteredUnitCost?: string | null;
 };
 type PendingMutation = { key: string; body: string };
 type ConfirmedInbound = { id: string; documentNumber?: string | null; document_number?: string | null };
@@ -202,7 +206,7 @@ function emptyRow(): DraftRow {
 }
 
 function rowIsEmpty(row: DraftRow) {
-  return Object.entries(row).every(([key, value]) => key === 'splitIdentity' || !String(value ?? '').trim());
+  return Object.entries(row).every(([key, value]) => ['splitIdentity', 'autoCostWarehouseId', 'autoCostValue'].includes(key) || !String(value ?? '').trim());
 }
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -263,6 +267,10 @@ function formatCost(value: string | null | undefined) {
   const number = Number(value);
   if (!value || !Number.isFinite(number)) return value || '—';
   return new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 2 }).format(number);
+}
+
+function editableCost(value: string | null | undefined) {
+  return value ? value.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '') : '';
 }
 
 function formatQuantity(value: string | null | undefined) {
@@ -368,7 +376,12 @@ export default function ManualInboundWorkspace() {
   }
 
   function updateRow(index: number, patch: Partial<DraftRow>) {
-    setRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, ...patch } : row));
+    setRows((current) => current.map((row, rowIndex) => {
+      if (rowIndex !== index) return row;
+      return Object.prototype.hasOwnProperty.call(patch, 'unitCost')
+        ? { ...row, ...patch, autoCostWarehouseId: undefined, autoCostValue: undefined }
+        : { ...row, ...patch };
+    }));
     if (Object.prototype.hasOwnProperty.call(patch, 'sku')) {
       setResolvedItems((current) => {
         const next = { ...current };
@@ -395,7 +408,12 @@ export default function ManualInboundWorkspace() {
 
   function updateSourceLines(lineNumbers: number[], patch: Partial<DraftRow>) {
     const indexes = new Set(lineNumbers.map((line) => line - 1));
-    setRows((current) => current.map((row, index) => indexes.has(index) ? { ...row, ...patch } : row));
+    setRows((current) => current.map((row, index) => {
+      if (!indexes.has(index)) return row;
+      return Object.prototype.hasOwnProperty.call(patch, 'unitCost')
+        ? { ...row, ...patch, autoCostWarehouseId: undefined, autoCostValue: undefined }
+        : { ...row, ...patch };
+    }));
     setPreview((current) => current ? {
       ...current,
       rows: current.rows.map((row) => row.sourceLineNumbers.some((line) => lineNumbers.includes(line)) ? { ...row, ...patch } : row),
@@ -406,13 +424,28 @@ export default function ManualInboundWorkspace() {
     }
   }
 
+  function changeWarehouse(nextWarehouseId: string) {
+    if (nextWarehouseId === warehouseId) return;
+    setWarehouseId(nextWarehouseId);
+    setRows((current) => current.map((row) => (
+      row.autoCostWarehouseId && row.autoCostWarehouseId !== nextWarehouseId
+      && row.unitCost === row.autoCostValue
+        ? { ...row, unitCost: '', autoCostWarehouseId: undefined, autoCostValue: undefined }
+        : row
+    )));
+    invalidate();
+  }
+
   function addProduct(option: ManualInboundProductOption) {
+    const suggestedCost = editableCost(option.lastEnteredUnitCost);
     const emptyIndex = rows.findIndex(rowIsEmpty);
     const targetIndex = emptyIndex >= 0 ? emptyIndex : rows.length;
     const nextRow: DraftRow = {
       ...emptyRow(),
       sku: option.sku,
       sourceQuantity: '1',
+      unitCost: suggestedCost,
+      ...(suggestedCost ? { autoCostWarehouseId: warehouseId, autoCostValue: suggestedCost } : {}),
     };
     setRows((current) => emptyIndex >= 0
       ? current.map((row, index) => index === emptyIndex ? nextRow : row)
@@ -424,6 +457,7 @@ export default function ManualInboundWorkspace() {
         productName: option.productName,
         sourceUnitCode: option.unitCode,
         unitCost: option.unitCost,
+        lastEnteredUnitCost: option.lastEnteredUnitCost,
       },
     }));
     setProductSearch('');
@@ -545,7 +579,7 @@ export default function ManualInboundWorkspace() {
     setProductResults([]);
     setResolvedItems((current) => {
       const next: Record<number, ResolvedItem> = {};
-      (Object.entries(current) as Array<[string, ResolvedItem]>).forEach(([key, item]) => { next[Number(key)] = { ...item, unitCost: undefined }; });
+      (Object.entries(current) as Array<[string, ResolvedItem]>).forEach(([key, item]) => { next[Number(key)] = { ...item, unitCost: undefined, lastEnteredUnitCost: undefined }; });
       return next;
     });
     if (!pendingConfirm.current) {
@@ -888,7 +922,7 @@ export default function ManualInboundWorkspace() {
         <section className={`${styles.card} ${styles.documentCard}`}>
           <div className={styles.compactHeading}><h2>Thông tin chứng từ</h2></div>
           <div className={styles.headerGrid}>
-            <label><span>Kho nhập *</span><select value={warehouseId} onChange={(event) => setWarehouseId(event.target.value)} disabled={busy === 'warehouses'}><option value="">Chọn kho</option>{warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.code} — {warehouse.name}</option>)}</select></label>
+            <label><span>Kho nhập *</span><select value={warehouseId} onChange={(event) => changeWarehouse(event.target.value)} disabled={busy === 'warehouses'}><option value="">Chọn kho</option>{warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.code} — {warehouse.name}</option>)}</select></label>
             <label><span>Nhà cung cấp</span><select value={supplierId} onChange={(event) => { setSupplierId(event.target.value); invalidate(); }}><option value="">Không chọn</option>{suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.code} — {supplier.name}</option>)}</select></label>
             <label><span>Loại nhập *</span><select value={inboundType} onChange={(event) => { setInboundType(event.target.value as InboundType); invalidate(); }}>{INBOUND_TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
             <label><span>Ngày chứng từ *</span><input type="date" value={documentDate} onChange={(event) => { setDocumentDate(event.target.value); invalidate(); }} /></label>
@@ -928,7 +962,7 @@ export default function ManualInboundWorkspace() {
               {productResults.length ? <div ref={productResultsRef} data-testid="manual-inbound-product-results" className={styles.productResults} role="listbox" aria-label="Kết quả tìm sản phẩm">
                 {productResults.map((option) => <button key={option.id} type="button" className={styles.productResult} onClick={() => addProduct(option)}>
                   <span className={styles.productIdentity}><strong>{option.productName}</strong><small>{option.sku}{option.variantName ? ` · ${option.variantName}` : ''}</small></span>
-                  <span className={styles.productMeta}><b>{option.unitCode}</b><small>{option.unitCost ? `Giá vốn ${formatCost(option.unitCost)} đ` : 'Chưa có giá vốn'}</small></span>
+                  <span className={styles.productMeta}><b>{option.unitCode}</b><small>{option.lastEnteredUnitCost ? `Giá nhập lần trước ${formatCost(option.lastEnteredUnitCost)} đ` : option.unitCost ? `Giá vốn hiện hành ${formatCost(option.unitCost)} đ` : 'Chưa có giá nhập'}</small></span>
                 </button>)}
               </div> : null}
             </div>
@@ -943,7 +977,7 @@ export default function ManualInboundWorkspace() {
                   return <tr key={`${actualIndex}-${row.sku}-${row.splitIdentity || 'normal'}`}>
                     <BusinessTableSequenceCell rowIndex={index} value={actualIndex + 1} />
                     <td className={styles.skuCell}>{row.sku}</td>
-                    <td className={styles.productNameCell}>{matches ? (resolved.productName || '—') : 'Kiểm tra để nhận diện'}{matches && resolved?.unitCost ? <small>Giá vốn hiện hành: {formatCost(resolved.unitCost)} đ</small> : null}</td>
+                    <td className={styles.productNameCell}>{matches ? (resolved.productName || '—') : 'Kiểm tra để nhận diện'}{matches && resolved?.lastEnteredUnitCost ? <small>Giá nhập lần trước: {formatCost(resolved.lastEnteredUnitCost)} đ</small> : matches && resolved?.unitCost ? <small>Giá vốn hiện hành: {formatCost(resolved.unitCost)} đ</small> : null}</td>
                     <td className={styles.unitCell}>{matches ? (resolved.sourceUnitCode || '—') : '—'}</td>
                     <td><input ref={(element) => { if (element) quantityRefs.current.set(actualIndex, element); else quantityRefs.current.delete(actualIndex); }} aria-label={`Số lượng dòng ${actualIndex + 1}`} inputMode="decimal" value={row.sourceQuantity} onFocus={(event) => event.currentTarget.select()} onClick={(event) => event.currentTarget.select()} onChange={(event) => updateRow(actualIndex, { sourceQuantity: event.target.value })} placeholder="0" /></td>
                     <td><input aria-label={`Giá vốn dòng ${actualIndex + 1}`} inputMode="decimal" value={row.unitCost} onChange={(event) => updateRow(actualIndex, { unitCost: event.target.value })} placeholder={resolved?.unitCost ? formatCost(resolved.unitCost) : 'Tự lấy nếu có'} /></td>

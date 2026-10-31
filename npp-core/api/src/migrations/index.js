@@ -150,6 +150,7 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   migration('166_inventory_adjustment_signed_system_snapshot', 'inventory/166_inventory_adjustment_signed_system_snapshot.sql'),
   migration('167_manual_inbound_document_numbers', 'inventory/167_manual_inbound_document_numbers.sql'),
   migration('168_sales_reporting_confirmed_date_index', 'sales/168_sales_reporting_confirmed_date_index.sql'),
+  migration('169_manual_inbound_last_entered_cost_lookup', 'inventory/169_manual_inbound_last_entered_cost_lookup.sql'),
 ]);
 
 export { runMigrations };
