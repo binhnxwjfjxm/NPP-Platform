@@ -8,6 +8,15 @@ import styles from './pricing-bulk-overlay.module.css';
 
 type ApplyMode = 'NOW' | 'SCHEDULED';
 type PreviewRow = { sku: string; status: 'CREATE' | 'UPDATE'; reason: string; conflicts: PriceListItem[] };
+type ConfirmedRule = { id: string; expectedUpdatedAt: string };
+function ruleSnapshot(rows: PriceListItem[]): ConfirmedRule[] {
+  return rows.map((item) => ({ id: item.id, expectedUpdatedAt: item.updated_at }));
+}
+function approvalMatches(rows: PriceListItem[], approved: ConfirmedRule[] | undefined): boolean {
+  return Boolean(rows.length && approved && rows.length === approved.length
+    && rows.every((item) => approved.some((entry) => entry.id === item.id
+      && new Date(entry.expectedUpdatedAt).getTime() === new Date(item.updated_at).getTime())));
+}
 type ImportResult = { itemsCreated: number; itemsUpdated: number; itemsReplaced?: number; totalItems: number };
 type ApiEnvelope<T> = { data?: T; error?: { code?: string; message?: string; retryable?: boolean; details?: unknown } };
 type Props = {
@@ -78,7 +87,7 @@ export default function PricingBulkOverlay({ priceLists, defaultPriceListId = ''
   // A failed refresh must NEVER make the operator submit another price mutation.
   const [savePhase, setSavePhase] = useState<'idle' | 'checking' | 'verified'>('idle');
   const [savedReceipt, setSavedReceipt] = useState<{ priceListId: string; totalItems: number } | null>(null);
-  const [confirmedConflictSkus, setConfirmedConflictSkus] = useState<Set<string>>(new Set());
+  const [confirmedConflicts, setConfirmedConflicts] = useState<Record<string, ConfirmedRule[]>>({});
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [items, setItems] = useState<PriceListItem[]>([]);
@@ -134,8 +143,8 @@ export default function PricingBulkOverlay({ priceLists, defaultPriceListId = ''
     if (selectedList?.list_type === 'BASE' && adjustmentType !== 'FIXED_PRICE') setAdjustmentType('FIXED_PRICE');
   }, [selectedList, adjustmentType]);
 
-  useEffect(() => { operationKeyRef.current = null; }, [selectedListId, selectedSkuList, adjustmentType, sharedValue, fixedPrices, minQuantity, maxQuantity, note, applyMode, applyAt, confirmedConflictSkus]);
-  useEffect(() => { setConfirmedConflictSkus(new Set()); }, [selectedListId, selectedSkuList, adjustmentType, minQuantity, maxQuantity, applyMode, applyAt, items]);
+  useEffect(() => { operationKeyRef.current = null; }, [selectedListId, selectedSkuList, adjustmentType, sharedValue, fixedPrices, minQuantity, maxQuantity, note, applyMode, applyAt, confirmedConflicts]);
+  useEffect(() => { setConfirmedConflicts({}); }, [selectedListId, selectedSkuList, adjustmentType, minQuantity, maxQuantity, applyMode, applyAt, items]);
 
   const preview = useMemo<PreviewRow[]>(() => selectedSkuList.map((sku) => {
     const scoped = (itemsBySku.get(sku) ?? []).filter((item) => item.is_active
@@ -157,13 +166,13 @@ export default function PricingBulkOverlay({ priceLists, defaultPriceListId = ''
           : 'Chưa có mức giá cùng phạm vi; sẽ tạo mức giá mới.',
     };
   }), [adjustmentType, applyMode, applyAt, itemsBySku, maxQuantity, minQuantity, selectedSkuList]);
-  const hasUnconfirmedConflicts = preview.some((row) => row.conflicts.length && !confirmedConflictSkus.has(row.sku));
+  const hasUnconfirmedConflicts = preview.some((row) => row.conflicts.length && !approvalMatches(row.conflicts, confirmedConflicts[row.sku]));
 
   function openDialog() {
     const preferred = lists.some((list) => list.id === defaultPriceListId) ? defaultPriceListId : lists.find((list) => list.list_type === 'BASE')?.id ?? lists[0]?.id ?? '';
     setSelectedListId(preferred);
     setApplyMode('NOW'); setApplyAt(''); setError(null); setMessage(null);
-    setSavePhase('idle'); setSavedReceipt(null); operationKeyRef.current = null;
+    setSavePhase('idle'); setSavedReceipt(null); setConfirmedConflicts({}); operationKeyRef.current = null;
     setOpen(true);
   }
   function addTypedSkus() {
@@ -248,10 +257,9 @@ export default function PricingBulkOverlay({ priceLists, defaultPriceListId = ''
             amountMinor: usesAmount ? (adjustmentType === 'FIXED_PRICE' ? fixedPrices[sku] : sharedValue) : null,
             rateBps, minQuantity: minQuantity || '0', maxQuantity: maxQuantity || null,
             sourceKind: 'ADMIN', externalRuleCode: 'PRICE_ADJUSTMENT', note: note.trim() || null, isActive: true,
-            ...(confirmedConflictSkus.has(sku) && preview.find((row) => row.sku === sku)?.conflicts.length
-              ? { resolveConflicts: preview.find((row) => row.sku === sku)!.conflicts.map((item) => ({
-                id: item.id, expectedUpdatedAt: item.updated_at,
-              })) } : {}),
+            // Send the EXACT snapshot acknowledged by the operator, not a
+            // newly derived preview that may have changed since the checkbox.
+            ...(confirmedConflicts[sku] ? { resolveConflicts: confirmedConflicts[sku] } : {}),
           })),
         }),
       });
@@ -265,7 +273,10 @@ export default function PricingBulkOverlay({ priceLists, defaultPriceListId = ''
       setError(err instanceof Error ? err.message : 'Không điều chỉnh được giá.');
       setMessage(null);
       if (err?.code === 'IMPORT_IDENTITY_CONFLICT') {
-        setConfirmedConflictSkus(new Set());
+        // The backend reports exactly why it rejected the confirmation.
+        // Reload prices and require a fresh, explicit acknowledgement only if
+        // the database rules really changed.
+        setConfirmedConflicts({});
         try { setItems(await listAllPriceListItems(list.id)); }
         catch { setLoadFailed(true); }
       }
@@ -307,7 +318,17 @@ export default function PricingBulkOverlay({ priceLists, defaultPriceListId = ''
               <span>SL: {item.min_quantity} → {item.max_quantity ?? 'Không giới hạn'}</span>
               <span>Từ {item.effective_from ? new Date(item.effective_from).toLocaleString('vi-VN') : 'trước đây'} · đến {item.effective_to ? new Date(item.effective_to).toLocaleString('vi-VN') : 'không giới hạn'}</span>
             </div>)}
-            <label className={styles.conflictAck}><input type="checkbox" checked={confirmedConflictSkus.has(row.sku)} onChange={(event) => setConfirmedConflictSkus((value) => { const next = new Set(value); if (event.target.checked) next.add(row.sku); else next.delete(row.sku); return next; })} />
+            <label className={styles.conflictAck}><input type="checkbox" checked={approvalMatches(row.conflicts, confirmedConflicts[row.sku])} onChange={(event) => {
+              const checked = event.currentTarget.checked;
+              // Read event state synchronously; never read a mutable DOM event
+              // inside a deferred React state updater.
+              const snapshot = checked ? ruleSnapshot(row.conflicts) : null;
+              setConfirmedConflicts((current) => {
+                const next = { ...current };
+                if (snapshot) next[row.sku] = snapshot; else delete next[row.sku];
+                return next;
+              });
+            }} />
               Tôi đã kiểm tra và đồng ý kết thúc các mức giá trùng trên để áp dụng giá mới cho {row.sku}.
             </label>
           </div> : null}

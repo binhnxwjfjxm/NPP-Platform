@@ -32,6 +32,13 @@ function decimalKey(value) {
 }
 
 function dateKey(value) {
+  if (value === undefined || value === null || value === '') return '';
+  // PostgreSQL rows contain Date objects; String(Date) DROPS milliseconds.
+  // The HTTP client sends the same revision as an ISO string WITH milliseconds.
+  // Stringifying first makes valid acknowledgements compare as stale.
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? '' : value.toISOString();
+  }
   const normalized = text(value);
   if (!normalized) return '';
   const parsed = new Date(normalized);
@@ -186,11 +193,20 @@ async function importPricingBySku(client, { installationId, payload, createdBy }
       const resolvingConflicts = conflicts.length > 1;
       if (resolvingConflicts) {
         const selected = new Map(selections.map((entry) => [text(entry?.id), dateKey(entry?.expectedUpdatedAt)]));
-        if (selections.length !== conflicts.length || selected.size !== conflicts.length
-          || !conflicts.every((item) => selected.get(item.id) === dateKey(item.updated_at))) {
+        // Distinguish a missing/incorrect acknowledgement from genuinely stale
+        // row revisions. A single generic error hides the actual failure.
+        const allRulesAcknowledged = selections.length === conflicts.length
+          && selected.size === conflicts.length
+          && conflicts.every((item) => selected.has(item.id));
+        if (!allRulesAcknowledged) {
           return invalid('IMPORT_IDENTITY_CONFLICT',
-            `SKU ${sku} có ${conflicts.length} mức giá trùng hiệu lực trong ${priceListCode}; cần xác nhận thay thế từng dòng.`,
-            false, priceConflictDetails(sku, priceListCode, conflicts));
+            `Chưa nhận đủ xác nhận cho ${conflicts.length} mức giá trùng của SKU ${sku}. Không có giá nào được thay đổi; vui lòng tải lại và xác nhận từng dòng.`,
+            false, { ...priceConflictDetails(sku, priceListCode, conflicts), reason: 'MISSING_CONFIRMATION' });
+        }
+        if (!conflicts.every((item) => selected.get(item.id) === dateKey(item.updated_at))) {
+          return invalid('IMPORT_IDENTITY_CONFLICT',
+            `Một mức giá của SKU ${sku} đã thay đổi từ lúc xem trước. Không có giá nào được thay đổi; vui lòng tải lại và xác nhận các mức giá mới.`,
+            false, { ...priceConflictDetails(sku, priceListCode, conflicts), reason: 'STALE_CONFIRMATION' });
         }
         // User acknowledged every exact row and revision. Keep historical periods;
         // an exact-start row is deactivated instead of making a zero-length interval.
