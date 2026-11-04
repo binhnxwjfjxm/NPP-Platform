@@ -60,7 +60,7 @@ test('autosave nháp Retail single-flight và coalesce thay đổi mới thay v�
   assert.match(autosave, /draftSyncPending\.current = true/);
   assert.match(autosave, /setDraftSyncEpoch\(\(value\) => value \+ 1\)/);
   assert.doesNotMatch(autosave, /refreshOrders/);
-  assert.match(autosave, /keyFor\('draft-sync', fingerprint\)/);
+  assert.match(autosave, /keyFor\('draft-sync', `\$\{fingerprint\}:\$\{draftRevision\}`\)/);
   assert.match(autosave, /keyFor\('create-draft', fingerprint\)/);
 });
 

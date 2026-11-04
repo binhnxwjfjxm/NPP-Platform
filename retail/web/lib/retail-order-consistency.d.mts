@@ -40,3 +40,17 @@ export declare function draftMatchesRetailContext(
     documentDiscountValue: string;
   },
 ): boolean;
+
+export type RetailVersionedDraft = RetailSavedOrderContext & {
+  id: string;
+  currentVersionNumber: string;
+  collectionPolicy?: string;
+  note?: string | null;
+  documentDiscountReason?: string | null;
+  versions?: Array<{ versionNumber: string; revision: string; lines?: RetailSavedLine[] }>;
+};
+export declare function activeDraftRevision(order: RetailVersionedDraft | null | undefined): string | null;
+export declare function sameSavedDraft(
+  before: RetailVersionedDraft | null | undefined,
+  after: RetailVersionedDraft | null | undefined,
+): boolean;

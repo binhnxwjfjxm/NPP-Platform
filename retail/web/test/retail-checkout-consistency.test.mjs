@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { checkoutLinesMatch, draftMatchesRetailContext, projectedRetailDraftTotal } from '../lib/retail-order-consistency.mjs';
+import { activeDraftRevision, checkoutLinesMatch, draftMatchesRetailContext, projectedRetailDraftTotal, sameSavedDraft } from '../lib/retail-order-consistency.mjs';
 
 const a = { variantId: 'a', quantity: '1.000000', taxMode: 'EXCLUSIVE', taxRate: '0.000000', priceSource: 'PRICE_ENGINE', unitPrice: '10000.000000' };
 const b = { variantId: 'b', quantity: '2.000000', taxMode: 'EXCLUSIVE', taxRate: '0', priceSource: 'PRICE_ENGINE', unitPrice: '3000' };
@@ -140,4 +140,45 @@ test('Retail bounds browser requests and propagates caller cancellation without 
   assert.match(workspace, /RETAIL_CLIENT_TIMEOUT/);
   assert.match(workspace, /RETAIL_CONNECTION_UNAVAILABLE/);
   assert.match(workspace, /window.clearTimeout\(timeout\)/);
+});
+
+test('Retail draft writes the version revision, not the aggregate revision', () => {
+  const saved = { id: 'order1', status: 'draft', currentVersionNumber: '1', revision: '19',
+    versions: [{ versionNumber: '1', revision: '7', lines: [a, b] }] };
+  assert.equal(activeDraftRevision(saved), '7');
+  assert.equal(activeDraftRevision({ ...saved, versions: [{ versionNumber: '2', revision: '12' }] }), null);
+  assert.equal(activeDraftRevision({ ...saved, status: 'confirmed' }), null);
+});
+
+test('four products must not acknowledge a two-product server snapshot and conflict rebase is content-safe', () => {
+  const context = { id: 'order1', status: 'draft', currentVersionNumber: '1',
+    warehouseId: 'w', customerId: 'walk-in', customerMode: 'WALK_IN', collectionPolicy: 'COLLECT_ON_DELIVERY',
+    note: '', documentDiscountMode: 'NONE', documentDiscountValue: '0' };
+  const original = { ...context, revision: '10',
+    versions: [{ versionNumber: '1', revision: '4', lines: [a, b] }] };
+  const sameContentNewRevision = { ...original, revision: '11',
+    versions: [{ versionNumber: '1', revision: '5', lines: [a, b] }] };
+  const four = [a, b, c, { ...a, variantId: 'd' }];
+  const fourCart = four.map(({ variantId: id, quantity, taxMode, taxRate }) => ({ id, quantity, taxMode, taxRate }));
+  assert.equal(checkoutLinesMatch(sameContentNewRevision.versions[0].lines, fourCart, { c: '0' }), false);
+  assert.equal(sameSavedDraft(original, sameContentNewRevision), true);
+  assert.equal(sameSavedDraft(original, { ...sameContentNewRevision, versions: [{ versionNumber: '1', revision: '5', lines: four }] }), false);
+  assert.equal(sameSavedDraft(original, { ...sameContentNewRevision, note: 'external edit' }), false);
+  assert.equal(sameSavedDraft(original, { ...sameContentNewRevision, versions: [{ versionNumber: '1', revision: '5', lines: [a, { ...b, quantity: '3' }] }] }), false);
+});
+
+test('Retail autosave verifies version revision and reads canonical state before any conflict retry', async () => {
+  const workspace = await readFile(new URL('../app/retail-workspace.tsx', import.meta.url), 'utf8');
+  const start = workspace.indexOf('const currentOrder = order;');
+  const end = workspace.indexOf('}, 360);', start);
+  const autosave = workspace.slice(start, end);
+  assert.match(autosave, /const draftRevision = activeDraftRevision\(currentOrder\)/);
+  assert.match(autosave, /JSON\.stringify\(orderPayload\(draftRevision \?\? undefined\)\)/);
+  assert.doesNotMatch(autosave, /orderPayload\(currentOrder\.revision\)/);
+  assert.match(autosave, /\$\{fingerprint\}:\$\{draftRevision\}/);
+  assert.match(autosave, /const latest = await api<Order>/);
+  assert.match(autosave, /sameSavedDraft\(currentOrder, latest\)/);
+  assert.match(autosave, /draftSyncRecoveryAttempts\.current/);
+  assert.match(workspace, /window\.confirm\('Đơn nháp đã được sửa ở nơi khác/);
+  assert.match(workspace, /resetDraftSyncSession\(\)/);
 });
