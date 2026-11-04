@@ -925,7 +925,7 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
                 return;
             }
             const request = currentOrder
-                ? api<Order>(`/api/retail/orders/${currentOrder.id}/draft`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': keyFor('draft-sync', `${fingerprint}:${draftRevision}`) }, body: JSON.stringify(orderPayload(draftRevision)) })
+                ? api<Order>(`/api/retail/orders/${currentOrder.id}/draft`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': keyFor('draft-sync', `${fingerprint}:${draftRevision}`) }, body: JSON.stringify(orderPayload(draftRevision ?? undefined)) })
                 : api<Order>('/api/retail/orders', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': keyFor('create-draft', fingerprint) }, body: JSON.stringify(orderPayload(undefined)) });
             void request.then((next) => {
                 if (entrySessionRef.current !== entrySession) return;
