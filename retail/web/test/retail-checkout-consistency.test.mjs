@@ -173,7 +173,7 @@ test('Retail autosave verifies version revision and reads canonical state before
   const end = workspace.indexOf('}, 360);', start);
   const autosave = workspace.slice(start, end);
   assert.match(autosave, /const draftRevision = activeDraftRevision\(currentOrder\)/);
-  assert.match(autosave, /JSON\.stringify\(orderPayload\(draftRevision\)\)/);
+  assert.match(autosave, /JSON\.stringify\(orderPayload\(draftRevision \?\? undefined\)\)/);
   assert.doesNotMatch(autosave, /orderPayload\(currentOrder\.revision\)/);
   assert.match(autosave, /\$\{fingerprint\}:\$\{draftRevision\}/);
   assert.match(autosave, /const latest = await api<Order>/);
