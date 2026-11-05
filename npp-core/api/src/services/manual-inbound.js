@@ -222,6 +222,7 @@ export async function getManualInboundConfirmationStatus(client, { requestContex
       id: document.id,
       documentNumber: document.document_number ?? null,
     }),
+    operatorRequestHash: document.metadata?.operatorRequestHash ?? null,
   });
 }
 

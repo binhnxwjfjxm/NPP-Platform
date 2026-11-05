@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
 import { PERMISSIONS } from '../src/access/permissions.js';
 import { confirmManualInbound, readManualInboundConfirmationStatus, manualInboundConfirmationInternals } from '../src/services/manual-inbound-confirmation.js';
@@ -83,7 +84,12 @@ test('Same-key concurrent POST fails with retryable 409 before revalidation', as
 });
 
 test('Previously committed receipt is returned before stale preview, using only one DB connection', async () => {
-  const document = { id: '123e4567-e89b-42d3-a456-426614174010', warehouse_id: warehouseId, document_number: 'NKT-00000004' };
+  const requestHash = createHash('sha256').update(JSON.stringify({ rows: [] })).digest('hex');
+  const document = {
+    id: '123e4567-e89b-42d3-a456-426614174010',
+    warehouse_id: warehouseId, document_number: 'NKT-00000004',
+    metadata: { operatorRequestHash: requestHash },
+  };
   const { adapter, locks, operations } = fakePool(document);
   const result = await confirmManualInbound({ adapter, requestContext: context, idempotencyKey: key, payload: { rows: [] } });
   assert.equal(result.ok, true);
@@ -102,4 +108,22 @@ test('Definitive validation failure rolls back and lets status prove nothing was
   const status = await readManualInboundConfirmationStatus({ adapter, requestContext: context, idempotencyKey: key });
   assert.equal(status.posted, false);
   assert.equal(status.processing, false);
+});
+
+test('same key but changed operator payload cannot claim the previous receipt as success', async () => {
+  const document = {
+    id: '123e4567-e89b-42d3-a456-426614174010',
+    warehouse_id: warehouseId, document_number: 'NKT-00000004',
+    metadata: {
+      operatorRequestHash: createHash('sha256').update(JSON.stringify({ rows: [] })).digest('hex'),
+    },
+  };
+  const { adapter } = fakePool(document);
+  const failed = await confirmManualInbound({
+    adapter, requestContext: context, idempotencyKey: key,
+    payload: { rows: [{ sku: 'DIFFERENT', sourceQuantity: '1' }] },
+  });
+  assert.equal(failed.ok, false);
+  assert.equal(failed.code, 'IDEMPOTENCY_PAYLOAD_MISMATCH');
+  assert.equal(failed.statusCode, 409);
 });

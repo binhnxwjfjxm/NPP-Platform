@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { IDEMPOTENCY_KEY_PATTERN } from '@npp/contracts';
 import { PERMISSIONS } from '../access/permissions.js';
 import { withAuditOutboxTransaction } from '../audit-outbox.js';
@@ -15,7 +16,11 @@ function hasPermission(requestContext, permission) {
   return Array.isArray(requestContext?.permissions) && requestContext.permissions.includes(permission);
 }
 
-function buildPostingPayload(preview) {
+function operatorPayloadHash(payload) {
+  return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+}
+
+function buildPostingPayload(preview, requestHash) {
   return Object.freeze({
     warehouseId: preview.warehouse.id,
     inboundType: preview.header.inboundType,
@@ -24,6 +29,7 @@ function buildPostingPayload(preview) {
     note: preview.header.note,
     metadata: Object.freeze({
       preparedFrom: 'MANUAL_INBOUND_OPERATOR_PREVIEW',
+      operatorRequestHash: requestHash,
       ...(preview.header.supplierId ? {
         supplierId: preview.header.supplierId,
         supplierCode: preview.header.supplierCode,
@@ -122,7 +128,19 @@ export async function confirmManualInbound({ adapter, requestContext, idempotenc
       // prices or products may have changed since the earlier confirmation.
       const previous = await getManualInboundConfirmationStatus(client, { requestContext, idempotencyKey });
       if (!previous.ok) return { failed: previous, skipAudit: true };
-      if (previous.posted) return Object.freeze({ ok: true, replayed: true, document: previous.document });
+      if (previous.posted) {
+        // New receipts pin the exact original operator payload to the key.
+        // Older receipts without this metadata remain readable/replayable.
+        const expectedHash = previous.operatorRequestHash;
+        if (expectedHash && expectedHash !== operatorPayloadHash(payload)) {
+          return {
+            failed: failure('IDEMPOTENCY_PAYLOAD_MISMATCH',
+              'Khóa xác nhận đã dùng cho một phiếu nhập có nội dung khác.', 409),
+            skipAudit: true,
+          };
+        }
+        return Object.freeze({ ok: true, replayed: true, document: previous.document });
+      }
 
       const prepared = await previewManualInbound(client, { requestContext, payload });
       if (!prepared.ok) return { failed: prepared, skipAudit: true };
@@ -132,7 +150,7 @@ export async function confirmManualInbound({ adapter, requestContext, idempotenc
           409, { rowErrors: prepared.preview.rowErrors }),
         skipAudit: true,
       };
-      const postingPayload = buildPostingPayload(prepared.preview);
+      const postingPayload = buildPostingPayload(prepared.preview, operatorPayloadHash(payload));
       const policy = await validateManualInboundPostInventoryPolicy(client, {
         requestContext, rows: postingPayload.rows,
       });
