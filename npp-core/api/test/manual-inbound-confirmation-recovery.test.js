@@ -5,7 +5,7 @@ import { confirmManualInbound, readManualInboundConfirmationStatus, manualInboun
 
 const installationId = '123e4567-e89b-42d3-a456-426614174000';
 const warehouseId = '123e4567-e89b-42d3-a456-426614174001';
-const context = { installationId, scopes: { warehouseIds: [warehouseId] }, permissions: [PERMISSIONS.coreInventoryManualInboundPost] };
+const context = { installationId, scopes: { warehouseIds: [warehouseId] }, permissions: [PERMISSIONS.coreInventoryManualInboundPost, PERMISSIONS.coreInventoryManualInboundPrepare] };
 const key = 'manual-inbound-confirm.regression-1';
 
 function fakePool(document = null) {
