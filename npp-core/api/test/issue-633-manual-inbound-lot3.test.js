@@ -13,7 +13,7 @@ test('Lô 3 xác nhận luôn kiểm tra lại dữ liệu server-side trước 
   const preview = body.indexOf('await previewManualInbound(');
   const readiness = body.indexOf('if (!prepared.preview.ready)');
   const policy = body.indexOf('await validateManualInboundPostInventoryPolicy(');
-  const posting = body.indexOf('return postManualInbound({');
+  const posting = body.indexOf('const posted = await postManualInbound({');
   assert.ok(confirmStart >= 0 && preview > 0 && readiness > preview && policy > readiness && posting > policy);
   assert.match(confirmation, /manualInboundCostSource: row\.costSource/);
   assert.match(confirmation, /unitCost: row\.unitCost/);

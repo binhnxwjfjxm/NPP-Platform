@@ -3,12 +3,11 @@ import { sendError, sendJson } from '../http-utils.js';
 import { normalizeIdempotencyKey, readJsonBody } from '../idempotency.js';
 import {
   getManualInbound,
-  getManualInboundConfirmationStatus,
   listManualInbounds,
   postManualInbound,
   reverseManualInbound,
 } from '../services/manual-inbound.js';
-import { confirmManualInbound } from '../services/manual-inbound-confirmation.js';
+import { confirmManualInbound, readManualInboundConfirmationStatus } from '../services/manual-inbound-confirmation.js';
 import { readManualInboundHistoryDetail, searchManualInboundHistory } from '../services/manual-inbound-history.js';
 import { searchManualInboundProducts } from '../services/manual-inbound-product-search.js';
 import { listManualInboundSupplierOptions, previewManualInboundOperator } from '../services/manual-inbound-operator-preview.js';
@@ -139,7 +138,8 @@ export async function handleManualInboundRoutes(req, res, options) {
         sendError(res, apiError('INVALID_IDEMPOTENCY_KEY', 'Idempotency-Key không hợp lệ.', {}, false, 400), options.requestId, options.receivedAt);
         return true;
       }
-      const result = await getManualInboundConfirmationStatus(options.getPool(), {
+      const result = await readManualInboundConfirmationStatus({
+        adapter: options.getPool(),
         requestContext,
         idempotencyKey,
       });
@@ -147,7 +147,7 @@ export async function handleManualInboundRoutes(req, res, options) {
         sendError(res, apiError(result.code, result.message, result.details ?? {}, result.retryable, statusFor(result)), options.requestId, options.receivedAt);
         return true;
       }
-      writeSuccess(res, { posted: result.posted, document: result.document }, options);
+      writeSuccess(res, { posted: result.posted, processing: result.processing === true, document: result.document }, options);
       return true;
     }
 
