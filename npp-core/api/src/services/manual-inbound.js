@@ -240,7 +240,7 @@ export async function listManualInbounds(client, { requestContext, limit = 100, 
   return Object.freeze({ ok: true, documents: Object.freeze(documents.map((document) => mappedDocument(document))) });
 }
 
-export async function postManualInbound({ adapter, requestContext, idempotencyKey, payload }) {
+export async function postManualInbound({ adapter, requestContext, idempotencyKey, payload, transactionClient = null }) {
   if (!hasPermission(requestContext, PERMISSIONS.coreInventoryManualInboundPost)) {
     return failure('PERMISSION_DENIED', 'Không có quyền xác nhận Nhập kho thủ công.');
   }
@@ -254,9 +254,7 @@ export async function postManualInbound({ adapter, requestContext, idempotencyKe
   }
 
   const documentId = deterministicDocumentId(requestContext.installationId, idempotencyKey);
-  const transaction = await withAuditOutboxTransaction({
-    adapter,
-    mutate: async (client) => {
+  const mutate = async (client) => {
       const movementPayload = {
         movementType: 'MANUAL_INBOUND',
         sourceDomain: 'INVENTORY',
@@ -427,8 +425,14 @@ export async function postManualInbound({ adapter, requestContext, idempotencyKe
         auditId: audit.auditId,
         eventId: event.eventId,
       };
-    },
-  });
+  };
+  // Operator confirm already owns an audit/outbox transaction. Direct callers
+  // retain their existing independent transaction and replay behavior.
+  if (transactionClient) {
+    const result = await mutate(transactionClient);
+    return result?.failed ?? result;
+  }
+  const transaction = await withAuditOutboxTransaction({ adapter, mutate });
   return transaction?.failed ?? transaction;
 }
 

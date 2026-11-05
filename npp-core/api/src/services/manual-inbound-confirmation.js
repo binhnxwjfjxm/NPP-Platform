@@ -1,5 +1,6 @@
 import { IDEMPOTENCY_KEY_PATTERN } from '@npp/contracts';
 import { PERMISSIONS } from '../access/permissions.js';
+import { withAuditOutboxTransaction } from '../audit-outbox.js';
 import { getManualInboundConfirmationStatus, postManualInbound } from './manual-inbound.js';
 import {
   validateManualInboundPostInventoryPolicy,
@@ -48,113 +49,106 @@ function buildPostingPayload(preview) {
 }
 
 
+
 /*
- * A confirmation can time out in the browser while the backend is still
- * validating or committing. Lock before preview (not only during ledger
- * posting) so a same-key retry never races a request still in preflight.
- * Session-level locks are required because postManualInbound owns a separate
- * database transaction/connection. Never keep the lock after the operation.
+ * Confirm owns one PostgreSQL transaction for preflight + canonical ledger
+ * posting, not two pooled connections. The advisory xact lock uses the same
+ * scope as inventory-ledger. GET status can therefore tell an active request
+ * from an absent receipt, even before the stock movement starts.
  */
-async function withConfirmationGuard(adapter, requestContext, idempotencyKey, operation) {
-  const scope = `manual-inbound-confirm:${requestContext.installationId}:${idempotencyKey}`;
-  const client = await adapter.connect();
-  let acquired = false;
-  let releaseFailure = null;
-  try {
-    const result = await client.query(
-      'SELECT pg_try_advisory_lock(hashtextextended($1, 0)) AS acquired',
-      [scope],
-    );
-    acquired = result.rows?.[0]?.acquired === true;
-    if (!acquired) {
-      return Object.freeze({
-        ok: false,
-        code: 'MANUAL_INBOUND_CONFIRM_IN_PROGRESS',
-        message: 'Phiếu nhập đang được xử lý. Hãy kiểm tra trạng thái trước khi thử lại.',
-        statusCode: 409,
-        retryable: true,
-        details: {},
-      });
-    }
-    return await operation(client);
-  } finally {
-    if (acquired) {
-      try {
-        const unlocked = await client.query(
-          'SELECT pg_advisory_unlock(hashtextextended($1, 0)) AS released',
-          [scope],
-        );
-        if (unlocked.rows?.[0]?.released !== true) {
-          throw new Error('manual_inbound_confirmation_guard_release_failed');
-        }
-      } catch (error) {
-        releaseFailure = error;
-      }
-    }
-    client.release(releaseFailure || undefined);
-    if (releaseFailure) throw releaseFailure;
-  }
+function confirmationScope(requestContext, idempotencyKey) {
+  return `${requestContext.installationId}:${idempotencyKey}`;
+}
+async function tryConfirmationLock(client, requestContext, idempotencyKey) {
+  const result = await client.query(
+    'SELECT pg_try_advisory_xact_lock(hashtextextended($1, 0)) AS acquired',
+    [confirmationScope(requestContext, idempotencyKey)],
+  );
+  return result.rows?.[0]?.acquired === true;
+}
+function validateConfirmation(requestContext, idempotencyKey) {
+  if (!hasPermission(requestContext, PERMISSIONS.coreInventoryManualInboundPost))
+    return failure('PERMISSION_DENIED', 'Không có quyền xác nhận Nhập kho thủ công.', 403);
+  if (!IDEMPOTENCY_KEY_PATTERN.test(String(idempotencyKey ?? '')))
+    return failure('INVALID_IDEMPOTENCY_KEY', 'Idempotency-Key không hợp lệ.');
+  return null;
+}
+function inProgressFailure() {
+  return Object.freeze({
+    ok: false, code: 'MANUAL_INBOUND_CONFIRM_IN_PROGRESS', statusCode: 409,
+    message: 'Phiếu nhập đang được xử lý. Hãy kiểm tra trạng thái trước khi thử lại.',
+    retryable: true, details: {},
+  });
 }
 
 export async function readManualInboundConfirmationStatus({ adapter, requestContext, idempotencyKey }) {
-  if (!hasPermission(requestContext, PERMISSIONS.coreInventoryManualInboundPost)) {
-    return failure('PERMISSION_DENIED', 'Không có quyền xác nhận Nhập kho thủ công.', 403);
+  const invalid = validateConfirmation(requestContext, idempotencyKey);
+  if (invalid) return invalid;
+  const client = await adapter.connect();
+  let finished = false;
+  let broken = false;
+  try {
+    await client.query('BEGIN');
+    if (!await tryConfirmationLock(client, requestContext, idempotencyKey)) {
+      await client.query('ROLLBACK');
+      finished = true;
+      return Object.freeze({ ok: true, posted: false, processing: true, document: null });
+    }
+    const status = await getManualInboundConfirmationStatus(client, { requestContext, idempotencyKey });
+    await client.query('COMMIT');
+    finished = true;
+    return status.ok ? Object.freeze({ ...status, processing: false }) : status;
+  } catch (error) {
+    if (!finished) {
+      try { await client.query('ROLLBACK'); } catch { broken = true; }
+    }
+    throw error;
+  } finally {
+    client.release(broken);
   }
-  if (!IDEMPOTENCY_KEY_PATTERN.test(String(idempotencyKey ?? ''))) {
-    return failure('INVALID_IDEMPOTENCY_KEY', 'Idempotency-Key không hợp lệ.');
-  }
-  const status = await withConfirmationGuard(
-    adapter, requestContext, idempotencyKey,
-    (client) => getManualInboundConfirmationStatus(client, { requestContext, idempotencyKey }),
-  );
-  if (status.code === 'MANUAL_INBOUND_CONFIRM_IN_PROGRESS') {
-    return Object.freeze({ ok: true, posted: false, processing: true, document: null });
-  }
-  return status.ok ? Object.freeze({ ...status, processing: false }) : status;
 }
 
 export async function confirmManualInbound({ adapter, requestContext, idempotencyKey, payload }) {
-  if (!hasPermission(requestContext, PERMISSIONS.coreInventoryManualInboundPost)) {
-    return failure('PERMISSION_DENIED', 'Không có quyền xác nhận Nhập kho thủ công.', 403);
-  }
-  if (!IDEMPOTENCY_KEY_PATTERN.test(String(idempotencyKey ?? ''))) {
-    return failure('INVALID_IDEMPOTENCY_KEY', 'Idempotency-Key không hợp lệ.');
-  }
+  const invalid = validateConfirmation(requestContext, idempotencyKey);
+  if (invalid) return invalid;
+  const transaction = await withAuditOutboxTransaction({
+    adapter,
+    mutate: async (client) => {
+      // A concurrent request must not re-validate stale product data or post
+      // while another confirmation with the same key is still in progress.
+      if (!await tryConfirmationLock(client, requestContext, idempotencyKey))
+        return { failed: inProgressFailure(), skipAudit: true };
+      // Replay the previous committed receipt BEFORE preview: policies, stock,
+      // prices or products may have changed since the earlier confirmation.
+      const previous = await getManualInboundConfirmationStatus(client, { requestContext, idempotencyKey });
+      if (!previous.ok) return { failed: previous, skipAudit: true };
+      if (previous.posted) return Object.freeze({ ok: true, replayed: true, document: previous.document });
 
-  return withConfirmationGuard(adapter, requestContext, idempotencyKey, async (client) => {
-    // A previously committed confirmation takes priority over a fresh preview.
-    // Product availability/policy may have changed since the original posting.
-    const previous = await getManualInboundConfirmationStatus(client, { requestContext, idempotencyKey });
-    if (!previous.ok) return previous;
-    if (previous.posted) {
-      return Object.freeze({ ok: true, replayed: true, document: previous.document });
-    }
+      const prepared = await previewManualInbound(client, { requestContext, payload });
+      if (!prepared.ok) return { failed: prepared, skipAudit: true };
+      if (!prepared.preview.ready) return {
+        failed: failure('MANUAL_INBOUND_NOT_READY',
+          'Dữ liệu còn thiếu hoặc chưa hợp lệ. Hãy kiểm tra lại trước khi xác nhận nhập.',
+          409, { rowErrors: prepared.preview.rowErrors }),
+        skipAudit: true,
+      };
+      const postingPayload = buildPostingPayload(prepared.preview);
+      const policy = await validateManualInboundPostInventoryPolicy(client, {
+        requestContext, rows: postingPayload.rows,
+      });
+      if (!policy.ok) return { failed: policy, skipAudit: true };
 
-    const prepared = await previewManualInbound(adapter, { requestContext, payload });
-    if (!prepared.ok) return prepared;
-    if (!prepared.preview.ready) {
-      return failure(
-        'MANUAL_INBOUND_NOT_READY',
-        'Dữ liệu còn thiếu hoặc chưa hợp lệ. Hãy kiểm tra lại trước khi xác nhận nhập.',
-        409,
-        { rowErrors: prepared.preview.rowErrors },
-      );
-    }
-
-    const postingPayload = buildPostingPayload(prepared.preview);
-    const policy = await validateManualInboundPostInventoryPolicy(adapter, {
-      requestContext,
-      rows: postingPayload.rows,
-    });
-    if (!policy.ok) return policy;
-
-    return postManualInbound({
-      adapter, requestContext, idempotencyKey, payload: postingPayload,
-    });
+      const posted = await postManualInbound({
+        transactionClient: client, requestContext, idempotencyKey, payload: postingPayload,
+      });
+      return posted.ok ? posted : { failed: posted, skipAudit: true };
+    },
   });
+  return transaction?.failed ?? transaction;
 }
 
 export const manualInboundConfirmationInternals = Object.freeze({
   buildPostingPayload,
-  withConfirmationGuard,
+  tryConfirmationLock,
+  confirmationScope,
 });
