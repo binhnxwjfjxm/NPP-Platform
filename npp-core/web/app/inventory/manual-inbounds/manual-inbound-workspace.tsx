@@ -134,7 +134,7 @@ type ResolvedItem = {
 };
 type PendingMutation = { key: string; body: string };
 type ConfirmedInbound = { id: string; documentNumber?: string | null; document_number?: string | null };
-type ConfirmationStatus = { posted: boolean; processing?: boolean; document: ConfirmedInbound | null };
+type ConfirmationStatus = { posted: boolean; processing?: boolean; cancelled?: boolean; document: ConfirmedInbound | null };
 type ManualInboundRequestError = Error & { status?: number; code?: string; retryable?: boolean };
 type InboundType = 'MANUAL_RECEIPT' | 'OFF_DOCUMENT_CUSTOMER_RETURN' | 'RECOVERY' | 'OTHER';
 
@@ -345,7 +345,8 @@ export default function ManualInboundWorkspace() {
   const quantityRefs = useRef(new Map<number, HTMLInputElement>());
   const pendingConfirm = useRef<PendingMutation | null>(null);
   const confirmingRef = useRef(false);
-  const [confirmationRecovery, setConfirmationRecovery] = useState<'checking' | 'unresolved' | null>(null);
+  const [confirmationRecovery, setConfirmationRecovery] = useState<'checking' | 'unresolved' | 'not_posted' | 'closing' | null>(null);
+  const [confirmationFailure, setConfirmationFailure] = useState('');
   const pendingReverse = useRef<PendingMutation | null>(null);
   const productSearchRun = useRef(0);
   const historyRequestRun = useRef(0);
@@ -825,6 +826,7 @@ export default function ManualInboundWorkspace() {
     pendingConfirm.current = null;
     clearPendingConfirmation();
     setConfirmationRecovery(null);
+    setConfirmationFailure('');
     setRows([emptyRow()]);
     setResolvedItems({});
     setFilename('');
@@ -849,6 +851,7 @@ export default function ManualInboundWorkspace() {
     pendingConfirm.current = null;
     clearPendingConfirmation();
     setConfirmationRecovery(null);
+    setConfirmationFailure('');
     setPreviewDirty(true);
     setPreview(null);
     setMessage({
@@ -870,29 +873,68 @@ export default function ManualInboundWorkspace() {
         finishInboundConfirmation(status.document);
         return;
       }
+      if (status.cancelled) {
+        releaseRejectedConfirmation('Yêu cầu cũ đã kết thúc và không thể ghi sổ.');
+        return;
+      }
       if (status.processing) {
+        setConfirmationRecovery('unresolved');
         setMessage({ kind: 'info', text: 'Phiếu đang được xử lý trên Công Ty. Không gửi lại bằng khóa khác.' });
-      } else if (rejectionMessage) {
-        // Only after a definitive rejection AND an authoritative unlocked
-        // status read: no document and no same-key confirmation in flight.
+        return;
+      }
+      if (rejectionMessage) {
+        // A server-confirmed rejection without posting and without in-flight
+        // work can release this key. A timeout must use atomic cancellation.
         releaseRejectedConfirmation(rejectionMessage);
         return;
-      } else {
-        setMessage({ kind: 'error', text: 'Chưa có phiếu ghi sổ cho yêu cầu này. Hãy thử lại cùng yêu cầu; không tạo phiếu trùng.' });
       }
-    } catch {
+      // The backend has confirmed no document and no active transaction.
+      // Do NOT clear the key: a delayed request might still arrive. Instead
+      // offer a server-side terminal cancellation, guarded by the same lock.
+      setConfirmationRecovery('not_posted');
+      setMessage({
+        kind: 'info',
+        text: 'Phiếu này chưa ghi sổ và hiện không còn xử lý. Có thể thử lại cùng yêu cầu hoặc kết thúc yêu cầu an toàn để chỉnh sửa.',
+      });
+    } catch (error) {
+      setConfirmationFailure(error instanceof Error ? error.message : 'Không kiểm tra được trạng thái phiếu.');
       setMessage({ kind: 'error', text: 'Chưa xác minh được trạng thái phiếu nhập. Không tạo phiếu khác cho lần nhập này.' });
+      setConfirmationRecovery('unresolved');
     }
-    setConfirmationRecovery('unresolved');
+  }
+
+  async function closeUnpostedConfirmation() {
+    const pending = pendingConfirm.current;
+    if (!pending || confirmationRecovery !== 'not_posted' || confirmingRef.current || busy === 'confirm') return;
+    if (!window.confirm('Kết thúc yêu cầu nhập chưa ghi sổ để chỉnh sửa phiếu? Công Ty sẽ khóa vĩnh viễn yêu cầu cũ, kể cả khi phản hồi đến muộn.')) return;
+    setConfirmationRecovery('closing');
+    try {
+      const result = await requestJson<ConfirmationStatus>(
+        '/api/inventory/manual-inbounds/operator/cancel-confirmation',
+        { method: 'POST', headers: { 'Idempotency-Key': pending.key }, body: '{}' },
+      );
+      if (result.posted && result.document?.id) {
+        finishInboundConfirmation(result.document);
+        return;
+      }
+      if (result.cancelled && !result.posted) {
+        releaseRejectedConfirmation('Yêu cầu cũ đã được kết thúc an toàn trên Công Ty.');
+        return;
+      }
+      throw new Error('Chưa xác nhận được trạng thái kết thúc yêu cầu.');
+    } catch (error) {
+      setConfirmationFailure(error instanceof Error ? error.message : 'Không kết thúc được yêu cầu.');
+      setConfirmationRecovery('unresolved');
+    }
   }
 
   async function confirmInbound() {
-    if (confirmingRef.current || confirmationRecovery === 'checking') return;
+    if (confirmingRef.current || confirmationRecovery === 'checking' || confirmationRecovery === 'closing') return;
     if (!pendingConfirm.current && (!preview?.ready || previewDirty)) {
       setMessage({ kind: 'error', text: 'Hãy kiểm tra lại để tất cả dòng ở trạng thái Sẵn sàng trước khi xác nhận nhập.' });
       return;
     }
-    const wasUnresolved = confirmationRecovery === 'unresolved';
+    const wasUnresolved = confirmationRecovery === 'unresolved' || confirmationRecovery === 'not_posted';
     let pending = pendingConfirm.current;
     if (!pending) {
       pending = {
@@ -905,6 +947,7 @@ export default function ManualInboundWorkspace() {
     confirmingRef.current = true;
     setBusy('confirm');
     setMessage(null);
+    setConfirmationFailure('');
     try {
       const result = await requestJson<{ document: ConfirmedInbound }>('/api/inventory/manual-inbounds/operator/confirm', {
         method: 'POST',
@@ -918,6 +961,7 @@ export default function ManualInboundWorkspace() {
     } catch (error) {
       const failure = error as ManualInboundRequestError;
       const reason = error instanceof Error ? error.message : 'Không xác nhận được nhập kho.';
+      setConfirmationFailure(reason);
       if (isDefinitiveInboundRejection(failure)) {
         if (wasUnresolved) {
           // A previous timeout may have committed: verify under the same-key
@@ -1171,13 +1215,21 @@ export default function ManualInboundWorkspace() {
 
     {(confirmationRecovery || busy === 'confirm') ? <div className={styles.dialogBackdrop}>
       <section role="alertdialog" aria-modal="true" aria-labelledby="manual-inbound-confirm-recovery" className={styles.dialogCard}>
-        <h2 id="manual-inbound-confirm-recovery">{confirmationRecovery ? 'Đang đối chiếu phiếu nhập' : 'Đang xác nhận nhập kho'}</h2>
+        <h2 id="manual-inbound-confirm-recovery">{confirmationRecovery === 'not_posted'
+          ? 'Phiếu nhập chưa ghi sổ'
+          : confirmationRecovery === 'closing' ? 'Đang kết thúc yêu cầu'
+          : confirmationRecovery ? 'Đang đối chiếu phiếu nhập' : 'Đang xác nhận nhập kho'}</h2>
         <p>{confirmationRecovery === 'checking' || (!confirmationRecovery && busy === 'confirm')
           ? 'Đang kiểm tra và ghi nhận phiếu. Không thao tác nhập lại…'
-          : 'Chưa xác định được lần nhập vừa rồi. Giữ nguyên dữ liệu và khóa chống trùng, không lập phiếu mới.'}</p>
+          : confirmationRecovery === 'closing' ? 'Đang đối chiếu và khóa yêu cầu cũ. Không đóng trang trong lúc kiểm tra…'
+          : confirmationRecovery === 'not_posted'
+            ? 'Công Ty chưa ghi sổ phiếu này và hiện không có yêu cầu đang chạy. Có thể thử lại nguyên yêu cầu hoặc kết thúc an toàn để chỉnh sửa.'
+            : 'Chưa xác minh được lần nhập vừa rồi. Giữ nguyên dữ liệu và khóa chống trùng, không lập phiếu mới.'}</p>
+        {confirmationFailure ? <p role="status">Thông tin lần lưu gần nhất: {confirmationFailure}</p> : null}
         {confirmationRecovery ? <div className={styles.actions}>
-          <button type="button" className={styles.secondary} disabled={confirmationRecovery === 'checking' || busy === 'confirm'} onClick={() => void checkConfirmationStatus()}>Kiểm tra trạng thái</button>
-          <button type="button" className={styles.primary} disabled={confirmationRecovery === 'checking' || busy === 'confirm'} onClick={() => void confirmInbound()}>Thử lại cùng yêu cầu</button>
+          <button type="button" className={styles.secondary} disabled={confirmationRecovery === 'checking' || confirmationRecovery === 'closing' || busy === 'confirm'} onClick={() => void checkConfirmationStatus()}>Kiểm tra trạng thái</button>
+          <button type="button" className={styles.primary} disabled={confirmationRecovery === 'checking' || confirmationRecovery === 'closing' || busy === 'confirm'} onClick={() => void confirmInbound()}>Thử lại cùng yêu cầu</button>
+          {confirmationRecovery === 'not_posted' ? <button type="button" className={styles.secondary} onClick={() => void closeUnpostedConfirmation()}>Kết thúc yêu cầu chưa ghi sổ</button> : null}
         </div> : null}
       </section>
     </div> : null}

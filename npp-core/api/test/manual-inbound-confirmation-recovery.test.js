@@ -2,15 +2,16 @@ import test from 'node:test';
 import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
 import { PERMISSIONS } from '../src/access/permissions.js';
-import { confirmManualInbound, readManualInboundConfirmationStatus, manualInboundConfirmationInternals } from '../src/services/manual-inbound-confirmation.js';
+import { cancelUnpostedManualInboundConfirmation, confirmManualInbound, readManualInboundConfirmationStatus, manualInboundConfirmationInternals } from '../src/services/manual-inbound-confirmation.js';
 
 const installationId = '123e4567-e89b-42d3-a456-426614174000';
 const warehouseId = '123e4567-e89b-42d3-a456-426614174001';
-const context = { installationId, scopes: { warehouseIds: [warehouseId] }, permissions: [PERMISSIONS.coreInventoryManualInboundPost, PERMISSIONS.coreInventoryManualInboundPrepare] };
+const context = { installationId, actorId: 'operator:test', requestId: 'req-test', sourceApp: 'company', scopes: { warehouseIds: [warehouseId] }, permissions: [PERMISSIONS.coreInventoryManualInboundPost, PERMISSIONS.coreInventoryManualInboundPrepare] };
 const key = 'manual-inbound-confirm.regression-1';
 
 function fakePool(document = null) {
   const locks = new Map();
+  const cancellations = new Set();
   const operations = [];
   let nextId = 0;
   const adapter = {
@@ -40,13 +41,21 @@ function fakePool(document = null) {
           }
           if (sql.includes('FROM inventory.manual_inbound_documents'))
             return { rows: document ? [document] : [] };
+          if (sql.includes('FROM inventory.manual_inbound_confirmation_cancellations'))
+            return { rows: cancellations.has(params[1]) ? [{ cancelled_at: new Date().toISOString() }] : [] };
+          if (sql.includes('INSERT INTO inventory.manual_inbound_confirmation_cancellations')) {
+            if (cancellations.has(params[1])) return { rows: [] };
+            cancellations.add(params[1]);
+            return { rows: [{ cancelled_at: new Date().toISOString() }] };
+          }
+          if (sql.includes('INSERT INTO shared.core_audit_records')) return { rows: [] };
           throw new Error('Unexpected SQL: ' + sql.slice(0, 80));
         },
         release() { assert.equal(inTransaction, false); },
       };
     },
   };
-  return { adapter, locks, operations };
+  return { adapter, locks, operations, cancellations };
 }
 
 async function lockExternally(adapter) {
@@ -126,4 +135,66 @@ test('same key but changed operator payload cannot claim the previous receipt as
   assert.equal(failed.ok, false);
   assert.equal(failed.code, 'IDEMPOTENCY_PAYLOAD_MISMATCH');
   assert.equal(failed.statusCode, 409);
+});
+
+test('cancelling an absent and idle receipt is durable and blocks every late same-key POST', async () => {
+  const { adapter, locks, cancellations, operations } = fakePool();
+  const result = await cancelUnpostedManualInboundConfirmation({
+    adapter, requestContext: context, idempotencyKey: key,
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.posted, false);
+  assert.equal(result.cancelled, true);
+  assert.equal(locks.size, 0);
+  assert.equal(cancellations.has(key), true);
+  assert.ok(operations.some((op) => op.sql.includes('INSERT INTO shared.core_audit_records')));
+  const status = await readManualInboundConfirmationStatus({
+    adapter, requestContext: context, idempotencyKey: key,
+  });
+  assert.equal(status.processing, false);
+  assert.equal(status.posted, false);
+  assert.equal(status.cancelled, true);
+  const late = await confirmManualInbound({
+    adapter, requestContext: context, idempotencyKey: key,
+    payload: { rows: [] },
+  });
+  assert.equal(late.ok, false);
+  assert.equal(late.code, 'MANUAL_INBOUND_CONFIRMATION_CANCELLED');
+  assert.ok(!operations.some((op) => op.sql.includes('INSERT INTO inventory.inventory_movements')));
+  const repeat = await cancelUnpostedManualInboundConfirmation({
+    adapter, requestContext: context, idempotencyKey: key,
+  });
+  assert.equal(repeat.ok, true);
+  assert.equal(repeat.replayed, true);
+  assert.equal(operations.filter((op) => op.sql.includes('INSERT INTO inventory.manual_inbound_confirmation_cancellations')).length, 1);
+});
+
+test('cannot cancel while original same-key confirmation owns the transaction', async () => {
+  const { adapter, cancellations } = fakePool();
+  const holder = await lockExternally(adapter);
+  const blocked = await cancelUnpostedManualInboundConfirmation({
+    adapter, requestContext: context, idempotencyKey: key,
+  });
+  assert.equal(blocked.ok, false);
+  assert.equal(blocked.code, 'MANUAL_INBOUND_CONFIRM_IN_PROGRESS');
+  assert.equal(blocked.retryable, true);
+  assert.equal(cancellations.has(key), false);
+  await holder.query('COMMIT');
+  holder.release();
+});
+
+test('cancellation returns the existing posted receipt rather than superseding inventory', async () => {
+  const document = {
+    id: '123e4567-e89b-42d3-a456-426614174010',
+    warehouse_id: warehouseId,
+    document_number: 'NKT-00000004',
+  };
+  const { adapter, cancellations } = fakePool(document);
+  const result = await cancelUnpostedManualInboundConfirmation({
+    adapter, requestContext: context, idempotencyKey: key,
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.posted, true);
+  assert.equal(result.document.id, document.id);
+  assert.equal(cancellations.has(key), false);
 });

@@ -1,3 +1,27 @@
+export async function getManualInboundConfirmationCancellation(client, { installationId, idempotencyKey }) {
+  const result = await client.query(
+    `SELECT cancelled_at
+       FROM inventory.manual_inbound_confirmation_cancellations
+      WHERE installation_id = $1 AND idempotency_key = $2`,
+    [installationId, idempotencyKey],
+  );
+  return result.rows?.[0] ?? null;
+}
+
+export async function insertManualInboundConfirmationCancellation(client, {
+  installationId, idempotencyKey, cancelledBy, requestId,
+}) {
+  const result = await client.query(
+    `INSERT INTO inventory.manual_inbound_confirmation_cancellations
+       (installation_id, idempotency_key, cancelled_by, request_id)
+     VALUES ($1,$2,$3,$4)
+     ON CONFLICT (installation_id, idempotency_key) DO NOTHING
+     RETURNING cancelled_at`,
+    [installationId, idempotencyKey, cancelledBy, requestId],
+  );
+  return result.rows?.[0] ?? null;
+}
+
 export async function insertManualInboundDocumentNumber(client, { installationId, documentId, allocation }) {
   const result = await client.query(
     `INSERT INTO inventory.manual_inbound_document_numbers (

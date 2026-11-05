@@ -88,3 +88,16 @@ test('Tải lại trang vẫn thấy dữ liệu phiếu đang cần đối chi�
   assert.match(workspace, /setRows\(saved\.rows\.map/);
   assert.match(workspace, /if \(data\.length === 1 && !pendingConfirm\.current\)/);
 });
+
+test('Trạng thái chưa ghi sổ có lối thoát được Công Ty xác minh, không xóa khóa ngay trên trình duyệt', () => {
+  assert.match(workspace, /setConfirmationRecovery\('not_posted'\)/);
+  assert.match(workspace, /function closeUnpostedConfirmation\(/);
+  assert.match(workspace, /operator\/cancel-confirmation/);
+  assert.match(workspace, /if \(result\.cancelled && !result\.posted\)/);
+  assert.match(workspace, /confirmationRecovery === 'not_posted'/);
+  assert.match(workspace, /Kết thúc yêu cầu chưa ghi sổ/);
+  assert.match(workspace, /Thông tin lần lưu gần nhất/);
+  assert.match(gateway, /cancelManualInboundOperatorConfirmation/);
+  assert.match(proxy, /params\.action === 'cancel-confirmation'/);
+  assert.doesNotMatch(workspace, /status\.processing\) \{[\s\S]{0,100}clearPendingConfirmation\(\)/);
+});
