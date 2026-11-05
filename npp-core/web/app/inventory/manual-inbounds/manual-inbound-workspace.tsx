@@ -124,7 +124,7 @@ type HistoryMovementDetail = {
     quantityAfter: string;
   }>;
 };
-type Envelope<T> = { data?: T; error?: { message?: string; code?: string } };
+type Envelope<T> = { data?: T; error?: { message?: string; code?: string; retryable?: boolean } };
 type ResolvedItem = {
   sku: string;
   productName?: string;
@@ -134,12 +134,24 @@ type ResolvedItem = {
 };
 type PendingMutation = { key: string; body: string };
 type ConfirmedInbound = { id: string; documentNumber?: string | null; document_number?: string | null };
-type ConfirmationStatus = { posted: boolean; document: ConfirmedInbound | null };
-type ManualInboundRequestError = Error & { status?: number };
+type ConfirmationStatus = { posted: boolean; processing?: boolean; document: ConfirmedInbound | null };
+type ManualInboundRequestError = Error & { status?: number; code?: string; retryable?: boolean };
 type InboundType = 'MANUAL_RECEIPT' | 'OFF_DOCUMENT_CUSTOMER_RETURN' | 'RECOVERY' | 'OTHER';
 
 const SEARCH_DELAY_MS = 120;
 const PENDING_CONFIRM_STORAGE_KEY = 'npp.manual-inbound.pending-confirm.v1';
+const DEFINITIVE_INBOUND_CONFLICT_CODES = new Set([
+  'MANUAL_INBOUND_NOT_READY',
+  'INVENTORY_POLICY_UNAVAILABLE',
+  'WAREHOUSE_LOCATION_MODE_REQUIRED',
+]);
+
+function isDefinitiveInboundRejection(error: ManualInboundRequestError) {
+  const status = error.status ?? 0;
+  if (error.retryable || status === 408) return false;
+  if (status === 409) return DEFINITIVE_INBOUND_CONFLICT_CODES.has(error.code ?? '');
+  return status >= 400 && status < 500;
+}
 
 // Keep one retry intent only for the current browser tab. A refresh must not
 // silently create a different Idempotency-Key while the first POST may have committed.
@@ -223,6 +235,8 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   if (!response.ok || payload.data === undefined) {
     const error: ManualInboundRequestError = new Error(payload.error?.message || payload.error?.code || 'Yêu cầu không thành công');
     error.status = response.status;
+    error.code = payload.error?.code;
+    error.retryable = payload.error?.retryable === true;
     throw error;
   }
   return payload.data;
@@ -555,7 +569,7 @@ export default function ManualInboundWorkspace() {
       .then((data) => {
         if (!active) return;
         setWarehouses(data);
-        if (data.length === 1) setWarehouseId(data[0].id);
+        if (data.length === 1 && !pendingConfirm.current) setWarehouseId(data[0].id);
       })
       .catch((error) => { if (active) setMessage({ kind: 'error', text: error instanceof Error ? error.message : 'Không tải được danh sách kho.' }); })
       .finally(() => { if (active) setBusy(null); });
@@ -566,6 +580,34 @@ export default function ManualInboundWorkspace() {
     const previousConfirmation = restorePendingConfirmation();
     if (previousConfirmation) {
       pendingConfirm.current = previousConfirmation;
+      // Restore the operator's visible draft after a tab refresh; retry still
+      // uses pending.body verbatim, never an edited or reconstructed payload.
+      const saved = JSON.parse(previousConfirmation.body) as {
+        warehouseId?: string; supplierId?: string | null; inboundType?: InboundType;
+        documentDate?: string; referenceNumber?: string | null; note?: string | null;
+        rows?: Array<Partial<DraftRow>>;
+      };
+      if (typeof saved.warehouseId === 'string') setWarehouseId(saved.warehouseId);
+      if (typeof saved.supplierId === 'string') setSupplierId(saved.supplierId);
+      if (saved.inboundType && INBOUND_TYPES.some((item) => item.value === saved.inboundType)) {
+        setInboundType(saved.inboundType);
+      }
+      if (typeof saved.documentDate === 'string') setDocumentDate(saved.documentDate);
+      if (typeof saved.referenceNumber === 'string') setReferenceNumber(saved.referenceNumber);
+      if (typeof saved.note === 'string') setNote(saved.note);
+      if (Array.isArray(saved.rows) && saved.rows.length > 0 && saved.rows.length <= 500) {
+        const keys: Array<keyof DraftRow> = [
+          'splitIdentity', 'sku', 'sourceQuantity', 'unitCost', 'locationCode', 'lotCode',
+          'manufacturedDate', 'expiryDate', 'supplierLotReference',
+        ];
+        setRows(saved.rows.map((row) => {
+          const restored = emptyRow();
+          for (const key of keys) {
+            if (typeof row?.[key] === 'string') restored[key] = row[key] as string;
+          }
+          return restored;
+        }));
+      }
       void checkConfirmationStatus();
     }
     return () => { active = false; };
@@ -803,7 +845,19 @@ export default function ManualInboundWorkspace() {
     void loadHistory('', '');
   }
 
-  async function checkConfirmationStatus() {
+  function releaseRejectedConfirmation(reason: string) {
+    pendingConfirm.current = null;
+    clearPendingConfirmation();
+    setConfirmationRecovery(null);
+    setPreviewDirty(true);
+    setPreview(null);
+    setMessage({
+      kind: 'error',
+      text: `Chưa ghi sổ phiếu nhập. ${reason} Hãy kiểm tra lại dữ liệu rồi xác nhận.`,
+    });
+  }
+
+  async function checkConfirmationStatus(rejectionMessage?: string) {
     const pending = pendingConfirm.current;
     if (!pending) return;
     setConfirmationRecovery('checking');
@@ -816,7 +870,16 @@ export default function ManualInboundWorkspace() {
         finishInboundConfirmation(status.document);
         return;
       }
-      setMessage({ kind: 'error', text: 'Chưa tìm thấy phiếu đã ghi sổ. Chỉ thử lại cùng yêu cầu để tránh cộng tồn trùng.' });
+      if (status.processing) {
+        setMessage({ kind: 'info', text: 'Phiếu đang được xử lý trên Công Ty. Không gửi lại bằng khóa khác.' });
+      } else if (rejectionMessage) {
+        // Only after a definitive rejection AND an authoritative unlocked
+        // status read: no document and no same-key confirmation in flight.
+        releaseRejectedConfirmation(rejectionMessage);
+        return;
+      } else {
+        setMessage({ kind: 'error', text: 'Chưa có phiếu ghi sổ cho yêu cầu này. Hãy thử lại cùng yêu cầu; không tạo phiếu trùng.' });
+      }
     } catch {
       setMessage({ kind: 'error', text: 'Chưa xác minh được trạng thái phiếu nhập. Không tạo phiếu khác cho lần nhập này.' });
     }
@@ -853,14 +916,19 @@ export default function ManualInboundWorkspace() {
       }
       finishInboundConfirmation(result.document);
     } catch (error) {
-      const status = (error as ManualInboundRequestError)?.status;
-      // Definitive client rejections before an uncertain attempt are editable.
-      // A timeout, 409 or transport failure MUST retain the original key/body.
-      if (!wasUnresolved && status && status >= 400 && status < 500 && status !== 408 && status !== 409) {
-        pendingConfirm.current = null;
-        clearPendingConfirmation();
-        setMessage({ kind: 'error', text: error instanceof Error ? error.message : 'Không xác nhận được nhập kho.' });
+      const failure = error as ManualInboundRequestError;
+      const reason = error instanceof Error ? error.message : 'Không xác nhận được nhập kho.';
+      if (isDefinitiveInboundRejection(failure)) {
+        if (wasUnresolved) {
+          // A previous timeout may have committed: verify under the same-key
+          // server guard before releasing the preserved retry identity.
+          await checkConfirmationStatus(reason);
+        } else {
+          releaseRejectedConfirmation(reason);
+        }
       } else {
+        // Ambiguous network errors, server failures and concurrent 409s retain
+        // the original key/body. Never silently turn them into new receipts.
         await checkConfirmationStatus();
       }
     } finally {

@@ -71,3 +71,20 @@ test('Warehouse initialization and preview validation cannot discard an unresolv
   assert.match(workspace, /async function checkData\(\) \{\s*if \(pendingConfirm\.current \|\| confirmingRef\.current\)/);
   assert.match(workspace, /confirmationRecovery \|\| busy === 'confirm'/);
 });
+
+test('Bị từ chối 409 trước ghi sổ không bị khóa nhầm thành phiếu chưa rõ', () => {
+  assert.match(workspace, /DEFINITIVE_INBOUND_CONFLICT_CODES/);
+  assert.match(workspace, /MANUAL_INBOUND_NOT_READY/);
+  assert.match(workspace, /isDefinitiveInboundRejection\(failure\)/);
+  assert.match(workspace, /releaseRejectedConfirmation\(reason\)/);
+  assert.match(workspace, /await checkConfirmationStatus\(reason\)/);
+  assert.match(workspace, /status\.processing/);
+  assert.match(workspace, /if \(error\.retryable \|\| status === 408\) return false/);
+  assert.match(workspace, /pending\.body/);
+});
+
+test('Tải lại trang vẫn thấy dữ liệu phiếu đang cần đối chiếu', () => {
+  assert.match(workspace, /JSON\.parse\(previousConfirmation\.body\)/);
+  assert.match(workspace, /setRows\(saved\.rows\.map/);
+  assert.match(workspace, /if \(data\.length === 1 && !pendingConfirm\.current\)/);
+});
