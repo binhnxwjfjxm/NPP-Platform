@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
+  cancelManualInboundOperatorConfirmation,
   confirmManualInboundOperator,
   listManualInboundOperatorLocations,
   listManualInboundOperatorSuppliers,
@@ -104,7 +105,7 @@ export async function POST(
   { params }: { params: { action: string } },
 ) {
   const requestId = resolveManualInboundOperatorRequestId(request.headers.get('x-request-id'));
-  if (!['preview', 'confirm', 'reverse'].includes(params.action)) {
+  if (!['preview', 'confirm', 'reverse', 'cancel-confirmation'].includes(params.action)) {
     return NextResponse.json({
       error: { code: 'METHOD_NOT_ALLOWED', message: 'Thao tác này không hỗ trợ gửi dữ liệu', retryable: false },
       requestId,
@@ -124,6 +125,9 @@ export async function POST(
     const idempotencyKey = request.headers.get('Idempotency-Key');
     if (params.action === 'confirm') {
       return success(await confirmManualInboundOperator(body, requestId, idempotencyKey), requestId);
+    }
+    if (params.action === 'cancel-confirmation') {
+      return success(await cancelManualInboundOperatorConfirmation(requestId, idempotencyKey ?? ''), requestId);
     }
     const reversal = body as { documentId?: string; documentDate?: string; reasonNote?: string };
     return success(await reverseManualInboundOperator({

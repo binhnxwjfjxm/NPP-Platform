@@ -7,7 +7,7 @@ import {
   postManualInbound,
   reverseManualInbound,
 } from '../services/manual-inbound.js';
-import { confirmManualInbound, readManualInboundConfirmationStatus } from '../services/manual-inbound-confirmation.js';
+import { cancelUnpostedManualInboundConfirmation, confirmManualInbound, readManualInboundConfirmationStatus } from '../services/manual-inbound-confirmation.js';
 import { readManualInboundHistoryDetail, searchManualInboundHistory } from '../services/manual-inbound-history.js';
 import { searchManualInboundProducts } from '../services/manual-inbound-product-search.js';
 import { listManualInboundSupplierOptions, previewManualInboundOperator } from '../services/manual-inbound-operator-preview.js';
@@ -147,7 +147,7 @@ export async function handleManualInboundRoutes(req, res, options) {
         sendError(res, apiError(result.code, result.message, result.details ?? {}, result.retryable, statusFor(result)), options.requestId, options.receivedAt);
         return true;
       }
-      writeSuccess(res, { posted: result.posted, processing: result.processing === true, document: result.document }, options);
+      writeSuccess(res, { posted: result.posted, processing: result.processing === true, cancelled: result.cancelled === true, document: result.document }, options);
       return true;
     }
 
@@ -192,6 +192,23 @@ export async function handleManualInboundRoutes(req, res, options) {
         return true;
       }
       writeSuccess(res, result.preview, options);
+      return true;
+    }
+
+    if (url.pathname === '/api/inventory/manual-inbounds/operator/cancel-confirmation' && method === 'POST') {
+      const idempotencyKey = readIdempotencyKey(req);
+      if (!idempotencyKey) {
+        sendError(res, apiError('INVALID_IDEMPOTENCY_KEY', 'Idempotency-Key không hợp lệ.', {}, false, 400), options.requestId, options.receivedAt);
+        return true;
+      }
+      const result = await cancelUnpostedManualInboundConfirmation({
+        adapter: options.getPool(), requestContext, idempotencyKey,
+      });
+      if (!result.ok) {
+        sendError(res, apiError(result.code, result.message, result.details ?? {}, result.retryable, statusFor(result)), options.requestId, options.receivedAt);
+        return true;
+      }
+      writeSuccess(res, { posted: result.posted, cancelled: result.cancelled, document: result.document }, options);
       return true;
     }
 

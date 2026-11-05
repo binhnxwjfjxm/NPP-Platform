@@ -122,6 +122,16 @@ async function requestCore<T>({
   }
 }
 
+export function cancelManualInboundOperatorConfirmation<T>(requestId: string, idempotencyKey: string): Promise<T> {
+  return requestCore<T>({
+    path: '/api/inventory/manual-inbounds/operator/cancel-confirmation',
+    method: 'POST',
+    requestId,
+    body: {},
+    idempotencyKey: requireMutationKey(idempotencyKey),
+  });
+}
+
 export function listManualInboundOperatorWarehouses<T>(requestId: string): Promise<T> {
   return requestCore<T>({
     path: '/api/inventory/manual-inbounds/operator/warehouses',

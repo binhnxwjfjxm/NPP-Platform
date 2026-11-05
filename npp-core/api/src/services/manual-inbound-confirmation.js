@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import { IDEMPOTENCY_KEY_PATTERN } from '@npp/contracts';
 import { PERMISSIONS } from '../access/permissions.js';
-import { withAuditOutboxTransaction } from '../audit-outbox.js';
+import { buildAuditRecord, insertAuditRecord, withAuditOutboxTransaction } from '../audit-outbox.js';
+import * as repository from '../db/repositories/manual-inbound.js';
 import { getManualInboundConfirmationStatus, postManualInbound } from './manual-inbound.js';
 import {
   validateManualInboundPostInventoryPolicy,
@@ -101,9 +102,15 @@ export async function readManualInboundConfirmationStatus({ adapter, requestCont
       return Object.freeze({ ok: true, posted: false, processing: true, document: null });
     }
     const status = await getManualInboundConfirmationStatus(client, { requestContext, idempotencyKey });
+    const cancelled = status.ok && !status.posted
+      ? await repository.getManualInboundConfirmationCancellation(client, {
+        installationId: requestContext.installationId, idempotencyKey,
+      }) : null;
     await client.query('COMMIT');
     finished = true;
-    return status.ok ? Object.freeze({ ...status, processing: false }) : status;
+    return status.ok
+      ? Object.freeze({ ...status, processing: false, cancelled: Boolean(cancelled) })
+      : status;
   } catch (error) {
     if (!finished) {
       try { await client.query('ROLLBACK'); } catch { broken = true; }
@@ -141,6 +148,16 @@ export async function confirmManualInbound({ adapter, requestContext, idempotenc
         }
         return Object.freeze({ ok: true, replayed: true, document: previous.document });
       }
+      // A cancelled intent is terminal. A delayed retry using the original key
+      // must never create a stock movement or a new receipt.
+      const cancelled = await repository.getManualInboundConfirmationCancellation(client, {
+        installationId: requestContext.installationId, idempotencyKey,
+      });
+      if (cancelled) return {
+        failed: failure('MANUAL_INBOUND_CONFIRMATION_CANCELLED',
+          'Yêu cầu nhập trước đã kết thúc và không được ghi sổ. Hãy kiểm tra lại dữ liệu trước khi xác nhận phiếu mới.', 409),
+        skipAudit: true,
+      };
 
       const prepared = await previewManualInbound(client, { requestContext, payload });
       if (!prepared.ok) return { failed: prepared, skipAudit: true };
@@ -160,6 +177,50 @@ export async function confirmManualInbound({ adapter, requestContext, idempotenc
         transactionClient: client, requestContext, idempotencyKey, payload: postingPayload,
       });
       return posted.ok ? posted : { failed: posted, skipAudit: true };
+    },
+  });
+  return transaction?.failed ?? transaction;
+}
+
+
+/**
+ * Atomically close an uncertain, unposted confirmation. Status/read and close
+ * acquire the exact same advisory lock as confirm; a late POST cannot post
+ * afterwards because every confirm checks this immutable cancellation record.
+ */
+export async function cancelUnpostedManualInboundConfirmation({ adapter, requestContext, idempotencyKey }) {
+  const invalid = validateConfirmation(requestContext, idempotencyKey);
+  if (invalid) return invalid;
+  const transaction = await withAuditOutboxTransaction({
+    adapter,
+    mutate: async (client) => {
+      if (!await tryConfirmationLock(client, requestContext, idempotencyKey))
+        return { failed: inProgressFailure(), skipAudit: true };
+      const previous = await getManualInboundConfirmationStatus(client, { requestContext, idempotencyKey });
+      if (!previous.ok) return { failed: previous, skipAudit: true };
+      if (previous.posted)
+        return Object.freeze({ ok: true, replayed: true, posted: true, cancelled: false, document: previous.document });
+      const existing = await repository.getManualInboundConfirmationCancellation(client, {
+        installationId: requestContext.installationId, idempotencyKey,
+      });
+      if (existing)
+        return Object.freeze({ ok: true, replayed: true, posted: false, cancelled: true, document: null });
+
+      const closed = await repository.insertManualInboundConfirmationCancellation(client, {
+        installationId: requestContext.installationId,
+        idempotencyKey,
+        cancelledBy: requestContext.actorId,
+        requestId: requestContext.requestId,
+      });
+      if (!closed) throw new Error('manual_inbound_cancel_insert_not_confirmed');
+      await insertAuditRecord(client, buildAuditRecord({
+        requestContext,
+        action: 'inventory.manual_inbound.confirmation_cancelled',
+        resourceType: 'manual_inbound_confirmation',
+        resourceId: idempotencyKey,
+        afterData: { cancelled: true, posted: false },
+      }));
+      return Object.freeze({ ok: true, posted: false, cancelled: true, document: null });
     },
   });
   return transaction?.failed ?? transaction;
