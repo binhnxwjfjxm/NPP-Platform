@@ -1,0 +1,150 @@
+name: Công Ty NKT 242-245 production read-only diagnostic
+
+on:
+  workflow_dispatch:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: company-manual-inbound-production-readonly
+  cancel-in-progress: false
+
+jobs:
+  inspect:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issue_comment' &&
+      github.event.issue.number == 5 &&
+      github.event.comment.body == '/diagnose-nkt-242-245-production' &&
+      contains(fromJSON('["binhnxwjfjxm","khuongbinhinfo-a11y","gustavjung01"]'), github.actor))
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      VPS_DB_HOST: ${{ vars.VPS_DB_HOST }}
+      VPS_SSH_USER: ${{ vars.VPS_SSH_USER }}
+    steps:
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact main and trigger
+        shell: bash
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          git fetch --prune --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          if [ "$GITHUB_EVENT_NAME" = issue_comment ]; then
+            test "$COMMENT_BODY" = '/diagnose-nkt-242-245-production'
+          fi
+          echo "SOURCE_SHA=$(git rev-parse HEAD)"
+
+      - name: Inspect 241-246 and November 5 receipts using read-only PostgreSQL
+        shell: bash
+        env:
+          VPS_DB_SSH_KEY: ${{ secrets.VPS_DB_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$VPS_DB_HOST" && test -n "$VPS_SSH_USER" && test -n "$VPS_DB_SSH_KEY"
+          umask 077
+          printf '%s\n' "$VPS_DB_SSH_KEY" > "$RUNNER_TEMP/db.key"
+          chmod 600 "$RUNNER_TEMP/db.key"
+          ssh-keygen -y -f "$RUNNER_TEMP/db.key" >/dev/null
+          ssh-keyscan -T 10 -H "$VPS_DB_HOST" > "$RUNNER_TEMP/db.hosts" 2>/dev/null
+          test -s "$RUNNER_TEMP/db.hosts"
+
+          ssh -i "$RUNNER_TEMP/db.key" -o BatchMode=yes -o ConnectTimeout=10 \
+            -o ConnectionAttempts=1 -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/db.hosts" \
+            "$VPS_SSH_USER@$VPS_DB_HOST" 'bash -s' > "$RUNNER_TEMP/nkt-report.txt" <<'REMOTE'
+          set -euo pipefail
+          # Production database uses the established PostgreSQL service account.
+          # BEGIN READ ONLY ensures this diagnostic cannot mutate business data.
+          sudo -n -u postgres psql -X -q -A -t -F '|' -v ON_ERROR_STOP=1 \
+            -P pager=off -d npp_production <<'SQL'
+          BEGIN READ ONLY;
+          SET LOCAL statement_timeout = '15000ms';
+
+          WITH wanted(number) AS (
+            VALUES ('NKT-00000241'),('NKT-00000242'),('NKT-00000243'),
+                   ('NKT-00000244'),('NKT-00000245'),('NKT-00000246')
+          ), allocations AS (
+            SELECT dna.document_number, count(*) AS count_alloc
+              FROM shared.document_number_allocations dna
+              JOIN shared.document_number_series ds
+                ON ds.installation_id = dna.installation_id AND ds.id = dna.series_id
+             WHERE ds.document_type = 'MANUAL_INBOUND'
+               AND dna.document_number IN (SELECT number FROM wanted)
+             GROUP BY dna.document_number
+          ), receipts AS (
+            SELECT n.document_number, d.id, d.document_date, d.created_at,
+                   warehouse.code AS warehouse_code,
+                   (SELECT count(*) FROM inventory.manual_inbound_document_lines line
+                     WHERE line.installation_id = d.installation_id
+                       AND line.document_id = d.id) AS line_count,
+                   (SELECT count(*) FROM inventory.inventory_movements m
+                     WHERE m.installation_id = d.installation_id
+                       AND m.id = d.movement_id) AS ledger_count,
+                   (SELECT count(*) FROM inventory.inventory_movements reverse
+                     WHERE reverse.installation_id = d.installation_id
+                       AND reverse.reversal_of_movement_id = d.movement_id) AS reversal_count
+              FROM inventory.manual_inbound_document_numbers n
+              JOIN inventory.manual_inbound_documents d
+                ON d.installation_id = n.installation_id AND d.id = n.document_id
+              JOIN shared.warehouses warehouse
+                ON warehouse.installation_id = d.installation_id
+               AND warehouse.id = d.warehouse_id
+             WHERE n.document_number IN (SELECT number FROM wanted)
+          )
+          SELECT 'NKT|' || wanted.number ||
+                 '|allocations=' || coalesce(max(allocations.count_alloc),0)::text ||
+                 '|documents=' || count(receipts.id)::text ||
+                 '|lines=' || coalesce(sum(receipts.line_count),0)::text ||
+                 '|ledger=' || coalesce(sum(receipts.ledger_count),0)::text ||
+                 '|reversals=' || coalesce(sum(receipts.reversal_count),0)::text ||
+                 '|warehouse=' || coalesce(string_agg(DISTINCT receipts.warehouse_code, ','),'-') ||
+                 '|document_date=' || coalesce(to_char(max(receipts.document_date),'YYYY-MM-DD'),'-') ||
+                 '|created_vn=' || coalesce(to_char(max(receipts.created_at) AT TIME ZONE 'Asia/Ho_Chi_Minh','YYYY-MM-DD HH24:MI'),'-')
+            FROM wanted
+            LEFT JOIN allocations ON allocations.document_number = wanted.number
+            LEFT JOIN receipts ON receipts.document_number = wanted.number
+           GROUP BY wanted.number
+           ORDER BY wanted.number;
+
+          SELECT 'NOV05|' || coalesce(numbers.document_number,'NO_NUMBER') ||
+                 '|lines=' || count(line.id)::text ||
+                 '|document_date=' || to_char(doc.document_date,'YYYY-MM-DD') ||
+                 '|created_vn=' || to_char(doc.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh','YYYY-MM-DD HH24:MI') ||
+                 '|warehouse=' || warehouse.code
+            FROM inventory.manual_inbound_documents doc
+            JOIN shared.warehouses warehouse
+              ON warehouse.installation_id = doc.installation_id
+             AND warehouse.id = doc.warehouse_id
+            LEFT JOIN inventory.manual_inbound_document_numbers numbers
+              ON numbers.installation_id = doc.installation_id AND numbers.document_id = doc.id
+            LEFT JOIN inventory.manual_inbound_document_lines line
+              ON line.installation_id = doc.installation_id AND line.document_id = doc.id
+           WHERE doc.created_at >= ('2026-11-05 00:00:00'::timestamp AT TIME ZONE 'Asia/Ho_Chi_Minh')
+             AND doc.created_at < ('2026-11-06 00:00:00'::timestamp AT TIME ZONE 'Asia/Ho_Chi_Minh')
+           GROUP BY doc.id, numbers.document_number, doc.document_date, doc.created_at, warehouse.code
+           ORDER BY doc.created_at DESC
+           LIMIT 60;
+
+          SELECT 'CANCELLATIONS_NOV05|' || count(*)::text
+            FROM inventory.manual_inbound_confirmation_cancellations
+           WHERE cancelled_at >= ('2026-11-05 00:00:00'::timestamp AT TIME ZONE 'Asia/Ho_Chi_Minh')
+             AND cancelled_at < ('2026-11-06 00:00:00'::timestamp AT TIME ZONE 'Asia/Ho_Chi_Minh');
+
+          COMMIT;
+          SQL
+          REMOTE
+
+          # The output is restricted to receipt numbers, dates, warehouse codes and aggregate counts.
+          cat "$RUNNER_TEMP/nkt-report.txt" | tee -a "$GITHUB_STEP_SUMMARY"
