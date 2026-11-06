@@ -3,7 +3,6 @@ export async function searchManualInboundDocuments(client, {
   warehouseIds,
   inboundType = null,
   referenceNumber = null,
-  beforeDocumentDate = null,
   beforeCreatedAt = null,
   beforeId = null,
   limit = 100,
@@ -39,13 +38,43 @@ export async function searchManualInboundDocuments(client, {
         AND ($4::text IS NULL
           OR document.reference_number ILIKE '%' || $4 || '%'
           OR numbers.document_number ILIKE '%' || $4 || '%')
-        AND ($7::date IS NULL
-          OR (document.document_date, document.created_at, document.id)
-             < ($7::date, $8::timestamptz, $9::uuid))
-      ORDER BY document.document_date DESC, document.created_at DESC, document.id DESC
+        AND ($7::timestamptz IS NULL
+          OR (document.created_at, document.id) < ($7::timestamptz, $8::uuid))
+      ORDER BY document.created_at DESC, document.id DESC
       LIMIT $5 OFFSET $6`,
     [installationId, warehouseIds, inboundType, referenceNumber, limit, offset,
-      beforeDocumentDate, beforeCreatedAt, beforeId],
+      beforeCreatedAt, beforeId],
+  );
+  return result.rows ?? [];
+}
+
+export async function getManualInboundHistoryPrintLines(client, {
+  installationId,
+  warehouseIds,
+  documentId,
+}) {
+  const result = await client.query(
+    `SELECT line.line_number,
+            line.source_sku,
+            line.source_unit_code,
+            line.source_quantity::text AS source_quantity,
+            line.lot_code,
+            product.name AS product_name
+       FROM inventory.manual_inbound_documents document
+       JOIN inventory.manual_inbound_document_lines line
+         ON line.installation_id = document.installation_id
+        AND line.document_id = document.id
+       LEFT JOIN shared.product_variants source_variant
+         ON source_variant.installation_id = line.installation_id
+        AND source_variant.id = line.source_variant_id
+       LEFT JOIN shared.products product
+         ON product.installation_id = source_variant.installation_id
+        AND product.id = source_variant.product_id
+      WHERE document.installation_id = $1
+        AND document.warehouse_id = ANY($2::uuid[])
+        AND document.id = $3
+      ORDER BY line.line_number ASC, line.id ASC`,
+    [installationId, warehouseIds, documentId],
   );
   return result.rows ?? [];
 }

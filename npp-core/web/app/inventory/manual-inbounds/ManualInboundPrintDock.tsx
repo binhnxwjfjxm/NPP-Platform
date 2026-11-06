@@ -22,6 +22,14 @@ type Detail = {
   documentNumber: string | null;
   warehouseCode: string;
   warehouseName: string;
+  receiptLines?: Array<{
+    lineNumber: number;
+    sku: string;
+    productName: string | null;
+    unitCode: string;
+    quantity: string;
+    lotCode: string | null;
+  }>;
   lines: Array<{
     baseVariantId: string;
     sku: string;
@@ -48,6 +56,16 @@ function quantity(value: string) {
 
 export default function ManualInboundPrintDock({ document, detail }: { document: HistoryDocument | null; detail: Detail | null }) {
   if (!document || !detail || document.id !== detail.documentId) return null;
+  // Prefer immutable source receipt lines to aggregated stock movement rows.
+  // Fallback keeps older backend/frontend rollout combinations printable.
+  const printLines = detail.receiptLines?.length ? detail.receiptLines : detail.lines.map((line, index) => ({
+    lineNumber: index + 1,
+    sku: line.sku,
+    productName: line.productName,
+    unitCode: line.baseUnitCode,
+    quantity: line.quantityDelta,
+    lotCode: null,
+  }));
   return <BusinessDocumentPrint
     id={`manual-inbound-print-${document.id}`}
     documentType="MANUAL_INBOUND"
@@ -69,9 +87,14 @@ export default function ManualInboundPrintDock({ document, detail }: { document:
       { key: 'quantity', fieldKey: 'line_quantity', label: 'Số lượng nhập', align: 'right' },
       { key: 'unit', fieldKey: 'line_unit', label: 'ĐVT', align: 'center' },
     ]}
-    rows={detail.lines.map((line, index) => ({
-      id: line.baseVariantId,
-      cells: { no: index + 1, item: <><strong>{line.productName || line.sku}</strong><br />{line.sku}</>, quantity: quantity(line.quantityDelta), unit: line.baseUnitCode || '—' },
+    rows={printLines.map((line) => ({
+      id: `${line.lineNumber}-${line.sku}`,
+      cells: {
+        no: line.lineNumber,
+        item: <><strong>{line.productName || line.sku}</strong><br />{line.sku}{line.lotCode ? ` · Lô: ${line.lotCode}` : ''}</>,
+        quantity: quantity(line.quantity),
+        unit: line.unitCode || '—',
+      },
     }))}
     note={[document.note, document.status === 'REVERSED' ? `ĐÃ ĐẢO${document.reversalNote ? ` — ${document.reversalNote}` : ''}` : ''].filter(Boolean).join(' — ') || undefined}
     signatures={['Người lập phiếu', 'Thủ kho', 'Người giao hàng']}

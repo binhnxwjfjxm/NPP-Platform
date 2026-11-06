@@ -1,5 +1,5 @@
 import { PERMISSIONS } from '../access/permissions.js';
-import { getManualInboundHistoryDetail, searchManualInboundDocuments } from '../db/repositories/manual-inbound-history.js';
+import { getManualInboundHistoryDetail, getManualInboundHistoryPrintLines, searchManualInboundDocuments } from '../db/repositories/manual-inbound-history.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const INBOUND_TYPES = new Set(['MANUAL_RECEIPT', 'OFF_DOCUMENT_CUSTOMER_RETURN', 'RECOVERY', 'OTHER']);
@@ -50,10 +50,12 @@ export async function searchManualInboundHistory(client, {
   const normalizedReference = optionalText(referenceNumber, 160);
   if (!normalizedReference.ok) return normalizedReference;
 
+  // Accept the legacy document-date cursor field while ordering by actual
+  // creation time. Older frontend builds may still send all three fields.
   const cursorValues = [beforeDocumentDate, beforeCreatedAt, beforeId];
   const hasCursor = cursorValues.some((value) => value !== null && value !== undefined && String(value).trim());
   if (hasCursor && (
-    !/^\d{4}-\d{2}-\d{2}$/.test(String(beforeDocumentDate ?? ''))
+    (beforeDocumentDate && !/^\d{4}-\d{2}-\d{2}$/.test(String(beforeDocumentDate)))
     || Number.isNaN(Date.parse(String(beforeCreatedAt ?? '')))
     || !UUID_PATTERN.test(String(beforeId ?? ''))
   )) return failure('INVALID_CURSOR', 'Vị trí tải thêm lịch sử không hợp lệ.');
@@ -63,7 +65,6 @@ export async function searchManualInboundHistory(client, {
     warehouseIds,
     inboundType: normalizedType,
     referenceNumber: normalizedReference.value,
-    beforeDocumentDate: hasCursor ? beforeDocumentDate : null,
     beforeCreatedAt: hasCursor ? beforeCreatedAt : null,
     beforeId: hasCursor ? beforeId : null,
     limit: Math.min(Math.max(Number(limit) || 100, 1), 200),
@@ -106,6 +107,13 @@ export async function readManualInboundHistoryDetail(client, { requestContext, d
     documentId: normalizedDocumentId,
   });
   if (!rows.length) return failure('MANUAL_INBOUND_NOT_FOUND', 'Không tìm thấy chứng từ nhập kho trong phạm vi được cấp.', 404);
+  // Movement rows intentionally aggregate by base variant for stock balances.
+  // The printout must instead use each immutable posted receipt line.
+  const printRows = await getManualInboundHistoryPrintLines(client, {
+    installationId: requestContext.installationId,
+    warehouseIds,
+    documentId: normalizedDocumentId,
+  });
   const first = rows[0];
   return Object.freeze({
     ok: true,
@@ -116,6 +124,14 @@ export async function readManualInboundHistoryDetail(client, { requestContext, d
       documentNumber: first.document_number ?? null,
       warehouseCode: first.warehouse_code,
       warehouseName: first.warehouse_name,
+      receiptLines: Object.freeze(printRows.map((row) => Object.freeze({
+        lineNumber: row.line_number,
+        sku: row.source_sku,
+        productName: row.product_name ?? null,
+        unitCode: row.source_unit_code,
+        quantity: row.source_quantity,
+        lotCode: row.lot_code ?? null,
+      }))),
       lines: Object.freeze(rows.map((row) => Object.freeze({
         baseVariantId: row.base_variant_id,
         sku: row.sku,
