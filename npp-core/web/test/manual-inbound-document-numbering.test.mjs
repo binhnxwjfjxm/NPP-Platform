@@ -23,3 +23,12 @@ test('one canonical number is visible in history, print, reverse and Excel', () 
   assert.match(x, /documentNumber: 'Số phiếu'/);
   assert.match(x, /key === 'documentNumber'/);
 });
+
+test('newly posted manual inbound is searched by exact allocated number and printed from receipt lines', () => {
+  assert.match(ui, /setHistoryReference\(number \|\| ''\)/);
+  assert.match(ui, /void loadHistory\('', number \|\| ''\)/);
+  assert.match(ui, /Ghi nhận: \{displayCreatedAt\(document\.createdAt\)\}/);
+  const print = read('app/inventory/manual-inbounds/ManualInboundPrintDock.tsx');
+  assert.match(print, /detail\.receiptLines\?\.length/);
+  assert.match(print, /rows=\{printLines\.map/);
+});

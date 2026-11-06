@@ -27,8 +27,9 @@ test('history searches canonical number in the same restricted scope and uses st
   assert.match(captured.sql, /numbers\.document_number ILIKE/);
   assert.match(captured.sql, /document\.reference_number ILIKE/);
   assert.match(captured.sql, /document\.warehouse_id = ANY\(\$2::uuid\[\]\)/);
-  assert.match(captured.sql, /document\.document_date, document\.created_at, document\.id/);
-  assert.deepEqual(captured.params, ['test', [warehouseId], null, 'NKT-00000012', 21, 0, '2026-10-22', '2026-10-22T03:02:01Z', docId]);
+  assert.match(captured.sql, /ORDER BY document\.created_at DESC, document\.id DESC/);
+  assert.match(captured.sql, /\(document\.created_at, document\.id\) </);
+  assert.deepEqual(captured.params, ['test', [warehouseId], null, 'NKT-00000012', 21, 0, '2026-10-22T03:02:01Z', docId]);
 });
 test('incomplete cursor or missing warehouse permission does not query database', async () => {
   const client = { async query() { throw Error('must not query'); } };
@@ -37,25 +38,38 @@ test('incomplete cursor or missing warehouse permission does not query database'
   const denied = await searchManualInboundHistory(client, { requestContext: { ...scope, scopes: { warehouseIds: [] } } });
   assert.equal(denied.code, 'WAREHOUSE_SCOPE_DENIED');
 });
-test('detail returns the same canonical number', async () => {
+test('detail prints original posted receipt lines without collapsing duplicate SKU / lots', async () => {
   const client = { async query(sql, params) {
-    assert.match(sql, /numbers\.document_number/);
     assert.deepEqual(params, ['test', [warehouseId], docId]);
-    return { rows: [{ document_id: docId, document_date: '2026-10-22',
-      reference_number: null, document_number: 'NKT-00000012', warehouse_code: 'YS-001',
-      warehouse_name: 'Kho Yersin', base_variant_id: docId,
-      sku: 'TEST', product_name: 'Test', base_unit_code: 'HOP',
-      quantity_before: '2', quantity_delta: '4', quantity_after: '6' }] };
+    if (sql.includes('WITH target_document AS')) {
+      assert.match(sql, /numbers\.document_number/);
+      return { rows: [{ document_id: docId, document_date: '2026-10-22',
+        reference_number: null, document_number: 'NKT-00000012', warehouse_code: 'YS-001',
+        warehouse_name: 'Kho Yersin', base_variant_id: docId,
+        sku: 'TEST', product_name: 'Test', base_unit_code: 'HOP',
+        quantity_before: '2', quantity_delta: '4', quantity_after: '6' }] };
+    }
+    assert.match(sql, /JOIN inventory\.manual_inbound_document_lines line/);
+    assert.match(sql, /document\.warehouse_id = ANY\(\$2::uuid\[\]\)/);
+    assert.match(sql, /ORDER BY line\.line_number ASC, line\.id ASC/);
+    return { rows: [
+      { line_number: 1, source_sku: 'TEST', product_name: 'Test', source_unit_code: 'HOP', source_quantity: '2', lot_code: 'A' },
+      { line_number: 2, source_sku: 'TEST', product_name: 'Test', source_unit_code: 'HOP', source_quantity: '2', lot_code: 'B' },
+    ] };
   } };
   const res = await readManualInboundHistoryDetail(client, { requestContext: scope, documentId: docId });
   assert.equal(res.detail.documentNumber, 'NKT-00000012');
+  assert.equal(res.detail.lines.length, 1);
+  assert.deepEqual(res.detail.receiptLines.map((line) => [line.lineNumber, line.sku, line.quantity, line.lotCode]), [
+    [1, 'TEST', '2', 'A'], [2, 'TEST', '2', 'B'],
+  ]);
 });
 test('export pagination offset compatibility remains intact', async () => {
   let params;
   await searchManualInboundDocuments({ async query(_sql, p) { params = p; return { rows: [] }; } }, {
     installationId: 'test', warehouseIds: [warehouseId], limit: 200, offset: 400,
   });
-  assert.deepEqual(params.slice(4), [200, 400, null, null, null]);
+  assert.deepEqual(params.slice(4), [200, 400, null, null]);
 });
 
 test('confirmation status reads only the canonical document by the same key and installation', async () => {
