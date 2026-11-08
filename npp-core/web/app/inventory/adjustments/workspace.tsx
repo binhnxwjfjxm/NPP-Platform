@@ -295,7 +295,7 @@ export default function InventoryAdjustmentWorkspace({
         [line.sourceLocationCode, line.sourceLocationName].filter(Boolean).join(' · '),
         line.systemBaseQuantity ?? '',
         line.countedBaseQuantity ?? '',
-        sourceDelta(document, line),
+        adjustmentLineDisplay(document, line).delta,
         line.sourceUnitCode,
       ]));
       if (rows.length > 2000) {
