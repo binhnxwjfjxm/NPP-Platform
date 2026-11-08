@@ -378,6 +378,92 @@ test('existing waiting orders receive a later stock increase in confirmation ord
   }
 });
 
+test('replenishment skips issued negative-stock demand while serving another waiting order', async () => {
+  const config = loadConfig({
+    NODE_ENV: 'test', HOST: '127.0.0.1', PORT: '3076',
+    INSTALLATION_ID: `sales-negative-executed-replenish-${randomUUID()}`,
+    DATABASE_URL: process.env.TEST_DATABASE_URL || process.env.DATABASE_URL || 'postgresql://user:password@127.0.0.1:5432/npp_platform',
+    DATABASE_SSL_MODE: 'disable',
+    BACKEND_API_TOKEN: 'test-token-0123456789abcdef',
+    CORE_BOOTSTRAP_ACTOR_ID: 'test:fulfillment-bootstrap',
+    CORS_ORIGINS: 'http://127.0.0.1:3003',
+  });
+  const pool = getPool(config);
+  let server;
+  try {
+    const fixture = await createFixture(pool, config.installationId);
+    server = await startServer({ config });
+    const baseUrl = `http://${config.host}:${config.port}`;
+    const original = await createOrder(baseUrl, config, fixture, 5);
+    assert.equal((await confirmOrder(baseUrl, config, original.id)).response.status, 200);
+    const issued = await createOrder(baseUrl, config, fixture, 10);
+    assert.equal((await confirmOrder(baseUrl, config, issued.id)).response.status, 200);
+    const waiting = await createOrder(baseUrl, config, fixture, 4);
+    assert.equal((await confirmOrder(baseUrl, config, waiting.id)).response.status, 200);
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      // A canonical negative-stock issue can finish a fully backordered line
+      // without a positive allocation. Such a line must stay immutable.
+      await client.query("SELECT set_config('npp.sales_fulfillment_write_context', 'negative_stock_issue_service', true)");
+      const projection = await client.query(
+        `UPDATE sales.sales_order_fulfillment_demands
+            SET negative_issued_base_quantity = backordered_base_quantity
+          WHERE installation_id = $1 AND sales_order_id = $2
+          RETURNING negative_issued_base_quantity::text AS negative_issued`,
+        [config.installationId, issued.id],
+      );
+      assert.equal(projection.rows[0]?.negative_issued, '10.000000000000');
+
+      await client.query("SELECT set_config('npp.inventory_balance_write_context', 'rebuild', true)");
+      await client.query(
+        `UPDATE inventory.inventory_balances SET on_hand_quantity = 9, updated_at = now()
+           WHERE installation_id = $1 AND warehouse_id = $2 AND base_variant_id = $3`,
+        [config.installationId, fixture.warehouseId, fixture.variantId],
+      );
+      const args = {
+        installationId: config.installationId, actorId: 'test:replenishment',
+        scopes: [{ warehouseId: fixture.warehouseId, baseVariantId: fixture.variantId }],
+      };
+      assert.equal((await replenishPendingHoldScopes(client, args)).updatedLines, 1);
+      assert.equal((await replenishPendingHoldScopes(client, args)).updatedLines, 0);
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    const demands = await pool.query(
+      `SELECT sales_order_id, reserved_base_quantity::text AS held,
+              backordered_base_quantity::text AS waiting,
+              negative_issued_base_quantity::text AS negative_issued
+         FROM sales.sales_order_fulfillment_demands
+        WHERE installation_id = $1 AND sales_order_id = ANY($2::uuid[])`,
+      [config.installationId, [original.id, issued.id, waiting.id]],
+    );
+    const byOrder = new Map(demands.rows.map((row) => [row.sales_order_id, row]));
+    assert.equal(byOrder.get(original.id)?.held, '5.000000000000');
+    assert.equal(byOrder.get(issued.id)?.held, '0.000000000000');
+    assert.equal(byOrder.get(issued.id)?.waiting, '10.000000000000');
+    assert.equal(byOrder.get(issued.id)?.negative_issued, '10.000000000000');
+    assert.equal(byOrder.get(waiting.id)?.held, '4.000000000000');
+    assert.equal(byOrder.get(waiting.id)?.waiting, '0.000000000000');
+
+    const balance = await pool.query(
+      `SELECT on_hand_quantity::text AS quantity FROM inventory.inventory_balances
+        WHERE installation_id = $1 AND warehouse_id = $2 AND base_variant_id = $3`,
+      [config.installationId, fixture.warehouseId, fixture.variantId],
+    );
+    assert.equal(balance.rows[0]?.quantity, '9.000000000000');
+  } finally {
+    if (server) await closeServer(server);
+    await closePool();
+  }
+});
+
 test('parallel inbound allocation and Sales cancellation serialize without losing stock', async () => {
   const config = loadConfig({
     NODE_ENV: 'test', HOST: '127.0.0.1', PORT: '3075',

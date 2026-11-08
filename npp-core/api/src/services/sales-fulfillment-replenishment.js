@@ -134,6 +134,9 @@ export async function replenishPendingHoldScopes(client, {
           AND demand.picked_base_quantity = 0
           AND demand.packed_base_quantity = 0
           AND demand.issued_base_quantity = 0
+          -- A negative-stock issue can leave a backorder after execution, but
+          -- its hold is immutable under the canonical PostgreSQL guard.
+          AND demand.negative_issued_base_quantity = 0
         ORDER BY orders.confirmed_at ASC NULLS LAST,
                  orders.created_at ASC, demand.created_at ASC,
                  demand.line_number ASC, demand.id ASC`,
