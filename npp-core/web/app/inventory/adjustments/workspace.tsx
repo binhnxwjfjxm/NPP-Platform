@@ -7,11 +7,8 @@ import { BusinessSequenceNumber } from '../../components/business-table-sequence
 import { printSurfacesForOutput } from '../../components/print-document';
 import { exportTable } from '../../operations/data-exchange/data-exchange-file-utils';
 import { formatQuantity, type InventoryBalance } from '../../../lib/inventory-types';
-import {
-  addExactDecimal,
-  formatSignedExactDecimal,
-  subtractExactDecimal,
-} from '../../../lib/decimal-display.js';
+import { formatSignedExactDecimal } from '../../../lib/decimal-display.js';
+import { adjustmentLineDisplay } from '../../../lib/inventory-adjustment-document-display.js';
 import {
   inventoryWorkflowErrorMessage,
   officeActorLabel,
@@ -87,13 +84,6 @@ function balanceMatchesLine(balance: InventoryBalance, line: AdjustmentLine): bo
     && balance.location_id === line.sourceLocationId
     && balance.base_variant_id === line.baseVariantId
     && (balance.lot_id ?? null) === (line.lotId ?? null);
-}
-
-function sourceDelta(adjustment: InventoryAdjustment, line: AdjustmentLine): string {
-  if (adjustment.documentKind === 'MANUAL_ADJUSTMENT' && adjustment.adjustmentDirection === 'IN') {
-    return line.baseQuantity;
-  }
-  return subtractExactDecimal('0', line.baseQuantity) ?? `-${line.baseQuantity}`;
 }
 
 function adjustmentSourceLabel(adjustment: InventoryAdjustment): string {
@@ -745,12 +735,8 @@ export default function InventoryAdjustmentWorkspace({
                   <div className={styles.lines}>
                     {selected.lines?.map((line, rowIndex) => {
                       const balance = balances.find((item) => balanceMatchesLine(item, line)) ?? null;
-                      const delta = sourceDelta(selected, line);
                       const loadedOnHand = balance?.on_hand_quantity ?? null;
-                      const canPreviewResult = ['DRAFT', 'SUBMITTED', 'APPROVED'].includes(selected.status);
-                      const after = canPreviewResult && loadedOnHand !== null
-                        ? addExactDecimal(loadedOnHand, delta)
-                        : null;
+                      const display = adjustmentLineDisplay(selected, line, loadedOnHand);
                       const productName = balance?.product_name || balance?.base_variant_name || line.sourceSku;
                       return (
                         <article key={line.id} className={styles.lineCard}>
@@ -759,15 +745,16 @@ export default function InventoryAdjustmentWorkspace({
                           <span>Lô: {line.lotCode || 'Không lô'}</span>
                           <span>Vị trí: {line.sourceLocationCode || 'Không vị trí'}{line.sourceLocationName ? ` · ${line.sourceLocationName}` : ''}</span>
                           {line.destinationLocationCode ? <span>Vị trí nhận: {line.destinationLocationCode}{line.destinationLocationName ? ` · ${line.destinationLocationName}` : ''}</span> : null}
-                          {canPreviewResult ? (
+                          {display.before !== null && display.after !== null ? (
                             <span>
-                              Tồn hiện tại {loadedOnHand === null ? 'Chưa tải được' : formatQuantity(loadedOnHand)}
-                              {' → '}Điều chỉnh {formatSignedExactDecimal(delta)}
-                              {' → '}Tồn sau điều chỉnh {after === null ? 'Chưa tải được' : formatQuantity(after)}
+                              {display.beforeLabel} {formatQuantity(display.before)}
+                              {' → '}{selected.adjustmentDirection === 'IN' ? 'Tăng' : selected.adjustmentDirection === 'OUT' ? 'Giảm' : 'Điều chỉnh'} {formatSignedExactDecimal(display.delta)}
+                              {' → '}{display.afterLabel} {formatQuantity(display.after)}
+                              {' · '}{selected.status === 'POSTED' ? 'Đã cập nhật tồn kho' : selected.status === 'REVERSED' ? 'Đã hoàn tác cập nhật tồn' : 'Chưa cập nhật tồn kho'}
                             </span>
                           ) : (
                             <span>
-                              Điều chỉnh {formatSignedExactDecimal(delta)}
+                              Điều chỉnh {formatSignedExactDecimal(display.delta)}
                               {' · '}{selected.status === 'POSTED' ? 'Tồn kho đã cập nhật' : selected.status === 'REVERSED' ? 'Đã hoàn tác cập nhật tồn' : 'Không làm thay đổi tồn kho'}
                             </span>
                           )}

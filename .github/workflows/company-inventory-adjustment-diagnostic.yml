@@ -1,0 +1,136 @@
+name: Công Ty inventory adjustment production read-only diagnostic
+
+on:
+  workflow_dispatch:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: company-inventory-adjustment-readonly
+  cancel-in-progress: false
+
+jobs:
+  inspect:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issue_comment' &&
+      github.event.issue.number == 5 &&
+      github.event.comment.body == '/diagnose-company-inventory-adjustments-20261108' &&
+      contains(fromJSON('["binhnxwjfjxm","khuongbinhinfo-a11y","gustavjung01"]'), github.actor))
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      VPS_COMPANY_HOST: ${{ vars.VPS_COMPANY_HOST }}
+      VPS_DB_HOST: ${{ vars.VPS_DB_HOST }}
+      VPS_SSH_USER: ${{ vars.VPS_SSH_USER }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact main
+        shell: bash
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          git fetch --prune --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          if [ "$GITHUB_EVENT_NAME" = issue_comment ]; then
+            test "$COMMENT_BODY" = '/diagnose-company-inventory-adjustments-20261108'
+          fi
+      - name: Inspect sanitized Công Ty API journal
+        shell: bash
+        env:
+          VPS_COMPANY_SSH_KEY: ${{ secrets.VPS_COMPANY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$VPS_COMPANY_HOST" && test -n "$VPS_SSH_USER" && test -n "$VPS_COMPANY_SSH_KEY"
+          umask 077
+          printf '%s\n' "$VPS_COMPANY_SSH_KEY" > "$RUNNER_TEMP/company.key"
+          chmod 600 "$RUNNER_TEMP/company.key"
+          ssh-keygen -y -f "$RUNNER_TEMP/company.key" >/dev/null
+          ssh-keyscan -T 10 -H "$VPS_COMPANY_HOST" > "$RUNNER_TEMP/company.hosts" 2>/dev/null
+          test -s "$RUNNER_TEMP/company.hosts"
+          ssh -i "$RUNNER_TEMP/company.key" -o BatchMode=yes -o ConnectTimeout=10 \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$RUNNER_TEMP/company.hosts" \
+            "$VPS_SSH_USER@$VPS_COMPANY_HOST" 'bash -s' > "$RUNNER_TEMP/adjustment-api.txt" <<'REMOTE'
+          set -euo pipefail
+          echo "COMPANY_SERVICE=$(systemctl is-active npp-company-api.service || true)"
+          sudo -n journalctl -u npp-company-api.service \
+            --since '2026-11-08 15:00:00 UTC' --until '2026-11-08 16:00:00 UTC' \
+            --no-pager -o cat 2>/dev/null | node -e '
+            const rl=require("node:readline").createInterface({input:process.stdin});
+            let count=0;
+            rl.on("line",line=>{
+              let x;try{x=JSON.parse(line)}catch{return}
+              const event=String(x?.event||"");
+              if(!/inventory_adjustment_(operation_failed|bulk_operation_failed)/.test(event))return;
+              if(count++>=80)return;
+              const output={event};
+              for(const key of ["action","requestId","errorCode","errorName"]){
+                if(typeof x[key]==="string")output[key]=x[key].slice(0,120)
+              }
+              console.log(JSON.stringify(output));
+            });
+            rl.on("close",()=>console.log("MATCH_COUNT="+count));'
+          REMOTE
+          {
+            echo '## Công Ty inventory adjustment — sanitized VPS evidence'
+            cat "$RUNNER_TEMP/adjustment-api.txt"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Read-only posting and demand checks in PostgreSQL
+        shell: bash
+        env:
+          VPS_DB_SSH_KEY: ${{ secrets.VPS_DB_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$VPS_DB_HOST" && test -n "$VPS_SSH_USER" && test -n "$VPS_DB_SSH_KEY"
+          umask 077
+          printf '%s\n' "$VPS_DB_SSH_KEY" > "$RUNNER_TEMP/db.key"
+          chmod 600 "$RUNNER_TEMP/db.key"
+          ssh-keygen -y -f "$RUNNER_TEMP/db.key" >/dev/null
+          ssh-keyscan -T 10 -H "$VPS_DB_HOST" > "$RUNNER_TEMP/db.hosts" 2>/dev/null
+          test -s "$RUNNER_TEMP/db.hosts"
+          ssh -i "$RUNNER_TEMP/db.key" -o BatchMode=yes -o ConnectTimeout=10 \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$RUNNER_TEMP/db.hosts" \
+            "$VPS_SSH_USER@$VPS_DB_HOST" 'bash -s' > "$RUNNER_TEMP/adjustment-db.txt" <<'REMOTE'
+          set -euo pipefail
+          sudo -n -u postgres psql -X -q -A -t -v ON_ERROR_STOP=1 -P pager=off \
+            -d npp_production <<'SQL'
+          BEGIN READ ONLY;
+          SET LOCAL statement_timeout = '15000ms';
+          SELECT 'ADJUSTMENT|number=' || adj.adjustment_number ||
+                 '|status=' || adj.status ||
+                 '|line_count=' || (SELECT count(*) FROM inventory.inventory_adjustment_lines line
+                   WHERE line.installation_id = adj.installation_id AND line.adjustment_id = adj.id)::text ||
+                 '|movement_count=' || (SELECT count(*) FROM inventory.inventory_movements movement
+                   WHERE movement.installation_id = adj.installation_id
+                   AND movement.source_document_id = adj.id)::text ||
+                 '|posted_at=' || COALESCE(to_char(adj.posted_at AT TIME ZONE 'Asia/Ho_Chi_Minh','YYYY-MM-DD HH24:MI'),'-')
+            FROM inventory.inventory_adjustments adj
+           WHERE adj.adjustment_number IN ('IAD-20261108-B38C89DE','IAD-20261108-D2DD0D37')
+           ORDER BY adj.adjustment_number;
+
+          SELECT 'PENDING_DEMAND|count=' || count(*)::text
+            FROM sales.sales_order_fulfillment_demands demand
+            JOIN inventory.inventory_adjustment_lines line
+              ON line.installation_id = demand.installation_id
+             AND line.warehouse_id = demand.warehouse_id
+             AND line.base_variant_id = demand.base_variant_id
+            JOIN inventory.inventory_adjustments adj
+              ON adj.installation_id = line.installation_id AND adj.id = line.adjustment_id
+           WHERE adj.adjustment_number = 'IAD-20261108-B38C89DE'
+             AND demand.state = 'ACTIVE' AND demand.backordered_base_quantity > 0;
+          COMMIT;
+          SQL
+          REMOTE
+          {
+            echo '## Công Ty inventory adjustment — read-only PostgreSQL evidence'
+            cat "$RUNNER_TEMP/adjustment-db.txt"
+          } >> "$GITHUB_STEP_SUMMARY"
