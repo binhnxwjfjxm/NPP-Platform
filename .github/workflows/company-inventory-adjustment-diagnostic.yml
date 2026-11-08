@@ -79,10 +79,8 @@ jobs:
             });
             rl.on("close",()=>console.log("MATCH_COUNT="+count));'
           REMOTE
-          {
-            echo '## Công Ty inventory adjustment — sanitized VPS evidence'
-            cat "$RUNNER_TEMP/adjustment-api.txt"
-          } >> "$GITHUB_STEP_SUMMARY"
+          echo '## Công Ty inventory adjustment — sanitized VPS evidence' >> "$GITHUB_STEP_SUMMARY"
+          cat "$RUNNER_TEMP/adjustment-api.txt" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Read-only posting and demand checks in PostgreSQL
         shell: bash
@@ -130,7 +128,5 @@ jobs:
           COMMIT;
           SQL
           REMOTE
-          {
-            echo '## Công Ty inventory adjustment — read-only PostgreSQL evidence'
-            cat "$RUNNER_TEMP/adjustment-db.txt"
-          } >> "$GITHUB_STEP_SUMMARY"
+          echo '## Công Ty inventory adjustment — read-only PostgreSQL evidence' >> "$GITHUB_STEP_SUMMARY"
+          cat "$RUNNER_TEMP/adjustment-db.txt" | tee -a "$GITHUB_STEP_SUMMARY"
