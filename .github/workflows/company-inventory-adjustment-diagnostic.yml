@@ -81,6 +81,9 @@ jobs:
               for(const key of ["action","requestId","errorCode","errorName","name","code","postgresCode","constraint","schema","table","route","max","total","idle","waiting","statusCode","elapsedMs"]){
                 if(["string","number"].includes(typeof x[key]))output[key]=String(x[key]).slice(0,120)
               }
+              // Show only identifier-like PostgreSQL trigger messages, never SQL values or free text.
+              const guard=String(x.message??"").trim();
+              if(/^[a-z][a-z0-9_]{3,120}$/i.test(guard))output.guardCode=guard;
               console.log(JSON.stringify(output));
             });
             rl.on("close",()=>{
