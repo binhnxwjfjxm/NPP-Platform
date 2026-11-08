@@ -162,6 +162,8 @@ test('every inbound posting path and new order confirmation reuse the same queue
   }
   assert.match(sources[6], /orders\.confirmed_at ASC NULLS LAST/);
   assert.match(sources[6], /demand\.backordered_base_quantity > 0/);
+  // Negative-stock execution may retain backordered quantity but cannot be re-held.
+  assert.match(sources[6], /demand\.negative_issued_base_quantity = 0/);
   assert.match(sources[6], /reconcileDemandHold\(client/);
   assert.match(sources[6], /orders\.status = 'confirmed'/);
 });
