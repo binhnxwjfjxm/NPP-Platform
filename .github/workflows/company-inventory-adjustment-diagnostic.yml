@@ -73,12 +73,12 @@ jobs:
               json++;
               const event=String(x?.event||"").slice(0,100);
               if(event)events.set(event,(events.get(event)||0)+1);
-              if(!/inventory_adjustment_(operation_failed|bulk_operation_failed)/.test(event)
+              if(!/inventory_adjustment_|audit_outbox_transaction_failed|idempotent_request_processing_error|database_pool_pressure/.test(event)
                 && !/inventory|database|connection|pool|timeout|request_failed|proxy|gateway/i.test(event))return;
               count++;
               if(sampled++>=80)return;
               const output={event};
-              for(const key of ["action","requestId","errorCode","errorName","statusCode","elapsedMs"]){
+              for(const key of ["action","requestId","errorCode","errorName","name","code","postgresCode","constraint","schema","table","route","max","total","idle","waiting","statusCode","elapsedMs"]){
                 if(["string","number"].includes(typeof x[key]))output[key]=String(x[key]).slice(0,120)
               }
               console.log(JSON.stringify(output));
