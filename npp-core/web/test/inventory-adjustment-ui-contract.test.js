@@ -8,6 +8,7 @@ const tabs = readFileSync(new URL('../app/inventory/adjustments/adjustment-tabs.
 const gateway = readFileSync(new URL('../lib/inventory-adjustment-gateway.ts', import.meta.url), 'utf8');
 const types = readFileSync(new URL('../lib/inventory-adjustment-types.ts', import.meta.url), 'utf8');
 const workflowErrors = readFileSync(new URL('../lib/inventory-workflow-errors.ts', import.meta.url), 'utf8');
+const documentDisplay = readFileSync(new URL('../lib/inventory-adjustment-document-display.js', import.meta.url), 'utf8');
 const route = readFileSync(new URL('../app/api/inventory/adjustments/[[...segments]]/route.ts', import.meta.url), 'utf8');
 const sharedRoute = readFileSync(new URL('../app/api/inventory/_shared.ts', import.meta.url), 'utf8');
 const shell = readFileSync(new URL('../app/components/app-shell-core.tsx', import.meta.url), 'utf8');
@@ -62,11 +63,12 @@ test('adjustment UI separates source, product, lot, location and quantity effect
   assert.match(workspace, /Sản phẩm:/);
   assert.match(workspace, /Lô:/);
   assert.match(workspace, /Vị trí:/);
-  assert.match(workspace, /Tồn hiện tại/);
-  assert.match(workspace, /Điều chỉnh \{formatSignedExactDecimal\(delta\)\}/);
-  assert.match(workspace, /Tồn sau điều chỉnh/);
-  assert.match(workspace, /addExactDecimal\(loadedOnHand, delta\)/);
-  assert.match(workspace, /canPreviewResult/);
+  assert.match(workspace, /adjustmentLineDisplay\(selected, line, loadedOnHand\)/);
+  assert.match(workspace, /formatSignedExactDecimal\(display\.delta\)/);
+  assert.match(documentDisplay, /Tồn hệ thống khi lập phiếu/);
+  assert.match(documentDisplay, /Tồn kiểm kê theo file/);
+  assert.match(documentDisplay, /Tồn sau điều chỉnh dự kiến/);
+  assert.match(documentDisplay, /addExactDecimal\(before, delta\)/);
 });
 
 test('adjustment page can reopen a just-created document without changing business lifecycle', () => {
