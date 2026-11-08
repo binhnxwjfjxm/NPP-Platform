@@ -215,6 +215,7 @@ export async function reconcileDemandHold(client, {
             AND picked_base_quantity = 0
             AND packed_base_quantity = 0
             AND issued_base_quantity = 0
+             AND negative_issued_base_quantity = 0
           RETURNING *`,
         [
           installationId,

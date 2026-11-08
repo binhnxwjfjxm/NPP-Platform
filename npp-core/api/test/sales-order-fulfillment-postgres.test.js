@@ -5,6 +5,7 @@ import { loadConfig } from '../src/config.js';
 import { getPool, closePool } from '../src/db/pool.js';
 import { startServer } from '../src/server.js';
 import { replenishPendingHoldScopes, lockWarehouseStockScopes } from '../src/services/sales-fulfillment-replenishment.js';
+import { reconcileDemandHold } from '../src/services/sales-fulfillment-hold.js';
 
 function closeServer(server) {
   return new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
@@ -372,6 +373,105 @@ test('existing waiting orders receive a later stock increase in confirmation ord
     const laterConfirm = await confirmOrder(baseUrl, config, later.id);
     assert.equal(laterConfirm.response.status, 200, JSON.stringify(laterConfirm.body));
     assert.equal(laterConfirm.body.data.fulfillment.totals.reservedBaseQuantity, '0.000000000000');
+  } finally {
+    if (server) await closeServer(server);
+    await closePool();
+  }
+});
+
+test('inbound replenishment skips negative-issued executed demand but fills untouched waiting orders', async () => {
+  const config = loadConfig({
+    NODE_ENV: 'test', HOST: '127.0.0.1', PORT: '3076',
+    INSTALLATION_ID: `sales-negative-issued-replenishment-${randomUUID()}`,
+    DATABASE_URL: process.env.TEST_DATABASE_URL || process.env.DATABASE_URL || 'postgresql://user:password@127.0.0.1:5432/npp_platform',
+    DATABASE_SSL_MODE: 'disable',
+    BACKEND_API_TOKEN: 'test-token-0123456789abcdef',
+    CORE_BOOTSTRAP_ACTOR_ID: 'test:fulfillment-bootstrap',
+    CORS_ORIGINS: 'http://127.0.0.1:3003',
+  });
+  const pool = getPool(config);
+  let server;
+  try {
+    const fixture = await createFixture(pool, config.installationId);
+    server = await startServer({ config });
+    const url = `http://${config.host}:${config.port}`;
+    // The first order takes all 5 available. Remaining orders wait for stock.
+    const held = await createOrder(url, config, fixture, 5);
+    assert.equal((await confirmOrder(url, config, held.id)).response.status, 200);
+    const executed = await createOrder(url, config, fixture, 4);
+    assert.equal((await confirmOrder(url, config, executed.id)).response.status, 200);
+    const waiting = await createOrder(url, config, fixture, 2);
+    assert.equal((await confirmOrder(url, config, waiting.id)).response.status, 200);
+    const initial = await pool.query(
+      `SELECT id, sales_order_id, reserved_base_quantity::text AS reserved,
+              backordered_base_quantity::text AS backordered
+         FROM sales.sales_order_fulfillment_demands
+        WHERE installation_id=$1 AND sales_order_id=ANY($2::uuid[])`,
+      [config.installationId, [executed.id, waiting.id]],
+    );
+    const byOrder = new Map(initial.rows.map((row) => [row.sales_order_id, row]));
+    assert.equal(byOrder.get(executed.id)?.reserved, '0.000000000000');
+    assert.equal(byOrder.get(executed.id)?.backordered, '4.000000000000');
+    assert.equal(byOrder.get(waiting.id)?.backordered, '2.000000000000');
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await lockWarehouseStockScopes(client, {
+        installationId: config.installationId,
+        scopes: [{ warehouseId: fixture.warehouseId, baseVariantId: fixture.variantId }],
+      });
+      // The trusted projection simulates an already executed negative-stock issue:
+      // negative_issued > 0 while picked, packed and regular issued remain zero.
+      await client.query("SELECT set_config('npp.sales_fulfillment_write_context', 'negative_stock_issue_service', true)");
+      const marked = await client.query(
+        `UPDATE sales.sales_order_fulfillment_demands
+            SET negative_issued_base_quantity = backordered_base_quantity,
+                updated_at = now()
+          WHERE installation_id=$1 AND id=$2
+          RETURNING negative_issued_base_quantity::text AS qty`,
+        [config.installationId, byOrder.get(executed.id).id],
+      );
+      assert.equal(marked.rows[0]?.qty, '4.000000000000');
+      await client.query("SELECT set_config('npp.inventory_balance_write_context', 'rebuild', true)");
+      await client.query(
+        `UPDATE inventory.inventory_balances SET on_hand_quantity=11, updated_at=now()
+          WHERE installation_id=$1 AND warehouse_id=$2 AND base_variant_id=$3`,
+        [config.installationId, fixture.warehouseId, fixture.variantId],
+      );
+      const protectedHold = await reconcileDemandHold(client, {
+        installationId: config.installationId,
+        demandId: byOrder.get(executed.id).id,
+        actorId: 'test:replenishment',
+      });
+      assert.equal(protectedHold.code, 'FULFILLMENT_HOLD_LOCKED');
+      const args = {
+        installationId: config.installationId,
+        actorId: 'test:replenishment',
+        scopes: [{ warehouseId: fixture.warehouseId, baseVariantId: fixture.variantId }],
+      };
+      assert.equal((await replenishPendingHoldScopes(client, args)).updatedLines, 1);
+      assert.equal((await replenishPendingHoldScopes(client, args)).updatedLines, 0);
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
+    const after = await pool.query(
+      `SELECT sales_order_id, reserved_base_quantity::text AS reserved,
+              backordered_base_quantity::text AS waiting,
+              negative_issued_base_quantity::text AS executed
+         FROM sales.sales_order_fulfillment_demands
+        WHERE installation_id=$1 AND sales_order_id=ANY($2::uuid[])`,
+      [config.installationId, [executed.id, waiting.id]],
+    );
+    const checked = new Map(after.rows.map((row) => [row.sales_order_id, row]));
+    assert.equal(checked.get(executed.id)?.reserved, '0.000000000000');
+    assert.equal(checked.get(executed.id)?.executed, '4.000000000000');
+    assert.equal(checked.get(waiting.id)?.reserved, '2.000000000000');
+    assert.equal(checked.get(waiting.id)?.waiting, '0.000000000000');
   } finally {
     if (server) await closeServer(server);
     await closePool();
