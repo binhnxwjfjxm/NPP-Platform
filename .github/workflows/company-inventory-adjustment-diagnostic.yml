@@ -65,19 +65,53 @@ jobs:
             --since '2026-11-08 15:00:00 UTC' --until '2026-11-08 16:00:00 UTC' \
             --no-pager -o cat 2>/dev/null | node -e '
             const rl=require("node:readline").createInterface({input:process.stdin});
-            let count=0;
+            let count=0, lines=0, json=0, sampled=0;
+            const events=new Map();
             rl.on("line",line=>{
+              lines++;
               let x;try{x=JSON.parse(line)}catch{return}
-              const event=String(x?.event||"");
-              if(!/inventory_adjustment_(operation_failed|bulk_operation_failed)/.test(event))return;
-              if(count++>=80)return;
+              json++;
+              const event=String(x?.event||"").slice(0,100);
+              if(event)events.set(event,(events.get(event)||0)+1);
+              if(!/inventory_adjustment_(operation_failed|bulk_operation_failed)/.test(event)
+                && !/inventory|database|connection|pool|timeout|request_failed|proxy|gateway/i.test(event))return;
+              count++;
+              if(sampled++>=80)return;
               const output={event};
-              for(const key of ["action","requestId","errorCode","errorName"]){
-                if(typeof x[key]==="string")output[key]=x[key].slice(0,120)
+              for(const key of ["action","requestId","errorCode","errorName","statusCode","elapsedMs"]){
+                if(["string","number"].includes(typeof x[key]))output[key]=String(x[key]).slice(0,120)
               }
               console.log(JSON.stringify(output));
             });
-            rl.on("close",()=>console.log("MATCH_COUNT="+count));'
+            rl.on("close",()=>{
+              console.log("JOURNAL_LINES="+lines+" JSON="+json+" MATCH_COUNT="+count);
+              console.log("JOURNAL_EVENT_COUNTS="+JSON.stringify([...events].sort((a,b)=>b[1]-a[1]).slice(0,35)));
+            });'
+          echo 'NGINX_INVENTORY_ADJUSTMENT_STATUS_COUNTS'
+          if sudo -n test -r /var/log/nginx/access.log; then
+            sudo -n tail -n 100000 /var/log/nginx/access.log | awk '
+              /\/api\/inventory\/adjustments/ && /08\/Nov\/2026/ {
+                total++; if($9 ~ /^[1-5][0-9][0-9]$/) counts[$9]++
+              }
+              END {
+                print "MATCHED=" (total+0);
+                for (status in counts) print "HTTP_" status "=" counts[status]
+              }'
+          else
+            echo 'ACCESS_LOG_UNAVAILABLE'
+          fi
+          echo 'NGINX_UPSTREAM_ERROR_COUNTS'
+          if sudo -n test -r /var/log/nginx/error.log; then
+            sudo -n tail -n 10000 /var/log/nginx/error.log | awk '
+              /2026\/11\/08/ {
+                if (/upstream timed out/) timeout++;
+                if (/connect\(\) failed/) refused++;
+                if (/upstream prematurely closed/) premature++;
+              }
+              END { print "TIMEOUT=" (timeout+0) " CONNECT_FAILED=" (refused+0) " PREMATURE_CLOSE=" (premature+0) }'
+          else
+            echo 'ERROR_LOG_UNAVAILABLE'
+          fi
           REMOTE
           echo '## Công Ty inventory adjustment — sanitized VPS evidence' >> "$GITHUB_STEP_SUMMARY"
           cat "$RUNNER_TEMP/adjustment-api.txt" | tee -a "$GITHUB_STEP_SUMMARY"
@@ -109,7 +143,7 @@ jobs:
                    WHERE line.installation_id = adj.installation_id AND line.adjustment_id = adj.id)::text ||
                  '|movement_count=' || (SELECT count(*) FROM inventory.inventory_movements movement
                    WHERE movement.installation_id = adj.installation_id
-                   AND movement.source_document_id = adj.id)::text ||
+                   AND movement.source_document_id = adj.id::text)::text ||
                  '|posted_at=' || COALESCE(to_char(adj.posted_at AT TIME ZONE 'Asia/Ho_Chi_Minh','YYYY-MM-DD HH24:MI'),'-')
             FROM inventory.inventory_adjustments adj
            WHERE adj.adjustment_number IN ('IAD-20261108-B38C89DE','IAD-20261108-D2DD0D37')
