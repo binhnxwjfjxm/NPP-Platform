@@ -515,6 +515,30 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
     setOperationError(null);
   }
 
+  // Refresh the canonical revision immediately before opening a manual order editor.
+  // Never offer to edit an order that moved into another lifecycle state.
+  async function openFreshManualEdit() {
+    if (!selected) return;
+    setBusy(true);
+    setError(null);
+    setOperationError(null);
+    try {
+      const latest = await apiRequest<SalesOrder>(`/api/sales-orders/${selected.id}`);
+      mergeOrder(latest);
+      const freshVersion = activeVersion(latest);
+      if (latest.status !== 'confirmed' || freshVersion?.deliveryMode !== 'DELIVERY'
+        || freshVersion.deliveryExecutionMode !== 'MANUAL' || pendingVersion(latest)
+        || ['issued', 'fulfilled'].includes(String(latest.fulfillmentStatus))) {
+        setError('Đơn đã chuyển trạng thái. Hãy kiểm tra lại chi tiết trước khi sửa.');
+        return;
+      }
+      openForm('manual-edit', freshVersion);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Không tải được dữ liệu đơn mới nhất.');
+    } finally {
+      setBusy(false);
+    }
+  }
   async function action(kind: 'confirm' | 'amend' | 'confirm-amendment' | 'issue-stock' | 'cancel' | 'close-execution') {
     if (!selected) return;
     const actionStateKey = orderBusinessStateKey(selected);
@@ -775,7 +799,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
             onCancellationReason={setCancellationReason}
             onEditDraft={() => openForm('draft', activeVersion(selected))}
             onEditAmendment={() => openForm('amendment', pendingVersion(selected))}
-            onEditManual={() => openForm('manual-edit', activeVersion(selected))}
+            onEditManual={() => void openFreshManualEdit()}
             onConfirm={() => action('confirm')}
             onCreateAmendment={() => action('amend')}
             onConfirmAmendment={() => action('confirm-amendment')}

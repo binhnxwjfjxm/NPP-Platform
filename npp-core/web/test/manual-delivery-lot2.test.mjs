@@ -41,7 +41,15 @@ test('confirmed manual order uses one direct Sửa đơn action without exposing
   assert.match(form, /SalesOrderFormMode = 'create' \| 'draft' \| 'amendment' \| 'manual-edit'/);
   assert.match(form, /\/api\/sales-orders\/\$\{props\.orderId\}\/manual-edit/);
   assert.match(form, /'Lưu thay đổi'/);
-  assert.match(workspace, /onEditManual=\{\(\) => openForm\('manual-edit', activeVersion\(selected\)\)\}/);
+  assert.match(workspace, /onEditManual=\{\(\) => void openFreshManualEdit\(\)\}/);
+  assert.match(workspace, /async function openFreshManualEdit\(\)/);
+  assert.match(workspace, /const latest = await apiRequest<SalesOrder>/);
+  assert.match(workspace, /openForm\('manual-edit', freshVersion\)/);
+  assert.match(form, /saveError\.code !== 'REVISION_CONFLICT'/);
+  assert.match(form, /String\(latestVersion\.revision\) === String\(version\.revision\)/);
+  assert.match(form, /!\['issued', 'fulfilled'\]\.includes/);
+  assert.match(form, /expectedOrderRevision: latest\.revision/);
+  assert.match(form, /mutationKey\('sales-manual-edit-save'\)/);
   assert.match(workspace, /savedMode === 'manual-edit'/);
   assert.match(workspace, /orderRevision=\{selected\?\.revision\}/);
   assert.match(form, /expectedOrderRevision: props\.orderRevision/);

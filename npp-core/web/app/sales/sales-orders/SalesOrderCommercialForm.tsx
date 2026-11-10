@@ -1509,11 +1509,44 @@ export default function SalesOrderCommercialForm(props: Props) {
         path = `/api/sales-orders/${props.orderId}/amendments/${version?.versionNumber}/draft`;
         method = 'PUT';
       }
-      savedOrder = await apiRequest<SalesOrder>(path, {
-        method,
-        headers: { 'Idempotency-Key': requestSaveKey },
-        body: JSON.stringify(draftPayload),
-      });
+      try {
+        savedOrder = await apiRequest<SalesOrder>(path, {
+          method,
+          headers: { 'Idempotency-Key': requestSaveKey },
+          body: JSON.stringify(draftPayload),
+        });
+      } catch (saveError) {
+        if (!(saveError instanceof SalesOrderUiError)
+          || saveError.code !== 'REVISION_CONFLICT'
+          || props.mode !== 'manual-edit' || !props.orderId) throw saveError;
+
+        // A logistical update may bump the order revision without changing the
+        // commercial version. Retry once only when that version is identical.
+        // A changed commercial version must never be overwritten automatically.
+        const latest = await apiRequest<SalesOrder>(`/api/sales-orders/${props.orderId}`);
+        const latestVersion = latest.versions?.find(
+          (item) => item.versionNumber === latest.currentVersionNumber,
+        );
+        const safeToRetry = latest.status === 'confirmed'
+          && latestVersion && version
+          && latestVersion.id === version.id
+          && String(latestVersion.revision) === String(version.revision)
+          && !latest.versions?.some((item) => item.status === 'draft')
+          && !['issued', 'fulfilled'].includes(String(latest.fulfillmentStatus))
+          && String(latest.revision) !== String(props.orderRevision);
+        if (!safeToRetry) {
+          onError('Đơn đã được cập nhật. Đóng Sửa đơn và mở lại để xem dữ liệu mới trước khi lưu.');
+          return;
+        }
+
+        // The expected revision changed, so this is a new logical mutation.
+        // A fresh canonical key is required; never reuse the previous payload key.
+        savedOrder = await apiRequest<SalesOrder>(path, {
+          method,
+          headers: { 'Idempotency-Key': mutationKey('sales-manual-edit-save') },
+          body: JSON.stringify({ ...draftPayload, expectedOrderRevision: latest.revision }),
+        });
+      }
       if (props.mode !== 'manual-edit') committedDraftRef.current = savedOrder;
       setSaveKey(mutationKey(`sales-${props.mode}-save`));
       if (confirmAfter && props.mode !== 'manual-edit') {
