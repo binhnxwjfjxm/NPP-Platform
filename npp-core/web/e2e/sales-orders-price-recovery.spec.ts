@@ -324,3 +324,132 @@ test.describe('Sales Order price mismatch recovery', () => {
     });
   });
 });
+
+function manualOrderForRevision(
+  warehouseId: string,
+  orderRevision: string,
+  versionRevision = '2',
+) {
+  const envelope = orderEnvelope({
+    warehouseId,
+    salesChannelId: CHANNEL_ID,
+    lines: [{ variantId: VARIANT_ID, quantity: '1', expectedSystemUnitPriceMinor: '9000' }],
+  }, 'confirmed', orderRevision);
+  const current = envelope.data.versions[0];
+  const now = new Date().toISOString();
+  return {
+    ...envelope,
+    data: {
+      ...envelope.data,
+      customerMode: 'EXISTING',
+      customerName: 'Khách kiểm tra xung đột',
+      customerCode: 'CHECK-MANUAL-EDIT',
+      deliveryMode: 'DELIVERY',
+      deliveryExecutionMode: 'MANUAL',
+      createdAt: now,
+      updatedAt: now,
+      versions: [{
+        ...current,
+        customerMode: 'EXISTING',
+        customerName: 'Khách kiểm tra xung đột',
+        customerCode: 'CHECK-MANUAL-EDIT',
+        deliveryMode: 'DELIVERY',
+        deliveryExecutionMode: 'MANUAL',
+        priceSelectionMode: 'STANDARD',
+        revision: versionRevision,
+      }],
+    },
+  };
+}
+
+test.describe('Sales Order manual edit stale revision recovery', () => {
+  for (const commercialChanged of [false, true]) {
+    test(commercialChanged
+      ? 'preserves the editor and rejects overwrite if the commercial version changed'
+      : 'refreshes before edit and retries once if only the order revision changed',
+    async ({ page, request }) => {
+      const warehouse = await createWarehouse(request, suffix());
+      await mockRecoveryApis(page);
+      const revisionsRead: string[] = [];
+      const saveAttempts: Array<{ expectedOrderRevision: string; quantity: string; key: string }> = [];
+      await page.route('**/api/sales-orders?**', async (route) => {
+        await route.fulfill({
+          status: 200,
+          json: { data: [manualOrderForRevision(warehouse.id, '7').data], requestId: 'manual-order-list' },
+        });
+      });
+      await page.route(new RegExp(`/api/sales-orders/${ORDER_ID}$`), async (route) => {
+        const revision = revisionsRead.length === 0 ? '10'
+          : revisionsRead.length === 1 ? '11' : '12';
+        revisionsRead.push(revision);
+        await route.fulfill({
+          status: 200,
+          json: manualOrderForRevision(warehouse.id, revision,
+            commercialChanged && revisionsRead.length >= 3 ? '3' : '2'),
+        });
+      });
+      await page.route(new RegExp(`/api/sales-orders/${ORDER_ID}/manual-edit$`), async (route) => {
+        const body = route.request().postDataJSON() as {
+          expectedOrderRevision: string; lines: Array<{ quantity: string }>;
+        };
+        saveAttempts.push({
+          expectedOrderRevision: body.expectedOrderRevision,
+          quantity: body.lines[0]?.quantity ?? '',
+          key: route.request().headers()['idempotency-key'] ?? '',
+        });
+        if (saveAttempts.length === 1) {
+          await route.fulfill({
+            status: 409,
+            json: {
+              error: {
+                code: 'REVISION_CONFLICT',
+                message: 'Đơn đã thay đổi. Hãy tải lại trước khi lưu.',
+                retryable: true,
+              },
+              requestId: 'manual-edit-conflict',
+            },
+          });
+          return;
+        }
+        await route.fulfill({
+          status: 200,
+          json: manualOrderForRevision(warehouse.id, '13', '3'),
+        });
+      });
+
+      await page.goto('/sales/sales-orders');
+      await page.getByRole('button', { name: /Khách kiểm tra xung đột/ }).click();
+      await page.getByRole('button', { name: 'Sửa đơn', exact: true }).click();
+      const dialog = page.getByRole('dialog', { name: 'Biểu mẫu đơn bán hàng' });
+      await expect(dialog).toBeVisible();
+      expect(revisionsRead).toEqual(['10', '11']);
+
+      const quantityRepriced = page.waitForResponse((response) =>
+        response.url().includes('/api/sales-orders/price-preview')
+        && (response.request().postData() ?? '').includes('"quantity":"2"'),
+      );
+      await dialog.getByLabel('Số lượng SKU-RECOVERY', { exact: true }).fill('2');
+      await quantityRepriced;
+      await expect(dialog.getByText('Đang tính…')).toHaveCount(0);
+      await dialog.getByRole('button', { name: 'Lưu thay đổi', exact: true }).click();
+
+      if (commercialChanged) {
+        await expect(dialog).toBeVisible();
+        await expect(dialog.getByTestId('sales-order-form-error')).toContainText(
+          'Đơn đã được cập nhật. Đóng Sửa đơn và mở lại',
+        );
+        expect(saveAttempts).toHaveLength(1);
+        expect(saveAttempts[0].expectedOrderRevision).toBe('11');
+      } else {
+        await expect(dialog).toBeHidden();
+        await expect(page.getByText('Đã lưu thay đổi đơn Giao thủ công', { exact: true })).toBeVisible();
+        expect(saveAttempts.map((attempt) => attempt.expectedOrderRevision)).toEqual(['11', '12']);
+        expect(saveAttempts.map((attempt) => attempt.quantity)).toEqual(['2', '2']);
+        expect(saveAttempts[0].key).toBeTruthy();
+        expect(saveAttempts[1].key).toBeTruthy();
+        expect(saveAttempts[0].key).not.toBe(saveAttempts[1].key);
+      }
+      expect(revisionsRead).toEqual(['10', '11', '12']);
+    });
+  }
+});
