@@ -607,6 +607,10 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
     async function discardDeviceDraft() {
         const identity = deviceDraftUserId;
         if (!identity) return;
+        if (draftOutboxRef.current) {
+            setError('Còn thao tác lưu chưa xác minh trên Công Ty. Hãy khôi phục và đối chiếu trước khi xóa giỏ.');
+            return;
+        }
         setDeviceDraftOffer(null);
         setDeviceDraftReady(true);
         try { await clearRetailLocalDraft(identity); }
@@ -1476,6 +1480,8 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
     const cartTotal = cart.reduce((sum, line) => sum + effectiveLineTotal(line), 0);
     const projectedGrandTotal = projectedRetailDraftTotal(cartTotal, documentDiscountMode, documentDiscountValue);
     const syncedDraft = Boolean(order?.status === 'draft'
+        && !draftOutbox
+        && !deviceDraftHold
         && lastDraftFingerprint.current
         && lastDraftFingerprint.current === currentDraftFingerprint
         && draftSyncInFlight.current === null
@@ -1917,6 +1923,10 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
     }
     async function checkout() {
         if (!order || checkoutLockRef.current || busy !== null) return;
+        if (draftOutboxRef.current || deviceDraftHold) {
+            setError('Đơn vẫn đang chờ đồng bộ Công Ty. Chưa thể chốt, xuất kho hoặc thanh toán.');
+            return;
+        }
         if (order.status === 'draft' && (!syncedDraft || draftSaveError)) {
             setError('Đơn chưa lưu xong mọi sản phẩm. Hãy lưu nháp thành công trước khi thanh toán.');
             return;
@@ -2025,6 +2035,10 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
         }
     }
     function canLeaveLocalDraft() {
+        if (draftOutboxRef.current) {
+            setError('Còn thao tác đang chờ Công Ty xác minh. Hãy đồng bộ hoặc đối chiếu trước khi rời đơn.');
+            return false;
+        }
         if (!cart.length || (order?.status === 'draft' && syncedDraft && !deviceDraftHold)) return true;
         return window.confirm('Giỏ đang có thay đổi chưa xác nhận trên Công Ty. Chuyển sang đơn khác sẽ bỏ giỏ đang lưu trên máy. Bạn có muốn tiếp tục?');
     }
@@ -2265,6 +2279,11 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
         }
     }
     async function logoutRetail() {
+        if (draftOutboxRef.current) {
+            setError('Đơn đang chờ xác minh. Hãy xử lý hàng đợi đồng bộ trước khi đăng xuất để không mất dấu thao tác.');
+            setActiveTab('entry');
+            return;
+        }
         if (cart.length && (!syncedDraft || deviceDraftHold)
             && !window.confirm('Đăng xuất sẽ xóa giỏ chưa xác nhận trên Công Ty khỏi thiết bị. Bạn có chắc muốn đăng xuất?')) return;
         setBusy('logout');
@@ -2357,13 +2376,27 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
       <strong>Trên máy có giỏ hàng chưa hoàn tất ({deviceDraftOffer.cart.length} sản phẩm).</strong>
       <p>Chỉ khôi phục cho tài khoản đã đăng nhập. Giỏ này chưa được xác nhận trên Công Ty.</p>
       <button type="button" onClick={restoreDeviceDraft}>Khôi phục giỏ</button>
-      <button type="button" onClick={() => void discardDeviceDraft()}>Bỏ bản trên máy</button>
+      <button type="button" disabled={Boolean(draftOutbox)} onClick={() => void discardDeviceDraft()}>Bỏ bản trên máy</button>
     </section> : null}
     {activeTab === 'entry' && cart.length > 0 && (deviceDraftReady || deviceDraftStatus === 'unavailable') ? <section className="notice device-draft-banner" role="status">
-      {deviceDraftStatus === 'saved' ? 'Đã lưu giỏ trên máy này — không phải đã lưu trên Công Ty.' :
+      {draftOutbox ? 'Giỏ trên máy đang có thao tác chờ đồng bộ — chưa xác nhận lưu Công Ty.' :
+       deviceDraftStatus === 'saved' ? 'Đã lưu giỏ trên máy này — không phải đã lưu trên Công Ty.' :
        deviceDraftStatus === 'saving' ? 'Đang lưu giỏ trên máy…' :
        deviceDraftStatus === 'unavailable' ? 'Chưa lưu được giỏ trên máy. Đừng đóng ứng dụng khi chưa kiểm tra.' :
        'Giỏ đang được theo dõi trên thiết bị.'}
+      {draftOutbox ? <div className="device-sync-status" role="status">
+        <strong>{draftOutbox.state === 'review' ? 'Cần đối chiếu đơn Công Ty' : 'Đang chờ đồng bộ Công Ty'}</strong>
+        <p>{draftOutbox.state === 'review'
+          ? 'Có xung đột hoặc phản hồi chưa khớp. Không tự ghi đè và không tạo đơn mới.'
+          : 'Hàng đợi giữ nguyên thao tác và mã chống trùng; kết nối trở lại sẽ thử lại an toàn.'}</p>
+        {draftOutbox.state === 'review' && draftOutbox.orderId ? <>
+          <button type="button" disabled={busy !== null} onClick={() => void resolveDraftReview(false)}>Giữ dữ liệu Công Ty</button>
+          <button type="button" disabled={busy !== null} onClick={() => void resolveDraftReview(true)}>Giữ giỏ trên máy</button>
+        </> : draftOutbox.state === 'pending' ? <button
+          type="button" disabled={busy !== null || draftSyncInFlight.current !== null}
+          onClick={() => void retryQueuedDraft(Boolean(deviceDraftHold), true)}>Thử đồng bộ lại</button>
+        : <p>Không xác minh được thao tác tạo đơn; cần kiểm tra đơn Công Ty trước khi thử tạo mới.</p>}
+      </div> : null}
       {deviceDraftHold ? <div>
         <p>Giỏ khôi phục đang chờ đối chiếu Công Ty. Hệ thống chưa tự gửi đơn để tránh ghi trùng.</p>
         <button type="button" disabled={busy !== null} onClick={() => void reconcileDeviceDraft()}>
