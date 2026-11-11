@@ -54,3 +54,22 @@ export declare function sameSavedDraft(
   before: RetailVersionedDraft | null | undefined,
   after: RetailVersionedDraft | null | undefined,
 ): boolean;
+
+export declare function draftMatchesQueuedIntent(
+  saved: (RetailSavedOrderContext & {
+    collectionPolicy?: string;
+    note?: string | null;
+    documentDiscountReason?: string | null;
+  }) | null | undefined,
+  snapshot: Omit<RetailSavedOrderContext, 'status'> & {
+    policy: string;
+    note: string;
+    documentDiscountReason: string;
+    cart: RetailCartLine[];
+    manualPrices: Record<string, string>;
+  },
+  payload: {
+    lines: Array<{ variantId: string; manualUnitPriceMinor?: string; expectedSystemUnitPriceMinor?: string }>;
+  },
+  savedLines: RetailSavedLine[],
+): boolean;

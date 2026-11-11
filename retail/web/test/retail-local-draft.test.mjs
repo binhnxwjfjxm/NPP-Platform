@@ -113,10 +113,10 @@ test('khôi phục không được tự tạo/chốt đơn; chỉ đánh dấu �
   const store = await readFile(new URL('../lib/retail-local-draft.ts', import.meta.url), 'utf8');
   assert.match(workspace, /fetch\('\/api\/auth\/me'/);
   assert.match(workspace, /if \(!validRetailDraftIdentity\(userId\)\)/);
-  assert.match(workspace, /setDeviceDraftOffer\(saved\)/);
+  assert.match(workspace, /setDeviceDraftOffer\(saved \?\? pending!\.snapshot\)/);
   assert.match(workspace, /function restoreDeviceDraft\(\)/);
   assert.match(workspace, /setDeviceDraftHold\(\{ orderId: saved\.orderId, draftRevision: saved\.draftRevision \}\)/);
-  assert.match(workspace, /if \(deviceDraftOffer \|\| deviceDraftHold \|\| !cart\.length/);
+  assert.match(workspace, /if \(!deviceDraftReady \|\| deviceDraftStatus === 'unavailable' \|\| deviceDraftOffer \|\| deviceDraftHold \|\| !cart\.length/);
   assert.match(workspace, /async function reconcileDeviceDraft\(\)/);
   assert.match(workspace, /if \(revision !== held\.draftRevision && !window\.confirm/);
   assert.match(workspace, /Giỏ khôi phục đang chờ đối chiếu Công Ty/);

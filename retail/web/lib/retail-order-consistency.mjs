@@ -104,3 +104,33 @@ export function sameSavedDraft(before, after) {
   }
   return byVariant.size === 0;
 }
+
+/**
+ * A queued write is acknowledged only when all business facts sent in that
+ * exact immutable payload match the Company's canonical draft version.
+ * No client-side preview or cached price is treated as authoritative.
+ */
+export function draftMatchesQueuedIntent(saved, snapshot, payload, savedLines) {
+  if (!saved || saved.status !== 'draft' || !draftMatchesRetailContext(saved, snapshot)
+    || String(saved.collectionPolicy ?? '') !== String(snapshot.collectionPolicy ?? snapshot.policy)
+    || String(saved.note ?? '').trim() !== String(snapshot.note ?? '').trim()
+    || String(saved.documentDiscountReason ?? '').trim() !== String(snapshot.documentDiscountReason ?? '').trim()
+    || !checkoutLinesMatch(savedLines, snapshot.cart, snapshot.manualPrices)
+    || !payload || !Array.isArray(payload.lines) || payload.lines.length !== savedLines.length) return false;
+
+  const byVariant = new Map(savedLines.map((line) => [line.variantId, line]));
+  for (const expected of payload.lines) {
+    const actual = byVariant.get(expected.variantId);
+    if (!actual) return false;
+    if (expected.manualUnitPriceMinor !== undefined) {
+      if (actual.priceSource !== 'MANUAL_OVERRIDE'
+        || !Number.isFinite(Number(expected.manualUnitPriceMinor))
+        || Number(actual.unitPrice) !== Number(expected.manualUnitPriceMinor)) return false;
+    } else if (expected.expectedSystemUnitPriceMinor !== undefined) {
+      if (actual.priceSource !== 'PRICE_ENGINE'
+        || !Number.isFinite(Number(expected.expectedSystemUnitPriceMinor))
+        || Number(actual.unitPrice) !== Number(expected.expectedSystemUnitPriceMinor)) return false;
+    }
+  }
+  return true;
+}
