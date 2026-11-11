@@ -2121,13 +2121,13 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
       <span className="topbar-spacer" aria-hidden="true"/>
     </header>
     {error ? <p className="notice error" role="alert">{error}</p> : null}{notice ? <p className="notice" role="status">{notice}</p> : null}
-    {deviceDraftOffer ? <section className="notice" role="status">
+    {deviceDraftOffer ? <section className="notice device-draft-banner" role="status">
       <strong>Trên máy có giỏ hàng chưa hoàn tất ({deviceDraftOffer.cart.length} sản phẩm).</strong>
       <p>Chỉ khôi phục cho tài khoản đã đăng nhập. Giỏ này chưa được xác nhận trên Công Ty.</p>
       <button type="button" onClick={restoreDeviceDraft}>Khôi phục giỏ</button>
       <button type="button" onClick={() => void discardDeviceDraft()}>Bỏ bản trên máy</button>
     </section> : null}
-    {activeTab === 'entry' && cart.length > 0 && deviceDraftReady ? <section className="notice" role="status">
+    {activeTab === 'entry' && cart.length > 0 && (deviceDraftReady || deviceDraftStatus === 'unavailable') ? <section className="notice device-draft-banner" role="status">
       {deviceDraftStatus === 'saved' ? 'Đã lưu giỏ trên máy này — không phải đã lưu trên Công Ty.' :
        deviceDraftStatus === 'saving' ? 'Đang lưu giỏ trên máy…' :
        deviceDraftStatus === 'unavailable' ? 'Chưa lưu được giỏ trên máy. Đừng đóng ứng dụng khi chưa kiểm tra.' :
