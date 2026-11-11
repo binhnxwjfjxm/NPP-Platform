@@ -682,7 +682,7 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
         const session = entrySessionRef.current;
         setBusy('draft-reconcile');
         try {
-            const latest = await api<Order>(`/api/retail/orders/${order.id}`);
+            const latest = await api<Order>(`/api/retail/orders/${order.id}?verify=1`);
             if (entrySessionRef.current !== session) return;
             if (latest.status !== 'draft' || !activeDraftRevision(latest)) {
                 setDraftSaveError('Đơn không còn là bản nháp có thể sửa. Hãy kiểm tra đơn trong danh sách.');
@@ -946,7 +946,7 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
                 if (currentOrder && (isRevisionConflict(reason)
                     || (reason instanceof RetailApiError && reason.retryable))) {
                     try {
-                        const latest = await api<Order>(`/api/retail/orders/${currentOrder.id}`);
+                        const latest = await api<Order>(`/api/retail/orders/${currentOrder.id}?verify=1`);
                         if (entrySessionRef.current !== entrySession) return;
                         if (latest.status === 'draft' && activeDraftRevision(latest)) {
                             if (isSavedCartCurrent(latest)) {
