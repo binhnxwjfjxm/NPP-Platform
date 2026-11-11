@@ -15,6 +15,7 @@ export type RetailDraftIntent = {
   attempts: number;
   retryAfter: number;
   state: 'pending' | 'review';
+  reviewReason?: 'rejected' | null;
 };
 
 const DATABASE = 'npp-retail-draft-outbox-v1';
@@ -36,6 +37,7 @@ export function validRetailDraftIntent(value: unknown): value is RetailDraftInte
     || typeof row.payloadJson !== 'string' || row.payloadJson.length > 100_000
     || !Number.isFinite(row.createdAt) || !Number.isInteger(row.attempts) || (row.attempts ?? -1) < 0
     || !Number.isFinite(row.retryAfter) || !['pending', 'review'].includes(row.state ?? '')) return false;
+  if (row.reviewReason !== undefined && row.reviewReason !== null && row.reviewReason !== 'rejected') return false;
   if (row.kind === 'create' && (row.orderId !== null || row.expectedDraftRevision !== null)) return false;
   if (row.kind === 'update' && (!ORDER_ID_PATTERN.test(String(row.orderId ?? ''))
     || !/^\d+$/.test(String(row.expectedDraftRevision ?? '')))) return false;
@@ -137,7 +139,7 @@ export async function enqueueRetailDraftIntent(userId: string, next: RetailDraft
 }
 
 export async function updateRetailDraftIntent(
-  userId: string, key: string, change: 'retry' | 'review' | 'ack' | 'discard',
+  userId: string, key: string, change: 'retry' | 'review' | 'reject' | 'ack' | 'discard',
 ): Promise<RetailDraftIntent | null> {
   assertIdentity(userId);
   const db = await database();
@@ -159,7 +161,8 @@ export async function updateRetailDraftIntent(
         const attempts = current.attempts + (change === 'retry' ? 1 : 0);
         result = { ...current, attempts,
           retryAfter: change === 'retry' ? Date.now() + retailDraftRetryDelay(attempts) : 0,
-          state: change === 'review' ? 'review' : current.state };
+          state: change === 'review' || change === 'reject' ? 'review' : current.state,
+          reviewReason: change === 'reject' ? 'rejected' : current.reviewReason ?? null };
         store.put(result, userId);
       };
       tx.oncomplete = () => resolve(result);
