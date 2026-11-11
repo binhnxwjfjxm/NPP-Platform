@@ -43,6 +43,13 @@ test('lỗi lưu không báo thành công và tiếp tục xác minh trước kh
   assert.match(workspace, /if \(!isSavedCartCurrent\(next\)\)/);
   assert.match(workspace, /await api<Order>\(`\/api\/retail\/orders\/\$\{currentOrder\.id\}\?verify=1`\)/);
   assert.match(workspace, /const latest = await api<Order>\(`\/api\/retail\/orders\/\$\{order\.id\}\?verify=1`\)/);
-  assert.match(workspace, /Idempotency-Key': keyFor\('draft-sync'/);
-  assert.match(workspace, /Idempotency-Key': keyFor\('create-draft'/);
+  // Lô 3 saves one immutable key + JSON payload to IndexedDB before POST/PUT.
+  // The old direct keyFor-in-header assertion is obsolete after integration.
+  assert.match(workspace, /keyFor\('draft-sync', `\$\{fingerprint\}:\$\{draftRevision\}`\)/);
+  assert.match(workspace, /keyFor\('create-draft', fingerprint\)/);
+  assert.match(workspace, /const stored = await enqueueRetailDraftIntent\(deviceDraftUserId, intent\)/);
+  assert.match(workspace, /'Idempotency-Key': idempotencyKey/);
+  assert.match(workspace, /body: payloadJson/);
+  assert.match(workspace, /'Idempotency-Key': intent.idempotencyKey/);
+  assert.match(workspace, /body: intent.payloadJson/);
 });
