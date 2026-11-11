@@ -1,5 +1,6 @@
 'use client';
 import { createIdempotencyKey } from '@npp/contracts';
+import { clearRetailLocalDraft, readRetailLocalDraft, writeRetailLocalDraft, validRetailDraftIdentity, type RetailLocalDraft } from '../lib/retail-local-draft';
 import { activeDraftRevision, checkoutLinesMatch, draftMatchesRetailContext, projectedRetailDraftTotal, sameSavedDraft } from '../lib/retail-order-consistency.mjs';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { PrinterSettingsPanel } from './printer-settings-panel';
@@ -403,6 +404,14 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
     const [orderVisibleCount, setOrderVisibleCount] = useState(ORDER_VISIBLE_STEP);
     const [order, setOrder] = useState<Order | null>(null);
     const [cart, setCart] = useState<CartLine[]>([]);
+    const [deviceDraftUserId, setDeviceDraftUserId] = useState<string | null>(null);
+    const [deviceDraftReady, setDeviceDraftReady] = useState(false);
+    const [deviceDraftOffer, setDeviceDraftOffer] = useState<RetailLocalDraft | null>(null);
+    const [deviceDraftHold, setDeviceDraftHold] = useState<{ orderId: string | null; draftRevision: string | null } | null>(null);
+    const [deviceDraftStatus, setDeviceDraftStatus] = useState<'checking' | 'saving' | 'saved' | 'unavailable' | 'none'>('checking');
+    const deviceDraftWriteQueue = useRef<Promise<void>>(Promise.resolve());
+    const deviceDraftSerial = useRef(0);
+    const deviceDraftWritable = useRef(true);
     const [quantityInputs, setQuantityInputs] = useState<Record<string, string>>({});
     const [available, setAvailable] = useState<Availability[]>([]);
     const [availabilityLoading, setAvailabilityLoading] = useState(false);
@@ -495,6 +504,132 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
     const entrySessionRef = useRef(0);
     const checkoutLockRef = useRef(false);
     const videoRef = useRef<HTMLVideoElement>(null);
+    // Restore only after the authenticated user identity has been verified.
+    // A different login must never see a previous operator's local draft.
+    useEffect(() => {
+        const controller = new AbortController();
+        const load = async () => {
+            try {
+                const response = await fetch('/api/auth/me', {
+                    cache: 'no-store', signal: controller.signal,
+                    headers: { Accept: 'application/json' },
+                });
+                if (!response.ok) throw new Error('Chưa xác minh được tài khoản.');
+                const payload = await response.json() as { data?: { userId?: string } };
+                const userId = String(payload.data?.userId ?? '');
+                if (!validRetailDraftIdentity(userId)) throw new Error('Tài khoản không hợp lệ.');
+                const saved = await readRetailLocalDraft(userId);
+                if (controller.signal.aborted) return;
+                setDeviceDraftUserId(userId);
+                if (saved) setDeviceDraftOffer(saved);
+                else setDeviceDraftReady(true);
+                setDeviceDraftStatus('none');
+            } catch {
+                if (!controller.signal.aborted) setDeviceDraftStatus('unavailable');
+            }
+        };
+        void load();
+        return () => controller.abort();
+    }, []);
+    // Serialize IndexedDB writes. An old async transaction must not overwrite
+    // a more recent cart, and the label "Đã lưu trên máy" requires tx.complete.
+    useEffect(() => {
+        if (!deviceDraftReady || !deviceDraftUserId || !deviceDraftWritable.current) return;
+        const snapshot: RetailLocalDraft | null = cart.length && !editPickup && (!order || order.status === 'draft')
+            ? {
+                version: 1, updatedAt: Date.now(), orderId: order?.id ?? null,
+                draftRevision: activeDraftRevision(order), cart: cart.map((line) => ({
+                    id: line.id, productCode: line.productCode, productName: line.productName,
+                    sku: line.sku, unitCode: line.unitCode, unitName: line.unitName,
+                    imageKey: line.imageKey ?? null, barcode: line.barcode ?? null,
+                    allowsFractional: line.allowsFractional, quantity: line.quantity,
+                    taxMode: line.taxMode, taxRate: line.taxRate,
+                })),
+                warehouseId, customerMode, customerId, customerName, policy, note,
+                manualPrices, documentDiscountMode, documentDiscountValue, documentDiscountReason,
+            }
+            : null;
+        const serial = ++deviceDraftSerial.current;
+        setDeviceDraftStatus(snapshot ? 'saving' : 'none');
+        deviceDraftWriteQueue.current = deviceDraftWriteQueue.current.catch(() => undefined)
+            .then(() => snapshot
+                ? writeRetailLocalDraft(deviceDraftUserId, snapshot)
+                : clearRetailLocalDraft(deviceDraftUserId))
+            .then(() => {
+                if (serial === deviceDraftSerial.current && deviceDraftWritable.current)
+                    setDeviceDraftStatus(snapshot ? 'saved' : 'none');
+            }).catch(() => {
+                if (serial === deviceDraftSerial.current && deviceDraftWritable.current)
+                    setDeviceDraftStatus('unavailable');
+            });
+    }, [deviceDraftReady, deviceDraftUserId, cart, order, editPickup, warehouseId, customerMode,
+        customerId, customerName, policy, note, manualPrices, documentDiscountMode,
+        documentDiscountValue, documentDiscountReason]);
+    function restoreDeviceDraft() {
+        const saved = deviceDraftOffer;
+        if (!saved || checkoutLockRef.current) return;
+        entrySessionRef.current += 1;
+        resetDraftSyncSession();
+        setOrder(null);
+        setCart(saved.cart);
+        setQuantityInputs({});
+        setPrices({});
+        setPriceFailures({});
+        setManualPrices(saved.manualPrices);
+        setWarehouseId(saved.warehouseId);
+        setCustomerMode(saved.customerMode);
+        setCustomerId(saved.customerId);
+        setCustomerName(saved.customerName);
+        setPolicy(saved.policy);
+        setNote(saved.note);
+        setDocumentDiscountMode(saved.documentDiscountMode);
+        setDocumentDiscountValue(saved.documentDiscountValue);
+        setDocumentDiscountReason(saved.documentDiscountReason);
+        setDraftSaveError(null);
+        setEditPickup(false);
+        setDeviceDraftHold({ orderId: saved.orderId, draftRevision: saved.draftRevision });
+        setDeviceDraftOffer(null);
+        setDeviceDraftReady(true);
+        setActiveTab('entry');
+        setNotice('Đã khôi phục giỏ từ thiết bị. Chưa xác nhận lưu ở Công Ty; hãy đối chiếu trước khi gửi.');
+    }
+    async function discardDeviceDraft() {
+        const identity = deviceDraftUserId;
+        if (!identity) return;
+        setDeviceDraftOffer(null);
+        setDeviceDraftReady(true);
+        try { await clearRetailLocalDraft(identity); }
+        catch { setDeviceDraftStatus('unavailable'); }
+    }
+    async function reconcileDeviceDraft() {
+        const held = deviceDraftHold;
+        if (!held || busy !== null) return;
+        if (!held.orderId) {
+            if (!window.confirm('Giỏ khôi phục có thể đã tạo đơn ở Công Ty trước khi mất kết nối. Hãy kiểm tra danh sách Đơn hàng để tránh trùng. Bạn xác nhận muốn tiếp tục tạo một đơn mới?')) return;
+            setDeviceDraftHold(null);
+            setDraftSyncEpoch((value) => value + 1);
+            return;
+        }
+        setBusy('device-reconcile');
+        try {
+            const latest = await api<Order>(`/api/retail/orders/${held.orderId}`);
+            const revision = activeDraftRevision(latest);
+            if (latest.status !== 'draft' || !revision) {
+                setError('Đơn trên Công Ty không còn là bản nháp. Giỏ trên máy vẫn được giữ nguyên.');
+                return;
+            }
+            if (revision !== held.draftRevision && !window.confirm('Đơn trên Công Ty đã thay đổi sau khi lưu trên máy. Tiếp tục có thể thay thế nội dung hiện tại bằng giỏ khôi phục. Bạn có chắc không?')) return;
+            setOrder(latest);
+            setDeviceDraftHold(null);
+            setDraftSaveError(null);
+            setDraftSyncEpoch((value) => value + 1);
+            setNotice('Đã đối chiếu phiên bản đơn Công Ty. Hãy kiểm tra giá và tồn kho trước khi chốt.');
+        } catch {
+            setError('Chưa đọc được đơn trên Công Ty. Giỏ vẫn giữ trên máy, không tự tạo đơn trùng.');
+        } finally {
+            setBusy((value) => value === 'device-reconcile' ? null : value);
+        }
+    }
     const keyFor = useCallback((action: string, fingerprint = '') => {
         const slot = `${action}:${order?.id ?? 'new'}:${order?.revision ?? 'draft'}:${fingerprint}`;
         const current = keys.current.get(slot);
@@ -731,7 +866,7 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
                 && data.warehouses.some((warehouse) => warehouse.id === data.settings.defaultWarehouseId)
                 ? data.settings.defaultWarehouseId
                 : data.warehouses[0]?.id ?? '';
-            setWarehouseId(preferredWarehouse);
+            setWarehouseId((current) => current || preferredWarehouse);
         }).catch((reason: Error) => setError(reason.message));
     }, []);
     useEffect(() => {
@@ -888,7 +1023,7 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
         });
     }, [cart, customerId, customerMode, open, priceFailures, prices, products, selected, priceRetryEpoch]);
     useEffect(() => {
-        if (!cart.length || !warehouseId || editPickup || draftSaveError || (order && order.status !== 'draft'))
+        if (deviceDraftOffer || deviceDraftHold || !cart.length || !warehouseId || editPickup || draftSaveError || (order && order.status !== 'draft'))
             return;
         const pricingReady = cart.every((line) => {
             const manualPrice = canPriceOverride ? manualPriceFor(line.id) : '';
@@ -990,7 +1125,7 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
             });
         }, 360);
         return () => window.clearTimeout(timer);
-    }, [cart, canPriceOverride, customerId, customerMode, documentDiscountMode, documentDiscountReason, documentDiscountValue, draftSyncEpoch, draftSaveError, editPickup, keyFor, manualPrices, note, order, policy, prices, warehouseId, currentDraftFingerprint]);
+    }, [cart, canPriceOverride, customerId, customerMode, documentDiscountMode, documentDiscountReason, documentDiscountValue, draftSyncEpoch, draftSaveError, deviceDraftOffer, deviceDraftHold, editPickup, keyFor, manualPrices, note, order, policy, prices, warehouseId, currentDraftFingerprint]);
     useEffect(() => {
         if (!order?.id || order.status !== 'confirmed' || editPickup)
             return;
@@ -1657,13 +1792,18 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
             setBusy(null);
         }
     }
+    function canLeaveLocalDraft() {
+        if (!cart.length || (order?.status === 'draft' && syncedDraft && !deviceDraftHold)) return true;
+        return window.confirm('Giỏ đang có thay đổi chưa xác nhận trên Công Ty. Chuyển sang đơn khác sẽ bỏ giỏ đang lưu trên máy. Bạn có muốn tiếp tục?');
+    }
     async function openOrder(id: string, options: { resetScroll?: boolean } = {}) {
-        if (checkoutLockRef.current) return;
+        if (checkoutLockRef.current || !canLeaveLocalDraft()) return;
         entrySessionRef.current += 1;
         resetDraftSyncSession();
         setError(null);
         try {
             const next = await api<Order>(`/api/retail/orders/${id}`);
+            setDeviceDraftHold(null);
             setOrder(next);
             setAvailable([]);
             setAvailabilityError(null);
@@ -1697,8 +1837,8 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
         return openOrder(id, { resetScroll: true });
     }
     function beginPickupEdit() { if (!order || checkoutLockRef.current)
-        return; entrySessionRef.current += 1; resetDraftSyncSession(); setCart(cartFromOrder(order)); setQuantityInputs({}); setManualPrices(manualPricesFromOrder(order)); setCustomerMode(order.customerMode); setCustomerId(order.customerId); setCustomerName(order.customerMode === 'EXISTING' ? order.customerName : 'Khách lẻ'); setWarehouseId(order.warehouseId); setPolicy(order.collectionPolicy); setNote(order.note ?? ''); setDocumentDiscountMode(order.documentDiscountMode ?? 'NONE'); setDocumentDiscountValue(order.documentDiscountValue ?? '0'); setDocumentDiscountReason(order.documentDiscountReason ?? ''); setEditPickup(true); setNotice('Có thể sửa đơn đến trước khi xuất kho.'); }
-    function resetEntry() { if (checkoutLockRef.current) return; entrySessionRef.current += 1; resetDraftSyncSession(); setDraftSaveError(null); setAvailabilityError(null); setOrder(null); setCart([]); setQuantityInputs({}); setPrices({}); setPriceFailures({}); setManualPrices({}); setEditPickup(false); setAvailable([]); setCustomerMode('WALK_IN'); setCustomerId(''); setCustomerName('Khách lẻ'); setNote(''); setDocumentDiscountMode('NONE'); setDocumentDiscountValue('0'); setDocumentDiscountReason(''); setNotice(null); setError(null); setActiveTab('entry'); lastDraftFingerprint.current = ''; }
+        return; entrySessionRef.current += 1; resetDraftSyncSession(); setDeviceDraftHold(null); setCart(cartFromOrder(order)); setQuantityInputs({}); setManualPrices(manualPricesFromOrder(order)); setCustomerMode(order.customerMode); setCustomerId(order.customerId); setCustomerName(order.customerMode === 'EXISTING' ? order.customerName : 'Khách lẻ'); setWarehouseId(order.warehouseId); setPolicy(order.collectionPolicy); setNote(order.note ?? ''); setDocumentDiscountMode(order.documentDiscountMode ?? 'NONE'); setDocumentDiscountValue(order.documentDiscountValue ?? '0'); setDocumentDiscountReason(order.documentDiscountReason ?? ''); setEditPickup(true); setNotice('Có thể sửa đơn đến trước khi xuất kho.'); }
+    function resetEntry() { if (checkoutLockRef.current || !canLeaveLocalDraft()) return; entrySessionRef.current += 1; resetDraftSyncSession(); setDeviceDraftHold(null); setDraftSaveError(null); setAvailabilityError(null); setOrder(null); setCart([]); setQuantityInputs({}); setPrices({}); setPriceFailures({}); setManualPrices({}); setEditPickup(false); setAvailable([]); setCustomerMode('WALK_IN'); setCustomerId(''); setCustomerName('Khách lẻ'); setNote(''); setDocumentDiscountMode('NONE'); setDocumentDiscountValue('0'); setDocumentDiscountReason(''); setNotice(null); setError(null); setActiveTab('entry'); lastDraftFingerprint.current = ''; }
     function applyTemplate(template: PrintTemplate) {
         setPrintTemplate(template);
         setTemplateHeading(template.heading ?? '');
@@ -1893,14 +2033,21 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
         }
     }
     async function logoutRetail() {
+        if (cart.length && (!syncedDraft || deviceDraftHold)
+            && !window.confirm('Đăng xuất sẽ xóa giỏ chưa xác nhận trên Công Ty khỏi thiết bị. Bạn có chắc muốn đăng xuất?')) return;
         setBusy('logout');
         setError(null);
         try {
             await unregisterRetailNotificationForLogout().catch(() => undefined);
-            await fetch('/api/auth/logout', { method: 'POST', cache: 'no-store', credentials: 'same-origin' });
+            const response = await fetch('/api/auth/logout', { method: 'POST', cache: 'no-store', credentials: 'same-origin' });
+            if (!response.ok) throw new Error('Chưa thể đăng xuất khỏi Công Ty.');
+            deviceDraftWritable.current = false;
+            await deviceDraftWriteQueue.current.catch(() => undefined);
+            if (deviceDraftUserId) await clearRetailLocalDraft(deviceDraftUserId).catch(() => undefined);
             window.location.assign('/login');
         }
         catch (reason) {
+            deviceDraftWritable.current = true;
             setError(errorMessage(reason, 'Chưa thể đăng xuất.'));
             setBusy(null);
         }
@@ -1974,6 +2121,25 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
       <span className="topbar-spacer" aria-hidden="true"/>
     </header>
     {error ? <p className="notice error" role="alert">{error}</p> : null}{notice ? <p className="notice" role="status">{notice}</p> : null}
+    {deviceDraftOffer ? <section className="notice device-draft-banner" role="status">
+      <strong>Trên máy có giỏ hàng chưa hoàn tất ({deviceDraftOffer.cart.length} sản phẩm).</strong>
+      <p>Chỉ khôi phục cho tài khoản đã đăng nhập. Giỏ này chưa được xác nhận trên Công Ty.</p>
+      <button type="button" onClick={restoreDeviceDraft}>Khôi phục giỏ</button>
+      <button type="button" onClick={() => void discardDeviceDraft()}>Bỏ bản trên máy</button>
+    </section> : null}
+    {activeTab === 'entry' && cart.length > 0 && (deviceDraftReady || deviceDraftStatus === 'unavailable') ? <section className="notice device-draft-banner" role="status">
+      {deviceDraftStatus === 'saved' ? 'Đã lưu giỏ trên máy này — không phải đã lưu trên Công Ty.' :
+       deviceDraftStatus === 'saving' ? 'Đang lưu giỏ trên máy…' :
+       deviceDraftStatus === 'unavailable' ? 'Chưa lưu được giỏ trên máy. Đừng đóng ứng dụng khi chưa kiểm tra.' :
+       'Giỏ đang được theo dõi trên thiết bị.'}
+      {deviceDraftHold ? <div>
+        <p>Giỏ khôi phục đang chờ đối chiếu Công Ty. Hệ thống chưa tự gửi đơn để tránh ghi trùng.</p>
+        <button type="button" disabled={busy !== null} onClick={() => void reconcileDeviceDraft()}>
+          {busy === 'device-reconcile' ? 'Đang đối chiếu…' : 'Đối chiếu và tiếp tục'}
+        </button>
+      </div> : null}
+      <small>Xóa dữ liệu trình duyệt hoặc đổi thiết bị có thể làm mất bản lưu này.</small>
+    </section> : null}
     {foregroundNotification ? <aside className="retail-notification-banner" role="status" aria-live="polite"><span aria-hidden="true">🔔</span><span><strong>{foregroundNotification.title}</strong><small>{foregroundNotification.body}</small></span>{foregroundNotification.orderId ? <button className="notification-open" type="button" onClick={() => { const id = foregroundNotification.orderId; setForegroundNotification(null); if (id) void openNotificationOrder(id); }}>Xem đơn</button> : null}<button className="notification-close" type="button" aria-label="Đóng thông báo" onClick={() => setForegroundNotification(null)}>×</button></aside> : null}
 
     {activeTab === 'home' ? <section className="retail-home compact-home retail-page">
