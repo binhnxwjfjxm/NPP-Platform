@@ -752,12 +752,20 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
             }
         }
     }
+    function forgetAbandonedDraftKey(intent: RetailDraftIntent) {
+        // Only an explicitly abandoned, definitively rejected intent may rotate
+        // its key. Keep all unrelated checkout/payment idempotency keys intact.
+        for (const [slot, key] of keys.current) {
+            if (key === intent.idempotencyKey) keys.current.delete(slot);
+        }
+    }
     async function discardRejectedCreateIntent() {
         const intent = draftOutboxRef.current;
         if (!intent || intent.kind !== 'create' || intent.reviewReason !== 'rejected' || !deviceDraftUserId) return;
         if (!window.confirm('Công Ty đã từ chối yêu cầu tạo đơn. Bỏ thao tác cũ khỏi hàng đợi để sửa giỏ và thử lưu lại? Giỏ trên máy sẽ được giữ nguyên.')) return;
         try {
             await updateRetailDraftIntent(deviceDraftUserId, intent.idempotencyKey, 'discard');
+            forgetAbandonedDraftKey(intent);
             draftOutboxRef.current = null;
             setDraftOutbox(null);
             setDeviceDraftHold(null);
@@ -781,6 +789,7 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
                 'Đơn đã thay đổi trên Công Ty. Giữ giỏ trên máy sẽ thay nội dung phiên bản mới. Bạn xác nhận tiếp tục?'
             )) return;
             await updateRetailDraftIntent(deviceDraftUserId, intent.idempotencyKey, 'discard');
+            forgetAbandonedDraftKey(intent);
             draftOutboxRef.current = null;
             setDraftOutbox(null);
             setDeviceDraftHold(null);
@@ -2414,7 +2423,9 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
         </> : draftOutbox.state === 'pending' ? <button
           type="button" disabled={busy !== null || draftSyncInFlight.current !== null}
           onClick={() => void retryQueuedDraft(Boolean(deviceDraftHold), true)}>Thử đồng bộ lại</button>
-        : <p>Không xác minh được thao tác tạo đơn; cần kiểm tra đơn Công Ty trước khi thử tạo mới.</p>}
+        : <p>{draftOutbox.reviewReason === 'rejected'
+          ? 'Công Ty đã từ chối tạo đơn. Có thể giữ giỏ để sửa lại; không dùng khóa cũ cho yêu cầu mới.'
+          : 'Không xác minh được thao tác tạo đơn; cần kiểm tra đơn Công Ty trước khi thử tạo mới.'}</p>}
       </div> : null}
       {deviceDraftHold ? <div>
         <p>Giỏ khôi phục đang chờ đối chiếu Công Ty. Hệ thống chưa tự gửi đơn để tránh ghi trùng.</p>
