@@ -1839,8 +1839,11 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
         }
     }
     async function action(kind: 'confirm' | 'issue-stock' | 'complete') {
-        if (!order)
+        if (!order) return;
+        if (draftOutboxRef.current || deviceDraftHold) {
+            setError('Đơn chưa được Công Ty xác minh đủ; không thể chốt, xuất kho hoặc hoàn thành.');
             return;
+        }
         if ((kind === 'confirm' || kind === 'issue-stock') && !assertStockGate(kind === 'confirm' ? 'Chốt đơn' : 'Xuất kho'))
             return;
         setBusy(kind);
@@ -1881,6 +1884,10 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
         }
     }
     function openCancelDialog() {
+        if (draftOutboxRef.current || deviceDraftHold) {
+            setError('Đơn còn thao tác chưa xác minh với Công Ty. Hãy đối chiếu trước khi hủy đơn.');
+            return;
+        }
         setCancelReason('');
         setError(null);
         setCancelOpen(true);
@@ -1893,8 +1900,11 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
         forgetOperationKey('cancel', 'current-order');
     }
     async function cancelOrder() {
-        if (!order)
+        if (!order) return;
+        if (draftOutboxRef.current || deviceDraftHold || draftSyncInFlight.current !== null) {
+            setError('Không thể hủy khi đơn còn đang đồng bộ hoặc chờ Công Ty xác minh.');
             return;
+        }
         const reason = cancelReason.trim();
         if (!reason) {
             setError('Hãy nhập lý do hủy đơn.');
