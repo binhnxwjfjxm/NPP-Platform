@@ -1796,6 +1796,7 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
         if (checkoutLockRef.current) return;
         entrySessionRef.current += 1;
         resetDraftSyncSession();
+        setDeviceDraftHold(null);
         setError(null);
         try {
             const next = await api<Order>(`/api/retail/orders/${id}`);
@@ -1832,8 +1833,8 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
         return openOrder(id, { resetScroll: true });
     }
     function beginPickupEdit() { if (!order || checkoutLockRef.current)
-        return; entrySessionRef.current += 1; resetDraftSyncSession(); setCart(cartFromOrder(order)); setQuantityInputs({}); setManualPrices(manualPricesFromOrder(order)); setCustomerMode(order.customerMode); setCustomerId(order.customerId); setCustomerName(order.customerMode === 'EXISTING' ? order.customerName : 'Khách lẻ'); setWarehouseId(order.warehouseId); setPolicy(order.collectionPolicy); setNote(order.note ?? ''); setDocumentDiscountMode(order.documentDiscountMode ?? 'NONE'); setDocumentDiscountValue(order.documentDiscountValue ?? '0'); setDocumentDiscountReason(order.documentDiscountReason ?? ''); setEditPickup(true); setNotice('Có thể sửa đơn đến trước khi xuất kho.'); }
-    function resetEntry() { if (checkoutLockRef.current) return; entrySessionRef.current += 1; resetDraftSyncSession(); setDraftSaveError(null); setAvailabilityError(null); setOrder(null); setCart([]); setQuantityInputs({}); setPrices({}); setPriceFailures({}); setManualPrices({}); setEditPickup(false); setAvailable([]); setCustomerMode('WALK_IN'); setCustomerId(''); setCustomerName('Khách lẻ'); setNote(''); setDocumentDiscountMode('NONE'); setDocumentDiscountValue('0'); setDocumentDiscountReason(''); setNotice(null); setError(null); setActiveTab('entry'); lastDraftFingerprint.current = ''; }
+        return; entrySessionRef.current += 1; resetDraftSyncSession(); setDeviceDraftHold(null); setCart(cartFromOrder(order)); setQuantityInputs({}); setManualPrices(manualPricesFromOrder(order)); setCustomerMode(order.customerMode); setCustomerId(order.customerId); setCustomerName(order.customerMode === 'EXISTING' ? order.customerName : 'Khách lẻ'); setWarehouseId(order.warehouseId); setPolicy(order.collectionPolicy); setNote(order.note ?? ''); setDocumentDiscountMode(order.documentDiscountMode ?? 'NONE'); setDocumentDiscountValue(order.documentDiscountValue ?? '0'); setDocumentDiscountReason(order.documentDiscountReason ?? ''); setEditPickup(true); setNotice('Có thể sửa đơn đến trước khi xuất kho.'); }
+    function resetEntry() { if (checkoutLockRef.current) return; entrySessionRef.current += 1; resetDraftSyncSession(); setDeviceDraftHold(null); setDraftSaveError(null); setAvailabilityError(null); setOrder(null); setCart([]); setQuantityInputs({}); setPrices({}); setPriceFailures({}); setManualPrices({}); setEditPickup(false); setAvailable([]); setCustomerMode('WALK_IN'); setCustomerId(''); setCustomerName('Khách lẻ'); setNote(''); setDocumentDiscountMode('NONE'); setDocumentDiscountValue('0'); setDocumentDiscountReason(''); setNotice(null); setError(null); setActiveTab('entry'); lastDraftFingerprint.current = ''; }
     function applyTemplate(template: PrintTemplate) {
         setPrintTemplate(template);
         setTemplateHeading(template.heading ?? '');
