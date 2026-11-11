@@ -52,7 +52,7 @@ test('Retail chuẩn hóa số lượng thập phân tại biên API trước kh
 
 test('autosave nháp Retail single-flight và coalesce thay đổi mới thay vì gửi trùng Idempotency-Key', async () => {
   const page = await readWorkspace();
-  const start = page.indexOf("if (deviceDraftOffer || deviceDraftHold || !cart.length || !warehouseId || editPickup");
+  const start = page.indexOf("if (deviceDraftStatus === 'checking' || deviceDraftOffer || deviceDraftHold || !cart.length || !warehouseId || editPickup");
   const end = page.indexOf("if (!order?.id || order.status !== 'confirmed'", start);
   const autosave = page.slice(start, end);
   assert.match(autosave, /draftSyncInFlight\.current !== null/);
