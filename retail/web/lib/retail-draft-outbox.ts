@@ -1,4 +1,4 @@
-import { sanitizeRetailLocalDraft, validRetailDraftIdentity, type RetailLocalDraft } from './retail-local-draft';
+import { sanitizeRetailLocalDraft, validRetailDraftIdentity, type RetailLocalDraft } from './retail-local-draft.ts';
 
 // The Company's idempotency scope is installation + actor + HTTP method +
 // canonical route. Never rotate the key or change the JSON body on replay.
