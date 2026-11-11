@@ -137,7 +137,7 @@ export async function enqueueRetailDraftIntent(userId: string, next: RetailDraft
 }
 
 export async function updateRetailDraftIntent(
-  userId: string, key: string, change: 'retry' | 'review' | 'ack',
+  userId: string, key: string, change: 'retry' | 'review' | 'ack' | 'discard',
 ): Promise<RetailDraftIntent | null> {
   assertIdentity(userId);
   const db = await database();
@@ -152,7 +152,7 @@ export async function updateRetailDraftIntent(
         if (!validRetailDraftIntent(current)) {
           tx.abort(); reject(new Error('Hàng đợi đồng bộ bị hỏng.')); return;
         }
-        if (change === 'ack') {
+        if (change === 'ack' || change === 'discard') {
           store.delete(userId);
           return;
         }
