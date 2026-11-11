@@ -1232,7 +1232,7 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
         });
     }, [cart, customerId, customerMode, open, priceFailures, prices, products, selected, priceRetryEpoch]);
     useEffect(() => {
-        if (deviceDraftStatus === 'checking' || deviceDraftOffer || deviceDraftHold || !cart.length || !warehouseId || editPickup || draftSaveError || (order && order.status !== 'draft'))
+        if (!deviceDraftReady || deviceDraftStatus === 'unavailable' || deviceDraftOffer || deviceDraftHold || !cart.length || !warehouseId || editPickup || draftSaveError || (order && order.status !== 'draft'))
             return;
         if (draftOutboxRef.current) {
             draftSyncPending.current = true;
@@ -2405,7 +2405,7 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
       {draftOutbox ? 'Giỏ trên máy đang có thao tác chờ đồng bộ — chưa xác nhận lưu Công Ty.' :
        deviceDraftStatus === 'saved' ? 'Đã lưu giỏ trên máy này — không phải đã lưu trên Công Ty.' :
        deviceDraftStatus === 'saving' ? 'Đang lưu giỏ trên máy…' :
-       deviceDraftStatus === 'unavailable' ? 'Chưa lưu được giỏ trên máy. Đừng đóng ứng dụng khi chưa kiểm tra.' :
+       deviceDraftStatus === 'unavailable' ? 'Bộ nhớ thiết bị chưa sẵn sàng. Chưa thể gửi đơn mới an toàn; hãy kiểm tra trình duyệt hoặc thử lại.' :
        'Giỏ đang được theo dõi trên thiết bị.'}
       {draftOutbox ? <div className="device-sync-status" role="status">
         <strong>{draftOutbox.state === 'review' ? 'Cần đối chiếu đơn Công Ty' : 'Đang chờ đồng bộ Công Ty'}</strong>
