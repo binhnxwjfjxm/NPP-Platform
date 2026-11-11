@@ -154,6 +154,8 @@ test('không tự chốt, ghi đè revision hoặc xoá key trước khi ACK Cô
   assert.match(workspace, /function forgetAbandonedDraftKey\(intent: RetailDraftIntent\)/);
   assert.match(workspace, /if \(key === intent.idempotencyKey\) keys.current.delete\(slot\)/);
   assert.match(workspace, /async function discardRejectedCreateIntent\(\)/);
+  assert.match(workspace, /Đơn Công Ty không còn là nháp. Giữ trạng thái Công Ty/);
+  assert.match(workspace, /Đã giữ trạng thái Công Ty, không gửi lại thao tác nháp cũ/);
   assert.match(workspace, /Đơn vẫn đang chờ đồng bộ Công Ty/);
   assert.match(outbox, /current.idempotencyKey !== next.idempotencyKey \|\| current.payloadJson !== next.payloadJson/);
   assert.doesNotMatch(outbox, /localStorage|sessionStorage|Authorization|DATABASE_URL/);
