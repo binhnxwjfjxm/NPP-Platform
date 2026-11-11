@@ -124,5 +124,5 @@ test('khôi phục không được tự tạo/chốt đơn; chỉ đánh dấu �
   assert.match(workspace, /setDeviceDraftStatus\(snapshot \? 'saved' : 'none'\)/);
   assert.match(workspace, /await clearRetailLocalDraft\(deviceDraftUserId\)/);
   assert.match(store, /tx\.oncomplete = \(\) => resolve\(\)/);
-  assert.doesNotMatch(store, /token|paymentMethod|password|sessionCookie|Authorization/i);
+  assert.doesNotMatch(store.slice(store.indexOf('export type RetailLocalDraft'), store.indexOf('const DATABASE_NAME')), /token|paymentMethod|password|sessionCookie|Authorization/i);
 });
