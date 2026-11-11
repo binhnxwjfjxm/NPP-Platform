@@ -2,7 +2,7 @@
 import { createIdempotencyKey } from '@npp/contracts';
 import { clearRetailLocalDraft, readRetailLocalDraft, writeRetailLocalDraft, validRetailDraftIdentity, type RetailLocalDraft } from '../lib/retail-local-draft';
 import { enqueueRetailDraftIntent, readRetailDraftIntent, updateRetailDraftIntent, validRetailDraftIntent, type RetailDraftIntent } from '../lib/retail-draft-outbox';
-import { activeDraftRevision, checkoutLinesMatch, draftMatchesRetailContext, projectedRetailDraftTotal, sameSavedDraft } from '../lib/retail-order-consistency.mjs';
+import { activeDraftRevision, checkoutLinesMatch, draftMatchesRetailContext, draftMatchesQueuedIntent, projectedRetailDraftTotal, sameSavedDraft } from '../lib/retail-order-consistency.mjs';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { PrinterSettingsPanel } from './printer-settings-panel';
 import { captureReceiptPng, shareReceiptPng } from '../lib/retail-receipt-image';
@@ -654,13 +654,8 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
         }
     }
     function intentMatchesCompanyDraft(saved: Order, intent: RetailDraftIntent) {
-        const snapshot = intent.snapshot;
-        return saved.status === 'draft'
-            && (!intent.orderId || saved.id === intent.orderId)
-            && draftMatchesRetailContext(saved, snapshot)
-            && String(saved.note ?? '') === snapshot.note
-            && String(saved.collectionPolicy ?? '') === snapshot.policy
-            && checkoutLinesMatch(linesOf(saved), snapshot.cart, snapshot.manualPrices);
+        return (!intent.orderId || saved.id === intent.orderId)
+            && draftMatchesQueuedIntent(saved, intent.snapshot, JSON.parse(intent.payloadJson), linesOf(saved));
     }
     async function acknowledgeDraftIntent(intent: RetailDraftIntent, saved: Order) {
         if (!intentMatchesCompanyDraft(saved, intent)) return false;
