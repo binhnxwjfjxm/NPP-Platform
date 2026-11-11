@@ -641,6 +641,167 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
             setBusy((value) => value === 'device-reconcile' ? null : value);
         }
     }
+    function intentMatchesCompanyDraft(saved: Order, intent: RetailDraftIntent) {
+        const snapshot = intent.snapshot;
+        return saved.status === 'draft'
+            && (!intent.orderId || saved.id === intent.orderId)
+            && draftMatchesRetailContext(saved, snapshot)
+            && String(saved.note ?? '') === snapshot.note
+            && String(saved.collectionPolicy ?? '') === snapshot.policy
+            && checkoutLinesMatch(linesOf(saved), snapshot.cart, snapshot.manualPrices);
+    }
+    async function acknowledgeDraftIntent(intent: RetailDraftIntent, saved: Order) {
+        if (!intentMatchesCompanyDraft(saved, intent)) return false;
+        await updateRetailDraftIntent(deviceDraftUserId!, intent.idempotencyKey, 'ack');
+        if (draftOutboxRef.current?.idempotencyKey === intent.idempotencyKey) {
+            draftOutboxRef.current = null;
+            setDraftOutbox(null);
+        }
+        setOrder(saved);
+        setDeviceDraftHold(null);
+        setDraftSaveError(null);
+        setError(null);
+        if (isSavedCartCurrent(saved)) {
+            lastDraftFingerprint.current = currentDraftFingerprint;
+        } else {
+            lastDraftFingerprint.current = '';
+            draftSyncPending.current = true;
+            setDraftSyncEpoch((value) => value + 1);
+        }
+        return true;
+    }
+    async function deferDraftIntent(intent: RetailDraftIntent, review: boolean, message: string) {
+        if (!deviceDraftUserId) return;
+        try {
+            const queued = await updateRetailDraftIntent(deviceDraftUserId, intent.idempotencyKey, review ? 'review' : 'retry');
+            if (queued) {
+                draftOutboxRef.current = queued;
+                setDraftOutbox(queued);
+            }
+        } catch {
+            // Retain the in-memory reference and stop automatic sending until
+            // the durable queue can be checked on the next authenticated open.
+            draftOutboxRef.current = { ...intent, state: 'review' };
+            setDraftOutbox(draftOutboxRef.current);
+            setDeviceDraftStatus('unavailable');
+        }
+        setDraftSaveError(message);
+    }
+    async function retryQueuedDraft(allowRestored = false, manual = false) {
+        const intent = draftOutboxRef.current;
+        const userId = deviceDraftUserId;
+        if (!intent || !userId || draftOutboxReplaying.current
+            || draftSyncInFlight.current !== null || checkoutLockRef.current
+            || (deviceDraftHold && !allowRestored) || (deviceDraftOffer && !allowRestored)
+            || intent.state === 'review'
+            || (!manual && Date.now() < intent.retryAfter)
+            || !window.navigator.onLine) return;
+        draftOutboxReplaying.current = true;
+        draftSyncInFlight.current = intent.fingerprint;
+        setBusy('draft-sync');
+        setDraftSaveError(null);
+        try {
+            if (intent.kind === 'update') {
+                // Never replay an update without first reading the canonical
+                // version. A different revision means another actor changed it.
+                const latest = await api<Order>(`/api/retail/orders/${intent.orderId}`);
+                if (await acknowledgeDraftIntent(intent, latest)) return;
+                if (latest.status !== 'draft' || activeDraftRevision(latest) !== intent.expectedDraftRevision) {
+                    await deferDraftIntent(intent, true,
+                        'Đơn Công Ty đã thay đổi. Không tự ghi đè; hãy chọn cách xử lý bản trên máy.');
+                    return;
+                }
+            }
+            // Create cannot be read by ID until the first ACK; replay the exact
+            // original payload/key against the canonical PostgreSQL idempotency record.
+            const path = intent.kind === 'create'
+                ? '/api/retail/orders'
+                : `/api/retail/orders/${intent.orderId}/draft`;
+            const response = await api<Order>(path, {
+                method: intent.kind === 'create' ? 'POST' : 'PUT',
+                headers: { 'Content-Type': 'application/json', 'Idempotency-Key': intent.idempotencyKey },
+                body: intent.payloadJson,
+            });
+            if (!(await acknowledgeDraftIntent(intent, response))) {
+                await deferDraftIntent(intent, true, 'Công Ty trả kết quả khác với giỏ đã gửi. Cần đối chiếu trước khi tiếp tục.');
+            }
+        } catch (reason) {
+            const definitive = reason instanceof RetailApiError
+                && reason.status >= 400 && reason.status < 500
+                && reason.code !== 'IDEMPOTENCY_IN_PROGRESS';
+            await deferDraftIntent(intent, definitive,
+                definitive
+                    ? 'Công Ty từ chối thao tác hoặc phát hiện xung đột. Kiểm tra đơn trước khi xử lý.'
+                    : 'Đang chờ đồng bộ Công Ty. Giỏ và khóa thao tác vẫn giữ trên thiết bị; hệ thống sẽ thử lại khi kết nối ổn định.');
+        } finally {
+            draftOutboxReplaying.current = false;
+            draftSyncInFlight.current = null;
+            setBusy((value) => value === 'draft-sync' ? null : value);
+            if (draftSyncPending.current && !draftOutboxRef.current) {
+                draftSyncPending.current = false;
+                setDraftSyncEpoch((value) => value + 1);
+            }
+        }
+    }
+    async function resolveDraftReview(keepLocal: boolean) {
+        const intent = draftOutboxRef.current;
+        if (!intent || intent.state !== 'review' || !intent.orderId || !deviceDraftUserId || busy) return;
+        setBusy('device-reconcile');
+        try {
+            const latest = await api<Order>(`/api/retail/orders/${intent.orderId}`);
+            if (latest.status !== 'draft' || !activeDraftRevision(latest)) {
+                setError('Đơn Công Ty không còn là nháp, không thể ghi đè. Giỏ trên máy vẫn được giữ.');
+                return;
+            }
+            if (keepLocal && !window.confirm(
+                'Đơn đã thay đổi trên Công Ty. Giữ giỏ trên máy sẽ thay nội dung phiên bản mới. Bạn xác nhận tiếp tục?'
+            )) return;
+            await updateRetailDraftIntent(deviceDraftUserId, intent.idempotencyKey, 'discard');
+            draftOutboxRef.current = null;
+            setDraftOutbox(null);
+            setDeviceDraftHold(null);
+            setOrder(latest);
+            if (keepLocal) {
+                lastDraftFingerprint.current = '';
+                setDraftSaveError(null);
+                setDraftSyncEpoch((value) => value + 1);
+                setNotice('Đã chọn giữ giỏ trên máy. Công Ty sẽ kiểm tra lại giá, tồn và phiên bản khi lưu.');
+            } else {
+                setCart(cartFromOrder(latest));
+                setManualPrices(manualPricesFromOrder(latest));
+                setCustomerMode(latest.customerMode);
+                setCustomerId(latest.customerId);
+                setCustomerName(latest.customerMode === 'EXISTING' ? latest.customerName : 'Khách lẻ');
+                setWarehouseId(latest.warehouseId);
+                setPolicy(latest.collectionPolicy);
+                setNote(latest.note ?? '');
+                setDocumentDiscountMode(latest.documentDiscountMode ?? 'NONE');
+                setDocumentDiscountValue(latest.documentDiscountValue ?? '0');
+                setDocumentDiscountReason(latest.documentDiscountReason ?? '');
+                setPrices({});
+                setPriceFailures({});
+                lastDraftFingerprint.current = '';
+                setDraftSaveError(null);
+                setNotice('Đã chọn dữ liệu Công Ty, bỏ phần thay đổi nháp chưa đồng bộ trên máy.');
+            }
+        } catch {
+            setError('Không đọc được dữ liệu Công Ty. Không được xóa hàng đợi đồng bộ.');
+        } finally {
+            setBusy((value) => value === 'device-reconcile' ? null : value);
+        }
+    }
+    useEffect(() => {
+        if (!draftOutbox || draftOutbox.state !== 'pending'
+            || !deviceDraftReady || deviceDraftHold || deviceDraftOffer) return;
+        const tryAgain = () => { void retryQueuedDraft(false, false); };
+        const delay = Math.max(0, draftOutbox.retryAfter - Date.now());
+        const timer = window.setTimeout(tryAgain, delay);
+        window.addEventListener('online', tryAgain);
+        return () => {
+            window.clearTimeout(timer);
+            window.removeEventListener('online', tryAgain);
+        };
+    }, [draftOutbox, deviceDraftReady, deviceDraftHold, deviceDraftOffer, deviceDraftUserId]);
     const keyFor = useCallback((action: string, fingerprint = '') => {
         const slot = `${action}:${order?.id ?? 'new'}:${order?.revision ?? 'draft'}:${fingerprint}`;
         const current = keys.current.get(slot);
