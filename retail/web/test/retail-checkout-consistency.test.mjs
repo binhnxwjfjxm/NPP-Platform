@@ -105,7 +105,7 @@ test('Retail preserves identical idempotency key on settlement retry after an un
 });
 test('Retail does not automatically overwrite a canonical draft when a save or checkout conflicts', async () => {
   const workspace = await readFile(new URL('../app/retail-workspace.tsx', import.meta.url), 'utf8');
-  assert.match(workspace, /if \(deviceDraftOffer \|\| deviceDraftHold \|\| !cart.length \|\| !warehouseId \|\| editPickup \|\| draftSaveError/);
+  assert.match(workspace, /if \(deviceDraftStatus === 'checking' \|\| deviceDraftOffer \|\| deviceDraftHold \|\| !cart.length \|\| !warehouseId \|\| editPickup \|\| draftSaveError/);
   assert.match(workspace, /if \(latest.status === 'draft' && !isSavedCartCurrent\(latest\)\)/);
   assert.match(workspace, /setDraftSaveError\('Dữ liệu đơn đã thay đổi/);
 });
