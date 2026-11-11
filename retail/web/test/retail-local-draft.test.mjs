@@ -116,13 +116,15 @@ test('khôi phục không được tự tạo/chốt đơn; chỉ đánh dấu �
   assert.match(workspace, /setDeviceDraftOffer\(saved\)/);
   assert.match(workspace, /function restoreDeviceDraft\(\)/);
   assert.match(workspace, /setDeviceDraftHold\(\{ orderId: saved\.orderId, draftRevision: saved\.draftRevision \}\)/);
-  assert.match(workspace, /if \(deviceDraftHold \|\| !cart\.length/);
+  assert.match(workspace, /if \(deviceDraftOffer \|\| deviceDraftHold \|\| !cart\.length/);
   assert.match(workspace, /async function reconcileDeviceDraft\(\)/);
   assert.match(workspace, /if \(revision !== held\.draftRevision && !window\.confirm/);
   assert.match(workspace, /Giỏ khôi phục đang chờ đối chiếu Công Ty/);
   assert.match(workspace, /deviceDraftWriteQueue\.current = deviceDraftWriteQueue\.current\.catch/);
   assert.match(workspace, /setDeviceDraftStatus\(snapshot \? 'saved' : 'none'\)/);
   assert.match(workspace, /await clearRetailLocalDraft\(deviceDraftUserId\)/);
+  assert.match(workspace, /function canLeaveLocalDraft\(\)/);
+  assert.match(workspace, /Đăng xuất sẽ xóa giỏ chưa xác nhận trên Công Ty/);
   assert.match(store, /tx\.oncomplete = \(\) => resolve\(\)/);
   assert.doesNotMatch(store.slice(store.indexOf('export type RetailLocalDraft'), store.indexOf('const DATABASE_NAME')), /token|paymentMethod|password|sessionCookie|Authorization/i);
 });
