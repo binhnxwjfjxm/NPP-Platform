@@ -1792,14 +1792,18 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
             setBusy(null);
         }
     }
+    function canLeaveLocalDraft() {
+        if (!cart.length || (order?.status === 'draft' && syncedDraft && !deviceDraftHold)) return true;
+        return window.confirm('Giỏ đang có thay đổi chưa xác nhận trên Công Ty. Chuyển sang đơn khác sẽ bỏ giỏ đang lưu trên máy. Bạn có muốn tiếp tục?');
+    }
     async function openOrder(id: string, options: { resetScroll?: boolean } = {}) {
-        if (checkoutLockRef.current) return;
+        if (checkoutLockRef.current || !canLeaveLocalDraft()) return;
         entrySessionRef.current += 1;
         resetDraftSyncSession();
-        setDeviceDraftHold(null);
         setError(null);
         try {
             const next = await api<Order>(`/api/retail/orders/${id}`);
+            setDeviceDraftHold(null);
             setOrder(next);
             setAvailable([]);
             setAvailabilityError(null);
@@ -1834,7 +1838,7 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
     }
     function beginPickupEdit() { if (!order || checkoutLockRef.current)
         return; entrySessionRef.current += 1; resetDraftSyncSession(); setDeviceDraftHold(null); setCart(cartFromOrder(order)); setQuantityInputs({}); setManualPrices(manualPricesFromOrder(order)); setCustomerMode(order.customerMode); setCustomerId(order.customerId); setCustomerName(order.customerMode === 'EXISTING' ? order.customerName : 'Khách lẻ'); setWarehouseId(order.warehouseId); setPolicy(order.collectionPolicy); setNote(order.note ?? ''); setDocumentDiscountMode(order.documentDiscountMode ?? 'NONE'); setDocumentDiscountValue(order.documentDiscountValue ?? '0'); setDocumentDiscountReason(order.documentDiscountReason ?? ''); setEditPickup(true); setNotice('Có thể sửa đơn đến trước khi xuất kho.'); }
-    function resetEntry() { if (checkoutLockRef.current) return; entrySessionRef.current += 1; resetDraftSyncSession(); setDeviceDraftHold(null); setDraftSaveError(null); setAvailabilityError(null); setOrder(null); setCart([]); setQuantityInputs({}); setPrices({}); setPriceFailures({}); setManualPrices({}); setEditPickup(false); setAvailable([]); setCustomerMode('WALK_IN'); setCustomerId(''); setCustomerName('Khách lẻ'); setNote(''); setDocumentDiscountMode('NONE'); setDocumentDiscountValue('0'); setDocumentDiscountReason(''); setNotice(null); setError(null); setActiveTab('entry'); lastDraftFingerprint.current = ''; }
+    function resetEntry() { if (checkoutLockRef.current || !canLeaveLocalDraft()) return; entrySessionRef.current += 1; resetDraftSyncSession(); setDeviceDraftHold(null); setDraftSaveError(null); setAvailabilityError(null); setOrder(null); setCart([]); setQuantityInputs({}); setPrices({}); setPriceFailures({}); setManualPrices({}); setEditPickup(false); setAvailable([]); setCustomerMode('WALK_IN'); setCustomerId(''); setCustomerName('Khách lẻ'); setNote(''); setDocumentDiscountMode('NONE'); setDocumentDiscountValue('0'); setDocumentDiscountReason(''); setNotice(null); setError(null); setActiveTab('entry'); lastDraftFingerprint.current = ''; }
     function applyTemplate(template: PrintTemplate) {
         setPrintTemplate(template);
         setTemplateHeading(template.heading ?? '');
@@ -2029,6 +2033,8 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
         }
     }
     async function logoutRetail() {
+        if (cart.length && (!syncedDraft || deviceDraftHold)
+            && !window.confirm('Đăng xuất sẽ xóa giỏ chưa xác nhận trên Công Ty khỏi thiết bị. Bạn có chắc muốn đăng xuất?')) return;
         setBusy('logout');
         setError(null);
         try {
