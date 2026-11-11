@@ -125,6 +125,10 @@ test('retry backoff, review và ACK chỉ tác động đúng khóa của user �
   assert.equal(review.state, 'review');
   assert.equal(review.idempotencyKey, intent.idempotencyKey);
   assert.equal(review.payloadJson, intent.payloadJson);
+  const rejected = await updateRetailDraftIntent('operator-1', intent.idempotencyKey, 'reject');
+  assert.equal(rejected.state, 'review');
+  assert.equal(rejected.reviewReason, 'rejected');
+  assert.equal(rejected.payloadJson, intent.payloadJson);
   await updateRetailDraftIntent('operator-1', intent.idempotencyKey, 'ack');
   assert.equal(await readRetailDraftIntent('operator-1'), null);
   assert.ok(await readRetailDraftIntent('operator-2'));
@@ -143,6 +147,9 @@ test('không tự chốt, ghi đè revision hoặc xoá key trước khi ACK Cô
   assert.match(workspace, /window.addEventListener\('online', tryAgain\)/);
   assert.match(workspace, /if \(draftOutboxRef.current\) \{/);
   assert.match(workspace, /async function resolveDraftReview\(keepLocal: boolean\)/);
+  assert.match(workspace, /function forgetAbandonedDraftKey\(intent: RetailDraftIntent\)/);
+  assert.match(workspace, /if \(key === intent.idempotencyKey\) keys.current.delete\(slot\)/);
+  assert.match(workspace, /async function discardRejectedCreateIntent\(\)/);
   assert.match(workspace, /Đơn vẫn đang chờ đồng bộ Công Ty/);
   assert.match(outbox, /current.idempotencyKey !== next.idempotencyKey \|\| current.payloadJson !== next.payloadJson/);
   assert.doesNotMatch(outbox, /localStorage|sessionStorage|Authorization|DATABASE_URL/);
