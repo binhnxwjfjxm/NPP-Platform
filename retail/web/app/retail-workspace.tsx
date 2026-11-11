@@ -677,10 +677,10 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
         }
         return true;
     }
-    async function deferDraftIntent(intent: RetailDraftIntent, review: boolean, message: string) {
+    async function deferDraftIntent(intent: RetailDraftIntent, review: boolean, message: string, confirmedRejected = false) {
         if (!deviceDraftUserId) return;
         try {
-            const queued = await updateRetailDraftIntent(deviceDraftUserId, intent.idempotencyKey, review ? 'review' : 'retry');
+            const queued = await updateRetailDraftIntent(deviceDraftUserId, intent.idempotencyKey, confirmedRejected ? 'reject' : review ? 'review' : 'retry');
             if (queued) {
                 draftOutboxRef.current = queued;
                 setDraftOutbox(queued);
@@ -739,7 +739,9 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
             await deferDraftIntent(intent, definitive,
                 definitive
                     ? 'Công Ty từ chối thao tác hoặc phát hiện xung đột. Kiểm tra đơn trước khi xử lý.'
-                    : 'Đang chờ đồng bộ Công Ty. Giỏ và khóa thao tác vẫn giữ trên thiết bị; hệ thống sẽ thử lại khi kết nối ổn định.');
+                    : 'Đang chờ đồng bộ Công Ty. Giỏ và khóa thao tác vẫn giữ trên thiết bị; hệ thống sẽ thử lại khi kết nối ổn định.',
+                definitive && intent.kind === 'create' && reason instanceof RetailApiError
+                    && reason.status !== 409 && !reason.code.startsWith('IDEMPOTENCY_'));
         } finally {
             draftOutboxReplaying.current = false;
             draftSyncInFlight.current = null;
@@ -748,6 +750,21 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
                 draftSyncPending.current = false;
                 setDraftSyncEpoch((value) => value + 1);
             }
+        }
+    }
+    async function discardRejectedCreateIntent() {
+        const intent = draftOutboxRef.current;
+        if (!intent || intent.kind !== 'create' || intent.reviewReason !== 'rejected' || !deviceDraftUserId) return;
+        if (!window.confirm('Công Ty đã từ chối yêu cầu tạo đơn. Bỏ thao tác cũ khỏi hàng đợi để sửa giỏ và thử lưu lại? Giỏ trên máy sẽ được giữ nguyên.')) return;
+        try {
+            await updateRetailDraftIntent(deviceDraftUserId, intent.idempotencyKey, 'discard');
+            draftOutboxRef.current = null;
+            setDraftOutbox(null);
+            setDeviceDraftHold(null);
+            setDraftSaveError('Hãy kiểm tra, sửa giá hoặc thông tin đơn rồi bấm Thử lưu lại.');
+            setNotice('Đã bỏ thao tác Công Ty từ chối; giỏ trên máy vẫn giữ nguyên.');
+        } catch {
+            setError('Chưa cập nhật được hàng đợi. Không tạo yêu cầu mới.');
         }
     }
     async function resolveDraftReview(keepLocal: boolean) {
@@ -1304,7 +1321,9 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
                         && reason.code !== 'IDEMPOTENCY_IN_PROGRESS';
                     await deferDraftIntent(queued, definitive, definitive
                         ? 'Công Ty từ chối lưu hoặc dữ liệu đã thay đổi. Hãy đối chiếu, không tự ghi đè.'
-                        : 'Đang chờ đồng bộ Công Ty. Giỏ và khóa thao tác được giữ trên máy; hệ thống sẽ thử lại.');
+                        : 'Đang chờ đồng bộ Công Ty. Giỏ và khóa thao tác được giữ trên máy; hệ thống sẽ thử lại.',
+                    definitive && queued.kind === 'create' && reason instanceof RetailApiError
+                        && reason.status !== 409 && !reason.code.startsWith('IDEMPOTENCY_'));
                     return;
                 }
                 // Resolve a conflict or ambiguous timeout by reading the
@@ -2384,6 +2403,11 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
         <p>{draftOutbox.state === 'review'
           ? 'Có xung đột hoặc phản hồi chưa khớp. Không tự ghi đè và không tạo đơn mới.'
           : 'Hàng đợi giữ nguyên thao tác và mã chống trùng; kết nối trở lại sẽ thử lại an toàn.'}</p>
+        {draftOutbox.state === 'review' && draftOutbox.kind === 'create'
+          && draftOutbox.reviewReason === 'rejected' ?
+          <button type="button" disabled={busy !== null} onClick={() => void discardRejectedCreateIntent()}>
+            Sửa giỏ và bỏ thao tác bị từ chối
+          </button> : null}
         {draftOutbox.state === 'review' && draftOutbox.orderId ? <>
           <button type="button" disabled={busy !== null} onClick={() => void resolveDraftReview(false)}>Giữ dữ liệu Công Ty</button>
           <button type="button" disabled={busy !== null} onClick={() => void resolveDraftReview(true)}>Giữ giỏ trên máy</button>
