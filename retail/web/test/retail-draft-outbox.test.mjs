@@ -22,8 +22,9 @@ const newIntent = (kind = 'create', fingerprint = 'cart:A:2') => {
     version: 1, kind, orderId, expectedDraftRevision,
     idempotencyKey: 'retail-create_0123.AbC-XYZ', fingerprint,
     payloadJson: JSON.stringify({
-      sourceType: 'MANUAL', deliveryMode: 'PICKUP', collectionPolicy: 'COLLECT_ON_DELIVERY',
-      warehouseId: 'warehouse', customerMode: 'WALK_IN',
+      sourceType: 'MANUAL', deliveryMode: 'PICKUP', currency: 'VND',
+      collectionPolicy: 'COLLECT_ON_DELIVERY', documentDiscountMode: 'NONE',
+      documentDiscountValue: '0', warehouseId: 'warehouse', customerMode: 'WALK_IN',
       ...(expectedDraftRevision ? { expectedRevision: expectedDraftRevision } : {}),
       lines: [{ variantId: 'sku-A', quantity: '2', taxMode: 'EXCLUSIVE', taxRate: '0' }],
     }),
@@ -88,6 +89,9 @@ test('hàng đợi chỉ nhận yêu cầu lưu bản nháp có khóa và payloa
   assert.equal(validRetailDraftIntent({ ...newIntent(), idempotencyKey: 'unsafe:key' }), false);
   assert.equal(validRetailDraftIntent({ ...newIntent(), payloadJson: '{"sourceType":"MANUAL","lines":[]}' }), false);
   assert.equal(validRetailDraftIntent({ ...newIntent('update'), expectedDraftRevision: '5' }), false);
+  assert.equal(validRetailDraftIntent({ ...newIntent(), payloadJson: newIntent().payloadJson.replace('warehouse', 'other-warehouse') }), false);
+  assert.equal(validRetailDraftIntent({ ...newIntent(), payloadJson: newIntent().payloadJson.replace('"EXCLUSIVE"', '"INCLUSIVE"') }), false);
+  assert.equal(validRetailDraftIntent({ ...newIntent(), payloadJson: newIntent().payloadJson.replace('"NONE"', '"PERCENT"') }), false);
   assert.equal(validRetailDraftIntent({ ...newIntent(), snapshot: { ...localSnapshot(), cart: [] } }), false);
   assert.equal(retailDraftRetryDelay(1), 2000);
   assert.equal(retailDraftRetryDelay(4), 16000);
