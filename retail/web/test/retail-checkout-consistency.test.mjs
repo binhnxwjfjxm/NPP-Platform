@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { activeDraftRevision, checkoutLinesMatch, draftMatchesRetailContext, projectedRetailDraftTotal, sameSavedDraft } from '../lib/retail-order-consistency.mjs';
+import { activeDraftRevision, checkoutLinesMatch, draftMatchesRetailContext, draftMatchesQueuedIntent, projectedRetailDraftTotal, sameSavedDraft } from '../lib/retail-order-consistency.mjs';
 
 const a = { variantId: 'a', quantity: '1.000000', taxMode: 'EXCLUSIVE', taxRate: '0.000000', priceSource: 'PRICE_ENGINE', unitPrice: '10000.000000' };
 const b = { variantId: 'b', quantity: '2.000000', taxMode: 'EXCLUSIVE', taxRate: '0', priceSource: 'PRICE_ENGINE', unitPrice: '3000' };
@@ -181,4 +181,32 @@ test('Retail autosave verifies version revision and reads canonical state before
   assert.match(autosave, /draftSyncRecoveryAttempts\.current/);
   assert.match(workspace, /window\.confirm\('Đơn nháp đã được sửa ở nơi khác/);
   assert.match(workspace, /resetDraftSyncSession\(\)/);
+});
+
+test('ACK của hàng đợi xác minh đủ SKU, giá từng dòng và chiết khấu thay vì chỉ so số lượng', () => {
+  const savedLines = [a, b, c];
+  const saved = {
+    status: 'draft', warehouseId: 'warehouse', customerMode: 'WALK_IN',
+    customerId: '', collectionPolicy: 'COLLECT_ON_DELIVERY', note: 'ghi chú',
+    documentDiscountMode: 'PERCENT', documentDiscountValue: '5',
+    documentDiscountReason: 'ưu đãi',
+  };
+  const snapshot = {
+    warehouseId: 'warehouse', customerMode: 'WALK_IN', customerId: '',
+    policy: 'COLLECT_ON_DELIVERY', note: 'ghi chú', documentDiscountMode: 'PERCENT',
+    documentDiscountValue: '5', documentDiscountReason: 'ưu đãi',
+    cart, manualPrices: { c: '0' },
+  };
+  const expected = { lines: [
+    { variantId: 'a', expectedSystemUnitPriceMinor: '10000' },
+    { variantId: 'b', expectedSystemUnitPriceMinor: '3000' },
+    { variantId: 'c', manualUnitPriceMinor: '0' },
+  ] };
+  assert.equal(draftMatchesQueuedIntent(saved, snapshot, expected, savedLines), true);
+  assert.equal(draftMatchesQueuedIntent(saved, snapshot, expected, [a, b]), false);
+  assert.equal(draftMatchesQueuedIntent(saved, snapshot, expected, [a, b, { ...c, unitPrice: '1' }]), false);
+  assert.equal(draftMatchesQueuedIntent(saved, snapshot, expected, [a, { ...b, unitPrice: '5000' }, c]), false);
+  assert.equal(draftMatchesQueuedIntent({ ...saved, note: 'khác' }, snapshot, expected, savedLines), false);
+  assert.equal(draftMatchesQueuedIntent({ ...saved, documentDiscountReason: 'khác' }, snapshot, expected, savedLines), false);
+  assert.equal(draftMatchesQueuedIntent({ ...saved, collectionPolicy: 'DEFERRED' }, snapshot, expected, savedLines), false);
 });
