@@ -130,6 +130,15 @@ function presentationOrderNumber(value: unknown) {
   const number = String(value ?? '').trim();
   return number || 'Đơn đang lập';
 }
+// A successful write must not wait for additional product-label API calls.
+// Those labels are enriched when the order is read, not in the write ACK.
+function retailWriteResponse(data: unknown) {
+  const normalized = normalizeOrderAmounts(data);
+  if (!normalized || typeof normalized !== 'object' || Array.isArray(normalized)) return normalized;
+  const order = normalized as OrderWithVersions;
+  return { ...order, number: presentationOrderNumber(order.number) };
+}
+
 async function enrichRetailProductNames(data: unknown, id: string) {
   const normalized = normalizeOrderAmounts(data);
   if (!normalized || typeof normalized !== 'object' || Array.isArray(normalized)) return normalized;
@@ -186,7 +195,7 @@ export async function GET(request: NextRequest, { params }: { params: { segments
     if (path.length === 1 && path[0] === 'products') { const result = await companyRequest<unknown>({ path: `/api/retail/products${query(request, ['search', 'categoryId', 'limit', 'offset'])}`, requestId: id }); return json(result.data, result.requestId); }
     if (path.length === 1 && path[0] === 'print-templates') { const result = await companyRequest<unknown>({ path: '/api/document-print-templates', requestId: id }); return json(result.data, result.requestId); }
     if (path.length === 1 && path[0] === 'orders') { const suffix = query(request, ['limit', 'offset', 'status', 'search']); const scoped = suffix ? `${suffix}&deliveryMode=PICKUP` : '?deliveryMode=PICKUP'; const result = await companyRequest<unknown>({ path: `/api/sales-orders${scoped}`, requestId: id }); return json(result.data, result.requestId); }
-    if (path.length === 2 && path[0] === 'orders') { const result = await companyRequest<unknown>({ path: `/api/sales-orders/${salesOrderId(path[1])}`, requestId: id }); return json(await enrichRetailProductNames(result.data, result.requestId), result.requestId); }
+    if (path.length === 2 && path[0] === 'orders') { const result = await companyRequest<unknown>({ path: `/api/sales-orders/${salesOrderId(path[1])}`, requestId: id }); return json(request.nextUrl.searchParams.get('verify') === '1' ? retailWriteResponse(result.data) : await enrichRetailProductNames(result.data, result.requestId), result.requestId); }
     if (path.length === 3 && path[0] === 'orders' && path[2] === 'availability') { const result = await companyRequest<unknown>({ path: `/api/retail/sales-orders/${salesOrderId(path[1])}/availability`, requestId: id }); return json(result.data, result.requestId); }
     throw new CompanyGatewayError('NOT_FOUND', 'Không tìm thấy chức năng yêu cầu', 404, false);
   } catch (error) { return errorResponse(error, id); }
@@ -198,7 +207,7 @@ export async function POST(request: NextRequest, { params }: { params: { segment
     const payload = await body(request); const key = request.headers.get('idempotency-key');
     if (path.length === 1 && path[0] === 'orders') {
       const result = await companyRequest<unknown>({ path: '/api/sales-orders', method: 'POST', body: payload, idempotencyKey: key, requestId: id });
-      return json(await enrichRetailProductNames(result.data, result.requestId), result.requestId, 201);
+      return json(retailWriteResponse(result.data), result.requestId, 201);
     }
     if (path.length === 1 && path[0] === 'prices') { const result = await companyRequest<unknown>({ path: '/api/retail/prices', method: 'POST', body: payload, requestId: id }); return json(result.data, result.requestId); }
     if (path.length === 1 && path[0] === 'price') { const result = await companyRequest<unknown>({ path: '/api/retail/price', method: 'POST', body: payload, requestId: id }); return json(result.data, result.requestId); }
@@ -217,9 +226,9 @@ export async function POST(request: NextRequest, { params }: { params: { segment
       const result = await companyRequest<unknown>({ path: target.path, method: 'POST', body: target.body, idempotencyKey: key, requestId: id });
       if (action === 'complete') {
         const reloaded = await companyRequest<unknown>({ path: `/api/sales-orders/${orderId}`, requestId: result.requestId });
-        return json(await enrichRetailProductNames(reloaded.data, reloaded.requestId), reloaded.requestId);
+        return json(retailWriteResponse(reloaded.data), reloaded.requestId);
       }
-      return json(await enrichRetailProductNames(result.data, result.requestId), result.requestId);
+      return json(retailWriteResponse(result.data), result.requestId);
     }
     throw new CompanyGatewayError('NOT_FOUND', 'Không tìm thấy thao tác yêu cầu', 404, false);
   } catch (error) { return errorResponse(error, id); }
@@ -230,7 +239,7 @@ export async function PUT(request: NextRequest, { params }: { params: { segments
   try {
     if (path.length !== 3 || path[0] !== 'orders' || !['draft', 'pickup-edit'].includes(path[2])) throw new CompanyGatewayError('NOT_FOUND', 'Không tìm thấy chức năng yêu cầu', 404, false);
     const result = await companyRequest<unknown>({ path: `/api/sales-orders/${salesOrderId(path[1])}/${path[2]}`, method: 'PUT', body: await body(request), idempotencyKey: request.headers.get('idempotency-key'), requestId: id });
-    return json(await enrichRetailProductNames(result.data, result.requestId), result.requestId);
+    return json(retailWriteResponse(result.data), result.requestId);
   } catch (error) { return errorResponse(error, id); }
 }
 

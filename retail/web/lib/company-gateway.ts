@@ -44,6 +44,26 @@ function companyBaseUrl() {
   return url.toString().replace(/\/$/, '');
 }
 
+// Only record fixed operation classes: never log customer IDs, search terms,
+// request/response bodies, session tokens or raw upstream exceptions.
+function companyOperation(path: string) {
+  const pathname = path.split('?')[0];
+  if (pathname === '/api/retail/prices') return 'retail_prices';
+  if (pathname.includes('/availability')) return 'retail_availability';
+  if (pathname === '/api/sales-orders') return 'sales_orders';
+  if (/^\/api\/sales-orders\/[^/]+\/draft$/.test(pathname)) return 'sales_order_draft';
+  if (pathname.startsWith('/api/sales-orders/')) return 'sales_order_action';
+  if (pathname === '/api/retail/product-labels') return 'retail_product_labels';
+  return 'company_read_other';
+}
+
+function logCompanyFailure(options: { path: string; method?: string }, id: string, startedAt: number, code: string, status: number) {
+  console.error('retail_company_request_failed', JSON.stringify({
+    requestId: id, operation: companyOperation(options.path), method: options.method ?? 'GET',
+    code, status, durationMs: Date.now() - startedAt,
+  }));
+}
+
 function workforceToken() {
   const token = cookies().get(RETAIL_SESSION_COOKIE)?.value?.trim();
   if (token?.startsWith('nppusr.')) return token;
@@ -85,6 +105,7 @@ export async function companyRequest<T>(options: {
   requestId?: string | null;
 }) {
   const controller = new AbortController();
+  const startedAt = Date.now();
   const timeout = setTimeout(() => controller.abort(), 15_000);
   const id = requestId(options.requestId);
   try {
@@ -102,8 +123,12 @@ export async function companyRequest<T>(options: {
       ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
     });
     const payload = await response.json().catch(() => null) as CompanyEnvelope<T> | null;
-    if (!payload) throw new CompanyGatewayError('COMPANY_RESPONSE_INVALID', 'Phản hồi từ Hệ thống Công Ty không hợp lệ', 502, false);
+    if (!payload) {
+      logCompanyFailure(options, id, startedAt, 'COMPANY_RESPONSE_INVALID', 502);
+      throw new CompanyGatewayError('COMPANY_RESPONSE_INVALID', 'Phản hồi từ Hệ thống Công Ty không hợp lệ', 502, false);
+    }
     if (!response.ok) {
+      if (response.status >= 500) logCompanyFailure(options, id, startedAt, payload.error?.code ?? 'COMPANY_HTTP_FAILURE', response.status);
       throw new CompanyGatewayError(
         payload.error?.code ?? 'COMPANY_REQUEST_FAILED',
         payload.error?.message ?? 'Yêu cầu tới Hệ thống Công Ty không thành công',
@@ -113,12 +138,19 @@ export async function companyRequest<T>(options: {
       );
     }
     if (!Object.prototype.hasOwnProperty.call(payload, 'data')) {
+      logCompanyFailure(options, id, startedAt, 'COMPANY_RESPONSE_INVALID', 502);
       throw new CompanyGatewayError('COMPANY_RESPONSE_INVALID', 'Phản hồi từ Hệ thống Công Ty không hợp lệ', 502, false);
     }
     return { data: payload.data as T, requestId: payload.requestId ?? id };
   } catch (error) {
     if (error instanceof CompanyGatewayError) throw error;
-    throw new CompanyGatewayError('COMPANY_UNAVAILABLE', 'Hệ thống Công Ty tạm thời chưa sẵn sàng', 503, true);
+    const timedOut = controller.signal.aborted;
+    const code = timedOut ? 'COMPANY_TIMEOUT' : 'COMPANY_UNAVAILABLE';
+    const status = timedOut ? 504 : 503;
+    logCompanyFailure(options, id, startedAt, code, status);
+    throw new CompanyGatewayError(code, timedOut
+      ? 'Công Ty phản hồi quá lâu; chưa xác minh được kết quả. Hãy kiểm tra lại trước khi thử lưu.'
+      : 'Hệ thống Công Ty tạm thời chưa sẵn sàng', status, true);
   } finally {
     clearTimeout(timeout);
   }

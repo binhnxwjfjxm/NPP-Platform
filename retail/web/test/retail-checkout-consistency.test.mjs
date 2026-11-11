@@ -82,7 +82,7 @@ test('Retail has bounded errors, explicit retries, and canonical print before op
   assert.match(workspace, /Thử lại tồn kho/);
   assert.match(workspace, /Thử lại giá bán/);
   assert.match(workspace, /Thử lưu lại/);
-  assert.match(workspace, /const latest = await api<Order>\(`\/api\/retail\/orders\/\$\{order.id\}`\);/);
+  assert.match(workspace, /const latest = await api<Order>\(`\/api\/retail\/orders\/\$\{order.id\}\?verify=1`\);/);
   assert.match(workspace, /await prepareOrderPrint\(latest\)/);
 });
 
