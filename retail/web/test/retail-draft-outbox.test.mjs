@@ -160,3 +160,13 @@ test('không tự chốt, ghi đè revision hoặc xoá key trước khi ACK Cô
   assert.match(outbox, /current.idempotencyKey !== next.idempotencyKey \|\| current.payloadJson !== next.payloadJson/);
   assert.doesNotMatch(outbox, /localStorage|sessionStorage|Authorization|DATABASE_URL/);
 });
+
+test('không hủy/chốt/xuất kho khi hàng đợi ghi nháp chưa xác minh', async () => {
+  const workspace = await readFile(new URL('../app/retail-workspace.tsx', import.meta.url), 'utf8');
+  const dialog = workspace.slice(workspace.indexOf('function openCancelDialog()'), workspace.indexOf('function closeCancelDialog()'));
+  const cancel = workspace.slice(workspace.indexOf('async function cancelOrder()'), workspace.indexOf('async function settle('));
+  const lifecycle = workspace.slice(workspace.indexOf("async function action(kind: 'confirm'"), workspace.indexOf('function openCancelDialog()'));
+  assert.match(dialog, /if \(draftOutboxRef\.current \|\| deviceDraftHold\)/);
+  assert.match(cancel, /if \(draftOutboxRef\.current \|\| deviceDraftHold \|\| draftSyncInFlight\.current !== null\)/);
+  assert.match(lifecycle, /if \(draftOutboxRef\.current \|\| deviceDraftHold\)/);
+});
