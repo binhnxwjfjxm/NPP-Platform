@@ -46,19 +46,35 @@ export function validRetailDraftIntent(value: unknown): value is RetailDraftInte
   try {
     const payload = JSON.parse(row.payloadJson) as Record<string, unknown>;
     if (!payload || typeof payload !== 'object' || payload.sourceType !== 'MANUAL'
-      || payload.deliveryMode !== 'PICKUP' || !Array.isArray(payload.lines)
-      || payload.lines.length !== snapshot.cart.length) return false;
+      || payload.deliveryMode !== 'PICKUP' || payload.currency !== 'VND'
+      || payload.warehouseId !== snapshot.warehouseId
+      || payload.customerMode !== snapshot.customerMode
+      || (snapshot.customerMode === 'EXISTING' && payload.customerId !== snapshot.customerId)
+      || payload.collectionPolicy !== snapshot.policy
+      || String(payload.note ?? '').trim() !== snapshot.note.trim()
+      || payload.documentDiscountMode !== snapshot.documentDiscountMode
+      || String(payload.documentDiscountValue ?? '0') !==
+        (snapshot.documentDiscountMode === 'NONE' ? '0' : snapshot.documentDiscountValue)
+      || (snapshot.documentDiscountMode !== 'NONE' &&
+        String(payload.documentDiscountReason ?? '').trim() !== snapshot.documentDiscountReason.trim())
+      || !Array.isArray(payload.lines) || payload.lines.length !== snapshot.cart.length) return false;
     if (row.kind === 'update' && String(payload.expectedRevision) !== row.expectedDraftRevision) return false;
     if (row.kind === 'create' && Object.hasOwn(payload, 'expectedRevision')) return false;
-    const quantities = new Map(snapshot.cart.map((line) => [line.id, line.quantity]));
+    const byVariant = new Map(snapshot.cart.map((line) => [line.id, line]));
     for (const line of payload.lines) {
       if (!line || typeof line !== 'object') return false;
-      const item = line as { variantId?: string; quantity?: string };
-      if (!item.variantId || !quantities.has(item.variantId)
-        || String(item.quantity) !== quantities.get(item.variantId)) return false;
-      quantities.delete(item.variantId);
+      const item = line as {
+        variantId?: string; quantity?: string; taxMode?: string; taxRate?: string;
+        manualUnitPriceMinor?: string;
+      };
+      const expected = byVariant.get(String(item.variantId ?? ''));
+      if (!expected || String(item.quantity) !== expected.quantity
+        || item.taxMode !== expected.taxMode || String(item.taxRate) !== expected.taxRate
+        || (item.manualUnitPriceMinor !== undefined &&
+          String(item.manualUnitPriceMinor) !== snapshot.manualPrices[expected.id])) return false;
+      byVariant.delete(expected.id);
     }
-    return quantities.size === 0;
+    return byVariant.size === 0;
   } catch {
     return false;
   }
