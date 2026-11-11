@@ -14,6 +14,7 @@ test('lưu nháp, chốt và hoàn tất trả xác nhận ghi ngay, không ch�
   // Tải chi tiết vẫn bổ sung tên đầy đủ nhưng không được chặn phản hồi ghi.
   const reads = route.slice(route.indexOf('export async function GET'), route.indexOf('export async function POST'));
   assert.match(reads, /await enrichRetailProductNames\(result\.data, result\.requestId\)/);
+  assert.match(reads, /request\.nextUrl\.searchParams\.get\('verify'\) === '1' \? retailWriteResponse\(result\.data\)/);
   assert.match(route, /function retailWriteResponse\(data: unknown\)/);
   assert.match(route, /normalizeOrderAmounts\(data\)/);
 });
@@ -40,8 +41,8 @@ test('log sự cố chỉ ghi mã thao tác cố định, không xuất token v�
 
 test('lỗi lưu không báo thành công và tiếp tục xác minh trước khi thử lại', () => {
   assert.match(workspace, /if \(!isSavedCartCurrent\(next\)\)/);
-  assert.match(workspace, /await api<Order>\(`\/api\/retail\/orders\/\$\{currentOrder\.id\}`\)/);
-  assert.match(workspace, /const latest = await api<Order>\(`\/api\/retail\/orders\/\$\{order\.id\}`\)/);
+  assert.match(workspace, /await api<Order>\(`\/api\/retail\/orders\/\$\{currentOrder\.id\}\?verify=1`\)/);
+  assert.match(workspace, /const latest = await api<Order>\(`\/api\/retail\/orders\/\$\{order\.id\}\?verify=1`\)/);
   assert.match(workspace, /Idempotency-Key': keyFor\('draft-sync'/);
   assert.match(workspace, /Idempotency-Key': keyFor\('create-draft'/);
 });
