@@ -1,6 +1,7 @@
 'use client';
 import { createIdempotencyKey } from '@npp/contracts';
 import { clearRetailLocalDraft, readRetailLocalDraft, writeRetailLocalDraft, validRetailDraftIdentity, type RetailLocalDraft } from '../lib/retail-local-draft';
+import { enqueueRetailDraftIntent, readRetailDraftIntent, updateRetailDraftIntent, validRetailDraftIntent, type RetailDraftIntent } from '../lib/retail-draft-outbox';
 import { activeDraftRevision, checkoutLinesMatch, draftMatchesRetailContext, projectedRetailDraftTotal, sameSavedDraft } from '../lib/retail-order-consistency.mjs';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { PrinterSettingsPanel } from './printer-settings-panel';
@@ -412,6 +413,9 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
     const deviceDraftWriteQueue = useRef<Promise<void>>(Promise.resolve());
     const deviceDraftSerial = useRef(0);
     const deviceDraftWritable = useRef(true);
+    const [draftOutbox, setDraftOutbox] = useState<RetailDraftIntent | null>(null);
+    const draftOutboxRef = useRef<RetailDraftIntent | null>(null);
+    const draftOutboxReplaying = useRef(false);
     const [quantityInputs, setQuantityInputs] = useState<Record<string, string>>({});
     const [available, setAvailable] = useState<Availability[]>([]);
     const [availabilityLoading, setAvailabilityLoading] = useState(false);
@@ -518,10 +522,14 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
                 const payload = await response.json() as { data?: { userId?: string } };
                 const userId = String(payload.data?.userId ?? '');
                 if (!validRetailDraftIdentity(userId)) throw new Error('Tài khoản không hợp lệ.');
-                const saved = await readRetailLocalDraft(userId);
+                const [saved, pending] = await Promise.all([
+                    readRetailLocalDraft(userId), readRetailDraftIntent(userId),
+                ]);
                 if (controller.signal.aborted) return;
                 setDeviceDraftUserId(userId);
-                if (saved) setDeviceDraftOffer(saved);
+                draftOutboxRef.current = pending;
+                setDraftOutbox(pending);
+                if (saved || pending?.snapshot) setDeviceDraftOffer(saved ?? pending!.snapshot);
                 else setDeviceDraftReady(true);
                 setDeviceDraftStatus('none');
             } catch {
@@ -531,11 +539,8 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
         void load();
         return () => controller.abort();
     }, []);
-    // Serialize IndexedDB writes. An old async transaction must not overwrite
-    // a more recent cart, and the label "Đã lưu trên máy" requires tx.complete.
-    useEffect(() => {
-        if (!deviceDraftReady || !deviceDraftUserId || !deviceDraftWritable.current) return;
-        const snapshot: RetailLocalDraft | null = cart.length && !editPickup && (!order || order.status === 'draft')
+    function currentDeviceDraftSnapshot(): RetailLocalDraft | null {
+        return cart.length && !editPickup && (!order || order.status === 'draft')
             ? {
                 version: 1, updatedAt: Date.now(), orderId: order?.id ?? null,
                 draftRevision: activeDraftRevision(order), cart: cart.map((line) => ({
@@ -549,6 +554,12 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
                 manualPrices, documentDiscountMode, documentDiscountValue, documentDiscountReason,
             }
             : null;
+    }
+    // Serialize IndexedDB writes. An old async transaction must not overwrite
+    // a more recent cart, and the label "Đã lưu trên máy" requires tx.complete.
+    useEffect(() => {
+        if (!deviceDraftReady || !deviceDraftUserId || !deviceDraftWritable.current) return;
+        const snapshot = currentDeviceDraftSnapshot();
         const serial = ++deviceDraftSerial.current;
         setDeviceDraftStatus(snapshot ? 'saving' : 'none');
         deviceDraftWriteQueue.current = deviceDraftWriteQueue.current.catch(() => undefined)
