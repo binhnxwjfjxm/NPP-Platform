@@ -782,7 +782,24 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
         try {
             const latest = await api<Order>(`/api/retail/orders/${intent.orderId}`);
             if (latest.status !== 'draft' || !activeDraftRevision(latest)) {
-                setError('Đơn Công Ty không còn là nháp, không thể ghi đè. Giỏ trên máy vẫn được giữ.');
+                if (keepLocal) {
+                    setError('Đơn Công Ty đã được chốt hoặc hủy. Không thể ghi đè bằng giỏ trên máy.');
+                    return;
+                }
+                if (!window.confirm('Đơn Công Ty không còn là nháp. Giữ trạng thái Công Ty và bỏ các thay đổi chưa đồng bộ trên máy?')) return;
+                await updateRetailDraftIntent(deviceDraftUserId, intent.idempotencyKey, 'discard');
+                forgetAbandonedDraftKey(intent);
+                draftOutboxRef.current = null;
+                setDraftOutbox(null);
+                setDeviceDraftHold(null);
+                setOrder(latest);
+                setCart([]);
+                setQuantityInputs({});
+                setManualPrices({});
+                setPrices({});
+                setPriceFailures({});
+                setDraftSaveError(null);
+                setNotice('Đã giữ trạng thái Công Ty, không gửi lại thao tác nháp cũ.');
                 return;
             }
             if (keepLocal && !window.confirm(
