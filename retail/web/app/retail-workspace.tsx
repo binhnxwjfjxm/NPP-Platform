@@ -1023,7 +1023,7 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
         });
     }, [cart, customerId, customerMode, open, priceFailures, prices, products, selected, priceRetryEpoch]);
     useEffect(() => {
-        if (deviceDraftHold || !cart.length || !warehouseId || editPickup || draftSaveError || (order && order.status !== 'draft'))
+        if (deviceDraftOffer || deviceDraftHold || !cart.length || !warehouseId || editPickup || draftSaveError || (order && order.status !== 'draft'))
             return;
         const pricingReady = cart.every((line) => {
             const manualPrice = canPriceOverride ? manualPriceFor(line.id) : '';
@@ -1125,7 +1125,7 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
             });
         }, 360);
         return () => window.clearTimeout(timer);
-    }, [cart, canPriceOverride, customerId, customerMode, documentDiscountMode, documentDiscountReason, documentDiscountValue, draftSyncEpoch, draftSaveError, deviceDraftHold, editPickup, keyFor, manualPrices, note, order, policy, prices, warehouseId, currentDraftFingerprint]);
+    }, [cart, canPriceOverride, customerId, customerMode, documentDiscountMode, documentDiscountReason, documentDiscountValue, draftSyncEpoch, draftSaveError, deviceDraftOffer, deviceDraftHold, editPickup, keyFor, manualPrices, note, order, policy, prices, warehouseId, currentDraftFingerprint]);
     useEffect(() => {
         if (!order?.id || order.status !== 'confirmed' || editPickup)
             return;
@@ -2032,11 +2032,12 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
         setBusy('logout');
         setError(null);
         try {
+            await unregisterRetailNotificationForLogout().catch(() => undefined);
+            const response = await fetch('/api/auth/logout', { method: 'POST', cache: 'no-store', credentials: 'same-origin' });
+            if (!response.ok) throw new Error('Chưa thể đăng xuất khỏi Công Ty.');
             deviceDraftWritable.current = false;
             await deviceDraftWriteQueue.current.catch(() => undefined);
             if (deviceDraftUserId) await clearRetailLocalDraft(deviceDraftUserId).catch(() => undefined);
-            await unregisterRetailNotificationForLogout().catch(() => undefined);
-            await fetch('/api/auth/logout', { method: 'POST', cache: 'no-store', credentials: 'same-origin' });
             window.location.assign('/login');
         }
         catch (reason) {
