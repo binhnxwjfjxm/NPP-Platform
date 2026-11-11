@@ -615,6 +615,14 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
     async function reconcileDeviceDraft() {
         const held = deviceDraftHold;
         if (!held || busy !== null) return;
+        if (draftOutboxRef.current) {
+            if (draftOutboxRef.current.state === 'review') {
+                setDraftSaveError('Cần xử lý xung đột trước khi đồng bộ tiếp.');
+                return;
+            }
+            await retryQueuedDraft(true, true);
+            return;
+        }
         if (!held.orderId) {
             if (!window.confirm('Giỏ khôi phục có thể đã tạo đơn ở Công Ty trước khi mất kết nối. Hãy kiểm tra danh sách Đơn hàng để tránh trùng. Bạn xác nhận muốn tiếp tục tạo một đơn mới?')) return;
             setDeviceDraftHold(null);
@@ -977,6 +985,10 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
     }
     async function retryDraftSave() {
         if (busy !== null || draftSyncInFlight.current !== null) return;
+        if (draftOutboxRef.current) {
+            await retryQueuedDraft(Boolean(deviceDraftHold), true);
+            return;
+        }
         if (!order) {
             // A create timeout has no known order ID: retry the original
             // idempotency key instead of creating a second draft.
@@ -1195,8 +1207,13 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
         });
     }, [cart, customerId, customerMode, open, priceFailures, prices, products, selected, priceRetryEpoch]);
     useEffect(() => {
-        if (deviceDraftOffer || deviceDraftHold || !cart.length || !warehouseId || editPickup || draftSaveError || (order && order.status !== 'draft'))
+        if (deviceDraftStatus === 'checking' || deviceDraftOffer || deviceDraftHold || !cart.length || !warehouseId || editPickup || draftSaveError || (order && order.status !== 'draft'))
             return;
+        if (draftOutboxRef.current) {
+            draftSyncPending.current = true;
+            void retryQueuedDraft(false, false);
+            return;
+        }
         const pricingReady = cart.every((line) => {
             const manualPrice = canPriceOverride ? manualPriceFor(line.id) : '';
             if (/^\d+$/.test(manualPrice)) return true;
@@ -1231,11 +1248,44 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
                 setDraftSaveError('Không xác định được phiên bản hàng hóa của đơn. Giỏ hàng chưa được lưu; hãy bấm Thử lưu lại.');
                 return;
             }
-            const request = currentOrder
-                ? api<Order>(`/api/retail/orders/${currentOrder.id}/draft`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': keyFor('draft-sync', `${fingerprint}:${draftRevision}`) }, body: JSON.stringify(orderPayload(draftRevision ?? undefined)) })
-                : api<Order>('/api/retail/orders', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': keyFor('create-draft', fingerprint) }, body: JSON.stringify(orderPayload(undefined)) });
-            void request.then((next) => {
+            const idempotencyKey = currentOrder
+                ? keyFor('draft-sync', `${fingerprint}:${draftRevision}`)
+                : keyFor('create-draft', fingerprint);
+            const payloadJson = currentOrder
+                ? JSON.stringify(orderPayload(draftRevision ?? undefined))
+                : JSON.stringify(orderPayload(undefined));
+            const request = (async () => {
+                if (deviceDraftUserId && deviceDraftReady) {
+                    const snapshot = currentDeviceDraftSnapshot();
+                    if (!snapshot) throw new Error('Không thể ghi giỏ vào hàng đợi đồng bộ.');
+                    const intent: RetailDraftIntent = {
+                        version: 1, kind: currentOrder ? 'update' : 'create',
+                        orderId: currentOrder?.id ?? null,
+                        expectedDraftRevision: draftRevision, fingerprint, idempotencyKey,
+                        payloadJson, snapshot, createdAt: Date.now(), attempts: 0,
+                        retryAfter: 0, state: 'pending',
+                    };
+                    if (!validRetailDraftIntent(intent))
+                        throw new Error('Thông tin thao tác lưu không hợp lệ; chưa gửi Công Ty.');
+                    const stored = await enqueueRetailDraftIntent(deviceDraftUserId, intent);
+                    draftOutboxRef.current = stored;
+                    setDraftOutbox(stored);
+                    if (stored.state !== 'pending') throw new Error('Thao tác cũ cần đối chiếu trước khi gửi.');
+                }
+                if (!window.navigator.onLine) throw new Error('Thiết bị mất mạng, đang giữ đơn trong hàng đợi đồng bộ.');
+                return currentOrder
+                    ? api<Order>(`/api/retail/orders/${currentOrder.id}/draft`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey }, body: payloadJson })
+                    : api<Order>('/api/retail/orders', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey }, body: payloadJson });
+            })();
+            void request.then(async (next) => {
                 if (entrySessionRef.current !== entrySession) return;
+                const queued = draftOutboxRef.current;
+                if (queued?.idempotencyKey === idempotencyKey) {
+                    if (!(await acknowledgeDraftIntent(queued, next))) {
+                        await deferDraftIntent(queued, true, 'Danh sách sản phẩm từ Công Ty chưa khớp với thao tác gửi. Cần đối chiếu.');
+                    }
+                    return;
+                }
                 setOrder(next);
                 if (!isSavedCartCurrent(next)) {
                     // Never advertise that a partial server response is saved.
@@ -1248,6 +1298,16 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
                 setDraftSaveError(null);
             }).catch(async (reason: Error) => {
                 if (entrySessionRef.current !== entrySession) return;
+                const queued = draftOutboxRef.current;
+                if (queued?.idempotencyKey === idempotencyKey) {
+                    const definitive = reason instanceof RetailApiError
+                        && reason.status >= 400 && reason.status < 500
+                        && reason.code !== 'IDEMPOTENCY_IN_PROGRESS';
+                    await deferDraftIntent(queued, definitive, definitive
+                        ? 'Công Ty từ chối lưu hoặc dữ liệu đã thay đổi. Hãy đối chiếu, không tự ghi đè.'
+                        : 'Đang chờ đồng bộ Công Ty. Giỏ và khóa thao tác được giữ trên máy; hệ thống sẽ thử lại.');
+                    return;
+                }
                 // Resolve a conflict or ambiguous timeout by reading the
                 // canonical draft. Never blindly replay a stale revision.
                 if (currentOrder && (isRevisionConflict(reason)
@@ -1290,14 +1350,14 @@ export default function RetailWorkspace({ activeTab, onTabChange }: RetailWorksp
                 if (entrySessionRef.current !== entrySession) return;
                 draftSyncInFlight.current = null;
                 setBusy((value) => value === 'draft-sync' ? null : value);
-                if (draftSyncPending.current) {
+                if (draftSyncPending.current && !draftOutboxRef.current) {
                     draftSyncPending.current = false;
                     setDraftSyncEpoch((value) => value + 1);
                 }
             });
         }, 360);
         return () => window.clearTimeout(timer);
-    }, [cart, canPriceOverride, customerId, customerMode, documentDiscountMode, documentDiscountReason, documentDiscountValue, draftSyncEpoch, draftSaveError, deviceDraftOffer, deviceDraftHold, editPickup, keyFor, manualPrices, note, order, policy, prices, warehouseId, currentDraftFingerprint]);
+    }, [cart, canPriceOverride, customerId, customerMode, documentDiscountMode, documentDiscountReason, documentDiscountValue, draftSyncEpoch, draftSaveError, deviceDraftStatus, deviceDraftReady, deviceDraftUserId, deviceDraftOffer, deviceDraftHold, draftOutbox, editPickup, keyFor, manualPrices, note, order, policy, prices, warehouseId, currentDraftFingerprint]);
     useEffect(() => {
         if (!order?.id || order.status !== 'confirmed' || editPickup)
             return;
