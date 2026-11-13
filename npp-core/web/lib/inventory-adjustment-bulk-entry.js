@@ -12,13 +12,27 @@ function normalizeHeader(value) {
     .replace(/\s+/g, ' ');
 }
 
+// Chỉ ánh xạ các tên cột xác định rõ nghĩa; không suy đoán theo nội dung số liệu.
+const HEADER_FIELDS = new Map([
+  ['sku', 'sku'],
+  ['ton thuc te', 'actualQuantity'],
+  ['so luong ton thuc te', 'actualQuantity'],
+  ['ton tt', 'actualQuantity'],
+  ['vi tri', 'locationCode'],
+  ['ma vi tri', 'locationCode'],
+  ['lo', 'lotCode'],
+  ['ma lo', 'lotCode'],
+]);
+
+const HEADER_LABELS = {
+  sku: 'SKU',
+  actualQuantity: 'Tồn thực tế',
+  locationCode: 'Vị trí',
+  lotCode: 'Lô',
+};
+
 function headerField(value) {
-  const header = normalizeHeader(value);
-  if (header === 'sku') return 'sku';
-  if (header === 'ton thuc te' || header === 'so luong ton thuc te') return 'actualQuantity';
-  if (header === 'vi tri' || header === 'ma vi tri') return 'locationCode';
-  if (header === 'lo' || header === 'ma lo') return 'lotCode';
-  return null;
+  return HEADER_FIELDS.get(normalizeHeader(value)) ?? null;
 }
 
 export function parseBulkInventoryAdjustmentSheet(sheet) {
@@ -26,8 +40,17 @@ export function parseBulkInventoryAdjustmentSheet(sheet) {
     throw new Error('Tệp cần có dòng tiêu đề và ít nhất một dòng dữ liệu.');
   }
   const headers = sheet[0].map(headerField);
+  const firstColumnByField = new Map();
+  headers.forEach((field, index) => {
+    if (!field) return;
+    const firstIndex = firstColumnByField.get(field);
+    if (firstIndex !== undefined) {
+      throw new Error(`Tệp có hai cột cùng nghĩa ${HEADER_LABELS[field]} (cột ${firstIndex + 1} và ${index + 1}). Chỉ giữ một cột để tránh ghi đè dữ liệu.`);
+    }
+    firstColumnByField.set(field, index);
+  });
   if (!headers.includes('sku') || !headers.includes('actualQuantity')) {
-    throw new Error('Tệp cần có hai cột bắt buộc: SKU và Tồn thực tế.');
+    throw new Error('Tệp cần có hai cột bắt buộc: SKU và Tồn thực tế (có thể ghi Tồn TT).');
   }
   const rows = sheet
     .slice(1)
