@@ -21,7 +21,7 @@ test('Retail Lên đơn: đơn vị tính, đơn giá và thành tiền đủ l�
   const readable = css.split('/* Retail POS: enlarge the unit and line-price fields')[1];
   assert.ok(readable, 'các điều chỉnh POS phải nằm trong file CSS được import');
   assert.match(readable, /\.compact-product-card \.line-main > em\s*\{[^}]*font-size:\s*clamp\(22px, 6vw, 27px\)/);
-  assert.match(readable, /\\.compact-product-card\\.editable dl\\s*\\{[^}]*display:\\s*grid/);
+  assert.match(readable, /\.compact-product-card\.editable dl\s*\{[^}]*display:\s*grid/);
   assert.match(readable, /\.compact-product-card\.editable dl dd,[\s\S]*?font-size:\s*clamp\(22px, 5\.8vw, 26px\)/);
   assert.match(readable, /dl input\[aria-label\^="Đơn giá"\]\s*\{[^}]*min-height:\s*48px/);
   assert.match(readable, /@media \(max-width: 375px\)[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\)/);
