@@ -369,3 +369,53 @@
   .retail-issue675 .pos-sheet-actions { grid-template-columns: 1fr 1.2fr; }
   .retail-issue675 .picker-mode-row { grid-template-columns: minmax(0,1fr) auto; }
 }
+
+
+/* Retail POS: enlarge the unit and line-price fields requested by counter staff.
+   Keep the mobile price row readable without changing any price calculation. */
+.retail-issue675 .compact-product-card .line-main > em {
+  max-width: 100%;
+  padding: 5px 9px;
+  font-size: clamp(22px, 6vw, 27px);
+  line-height: 1.25;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+.retail-issue675 .compact-product-card.editable dl {
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.retail-issue675 .compact-product-card.editable dl > div,
+.retail-issue675 .compact-product-card.editable dl dd {
+  min-width: 0;
+}
+.retail-issue675 .compact-product-card.editable dl dt {
+  font-size: 14px;
+  line-height: 1.3;
+}
+.retail-issue675 .compact-product-card.editable dl dd,
+.retail-issue675 .compact-product-card.editable dl div:last-child dd {
+  font-size: clamp(22px, 5.8vw, 26px);
+  line-height: 1.3;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.retail-issue675 .compact-product-card.editable dl input[aria-label^="Đơn giá"] {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  padding: 7px 10px;
+  font-size: clamp(22px, 5.8vw, 26px);
+  line-height: 1.25;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+/* Under 376px, give long prices their own full-width row instead of clipping. */
+@media (max-width: 375px) {
+  .retail-issue675 .compact-product-card.editable dl {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
