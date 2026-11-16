@@ -371,6 +371,17 @@
 }
 
 
+/* Cart names must remain readable: the shared .line-main strong rule uses
+   nowrap/ellipsis, which hides distinguishing words on narrow phones.
+   Let names wrap to as many lines as needed in both editable and saved cards. */
+.retail-issue675 .compact-product-card .line-main > strong {
+  min-width: 0;
+  white-space: normal;
+  text-overflow: clip;
+  overflow: visible;
+  overflow-wrap: anywhere;
+}
+
 /* Retail POS: enlarge the unit and line-price fields requested by counter staff.
    Keep the mobile price row readable without changing any price calculation. */
 .retail-issue675 .compact-product-card .line-main > em {
