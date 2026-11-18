@@ -57,6 +57,7 @@ type LineDraft = {
   baseUnitPriceMinor: string;
   systemUnitPriceMinor: string;
   manualUnitPriceMinor: string;
+  resetManualPrice?: boolean;
   discountMode: SalesOrderLineDiscountMode;
   discountValue: string;
   pricingFingerprint: string;
@@ -185,6 +186,7 @@ function versionLines(version?: SalesOrderVersion | null): LineDraft[] {
     baseUnitPriceMinor: line.baseUnitPrice ?? line.unitPrice,
     systemUnitPriceMinor: line.systemUnitPrice ?? line.unitPrice,
     manualUnitPriceMinor: line.priceSource === 'MANUAL_OVERRIDE' ? line.unitPrice : '',
+    resetManualPrice: false,
     discountMode: documentDiscountActive ? 'TOTAL_AMOUNT' : line.discountMode,
     discountValue: documentDiscountActive ? '0' : line.discountValue,
     pricingFingerprint: resolutionFingerprint(line.pricingTrace ?? []),
@@ -1160,6 +1162,7 @@ export default function SalesOrderCommercialForm(props: Props) {
       unitCode: option.unit_code ?? '',
       conversionToBase: option.conversion_to_base ?? '1',
       manualUnitPriceMinor: '',
+      resetManualPrice: true,
       baseUnitPriceMinor: '0',
       systemUnitPriceMinor: '0',
       pricingFingerprint: '',
@@ -1211,6 +1214,7 @@ export default function SalesOrderCommercialForm(props: Props) {
       clientLineId: crypto.randomUUID(),
       quantity: '1',
       manualUnitPriceMinor: '',
+      resetManualPrice: false,
       baseUnitPriceMinor: '0',
       systemUnitPriceMinor: '0',
       discountMode: 'PERCENT',
@@ -1298,6 +1302,7 @@ export default function SalesOrderCommercialForm(props: Props) {
     setLines((current) => current.map((line, itemIndex) => itemIndex === index ? {
       ...line,
       manualUnitPriceMinor: '',
+      resetManualPrice: true,
     } : line));
     markDirty();
   }
@@ -1456,8 +1461,10 @@ export default function SalesOrderCommercialForm(props: Props) {
         taxRate: line.taxRate,
         discountMode: line.discountMode,
         discountValue: line.discountValue || '0',
-        ...(props.mode === 'manual-edit' && savedLineIds.has(line.clientLineId)
+        ...(props.mode !== 'create' && savedLineIds.has(line.clientLineId)
           ? { sourceLineId: line.clientLineId } : {}),
+        ...(line.resetManualPrice && savedLineIds.has(line.clientLineId)
+          ? { resetManualPrice: true } : {}),
         ...(line.pricingFingerprint || (props.mode === 'manual-edit' && savedLineIds.has(line.clientLineId)) ? {
           expectedSystemUnitPriceMinor: line.systemUnitPriceMinor,
           ...(line.pricingFingerprint ? { expectedPricingFingerprint: line.pricingFingerprint } : {}),
@@ -1878,6 +1885,7 @@ export default function SalesOrderCommercialForm(props: Props) {
                         setLines((current) => current.map((item, itemIndex) => itemIndex === index ? {
                           ...item,
                           manualUnitPriceMinor: value,
+                          resetManualPrice: value === '',
                         } : item));
                         markDirty();
                       }}

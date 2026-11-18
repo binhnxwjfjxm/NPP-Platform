@@ -146,3 +146,70 @@ test('manual edit rejects silent repricing of a saved zero and accepts only revi
     lines: [{ sourceLineId: 'old-1', variantId: 'sku-a', quantity: '2' }],
   }, 2).ok, true);
 });
+
+test('split SKU: previously saved zero is restored only on its own source line, unless explicitly reset', () => {
+  const { preserveStoredManualLinePrices } = salesOrderDeliveryExecutionInternals;
+  const order = { versions: [{ lines: [
+    { id: 'paid-row', variantId: 'sku-milk', unitPrice: '350000', priceSource: 'HISTORY_REFERENCE' },
+    { id: 'free-row', variantId: 'sku-milk', unitPrice: '0', priceSource: 'MANUAL_OVERRIDE' },
+  ] }] };
+  const payload = { lines: [
+    { sourceLineId: 'paid-row', variantId: 'sku-milk', quantity: '2' },
+    { sourceLineId: 'free-row', variantId: 'sku-milk', quantity: '3' },
+  ] };
+  const restored = preserveStoredManualLinePrices(order, payload);
+  assert.equal(restored.ok, true);
+  assert.equal(restored.payload.lines[0].manualUnitPriceMinor, undefined);
+  assert.equal(restored.payload.lines[1].manualUnitPriceMinor, '0');
+  assert.equal(payload.lines[1].manualUnitPriceMinor, undefined, 'input stays immutable');
+
+  const revised = preserveStoredManualLinePrices(order, {
+    lines: [payload.lines[0], { ...payload.lines[1], manualUnitPriceMinor: '5000' }],
+  });
+  assert.equal(revised.payload.lines[1].manualUnitPriceMinor, '5000', 'explicit new manual price wins');
+  const reset = preserveStoredManualLinePrices(order, {
+    lines: [payload.lines[0], { ...payload.lines[1], resetManualPrice: true }],
+  });
+  assert.equal(reset.payload.lines[1].manualUnitPriceMinor, undefined, 'explicit system reset wins');
+  const duplicate = preserveStoredManualLinePrices(order, { lines: [payload.lines[1], payload.lines[1]] });
+  assert.equal(duplicate.code, 'REVISION_CONFLICT', 'sourceLineId cannot be reused');
+  const missing = preserveStoredManualLinePrices(order, { lines: [{ sourceLineId: 'other', variantId: 'sku-milk' }] });
+  assert.equal(missing.code, 'REVISION_CONFLICT', 'source line must belong to this order');
+});
+
+test('split SKU: manual zero cannot silently turn into system price during manual edits', () => {
+  const { guardManualEditStoredPrices } = salesOrderDeliveryExecutionInternals;
+  const original = { currentVersionNumber: '1', versions: [{ versionNumber: '1',
+    customerMode: 'EXISTING', customerId: 'buyer-1', salesChannelId: 'channel',
+    priceSelectionMode: 'LAST_PURCHASE', lines: [
+      { id: 'paid-row', variantId: 'sku-milk', quantity: '1',
+        unitPrice: '350000', priceSource: 'HISTORY_REFERENCE' },
+      { id: 'free-row', variantId: 'sku-milk', quantity: '1',
+        unitPrice: '0', priceSource: 'MANUAL_OVERRIDE' },
+    ],
+  }] };
+  const revised = { versions: [{ versionNumber: '2',
+    customerMode: 'EXISTING', customerId: 'buyer-2', salesChannelId: 'channel',
+    priceSelectionMode: 'LAST_PURCHASE', lines: [
+      { id: 'new-paid', variantId: 'sku-milk', quantity: '1',
+        unitPrice: '350000', priceSource: 'HISTORY_REFERENCE' },
+      { id: 'new-free', variantId: 'sku-milk', quantity: '2',
+        unitPrice: '350000', priceSource: 'HISTORY_REFERENCE' },
+    ],
+  }] };
+  const payload = { lines: [
+    { sourceLineId: 'paid-row', variantId: 'sku-milk', quantity: '1' },
+    { sourceLineId: 'free-row', variantId: 'sku-milk', quantity: '2' },
+  ] };
+  const blocked = guardManualEditStoredPrices(original, revised, payload, 2);
+  assert.equal(blocked.code, 'SAVED_MANUAL_PRICE_CHANGED');
+  assert.equal(blocked.details.sourceLineId, 'free-row');
+  const kept = { versions: [{ ...revised.versions[0], lines: [
+    revised.versions[0].lines[0],
+    { ...revised.versions[0].lines[1], priceSource: 'MANUAL_OVERRIDE', unitPrice: '0' },
+  ] }] };
+  assert.equal(guardManualEditStoredPrices(original, kept, payload, 2).ok, true);
+  assert.equal(guardManualEditStoredPrices(original, revised, {
+    ...payload, lines: [payload.lines[0], { ...payload.lines[1], resetManualPrice: true }],
+  }, 2).ok, true, 'only an explicit system-price reset may lift saved zero');
+});
