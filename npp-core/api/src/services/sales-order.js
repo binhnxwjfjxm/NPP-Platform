@@ -103,6 +103,36 @@ function manualQuickEditGuard(order) {
 }
 
 
+function preserveStoredManualLinePrices(salesOrder, payload) {
+  if (!Array.isArray(payload?.lines)) return { ok: true, payload };
+  const savedById = new Map((salesOrder?.versions ?? []).flatMap((version) =>
+    (version.lines ?? []).map((line) => [String(line.id), line])));
+  const usedSourceIds = new Set();
+  const lines = [];
+  for (const line of payload.lines) {
+    const sourceId = String(line?.sourceLineId ?? '').trim();
+    if (!sourceId) {
+      lines.push(line);
+      continue;
+    }
+    if (usedSourceIds.has(sourceId) || !savedById.has(sourceId)) {
+      return failure('REVISION_CONFLICT', 'Dòng hàng đã thay đổi. Hãy tải lại đơn trước khi sửa.', true);
+    }
+    usedSourceIds.add(sourceId);
+    const previous = savedById.get(sourceId);
+    // A different variant is an intentional new item, not the previously saved price.
+    const preserve = previous.variantId === line.variantId
+      && previous.priceSource === 'MANUAL_OVERRIDE'
+      && line.resetManualPrice !== true
+      && (line.manualUnitPriceMinor === undefined
+        || line.manualUnitPriceMinor === null || line.manualUnitPriceMinor === '');
+    lines.push(preserve
+      ? { ...line, manualUnitPriceMinor: String(previous.unitPrice) }
+      : line);
+  }
+  return { ok: true, payload: { ...payload, lines } };
+}
+
 function guardManualEditStoredPrices(before, updated, payload, versionNumber) {
   const original = before.versions?.find(
     (version) => String(version.versionNumber) === String(before.currentVersionNumber),
@@ -114,13 +144,11 @@ function guardManualEditStoredPrices(before, updated, payload, versionNumber) {
     return failure('SALES_ORDER_DRAFT_NOT_FOUND', 'Không kiểm tra được phiên bản đơn sau khi sửa.', true);
   }
 
-  // Changing the price context intentionally requests fresh automatic pricing.
-  if (original.customerMode !== revised.customerMode
+  // Context changes intentionally reprice automatic lines, never a stored manual 0.
+  const contextChanged = original.customerMode !== revised.customerMode
     || original.customerId !== revised.customerId
     || original.salesChannelId !== revised.salesChannelId
-    || original.priceSelectionMode !== revised.priceSelectionMode) {
-    return { ok: true };
-  }
+    || original.priceSelectionMode !== revised.priceSelectionMode;
 
   const originalById = new Map((original.lines ?? []).map((line) => [line.id, line]));
   const revisedByNumber = new Map(revised.lines.map((line) => [Number(line.lineNumber), line]));
@@ -133,15 +161,31 @@ function guardManualEditStoredPrices(before, updated, payload, versionNumber) {
       return failure('REVISION_CONFLICT', 'Dòng hàng đã thay đổi. Hãy tải lại đơn trước khi sửa.', true);
     }
     const next = revisedByNumber.get(index + 1);
-    if (!previous || !next || previous.variantId !== next.variantId
-      || parseScaledDecimal(previous.quantity, { allowZero: false })
-        !== parseScaledDecimal(next.quantity, { allowZero: false })
-      || previous.priceSource === 'MANUAL_OVERRIDE'
-      || next.priceSource === 'MANUAL_OVERRIDE') {
+    if (!previous || !next || previous.variantId !== next.variantId) continue;
+    const nextPrice = parseScaledDecimal(next.unitPrice, { allowZero: true });
+    if (previous.priceSource === 'MANUAL_OVERRIDE') {
+      // A previous zero or special price must survive every edit, including
+      // quantity/context changes. A deliberate "Giá hệ thống" reset is explicit.
+      if (input.resetManualPrice === true && next.priceSource !== 'MANUAL_OVERRIDE') continue;
+      const requestedPrice = input.manualUnitPriceMinor === undefined
+        || input.manualUnitPriceMinor === null || input.manualUnitPriceMinor === ''
+        ? previous.unitPrice : input.manualUnitPriceMinor;
+      const expectedManual = parseScaledDecimal(requestedPrice, { allowZero: true });
+      if (next.priceSource !== 'MANUAL_OVERRIDE'
+        || expectedManual === null || nextPrice !== expectedManual) {
+        return failure(
+          'SAVED_MANUAL_PRICE_CHANGED',
+          'Giá đã sửa tay trên dòng hàng bị thay đổi. Hãy tải lại đơn và kiểm tra.',
+          false,
+          { line: index + 1, sourceLineId: previous.id },
+        );
+      }
       continue;
     }
+    if (contextChanged || next.priceSource === 'MANUAL_OVERRIDE'
+      || parseScaledDecimal(previous.quantity, { allowZero: false })
+        !== parseScaledDecimal(next.quantity, { allowZero: false })) continue;
     const previousPrice = parseScaledDecimal(previous.unitPrice, { allowZero: true });
-    const nextPrice = parseScaledDecimal(next.unitPrice, { allowZero: true });
     if (previousPrice === null || nextPrice === null || previousPrice === nextPrice) continue;
 
     // An explicit second Save after reviewing the new preview can accept the change.
@@ -293,6 +337,12 @@ function manualOverride(line, requestContext, lineNumber) {
   const supplied = line?.manualUnitPriceMinor !== undefined
     && line?.manualUnitPriceMinor !== null
     && line?.manualUnitPriceMinor !== '';
+  if (line?.resetManualPrice === true) {
+    if (supplied) return failure('INVALID_INPUT', 'Không thể vừa nhập giá vừa chọn giá hệ thống.', false, { line: lineNumber });
+    if (!hasPermission(requestContext, 'core.sales-order.price.override')) {
+      return failure('PRICE_OVERRIDE_FORBIDDEN', 'Price override permission is required', false, { line: lineNumber });
+    }
+  }
   if (!supplied) return { ok: true, value: null, reason: null };
   if (!hasPermission(requestContext, 'core.sales-order.price.override')) {
     return failure(
@@ -784,7 +834,16 @@ export async function updateSalesOrderDraft(client, {
   const deliveryExecution = normalizeDeliveryExecution(payload);
   if (!deliveryExecution.ok) return deliveryExecution;
 
-  const prepared = await prepareCommercialPayload(client, { requestContext, payload });
+  // Always source saved manual prices from this order's line IDs before pricing.
+  // This prevents split rows (same SKU, different prices) being collapsed by
+  // last-purchase or current system price on subsequent saves.
+  const before = await getSalesOrder(client, { requestContext, id });
+  if (!before.ok) return before;
+  const preserved = preserveStoredManualLinePrices(before.salesOrder, payload);
+  if (!preserved.ok) return preserved;
+  const prepared = await prepareCommercialPayload(client, {
+    requestContext, payload: preserved.payload,
+  });
   if (!prepared.ok) return prepared;
   const result = await legacy.updateSalesOrderDraft(client, {
     requestContext: prepared.legacyRequestContext,
@@ -1236,6 +1295,7 @@ export const salesOrderDeliveryExecutionInternals = Object.freeze({
   mergeDetailedOrder,
   manualQuickEditGuard,
   guardManualEditStoredPrices,
+  preserveStoredManualLinePrices,
   pickupQuickEditGuard,
   deliveryExecutionLane,
   deliveryExecutionTransitionGuard,

@@ -315,6 +315,7 @@ export type SalesOrderLineDraft = {
   taxMode?: SalesOrderTaxMode;
   taxRate?: string;
   manualUnitPriceMinor?: string;
+  resetManualPrice?: boolean;
   manualReason?: string;
   discountMode?: SalesOrderLineDiscountMode;
   discountValue?: string;
