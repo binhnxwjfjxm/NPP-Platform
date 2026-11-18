@@ -182,18 +182,18 @@ test('split SKU: manual zero cannot silently turn into system price during manua
   const original = { currentVersionNumber: '1', versions: [{ versionNumber: '1',
     customerMode: 'EXISTING', customerId: 'buyer-1', salesChannelId: 'channel',
     priceSelectionMode: 'LAST_PURCHASE', lines: [
-      { id: 'paid-row', variantId: 'sku-milk', quantity: '1',
+      { id: 'paid-row', lineNumber: 1, variantId: 'sku-milk', quantity: '1',
         unitPrice: '350000', priceSource: 'HISTORY_REFERENCE' },
-      { id: 'free-row', variantId: 'sku-milk', quantity: '1',
+      { id: 'free-row', lineNumber: 2, variantId: 'sku-milk', quantity: '1',
         unitPrice: '0', priceSource: 'MANUAL_OVERRIDE' },
     ],
   }] };
   const revised = { versions: [{ versionNumber: '2',
     customerMode: 'EXISTING', customerId: 'buyer-2', salesChannelId: 'channel',
     priceSelectionMode: 'LAST_PURCHASE', lines: [
-      { id: 'new-paid', variantId: 'sku-milk', quantity: '1',
+      { id: 'new-paid', lineNumber: 1, variantId: 'sku-milk', quantity: '1',
         unitPrice: '350000', priceSource: 'HISTORY_REFERENCE' },
-      { id: 'new-free', variantId: 'sku-milk', quantity: '2',
+      { id: 'new-free', lineNumber: 2, variantId: 'sku-milk', quantity: '2',
         unitPrice: '350000', priceSource: 'HISTORY_REFERENCE' },
     ],
   }] };
