@@ -31,3 +31,15 @@ test('thiết lập mẫu in giữ tùy chọn Tổng khối lượng và phiế
   assert.match(templates, /\['total_weight', 'Tổng khối lượng'\]/);
   assert.match(salesPrint, /key: 'total_weight', label: 'Khối lượng'/);
 });
+
+test('Phiếu xuất kho in đậm toàn bộ Ghi chú mà vẫn giữ xuống dòng và các mẫu in khác', () => {
+  const sharedPrint = readWeb('app/components/business-document-print.tsx');
+  const sharedCss = readWeb('app/components/business-document-print.module.css');
+  const browserPrint = readWeb('app/components/print-document.tsx');
+
+  assert.match(salesPrint, /note=\{version\.note \? <strong>\{version\.note\}<\/strong> : undefined\}/);
+  assert.match(sharedPrint, /<section className=\{styles\.note\}><strong>Ghi chú:<\/strong> \{note\}<\/section>/);
+  assert.match(sharedCss, /\.note\s*\{[^}]*white-space:\s*pre-wrap;/);
+  assert.match(browserPrint, /cloneNode\(true\)/);
+  assert.doesNotMatch(sharedPrint, /<strong>\{note\}<\/strong>/);
+});
