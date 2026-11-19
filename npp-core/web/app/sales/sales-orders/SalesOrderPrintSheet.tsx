@@ -167,7 +167,7 @@ export default function SalesOrderPrintSheet({
           ...(showTax ? [{ key: 'total_tax', label: 'Thuế', value: `${formatMoney(version.taxTotal)} ₫` }] : []),
           { key: 'total_total', label: 'TỔNG CỘNG', value: `${formatMoney(version.total)} ₫`, emphasis: true },
         ]}
-        note={version.note || undefined}
+        note={version.note ? <strong>{version.note}</strong> : undefined}
         signatures={['Người lập', 'Kho giao hàng', 'Khách hàng']}
         testId="sales-order-print-sheet"
       />
