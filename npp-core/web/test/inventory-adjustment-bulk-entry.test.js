@@ -28,6 +28,55 @@ test('bulk adjustment sheet accepts minimum SKU and actual-stock columns', () =>
   }]);
 });
 
+test('bulk adjustment recognizes explicit actual-stock aliases independently of diacritics and case', () => {
+  for (const stockHeader of [
+    'TỒN TT',
+    'tồn tt',
+    'Ton TT',
+    'Tồn thực tế',
+    'so luong ton thuc te',
+    'SỐ LƯỢNG TỒN THỰC TẾ',
+  ]) {
+    const rows = parseBulkInventoryAdjustmentSheet([
+      ['\uFEFF SKU ', stockHeader],
+      ['SKU001', '0'],
+    ]);
+    assert.equal(rows[0].sku, 'SKU001', stockHeader);
+    assert.equal(rows[0].actualQuantity, '0', stockHeader);
+  }
+});
+
+test('bulk adjustment maps reordered columns without guessing from extra note columns', () => {
+  const rows = parseBulkInventoryAdjustmentSheet([
+    ['Ghi chú', 'TỒN TT', 'Mã lô', 'SKU', 'Mã vị trí'],
+    ['kiểm kê', '12.5', 'L1', 'SKU001', 'A01'],
+  ]);
+  assert.deepEqual(rows, [{
+    lineNumber: 2, sku: 'SKU001', actualQuantity: '12.5', locationCode: 'A01', lotCode: 'L1',
+  }]);
+});
+
+test('bulk adjustment rejects duplicate synonyms to prevent silent overwrite', () => {
+  for (const headers of [
+    ['SKU', 'TỒN TT', 'Tồn thực tế'],
+    ['SKU', 'sku', 'Tồn thực tế'],
+    ['SKU', 'Tồn thực tế', 'Lô', 'Mã lô'],
+    ['SKU', 'Tồn thực tế', 'Vị trí', 'Mã vị trí'],
+  ]) {
+    assert.throws(
+      () => parseBulkInventoryAdjustmentSheet([headers, ['SKU001', '7', '8', '9']]),
+      /hai cột cùng nghĩa.*Chỉ giữ một cột/,
+    );
+  }
+});
+
+test('bulk adjustment refuses unknown quantity headings instead of inferring from values', () => {
+  assert.throws(
+    () => parseBulkInventoryAdjustmentSheet([['SKU', 'Tồn kho'], ['SKU001', '8']]),
+    /SKU và Tồn thực tế/,
+  );
+});
+
 test('bulk adjustment sheet keeps optional lot and location scope', () => {
   const rows = parseBulkInventoryAdjustmentSheet([
     ['SKU', 'Tồn thực tế', 'Vị trí', 'Lô'],
