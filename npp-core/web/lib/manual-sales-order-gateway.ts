@@ -1,6 +1,6 @@
 import 'server-only';
 import { isValidIdempotencyKey, normalizeIdempotencyKey } from '@npp/contracts';
-import { SalesOrderGatewayError } from './sales-order-gateway';
+import { SalesOrderGatewayError, normalizeSalesOrderGatewayError } from './sales-order-gateway';
 import { recordSalesGatewayFailure, recordSlowSalesGatewayRequest } from './sales-order-gateway-diagnostics';
 import { requireNppWorkforceSessionToken } from './internal-auth-client';
 
@@ -136,6 +136,9 @@ async function request<T>({
     return payload.data as T;
   } catch (error) {
     if (error instanceof SalesOrderGatewayError) throw error;
+    if (error instanceof Error && error.message === 'NPP_AUTH_REQUIRED') {
+      throw normalizeSalesOrderGatewayError(error);
+    }
     const timedOut = controller.signal.aborted;
     recordSalesGatewayFailure({
       requestId, method: 'POST', path, durationMs: Date.now() - startedAt,
