@@ -722,9 +722,12 @@ export default function OrderManagementWorkspace({ permissionKeys }: { permissio
               } catch {
                 // A failed read-back is an unknown result, not a failed posting.
               }
+              // Every explicit 4xx business rejection is a rolled-back mutation,
+              // including shortages marked retryable after stock is replenished.
+              // Only IDEMPOTENCY_IN_PROGRESS has an indeterminate live attempt.
               const knownRejection = error instanceof SalesOrderUiError
                 && error.statusCode >= 400 && error.statusCode < 500
-                && error.code !== 'IDEMPOTENCY_IN_PROGRESS' && !error.retryable;
+                && error.code !== 'IDEMPOTENCY_IN_PROGRESS';
               return {
                 updated: null, error: detail,
                 outcome: {
