@@ -205,6 +205,20 @@ function hasValidManualPrice(line: LineDraft): boolean {
   return /^\d+$/.test(line.manualUnitPriceMinor.trim());
 }
 
+// A zero is a legitimate price only when it was resolved or explicitly entered.
+// The initial placeholder '0' while waiting for Công Ty is never a verified price.
+function hasConfirmedLinePrice(
+  line: LineDraft,
+  mode: SalesOrderFormMode,
+  savedLineIds: ReadonlySet<string>,
+): boolean {
+  if (line.resolvingPrice) return false;
+  if (line.pricingErrorCode === 'BASE_PRICE_NOT_FOUND' && hasValidManualPrice(line)) return true;
+  return !line.priceError && Boolean(
+    line.pricingFingerprint || (mode === 'manual-edit' && savedLineIds.has(line.clientLineId)),
+  );
+}
+
 function automaticPriceText(line: LineDraft, value: string): string {
   if (line.resolvingPrice) return 'Đang tính…';
   if (!line.pricingFingerprint) return 'Chưa có';
@@ -595,6 +609,9 @@ export default function SalesOrderCommercialForm(props: Props) {
   const [skuResults, setSkuResults] = useState<SalesOrderSkuSearchOption[]>([]);
   const [skuLoading, setSkuLoading] = useState(false);
   const [skuPreviewLoading, setSkuPreviewLoading] = useState(false);
+  const [skuSearchError, setSkuSearchError] = useState<string | null>(null);
+  const [skuPreviewError, setSkuPreviewError] = useState<string | null>(null);
+  const [skuSearchAttempt, setSkuSearchAttempt] = useState(0);
   const [activeSkuIndex, setActiveSkuIndex] = useState(0);
   const [quickOpen, setQuickOpen] = useState(false);
   const [quickCustomer, setQuickCustomer] = useState<QuickCustomerDraft>(() => ({
@@ -614,6 +631,10 @@ export default function SalesOrderCommercialForm(props: Props) {
   const pricingContextRef = useRef('');
   const preserveSavedPricingOnInitialOpenRef = useRef(props.mode !== 'create' && Boolean(version?.lines?.length));
   const savedLineIds = useMemo(() => new Set((version?.lines ?? []).map((line) => line.id)), [version]);
+  const unresolvedPriceLines = useMemo(
+    () => lines.filter((line) => !hasConfirmedLinePrice(line, props.mode, savedLineIds)),
+    [lines, props.mode, savedLineIds],
+  );
   const quantitySnapshotRef = useRef(new Map(lines.map((line) => [line.clientLineId, line.quantity])));
   const quantityRepricePendingRef = useRef(new Set<string>());
   const pricingGenerationRef = useRef(new Map<string, number>());
@@ -955,6 +976,8 @@ export default function SalesOrderCommercialForm(props: Props) {
     const term = skuTerm.trim();
     const run = ++skuSearchRunRef.current;
     setActiveSkuIndex(0);
+    setSkuSearchError(null);
+    setSkuPreviewError(null);
     if (term.length < MIN_PRODUCT_SEARCH_LENGTH || !warehouseId || !salesChannelId) {
       setSkuResults([]);
       setSkuLoading(false);
@@ -998,11 +1021,22 @@ export default function SalesOrderCommercialForm(props: Props) {
               inventoryPreview: preview.inventoryPreview,
             }];
           }));
+        } catch (error) {
+          if (controller.signal.aborted || run !== skuSearchRunRef.current) return;
+          setSkuPreviewError(error instanceof Error ? error.message : 'Không tải được giá và tồn.');
+          setSkuResults((current) => current.map((option) => ({
+            ...option,
+            pricePreview: { status: 'UNAVAILABLE', unitPriceMinor: null, message: 'Không tải được giá.' },
+            inventoryPreview: { ...option.inventoryPreview, status: 'UNAVAILABLE' },
+          })));
         } finally {
           if (!controller.signal.aborted && run === skuSearchRunRef.current) setSkuPreviewLoading(false);
         }
       } catch (error) {
-        if (!controller.signal.aborted) onError(error instanceof Error ? error.message : 'Không tìm được hàng hóa');
+        if (!controller.signal.aborted && run === skuSearchRunRef.current) {
+          setSkuSearchError(error instanceof Error ? error.message : 'Không tìm được hàng hóa.');
+          setSkuResults([]);
+        }
       } finally {
         if (!controller.signal.aborted && run === skuSearchRunRef.current) setSkuLoading(false);
       }
@@ -1011,7 +1045,7 @@ export default function SalesOrderCommercialForm(props: Props) {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [customerId, customerMode, onError, priceSelectionMode, pricingAt, salesChannelId, skuTerm, warehouseId]);
+  }, [customerId, customerMode, priceSelectionMode, pricingAt, salesChannelId, skuTerm, skuSearchAttempt, warehouseId]);
 
   useEffect(() => {
     if (!entrySettings || !salesChannelId) return;
@@ -1379,12 +1413,9 @@ export default function SalesOrderCommercialForm(props: Props) {
     // Price 0 explicitly entered by an authorized user is valid. A product
     // without any price is not: identify the exact blocking rows, especially
     // when the order contains many SKUs and its footer is sticky.
-    const unresolvedPrices = lines.flatMap((line, index) => {
-      if (!line.priceError && (line.pricingFingerprint
-        || (props.mode === 'manual-edit' && savedLineIds.has(line.clientLineId)))) return [];
-      if (line.pricingErrorCode === 'BASE_PRICE_NOT_FOUND' && hasValidManualPrice(line)) return [];
-      return [{ line, index }];
-    });
+    const unresolvedPrices = lines.flatMap((line, index) => (
+      hasConfirmedLinePrice(line, props.mode, savedLineIds) ? [] : [{ line, index }]
+    ));
     if (unresolvedPrices.length > 0) {
       if (canPriceOverride) focusLinePrice(unresolvedPrices[0].line.clientLineId);
       const sample = unresolvedPrices.slice(0, 3)
