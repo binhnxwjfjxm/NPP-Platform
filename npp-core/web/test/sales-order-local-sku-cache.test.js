@@ -45,7 +45,7 @@ test('Khi local không thấy SKU thì rơi về backend search và đồng bộ
   assert.match(missFlow, /return null/);
   assert.match(ui, /const cachedSkuSearch = await readSalesOrderSkuSearchCache<T>\(path, requestInit\)/);
   assert.match(ui, /if \(cachedSkuSearch !== null\) return cachedSkuSearch/);
-  assert.match(ui, /const response = await fetch\(path/);
+  assert.match(ui, /response = await fetch\(path/);\n  assert.match(ui, /if \(cachedSkuSearch !== null\) return cachedSkuSearch/);
   assert.doesNotMatch(ui, /rememberSalesOrderSkuSearchRows/);
 });
 
