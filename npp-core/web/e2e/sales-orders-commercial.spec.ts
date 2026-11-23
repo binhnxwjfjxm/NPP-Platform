@@ -257,6 +257,96 @@ async function mockCommercialApis(page: Page) {
 }
 
 test.describe('Sales Order commercial controls', () => {
+  test('keeps row height and SKU suggestions steady when an old quote returns during fast quantity edits', async ({ page, request }) => {
+    await page.setViewportSize({ width: 1366, height: 768 });
+    const warehouse = await createWarehouse(request, suffix());
+    await mockCommercialApis(page);
+    let skuSearchCalls = 0;
+    await page.route('**/api/sales-orders/sku-search**', async (route) => {
+      skuSearchCalls += 1;
+      await route.fallback();
+    });
+
+    let releaseFirstQuote: (() => void) | undefined;
+    const firstQuoteBlocked = new Promise<void>((resolve) => { releaseFirstQuote = resolve; });
+    await page.route('**/api/sales-orders/price-preview', async (route) => {
+      const body = route.request().postDataJSON() as {
+        variantId: string; quantity: string; pricingAt: string; salesChannelId: string;
+      };
+      if (body.variantId !== variantId(1) || body.quantity !== '1') {
+        await route.fallback();
+        return;
+      }
+      await firstQuoteBlocked;
+      await route.fulfill({
+        status: 200,
+        json: {
+          data: {
+            variant: { id: variantId(1), sku: 'SKU-1' },
+            currencyCode: 'VND',
+            quantity: body.quantity,
+            priceAt: body.pricingAt,
+            channelId: body.salesChannelId,
+            customerId: null,
+            customerGroupId: null,
+            baseUnitPriceMinor: '10000',
+            systemUnitPriceMinor: '7000',
+            finalUnitPriceMinor: '7000',
+            lineTotalMinor: '7000',
+            resolutionFingerprint: 'delayed-old-quote',
+            steps: [],
+          },
+          requestId: 'e2e-delayed-old-quote',
+        },
+      });
+    });
+
+    await page.goto('/sales/sales-orders');
+    await page.getByRole('button', { name: 'Tạo đơn bán hàng', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Biểu mẫu đơn bán hàng' });
+    await dialog.getByRole('button', { name: 'Khách vãng lai', exact: true }).click();
+    await dialog.getByTestId('sales-channel-select').selectOption('11111111-1111-4111-8111-111111111111');
+    await dialog.getByLabel('Kho xuất *').selectOption(warehouse.id);
+
+    const search = dialog.getByPlaceholder('Tên sản phẩm, mã hàng, SKU hoặc barcode');
+    await search.fill('SKU-1');
+    const firstOption = dialog.getByRole('listbox').locator('button').filter({ hasText: 'SKU-1' }).first();
+    await expect(firstOption).toBeVisible();
+    const firstQuoteRequest = page.waitForRequest((req) =>
+      req.url().includes('/api/sales-orders/price-preview')
+      && (req.postData() ?? '').includes('"quantity":"1"'),
+    );
+    await firstOption.click();
+    await firstQuoteRequest;
+
+    const line = dialog.getByTestId('sales-order-line-1');
+    const price = line.getByLabel('Đơn giá SKU-1', { exact: true });
+    await expect(price).toHaveValue('');
+    const pendingHeight = await line.evaluate((node) => node.getBoundingClientRect().height);
+    await search.fill('SKU-2');
+    const secondOption = dialog.getByRole('listbox').locator('button').filter({ hasText: 'SKU-2' }).first();
+    await expect(secondOption).toBeVisible();
+    const searchCountBeforeQuantityChange = skuSearchCalls;
+
+    const oldQuoteResponse = page.waitForResponse((response) =>
+      response.url().includes('/api/sales-orders/price-preview')
+      && (response.request().postData() ?? '').includes('"quantity":"1"'),
+    );
+    const newQuoteResponse = page.waitForResponse((response) =>
+      response.url().includes('/api/sales-orders/price-preview')
+      && (response.request().postData() ?? '').includes('"quantity":"2"'),
+    );
+    await line.getByLabel('Số lượng SKU-1', { exact: true }).fill('2');
+    releaseFirstQuote?.();
+    await Promise.all([oldQuoteResponse, newQuoteResponse]);
+    await expect(price).toHaveValue('9.001');
+    await expect(secondOption).toBeVisible();
+    expect(skuSearchCalls).toBe(searchCountBeforeQuantityChange);
+    const resolvedHeight = await line.evaluate((node) => node.getBoundingClientRect().height);
+    expect(Math.abs(resolvedHeight - pendingHeight)).toBeLessThanOrEqual(1);
+    await expect(dialog.getByText(/dòng đang chờ xác minh giá/)).toHaveCount(0);
+  });
+
   test('accepts an explicit zero when the base price is missing and identifies other unpriced SKUs', async ({ page, request }) => {
     const warehouse = await createWarehouse(request, suffix());
     await mockCommercialApis(page);
