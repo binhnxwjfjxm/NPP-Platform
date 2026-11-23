@@ -24,7 +24,7 @@ test('Issue #791 Lô D keeps Add unique-only and Tách dòng creates an independ
   assert.doesNotMatch(splitBlock, /resolvingPrice: false/);
   assert.match(form, /return \[\.\.\.current\.slice\(0, sourceIndex\), split, \.\.\.current\.slice\(sourceIndex\)\];/);
   assert.match(form, /focusLineVariant\(split\.clientLineId\)/);
-  assert.match(form, /variantId: split\.variantId,[\s\S]*?quantity: '1'/);
+  assert.match(form, /await repriceLines\(\[split\], pricingAt\)/);
   assert.match(form, />↳ Tách dòng<\/button>/);
 });
 
@@ -35,8 +35,8 @@ test('Issue #791 Lô D keys repricing and async updates by client line identity,
   assert.match(form, /clientLineId: line\.clientLineId/);
   assert.match(form, /const byLineId = new Map\(results\.map\(\(result\) => \[result\.clientLineId, result\]\)\)/);
   assert.match(form, /byLineId\.get\(line\.clientLineId\)/);
-  assert.match(form, /line\.clientLineId === pending\.clientLineId/);
-  assert.match(form, /line\.clientLineId === split\.clientLineId/);
+  assert.match(form, /await repriceLines\(\[pending\], pricingAt\)/);
+  assert.match(form, /await repriceLines\(\[split\], pricingAt\)/);
   assert.doesNotMatch(form, /const byVariant = new Map/);
 });
 
@@ -53,7 +53,8 @@ test('Lô 2 switches the real sellable ĐVT variant on every line and reprices f
   assert.match(form, /async function changeLineVariant\(clientLineId: string, nextVariantId: string\)/);
   assert.match(form, /variantId: option\.id,[\s\S]*?sku: option\.sku,[\s\S]*?unitCode: option\.unit_code \?\? '',[\s\S]*?conversionToBase: option\.conversion_to_base \?\? '1'/);
   assert.match(form, /manualUnitPriceMinor: '',[\s\S]*?baseUnitPriceMinor: '0',[\s\S]*?systemUnitPriceMinor: '0',[\s\S]*?pricingFingerprint: ''/);
-  assert.match(form, /variantId: option\.id,[\s\S]*?quantity: source\.quantity,[\s\S]*?effectiveAt: pricingAt/);
+  assert.match(form, /const changed: LineDraft = \{[\s\S]*?\.\.\.source,[\s\S]*?variantId: option\.id/);
+  assert.match(form, /await repriceLines\(\[changed\], pricingAt\)/);
   assert.match(form, /data-testid={`sales-line-variant-select-\$\{index \+ 1\}`}/);
   assert.match(form, /className=\{styles\.directPriceInput\}[\s\S]*?data-testid=\{`sales-line-variant-select-/);
   assert.match(form, /onChange=\{\(event\) => void changeLineVariant\(line\.clientLineId, event\.target\.value\)\}/);

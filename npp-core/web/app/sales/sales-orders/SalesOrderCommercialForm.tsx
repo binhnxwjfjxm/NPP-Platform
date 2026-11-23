@@ -205,6 +205,20 @@ function hasValidManualPrice(line: LineDraft): boolean {
   return /^\d+$/.test(line.manualUnitPriceMinor.trim());
 }
 
+// A zero is a legitimate price only when it was resolved or explicitly entered.
+// The initial placeholder '0' while waiting for Công Ty is never a verified price.
+function hasConfirmedLinePrice(
+  line: LineDraft,
+  mode: SalesOrderFormMode,
+  savedLineIds: ReadonlySet<string>,
+): boolean {
+  if (line.resolvingPrice) return false;
+  if (line.pricingErrorCode === 'BASE_PRICE_NOT_FOUND' && hasValidManualPrice(line)) return true;
+  return !line.priceError && Boolean(
+    line.pricingFingerprint || (mode === 'manual-edit' && savedLineIds.has(line.clientLineId)),
+  );
+}
+
 function automaticPriceText(line: LineDraft, value: string): string {
   if (line.resolvingPrice) return 'Đang tính…';
   if (!line.pricingFingerprint) return 'Chưa có';
@@ -595,6 +609,9 @@ export default function SalesOrderCommercialForm(props: Props) {
   const [skuResults, setSkuResults] = useState<SalesOrderSkuSearchOption[]>([]);
   const [skuLoading, setSkuLoading] = useState(false);
   const [skuPreviewLoading, setSkuPreviewLoading] = useState(false);
+  const [skuSearchError, setSkuSearchError] = useState<string | null>(null);
+  const [skuPreviewError, setSkuPreviewError] = useState<string | null>(null);
+  const [skuSearchAttempt, setSkuSearchAttempt] = useState(0);
   const [activeSkuIndex, setActiveSkuIndex] = useState(0);
   const [quickOpen, setQuickOpen] = useState(false);
   const [quickCustomer, setQuickCustomer] = useState<QuickCustomerDraft>(() => ({
@@ -614,6 +631,10 @@ export default function SalesOrderCommercialForm(props: Props) {
   const pricingContextRef = useRef('');
   const preserveSavedPricingOnInitialOpenRef = useRef(props.mode !== 'create' && Boolean(version?.lines?.length));
   const savedLineIds = useMemo(() => new Set((version?.lines ?? []).map((line) => line.id)), [version]);
+  const unresolvedPriceLines = useMemo(
+    () => lines.filter((line) => !hasConfirmedLinePrice(line, props.mode, savedLineIds)),
+    [lines, props.mode, savedLineIds],
+  );
   const quantitySnapshotRef = useRef(new Map(lines.map((line) => [line.clientLineId, line.quantity])));
   const quantityRepricePendingRef = useRef(new Set<string>());
   const pricingGenerationRef = useRef(new Map<string, number>());
@@ -831,6 +852,7 @@ export default function SalesOrderCommercialForm(props: Props) {
           error: options.length ? null : 'Sản phẩm chưa có ĐVT bán hàng hợp lệ.',
         },
       }));
+      if (options.length === 0) variantProductLoadRef.current.delete(productId);
     } catch (error) {
       variantProductLoadRef.current.delete(productId);
       setLineVariantChoices((current) => ({
@@ -854,6 +876,7 @@ export default function SalesOrderCommercialForm(props: Props) {
       const currentOption = rows.find((option) => option.id === line.variantId)
         ?? rows.find((option) => option.sku === line.sku);
       if (!currentOption) {
+        lineProductResolveRef.current.delete(line.clientLineId);
         setLineVariantErrors((current) => ({ ...current, [line.clientLineId]: 'Không xác định được ĐVT của SKU này.' }));
         return;
       }
@@ -955,6 +978,8 @@ export default function SalesOrderCommercialForm(props: Props) {
     const term = skuTerm.trim();
     const run = ++skuSearchRunRef.current;
     setActiveSkuIndex(0);
+    setSkuSearchError(null);
+    setSkuPreviewError(null);
     if (term.length < MIN_PRODUCT_SEARCH_LENGTH || !warehouseId || !salesChannelId) {
       setSkuResults([]);
       setSkuLoading(false);
@@ -998,11 +1023,22 @@ export default function SalesOrderCommercialForm(props: Props) {
               inventoryPreview: preview.inventoryPreview,
             }];
           }));
+        } catch (error) {
+          if (controller.signal.aborted || run !== skuSearchRunRef.current) return;
+          setSkuPreviewError(error instanceof Error ? error.message : 'Không tải được giá và tồn.');
+          setSkuResults((current) => current.map((option) => ({
+            ...option,
+            pricePreview: { status: 'UNAVAILABLE', unitPriceMinor: null, message: 'Không tải được giá.' },
+            inventoryPreview: { ...option.inventoryPreview, status: 'UNAVAILABLE' },
+          })));
         } finally {
           if (!controller.signal.aborted && run === skuSearchRunRef.current) setSkuPreviewLoading(false);
         }
       } catch (error) {
-        if (!controller.signal.aborted) onError(error instanceof Error ? error.message : 'Không tìm được hàng hóa');
+        if (!controller.signal.aborted && run === skuSearchRunRef.current) {
+          setSkuSearchError(error instanceof Error ? error.message : 'Không tìm được hàng hóa.');
+          setSkuResults([]);
+        }
       } finally {
         if (!controller.signal.aborted && run === skuSearchRunRef.current) setSkuLoading(false);
       }
@@ -1011,7 +1047,7 @@ export default function SalesOrderCommercialForm(props: Props) {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [customerId, customerMode, onError, priceSelectionMode, pricingAt, salesChannelId, skuTerm, warehouseId]);
+  }, [customerId, customerMode, priceSelectionMode, pricingAt, salesChannelId, skuTerm, skuSearchAttempt, warehouseId]);
 
   useEffect(() => {
     if (!entrySettings || !salesChannelId) return;
@@ -1108,37 +1144,9 @@ export default function SalesOrderCommercialForm(props: Props) {
     void loadProductVariants(option.productId);
     focusLineQuantity(pending.clientLineId);
     markDirty();
-    try {
-      const resolution = await priceFor({
-        variantId: option.id,
-        quantity: '1',
-        mode: customerMode,
-        selectedCustomerId: customerId,
-        channelId: salesChannelId,
-        appliedPriceMode: priceSelectionMode,
-        effectiveAt: pricingAt,
-      });
-      setLines((current) => current.map((line) => line.clientLineId === pending.clientLineId ? {
-        ...line,
-        baseUnitPriceMinor: resolution.baseUnitPriceMinor,
-        systemUnitPriceMinor: resolution.systemUnitPriceMinor ?? resolution.finalUnitPriceMinor,
-        pricingFingerprint: resolution.resolutionFingerprint,
-        priceSteps: resolution.steps,
-        resolvingPrice: false,
-        priceError: null,
-        pricingErrorCode: null,
-      } : line));
-    } catch (error) {
-      const details = pricingErrorDetails(error);
-      setLines((current) => current.map((line) => line.clientLineId === pending.clientLineId ? {
-        ...line,
-        pricingFingerprint: '',
-        priceSteps: [],
-        resolvingPrice: false,
-        priceError: details.message,
-        pricingErrorCode: details.code,
-      } : line));
-    }
+    // Use the shared generation guard: a later quantity/customer change must win
+    // over an older price response for this newly added line.
+    await repriceLines([pending], pricingAt);
   }
 
   async function changeLineVariant(clientLineId: string, nextVariantId: string) {
@@ -1155,8 +1163,8 @@ export default function SalesOrderCommercialForm(props: Props) {
       || !option.conversion_to_base) {
       return onError('ĐVT đã chọn không còn hợp lệ để bán.');
     }
-    setLines((current) => current.map((line) => line.clientLineId === clientLineId ? {
-      ...line,
+    const changed: LineDraft = {
+      ...source,
       variantId: option.id,
       sku: option.sku,
       unitCode: option.unit_code ?? '',
@@ -1170,39 +1178,11 @@ export default function SalesOrderCommercialForm(props: Props) {
       resolvingPrice: true,
       priceError: null,
       pricingErrorCode: null,
-    } : line));
+    };
+    setLines((current) => current.map((line) =>
+      line.clientLineId === clientLineId ? changed : line));
     markDirty();
-    try {
-      const resolution = await priceFor({
-        variantId: option.id,
-        quantity: source.quantity,
-        mode: customerMode,
-        selectedCustomerId: customerId,
-        channelId: salesChannelId,
-        appliedPriceMode: priceSelectionMode,
-        effectiveAt: pricingAt,
-      });
-      setLines((current) => current.map((line) => line.clientLineId === clientLineId && line.variantId === option.id ? {
-        ...line,
-        baseUnitPriceMinor: resolution.baseUnitPriceMinor,
-        systemUnitPriceMinor: resolution.systemUnitPriceMinor ?? resolution.finalUnitPriceMinor,
-        pricingFingerprint: resolution.resolutionFingerprint,
-        priceSteps: resolution.steps,
-        resolvingPrice: false,
-        priceError: null,
-        pricingErrorCode: null,
-      } : line));
-    } catch (error) {
-      const details = pricingErrorDetails(error);
-      setLines((current) => current.map((line) => line.clientLineId === clientLineId && line.variantId === option.id ? {
-        ...line,
-        resolvingPrice: false,
-        pricingFingerprint: '',
-        priceSteps: [],
-        priceError: details.message,
-        pricingErrorCode: details.code,
-      } : line));
-    }
+    await repriceLines([changed], pricingAt);
   }
 
   async function splitLine(sourceClientLineId: string) {
@@ -1232,37 +1212,7 @@ export default function SalesOrderCommercialForm(props: Props) {
     });
     markDirty();
     focusLineVariant(split.clientLineId);
-    try {
-      const resolution = await priceFor({
-        variantId: split.variantId,
-        quantity: '1',
-        mode: customerMode,
-        selectedCustomerId: customerId,
-        channelId: salesChannelId,
-        appliedPriceMode: priceSelectionMode,
-        effectiveAt: pricingAt,
-      });
-      setLines((current) => current.map((line) => line.clientLineId === split.clientLineId ? {
-        ...line,
-        baseUnitPriceMinor: resolution.baseUnitPriceMinor,
-        systemUnitPriceMinor: resolution.systemUnitPriceMinor ?? resolution.finalUnitPriceMinor,
-        pricingFingerprint: resolution.resolutionFingerprint,
-        priceSteps: resolution.steps,
-        resolvingPrice: false,
-        priceError: null,
-        pricingErrorCode: null,
-      } : line));
-    } catch (error) {
-      const details = pricingErrorDetails(error);
-      setLines((current) => current.map((line) => line.clientLineId === split.clientLineId ? {
-        ...line,
-        resolvingPrice: false,
-        pricingFingerprint: '',
-        priceSteps: [],
-        priceError: details.message,
-        pricingErrorCode: details.code,
-      } : line));
-    }
+    await repriceLines([split], pricingAt);
   }
 
   function handleSkuKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
@@ -1379,12 +1329,9 @@ export default function SalesOrderCommercialForm(props: Props) {
     // Price 0 explicitly entered by an authorized user is valid. A product
     // without any price is not: identify the exact blocking rows, especially
     // when the order contains many SKUs and its footer is sticky.
-    const unresolvedPrices = lines.flatMap((line, index) => {
-      if (!line.priceError && (line.pricingFingerprint
-        || (props.mode === 'manual-edit' && savedLineIds.has(line.clientLineId)))) return [];
-      if (line.pricingErrorCode === 'BASE_PRICE_NOT_FOUND' && hasValidManualPrice(line)) return [];
-      return [{ line, index }];
-    });
+    const unresolvedPrices = lines.flatMap((line, index) => (
+      hasConfirmedLinePrice(line, props.mode, savedLineIds) ? [] : [{ line, index }]
+    ));
     if (unresolvedPrices.length > 0) {
       if (canPriceOverride) focusLinePrice(unresolvedPrices[0].line.clientLineId);
       const sample = unresolvedPrices.slice(0, 3)
@@ -1744,6 +1691,18 @@ export default function SalesOrderCommercialForm(props: Props) {
               </div>
               {skuLoading && <span className={styles.searchStatus}>Đang tìm…</span>}
               {!skuLoading && skuPreviewLoading && <span className={styles.searchStatus}>Đang cập nhật giá và tồn…</span>}
+              {skuSearchError && (
+                <p className={styles.priceNotice} role="alert">
+                  {skuSearchError}{' '}
+                  <button type="button" className={styles.linkButton} onClick={() => setSkuSearchAttempt((current) => current + 1)}>Tìm lại hàng</button>
+                </p>
+              )}
+              {skuPreviewError && (
+                <p className={styles.priceNotice} role="alert">
+                  Giá và tồn hiện chưa xác minh: {skuPreviewError}{' '}
+                  <button type="button" className={styles.linkButton} onClick={() => setSkuSearchAttempt((current) => current + 1)}>Tải lại giá và tồn</button>
+                </p>
+              )}
               {skuResults.length > 0 && (
                 <div className={styles.skuResults} role="listbox">
                   {skuResults.map((option, index) => (
@@ -1759,12 +1718,28 @@ export default function SalesOrderCommercialForm(props: Props) {
           </section>
 
           <section className={styles.orderLines} aria-label="Hàng hóa trong đơn">
+            {unresolvedPriceLines.length > 0 && (
+              <div className={styles.priceRecoveryBanner} role="status">
+                <span>{unresolvedPriceLines.length} dòng đang chờ xác minh giá. Tổng tiền chỉ hiện sau khi đủ giá hợp lệ.</span>
+                <button
+                  type="button"
+                  className={styles.linkButton}
+                  disabled={unresolvedPriceLines.every((line) => line.resolvingPrice)}
+                  onClick={() => {
+                    const pending = linesRef.current.filter((line) =>
+                      !line.resolvingPrice && !hasConfirmedLinePrice(line, props.mode, savedLineIds));
+                    if (pending.length > 0) void repriceLines(pending, new Date().toISOString());
+                  }}
+                >Tính lại các dòng lỗi</button>
+              </div>
+            )}
             <header className={styles.lineTableHeader}><span>STT</span><span>Hàng hóa</span><span>ĐVT</span><span>SL</span><span>Đơn giá</span><span>CK</span><span>Thành tiền</span><span /></header>
             {lines.map((line, index) => {
               const choiceState = line.productId ? lineVariantChoices[line.productId] : undefined;
               const variantOptions = choiceState?.options ?? [];
               const hasCurrentOption = variantOptions.some((variant) => variant.id === line.variantId);
               const lineVariantError = lineVariantErrors[line.clientLineId] ?? choiceState?.error ?? null;
+              const priceReady = hasConfirmedLinePrice(line, props.mode, savedLineIds);
               return (
               <article className={styles.orderLineCard} key={line.clientLineId} data-testid={`sales-order-line-${index + 1}`}>
                 <BusinessSequenceNumber rowIndex={index} value={lines.length - index} className={styles.lineSequence} />
@@ -1804,6 +1779,13 @@ export default function SalesOrderCommercialForm(props: Props) {
                         : line.priceError}
                     </small>
                   )}
+                  {!priceReady && !line.resolvingPrice && (
+                    <button
+                      type="button"
+                      className={styles.linkButton}
+                      onClick={() => void repriceLines([line], new Date().toISOString())}
+                    >Tính lại giá</button>
+                  )}
                 </div>
                 <div className={styles.unitCell}>
                   <select
@@ -1825,7 +1807,19 @@ export default function SalesOrderCommercialForm(props: Props) {
                     {!hasCurrentOption && <option value={line.variantId}>{line.unitCode || 'ĐVT'}</option>}
                     {variantOptions.map((variant) => <option key={variant.id} value={variant.id}>{variantBusinessLabel(variant)}</option>)}
                   </select>
-                  {lineVariantError && <small className={styles.ineligible}>{lineVariantError}</small>}
+                  {lineVariantError && (
+                    <>
+                      <small className={styles.ineligible}>{lineVariantError}</small>
+                      <button
+                        type="button"
+                        className={styles.linkButton}
+                        disabled={choiceState?.loading === true}
+                        onClick={() => void (line.productId
+                          ? loadProductVariants(line.productId)
+                          : resolveLineProduct(line))}
+                      >Tải lại ĐVT</button>
+                    </>
+                  )}
                 </div>
                 <div className={styles.quantityCell}>
                   <span>SL</span>
@@ -1876,7 +1870,7 @@ export default function SalesOrderCommercialForm(props: Props) {
                       className={styles.directPriceInput}
                       aria-label={`Đơn giá ${line.sku}`}
                       inputMode="numeric"
-                      value={formatVndInput(line.manualUnitPriceMinor || (line.pricingFingerprint || savedLineIds.has(line.clientLineId) ? line.systemUnitPriceMinor : ''))}
+                      value={formatVndInput(line.manualUnitPriceMinor || (priceReady ? line.systemUnitPriceMinor : ''))}
                       placeholder={line.pricingErrorCode === 'BASE_PRICE_NOT_FOUND' ? 'Nhập giá' : undefined}
                       onFocus={(event) => event.currentTarget.select()}
                       onClick={(event) => event.currentTarget.select()}
@@ -1894,6 +1888,7 @@ export default function SalesOrderCommercialForm(props: Props) {
                     <strong>{line.pricingFingerprint ? automaticPriceText(line, line.systemUnitPriceMinor) : '—'}</strong>
                   )}
                   {line.manualUnitPriceMinor && <small className={styles.manualBadge}>Giá đã sửa</small>}
+                  {!priceReady && <small className={styles.priceNotice}>{line.resolvingPrice ? 'Đang tính giá…' : 'Chưa xác minh giá'}</small>}
                   {line.manualUnitPriceMinor && line.pricingFingerprint && canPriceOverride && (
                     <button type="button" className={styles.linkButton} aria-label={`Dùng lại giá hệ thống cho ${line.sku}`} onClick={() => useSystemPrice(index)}>Giá hệ thống</button>
                   )}
@@ -1937,7 +1932,7 @@ export default function SalesOrderCommercialForm(props: Props) {
                     <strong>{discountValueText(line)}</strong>
                   )}
                 </div>
-                <div className={styles.priceCell}><span>Thành tiền</span><strong>{vnd(estimate.details[index]?.total ?? 0n)}</strong></div>
+                <div className={styles.priceCell}><span>Thành tiền</span><strong>{priceReady ? vnd(estimate.details[index]?.total ?? 0n) : '—'}</strong></div>
                 <button type="button" className={styles.removeLineButton} onClick={() => { setLines((current) => current.filter((_, itemIndex) => itemIndex !== index)); markDirty(); }}>Xóa</button>
                 <div
                   id={`sales-order-line-details-${index + 1}`}
@@ -1975,10 +1970,10 @@ export default function SalesOrderCommercialForm(props: Props) {
             )}
           </section>
           <section className={styles.taxSummary} aria-label="Tổng kết thuế và thanh toán">
-            <div><span>Tiền hàng theo giá cuối</span><strong>{vnd(estimate.gross)}</strong></div>
-            <div><span>Chiết khấu</span><strong>- {vnd(estimate.discount)}</strong></div>
-            <div><span>Thuế sau phân bổ</span><strong>{vnd(estimate.tax)}</strong></div>
-            <div className={styles.grandTotal}><span>Tổng thanh toán dự kiến</span><strong>{vnd(estimate.total)}</strong></div>
+            <div><span>Tiền hàng theo giá cuối</span><strong>{unresolvedPriceLines.length ? '—' : vnd(estimate.gross)}</strong></div>
+            <div><span>Chiết khấu</span><strong>{unresolvedPriceLines.length ? '—' : `- ${vnd(estimate.discount)}`}</strong></div>
+            <div><span>Thuế sau phân bổ</span><strong>{unresolvedPriceLines.length ? '—' : vnd(estimate.tax)}</strong></div>
+            <div className={styles.grandTotal}><span>Tổng thanh toán dự kiến</span><strong>{unresolvedPriceLines.length ? 'Chưa đủ giá' : vnd(estimate.total)}</strong></div>
           </section>
           <div className={styles.footerActions}>
             <button type="button" onClick={requestClose}>Đóng</button>

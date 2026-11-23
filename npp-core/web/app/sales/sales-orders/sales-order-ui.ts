@@ -207,15 +207,32 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
   const cachedSkuSearch = await readSalesOrderSkuSearchCache<T>(path, requestInit);
   if (cachedSkuSearch !== null) return cachedSkuSearch;
 
-  const response = await fetch(path, {
-    ...requestInit,
-    cache: 'no-store',
-    headers: {
-      Accept: 'application/json',
-      ...(requestInit.body === undefined ? {} : { 'Content-Type': 'application/json' }),
-      ...Object.fromEntries(new Headers(requestInit.headers ?? {}).entries()),
-    },
-  });
+  let response: Response;
+  try {
+    response = await fetch(path, {
+      ...requestInit,
+      cache: 'no-store',
+      headers: {
+        Accept: 'application/json',
+        ...(requestInit.body === undefined ? {} : { 'Content-Type': 'application/json' }),
+        ...Object.fromEntries(new Headers(requestInit.headers ?? {}).entries()),
+      },
+    });
+  } catch {
+    if (requestInit.signal?.aborted) {
+      throw new SalesOrderUiError('SALES_ORDER_REQUEST_ABORTED', 'Đã dừng tải dữ liệu.', true);
+    }
+    const isReadOnly = requestMethod === 'GET'
+      || path === '/api/sales-orders/price-preview'
+      || path === '/api/pricing/resolve';
+    throw new SalesOrderUiError(
+      'SALES_ORDER_NETWORK_UNAVAILABLE',
+      isReadOnly
+        ? 'Không kết nối được Công Ty. Kiểm tra mạng rồi tải lại; dữ liệu đang nhập vẫn được giữ.'
+        : 'Mất kết nối khi gửi yêu cầu. Chưa xác minh kết quả, hãy kiểm tra đơn trước khi gửi lại.',
+      true,
+    );
+  }
   const payload = await response.json().catch(() => null) as ApiEnvelope<T> | null;
   const previewState = path === '/api/pricing/resolve'
     && response.ok
