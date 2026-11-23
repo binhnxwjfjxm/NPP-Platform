@@ -39,7 +39,10 @@ const REQUEST_ID_PATTERN=/^[A-Za-z0-9._:-]{1,128}$/;const UUID_PATTERN=/^[0-9a-f
     let payload: CoreEnvelope<T>;
     try {
       payload = await response.json() as CoreEnvelope<T>;
-    } catch {
+    } catch (error) {
+      // An abort or broken body stream is transport failure (possibly timeout),
+      // not invalid JSON. Let the outer handler classify it as 503/504.
+      if (controller.signal.aborted || !(error instanceof SyntaxError)) throw error;
       recordSalesGatewayFailure({
         requestId, method, path: pth, durationMs: Date.now() - startedAt,
         type: 'invalid_response', statusCode: response.status,
