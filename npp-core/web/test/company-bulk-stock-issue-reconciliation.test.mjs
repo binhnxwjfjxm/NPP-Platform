@@ -63,8 +63,10 @@ test('batch reports one outcome per order and retains failed or unverified selec
 });
 
 test('unverified orders block bulk and row re-submission until operator reconciliation', () => {
-  assert.match(workspace, /stockIssueReport\?\.outcomes\.some\(\(item\) => item\.status === 'unverified' && selectedIds\.has\(item\.orderId\)\)/);
-  assert.match(workspace, /item\.orderId === order\.id && item\.status === 'unverified'/);
+  assert.match(workspace, /selectedOrders\.some\(\(order\) => unverifiedIssueIds\.has\(order\.id\)\)/);
+  assert.match(workspace, /unverifiedIssueIds\.has\(order\.id\)/);
+  assert.match(workspace, /setUnverifiedIssueIds\(\(current\) =>/);
+  assert.match(workspace, /error\.code !== 'IDEMPOTENCY_IN_PROGRESS'/);
   assert.match(workspace, /Không xuất lại trước khi đối chiếu trạng thái và chứng từ/);
 });
 
