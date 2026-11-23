@@ -18,6 +18,7 @@ import {
   formatQuantity,
   formatVietnamDateTime,
   mutationKey,
+  SalesOrderUiError,
 } from '../sales-orders/sales-order-ui';
 import styles from './order-management.module.css';
 
@@ -42,6 +43,15 @@ type Filters = Readonly<{
   source: SourceFilter;
 }>;
 type QuickMutationCache = Readonly<{ fingerprint: string; key: string }>;
+type StockIssueOutcomeStatus = 'issued' | 'verified-issued' | 'failed' | 'unverified';
+type StockIssueOutcome = Readonly<{
+  orderId: string;
+  number: string;
+  status: StockIssueOutcomeStatus;
+  detail: string;
+  requestId: string | null;
+}>;
+type StockIssueReport = Readonly<{ outcomes: StockIssueOutcome[] }>;
 type PartialSettlementDraft = Readonly<{
   orderId: string;
   amount: string;
@@ -49,6 +59,7 @@ type PartialSettlementDraft = Readonly<{
 }>;
 
 const FETCH_PAGE_SIZE = 1000;
+const BULK_STOCK_ISSUE_CONCURRENCY = 2;
 const MAX_OFFSET = 100000;
 const TABLE_PAGE_SIZES = [20, 50, 100] as const;
 const DEFAULT_FILTERS: Filters = Object.freeze({
@@ -410,6 +421,7 @@ export default function OrderManagementWorkspace({ permissionKeys }: { permissio
   const [detailError, setDetailError] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [bulkBusy, setBulkBusy] = useState<QuickAction | null>(null);
+  const [stockIssueReport, setStockIssueReport] = useState<StockIssueReport | null>(null);
   const [partialSettlement, setPartialSettlement] = useState<PartialSettlementDraft | null>(null);
   const selectAllRef = useRef<HTMLInputElement>(null);
   const detailCacheRef = useRef(new Map<string, SalesOrder>());
@@ -505,10 +517,12 @@ export default function OrderManagementWorkspace({ permissionKeys }: { permissio
   );
   const bulkAction = useMemo<QuickAction | null>(() => {
     if (selectedOrders.length === 0) return null;
+    // An unknown outcome must be reconciled before any further bulk stock issue.
+    if (stockIssueReport?.outcomes.some((item) => item.status === 'unverified' && selectedIds.has(item.orderId))) return null;
     const first = selectedQuickActions[0];
     if (!first) return null;
     return selectedQuickActions.every((action) => action === first) ? first : null;
-  }, [selectedOrders.length, selectedQuickActions]);
+  }, [selectedOrders.length, selectedQuickActions, selectedIds, stockIssueReport]);
 
   useEffect(() => {
     if (selectAllRef.current) selectAllRef.current.indeterminate = somePageSelected && !allPageSelected;
@@ -575,7 +589,7 @@ export default function OrderManagementWorkspace({ permissionKeys }: { permissio
     quickMutationKeysRef.current.delete(`${action}:${orderId}`);
   }
 
-  async function executeQuickAction(source: SalesOrder, action: QuickAction): Promise<SalesOrder> {
+  async function executeQuickAction(source: SalesOrder, action: QuickAction, onIssueSubmitted?: (requestId: string) => void): Promise<SalesOrder> {
     const fresh = await fetchOrderDetail(source.id);
     const currentAction = nextQuickAction(fresh, quickPermissions);
     if (currentAction !== action) {
@@ -587,9 +601,11 @@ export default function OrderManagementWorkspace({ permissionKeys }: { permissio
       if (!version) throw new Error('Không tìm thấy phiên bản đơn đang hiệu lực.');
       const fingerprint = `${fresh.revision}|${version.revision}|${String(fresh.fulfillmentStatus)}`;
       const key = stableMutationKey(action, fresh.id, fingerprint, 'sales-manual-stock-issue');
+      const requestId = mutationKey('sales-stock-issue-request');
+      onIssueSubmitted?.(requestId);
       const updated = await apiRequest<SalesOrder>(`/api/sales-orders/${fresh.id}/issue-stock`, {
         method: 'POST',
-        headers: { 'Idempotency-Key': key },
+        headers: { 'Idempotency-Key': key, 'x-request-id': requestId },
         body: JSON.stringify({ expectedRevision: version.revision }),
       });
       clearMutationKey(action, fresh.id);
@@ -627,6 +643,12 @@ export default function OrderManagementWorkspace({ permissionKeys }: { permissio
 
   async function runRowQuickAction(order: SalesOrder, action: QuickAction) {
     if (busyAction || bulkBusy) return;
+    if (action === 'issue-stock' && stockIssueReport?.outcomes.some(
+      (item) => item.orderId === order.id && item.status === 'unverified'
+    )) {
+      setNotice('Đơn chưa xác minh kết quả xuất kho. Hãy đối chiếu sổ kho trước khi thao tác tiếp.');
+      return;
+    }
     if (action === 'issue-stock' && !confirmSingleStockIssue(order.number)) return;
     setBusyAction(`${action}:${order.id}`);
     setNotice(null);
@@ -648,16 +670,74 @@ export default function OrderManagementWorkspace({ permissionKeys }: { permissio
     if (action === 'issue-stock' && !confirmBulkStockIssue(targets.length)) return;
     setBulkBusy(action);
     setNotice(null);
+    if (action === 'issue-stock') setStockIssueReport(null);
     let successCount = 0;
     const failures: string[] = [];
+    const outcomes: StockIssueOutcome[] = [];
     try {
-      for (let index = 0; index < targets.length; index += 4) {
-        const chunk = targets.slice(index, index + 4);
+      // Direct stock issue locks warehouse/SKU scopes and writes the ledger in one
+      // transaction. Bound parallel work to avoid exhausting the shared DB pool.
+      const concurrency = action === 'issue-stock' ? BULK_STOCK_ISSUE_CONCURRENCY : 4;
+      for (let index = 0; index < targets.length; index += concurrency) {
+        const chunk = targets.slice(index, index + concurrency);
         const results = await Promise.all(chunk.map(async (order) => {
+          let submittedRequestId: string | null = null;
           try {
-            return { updated: await executeQuickAction(order, action), error: null as string | null };
+            const updated = await executeQuickAction(order, action, (requestId) => {
+              submittedRequestId = requestId;
+            });
+            return {
+              updated,
+              error: null as string | null,
+              outcome: action === 'issue-stock' ? {
+                orderId: order.id, number: order.number ?? order.id,
+                status: 'issued', detail: 'Đã xuất kho.', requestId: submittedRequestId,
+              } as StockIssueOutcome : null,
+            };
           } catch (error) {
-            return { updated: null, error: error instanceof Error ? error.message : 'Không thực hiện được thao tác.' };
+            const message = error instanceof Error ? error.message : 'Không thực hiện được thao tác.';
+            const code = error instanceof SalesOrderUiError ? error.code : null;
+            const detail = code ? `${message} (mã lỗi: ${code})` : message;
+            if (action !== 'issue-stock') return { updated: null, error: detail, outcome: null };
+            const base = {
+              orderId: order.id,
+              number: order.number ?? order.id,
+              detail,
+              requestId: submittedRequestId,
+            };
+            if (submittedRequestId) {
+              // The POST may have committed even if its response was lost. Check
+              // canonical order state; never blindly repeat the mutation.
+              try {
+                const latest = await fetchOrderDetail(order.id);
+                if (directStockIssueCompleted(latest)) {
+                  return {
+                    updated: latest, error: null,
+                    outcome: {
+                      ...base,
+                      status: 'verified-issued',
+                      detail: 'Đã xác minh trạng thái xuất kho sau khi yêu cầu báo lỗi.',
+                    } as StockIssueOutcome,
+                  };
+                }
+              } catch {
+                // A failed read-back is an unknown result, not a failed posting.
+              }
+              const knownRejection = error instanceof SalesOrderUiError
+                && error.statusCode >= 400 && error.statusCode < 500 && !error.retryable;
+              return {
+                updated: null, error: detail,
+                outcome: {
+                  ...base, status: knownRejection ? 'failed' : 'unverified',
+                } as StockIssueOutcome,
+              };
+            }
+            // The initial GET failed before POST was submitted: no stock mutation
+            // was sent by this operation.
+            return {
+              updated: null, error: detail,
+              outcome: { ...base, status: 'failed' } as StockIssueOutcome,
+            };
           }
         }));
         for (const result of results) {
@@ -667,13 +747,26 @@ export default function OrderManagementWorkspace({ permissionKeys }: { permissio
           } else if (result.error) {
             failures.push(result.error);
           }
+          if (result.outcome) outcomes.push(result.outcome);
         }
       }
-      const label = QUICK_ACTION_LABELS[action];
-      setNotice(failures.length
-        ? `Đã ${label.toLocaleLowerCase('vi')} ${successCount} đơn; ${failures.length} đơn chưa thực hiện được. ${failures[0]}`
-        : `Đã ${label.toLocaleLowerCase('vi')} ${successCount} đơn.`);
-      setSelectedIds(new Set());
+      if (action === 'issue-stock') {
+        const unverifiedCount = outcomes.filter((item) => item.status === 'unverified').length;
+        const failedCount = outcomes.filter((item) => item.status === 'failed').length;
+        setStockIssueReport({ outcomes });
+        // Keep unresolved orders selected. Never silently discard the 15 failed
+        // or unverified orders after completing the successful part of a batch.
+        setSelectedIds(new Set(outcomes.filter((item) =>
+          item.status === 'failed' || item.status === 'unverified'
+        ).map((item) => item.orderId)));
+        setNotice(`Đã xác minh xuất kho ${successCount} đơn; ${failedCount} đơn lỗi; ${unverifiedCount} đơn chưa xác minh. Xem kết quả từng đơn bên dưới.`);
+      } else {
+        const label = QUICK_ACTION_LABELS[action];
+        setNotice(failures.length
+          ? `Đã ${label.toLocaleLowerCase('vi')} ${successCount} đơn; ${failures.length} đơn chưa thực hiện được. ${failures[0]}`
+          : `Đã ${label.toLocaleLowerCase('vi')} ${successCount} đơn.`);
+        setSelectedIds(new Set());
+      }
     } finally {
       setBulkBusy(null);
     }
@@ -783,6 +876,12 @@ export default function OrderManagementWorkspace({ permissionKeys }: { permissio
 
   const detailVersion = activeVersion(detail);
   const anyMutationBusy = Boolean(busyAction || bulkBusy);
+  const stockIssueCounts = {
+    issued: stockIssueReport?.outcomes.filter((item) => item.status === 'issued').length ?? 0,
+    verified: stockIssueReport?.outcomes.filter((item) => item.status === 'verified-issued').length ?? 0,
+    failed: stockIssueReport?.outcomes.filter((item) => item.status === 'failed').length ?? 0,
+    unverified: stockIssueReport?.outcomes.filter((item) => item.status === 'unverified').length ?? 0,
+  };
 
   return (
     <AppShell
@@ -855,6 +954,32 @@ export default function OrderManagementWorkspace({ permissionKeys }: { permissio
         </section>
 
         {notice ? <div className={styles.notice} role="status">{notice}</div> : null}
+        {stockIssueReport ? (
+          <section className={styles.stockIssueReport} aria-label="Kết quả xuất kho hàng loạt">
+            <div className={styles.stockIssueReportHeader}>
+              <strong>Kết quả xuất kho: {stockIssueCounts.issued} thành công, {stockIssueCounts.verified} đã đối chiếu,
+                {' '}{stockIssueCounts.failed} lỗi, {stockIssueCounts.unverified} chưa xác minh</strong>
+              <button type="button" className={styles.secondaryButton} onClick={() => setStockIssueReport(null)}>Đóng kết quả</button>
+            </div>
+            {stockIssueCounts.unverified > 0 ? (
+              <p role="alert">Các đơn chưa xác minh có thể đã ghi sổ kho. Không xuất lại trước khi đối chiếu trạng thái và chứng từ.</p>
+            ) : null}
+            <details defaultOpen={stockIssueCounts.failed + stockIssueCounts.unverified > 0}>
+              <summary>Chi tiết từng đơn ({stockIssueReport.outcomes.length})</summary>
+              <ul className={styles.stockIssueResultList}>
+                {stockIssueReport.outcomes.map((item) => (
+                  <li key={item.orderId} data-status={item.status}>
+                    <strong>{compactOrderNumber(item.number)}</strong>
+                    <span>{item.status === 'issued' ? 'Đã xuất kho'
+                      : item.status === 'verified-issued' ? 'Đã xác minh đã xuất'
+                        : item.status === 'failed' ? 'Không thực hiện được' : 'Chưa xác minh'}</span>
+                    <small>{item.detail}{item.requestId ? ` · Mã tra cứu: ${item.requestId}` : ''}</small>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          </section>
+        ) : null}
         {loadError ? <div className={styles.errorBanner} role="alert">{loadError}<button type="button" onClick={() => void load()}>Tải lại</button></div> : null}
 
         <section className={styles.tablePanel}>
