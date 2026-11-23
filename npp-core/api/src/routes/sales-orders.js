@@ -226,6 +226,9 @@ async function executeIdempotentMutation(req, res, options, {
     return;
   }
 
+  const tracingSalesStockIssue = action === 'manual_stock_issue' || action === 'pickup_stock_issue';
+  const traceStartedAt = Date.now();
+  const traceSpans = { beforeReadMs: null, mutationMs: null, auditMs: null };
   try {
     const execution = await options.executeRequestWithIdempotency({
       idempotencyStore: options.idempotencyStore,
@@ -239,17 +242,23 @@ async function executeIdempotentMutation(req, res, options, {
         const transaction = await withAuditOutboxTransaction({
           adapter: options.getPool(),
           mutate: async (client) => {
+            const beforeStartedAt = Date.now();
             const before = resourceId
               ? await service.getSalesOrder(client, { requestContext, id: resourceId })
               : null;
+            if (tracingSalesStockIssue) traceSpans.beforeReadMs = Date.now() - beforeStartedAt;
+            const mutationStartedAt = Date.now();
             const result = await mutate(client, keyResult.key);
+            if (tracingSalesStockIssue) traceSpans.mutationMs = Date.now() - mutationStartedAt;
             if (!result.ok) return { failed: true, result };
+            const auditStartedAt = Date.now();
             const eventId = await writeAuditOutbox(client, {
               requestContext,
               action,
               result,
               beforeData: before?.ok ? before.salesOrder : null,
             });
+            if (tracingSalesStockIssue) traceSpans.auditMs = Date.now() - auditStartedAt;
             return { salesOrder: result.salesOrder, eventId };
           },
         });
@@ -290,13 +299,28 @@ async function executeIdempotentMutation(req, res, options, {
       execution.response.requestId ?? options.requestId,
       execution.response.contentType,
     );
+    if (tracingSalesStockIssue) {
+      console.info(JSON.stringify({
+        event: 'sales_order_stock_issue_timing',
+        requestId: options.requestId,
+        action,
+        salesOrderId: resourceId,
+        statusCode: execution.response.statusCode,
+        resultCode: execution.response.body?.error?.code ?? null,
+        durationMs: Date.now() - traceStartedAt,
+        ...traceSpans,
+      }));
+    }
   } catch (error) {
-    console.error(JSON.stringify(sanitizedUnexpectedError(error, {
-      requestId: options.requestId,
-      action,
-      resourceId,
-      route,
-    })));
+    console.error(JSON.stringify({
+      ...sanitizedUnexpectedError(error, {
+        requestId: options.requestId,
+        action,
+        resourceId,
+        route,
+      }),
+      ...(tracingSalesStockIssue ? { durationMs: Date.now() - traceStartedAt, ...traceSpans } : {}),
+    }));
     sendError(
       res,
       apiError('SALES_ORDER_TRANSACTION_FAILED', 'Sales Order transaction failed', {}, true, 503),
