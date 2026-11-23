@@ -318,10 +318,21 @@ export async function issueDirectSalesOrderStock(client, {
 
   // Inbound replenishment locks warehouse/SKU before updating an order's demand.
   // Lock the same scopes first here, before locking the order/version/demand rows.
+  const lockStartedAt = Date.now();
   await lockOrderStockScopes(client, {
     installationId: requestContext.installationId,
     salesOrderId: id,
   });
+  const scopeLockWaitMs = Date.now() - lockStartedAt;
+  if (scopeLockWaitMs >= 1_000) {
+    console.warn(JSON.stringify({
+      event: 'sales_order_stock_issue_scope_lock_wait',
+      requestId: requestContext.requestId ?? null,
+      salesOrderId: id,
+      mode: contract.key,
+      lockWaitMs: scopeLockWaitMs,
+    }));
+  }
   const source = await lockSource(client, {
     installationId: requestContext.installationId,
     salesOrderId: id,
