@@ -972,7 +972,7 @@ export default function OrderManagementWorkspace({ permissionKeys }: { permissio
             {stockIssueCounts.unverified > 0 ? (
               <p role="alert">Các đơn chưa xác minh có thể đã ghi sổ kho. Không xuất lại trước khi đối chiếu trạng thái và chứng từ. Tải lại trang để kiểm tra lại đơn trước khi thử thao tác mới.</p>
             ) : null}
-            <details defaultOpen={stockIssueCounts.failed + stockIssueCounts.unverified > 0}>
+            <details>
               <summary>Chi tiết từng đơn ({stockIssueReport.outcomes.length})</summary>
               <ul className={styles.stockIssueResultList}>
                 {stockIssueReport.outcomes.map((item) => (
