@@ -84,7 +84,10 @@ async function coreRequest<T>(requestId: string, path: string, init: RequestInit
     let payload: CoreEnvelope<T>;
     try {
       payload = await response.json() as CoreEnvelope<T>;
-    } catch {
+    } catch (error) {
+      // An abort or broken body stream is transport failure (possibly timeout),
+      // not invalid JSON. Let the outer handler classify it as 503/504.
+      if (controller.signal.aborted || !(error instanceof SyntaxError)) throw error;
       recordSalesGatewayFailure({
         requestId, method, path, durationMs: Date.now() - startedAt,
         type: 'invalid_response', statusCode: response.status,
