@@ -53,7 +53,8 @@ test('Lô 2 switches the real sellable ĐVT variant on every line and reprices f
   assert.match(form, /async function changeLineVariant\(clientLineId: string, nextVariantId: string\)/);
   assert.match(form, /variantId: option\.id,[\s\S]*?sku: option\.sku,[\s\S]*?unitCode: option\.unit_code \?\? '',[\s\S]*?conversionToBase: option\.conversion_to_base \?\? '1'/);
   assert.match(form, /manualUnitPriceMinor: '',[\s\S]*?baseUnitPriceMinor: '0',[\s\S]*?systemUnitPriceMinor: '0',[\s\S]*?pricingFingerprint: ''/);
-  assert.match(form, /const changed: LineDraft = \{[\s\S]*?\.\.\.source,[\s\S]*?variantId: option\.id/);\n  assert.match(form, /await repriceLines\(\[changed\], pricingAt\)/);
+  assert.match(form, /const changed: LineDraft = \{[\s\S]*?\.\.\.source,[\s\S]*?variantId: option\.id/);
+  assert.match(form, /await repriceLines\(\[changed\], pricingAt\)/);
   assert.match(form, /data-testid={`sales-line-variant-select-\$\{index \+ 1\}`}/);
   assert.match(form, /className=\{styles\.directPriceInput\}[\s\S]*?data-testid=\{`sales-line-variant-select-/);
   assert.match(form, /onChange=\{\(event\) => void changeLineVariant\(line\.clientLineId, event\.target\.value\)\}/);
