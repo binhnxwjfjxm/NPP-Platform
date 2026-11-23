@@ -243,22 +243,35 @@ async function executeIdempotentMutation(req, res, options, {
           adapter: options.getPool(),
           mutate: async (client) => {
             const beforeStartedAt = Date.now();
-            const before = resourceId
-              ? await service.getSalesOrder(client, { requestContext, id: resourceId })
-              : null;
-            if (tracingSalesStockIssue) traceSpans.beforeReadMs = Date.now() - beforeStartedAt;
+            let before;
+            try {
+              before = resourceId
+                ? await service.getSalesOrder(client, { requestContext, id: resourceId })
+                : null;
+            } finally {
+              if (tracingSalesStockIssue) traceSpans.beforeReadMs = Date.now() - beforeStartedAt;
+            }
             const mutationStartedAt = Date.now();
-            const result = await mutate(client, keyResult.key);
-            if (tracingSalesStockIssue) traceSpans.mutationMs = Date.now() - mutationStartedAt;
+            let result;
+            try {
+              result = await mutate(client, keyResult.key);
+            } finally {
+              // The slowest failed stock posting must still have its elapsed time.
+              if (tracingSalesStockIssue) traceSpans.mutationMs = Date.now() - mutationStartedAt;
+            }
             if (!result.ok) return { failed: true, result };
             const auditStartedAt = Date.now();
-            const eventId = await writeAuditOutbox(client, {
-              requestContext,
-              action,
-              result,
-              beforeData: before?.ok ? before.salesOrder : null,
-            });
-            if (tracingSalesStockIssue) traceSpans.auditMs = Date.now() - auditStartedAt;
+            let eventId;
+            try {
+              eventId = await writeAuditOutbox(client, {
+                requestContext,
+                action,
+                result,
+                beforeData: before?.ok ? before.salesOrder : null,
+              });
+            } finally {
+              if (tracingSalesStockIssue) traceSpans.auditMs = Date.now() - auditStartedAt;
+            }
             return { salesOrder: result.salesOrder, eventId };
           },
         });
