@@ -20,3 +20,18 @@
 .srOnly{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 @media(max-width:1180px){.summaryGrid{grid-template-columns:repeat(3,minmax(0,1fr))}.searchRow{grid-template-columns:minmax(240px,1.5fr) repeat(2,minmax(120px,.7fr))}.filterRow{grid-template-columns:repeat(2,minmax(160px,1fr)) auto}.detailFacts{grid-template-columns:repeat(3,1fr)}.selectionBar{flex-wrap:wrap}.selectedCount{margin-left:0}}
 @media(max-width:760px){.summaryGrid{grid-template-columns:1fr 1fr}.searchRow,.filterRow{grid-template-columns:1fr 1fr}.searchField{grid-column:1/-1}.filterActions{grid-column:1/-1}.selectionBar{align-items:flex-start;flex-wrap:wrap}.selectedCount{margin-left:0}.bulkHint{width:100%}.pagination{align-items:flex-start;flex-direction:column}.detailFacts{grid-template-columns:1fr 1fr}.detailFooter{align-items:flex-start;flex-direction:column}.quickSettlementPanel{justify-content:flex-start}.quickSettlementPanel>span{width:100%;margin-right:0}}
+
+
+.stockIssueReport{display:grid;gap:.55rem;padding:.78rem .9rem;border:1px solid var(--hp-border);border-radius:10px;background:var(--hp-surface);color:var(--hp-ink)}
+.stockIssueReportHeader{display:flex;gap:.8rem;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.stockIssueReportHeader strong{font-size:.87rem}
+.stockIssueReport p{margin:0;color:#8d3e28;font-weight:650;font-size:.8rem}
+.stockIssueReport details{min-width:0}
+.stockIssueReport summary{cursor:pointer;font-weight:700;font-size:.78rem}
+.stockIssueResultList{list-style:none;display:grid;gap:.35rem;margin:.55rem 0 0;padding:0;max-height:320px;overflow:auto}
+.stockIssueResultList li{display:grid;grid-template-columns:minmax(100px,auto) minmax(140px,auto) 1fr;align-items:start;gap:.35rem .8rem;padding:.48rem .55rem;border:1px solid var(--hp-border);border-radius:7px;font-size:.77rem;overflow-wrap:anywhere}
+.stockIssueResultList li[data-status='unverified']{border-color:#dcab77;background:#fff7e9}
+.stockIssueResultList li[data-status='failed']{background:#fff1f0}
+.stockIssueResultList li[data-status='verified-issued']{background:#f0f7ef}
+.stockIssueResultList small{font-size:.72rem;color:var(--hp-muted);overflow-wrap:anywhere}
+@media(max-width:760px){.stockIssueResultList li{grid-template-columns:1fr 1fr}.stockIssueResultList small{grid-column:1/-1}}
