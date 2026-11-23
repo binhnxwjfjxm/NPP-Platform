@@ -12,6 +12,9 @@ test('stock issue emits one request-correlated timing outcome with safe stage ti
   assert.match(routes, /traceSpans\.beforeReadMs = Date\.now\(\) - beforeStartedAt/);
   assert.match(routes, /traceSpans\.mutationMs = Date\.now\(\) - mutationStartedAt/);
   assert.match(routes, /traceSpans\.auditMs = Date\.now\(\) - auditStartedAt/);
+  assert.match(routes, /finally \{\s*if \(tracingSalesStockIssue\) traceSpans\.beforeReadMs/);
+  assert.match(routes, /finally \{\s*\/\/ The slowest failed stock posting must still have its elapsed time\.[\s\S]*?traceSpans\.mutationMs/);
+  assert.match(routes, /finally \{\s*if \(tracingSalesStockIssue\) traceSpans\.auditMs/);
   assert.match(routes, /event: 'sales_order_stock_issue_timing'/);
   assert.match(routes, /requestId: options\.requestId/);
   assert.match(routes, /statusCode: execution\.response\.statusCode/);
