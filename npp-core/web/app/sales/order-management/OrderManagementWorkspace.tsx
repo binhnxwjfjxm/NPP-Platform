@@ -422,6 +422,7 @@ export default function OrderManagementWorkspace({ permissionKeys }: { permissio
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [bulkBusy, setBulkBusy] = useState<QuickAction | null>(null);
   const [stockIssueReport, setStockIssueReport] = useState<StockIssueReport | null>(null);
+  const [unverifiedIssueIds, setUnverifiedIssueIds] = useState<Set<string>>(new Set());
   const [partialSettlement, setPartialSettlement] = useState<PartialSettlementDraft | null>(null);
   const selectAllRef = useRef<HTMLInputElement>(null);
   const detailCacheRef = useRef(new Map<string, SalesOrder>());
@@ -518,11 +519,11 @@ export default function OrderManagementWorkspace({ permissionKeys }: { permissio
   const bulkAction = useMemo<QuickAction | null>(() => {
     if (selectedOrders.length === 0) return null;
     // An unknown outcome must be reconciled before any further bulk stock issue.
-    if (stockIssueReport?.outcomes.some((item) => item.status === 'unverified' && selectedIds.has(item.orderId))) return null;
+    if (selectedOrders.some((order) => unverifiedIssueIds.has(order.id))) return null;
     const first = selectedQuickActions[0];
     if (!first) return null;
     return selectedQuickActions.every((action) => action === first) ? first : null;
-  }, [selectedOrders.length, selectedQuickActions, selectedIds, stockIssueReport]);
+  }, [selectedOrders, selectedQuickActions, unverifiedIssueIds]);
 
   useEffect(() => {
     if (selectAllRef.current) selectAllRef.current.indeterminate = somePageSelected && !allPageSelected;
@@ -643,9 +644,7 @@ export default function OrderManagementWorkspace({ permissionKeys }: { permissio
 
   async function runRowQuickAction(order: SalesOrder, action: QuickAction) {
     if (busyAction || bulkBusy) return;
-    if (action === 'issue-stock' && stockIssueReport?.outcomes.some(
-      (item) => item.orderId === order.id && item.status === 'unverified'
-    )) {
+    if (action === 'issue-stock' && unverifiedIssueIds.has(order.id)) {
       setNotice('Đơn chưa xác minh kết quả xuất kho. Hãy đối chiếu sổ kho trước khi thao tác tiếp.');
       return;
     }
@@ -724,7 +723,8 @@ export default function OrderManagementWorkspace({ permissionKeys }: { permissio
                 // A failed read-back is an unknown result, not a failed posting.
               }
               const knownRejection = error instanceof SalesOrderUiError
-                && error.statusCode >= 400 && error.statusCode < 500 && !error.retryable;
+                && error.statusCode >= 400 && error.statusCode < 500
+                && error.code !== 'IDEMPOTENCY_IN_PROGRESS' && !error.retryable;
               return {
                 updated: null, error: detail,
                 outcome: {
@@ -754,6 +754,14 @@ export default function OrderManagementWorkspace({ permissionKeys }: { permissio
         const unverifiedCount = outcomes.filter((item) => item.status === 'unverified').length;
         const failedCount = outcomes.filter((item) => item.status === 'failed').length;
         setStockIssueReport({ outcomes });
+        setUnverifiedIssueIds((current) => {
+          const next = new Set(current);
+          for (const item of outcomes) {
+            if (item.status === 'unverified') next.add(item.orderId);
+            else if (item.status === 'issued' || item.status === 'verified-issued') next.delete(item.orderId);
+          }
+          return next;
+        });
         // Keep unresolved orders selected. Never silently discard the 15 failed
         // or unverified orders after completing the successful part of a batch.
         setSelectedIds(new Set(outcomes.filter((item) =>
@@ -959,10 +967,10 @@ export default function OrderManagementWorkspace({ permissionKeys }: { permissio
             <div className={styles.stockIssueReportHeader}>
               <strong>Kết quả xuất kho: {stockIssueCounts.issued} thành công, {stockIssueCounts.verified} đã đối chiếu,
                 {' '}{stockIssueCounts.failed} lỗi, {stockIssueCounts.unverified} chưa xác minh</strong>
-              <button type="button" className={styles.secondaryButton} onClick={() => setStockIssueReport(null)}>Đóng kết quả</button>
+              <button type="button" className={styles.secondaryButton} onClick={() => setStockIssueReport(null)}>Ẩn kết quả</button>
             </div>
             {stockIssueCounts.unverified > 0 ? (
-              <p role="alert">Các đơn chưa xác minh có thể đã ghi sổ kho. Không xuất lại trước khi đối chiếu trạng thái và chứng từ.</p>
+              <p role="alert">Các đơn chưa xác minh có thể đã ghi sổ kho. Không xuất lại trước khi đối chiếu trạng thái và chứng từ. Tải lại trang để kiểm tra lại đơn trước khi thử thao tác mới.</p>
             ) : null}
             <details defaultOpen={stockIssueCounts.failed + stockIssueCounts.unverified > 0}>
               <summary>Chi tiết từng đơn ({stockIssueReport.outcomes.length})</summary>
