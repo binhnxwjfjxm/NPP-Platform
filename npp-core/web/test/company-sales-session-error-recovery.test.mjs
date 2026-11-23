@@ -116,6 +116,6 @@ test('unexpected gateway errors are diagnosable by request id without exposing p
   assert.doesNotMatch(routeSource, /console\.error\(error\)/);
   assert.match(uiSource, /requestId\?: string/);
   assert.match(uiSource, /payload\?\.requestId \|\| response\.headers\.get\('x-request-id'\)/);
-  assert.match(uiSource, /response\.status >= 500 && \^\[A-Za-z0-9\._:-\]/);
+  assert.match(uiSource, /response\.status >= 500 && \/\^\[A-Za-z0-9\._:-\]/);
   assert.match(uiSource, /Mã tra cứu:/);
 });
