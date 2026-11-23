@@ -852,6 +852,7 @@ export default function SalesOrderCommercialForm(props: Props) {
           error: options.length ? null : 'Sản phẩm chưa có ĐVT bán hàng hợp lệ.',
         },
       }));
+      if (options.length === 0) variantProductLoadRef.current.delete(productId);
     } catch (error) {
       variantProductLoadRef.current.delete(productId);
       setLineVariantChoices((current) => ({
@@ -875,6 +876,7 @@ export default function SalesOrderCommercialForm(props: Props) {
       const currentOption = rows.find((option) => option.id === line.variantId)
         ?? rows.find((option) => option.sku === line.sku);
       if (!currentOption) {
+        lineProductResolveRef.current.delete(line.clientLineId);
         setLineVariantErrors((current) => ({ ...current, [line.clientLineId]: 'Không xác định được ĐVT của SKU này.' }));
         return;
       }
