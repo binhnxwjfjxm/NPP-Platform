@@ -67,6 +67,10 @@ test('unverified orders block bulk and row re-submission until operator reconcil
   assert.match(workspace, /unverifiedIssueIds\.has\(order\.id\)/);
   assert.match(workspace, /setUnverifiedIssueIds\(\(current\) =>/);
   assert.match(workspace, /error\.code !== 'IDEMPOTENCY_IN_PROGRESS'/);
+  const knownRejection = workspace.match(/const knownRejection = error instanceof SalesOrderUiError[\s\S]*?;/)?.[0] ?? '';
+  assert.match(knownRejection, /error\.statusCode >= 400 && error\.statusCode < 500/);
+  assert.doesNotMatch(knownRejection, /!error\.retryable/);
+  assert.match(workspace, /including shortages marked retryable after stock is replenished/);
   assert.match(workspace, /Không xuất lại trước khi đối chiếu trạng thái và chứng từ/);
 });
 
