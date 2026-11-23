@@ -53,6 +53,17 @@ const REQUEST_ID_PATTERN=/^[A-Za-z0-9._:-]{1,128}$/;const UUID_PATTERN=/^[0-9a-f
         true,
       );
     }
+    if (!payload || typeof payload !== 'object') {
+      recordSalesGatewayFailure({
+        requestId, method, path: pth, durationMs: Date.now() - startedAt,
+        type: 'invalid_response', statusCode: response.status,
+      });
+      throw new SalesOrderGatewayError(
+        'SALES_ORDER_GATEWAY_RESPONSE_INVALID',
+        'Phản hồi từ Công Ty không hợp lệ. Kiểm tra trạng thái đơn trước khi thử lại.',
+        502, true,
+      );
+    }
     if (!response.ok) {
       if (response.status >= 500) {
         recordSalesGatewayFailure({
