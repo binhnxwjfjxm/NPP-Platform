@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
+  SalesOrderGatewayError,
   normalizeSalesOrderGatewayError,
   resolveSalesOrderRequestId,
 } from '../../../lib/sales-order-gateway';
@@ -16,6 +17,18 @@ export function salesOrderResponse<T>(data: T, requestId: string, status = 200) 
 }
 
 export function salesOrderErrorResponse(error: unknown, requestId: string) {
+  // Unexpected server-side failures used to be hidden behind a generic 503.
+  // Record a safe error category + request ID for incident diagnosis only.
+  // Never log cookies, Authorization, URL queries or the order payload.
+  if (!(error instanceof SalesOrderGatewayError)) {
+    const errorName = error instanceof Error && ['Error', 'TypeError', 'RangeError', 'SyntaxError'].includes(error.name)
+      ? error.name : 'Unknown';
+    console.error(JSON.stringify({
+      event: 'sales_order_unhandled_gateway_error',
+      requestId,
+      errorName,
+    }));
+  }
   const normalized = normalizeSalesOrderGatewayError(error);
   return NextResponse.json(
     {

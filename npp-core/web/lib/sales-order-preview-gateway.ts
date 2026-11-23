@@ -1,6 +1,6 @@
 import 'server-only';
 import { requireNppWorkforceSessionToken } from './internal-auth-client';
-import { SalesOrderGatewayError } from './sales-order-gateway';
+import { SalesOrderGatewayError, normalizeSalesOrderGatewayError } from './sales-order-gateway';
 import { recordSalesGatewayFailure, recordSlowSalesGatewayRequest } from './sales-order-gateway-diagnostics';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -134,6 +134,9 @@ async function coreRequest<T>(requestId: string, path: string, init: RequestInit
     return payload.data as T;
   } catch (error) {
     if (error instanceof SalesOrderGatewayError) throw error;
+    if (error instanceof Error && error.message === 'NPP_AUTH_REQUIRED') {
+      throw normalizeSalesOrderGatewayError(error);
+    }
     const timedOut = controller.signal.aborted;
     recordSalesGatewayFailure({
       requestId, method, path, durationMs: Date.now() - startedAt,

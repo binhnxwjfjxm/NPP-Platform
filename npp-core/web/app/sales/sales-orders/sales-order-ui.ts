@@ -58,6 +58,7 @@ export const settlementLabels: Record<string, string> = {
 };
 
 export type ApiEnvelope<T> = {
+  requestId?: string;
   data?: T;
   error?: { code?: string; message?: string; retryable?: boolean; details?: unknown };
 };
@@ -256,9 +257,13 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
     const message = code === 'IDEMPOTENCY_PAYLOAD_MISMATCH'
       ? 'Nội dung đơn đã thay đổi. Hãy lưu lại để hệ thống tạo yêu cầu mới.'
       : payload?.error?.message ?? 'Yêu cầu bán hàng không thành công';
+    const rawRequestId = payload?.requestId || response.headers.get('x-request-id') || '';
+    const trace = response.status >= 500 && /^[A-Za-z0-9._:-]{1,128}$/.test(rawRequestId)
+      ? ` (Mã tra cứu: ${rawRequestId})`
+      : '';
     throw new SalesOrderUiError(
       code,
-      message,
+      `${message}${trace}`,
       payload?.error?.retryable === true || response.status >= 500 || priceChangedConfirm,
       payload?.error?.details ?? {},
       response.status,
