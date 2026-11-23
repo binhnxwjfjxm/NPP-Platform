@@ -19,7 +19,9 @@ test('Lập đơn không còn tính lại toàn bộ đơn mỗi lần thêm hà
   const quantityEffect = form.slice(quantityEffectStart, quantityEffectEnd);
   assert.match(quantityEffect, /previousQuantity !== undefined && previousQuantity !== quantity/);
   assert.match(quantityEffect, /quantityRepricePendingRef\.current\.add\(clientLineId\)/);
+  assert.match(quantityEffect, /const effectiveAt = pricingAt;/);
   assert.match(quantityEffect, /repriceLines\(changedLines, effectiveAt\)/);
+  assert.doesNotMatch(quantityEffect, /setPricingAt\(/);
   assert.doesNotMatch(quantityEffect, /repriceAll\(/);
 });
 

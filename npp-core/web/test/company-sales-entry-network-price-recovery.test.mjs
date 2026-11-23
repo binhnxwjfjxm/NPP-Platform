@@ -44,10 +44,13 @@ test('pricing/reprice failures never appear as a payable 0 total', () => {
   assert.match(form, /const priceReady = hasConfirmedLinePrice\(line, props\.mode, savedLineIds\);/);
   assert.match(form, /priceReady \? vnd\(estimate\.details\[index\]\?\.total \?\? 0n\) : '—'/);
   assert.match(form, /unresolvedPriceLines\.length \? 'Chưa đủ giá' : vnd\(estimate\.total\)/);
-  assert.match(form, /Tổng tiền chỉ hiện sau khi đủ giá hợp lệ/);
-  assert.match(form, /Tính lại các dòng lỗi/);
+  assert.doesNotMatch(form, /priceRecoveryBanner|Tính lại các dòng lỗi|Tổng tiền chỉ hiện sau khi đủ giá hợp lệ/);
+  assert.match(form, /className=\{styles\.linePriceFeedback\}/);
+  assert.match(form, /!priceReady && !line\.resolvingPrice/);
   assert.match(form, /Tính lại giá/);
-  assert.match(css, /\.priceRecoveryBanner\{/);
+  assert.match(css, /\.linePriceFeedback\{[^}]*height:1\.8rem/);
+  assert.match(css, /\.linePriceFeedback small\{[^}]*text-overflow:ellipsis;white-space:nowrap/);
+  assert.doesNotMatch(css, /\.priceRecoveryBanner\{/);
 });
 
 test('SKU add, unit changes and split lines use guarded price generations', () => {
@@ -59,4 +62,13 @@ test('SKU add, unit changes and split lines use guarded price generations', () =
   assert.match(form, /loadProductVariants\(line\.productId\)/);
   assert.match(form, /resolveLineProduct\(line\)/);
   assert.match(form, /Tải lại ĐVT/);
+});
+
+test('a debounced quantity change cannot accept a stale price response before the next quote', () => {
+  assert.match(form, /const quotedByLineId = new Map\(snapshot\.map/);
+  assert.match(form, /line\.quantity !== quoted\.quantity \|\| line\.variantId !== quoted\.variantId/);
+  assert.match(form, /pricingGenerationRef\.current\.get\(line\.clientLineId\) !== result\.pricingGeneration/);
+  assert.match(form, /const effectiveAt = pricingAt;\s*void repriceLines\(changedLines, effectiveAt\)/);
+  const quantityEffect = form.slice(form.indexOf('const quantitySignature ='), form.indexOf('function focusLineQuantity'));
+  assert.doesNotMatch(quantityEffect, /setPricingAt\(/);
 });

@@ -801,9 +801,13 @@ export default function SalesOrderCommercialForm(props: Props) {
       }
     });
     const byLineId = new Map(results.map((result) => [result.clientLineId, result]));
+    const quotedByLineId = new Map(snapshot.map((line) => [line.clientLineId, line]));
     setLines((current) => current.map((line) => {
       const result = byLineId.get(line.clientLineId);
-      if (!result || pricingGenerationRef.current.get(line.clientLineId) !== result.pricingGeneration) return line;
+      const quoted = quotedByLineId.get(line.clientLineId);
+      // Quantity changes are debounced: reject an older response even before a new request starts.
+      if (!result || !quoted || pricingGenerationRef.current.get(line.clientLineId) !== result.pricingGeneration
+        || line.quantity !== quoted.quantity || line.variantId !== quoted.variantId) return line;
       const { pricingGeneration: _pricingGeneration, ...lineResult } = result;
       return { ...line, ...lineResult, resolvingPrice: false };
     }));
@@ -1080,12 +1084,12 @@ export default function SalesOrderCommercialForm(props: Props) {
       quantityRepricePendingRef.current.clear();
       const changedLines = linesRef.current.filter((line) => pendingIds.has(line.clientLineId));
       if (changedLines.length === 0) return;
-      const effectiveAt = new Date().toISOString();
-      setPricingAt(effectiveAt);
+      // Keep the order's pricing timestamp stable. Updating it here restarts the active SKU search.
+      const effectiveAt = pricingAt;
       void repriceLines(changedLines, effectiveAt);
     }, REPRICE_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [entrySettings, quantitySignature, repriceLines, salesChannelId]);
+  }, [entrySettings, pricingAt, quantitySignature, repriceLines, salesChannelId]);
 
   function focusLineQuantity(clientLineId: string) {
     window.setTimeout(() => {
@@ -1718,21 +1722,6 @@ export default function SalesOrderCommercialForm(props: Props) {
           </section>
 
           <section className={styles.orderLines} aria-label="Hàng hóa trong đơn">
-            {unresolvedPriceLines.length > 0 && (
-              <div className={styles.priceRecoveryBanner} role="status">
-                <span>{unresolvedPriceLines.length} dòng đang chờ xác minh giá. Tổng tiền chỉ hiện sau khi đủ giá hợp lệ.</span>
-                <button
-                  type="button"
-                  className={styles.linkButton}
-                  disabled={unresolvedPriceLines.every((line) => line.resolvingPrice)}
-                  onClick={() => {
-                    const pending = linesRef.current.filter((line) =>
-                      !line.resolvingPrice && !hasConfirmedLinePrice(line, props.mode, savedLineIds));
-                    if (pending.length > 0) void repriceLines(pending, new Date().toISOString());
-                  }}
-                >Tính lại các dòng lỗi</button>
-              </div>
-            )}
             <header className={styles.lineTableHeader}><span>STT</span><span>Hàng hóa</span><span>ĐVT</span><span>SL</span><span>Đơn giá</span><span>CK</span><span>Thành tiền</span><span /></header>
             {lines.map((line, index) => {
               const choiceState = line.productId ? lineVariantChoices[line.productId] : undefined;
@@ -1772,20 +1761,25 @@ export default function SalesOrderCommercialForm(props: Props) {
                       onClick={() => void splitLine(line.clientLineId)}
                     >↳ Tách dòng</button>
                   </div>
-                  {line.priceError && (
-                    <small className={line.pricingErrorCode === 'BASE_PRICE_NOT_FOUND' ? styles.priceNotice : styles.ineligible}>
-                      {line.pricingErrorCode === 'BASE_PRICE_NOT_FOUND' && hasValidManualPrice(line)
-                        ? `Đã nhận giá nhập tay ${vnd(line.manualUnitPriceMinor)}.`
-                        : line.priceError}
+                  <div className={styles.linePriceFeedback}>
+                    <small
+                      className={line.priceError && line.pricingErrorCode !== 'BASE_PRICE_NOT_FOUND' ? styles.ineligible : styles.priceNotice}
+                      title={line.priceError ?? undefined}
+                    >
+                      {line.priceError
+                        ? (line.pricingErrorCode === 'BASE_PRICE_NOT_FOUND' && hasValidManualPrice(line)
+                          ? `Đã nhận giá nhập tay ${vnd(line.manualUnitPriceMinor)}.`
+                          : line.priceError)
+                        : line.resolvingPrice ? 'Đang tính giá…' : !priceReady ? 'Chưa xác minh giá' : '\u00a0'}
                     </small>
-                  )}
-                  {!priceReady && !line.resolvingPrice && (
-                    <button
-                      type="button"
-                      className={styles.linkButton}
-                      onClick={() => void repriceLines([line], new Date().toISOString())}
-                    >Tính lại giá</button>
-                  )}
+                    {!priceReady && !line.resolvingPrice && (
+                      <button
+                        type="button"
+                        className={styles.linkButton}
+                        onClick={() => void repriceLines([line], new Date().toISOString())}
+                      >Tính lại giá</button>
+                    )}
+                  </div>
                 </div>
                 <div className={styles.unitCell}>
                   <select
@@ -1888,7 +1882,6 @@ export default function SalesOrderCommercialForm(props: Props) {
                     <strong>{line.pricingFingerprint ? automaticPriceText(line, line.systemUnitPriceMinor) : '—'}</strong>
                   )}
                   {line.manualUnitPriceMinor && <small className={styles.manualBadge}>Giá đã sửa</small>}
-                  {!priceReady && <small className={styles.priceNotice}>{line.resolvingPrice ? 'Đang tính giá…' : 'Chưa xác minh giá'}</small>}
                   {line.manualUnitPriceMinor && line.pricingFingerprint && canPriceOverride && (
                     <button type="button" className={styles.linkButton} aria-label={`Dùng lại giá hệ thống cho ${line.sku}`} onClick={() => useSystemPrice(index)}>Giá hệ thống</button>
                   )}
