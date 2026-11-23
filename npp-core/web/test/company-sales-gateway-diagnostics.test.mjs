@@ -94,6 +94,7 @@ test('order, pricing and manual mutation gateways all classify timeout explicitl
     assert.match(source, /const timedOut = controller\.signal\.aborted;/);
     assert.match(source, /timedOut \? 'timeout' : 'transport'/);
     assert.match(source, /timedOut \? 'SALES_ORDER_GATEWAY_TIMEOUT' : 'SALES_ORDER_GATEWAY_UNAVAILABLE'/);
+    assert.match(source, /if \(controller\.signal\.aborted \|\| !\(error instanceof SyntaxError\)\) throw error;/);
     assert.match(source, /type: 'invalid_response'/);
     assert.match(source, /type: 'upstream_failure'/);
     assert.doesNotMatch(source, /retry\s*\(\s*\)/);
