@@ -67,4 +67,7 @@
   .toolbar .orderSearchField{flex-basis:100%}
 }
 
-
+/* Keep each order row the same height while prices resolve, fail, or recover. */
+.linePriceFeedback{display:flex;align-items:center;gap:.35rem;min-width:0;height:1.8rem;min-height:1.8rem;overflow:hidden}
+.linePriceFeedback small{display:block;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.72rem;line-height:1.25rem}
+.linePriceFeedback .linkButton{flex:none;white-space:nowrap;padding:.12rem .3rem!important;font-size:.73rem}
