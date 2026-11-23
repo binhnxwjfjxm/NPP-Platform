@@ -226,6 +226,9 @@ async function executeIdempotentMutation(req, res, options, {
     return;
   }
 
+  const tracingSalesStockIssue = action === 'manual_stock_issue' || action === 'pickup_stock_issue';
+  const traceStartedAt = Date.now();
+  const traceSpans = { beforeReadMs: null, mutationMs: null, auditMs: null };
   try {
     const execution = await options.executeRequestWithIdempotency({
       idempotencyStore: options.idempotencyStore,
@@ -239,17 +242,36 @@ async function executeIdempotentMutation(req, res, options, {
         const transaction = await withAuditOutboxTransaction({
           adapter: options.getPool(),
           mutate: async (client) => {
-            const before = resourceId
-              ? await service.getSalesOrder(client, { requestContext, id: resourceId })
-              : null;
-            const result = await mutate(client, keyResult.key);
+            const beforeStartedAt = Date.now();
+            let before;
+            try {
+              before = resourceId
+                ? await service.getSalesOrder(client, { requestContext, id: resourceId })
+                : null;
+            } finally {
+              if (tracingSalesStockIssue) traceSpans.beforeReadMs = Date.now() - beforeStartedAt;
+            }
+            const mutationStartedAt = Date.now();
+            let result;
+            try {
+              result = await mutate(client, keyResult.key);
+            } finally {
+              // The slowest failed stock posting must still have its elapsed time.
+              if (tracingSalesStockIssue) traceSpans.mutationMs = Date.now() - mutationStartedAt;
+            }
             if (!result.ok) return { failed: true, result };
-            const eventId = await writeAuditOutbox(client, {
-              requestContext,
-              action,
-              result,
-              beforeData: before?.ok ? before.salesOrder : null,
-            });
+            const auditStartedAt = Date.now();
+            let eventId;
+            try {
+              eventId = await writeAuditOutbox(client, {
+                requestContext,
+                action,
+                result,
+                beforeData: before?.ok ? before.salesOrder : null,
+              });
+            } finally {
+              if (tracingSalesStockIssue) traceSpans.auditMs = Date.now() - auditStartedAt;
+            }
             return { salesOrder: result.salesOrder, eventId };
           },
         });
@@ -290,13 +312,28 @@ async function executeIdempotentMutation(req, res, options, {
       execution.response.requestId ?? options.requestId,
       execution.response.contentType,
     );
+    if (tracingSalesStockIssue) {
+      console.info(JSON.stringify({
+        event: 'sales_order_stock_issue_timing',
+        requestId: options.requestId,
+        action,
+        salesOrderId: resourceId,
+        statusCode: execution.response.statusCode,
+        resultCode: execution.response.body?.error?.code ?? null,
+        durationMs: Date.now() - traceStartedAt,
+        ...traceSpans,
+      }));
+    }
   } catch (error) {
-    console.error(JSON.stringify(sanitizedUnexpectedError(error, {
-      requestId: options.requestId,
-      action,
-      resourceId,
-      route,
-    })));
+    console.error(JSON.stringify({
+      ...sanitizedUnexpectedError(error, {
+        requestId: options.requestId,
+        action,
+        resourceId,
+        route,
+      }),
+      ...(tracingSalesStockIssue ? { durationMs: Date.now() - traceStartedAt, ...traceSpans } : {}),
+    }));
     sendError(
       res,
       apiError('SALES_ORDER_TRANSACTION_FAILED', 'Sales Order transaction failed', {}, true, 503),

@@ -1,6 +1,7 @@
 import 'server-only';
 import { requireNppWorkforceSessionToken } from './internal-auth-client';
 import { SalesOrderGatewayError } from './sales-order-gateway';
+import { recordSalesGatewayFailure, recordSlowSalesGatewayRequest } from './sales-order-gateway-diagnostics';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const QUANTITY_PATTERN = /^(?:0|[1-9]\d{0,14})(?:\.\d{1,6})?$/;
@@ -64,6 +65,8 @@ function coreUrl(): string {
 
 async function coreRequest<T>(requestId: string, path: string, init: RequestInit): Promise<T> {
   const controller = new AbortController();
+  const method = String(init.method ?? 'GET').toUpperCase();
+  const startedAt = Date.now();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
     const response = await fetch(`${coreUrl()}${path}`, {
@@ -81,10 +84,34 @@ async function coreRequest<T>(requestId: string, path: string, init: RequestInit
     let payload: CoreEnvelope<T>;
     try {
       payload = await response.json() as CoreEnvelope<T>;
-    } catch {
-      throw new SalesOrderGatewayError('SALES_ORDER_GATEWAY_RESPONSE_INVALID', 'Phản hồi bán hàng không hợp lệ', 502, false);
+    } catch (error) {
+      // An abort or broken body stream is transport failure (possibly timeout),
+      // not invalid JSON. Let the outer handler classify it as 503/504.
+      if (controller.signal.aborted || !(error instanceof SyntaxError)) throw error;
+      recordSalesGatewayFailure({
+        requestId, method, path, durationMs: Date.now() - startedAt,
+        type: 'invalid_response', statusCode: response.status,
+      });
+      throw new SalesOrderGatewayError(
+        'SALES_ORDER_GATEWAY_RESPONSE_INVALID',
+        'Phản hồi xem trước giá không hợp lệ. Hãy tải lại.',
+        502, true,
+      );
+    }
+    if (!payload || typeof payload !== 'object') {
+      recordSalesGatewayFailure({
+        requestId, method, path, durationMs: Date.now() - startedAt,
+        type: 'invalid_response', statusCode: response.status,
+      });
+      throw new SalesOrderGatewayError('SALES_ORDER_GATEWAY_RESPONSE_INVALID', 'Không đọc được dữ liệu xem trước giá.', 502, true);
     }
     if (!response.ok) {
+      if (response.status >= 500) {
+        recordSalesGatewayFailure({
+          requestId, method, path, durationMs: Date.now() - startedAt,
+          type: 'upstream_failure', statusCode: response.status,
+        });
+      }
       throw new SalesOrderGatewayError(
         payload.error?.code ?? 'SALES_ORDER_REQUEST_FAILED',
         payload.error?.message ?? 'Yêu cầu bán hàng không thành công',
@@ -94,12 +121,29 @@ async function coreRequest<T>(requestId: string, path: string, init: RequestInit
       );
     }
     if (!Object.prototype.hasOwnProperty.call(payload, 'data')) {
-      throw new SalesOrderGatewayError('SALES_ORDER_GATEWAY_RESPONSE_INVALID', 'Phản hồi bán hàng không hợp lệ', 502, false);
+      recordSalesGatewayFailure({
+        requestId, method, path, durationMs: Date.now() - startedAt,
+        type: 'invalid_response', statusCode: response.status,
+      });
+      throw new SalesOrderGatewayError('SALES_ORDER_GATEWAY_RESPONSE_INVALID', 'Phản hồi xem trước giá thiếu dữ liệu.', 502, true);
     }
+    recordSlowSalesGatewayRequest({
+      requestId, method, path, durationMs: Date.now() - startedAt,
+      statusCode: response.status,
+    });
     return payload.data as T;
   } catch (error) {
     if (error instanceof SalesOrderGatewayError) throw error;
-    throw new SalesOrderGatewayError('SALES_ORDER_GATEWAY_UNAVAILABLE', 'Chức năng bán hàng tạm thời chưa khả dụng', 503, true);
+    const timedOut = controller.signal.aborted;
+    recordSalesGatewayFailure({
+      requestId, method, path, durationMs: Date.now() - startedAt,
+      type: timedOut ? 'timeout' : 'transport',
+    });
+    throw new SalesOrderGatewayError(
+      timedOut ? 'SALES_ORDER_GATEWAY_TIMEOUT' : 'SALES_ORDER_GATEWAY_UNAVAILABLE',
+      timedOut ? 'Công Ty tính giá quá thời gian. Hãy tải lại.' : 'Không kết nối được Công Ty để tính giá. Hãy tải lại.',
+      timedOut ? 504 : 503, true,
+    );
   } finally {
     clearTimeout(timeout);
   }
