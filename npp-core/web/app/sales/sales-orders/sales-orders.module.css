@@ -68,6 +68,3 @@
 }
 
 
-.priceRecoveryBanner{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.4rem .8rem;padding:.62rem .85rem;border-bottom:1px solid #ead8b9;background:#fff9eb;color:#79531d;font-size:.78rem;font-weight:750}
-.priceRecoveryBanner .linkButton{font-weight:850;text-decoration:underline;text-underline-offset:2px}
-.priceRecoveryBanner .linkButton:disabled{opacity:.5;cursor:not-allowed}
