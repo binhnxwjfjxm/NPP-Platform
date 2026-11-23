@@ -1718,21 +1718,6 @@ export default function SalesOrderCommercialForm(props: Props) {
           </section>
 
           <section className={styles.orderLines} aria-label="Hàng hóa trong đơn">
-            {unresolvedPriceLines.length > 0 && (
-              <div className={styles.priceRecoveryBanner} role="status">
-                <span>{unresolvedPriceLines.length} dòng đang chờ xác minh giá. Tổng tiền chỉ hiện sau khi đủ giá hợp lệ.</span>
-                <button
-                  type="button"
-                  className={styles.linkButton}
-                  disabled={unresolvedPriceLines.every((line) => line.resolvingPrice)}
-                  onClick={() => {
-                    const pending = linesRef.current.filter((line) =>
-                      !line.resolvingPrice && !hasConfirmedLinePrice(line, props.mode, savedLineIds));
-                    if (pending.length > 0) void repriceLines(pending, new Date().toISOString());
-                  }}
-                >Tính lại các dòng lỗi</button>
-              </div>
-            )}
             <header className={styles.lineTableHeader}><span>STT</span><span>Hàng hóa</span><span>ĐVT</span><span>SL</span><span>Đơn giá</span><span>CK</span><span>Thành tiền</span><span /></header>
             {lines.map((line, index) => {
               const choiceState = line.productId ? lineVariantChoices[line.productId] : undefined;
