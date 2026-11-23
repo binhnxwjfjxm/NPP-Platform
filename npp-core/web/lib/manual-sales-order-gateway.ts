@@ -1,6 +1,7 @@
 import 'server-only';
 import { isValidIdempotencyKey, normalizeIdempotencyKey } from '@npp/contracts';
 import { SalesOrderGatewayError } from './sales-order-gateway';
+import { recordSalesGatewayFailure, recordSlowSalesGatewayRequest } from './sales-order-gateway-diagnostics';
 import { requireNppWorkforceSessionToken } from './internal-auth-client';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -65,6 +66,8 @@ async function request<T>({
   key: string;
 }): Promise<T> {
   const controller = new AbortController();
+  const startedAt = Date.now();
+  const path = `/api/manual-sales-orders/:id/${action}`;
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
     const response = await fetch(`${baseUrl()}/api/manual-sales-orders/${salesOrderId(id)}/${action}`, {
@@ -84,9 +87,30 @@ async function request<T>({
     try {
       payload = await response.json() as CoreEnvelope<T>;
     } catch {
-      throw new SalesOrderGatewayError('SALES_ORDER_GATEWAY_RESPONSE_INVALID', 'Phản hồi bán hàng không hợp lệ', 502, false);
+      recordSalesGatewayFailure({
+        requestId, method: 'POST', path, durationMs: Date.now() - startedAt,
+        type: 'invalid_response', statusCode: response.status,
+      });
+      throw new SalesOrderGatewayError(
+        'SALES_ORDER_GATEWAY_RESPONSE_INVALID',
+        'Phản hồi từ Công Ty không hợp lệ. Kiểm tra chứng từ trước khi thử lại.',
+        502, true,
+      );
+    }
+    if (!payload || typeof payload !== 'object') {
+      recordSalesGatewayFailure({
+        requestId, method: 'POST', path, durationMs: Date.now() - startedAt,
+        type: 'invalid_response', statusCode: response.status,
+      });
+      throw new SalesOrderGatewayError('SALES_ORDER_GATEWAY_RESPONSE_INVALID', 'Phản hồi bán hàng không hợp lệ.', 502, true);
     }
     if (!response.ok) {
+      if (response.status >= 500) {
+        recordSalesGatewayFailure({
+          requestId, method: 'POST', path, durationMs: Date.now() - startedAt,
+          type: 'upstream_failure', statusCode: response.status,
+        });
+      }
       throw new SalesOrderGatewayError(
         payload.error?.code ?? 'SALES_ORDER_REQUEST_FAILED',
         payload.error?.message ?? 'Yêu cầu bán hàng không thành công',
@@ -96,12 +120,31 @@ async function request<T>({
       );
     }
     if (!Object.prototype.hasOwnProperty.call(payload, 'data')) {
-      throw new SalesOrderGatewayError('SALES_ORDER_GATEWAY_RESPONSE_INVALID', 'Phản hồi bán hàng không hợp lệ', 502, false);
+      recordSalesGatewayFailure({
+        requestId, method: 'POST', path, durationMs: Date.now() - startedAt,
+        type: 'invalid_response', statusCode: response.status,
+      });
+      throw new SalesOrderGatewayError('SALES_ORDER_GATEWAY_RESPONSE_INVALID', 'Phản hồi bán hàng thiếu dữ liệu.', 502, true);
     }
+    recordSlowSalesGatewayRequest({
+      requestId, method: 'POST', path, durationMs: Date.now() - startedAt,
+      statusCode: response.status,
+    });
     return payload.data as T;
   } catch (error) {
     if (error instanceof SalesOrderGatewayError) throw error;
-    throw new SalesOrderGatewayError('SALES_ORDER_GATEWAY_UNAVAILABLE', 'Chức năng bán hàng tạm thời chưa khả dụng', 503, true);
+    const timedOut = controller.signal.aborted;
+    recordSalesGatewayFailure({
+      requestId, method: 'POST', path, durationMs: Date.now() - startedAt,
+      type: timedOut ? 'timeout' : 'transport',
+    });
+    throw new SalesOrderGatewayError(
+      timedOut ? 'SALES_ORDER_GATEWAY_TIMEOUT' : 'SALES_ORDER_GATEWAY_UNAVAILABLE',
+      timedOut
+        ? 'Công Ty phản hồi quá thời gian. Kiểm tra chứng từ trước khi gửi lại.'
+        : 'Mất kết nối đến Công Ty. Kiểm tra chứng từ trước khi gửi lại.',
+      timedOut ? 504 : 503, true,
+    );
   } finally {
     clearTimeout(timeout);
   }
