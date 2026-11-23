@@ -1689,6 +1689,18 @@ export default function SalesOrderCommercialForm(props: Props) {
               </div>
               {skuLoading && <span className={styles.searchStatus}>Đang tìm…</span>}
               {!skuLoading && skuPreviewLoading && <span className={styles.searchStatus}>Đang cập nhật giá và tồn…</span>}
+              {skuSearchError && (
+                <p className={styles.priceNotice} role="alert">
+                  {skuSearchError}{' '}
+                  <button type="button" className={styles.linkButton} onClick={() => setSkuSearchAttempt((current) => current + 1)}>Tìm lại hàng</button>
+                </p>
+              )}
+              {skuPreviewError && (
+                <p className={styles.priceNotice} role="alert">
+                  Giá và tồn hiện chưa xác minh: {skuPreviewError}{' '}
+                  <button type="button" className={styles.linkButton} onClick={() => setSkuSearchAttempt((current) => current + 1)}>Tải lại giá và tồn</button>
+                </p>
+              )}
               {skuResults.length > 0 && (
                 <div className={styles.skuResults} role="listbox">
                   {skuResults.map((option, index) => (
@@ -1704,12 +1716,28 @@ export default function SalesOrderCommercialForm(props: Props) {
           </section>
 
           <section className={styles.orderLines} aria-label="Hàng hóa trong đơn">
+            {unresolvedPriceLines.length > 0 && (
+              <div className={styles.priceRecoveryBanner} role="status">
+                <span>{unresolvedPriceLines.length} dòng đang chờ xác minh giá. Tổng tiền chỉ hiện sau khi đủ giá hợp lệ.</span>
+                <button
+                  type="button"
+                  className={styles.linkButton}
+                  disabled={unresolvedPriceLines.every((line) => line.resolvingPrice)}
+                  onClick={() => {
+                    const pending = linesRef.current.filter((line) =>
+                      !line.resolvingPrice && !hasConfirmedLinePrice(line, props.mode, savedLineIds));
+                    if (pending.length > 0) void repriceLines(pending, new Date().toISOString());
+                  }}
+                >Tính lại các dòng lỗi</button>
+              </div>
+            )}
             <header className={styles.lineTableHeader}><span>STT</span><span>Hàng hóa</span><span>ĐVT</span><span>SL</span><span>Đơn giá</span><span>CK</span><span>Thành tiền</span><span /></header>
             {lines.map((line, index) => {
               const choiceState = line.productId ? lineVariantChoices[line.productId] : undefined;
               const variantOptions = choiceState?.options ?? [];
               const hasCurrentOption = variantOptions.some((variant) => variant.id === line.variantId);
               const lineVariantError = lineVariantErrors[line.clientLineId] ?? choiceState?.error ?? null;
+              const priceReady = hasConfirmedLinePrice(line, props.mode, savedLineIds);
               return (
               <article className={styles.orderLineCard} key={line.clientLineId} data-testid={`sales-order-line-${index + 1}`}>
                 <BusinessSequenceNumber rowIndex={index} value={lines.length - index} className={styles.lineSequence} />
@@ -1749,6 +1777,13 @@ export default function SalesOrderCommercialForm(props: Props) {
                         : line.priceError}
                     </small>
                   )}
+                  {!priceReady && !line.resolvingPrice && (
+                    <button
+                      type="button"
+                      className={styles.linkButton}
+                      onClick={() => void repriceLines([line], new Date().toISOString())}
+                    >Tính lại giá</button>
+                  )}
                 </div>
                 <div className={styles.unitCell}>
                   <select
@@ -1770,7 +1805,19 @@ export default function SalesOrderCommercialForm(props: Props) {
                     {!hasCurrentOption && <option value={line.variantId}>{line.unitCode || 'ĐVT'}</option>}
                     {variantOptions.map((variant) => <option key={variant.id} value={variant.id}>{variantBusinessLabel(variant)}</option>)}
                   </select>
-                  {lineVariantError && <small className={styles.ineligible}>{lineVariantError}</small>}
+                  {lineVariantError && (
+                    <>
+                      <small className={styles.ineligible}>{lineVariantError}</small>
+                      <button
+                        type="button"
+                        className={styles.linkButton}
+                        disabled={choiceState?.loading === true}
+                        onClick={() => void (line.productId
+                          ? loadProductVariants(line.productId)
+                          : resolveLineProduct(line))}
+                      >Tải lại ĐVT</button>
+                    </>
+                  )}
                 </div>
                 <div className={styles.quantityCell}>
                   <span>SL</span>
@@ -1821,7 +1868,7 @@ export default function SalesOrderCommercialForm(props: Props) {
                       className={styles.directPriceInput}
                       aria-label={`Đơn giá ${line.sku}`}
                       inputMode="numeric"
-                      value={formatVndInput(line.manualUnitPriceMinor || (line.pricingFingerprint || savedLineIds.has(line.clientLineId) ? line.systemUnitPriceMinor : ''))}
+                      value={formatVndInput(line.manualUnitPriceMinor || (priceReady ? line.systemUnitPriceMinor : ''))}
                       placeholder={line.pricingErrorCode === 'BASE_PRICE_NOT_FOUND' ? 'Nhập giá' : undefined}
                       onFocus={(event) => event.currentTarget.select()}
                       onClick={(event) => event.currentTarget.select()}
@@ -1839,6 +1886,7 @@ export default function SalesOrderCommercialForm(props: Props) {
                     <strong>{line.pricingFingerprint ? automaticPriceText(line, line.systemUnitPriceMinor) : '—'}</strong>
                   )}
                   {line.manualUnitPriceMinor && <small className={styles.manualBadge}>Giá đã sửa</small>}
+                  {!priceReady && <small className={styles.priceNotice}>{line.resolvingPrice ? 'Đang tính giá…' : 'Chưa xác minh giá'}</small>}
                   {line.manualUnitPriceMinor && line.pricingFingerprint && canPriceOverride && (
                     <button type="button" className={styles.linkButton} aria-label={`Dùng lại giá hệ thống cho ${line.sku}`} onClick={() => useSystemPrice(index)}>Giá hệ thống</button>
                   )}
@@ -1882,7 +1930,7 @@ export default function SalesOrderCommercialForm(props: Props) {
                     <strong>{discountValueText(line)}</strong>
                   )}
                 </div>
-                <div className={styles.priceCell}><span>Thành tiền</span><strong>{vnd(estimate.details[index]?.total ?? 0n)}</strong></div>
+                <div className={styles.priceCell}><span>Thành tiền</span><strong>{priceReady ? vnd(estimate.details[index]?.total ?? 0n) : '—'}</strong></div>
                 <button type="button" className={styles.removeLineButton} onClick={() => { setLines((current) => current.filter((_, itemIndex) => itemIndex !== index)); markDirty(); }}>Xóa</button>
                 <div
                   id={`sales-order-line-details-${index + 1}`}
@@ -1920,10 +1968,10 @@ export default function SalesOrderCommercialForm(props: Props) {
             )}
           </section>
           <section className={styles.taxSummary} aria-label="Tổng kết thuế và thanh toán">
-            <div><span>Tiền hàng theo giá cuối</span><strong>{vnd(estimate.gross)}</strong></div>
-            <div><span>Chiết khấu</span><strong>- {vnd(estimate.discount)}</strong></div>
-            <div><span>Thuế sau phân bổ</span><strong>{vnd(estimate.tax)}</strong></div>
-            <div className={styles.grandTotal}><span>Tổng thanh toán dự kiến</span><strong>{vnd(estimate.total)}</strong></div>
+            <div><span>Tiền hàng theo giá cuối</span><strong>{unresolvedPriceLines.length ? '—' : vnd(estimate.gross)}</strong></div>
+            <div><span>Chiết khấu</span><strong>{unresolvedPriceLines.length ? '—' : `- ${vnd(estimate.discount)}`}</strong></div>
+            <div><span>Thuế sau phân bổ</span><strong>{unresolvedPriceLines.length ? '—' : vnd(estimate.tax)}</strong></div>
+            <div className={styles.grandTotal}><span>Tổng thanh toán dự kiến</span><strong>{unresolvedPriceLines.length ? 'Chưa đủ giá' : vnd(estimate.total)}</strong></div>
           </section>
           <div className={styles.footerActions}>
             <button type="button" onClick={requestClose}>Đóng</button>
