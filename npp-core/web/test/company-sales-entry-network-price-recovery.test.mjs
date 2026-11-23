@@ -44,10 +44,11 @@ test('pricing/reprice failures never appear as a payable 0 total', () => {
   assert.match(form, /const priceReady = hasConfirmedLinePrice\(line, props\.mode, savedLineIds\);/);
   assert.match(form, /priceReady \? vnd\(estimate\.details\[index\]\?\.total \?\? 0n\) : '—'/);
   assert.match(form, /unresolvedPriceLines\.length \? 'Chưa đủ giá' : vnd\(estimate\.total\)/);
-  assert.match(form, /Tổng tiền chỉ hiện sau khi đủ giá hợp lệ/);
-  assert.match(form, /Tính lại các dòng lỗi/);
+  assert.doesNotMatch(form, /priceRecoveryBanner|Tính lại các dòng lỗi|Tổng tiền chỉ hiện sau khi đủ giá hợp lệ/);
+  assert.match(form, /!priceReady && !line\.resolvingPrice/);
   assert.match(form, /Tính lại giá/);
-  assert.match(css, /\.priceRecoveryBanner\{/);
+  assert.match(form, /unresolvedPriceLines\.length \? 'Chưa đủ giá' : vnd\(estimate\.total\)/);
+  assert.doesNotMatch(css, /\.priceRecoveryBanner\{/);
 });
 
 test('SKU add, unit changes and split lines use guarded price generations', () => {
