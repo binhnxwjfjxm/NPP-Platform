@@ -1142,37 +1142,9 @@ export default function SalesOrderCommercialForm(props: Props) {
     void loadProductVariants(option.productId);
     focusLineQuantity(pending.clientLineId);
     markDirty();
-    try {
-      const resolution = await priceFor({
-        variantId: option.id,
-        quantity: '1',
-        mode: customerMode,
-        selectedCustomerId: customerId,
-        channelId: salesChannelId,
-        appliedPriceMode: priceSelectionMode,
-        effectiveAt: pricingAt,
-      });
-      setLines((current) => current.map((line) => line.clientLineId === pending.clientLineId ? {
-        ...line,
-        baseUnitPriceMinor: resolution.baseUnitPriceMinor,
-        systemUnitPriceMinor: resolution.systemUnitPriceMinor ?? resolution.finalUnitPriceMinor,
-        pricingFingerprint: resolution.resolutionFingerprint,
-        priceSteps: resolution.steps,
-        resolvingPrice: false,
-        priceError: null,
-        pricingErrorCode: null,
-      } : line));
-    } catch (error) {
-      const details = pricingErrorDetails(error);
-      setLines((current) => current.map((line) => line.clientLineId === pending.clientLineId ? {
-        ...line,
-        pricingFingerprint: '',
-        priceSteps: [],
-        resolvingPrice: false,
-        priceError: details.message,
-        pricingErrorCode: details.code,
-      } : line));
-    }
+    // Use the shared generation guard: a later quantity/customer change must win
+    // over an older price response for this newly added line.
+    await repriceLines([pending], pricingAt);
   }
 
   async function changeLineVariant(clientLineId: string, nextVariantId: string) {
@@ -1189,8 +1161,8 @@ export default function SalesOrderCommercialForm(props: Props) {
       || !option.conversion_to_base) {
       return onError('ĐVT đã chọn không còn hợp lệ để bán.');
     }
-    setLines((current) => current.map((line) => line.clientLineId === clientLineId ? {
-      ...line,
+    const changed: LineDraft = {
+      ...source,
       variantId: option.id,
       sku: option.sku,
       unitCode: option.unit_code ?? '',
@@ -1204,39 +1176,11 @@ export default function SalesOrderCommercialForm(props: Props) {
       resolvingPrice: true,
       priceError: null,
       pricingErrorCode: null,
-    } : line));
+    };
+    setLines((current) => current.map((line) =>
+      line.clientLineId === clientLineId ? changed : line));
     markDirty();
-    try {
-      const resolution = await priceFor({
-        variantId: option.id,
-        quantity: source.quantity,
-        mode: customerMode,
-        selectedCustomerId: customerId,
-        channelId: salesChannelId,
-        appliedPriceMode: priceSelectionMode,
-        effectiveAt: pricingAt,
-      });
-      setLines((current) => current.map((line) => line.clientLineId === clientLineId && line.variantId === option.id ? {
-        ...line,
-        baseUnitPriceMinor: resolution.baseUnitPriceMinor,
-        systemUnitPriceMinor: resolution.systemUnitPriceMinor ?? resolution.finalUnitPriceMinor,
-        pricingFingerprint: resolution.resolutionFingerprint,
-        priceSteps: resolution.steps,
-        resolvingPrice: false,
-        priceError: null,
-        pricingErrorCode: null,
-      } : line));
-    } catch (error) {
-      const details = pricingErrorDetails(error);
-      setLines((current) => current.map((line) => line.clientLineId === clientLineId && line.variantId === option.id ? {
-        ...line,
-        resolvingPrice: false,
-        pricingFingerprint: '',
-        priceSteps: [],
-        priceError: details.message,
-        pricingErrorCode: details.code,
-      } : line));
-    }
+    await repriceLines([changed], pricingAt);
   }
 
   async function splitLine(sourceClientLineId: string) {
@@ -1266,37 +1210,7 @@ export default function SalesOrderCommercialForm(props: Props) {
     });
     markDirty();
     focusLineVariant(split.clientLineId);
-    try {
-      const resolution = await priceFor({
-        variantId: split.variantId,
-        quantity: '1',
-        mode: customerMode,
-        selectedCustomerId: customerId,
-        channelId: salesChannelId,
-        appliedPriceMode: priceSelectionMode,
-        effectiveAt: pricingAt,
-      });
-      setLines((current) => current.map((line) => line.clientLineId === split.clientLineId ? {
-        ...line,
-        baseUnitPriceMinor: resolution.baseUnitPriceMinor,
-        systemUnitPriceMinor: resolution.systemUnitPriceMinor ?? resolution.finalUnitPriceMinor,
-        pricingFingerprint: resolution.resolutionFingerprint,
-        priceSteps: resolution.steps,
-        resolvingPrice: false,
-        priceError: null,
-        pricingErrorCode: null,
-      } : line));
-    } catch (error) {
-      const details = pricingErrorDetails(error);
-      setLines((current) => current.map((line) => line.clientLineId === split.clientLineId ? {
-        ...line,
-        resolvingPrice: false,
-        pricingFingerprint: '',
-        priceSteps: [],
-        priceError: details.message,
-        pricingErrorCode: details.code,
-      } : line));
-    }
+    await repriceLines([split], pricingAt);
   }
 
   function handleSkuKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
