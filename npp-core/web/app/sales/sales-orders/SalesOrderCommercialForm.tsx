@@ -57,6 +57,8 @@ type LineDraft = {
   baseUnitPriceMinor: string;
   systemUnitPriceMinor: string;
   manualUnitPriceMinor: string;
+  // Authoritative final price from the persisted line, until an explicit pricing change.
+  savedUnitPriceMinor: string | null;
   resetManualPrice?: boolean;
   discountMode: SalesOrderLineDiscountMode;
   discountValue: string;
@@ -169,7 +171,7 @@ function versionDeliveryAddressLine1(version?: SalesOrderVersion | null): string
   return typeof value === 'string' ? value : '';
 }
 
-function versionLines(version?: SalesOrderVersion | null): LineDraft[] {
+function versionLines(version: SalesOrderVersion | null | undefined, mode: SalesOrderFormMode): LineDraft[] {
   const documentDiscountActive = version?.documentDiscountMode !== 'NONE'
     && (parseScaled(version?.documentDiscountValue ?? '0', true) ?? 0n) > 0n;
   return [...(version?.lines ?? [])].reverse().map((line) => ({
@@ -183,9 +185,12 @@ function versionLines(version?: SalesOrderVersion | null): LineDraft[] {
     quantity: compactQuantity(line.quantity),
     taxMode: line.taxMode,
     taxRate: line.taxRate,
-    baseUnitPriceMinor: line.baseUnitPrice ?? line.unitPrice,
-    systemUnitPriceMinor: line.systemUnitPrice ?? line.unitPrice,
+    // The normalizer represents absent legacy snapshots as ''. Do not confuse
+    // a saved manual price with a missing system quote (including manual zero).
+    baseUnitPriceMinor: line.baseUnitPrice || '',
+    systemUnitPriceMinor: line.systemUnitPrice || (line.priceSource !== 'MANUAL_OVERRIDE' ? line.unitPrice : ''),
     manualUnitPriceMinor: line.priceSource === 'MANUAL_OVERRIDE' ? line.unitPrice : '',
+    savedUnitPriceMinor: mode !== 'create' && /^\d+$/.test(line.unitPrice) ? line.unitPrice : null,
     resetManualPrice: false,
     discountMode: documentDiscountActive ? 'TOTAL_AMOUNT' : line.discountMode,
     discountValue: documentDiscountActive ? '0' : line.discountValue,
@@ -198,7 +203,7 @@ function versionLines(version?: SalesOrderVersion | null): LineDraft[] {
 }
 
 function finalUnitPrice(line: LineDraft): string {
-  return line.manualUnitPriceMinor.trim() || line.systemUnitPriceMinor;
+  return line.manualUnitPriceMinor.trim() || (line.savedUnitPriceMinor ?? line.systemUnitPriceMinor);
 }
 
 function hasValidManualPrice(line: LineDraft): boolean {
@@ -207,21 +212,17 @@ function hasValidManualPrice(line: LineDraft): boolean {
 
 // A zero is a legitimate price only when it was resolved or explicitly entered.
 // The initial placeholder '0' while waiting for Công Ty is never a verified price.
-function hasConfirmedLinePrice(
-  line: LineDraft,
-  mode: SalesOrderFormMode,
-  savedLineIds: ReadonlySet<string>,
-): boolean {
+function hasConfirmedLinePrice(line: LineDraft): boolean {
   if (line.resolvingPrice) return false;
   if (line.pricingErrorCode === 'BASE_PRICE_NOT_FOUND' && hasValidManualPrice(line)) return true;
-  return !line.priceError && Boolean(
-    line.pricingFingerprint || (mode === 'manual-edit' && savedLineIds.has(line.clientLineId)),
+  return !line.priceError && /^\d+$/.test(finalUnitPrice(line)) && Boolean(
+    line.pricingFingerprint || line.savedUnitPriceMinor !== null,
   );
 }
 
 function automaticPriceText(line: LineDraft, value: string): string {
   if (line.resolvingPrice) return 'Đang tính…';
-  if (!line.pricingFingerprint) return 'Chưa có';
+  if ((!line.pricingFingerprint && line.savedUnitPriceMinor === null) || !/^\d+$/.test(value)) return 'Chưa có';
   return vnd(value);
 }
 
@@ -597,7 +598,7 @@ export default function SalesOrderCommercialForm(props: Props) {
   const noteDraftRef = useRef(version?.note ?? '');
   const noteAttemptValueRef = useRef((version?.note ?? '').trim());
   const [showMore, setShowMore] = useState(Boolean(version?.note));
-  const [lines, setLines] = useState<LineDraft[]>(versionLines(version));
+  const [lines, setLines] = useState<LineDraft[]>(() => versionLines(version, props.mode));
   const [expandedLineId, setExpandedLineId] = useState<string | null>(null);
   const [lineVariantChoices, setLineVariantChoices] = useState<Record<string, LineVariantChoiceState>>({});
   const [lineVariantErrors, setLineVariantErrors] = useState<Record<string, string>>({});
@@ -632,8 +633,8 @@ export default function SalesOrderCommercialForm(props: Props) {
   const preserveSavedPricingOnInitialOpenRef = useRef(props.mode !== 'create' && Boolean(version?.lines?.length));
   const savedLineIds = useMemo(() => new Set((version?.lines ?? []).map((line) => line.id)), [version]);
   const unresolvedPriceLines = useMemo(
-    () => lines.filter((line) => !hasConfirmedLinePrice(line, props.mode, savedLineIds)),
-    [lines, props.mode, savedLineIds],
+    () => lines.filter((line) => !hasConfirmedLinePrice(line)),
+    [lines],
   );
   const quantitySnapshotRef = useRef(new Map(lines.map((line) => [line.clientLineId, line.quantity])));
   const quantityRepricePendingRef = useRef(new Set<string>());
@@ -762,7 +763,7 @@ export default function SalesOrderCommercialForm(props: Props) {
     }));
     const lineIds = new Set(snapshot.map((line) => line.clientLineId));
     setLines((current) => current.map((line) => lineIds.has(line.clientLineId)
-      ? { ...line, resolvingPrice: true, priceError: null, pricingErrorCode: null }
+      ? { ...line, savedUnitPriceMinor: null, resolvingPrice: true, priceError: null, pricingErrorCode: null }
       : line));
     const results = await runWithConcurrency(snapshot, REPRICE_CONCURRENCY, async (line) => {
       const pricingGeneration = lineGenerations.get(line.clientLineId) ?? 0;
@@ -1135,6 +1136,7 @@ export default function SalesOrderCommercialForm(props: Props) {
       manualUnitPriceMinor: '',
       discountMode: 'PERCENT',
       discountValue: '0',
+      savedUnitPriceMinor: null,
       pricingFingerprint: '',
       priceSteps: [],
       resolvingPrice: true,
@@ -1177,6 +1179,7 @@ export default function SalesOrderCommercialForm(props: Props) {
       resetManualPrice: true,
       baseUnitPriceMinor: '0',
       systemUnitPriceMinor: '0',
+      savedUnitPriceMinor: null,
       pricingFingerprint: '',
       priceSteps: [],
       resolvingPrice: true,
@@ -1203,6 +1206,7 @@ export default function SalesOrderCommercialForm(props: Props) {
       systemUnitPriceMinor: '0',
       discountMode: 'PERCENT',
       discountValue: '0',
+      savedUnitPriceMinor: null,
       pricingFingerprint: '',
       priceSteps: [],
       resolvingPrice: true,
@@ -1236,6 +1240,7 @@ export default function SalesOrderCommercialForm(props: Props) {
     setLines((current) => current.map((item, itemIndex) => itemIndex === index ? {
       ...item,
       quantity: stepQuantity(item.quantity, direction),
+      savedUnitPriceMinor: null,
       pricingFingerprint: '',
       priceSteps: [],
       priceError: null,
@@ -1256,6 +1261,7 @@ export default function SalesOrderCommercialForm(props: Props) {
     setLines((current) => current.map((line, itemIndex) => itemIndex === index ? {
       ...line,
       manualUnitPriceMinor: '',
+      savedUnitPriceMinor: null,
       resetManualPrice: true,
     } : line));
     markDirty();
@@ -1334,7 +1340,7 @@ export default function SalesOrderCommercialForm(props: Props) {
     // without any price is not: identify the exact blocking rows, especially
     // when the order contains many SKUs and its footer is sticky.
     const unresolvedPrices = lines.flatMap((line, index) => (
-      hasConfirmedLinePrice(line, props.mode, savedLineIds) ? [] : [{ line, index }]
+      hasConfirmedLinePrice(line) ? [] : [{ line, index }]
     ));
     if (unresolvedPrices.length > 0) {
       if (canPriceOverride) focusLinePrice(unresolvedPrices[0].line.clientLineId);
@@ -1416,10 +1422,13 @@ export default function SalesOrderCommercialForm(props: Props) {
           ? { sourceLineId: line.clientLineId } : {}),
         ...(line.resetManualPrice && savedLineIds.has(line.clientLineId)
           ? { resetManualPrice: true } : {}),
-        ...(line.pricingFingerprint || (props.mode === 'manual-edit' && savedLineIds.has(line.clientLineId)) ? {
-          expectedSystemUnitPriceMinor: line.systemUnitPriceMinor,
-          ...(line.pricingFingerprint ? { expectedPricingFingerprint: line.pricingFingerprint } : {}),
+        // For an unchanged automatic row, guard against silently replacing the saved final price.
+        // For manual rows, only send a known system snapshot; never manufacture it from the manual price.
+        ...((line.pricingFingerprint || line.savedUnitPriceMinor !== null) && /^\d+$/.test(line.systemUnitPriceMinor) ? {
+          expectedSystemUnitPriceMinor: line.savedUnitPriceMinor !== null && !line.manualUnitPriceMinor
+            ? line.savedUnitPriceMinor : line.systemUnitPriceMinor,
         } : {}),
+        ...(line.pricingFingerprint ? { expectedPricingFingerprint: line.pricingFingerprint } : {}),
         ...(line.manualUnitPriceMinor ? {
           manualUnitPriceMinor: line.manualUnitPriceMinor,
         } : {}),
@@ -1728,7 +1737,7 @@ export default function SalesOrderCommercialForm(props: Props) {
               const variantOptions = choiceState?.options ?? [];
               const hasCurrentOption = variantOptions.some((variant) => variant.id === line.variantId);
               const lineVariantError = lineVariantErrors[line.clientLineId] ?? choiceState?.error ?? null;
-              const priceReady = hasConfirmedLinePrice(line, props.mode, savedLineIds);
+              const priceReady = hasConfirmedLinePrice(line);
               return (
               <article className={styles.orderLineCard} key={line.clientLineId} data-testid={`sales-order-line-${index + 1}`}>
                 <BusinessSequenceNumber rowIndex={index} value={lines.length - index} className={styles.lineSequence} />
@@ -1832,6 +1841,7 @@ export default function SalesOrderCommercialForm(props: Props) {
                         setLines((current) => current.map((item, itemIndex) => itemIndex === index ? {
                           ...item,
                           quantity: value,
+                          savedUnitPriceMinor: null,
                           pricingFingerprint: '',
                           priceSteps: [],
                           priceError: null,
@@ -1864,7 +1874,7 @@ export default function SalesOrderCommercialForm(props: Props) {
                       className={styles.directPriceInput}
                       aria-label={`Đơn giá ${line.sku}`}
                       inputMode="numeric"
-                      value={formatVndInput(line.manualUnitPriceMinor || (priceReady ? line.systemUnitPriceMinor : ''))}
+                      value={formatVndInput(line.manualUnitPriceMinor || (priceReady ? finalUnitPrice(line) : ''))}
                       placeholder={line.pricingErrorCode === 'BASE_PRICE_NOT_FOUND' ? 'Nhập giá' : undefined}
                       onFocus={(event) => event.currentTarget.select()}
                       onClick={(event) => event.currentTarget.select()}
@@ -1873,13 +1883,14 @@ export default function SalesOrderCommercialForm(props: Props) {
                         setLines((current) => current.map((item, itemIndex) => itemIndex === index ? {
                           ...item,
                           manualUnitPriceMinor: value,
+                          savedUnitPriceMinor: value === '' ? null : item.savedUnitPriceMinor,
                           resetManualPrice: value === '',
                         } : item));
                         markDirty();
                       }}
                     />
                   ) : (
-                    <strong>{line.pricingFingerprint ? automaticPriceText(line, line.systemUnitPriceMinor) : '—'}</strong>
+                    <strong>{priceReady ? vnd(finalUnitPrice(line)) : '—'}</strong>
                   )}
                   {line.manualUnitPriceMinor && <small className={styles.manualBadge}>Giá đã sửa</small>}
                   {line.manualUnitPriceMinor && line.pricingFingerprint && canPriceOverride && (
