@@ -1424,7 +1424,8 @@ export default function SalesOrderCommercialForm(props: Props) {
           ? { resetManualPrice: true } : {}),
         // For an unchanged automatic row, guard against silently replacing the saved final price.
         // For manual rows, only send a known system snapshot; never manufacture it from the manual price.
-        ...((line.pricingFingerprint || line.savedUnitPriceMinor !== null) && /^\d+$/.test(line.systemUnitPriceMinor) ? {
+        ...((line.savedUnitPriceMinor !== null && !line.manualUnitPriceMinor)
+          || ((line.pricingFingerprint || line.savedUnitPriceMinor !== null) && /^\d+$/.test(line.systemUnitPriceMinor)) ? {
           expectedSystemUnitPriceMinor: line.savedUnitPriceMinor !== null && !line.manualUnitPriceMinor
             ? line.savedUnitPriceMinor : line.systemUnitPriceMinor,
         } : {}),
