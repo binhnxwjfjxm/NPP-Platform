@@ -21,11 +21,11 @@ test('price 0 is valid only for resolved or authorized manual-price intent', () 
   assert.match(form, /function hasConfirmedLinePrice\(/);
   assert.match(form, /if \(line\.resolvingPrice\) return false;/);
   assert.match(form, /line\.pricingErrorCode === 'BASE_PRICE_NOT_FOUND' && hasValidManualPrice\(line\)/);
-  assert.match(form, /return !line\.priceError && Boolean\(/);
-  assert.match(form, /mode === 'manual-edit' && savedLineIds\.has\(line\.clientLineId\)/);
+  assert.match(form, /return !line\.priceError && \/\^\\d\+\$\/\.test\(finalUnitPrice\(line\)\) && Boolean\(/);
+  assert.match(form, /line\.pricingFingerprint \|\| line\.savedUnitPriceMinor !== null/);
   assert.match(form, /manualUnitPriceMinor: line\.priceSource === 'MANUAL_OVERRIDE' \? line\.unitPrice : ''/);
-  assert.match(form, /return line\.manualUnitPriceMinor\.trim\(\) \|\| line\.systemUnitPriceMinor;/);
-  assert.match(form, /hasConfirmedLinePrice\(line, props\.mode, savedLineIds\) \? \[\] : \[\{ line, index \}\]/);
+  assert.match(form, /return line\.manualUnitPriceMinor\.trim\(\) \|\| \(line\.resetManualPrice\s*\? line\.systemUnitPriceMinor : \(line\.savedUnitPriceMinor \?\? line\.systemUnitPriceMinor\)\);/);
+  assert.match(form, /hasConfirmedLinePrice\(line\) \? \[\] : \[\{ line, index \}\]/);
 });
 
 test('SKU preview failure has a finished unavailable state and a user retry', () => {
@@ -41,7 +41,7 @@ test('SKU preview failure has a finished unavailable state and a user retry', ()
 
 test('pricing/reprice failures never appear as a payable 0 total', () => {
   assert.match(form, /const unresolvedPriceLines = useMemo\(/);
-  assert.match(form, /const priceReady = hasConfirmedLinePrice\(line, props\.mode, savedLineIds\);/);
+  assert.match(form, /const priceReady = hasConfirmedLinePrice\(line\);/);
   assert.match(form, /priceReady \? vnd\(estimate\.details\[index\]\?\.total \?\? 0n\) : '—'/);
   assert.match(form, /unresolvedPriceLines\.length \? 'Chưa đủ giá' : vnd\(estimate\.total\)/);
   assert.doesNotMatch(form, /priceRecoveryBanner|Tính lại các dòng lỗi|Tổng tiền chỉ hiện sau khi đủ giá hợp lệ/);
@@ -71,4 +71,12 @@ test('a debounced quantity change cannot accept a stale price response before th
   assert.match(form, /const effectiveAt = pricingAt;\s*void repriceLines\(changedLines, effectiveAt\)/);
   const quantityEffect = form.slice(form.indexOf('const quantitySignature ='), form.indexOf('function focusLineQuantity'));
   assert.doesNotMatch(quantityEffect, /setPricingAt\(/);
+});
+
+test('clearing a legacy manual override does not erase the persisted price context', () => {
+  const priceInput = form.slice(form.indexOf('className={styles.directPriceInput}'), form.indexOf('className={styles.manualBadge}'));
+  assert.match(priceInput, /manualUnitPriceMinor: value/);
+  assert.match(priceInput, /resetManualPrice: value === ''/);
+  assert.doesNotMatch(priceInput, /savedUnitPriceMinor: value/);
+  assert.match(form, /line\.savedUnitPriceMinor !== null && !line\.resetManualPrice && !line\.manualUnitPriceMinor/);
 });
