@@ -376,7 +376,7 @@ export default function BulkInventoryAdjustmentWorkspace({ reasons, warehouses, 
             </label>
           </div>
           <p className={fileStyles.helper}>
-            Tệp tối thiểu chỉ cần <strong>SKU</strong> và <strong>Tồn thực tế</strong>. <strong>Lô</strong> chỉ bắt buộc với hàng quản lý lô; <strong>Vị trí</strong> chỉ bắt buộc khi cần xác định chính xác dòng tồn. Nếu chỉ có một lựa chọn hợp lệ, hệ thống tự điền tại Xem trước. Mỗi lần xử lý tối đa {MAX_BULK_INVENTORY_ADJUSTMENT_ROWS} dòng.
+            Tệp tối thiểu chỉ cần <strong>SKU</strong> và <strong>Tồn thực tế</strong> (cũng nhận tiêu đề <strong>TỒN TT</strong>). <strong>Lô</strong> chỉ bắt buộc với hàng quản lý lô; <strong>Vị trí</strong> chỉ bắt buộc khi cần xác định chính xác dòng tồn. Nếu chỉ có một lựa chọn hợp lệ, hệ thống tự điền tại Xem trước. Mỗi lần xử lý tối đa {MAX_BULK_INVENTORY_ADJUSTMENT_ROWS} dòng.
           </p>
         </section>
 
