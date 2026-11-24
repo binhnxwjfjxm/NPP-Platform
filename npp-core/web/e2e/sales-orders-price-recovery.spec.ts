@@ -453,3 +453,63 @@ test.describe('Sales Order manual edit stale revision recovery', () => {
     });
   }
 });
+
+test('reopens and saves persisted prices without inventing missing system snapshots or merging split lines', async ({ page, request }) => {
+  const warehouse = await createWarehouse(request, suffix());
+  await mockRecoveryApis(page);
+  const base = manualOrderForRevision(warehouse.id, '10');
+  const first = base.data.versions[0].lines[0];
+  const secondId = 'dddddddd-dddd-4ddd-8ddd-000000000002';
+  const thirdId = 'dddddddd-dddd-4ddd-8ddd-000000000003';
+  const rows = [
+    { ...first, sku: 'SKU-SAVED-A', unitPrice: '12500.000000', systemUnitPrice: null, baseUnitPrice: null },
+    { ...first, id: secondId, lineNumber: 2, sku: 'SKU-SAVED-A', priceSource: 'MANUAL_OVERRIDE', unitPrice: '0.000000', systemUnitPrice: null, baseUnitPrice: null },
+    { ...first, id: thirdId, lineNumber: 3, sku: 'SKU-SAVED-B', priceSource: 'MANUAL_OVERRIDE', unitPrice: '7300.000000', systemUnitPrice: '9000.000000' },
+  ];
+  let revision = '10';
+  const envelope = () => ({
+    ...base,
+    data: {
+      ...base.data, revision,
+      versions: [{ ...base.data.versions[0], revision, lines: rows }],
+    },
+  });
+  const saved: Array<Array<Record<string, unknown>>> = [];
+  await page.route('**/api/sales-orders?**', async (route) => {
+    await route.fulfill({ status: 200, json: { data: [envelope().data], requestId: 'saved-price-list' } });
+  });
+  await page.route(new RegExp(`/api/sales-orders/${ORDER_ID}$`), async (route) => {
+    await route.fulfill({ status: 200, json: envelope() });
+  });
+  await page.route(new RegExp(`/api/sales-orders/${ORDER_ID}/manual-edit$`), async (route) => {
+    saved.push(route.request().postDataJSON().lines);
+    revision = '11';
+    await route.fulfill({ status: 200, json: envelope() });
+  });
+  const openAndCheck = async () => {
+    await page.goto('/sales/sales-orders');
+    await page.getByRole('button', { name: /Khách kiểm tra xung đột/ }).click();
+    await page.getByRole('button', { name: 'Sửa đơn', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Biểu mẫu đơn bán hàng' });
+    await expect(dialog).toBeVisible();
+    const split = dialog.getByLabel('Đơn giá SKU-SAVED-A', { exact: true });
+    await expect(split).toHaveCount(2);
+    await expect(split.nth(0)).toHaveValue('0');
+    await expect(split.nth(1)).toHaveValue('12.500');
+    await expect(dialog.getByLabel('Đơn giá SKU-SAVED-B', { exact: true })).toHaveValue('7.300');
+    return dialog;
+  };
+  const dialog = await openAndCheck();
+  await dialog.getByRole('button', { name: 'Lưu thay đổi', exact: true }).click();
+  await expect(dialog).toBeHidden();
+  expect(saved).toHaveLength(1);
+  expect(saved[0]).toHaveLength(3);
+  const byId = new Map(saved[0].map((line) => [line.sourceLineId, line]));
+  expect(byId.get(first.id)?.expectedSystemUnitPriceMinor).toBe('12500');
+  expect(byId.get(first.id)?.manualUnitPriceMinor).toBeUndefined();
+  expect(byId.get(secondId)?.manualUnitPriceMinor).toBe('0');
+  expect(byId.get(secondId)?.expectedSystemUnitPriceMinor).toBeUndefined();
+  expect(byId.get(thirdId)?.manualUnitPriceMinor).toBe('7300');
+  expect(byId.get(thirdId)?.expectedSystemUnitPriceMinor).toBe('9000');
+  await openAndCheck();
+});
