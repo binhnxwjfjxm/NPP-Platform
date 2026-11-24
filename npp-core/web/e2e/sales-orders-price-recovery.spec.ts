@@ -500,6 +500,14 @@ test('reopens and saves persisted prices without inventing missing system snapsh
     return dialog;
   };
   const dialog = await openAndCheck();
+  const legacyManualPrice = dialog.getByLabel('Đơn giá SKU-SAVED-A', { exact: true }).nth(0);
+  await legacyManualPrice.fill('');
+  await expect(legacyManualPrice).toHaveValue('');
+  await legacyManualPrice.fill('1234');
+  await expect(legacyManualPrice).toHaveValue('1.234');
+  await legacyManualPrice.fill('');
+  await legacyManualPrice.fill('0');
+  await expect(legacyManualPrice).toHaveValue('0');
   await dialog.getByRole('button', { name: 'Lưu thay đổi', exact: true }).click();
   await expect(dialog).toBeHidden();
   expect(saved).toHaveLength(1);
