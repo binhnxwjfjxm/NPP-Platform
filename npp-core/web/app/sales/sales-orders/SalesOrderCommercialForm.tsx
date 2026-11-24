@@ -203,7 +203,8 @@ function versionLines(version: SalesOrderVersion | null | undefined, mode: Sales
 }
 
 function finalUnitPrice(line: LineDraft): string {
-  return line.manualUnitPriceMinor.trim() || (line.savedUnitPriceMinor ?? line.systemUnitPriceMinor);
+  return line.manualUnitPriceMinor.trim() || (line.resetManualPrice
+    ? line.systemUnitPriceMinor : (line.savedUnitPriceMinor ?? line.systemUnitPriceMinor));
 }
 
 function hasValidManualPrice(line: LineDraft): boolean {
@@ -1424,9 +1425,9 @@ export default function SalesOrderCommercialForm(props: Props) {
           ? { resetManualPrice: true } : {}),
         // For an unchanged automatic row, guard against silently replacing the saved final price.
         // For manual rows, only send a known system snapshot; never manufacture it from the manual price.
-        ...((line.savedUnitPriceMinor !== null && !line.manualUnitPriceMinor)
+        ...((line.savedUnitPriceMinor !== null && !line.resetManualPrice && !line.manualUnitPriceMinor)
           || ((line.pricingFingerprint || line.savedUnitPriceMinor !== null) && /^\d+$/.test(line.systemUnitPriceMinor)) ? {
-          expectedSystemUnitPriceMinor: line.savedUnitPriceMinor !== null && !line.manualUnitPriceMinor
+          expectedSystemUnitPriceMinor: line.savedUnitPriceMinor !== null && !line.resetManualPrice && !line.manualUnitPriceMinor
             ? line.savedUnitPriceMinor : line.systemUnitPriceMinor,
         } : {}),
         ...(line.pricingFingerprint ? { expectedPricingFingerprint: line.pricingFingerprint } : {}),
@@ -1884,7 +1885,8 @@ export default function SalesOrderCommercialForm(props: Props) {
                         setLines((current) => current.map((item, itemIndex) => itemIndex === index ? {
                           ...item,
                           manualUnitPriceMinor: value,
-                          savedUnitPriceMinor: value === '' ? null : item.savedUnitPriceMinor,
+                          // Retain the persisted context while the user replaces a manual price.
+                          // resetManualPrice prevents the old final price from being reused while empty.
                           resetManualPrice: value === '',
                         } : item));
                         markDirty();
