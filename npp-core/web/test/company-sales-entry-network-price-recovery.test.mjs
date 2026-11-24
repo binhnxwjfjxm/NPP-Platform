@@ -24,7 +24,7 @@ test('price 0 is valid only for resolved or authorized manual-price intent', () 
   assert.match(form, /return !line\.priceError && \/\^\\d\+\$\/\.test\(finalUnitPrice\(line\)\) && Boolean\(/);
   assert.match(form, /line\.pricingFingerprint \|\| line\.savedUnitPriceMinor !== null/);
   assert.match(form, /manualUnitPriceMinor: line\.priceSource === 'MANUAL_OVERRIDE' \? line\.unitPrice : ''/);
-  assert.match(form, /return line\.manualUnitPriceMinor\.trim\(\) \|\| \(line\.savedUnitPriceMinor \?\? line\.systemUnitPriceMinor\);/);
+  assert.match(form, /return line\.manualUnitPriceMinor\.trim\(\) \|\| \(line\.resetManualPrice\s*\? line\.systemUnitPriceMinor : \(line\.savedUnitPriceMinor \?\? line\.systemUnitPriceMinor\)\);/);
   assert.match(form, /hasConfirmedLinePrice\(line\) \? \[\] : \[\{ line, index \}\]/);
 });
 
@@ -71,4 +71,12 @@ test('a debounced quantity change cannot accept a stale price response before th
   assert.match(form, /const effectiveAt = pricingAt;\s*void repriceLines\(changedLines, effectiveAt\)/);
   const quantityEffect = form.slice(form.indexOf('const quantitySignature ='), form.indexOf('function focusLineQuantity'));
   assert.doesNotMatch(quantityEffect, /setPricingAt\(/);
+});
+
+test('clearing a legacy manual override does not erase the persisted price context', () => {
+  const priceInput = form.slice(form.indexOf('className={styles.directPriceInput}'), form.indexOf('className={styles.manualBadge}'));
+  assert.match(priceInput, /manualUnitPriceMinor: value/);
+  assert.match(priceInput, /resetManualPrice: value === ''/);
+  assert.doesNotMatch(priceInput, /savedUnitPriceMinor: value/);
+  assert.match(form, /line\.savedUnitPriceMinor !== null && !line\.resetManualPrice && !line\.manualUnitPriceMinor/);
 });
