@@ -44,8 +44,8 @@ test('issue 817 batch print reuses the canonical SalesOrderPrintSheet and curren
   assert.match(workspaceSource, /SalesOrderPrintSheet/);
   assert.match(workspaceSource, /\['confirmed', 'closed'\]\.includes\(order\.status\)/);
   assert.match(workspaceSource, /\/api\/sales-orders\/\$\{encodeURIComponent\(id\)\}/);
-  assert.match(workspaceSource, /data-print-root/);
-  assert.match(workspaceSource, /pageBreakBefore/);
+  assert.match(workspaceSource, /printSurfacesForOutput\(targetIds\)/);
+  assert.doesNotMatch(workspaceSource, /window\.print\(\)|pageBreakBefore/);
 });
 
 test('issue 817 batch print waits for the resolved Công Ty print template and refetches selected details', () => {
