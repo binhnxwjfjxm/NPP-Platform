@@ -8,7 +8,7 @@ const globals = readFileSync(new URL('../app/globals.css', import.meta.url), 'ut
 const printCss = readFileSync(new URL('../app/components/print-document.module.css', import.meta.url), 'utf8');
 const sheetCss = readFileSync(new URL('../app/components/business-document-print.module.css', import.meta.url), 'utf8');
 const script = ts.transpileModule(source, {
-  compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true },
+  compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true },
 }).outputText;
 
 type Sheet = { id: string; size: 'A4' | 'A5'; rows?: number };
