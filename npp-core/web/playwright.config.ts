@@ -130,7 +130,7 @@ export default defineConfig({
     },
     {
       name: 'sales-order-commercial',
-      testMatch: /sales-orders-(commercial|price-recovery)\.spec\.ts/,
+      testMatch: /sales-orders-(commercial|price-recovery|print-pagination)\.spec\.ts/,
       dependencies: ['workforce-auth-setup', 'organization'],
       use: authenticatedUse('http://127.0.0.1:3003'),
     },

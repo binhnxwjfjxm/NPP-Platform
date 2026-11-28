@@ -81,7 +81,8 @@ test('phiếu bán hàng có chân phiếu DOM thật và giữ số trang nativ
   assert.match(printCss, /bottom: 1\.5mm/);
   assert.match(printCss, /padding: 5mm 5mm 8mm/);
   assert.match(sheetSource, /footerText=\{`\$\{displayCustomer\} - \$\{dateText\(version\.confirmedAt \?\? version\.createdAt\)\}`\}/);
-  assert.match(managementSource, /document\.querySelectorAll\('style\[data-print-page-style\]'\)/);
-  assert.match(managementSource, /const printable = clonePrintSurfaceForOutput\(target, `bulk-/);
-  assert.doesNotMatch(managementSource, /printRoot\.appendChild\(pageStyle\)/);
+  assert.match(managementSource, /printSurfacesForOutput\(targetIds\)/);
+  assert.match(documentSource, /anchorFirstPage\(targets\[0\]\)/);
+  assert.match(documentSource, /body\[data-printing='true'\] \{ page:/);
+  assert.doesNotMatch(managementSource, /window\.print\(\)|clonePrintSurfaceForOutput/);
 });

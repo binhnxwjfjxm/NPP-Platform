@@ -110,13 +110,23 @@ kbd {
     min-height: 0 !important;
   }
 
+  body[data-printing='true']::before,
+  body[data-printing='true']::after {
+    content: none !important;
+    display: none !important;
+  }
+
   body[data-printing='true'] > *:not([data-print-root='true']) {
     display: none !important;
   }
 
   body[data-printing='true'] > [data-print-root='true'] {
     display: block !important;
+    position: static !important;
     width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
     margin: 0 !important;
     padding: 0 !important;
   }

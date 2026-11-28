@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell-core';
 import OperationalExportActions from '../../components/operational-export-actions';
-import { clonePrintSurfaceForOutput } from '../../components/print-document';
+import { printSurfacesForOutput } from '../../components/print-document';
 import type { Customer } from '../../../lib/customer-types';
 import type { SalesOrder, SalesOrderVersion } from '../../../lib/sales-order-types';
 import { SALES_ORDER_PERMISSION_KEYS } from '../../../lib/sales-order-permissions';
@@ -349,47 +349,9 @@ async function waitForPrintSurfaces(targetIds: string[], timeoutMs = 8000): Prom
   }
 }
 
-function clearPrintState() {
-  document.body.removeAttribute('data-printing');
-  document.querySelectorAll('[data-print-root="true"]').forEach((element) => element.remove());
-  document.querySelectorAll('[data-print-active="true"]').forEach((element) => element.removeAttribute('data-print-active'));
-  document.querySelectorAll('style[data-print-page-style]').forEach((element) => element.remove());
-}
-
 function printTargets(targetIds: string[]) {
-  clearPrintState();
-  const surfaces = Array.from(document.querySelectorAll<HTMLElement>('[data-print-surface]'));
-  const byId = new Map(surfaces.map((surface) => [surface.dataset.printId ?? '', surface]));
-  const printRoot = document.createElement('div');
-  printRoot.setAttribute('data-print-root', 'true');
-  let appended = 0;
-  for (const targetId of targetIds) {
-    const target = byId.get(targetId);
-    if (!target) continue;
-    const printable = clonePrintSurfaceForOutput(target, `bulk-${appended}-${targetId}`);
-    if (appended > 0) {
-      printable.style.breakBefore = 'page';
-      printable.style.pageBreakBefore = 'always';
-    }
-    printRoot.appendChild(printable);
-    appended += 1;
-  }
-  if (appended !== targetIds.length) {
-    clearPrintState();
+  if (!printSurfacesForOutput(targetIds)) {
     throw new Error('Chưa chuẩn bị đủ phiếu in. Hãy thử lại.');
-  }
-  document.body.appendChild(printRoot);
-  document.body.setAttribute('data-printing', 'true');
-  const cleanup = () => {
-    window.removeEventListener('afterprint', cleanup);
-    clearPrintState();
-  };
-  window.addEventListener('afterprint', cleanup, { once: true });
-  try {
-    window.print();
-  } catch (error) {
-    cleanup();
-    throw error;
   }
 }
 
